@@ -453,7 +453,7 @@ impl WalletApi for super::Wallet {
             wallet_secret,
             payment_secret,
             fee_rate,
-            priority_fees_sompi,
+            reveal_fee_sompi,
             payload,
         } = request;
 
@@ -464,8 +464,6 @@ impl WalletApi for super::Wallet {
 
         let abortable = Abortable::new();
 
-        let priority_fees: Option<Vec<u64>> = priority_fees_sompi.map(|v| v.iter().map(|f| f.additional()).collect());
-
         let bundle = account
             .clone()
             .commit_reveal_manual(
@@ -475,7 +473,7 @@ impl WalletApi for super::Wallet {
                 wallet_secret,
                 payment_secret,
                 fee_rate,
-                priority_fees,
+                reveal_fee_sompi,
                 payload,
                 &abortable,
             )
@@ -498,7 +496,7 @@ impl WalletApi for super::Wallet {
             wallet_secret,
             payment_secret,
             fee_rate,
-            priority_fees_sompi,
+            reveal_fee_sompi,
             payload,
         } = request;
 
@@ -516,8 +514,6 @@ impl WalletApi for super::Wallet {
 
         let abortable = Abortable::new();
 
-        let priority_fees: Option<Vec<u64>> = priority_fees_sompi.map(|v| v.iter().map(|f| f.additional()).collect());
-
         let bundle = account
             .clone()
             .commit_reveal(
@@ -527,7 +523,7 @@ impl WalletApi for super::Wallet {
                 payment_secret,
                 commit_amount_sompi,
                 fee_rate,
-                priority_fees,
+                reveal_fee_sompi,
                 payload,
                 &abortable,
             )

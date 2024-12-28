@@ -1886,19 +1886,6 @@ declare! {
      * 
      * The selected address will also be used to spend reveal transaction to.
      * 
-     * 
-     * Up to two optional priority fees can be set: if only the first one is set,
-     * it will be applied to both transactions, whereas if both fees are set they
-     * will respectively be applied to commit and reveal transaction.
-     * 
-     * The optional fee rate is applied to the commit transaction.
-     * 
-     * In order to set fees specifically for the reveal transaction, set the second
-     * priority fee in priorityFeesSompi (if different to the reveal transaction fee)
-     * or reflect it in the reveal transaction by adapting endDestination amount. 
-     * 
-     * The default minimum reveal transaction fee is 100_000 sompi if
-     * priorityFeesSompi is not provided.
      *  
      * @category Wallet API
      */
@@ -1911,7 +1898,7 @@ declare! {
         commitAmountSompi : bigint;
         paymentSecret? : string;
         feeRate? : number;
-        priorityFeesSompi? : IFees | bigint;
+        revealFeeSompi? : bigint;
         payload? : Uint8Array | HexString;
     }
     "#,
@@ -1933,11 +1920,8 @@ try_from! ( args: IAccountsCommitRevealRequest, AccountsCommitRevealRequest, {
     let payment_secret = args.try_get_secret("paymentSecret")?;
     let commit_amount_sompi = args.get_u64("commitAmountSompi")?;
     let fee_rate = args.get_f64("feeRate").ok();
-    let priority_fees_sompi = args.get_vec("priorityFeesSompi").ok().map(|filter| {
-        filter.iter()
-        .filter_map(|js| js.as_string())
-        .map(Fees::try_from).collect::<Result<Vec<Fees>>>()
-    }).transpose()?;
+    
+    let reveal_fee_sompi = args.get_u64("revealFeeSompi").ok();
 
     let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
 
@@ -1950,7 +1934,7 @@ try_from! ( args: IAccountsCommitRevealRequest, AccountsCommitRevealRequest, {
         payment_secret,
         commit_amount_sompi,
         fee_rate,
-        priority_fees_sompi,
+        reveal_fee_sompi,
         payload,
     })
 });
@@ -1990,20 +1974,6 @@ declare! {
      * The scriptSig will be used to spend the UTXO of the first transaction and
      * must therefore match the startDestination output P2SH.
      * 
-     * 
-     * Up to two optional priority fees can be set: if only the first one is set,
-     * it will be applied to both transactions, whereas if both fees are set they
-     * will respectively be applied to commit and reveal transaction.
-     * 
-     * The optional fee rate is applied to the commit transaction.
-     * 
-     * In order to set fees specifically for the reveal transaction, set the second
-     * priority fee in priorityFeesSompi (if different to the reveal transaction fee)
-     * or reflect it in the reveal transaction by adapting endDestination amount. 
-     * 
-     * The default minimum reveal transaction fee is 100_000 sompi if
-     * priorityFeesSompi is not provided.
-     * 
      * @category Wallet API
      */
     export interface IAccountsCommitRevealManualRequest {
@@ -2014,7 +1984,7 @@ declare! {
         walletSecret : string;
         paymentSecret? : string;
         feeRate? : number;
-        priorityFeesSompi? : IFees | bigint;
+        revealFeeSompi? : bigint;
         payload? : Uint8Array | HexString;
     }
     "#,
@@ -2035,11 +2005,7 @@ try_from! ( args: IAccountsCommitRevealManualRequest, AccountsCommitRevealManual
     if reveal_output.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(reveal_output)?.into() };
 
     let fee_rate = args.get_f64("feeRate").ok();
-    let priority_fees_sompi = args.get_vec("priorityFeesSompi").ok().map(|filter| {
-        filter.iter()
-        .filter_map(|js| js.as_string())
-        .map(Fees::try_from).collect::<Result<Vec<Fees>>>()
-    }).transpose()?;
+    let reveal_fee_sompi = args.get_u64("revealFeeSompi").ok();
 
     let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
 
@@ -2051,7 +2017,7 @@ try_from! ( args: IAccountsCommitRevealManualRequest, AccountsCommitRevealManual
         start_destination,
         end_destination,
         fee_rate,
-        priority_fees_sompi,
+        reveal_fee_sompi,
         payload,
     })
 });

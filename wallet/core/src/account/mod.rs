@@ -389,13 +389,13 @@ pub trait Account: AnySync + Send + Sync + 'static {
         wallet_secret: Secret,
         payment_secret: Option<Secret>,
         fee_rate: Option<f64>,
-        priority_fees_sompi: Option<Vec<u64>>,
+        reveal_fee_sompi: Option<u64>,
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
     ) -> Result<Bundle, Error> {
         commit_reveal_batch_bundle(
             pskb::CommitRevealBatchKind::Manual { hop_payment: start_destination, destination_payment: end_destination },
-            priority_fees_sompi,
+            reveal_fee_sompi,
             script_sig,
             payload,
             fee_rate,
@@ -415,13 +415,13 @@ pub trait Account: AnySync + Send + Sync + 'static {
         payment_secret: Option<Secret>,
         commit_amount_sompi: u64,
         fee_rate: Option<f64>,
-        priority_fees_sompi: Option<Vec<u64>>,
+        reveal_fee_sompi: Option<u64>,
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
     ) -> Result<Bundle, Error> {
         commit_reveal_batch_bundle(
             pskb::CommitRevealBatchKind::Parameterized { address, commit_amount_sompi },
-            priority_fees_sompi,
+            reveal_fee_sompi,
             script_sig,
             payload,
             fee_rate,
