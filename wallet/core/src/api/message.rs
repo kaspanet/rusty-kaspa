@@ -679,7 +679,7 @@ pub struct AccountsCommitRevealManualRequest {
     pub wallet_secret: Secret,
     pub payment_secret: Option<Secret>,
     pub fee_rate: Option<f64>,
-    pub priority_fees_sompi: Option<Vec<Fees>>,
+    pub reveal_fee_sompi: Option<u64>,
     pub payload: Option<Vec<u8>>,
 }
 
@@ -725,7 +725,7 @@ pub struct AccountsCommitRevealRequest {
     pub commit_amount_sompi: u64,
     pub payment_secret: Option<Secret>,
     pub fee_rate: Option<f64>,
-    pub priority_fees_sompi: Option<Vec<Fees>>,
+    pub reveal_fee_sompi: Option<u64>,
     pub payload: Option<Vec<u8>>,
 }
 

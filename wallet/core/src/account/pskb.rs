@@ -384,15 +384,15 @@ struct BundleCommitRevealConfig {
     pub address_reveal: Address,
     pub first_output: PaymentDestination,
     pub commit_fee: Option<u64>,
-    pub reveal_fee: Option<u64>,
+    pub reveal_fee: u64,
     pub redeem_script: Vec<u8>,
 }
 
 // Create signed atomic commit reveal PSKB.
-// Default reveal fee of 100_000 sompi if priority_fee_sompi is not provided.
+// Default reveal_fee_sompi: 100_000 sompi if not provided.
 pub async fn commit_reveal_batch_bundle(
     batch_config: CommitRevealBatchKind,
-    priority_fee_sompi: Option<Vec<u64>>,
+    reveal_fee_sompi: Option<u64>,
     script_sig: Vec<u8>,
     payload: Option<Vec<u8>>,
     fee_rate: Option<f64>,
@@ -424,7 +424,7 @@ pub async fn commit_reveal_batch_bundle(
                 address_reveal: addr_reveal,
                 first_output: hop_payment,
                 commit_fee: None,
-                reveal_fee: None,
+                reveal_fee: 100_000,
                 redeem_script: script_sig,
             }
         }
@@ -436,19 +436,15 @@ pub async fn commit_reveal_batch_bundle(
                 address_reveal: address.clone(),
                 first_output: PaymentDestination::from(PaymentOutput::new(lock_address, commit_amount_sompi)),
                 commit_fee: None,
-                reveal_fee: None,
+                reveal_fee: 100_000,
                 redeem_script,
             }
         }
     };
 
-    // Up to two optional priority fees can be set: if only the first one is set, it will
-    // be applied to both transactions, whereas if both fees are set they will
-    // respectively be applied to commit and reveal transaction.
-    //
-    // A default minimum reveal transaction fee is set to 1000_000.
-    conf.commit_fee = priority_fee_sompi.clone().and_then(|v| v.into_iter().next());
-    conf.reveal_fee = priority_fee_sompi.and_then(|v| v.into_iter().nth(1)).or(conf.commit_fee).or(Some(100_000));
+    // A default minimum reveal transaction fee is set to 100_000.
+    // todo: rebase on mass.
+    conf.reveal_fee = reveal_fee_sompi.unwrap_or(100_000);
 
     // Generate commit transaction.
     let settings = GeneratorSettings::try_new_with_account(
@@ -470,13 +466,13 @@ pub async fn commit_reveal_batch_bundle(
 
     // Generate reveal transaction
 
-    // todo: support priority fee.
+    // todo: support minimal fee by mass computation when no reveal fee is provided.
     let bundle_unlock = unlock_utxo_as_batch_transaction_pskb(
         conf.first_output.amount().unwrap(),
         &conf.address_commit,
         &conf.address_reveal,
         &conf.redeem_script,
-        conf.reveal_fee,
+        Some(conf.reveal_fee),
     )?;
 
     let mut merge_bundle: Option<Bundle> = None;
