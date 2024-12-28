@@ -1886,6 +1886,7 @@ declare! {
      * 
      * The selected address will also be used to spend reveal transaction to.
      * 
+     * The default revealFeeSompi is 100_000 sompi.
      *  
      * @category Wallet API
      */
@@ -1973,6 +1974,11 @@ declare! {
      * 
      * The scriptSig will be used to spend the UTXO of the first transaction and
      * must therefore match the startDestination output P2SH.
+     * 
+     * Set revealFeeSompi or reflect the reveal fee transaction on endDestination
+     * output amount. 
+     * 
+     * The default revealFeeSompi is 100_000 sompi.
      * 
      * @category Wallet API
      */
