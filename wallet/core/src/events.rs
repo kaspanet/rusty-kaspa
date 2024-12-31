@@ -57,15 +57,14 @@ pub enum Events {
     WalletPing,
     /// Successful RPC connection
     Connect {
-        #[serde(rename = "networkId")]
         network_id: NetworkId,
         /// Node RPC url on which connection
         /// has been established
         url: Option<String>,
     },
     /// RPC disconnection
+    #[serde(rename_all = "camelCase")]
     Disconnect {
-        #[serde(rename = "networkId")]
         network_id: NetworkId,
         url: Option<String>,
     },
@@ -78,11 +77,12 @@ pub enum Events {
     },
     /// [`SyncState`] notification posted
     /// when the node sync state changes
+    #[serde(rename_all = "camelCase")]
     SyncState {
-        #[serde(rename = "syncState")]
         sync_state: SyncState,
     },
     /// Emitted on wallet enumerate response
+    #[serde(rename_all = "camelCase")]
     WalletList {
         wallet_descriptors: Vec<WalletDescriptor>,
     },
@@ -92,15 +92,18 @@ pub enum Events {
         hint: Option<Hint>,
     },
     /// Wallet has opened
+    #[serde(rename_all = "camelCase")]
     WalletOpen {
         wallet_descriptor: Option<WalletDescriptor>,
         account_descriptors: Option<Vec<AccountDescriptor>>,
     },
+    #[serde(rename_all = "camelCase")]
     WalletCreate {
         wallet_descriptor: WalletDescriptor,
         storage_descriptor: StorageDescriptor,
     },
     /// Wallet reload initiated (development only)
+    #[serde(rename_all = "camelCase")]
     WalletReload {
         wallet_descriptor: Option<WalletDescriptor>,
         account_descriptors: Option<Vec<AccountDescriptor>>,
@@ -111,8 +114,8 @@ pub enum Events {
     },
     /// Wallet has been closed
     WalletClose,
+    #[serde(rename_all = "camelCase")]
     PrvKeyDataCreate {
-        #[serde(rename = "prvKeyDataInfo")]
         prv_key_data_info: PrvKeyDataInfo,
     },
     /// Accounts have been activated
@@ -128,22 +131,22 @@ pub enum Events {
         id: Option<AccountId>,
     },
     /// Account has been created
+    #[serde(rename_all = "camelCase")]
     AccountCreate {
         account_descriptor: AccountDescriptor,
     },
     /// Account has been changed
     /// (emitted on new address generation)
+    #[serde(rename_all = "camelCase")]
     AccountUpdate {
         account_descriptor: AccountDescriptor,
     },
     /// Emitted after successful RPC connection
     /// after the initial state negotiation.
+    #[serde(rename_all = "camelCase")]
     ServerStatus {
-        #[serde(rename = "networkId")]
         network_id: NetworkId,
-        #[serde(rename = "serverVersion")]
         server_version: String,
-        #[serde(rename = "isSynced")]
         is_synced: bool,
         /// Node RPC url on which connection
         /// has been established
@@ -165,8 +168,8 @@ pub enum Events {
         message: String,
     },
     /// DAA score change
+    #[serde(rename_all = "camelCase")]
     DaaScoreChange {
-        #[serde(rename = "currentDaaScore")]
         current_daa_score: u64,
     },
     /// New incoming pending UTXO/transaction
@@ -219,8 +222,8 @@ pub enum Events {
         id: UtxoContextId,
     },
     /// Periodic metrics updates (on-request)
+    #[serde(rename_all = "camelCase")]
     Metrics {
-        #[serde(rename = "networkId")]
         network_id: NetworkId,
         // #[serde(rename = "metricsData")]
         // metrics_data: MetricsData,

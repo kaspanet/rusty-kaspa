@@ -451,7 +451,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// an error.
     async fn accounts_estimate_call(self: Arc<Self>, request: AccountsEstimateRequest) -> Result<AccountsEstimateResponse>;
 
-    /// Wrapper around [`accounts_estimate_call()`](Self::accounts_estimate_call)
+    /// Wrapper around [`fee_rate_estimate_call()`](Self::fee_rate_estimate_call)
     async fn fee_rate_estimate(self: Arc<Self>) -> Result<FeeRateEstimateResponse> {
         Ok(self.fee_rate_estimate_call(FeeRateEstimateRequest {}).await?)
     }
