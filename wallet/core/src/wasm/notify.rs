@@ -306,7 +306,6 @@ declare! {
     "#,
 }
 
-
 #[cfg(feature = "wasm32-sdk")]
 declare! {
     IFeeRateEvent,
@@ -332,8 +331,6 @@ declare! {
     }
     "#,
 }
-
-
 
 #[cfg(feature = "wasm32-sdk")]
 declare! {

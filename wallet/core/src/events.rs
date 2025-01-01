@@ -56,6 +56,7 @@ impl SyncState {
 pub enum Events {
     WalletPing,
     /// Successful RPC connection
+    #[serde(rename_all = "camelCase")]
     Connect {
         network_id: NetworkId,
         /// Node RPC url on which connection
