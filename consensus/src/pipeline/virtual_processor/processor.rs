@@ -73,7 +73,7 @@ use kaspa_consensus_notify::{
     },
     root::ConsensusNotificationRoot,
 };
-use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
+use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, time::unix_now, trace, warn};
 use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
@@ -1199,7 +1199,7 @@ impl VirtualStateProcessor {
         config: &Config,
     ) -> Result<Address, ReturnAddressError> {
         // We need consistency between the utxo_diffs_store, block_transactions_store, selected chain and header store reads
-        let guard = self.pruning_lock.blocking_read();
+        let _guard = self.pruning_lock.blocking_read();
 
         let source_daa_score = self
             .headers_store
@@ -1213,7 +1213,7 @@ impl VirtualStateProcessor {
         }
 
         let (matching_chain_block_hash, acceptance_data) =
-            self.find_accepting_chain_block_hash_at_daa_score(target_daa_score, source_hash, guard)?;
+            self.find_accepting_chain_block_hash_at_daa_score(target_daa_score, source_hash)?;
 
         let (index, containing_acceptance) = self
             .find_tx_acceptance_data_and_index_from_block_acceptance(txid, acceptance_data.clone())
@@ -1296,11 +1296,17 @@ impl VirtualStateProcessor {
         }
     }
 
+    /// Find the accepting chain block hash at the given DAA score by binary searching
+    /// through selected chain store for using indexes
+    /// This method assumes that local caller have acquired the pruning lock to guarantee
+    /// consistency between reads on the selected_chain_store and header_store (as well as
+    /// other stores outside). If no such lock is acquired, this method tries to find
+    /// the accepting chain block hash on a best effort basis (may fail if parts of the data
+    /// are pruned between two sequential calls)
     fn find_accepting_chain_block_hash_at_daa_score(
         &self,
         target_daa_score: u64,
         source_hash: Hash,
-        _guard: SessionReadGuard,
     ) -> Result<(Hash, Arc<Vec<MergesetBlockAcceptanceData>>), ReturnAddressError> {
         let sc_read = self.selected_chain_store.read();
 
