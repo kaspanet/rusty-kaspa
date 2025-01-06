@@ -17,7 +17,7 @@ source preset.sh
 if [ ! -d "$HOME/x-tools" ] || [ ! -f "$PRESET_HASH_FILE" ] || [ "$(cat $PRESET_HASH_FILE)" != "$CURRENT_PRESET_HASH" ]; then
   # Install dependencies
   sudo apt-get update
-  sudo apt-get install -y autoconf automake libtool  libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
+  sudo apt-get install -y autoconf automake libtool  libtool-bin unzip help2man python3-dev gperf bison flex texinfo gawk libncurses5-dev
   
   # Clone crosstool-ng
   git clone https://github.com/crosstool-ng/crosstool-ng
