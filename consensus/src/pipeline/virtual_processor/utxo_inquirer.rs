@@ -41,20 +41,17 @@ impl VirtualStateProcessor {
         let (matching_chain_block_hash, acceptance_data) =
             self.find_accepting_chain_block_hash_at_daa_score(target_daa_score, source_hash)?;
 
-        let (index, containing_acceptance) = self
-            .find_tx_acceptance_data_and_index_from_block_acceptance(txid, acceptance_data.clone())
+        let (containing_block, index) = self
+            .find_containing_block_and_index_from_acceptance_data(txid, acceptance_data.clone())
             .ok_or(ReturnAddressError::MissingContainingAcceptanceForTx(txid))?;
 
         // Found Merged block containing the TXID
         let tx = self
             .block_transactions_store
-            .get(containing_acceptance.block_hash)
-            .map_err(|_| ReturnAddressError::MissingBlockFromBlockTxStore(containing_acceptance.block_hash))
+            .get(containing_block)
+            .map_err(|_| ReturnAddressError::MissingBlockFromBlockTxStore(containing_block))
             .and_then(|block_txs| {
-                block_txs
-                    .get(index)
-                    .cloned()
-                    .ok_or(ReturnAddressError::MissingTransactionIndexOfBlock(index, containing_acceptance.block_hash))
+                block_txs.get(index).cloned().ok_or(ReturnAddressError::MissingTransactionIndexOfBlock(index, containing_block))
             })?;
 
         if tx.id() != txid {
@@ -87,17 +84,18 @@ impl VirtualStateProcessor {
             // In this case, removed_diff wouldn't contain the outpoint of the created-and-immediately-spent UTXO
             // so we use the transaction (which also has acceptance data in this block) and look at its outputs
             let other_txid = first_input_prev_outpoint.transaction_id;
-            let (other_index, other_containing_acceptance) = self
-                .find_tx_acceptance_data_and_index_from_block_acceptance(other_txid, acceptance_data)
+            let (other_containing_block, other_index) = self
+                .find_containing_block_and_index_from_acceptance_data(other_txid, acceptance_data)
                 .ok_or(ReturnAddressError::MissingOtherTransactionAcceptanceData(other_txid))?;
             let other_tx = self
                 .block_transactions_store
-                .get(other_containing_acceptance.block_hash)
-                .map_err(|_| ReturnAddressError::MissingBlockFromBlockTxStore(other_containing_acceptance.block_hash))
+                .get(other_containing_block)
+                .map_err(|_| ReturnAddressError::MissingBlockFromBlockTxStore(other_containing_block))
                 .and_then(|block_txs| {
-                    block_txs.get(other_index).cloned().ok_or({
-                        ReturnAddressError::MissingTransactionIndexOfBlock(other_index, other_containing_acceptance.block_hash)
-                    })
+                    block_txs
+                        .get(other_index)
+                        .cloned()
+                        .ok_or(ReturnAddressError::MissingTransactionIndexOfBlock(other_index, other_containing_block))
                 })?;
 
             other_tx.outputs[first_input_prev_outpoint.index as usize].script_public_key.clone()
@@ -182,15 +180,15 @@ impl VirtualStateProcessor {
         Ok((matching_chain_block_hash, acceptance_data))
     }
 
-    fn find_tx_acceptance_data_and_index_from_block_acceptance(
+    fn find_containing_block_and_index_from_acceptance_data(
         &self,
         txid: Hash,
         block_acceptance_data: Arc<Vec<MergesetBlockAcceptanceData>>,
-    ) -> Option<(usize, MergesetBlockAcceptanceData)> {
+    ) -> Option<(Hash, usize)> {
         block_acceptance_data.iter().find_map(|mbad| {
             let tx_arr_index =
                 mbad.accepted_transactions.iter().find_map(|tx| (tx.transaction_id == txid).then_some(tx.index_within_block as usize));
-            tx_arr_index.map(|index| (index, mbad.clone()))
+            tx_arr_index.map(|index| (mbad.block_hash, index))
         })
     }
 }
