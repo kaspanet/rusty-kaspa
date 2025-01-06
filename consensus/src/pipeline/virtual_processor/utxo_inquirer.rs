@@ -1,9 +1,7 @@
 use std::{cmp, sync::Arc};
 
 use kaspa_addresses::{Address, Prefix};
-use kaspa_consensus_core::{
-    acceptance_data::MergesetBlockAcceptanceData, return_address::ReturnAddressError, utxo::utxo_diff::ImmutableUtxoDiff,
-};
+use kaspa_consensus_core::{acceptance_data::AcceptanceData, return_address::ReturnAddressError, utxo::utxo_diff::ImmutableUtxoDiff};
 use kaspa_core::{trace, warn};
 use kaspa_hashes::Hash;
 use kaspa_txscript::extract_script_pub_key_address;
@@ -42,7 +40,7 @@ impl VirtualStateProcessor {
             self.find_accepting_chain_block_hash_at_daa_score(target_daa_score, source_hash)?;
 
         let (containing_block, index) = self
-            .find_containing_block_and_index_from_acceptance_data(txid, acceptance_data.clone())
+            .find_containing_block_and_index_from_acceptance_data(txid, &acceptance_data)
             .ok_or(ReturnAddressError::MissingContainingAcceptanceForTx(txid))?;
 
         // Found Merged block containing the TXID
@@ -85,7 +83,7 @@ impl VirtualStateProcessor {
             // so we use the transaction (which also has acceptance data in this block) and look at its outputs
             let other_txid = first_input_prev_outpoint.transaction_id;
             let (other_containing_block, other_index) = self
-                .find_containing_block_and_index_from_acceptance_data(other_txid, acceptance_data)
+                .find_containing_block_and_index_from_acceptance_data(other_txid, &acceptance_data)
                 .ok_or(ReturnAddressError::MissingOtherTransactionAcceptanceData(other_txid))?;
             let other_tx = self
                 .block_transactions_store
@@ -119,7 +117,7 @@ impl VirtualStateProcessor {
         &self,
         target_daa_score: u64,
         source_hash: Hash,
-    ) -> Result<(Hash, Arc<Vec<MergesetBlockAcceptanceData>>), ReturnAddressError> {
+    ) -> Result<(Hash, Arc<AcceptanceData>), ReturnAddressError> {
         let sc_read = self.selected_chain_store.read();
 
         let source_index = sc_read.get_by_hash(source_hash).map_err(|_| ReturnAddressError::MissingIndexForHash(source_hash))?;
@@ -183,7 +181,7 @@ impl VirtualStateProcessor {
     fn find_containing_block_and_index_from_acceptance_data(
         &self,
         txid: Hash,
-        block_acceptance_data: Arc<Vec<MergesetBlockAcceptanceData>>,
+        block_acceptance_data: &AcceptanceData,
     ) -> Option<(Hash, usize)> {
         block_acceptance_data.iter().find_map(|mbad| {
             let tx_arr_index =
