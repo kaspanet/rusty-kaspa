@@ -1,9 +1,8 @@
 use std::{cmp, sync::Arc};
 
-use kaspa_addresses::Address;
+use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::{
-    acceptance_data::MergesetBlockAcceptanceData, config::Config, return_address::ReturnAddressError,
-    utxo::utxo_diff::ImmutableUtxoDiff,
+    acceptance_data::MergesetBlockAcceptanceData, return_address::ReturnAddressError, utxo::utxo_diff::ImmutableUtxoDiff,
 };
 use kaspa_core::{trace, warn};
 use kaspa_hashes::Hash;
@@ -17,16 +16,17 @@ use crate::model::stores::{
 use super::VirtualStateProcessor;
 
 impl VirtualStateProcessor {
+    /// Returns the first paying address for `txid` (i.e., the address signed by its first input).
+    /// The argument `target_daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
+    ///
+    /// *Assumed to be called under the pruning read lock.*
     pub fn get_utxo_return_address(
         &self,
         txid: Hash,
         target_daa_score: u64,
         source_hash: Hash,
-        config: &Config,
+        prefix: Prefix,
     ) -> Result<Address, ReturnAddressError> {
-        // We need consistency between the utxo_diffs_store, block_transactions_store, selected chain and header store reads
-        let _guard = self.pruning_lock.blocking_read();
-
         let source_daa_score = self
             .headers_store
             .get_compact_header_data(source_hash)
@@ -54,7 +54,7 @@ impl VirtualStateProcessor {
                 block_txs
                     .get(index)
                     .cloned()
-                    .ok_or_else(|| ReturnAddressError::MissingTransactionIndexOfBlock(index, containing_acceptance.block_hash))
+                    .ok_or(ReturnAddressError::MissingTransactionIndexOfBlock(index, containing_acceptance.block_hash))
             })?;
 
         if tx.id() != txid {
@@ -95,7 +95,7 @@ impl VirtualStateProcessor {
                 .get(other_containing_acceptance.block_hash)
                 .map_err(|_| ReturnAddressError::MissingBlockFromBlockTxStore(other_containing_acceptance.block_hash))
                 .and_then(|block_txs| {
-                    block_txs.get(other_index).cloned().ok_or_else(|| {
+                    block_txs.get(other_index).cloned().ok_or({
                         ReturnAddressError::MissingTransactionIndexOfBlock(other_index, other_containing_acceptance.block_hash)
                     })
                 })?;
@@ -103,7 +103,7 @@ impl VirtualStateProcessor {
             other_tx.outputs[first_input_prev_outpoint.index as usize].script_public_key.clone()
         };
 
-        if let Ok(address) = extract_script_pub_key_address(&spk, config.prefix()) {
+        if let Ok(address) = extract_script_pub_key_address(&spk, prefix) {
             Ok(address)
         } else {
             Err(ReturnAddressError::NonStandard)
@@ -111,9 +111,9 @@ impl VirtualStateProcessor {
     }
 
     /// Find the accepting chain block hash at the given DAA score by binary searching
-    /// through selected chain store for using indexes
-    /// This method assumes that local caller have acquired the pruning lock to guarantee
-    /// consistency between reads on the selected_chain_store and header_store (as well as
+    /// through selected chain store using indexes.
+    /// This method assumes that local caller have acquired the pruning read lock to guarantee
+    /// consistency between reads on the selected_chain_store and headers_store (as well as
     /// other stores outside). If no such lock is acquired, this method tries to find
     /// the accepting chain block hash on a best effort basis (may fail if parts of the data
     /// are pruned between two sequential calls)
@@ -132,6 +132,9 @@ impl VirtualStateProcessor {
             .map(|tip| tip.daa_score)
             .map_err(|_| ReturnAddressError::MissingCompactHeaderForBlockHash(tip_hash))?;
 
+        // For a chain segment it holds that len(segment) <= daa_score(segment end) - daa_score(segment start). This is true
+        // because each chain block increases the daa score by at least one. Hence we can lower bound our search by high index
+        // minus the daa score gap as done below
         let mut low_index = tip_index.saturating_sub(tip_daa_score.saturating_sub(target_daa_score)).max(source_index);
         let mut high_index = tip_index;
 
@@ -140,13 +143,13 @@ impl VirtualStateProcessor {
             // 0. Get the mid point index
             let mid = low_index + (high_index - low_index) / 2;
 
-            // 1. Get the chain block hash at that index. Error if we don't find a hash at an index
+            // 1. Get the chain block hash at that index. Error if we cannot find a hash at that index
             let hash = sc_read.get_by_index(mid).map_err(|_| {
                 trace!("Did not find a hash at index {}", mid);
                 ReturnAddressError::MissingHashAtIndex(mid)
             })?;
 
-            // 2. Get the compact header so we have access to the daa_score. Error if we
+            // 2. Get the compact header so we have access to the daa_score. Error if we cannot find the header
             let compact_header = self.headers_store.get_compact_header_data(hash).map_err(|_| {
                 trace!("Did not find a compact header with hash {}", hash);
                 ReturnAddressError::MissingCompactHeaderForBlockHash(hash)
@@ -181,14 +184,12 @@ impl VirtualStateProcessor {
 
     fn find_tx_acceptance_data_and_index_from_block_acceptance(
         &self,
-        tx_id: Hash,
+        txid: Hash,
         block_acceptance_data: Arc<Vec<MergesetBlockAcceptanceData>>,
     ) -> Option<(usize, MergesetBlockAcceptanceData)> {
         block_acceptance_data.iter().find_map(|mbad| {
-            let tx_arr_index = mbad
-                .accepted_transactions
-                .iter()
-                .find_map(|tx| (tx.transaction_id == tx_id).then_some(tx.index_within_block as usize));
+            let tx_arr_index =
+                mbad.accepted_transactions.iter().find_map(|tx| (tx.transaction_id == txid).then_some(tx.index_within_block as usize));
             tx_arr_index.map(|index| (index, mbad.clone()))
         })
     }

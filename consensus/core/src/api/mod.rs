@@ -172,6 +172,8 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    /// Returns the first paying address for `txid` (i.e., the address signed by its first input).
+    /// The argument `daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
     fn get_utxo_return_address(&self, txid: Hash, daa_score: u64) -> Result<Address, ReturnAddressError> {
         unimplemented!()
     }

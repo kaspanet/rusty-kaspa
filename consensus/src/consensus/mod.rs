@@ -690,7 +690,9 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_utxo_return_address(&self, txid: Hash, target_daa_score: u64) -> Result<Address, ReturnAddressError> {
-        self.virtual_processor.get_utxo_return_address(txid, target_daa_score, self.get_source(), &self.config)
+        // We need consistency between the pruning_point_store, utxo_diffs_store, block_transactions_store, selected chain and headers store reads
+        let _guard = self.pruning_lock.blocking_read();
+        self.virtual_processor.get_utxo_return_address(txid, target_daa_score, self.get_source(), self.config.prefix())
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
