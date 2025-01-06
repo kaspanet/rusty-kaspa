@@ -1,7 +1,9 @@
 use std::{cmp, sync::Arc};
 
 use kaspa_addresses::{Address, Prefix};
-use kaspa_consensus_core::{acceptance_data::AcceptanceData, return_address::ReturnAddressError, utxo::utxo_diff::ImmutableUtxoDiff};
+use kaspa_consensus_core::{
+    acceptance_data::AcceptanceData, return_address::ReturnAddressError, tx::Transaction, utxo::utxo_diff::ImmutableUtxoDiff,
+};
 use kaspa_core::{trace, warn};
 use kaspa_hashes::Hash;
 use kaspa_txscript::extract_script_pub_key_address;
@@ -39,25 +41,7 @@ impl VirtualStateProcessor {
         let (matching_chain_block_hash, acceptance_data) =
             self.find_accepting_chain_block_hash_at_daa_score(target_daa_score, source_hash)?;
 
-        let (containing_block, index) = self
-            .find_containing_block_and_index_from_acceptance_data(txid, &acceptance_data)
-            .ok_or(ReturnAddressError::MissingContainingAcceptanceForTx(txid))?;
-
-        // Found Merged block containing the TXID
-        let tx = self
-            .block_transactions_store
-            .get(containing_block)
-            .map_err(|_| ReturnAddressError::MissingBlockFromBlockTxStore(containing_block))
-            .and_then(|block_txs| {
-                block_txs.get(index).cloned().ok_or(ReturnAddressError::MissingTransactionIndexOfBlock(index, containing_block))
-            })?;
-
-        if tx.id() != txid {
-            // Should never happen, but do a sanity check. This would mean something went wrong with storing block transactions
-            // Sanity check is necessary to guarantee that this function will never give back a wrong address (err on the side of not found)
-            warn!("Expected {} to match {} when checking block_transaction_store using array index of transaction", tx.id(), txid);
-            return Err(ReturnAddressError::UnexpectedTransactionMismatch(tx.id(), txid));
-        }
+        let tx = self.find_tx_from_acceptance_data(txid, &acceptance_data)?;
 
         if tx.inputs.is_empty() {
             // A transaction may have no inputs (like a coinbase transaction)
@@ -82,20 +66,7 @@ impl VirtualStateProcessor {
             // In this case, removed_diff wouldn't contain the outpoint of the created-and-immediately-spent UTXO
             // so we use the transaction (which also has acceptance data in this block) and look at its outputs
             let other_txid = first_input_prev_outpoint.transaction_id;
-            let (other_containing_block, other_index) = self
-                .find_containing_block_and_index_from_acceptance_data(other_txid, &acceptance_data)
-                .ok_or(ReturnAddressError::MissingOtherTransactionAcceptanceData(other_txid))?;
-            let other_tx = self
-                .block_transactions_store
-                .get(other_containing_block)
-                .map_err(|_| ReturnAddressError::MissingBlockFromBlockTxStore(other_containing_block))
-                .and_then(|block_txs| {
-                    block_txs
-                        .get(other_index)
-                        .cloned()
-                        .ok_or(ReturnAddressError::MissingTransactionIndexOfBlock(other_index, other_containing_block))
-                })?;
-
+            let other_tx = self.find_tx_from_acceptance_data(other_txid, &acceptance_data)?;
             other_tx.outputs[first_input_prev_outpoint.index as usize].script_public_key.clone()
         };
 
@@ -178,15 +149,42 @@ impl VirtualStateProcessor {
         Ok((matching_chain_block_hash, acceptance_data))
     }
 
+    /// Finds a transaction's containing block hash and index within block through
+    /// the accepting block acceptance data
     fn find_containing_block_and_index_from_acceptance_data(
         &self,
         txid: Hash,
-        block_acceptance_data: &AcceptanceData,
+        acceptance_data: &AcceptanceData,
     ) -> Option<(Hash, usize)> {
-        block_acceptance_data.iter().find_map(|mbad| {
+        acceptance_data.iter().find_map(|mbad| {
             let tx_arr_index =
                 mbad.accepted_transactions.iter().find_map(|tx| (tx.transaction_id == txid).then_some(tx.index_within_block as usize));
             tx_arr_index.map(|index| (mbad.block_hash, index))
         })
+    }
+
+    /// Finds a transaction through the accepting block acceptance data (and using indexed info therein for
+    /// finding the tx in the block transactions store)
+    fn find_tx_from_acceptance_data(&self, txid: Hash, acceptance_data: &AcceptanceData) -> Result<Transaction, ReturnAddressError> {
+        let (containing_block, index) = self
+            .find_containing_block_and_index_from_acceptance_data(txid, acceptance_data)
+            .ok_or(ReturnAddressError::MissingContainingAcceptanceForTx(txid))?;
+
+        let tx = self
+            .block_transactions_store
+            .get(containing_block)
+            .map_err(|_| ReturnAddressError::MissingBlockFromBlockTxStore(containing_block))
+            .and_then(|block_txs| {
+                block_txs.get(index).cloned().ok_or(ReturnAddressError::MissingTransactionIndexOfBlock(index, containing_block))
+            })?;
+
+        if tx.id() != txid {
+            // Should never happen, but do a sanity check. This would mean something went wrong with storing block transactions.
+            // Sanity check is necessary to guarantee that this function will never give back a wrong address (err on the side of not found)
+            warn!("Expected {} to match {} when checking block_transaction_store using array index of transaction", tx.id(), txid);
+            return Err(ReturnAddressError::UnexpectedTransactionMismatch(tx.id(), txid));
+        }
+
+        Ok(tx)
     }
 }
