@@ -17,13 +17,13 @@ use super::VirtualStateProcessor;
 
 impl VirtualStateProcessor {
     /// Returns the first paying address for `txid` (i.e., the address signed by its first input).
-    /// The argument `target_daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
+    /// The argument `accepting_block_daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
     ///
     /// *Assumed to be called under the pruning read lock.*
     pub fn get_utxo_return_address(
         &self,
         txid: Hash,
-        target_daa_score: u64,
+        accepting_block_daa_score: u64,
         source_hash: Hash,
         prefix: Prefix,
     ) -> Result<Address, ReturnAddressError> {
@@ -33,13 +33,13 @@ impl VirtualStateProcessor {
             .map(|compact_header| compact_header.daa_score)
             .map_err(|_| ReturnAddressError::MissingCompactHeaderForBlockHash(source_hash))?;
 
-        if target_daa_score < source_daa_score {
+        if accepting_block_daa_score < source_daa_score {
             // Early exit if target daa score is lower than that of pruning point's daa score:
             return Err(ReturnAddressError::AlreadyPruned);
         }
 
         let (matching_chain_block_hash, acceptance_data) =
-            self.find_accepting_chain_block_hash_at_daa_score(target_daa_score, source_hash)?;
+            self.find_accepting_chain_block_hash_at_daa_score(accepting_block_daa_score, source_hash)?;
 
         let tx = self.find_tx_from_acceptance_data(txid, &acceptance_data)?;
 
