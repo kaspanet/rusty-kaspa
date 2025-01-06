@@ -31,7 +31,7 @@ impl VirtualStateProcessor {
             .headers_store
             .get_compact_header_data(source_hash)
             .map(|compact_header| compact_header.daa_score)
-            .map_err(|_| ReturnAddressError::NotFound(format!("Did not find compact header for source hash {}", source_hash)))?;
+            .map_err(|_| ReturnAddressError::MissingCompactHeaderForBlockHash(source_hash))?;
 
         if target_daa_score < source_daa_score {
             // Early exit if target daa score is lower than that of pruning point's daa score:
@@ -43,31 +43,25 @@ impl VirtualStateProcessor {
 
         let (index, containing_acceptance) = self
             .find_tx_acceptance_data_and_index_from_block_acceptance(txid, acceptance_data.clone())
-            .ok_or(ReturnAddressError::NotFound(format!("Did not find containing_acceptance for tx {}", txid)))?;
+            .ok_or(ReturnAddressError::MissingContainingAcceptanceForTx(txid))?;
 
         // Found Merged block containing the TXID
         let tx = self
             .block_transactions_store
             .get(containing_acceptance.block_hash)
-            .map_err(|_| ReturnAddressError::NotFound(format!("Did not block {} at block tx store", containing_acceptance.block_hash)))
+            .map_err(|_| ReturnAddressError::MissingBlockFromBlockTxStore(containing_acceptance.block_hash))
             .and_then(|block_txs| {
-                block_txs.get(index).cloned().ok_or_else(|| {
-                    ReturnAddressError::NotFound(format!(
-                        "Did not find index {} in transactions of block {}",
-                        index, containing_acceptance.block_hash
-                    ))
-                })
+                block_txs
+                    .get(index)
+                    .cloned()
+                    .ok_or_else(|| ReturnAddressError::MissingTransactionIndexOfBlock(index, containing_acceptance.block_hash))
             })?;
 
         if tx.id() != txid {
             // Should never happen, but do a sanity check. This would mean something went wrong with storing block transactions
-            // Sanity check is necessary to guarantee that this function will never give back a wrong address (err on the side of NotFound)
+            // Sanity check is necessary to guarantee that this function will never give back a wrong address (err on the side of not found)
             warn!("Expected {} to match {} when checking block_transaction_store using array index of transaction", tx.id(), txid);
-            return Err(ReturnAddressError::NotFound(format!(
-                "Expected {} to match {} when checking block_transaction_store using array index of transaction",
-                tx.id(),
-                txid
-            )));
+            return Err(ReturnAddressError::UnexpectedTransactionMismatch(tx.id(), txid));
         }
 
         if tx.inputs.is_empty() {
@@ -77,9 +71,10 @@ impl VirtualStateProcessor {
 
         let first_input_prev_outpoint = &tx.inputs[0].previous_outpoint;
         // Expected to never fail, since we found the acceptance data and therefore there must be matching diff
-        let utxo_diff = self.utxo_diffs_store.get(matching_chain_block_hash).map_err(|_| {
-            ReturnAddressError::NotFound(format!("Did not find a utxo diff for chain block {}", matching_chain_block_hash))
-        })?;
+        let utxo_diff = self
+            .utxo_diffs_store
+            .get(matching_chain_block_hash)
+            .map_err(|_| ReturnAddressError::MissingUtxoDiffForChainBlock(matching_chain_block_hash))?;
         let removed_diffs = utxo_diff.removed();
 
         let spk = if let Some(utxo_entry) = removed_diffs.get(first_input_prev_outpoint) {
@@ -94,21 +89,14 @@ impl VirtualStateProcessor {
             let other_txid = first_input_prev_outpoint.transaction_id;
             let (other_index, other_containing_acceptance) = self
                 .find_tx_acceptance_data_and_index_from_block_acceptance(other_txid, acceptance_data)
-                .ok_or(ReturnAddressError::NotFound(
-                    "The other transaction's acceptance data must also be in the same block in this case".to_string(),
-                ))?;
+                .ok_or(ReturnAddressError::MissingOtherTransactionAcceptanceData(other_txid))?;
             let other_tx = self
                 .block_transactions_store
                 .get(other_containing_acceptance.block_hash)
-                .map_err(|_| {
-                    ReturnAddressError::NotFound(format!("Did not block {} at block tx store", other_containing_acceptance.block_hash))
-                })
+                .map_err(|_| ReturnAddressError::MissingBlockFromBlockTxStore(other_containing_acceptance.block_hash))
                 .and_then(|block_txs| {
                     block_txs.get(other_index).cloned().ok_or_else(|| {
-                        ReturnAddressError::NotFound(format!(
-                            "Did not find index {} in transactions of block {}",
-                            other_index, other_containing_acceptance.block_hash
-                        ))
+                        ReturnAddressError::MissingTransactionIndexOfBlock(other_index, other_containing_acceptance.block_hash)
                     })
                 })?;
 
@@ -136,16 +124,13 @@ impl VirtualStateProcessor {
     ) -> Result<(Hash, Arc<Vec<MergesetBlockAcceptanceData>>), ReturnAddressError> {
         let sc_read = self.selected_chain_store.read();
 
-        let source_index = sc_read
-            .get_by_hash(source_hash)
-            .map_err(|_| ReturnAddressError::NotFound(format!("Did not find index for hash {}", source_hash)))?;
-        let (tip_index, tip_hash) =
-            sc_read.get_tip().map_err(|_| ReturnAddressError::NotFound("Did not find tip data".to_string()))?;
+        let source_index = sc_read.get_by_hash(source_hash).map_err(|_| ReturnAddressError::MissingIndexForHash(source_hash))?;
+        let (tip_index, tip_hash) = sc_read.get_tip().map_err(|_| ReturnAddressError::MissingTipData)?;
         let tip_daa_score = self
             .headers_store
             .get_compact_header_data(tip_hash)
             .map(|tip| tip.daa_score)
-            .map_err(|_| ReturnAddressError::NotFound(format!("Did not find compact header data for tip hash {}", tip_hash)))?;
+            .map_err(|_| ReturnAddressError::MissingCompactHeaderForBlockHash(tip_hash))?;
 
         let mut low_index = tip_index.saturating_sub(tip_daa_score.saturating_sub(target_daa_score)).max(source_index);
         let mut high_index = tip_index;
@@ -158,13 +143,13 @@ impl VirtualStateProcessor {
             // 1. Get the chain block hash at that index. Error if we don't find a hash at an index
             let hash = sc_read.get_by_index(mid).map_err(|_| {
                 trace!("Did not find a hash at index {}", mid);
-                ReturnAddressError::NotFound(format!("Did not find a hash at index {}", mid))
+                ReturnAddressError::MissingHashAtIndex(mid)
             })?;
 
             // 2. Get the compact header so we have access to the daa_score. Error if we
             let compact_header = self.headers_store.get_compact_header_data(hash).map_err(|_| {
                 trace!("Did not find a compact header with hash {}", hash);
-                ReturnAddressError::NotFound(format!("Did not find a compact header with hash {}", hash))
+                ReturnAddressError::MissingCompactHeaderForBlockHash(hash)
             })?;
 
             // 3. Compare block daa score to our target
@@ -186,9 +171,10 @@ impl VirtualStateProcessor {
             }
         };
 
-        let acceptance_data = self.acceptance_data_store.get(matching_chain_block_hash).map_err(|_| {
-            ReturnAddressError::NotFound(format!("Did not find acceptance data for chain block {}", matching_chain_block_hash))
-        })?;
+        let acceptance_data = self
+            .acceptance_data_store
+            .get(matching_chain_block_hash)
+            .map_err(|_| ReturnAddressError::MissingAcceptanceDataForChainBlock(matching_chain_block_hash))?;
 
         Ok((matching_chain_block_hash, acceptance_data))
     }
