@@ -44,7 +44,9 @@ jobs:
       # Clean unnecessary files to save disk space
       - name: clean unnecessary files to save space
         run: |
-          docker rmi `docker images -q`
+          if [ "$(docker images -q)" ]; then
+            docker rmi $(docker images -q)
+          fi
           sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/sudo apt/sources.list.d
           sudo apt -y autoremove --purge
           sudo apt -y autoclean
