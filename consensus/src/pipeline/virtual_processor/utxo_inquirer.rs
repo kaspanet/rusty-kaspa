@@ -2,9 +2,8 @@ use std::{cmp, sync::Arc};
 
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    return_address::UtxoInquirerError,
     tx::{SignableTransaction, Transaction, UtxoEntry},
-    utxo::utxo_diff::ImmutableUtxoDiff,
+    utxo::{utxo_diff::ImmutableUtxoDiff, utxo_inquirer::UtxoInquirerError},
 };
 use kaspa_core::{trace, warn};
 use kaspa_hashes::Hash;

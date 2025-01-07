@@ -11,9 +11,9 @@ use kaspa_consensus_core::{
     errors::consensus::ConsensusResult,
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
-    return_address::UtxoInquirerError,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    utxo::utxo_inquirer::UtxoInquirerError,
     BlockHashSet, BlueWorkType, ChainPath, Hash,
 };
 use kaspa_utils::sync::rwlock::*;

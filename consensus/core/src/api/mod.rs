@@ -18,9 +18,9 @@ use crate::{
     },
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
-    return_address::UtxoInquirerError,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    utxo::utxo_inquirer::UtxoInquirerError,
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
@@ -173,11 +173,7 @@ pub trait ConsensusApi: Send + Sync {
 
     /// Returns the first paying address for `txid` (i.e., the address signed by its first input).
     /// The argument `accepting_block_daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
-    fn get_populated_transaction(
-        &self,
-        txid: Hash,
-        accepting_block_daa_score: u64,
-    ) -> Result<SignableTransaction, UtxoInquirerError> {
+    fn get_populated_transaction(&self, txid: Hash, accepting_block_daa_score: u64) -> Result<SignableTransaction, UtxoInquirerError> {
         unimplemented!()
     }
 
