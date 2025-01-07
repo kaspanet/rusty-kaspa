@@ -1,5 +1,4 @@
 use futures_util::future::BoxFuture;
-use kaspa_addresses::Address;
 use kaspa_muhash::MuHash;
 use std::sync::Arc;
 
@@ -21,7 +20,7 @@ use crate::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     return_address::ReturnAddressError,
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
@@ -174,7 +173,11 @@ pub trait ConsensusApi: Send + Sync {
 
     /// Returns the first paying address for `txid` (i.e., the address signed by its first input).
     /// The argument `accepting_block_daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
-    fn get_utxo_return_address(&self, txid: Hash, accepting_block_daa_score: u64) -> Result<Address, ReturnAddressError> {
+    fn get_populated_transaction(
+        &self,
+        txid: Hash,
+        accepting_block_daa_score: u64,
+    ) -> Result<SignableTransaction, ReturnAddressError> {
         unimplemented!()
     }
 

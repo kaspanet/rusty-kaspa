@@ -33,4 +33,6 @@ pub enum ReturnAddressError {
     MissingHashAtIndex(u64),
     #[error("Did not find acceptance data for chain block {0}")]
     MissingAcceptanceDataForChainBlock(Hash),
+    #[error("Utxo entry is not filled")]
+    UnfilledUtxoEntry,
 }

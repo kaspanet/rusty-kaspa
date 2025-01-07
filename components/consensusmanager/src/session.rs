@@ -2,7 +2,6 @@
 //!
 //! We use newtypes in order to simplify changing the underlying lock in the future
 
-use kaspa_addresses::Address;
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus},
@@ -14,7 +13,7 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     return_address::ReturnAddressError,
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, Hash,
 };
 use kaspa_utils::sync::rwlock::*;
@@ -315,12 +314,12 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_chain_block_samples()).await
     }
 
-    pub async fn async_get_utxo_return_address(
+    pub async fn async_get_populated_transaction(
         &self,
         txid: Hash,
         accepting_block_daa_score: u64,
-    ) -> Result<Address, ReturnAddressError> {
-        self.clone().spawn_blocking(move |c| c.get_utxo_return_address(txid, accepting_block_daa_score)).await
+    ) -> Result<SignableTransaction, ReturnAddressError> {
+        self.clone().spawn_blocking(move |c| c.get_populated_transaction(txid, accepting_block_daa_score)).await
     }
 
     /// Returns the antipast of block `hash` from the POV of `context`, i.e. `antipast(hash) ∩ past(context)`.

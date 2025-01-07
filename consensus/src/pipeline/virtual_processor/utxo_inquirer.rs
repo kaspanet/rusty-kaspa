@@ -1,12 +1,13 @@
 use std::{cmp, sync::Arc};
 
-use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::{
-    acceptance_data::AcceptanceData, return_address::ReturnAddressError, tx::Transaction, utxo::utxo_diff::ImmutableUtxoDiff,
+    acceptance_data::AcceptanceData,
+    return_address::ReturnAddressError,
+    tx::{SignableTransaction, Transaction, UtxoEntry},
+    utxo::utxo_diff::ImmutableUtxoDiff,
 };
 use kaspa_core::{trace, warn};
 use kaspa_hashes::Hash;
-use kaspa_txscript::extract_script_pub_key_address;
 
 use crate::model::stores::{
     acceptance_data::AcceptanceDataStoreReader, block_transactions::BlockTransactionsStoreReader, headers::HeaderStoreReader,
@@ -16,17 +17,16 @@ use crate::model::stores::{
 use super::VirtualStateProcessor;
 
 impl VirtualStateProcessor {
-    /// Returns the first paying address for `txid` (i.e., the address signed by its first input).
+    /// Returns a fully populated transaction with the given txid at the provided accepting_block_daa_score.
     /// The argument `accepting_block_daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
     ///
     /// *Assumed to be called under the pruning read lock.*
-    pub fn get_utxo_return_address(
+    pub fn get_populated_transaction(
         &self,
         txid: Hash,
         accepting_block_daa_score: u64,
         source_hash: Hash,
-        prefix: Prefix,
-    ) -> Result<Address, ReturnAddressError> {
+    ) -> Result<SignableTransaction, ReturnAddressError> {
         let source_daa_score = self
             .headers_store
             .get_compact_header_data(source_hash)
@@ -41,40 +41,50 @@ impl VirtualStateProcessor {
         let (matching_chain_block_hash, acceptance_data) =
             self.find_accepting_chain_block_hash_at_daa_score(accepting_block_daa_score, source_hash)?;
 
-        let tx = self.find_tx_from_acceptance_data(txid, &acceptance_data)?;
-
-        if tx.inputs.is_empty() {
-            // A transaction may have no inputs (like a coinbase transaction)
-            return Err(ReturnAddressError::TxFromCoinbase);
-        }
-
-        let first_input_prev_outpoint = &tx.inputs[0].previous_outpoint;
         // Expected to never fail, since we found the acceptance data and therefore there must be matching diff
         let utxo_diff = self
             .utxo_diffs_store
             .get(matching_chain_block_hash)
             .map_err(|_| ReturnAddressError::MissingUtxoDiffForChainBlock(matching_chain_block_hash))?;
+
+        let tx = self.find_tx_from_acceptance_data(txid, &acceptance_data)?;
+
+        let mut populated_tx = SignableTransaction::new(tx);
+
         let removed_diffs = utxo_diff.removed();
 
-        let spk = if let Some(utxo_entry) = removed_diffs.get(first_input_prev_outpoint) {
-            utxo_entry.script_public_key.clone()
-        } else {
-            // This handles this rare scenario:
-            // - UTXO0 is spent by TX1 and creates UTXO1
-            // - UTXO1 is spent by TX2 and creates UTXO2
-            // - A chain block happens to accept both of these
-            // In this case, removed_diff wouldn't contain the outpoint of the created-and-immediately-spent UTXO
-            // so we use the transaction (which also has acceptance data in this block) and look at its outputs
-            let other_txid = first_input_prev_outpoint.transaction_id;
-            let other_tx = self.find_tx_from_acceptance_data(other_txid, &acceptance_data)?;
-            other_tx.outputs[first_input_prev_outpoint.index as usize].script_public_key.clone()
-        };
+        populated_tx
+            .tx
+            .inputs
+            .iter()
+            .map(|input| {
+                if let Some(utxo_entry) = removed_diffs.get(&input.previous_outpoint) {
+                    Some(utxo_entry.clone().to_owned())
+                } else {
+                    // This handles this rare scenario:
+                    // - UTXO0 is spent by TX1 and creates UTXO1
+                    // - UTXO1 is spent by TX2 and creates UTXO2
+                    // - A chain block happens to accept both of these
+                    // In this case, removed_diff wouldn't contain the outpoint of the created-and-immediately-spent UTXO
+                    // so we use the transaction (which also has acceptance data in this block) and look at its outputs
+                    let other_txid = input.previous_outpoint.transaction_id;
+                    let other_tx = self.find_tx_from_acceptance_data(other_txid, &acceptance_data).unwrap();
+                    let output = &other_tx.outputs[input.previous_outpoint.index as usize];
+                    let utxo_entry = UtxoEntry::new(
+                        output.value,
+                        output.script_public_key.clone(),
+                        accepting_block_daa_score,
+                        other_tx.is_coinbase(),
+                    );
+                    Some(utxo_entry)
+                }
+            })
+            .enumerate()
+            .for_each(|(index, utxo_entry)| {
+                populated_tx.entries[index] = utxo_entry;
+            });
 
-        if let Ok(address) = extract_script_pub_key_address(&spk, prefix) {
-            Ok(address)
-        } else {
-            Err(ReturnAddressError::NonStandard)
-        }
+        Ok(populated_tx)
     }
 
     /// Find the accepting chain block hash at the given DAA score by binary searching

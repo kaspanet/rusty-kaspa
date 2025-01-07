@@ -41,7 +41,6 @@ use crate::{
         window::{WindowManager, WindowType},
     },
 };
-use kaspa_addresses::Address;
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::{
@@ -68,7 +67,7 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     return_address::ReturnAddressError,
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -689,10 +688,14 @@ impl ConsensusApi for Consensus {
         sample_headers
     }
 
-    fn get_utxo_return_address(&self, txid: Hash, accepting_block_daa_score: u64) -> Result<Address, ReturnAddressError> {
+    fn get_populated_transaction(
+        &self,
+        txid: Hash,
+        accepting_block_daa_score: u64,
+    ) -> Result<SignableTransaction, ReturnAddressError> {
         // We need consistency between the pruning_point_store, utxo_diffs_store, block_transactions_store, selected chain and headers store reads
         let _guard = self.pruning_lock.blocking_read();
-        self.virtual_processor.get_utxo_return_address(txid, accepting_block_daa_score, self.get_source(), self.config.prefix())
+        self.virtual_processor.get_populated_transaction(txid, accepting_block_daa_score, self.get_source())
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
