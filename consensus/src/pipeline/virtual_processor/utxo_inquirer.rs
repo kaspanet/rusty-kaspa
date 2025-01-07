@@ -52,36 +52,26 @@ impl VirtualStateProcessor {
 
         let removed_diffs = utxo_diff.removed();
 
-        populated_tx
-            .tx
-            .inputs
-            .iter()
-            .map(|input| {
-                if let Some(utxo_entry) = removed_diffs.get(&input.previous_outpoint) {
-                    Some(utxo_entry.clone().to_owned())
-                } else {
-                    // This handles this rare scenario:
-                    // - UTXO0 is spent by TX1 and creates UTXO1
-                    // - UTXO1 is spent by TX2 and creates UTXO2
-                    // - A chain block happens to accept both of these
-                    // In this case, removed_diff wouldn't contain the outpoint of the created-and-immediately-spent UTXO
-                    // so we use the transaction (which also has acceptance data in this block) and look at its outputs
-                    let other_txid = input.previous_outpoint.transaction_id;
-                    let other_tx = self.find_tx_from_acceptance_data(other_txid, &acceptance_data).unwrap();
-                    let output = &other_tx.outputs[input.previous_outpoint.index as usize];
-                    let utxo_entry = UtxoEntry::new(
-                        output.value,
-                        output.script_public_key.clone(),
-                        accepting_block_daa_score,
-                        other_tx.is_coinbase(),
-                    );
-                    Some(utxo_entry)
-                }
-            })
-            .enumerate()
-            .for_each(|(index, utxo_entry)| {
-                populated_tx.entries[index] = utxo_entry;
-            });
+        populated_tx.tx.inputs.iter().enumerate().for_each(|(index, input)| {
+            let filled_utxo = if let Some(utxo_entry) = removed_diffs.get(&input.previous_outpoint) {
+                Some(utxo_entry.clone().to_owned())
+            } else {
+                // This handles this rare scenario:
+                // - UTXO0 is spent by TX1 and creates UTXO1
+                // - UTXO1 is spent by TX2 and creates UTXO2
+                // - A chain block happens to accept both of these
+                // In this case, removed_diff wouldn't contain the outpoint of the created-and-immediately-spent UTXO
+                // so we use the transaction (which also has acceptance data in this block) and look at its outputs
+                let other_txid = input.previous_outpoint.transaction_id;
+                let other_tx = self.find_tx_from_acceptance_data(other_txid, &acceptance_data).unwrap();
+                let output = &other_tx.outputs[input.previous_outpoint.index as usize];
+                let utxo_entry =
+                    UtxoEntry::new(output.value, output.script_public_key.clone(), accepting_block_daa_score, other_tx.is_coinbase());
+                Some(utxo_entry)
+            };
+
+            populated_tx.entries[index] = filled_utxo;
+        });
 
         Ok(populated_tx)
     }
