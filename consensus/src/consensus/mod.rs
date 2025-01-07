@@ -65,7 +65,7 @@ use kaspa_consensus_core::{
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
-    return_address::ReturnAddressError,
+    return_address::UtxoInquirerError,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
@@ -688,11 +688,7 @@ impl ConsensusApi for Consensus {
         sample_headers
     }
 
-    fn get_populated_transaction(
-        &self,
-        txid: Hash,
-        accepting_block_daa_score: u64,
-    ) -> Result<SignableTransaction, ReturnAddressError> {
+    fn get_populated_transaction(&self, txid: Hash, accepting_block_daa_score: u64) -> Result<SignableTransaction, UtxoInquirerError> {
         // We need consistency between the pruning_point_store, utxo_diffs_store, block_transactions_store, selected chain and headers store reads
         let _guard = self.pruning_lock.blocking_read();
         self.virtual_processor.get_populated_transaction(txid, accepting_block_daa_score, self.get_source())

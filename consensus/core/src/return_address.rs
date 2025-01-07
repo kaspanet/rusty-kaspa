@@ -2,7 +2,7 @@ use kaspa_hashes::Hash;
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]
-pub enum ReturnAddressError {
+pub enum UtxoInquirerError {
     #[error("Transaction is already pruned")]
     AlreadyPruned,
     #[error("Transaction return address is coinbase")]

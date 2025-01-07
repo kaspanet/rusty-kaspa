@@ -7,7 +7,7 @@ use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
 use kaspa_consensus_core::errors::block::RuleError;
-use kaspa_consensus_core::return_address::ReturnAddressError;
+use kaspa_consensus_core::return_address::UtxoInquirerError;
 use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
@@ -805,17 +805,17 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         match session.async_get_populated_transaction(request.txid, request.accepting_block_daa_score).await {
             Ok(tx) => {
                 if tx.tx.inputs.is_empty() || tx.entries.is_empty() {
-                    return Err(RpcError::UtxoReturnAddressNotFound(ReturnAddressError::TxFromCoinbase));
+                    return Err(RpcError::UtxoReturnAddressNotFound(UtxoInquirerError::TxFromCoinbase));
                 }
 
                 if let Some(utxo_entry) = &tx.entries[0] {
                     if let Ok(address) = extract_script_pub_key_address(&utxo_entry.script_public_key, self.config.prefix()) {
                         Ok(GetUtxoReturnAddressResponse { return_address: address })
                     } else {
-                        Err(RpcError::UtxoReturnAddressNotFound(ReturnAddressError::NonStandard))
+                        Err(RpcError::UtxoReturnAddressNotFound(UtxoInquirerError::NonStandard))
                     }
                 } else {
-                    Err(RpcError::UtxoReturnAddressNotFound(ReturnAddressError::UnfilledUtxoEntry))
+                    Err(RpcError::UtxoReturnAddressNotFound(UtxoInquirerError::UnfilledUtxoEntry))
                 }
             }
             Err(error) => return Err(RpcError::UtxoReturnAddressNotFound(error)),

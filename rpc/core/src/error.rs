@@ -2,7 +2,7 @@
 //! [`RpcError`] enum used by RPC primitives.
 //!
 
-use kaspa_consensus_core::{return_address::ReturnAddressError, subnets::SubnetworkConversionError, tx::TransactionId};
+use kaspa_consensus_core::{return_address::UtxoInquirerError, subnets::SubnetworkConversionError, tx::TransactionId};
 use kaspa_utils::networking::IpAddress;
 use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
@@ -136,7 +136,7 @@ pub enum RpcError {
     ConsensusClient(#[from] kaspa_consensus_client::error::Error),
 
     #[error("utxo return address could not be found -> {0}")]
-    UtxoReturnAddressNotFound(ReturnAddressError),
+    UtxoReturnAddressNotFound(UtxoInquirerError),
 }
 
 impl From<String> for RpcError {

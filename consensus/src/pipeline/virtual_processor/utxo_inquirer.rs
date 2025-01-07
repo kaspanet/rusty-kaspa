@@ -2,7 +2,7 @@ use std::{cmp, sync::Arc};
 
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    return_address::ReturnAddressError,
+    return_address::UtxoInquirerError,
     tx::{SignableTransaction, Transaction, UtxoEntry},
     utxo::utxo_diff::ImmutableUtxoDiff,
 };
@@ -26,16 +26,16 @@ impl VirtualStateProcessor {
         txid: Hash,
         accepting_block_daa_score: u64,
         source_hash: Hash,
-    ) -> Result<SignableTransaction, ReturnAddressError> {
+    ) -> Result<SignableTransaction, UtxoInquirerError> {
         let source_daa_score = self
             .headers_store
             .get_compact_header_data(source_hash)
             .map(|compact_header| compact_header.daa_score)
-            .map_err(|_| ReturnAddressError::MissingCompactHeaderForBlockHash(source_hash))?;
+            .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(source_hash))?;
 
         if accepting_block_daa_score < source_daa_score {
             // Early exit if target daa score is lower than that of pruning point's daa score:
-            return Err(ReturnAddressError::AlreadyPruned);
+            return Err(UtxoInquirerError::AlreadyPruned);
         }
 
         let (matching_chain_block_hash, acceptance_data) =
@@ -45,7 +45,7 @@ impl VirtualStateProcessor {
         let utxo_diff = self
             .utxo_diffs_store
             .get(matching_chain_block_hash)
-            .map_err(|_| ReturnAddressError::MissingUtxoDiffForChainBlock(matching_chain_block_hash))?;
+            .map_err(|_| UtxoInquirerError::MissingUtxoDiffForChainBlock(matching_chain_block_hash))?;
 
         let tx = self.find_tx_from_acceptance_data(txid, &acceptance_data)?;
 
@@ -98,16 +98,16 @@ impl VirtualStateProcessor {
         &self,
         target_daa_score: u64,
         source_hash: Hash,
-    ) -> Result<(Hash, Arc<AcceptanceData>), ReturnAddressError> {
+    ) -> Result<(Hash, Arc<AcceptanceData>), UtxoInquirerError> {
         let sc_read = self.selected_chain_store.read();
 
-        let source_index = sc_read.get_by_hash(source_hash).map_err(|_| ReturnAddressError::MissingIndexForHash(source_hash))?;
-        let (tip_index, tip_hash) = sc_read.get_tip().map_err(|_| ReturnAddressError::MissingTipData)?;
+        let source_index = sc_read.get_by_hash(source_hash).map_err(|_| UtxoInquirerError::MissingIndexForHash(source_hash))?;
+        let (tip_index, tip_hash) = sc_read.get_tip().map_err(|_| UtxoInquirerError::MissingTipData)?;
         let tip_daa_score = self
             .headers_store
             .get_compact_header_data(tip_hash)
             .map(|tip| tip.daa_score)
-            .map_err(|_| ReturnAddressError::MissingCompactHeaderForBlockHash(tip_hash))?;
+            .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(tip_hash))?;
 
         // For a chain segment it holds that len(segment) <= daa_score(segment end) - daa_score(segment start). This is true
         // because each chain block increases the daa score by at least one. Hence we can lower bound our search by high index
@@ -123,13 +123,13 @@ impl VirtualStateProcessor {
             // 1. Get the chain block hash at that index. Error if we cannot find a hash at that index
             let hash = sc_read.get_by_index(mid).map_err(|_| {
                 trace!("Did not find a hash at index {}", mid);
-                ReturnAddressError::MissingHashAtIndex(mid)
+                UtxoInquirerError::MissingHashAtIndex(mid)
             })?;
 
             // 2. Get the compact header so we have access to the daa_score. Error if we cannot find the header
             let compact_header = self.headers_store.get_compact_header_data(hash).map_err(|_| {
                 trace!("Did not find a compact header with hash {}", hash);
-                ReturnAddressError::MissingCompactHeaderForBlockHash(hash)
+                UtxoInquirerError::MissingCompactHeaderForBlockHash(hash)
             })?;
 
             // 3. Compare block daa score to our target
@@ -147,14 +147,14 @@ impl VirtualStateProcessor {
             }
 
             if low_index > high_index {
-                return Err(ReturnAddressError::NoTxAtScore);
+                return Err(UtxoInquirerError::NoTxAtScore);
             }
         };
 
         let acceptance_data = self
             .acceptance_data_store
             .get(matching_chain_block_hash)
-            .map_err(|_| ReturnAddressError::MissingAcceptanceDataForChainBlock(matching_chain_block_hash))?;
+            .map_err(|_| UtxoInquirerError::MissingAcceptanceDataForChainBlock(matching_chain_block_hash))?;
 
         Ok((matching_chain_block_hash, acceptance_data))
     }
@@ -175,24 +175,24 @@ impl VirtualStateProcessor {
 
     /// Finds a transaction through the accepting block acceptance data (and using indexed info therein for
     /// finding the tx in the block transactions store)
-    fn find_tx_from_acceptance_data(&self, txid: Hash, acceptance_data: &AcceptanceData) -> Result<Transaction, ReturnAddressError> {
+    fn find_tx_from_acceptance_data(&self, txid: Hash, acceptance_data: &AcceptanceData) -> Result<Transaction, UtxoInquirerError> {
         let (containing_block, index) = self
             .find_containing_block_and_index_from_acceptance_data(txid, acceptance_data)
-            .ok_or(ReturnAddressError::MissingContainingAcceptanceForTx(txid))?;
+            .ok_or(UtxoInquirerError::MissingContainingAcceptanceForTx(txid))?;
 
         let tx = self
             .block_transactions_store
             .get(containing_block)
-            .map_err(|_| ReturnAddressError::MissingBlockFromBlockTxStore(containing_block))
+            .map_err(|_| UtxoInquirerError::MissingBlockFromBlockTxStore(containing_block))
             .and_then(|block_txs| {
-                block_txs.get(index).cloned().ok_or(ReturnAddressError::MissingTransactionIndexOfBlock(index, containing_block))
+                block_txs.get(index).cloned().ok_or(UtxoInquirerError::MissingTransactionIndexOfBlock(index, containing_block))
             })?;
 
         if tx.id() != txid {
             // Should never happen, but do a sanity check. This would mean something went wrong with storing block transactions.
             // Sanity check is necessary to guarantee that this function will never give back a wrong address (err on the side of not found)
             warn!("Expected {} to match {} when checking block_transaction_store using array index of transaction", tx.id(), txid);
-            return Err(ReturnAddressError::UnexpectedTransactionMismatch(tx.id(), txid));
+            return Err(UtxoInquirerError::UnexpectedTransactionMismatch(tx.id(), txid));
         }
 
         Ok(tx)

@@ -11,7 +11,7 @@ use kaspa_consensus_core::{
     errors::consensus::ConsensusResult,
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
-    return_address::ReturnAddressError,
+    return_address::UtxoInquirerError,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, Hash,
@@ -318,7 +318,7 @@ impl ConsensusSessionOwned {
         &self,
         txid: Hash,
         accepting_block_daa_score: u64,
-    ) -> Result<SignableTransaction, ReturnAddressError> {
+    ) -> Result<SignableTransaction, UtxoInquirerError> {
         self.clone().spawn_blocking(move |c| c.get_populated_transaction(txid, accepting_block_daa_score)).await
     }
 

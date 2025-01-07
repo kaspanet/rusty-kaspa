@@ -18,7 +18,7 @@ use crate::{
     },
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
-    return_address::ReturnAddressError,
+    return_address::UtxoInquirerError,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath,
@@ -177,7 +177,7 @@ pub trait ConsensusApi: Send + Sync {
         &self,
         txid: Hash,
         accepting_block_daa_score: u64,
-    ) -> Result<SignableTransaction, ReturnAddressError> {
+    ) -> Result<SignableTransaction, UtxoInquirerError> {
         unimplemented!()
     }
 
