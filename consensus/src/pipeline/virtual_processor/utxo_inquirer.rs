@@ -16,7 +16,7 @@ use crate::model::stores::{
 use super::VirtualStateProcessor;
 
 impl VirtualStateProcessor {
-    /// Returns a fully populated transaction with the given txid at the provided accepting_block_daa_score.
+    /// Returns the fully populated transaction with the given txid which was accepted at the provided accepting_block_daa_score.
     /// The argument `accepting_block_daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
     ///
     /// *Assumed to be called under the pruning read lock.*
