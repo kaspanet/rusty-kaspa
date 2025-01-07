@@ -213,7 +213,7 @@ impl StagingConsensus {
         // Drop `prev` so that deletion below succeeds
         drop(prev);
         // Staging was committed and is now the active consensus so we can delete
-        // any pervious, now inactive, consensus entries
+        // any previous, now inactive, consensus entries
         self.manager.delete_inactive_consensus_entries();
     }
 

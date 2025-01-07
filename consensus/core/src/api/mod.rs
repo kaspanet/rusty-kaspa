@@ -19,7 +19,8 @@ use crate::{
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    utxo::utxo_inquirer::UtxoInquirerError,
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
@@ -167,6 +168,12 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
+        unimplemented!()
+    }
+
+    /// Returns the fully populated transaction with the given txid which was accepted at the provided accepting_block_daa_score.
+    /// The argument `accepting_block_daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
+    fn get_populated_transaction(&self, txid: Hash, accepting_block_daa_score: u64) -> Result<SignableTransaction, UtxoInquirerError> {
         unimplemented!()
     }
 

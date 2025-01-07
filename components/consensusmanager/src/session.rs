@@ -12,7 +12,8 @@ use kaspa_consensus_core::{
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    utxo::utxo_inquirer::UtxoInquirerError,
     BlockHashSet, BlueWorkType, ChainPath, Hash,
 };
 use kaspa_utils::sync::rwlock::*;
@@ -311,6 +312,14 @@ impl ConsensusSessionOwned {
 
     pub async fn async_get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
         self.clone().spawn_blocking(|c| c.get_chain_block_samples()).await
+    }
+
+    pub async fn async_get_populated_transaction(
+        &self,
+        txid: Hash,
+        accepting_block_daa_score: u64,
+    ) -> Result<SignableTransaction, UtxoInquirerError> {
+        self.clone().spawn_blocking(move |c| c.get_populated_transaction(txid, accepting_block_daa_score)).await
     }
 
     /// Returns the antipast of block `hash` from the POV of `context`, i.e. `antipast(hash) ∩ past(context)`.

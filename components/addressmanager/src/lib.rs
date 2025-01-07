@@ -596,7 +596,7 @@ mod address_store_with_cache {
             let target_uniform_dist = Uniform::new(1.0, num_of_buckets as f64).unwrap();
             let uniform_cdf = |x: f64| target_uniform_dist.cdf(&x);
             for _ in 0..num_of_trials {
-                // The weight sampled expected uniform distibution
+                // The weight sampled expected uniform distribution
                 let prioritized_address_distribution = am
                     .lock()
                     .iterate_prioritized_random_addresses(HashSet::new())

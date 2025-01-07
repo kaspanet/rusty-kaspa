@@ -66,7 +66,8 @@ use kaspa_consensus_core::{
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    utxo::utxo_inquirer::UtxoInquirerError,
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -685,6 +686,12 @@ impl ConsensusApi for Consensus {
         }
 
         sample_headers
+    }
+
+    fn get_populated_transaction(&self, txid: Hash, accepting_block_daa_score: u64) -> Result<SignableTransaction, UtxoInquirerError> {
+        // We need consistency between the pruning_point_store, utxo_diffs_store, block_transactions_store, selected chain and headers store reads
+        let _guard = self.pruning_lock.blocking_read();
+        self.virtual_processor.get_populated_transaction(txid, accepting_block_daa_score, self.get_source())
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
