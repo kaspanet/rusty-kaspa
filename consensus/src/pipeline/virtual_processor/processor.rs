@@ -156,7 +156,7 @@ pub struct VirtualStateProcessor {
     pub(super) block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
 
     // Pruning lock
-    pruning_lock: SessionLock,
+    pub(super) pruning_lock: SessionLock,
 
     // Notifier
     notification_root: Arc<ConsensusNotificationRoot>,
