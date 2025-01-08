@@ -702,6 +702,7 @@ message GetInfoResponseMessage{
   string serverVersion = 3;
   bool isUtxoIndexed = 4;
   bool isSynced = 5;
+  repeated string namespaces = 6;
   bool hasNotifyCommand = 11;
   bool hasMessageId = 12;
   RPCError error = 1000;
