@@ -782,10 +782,36 @@ impl KaspaCli {
                         .join(" "),
                     )
                 }
-                SyncState::UtxoSync { total, .. } => {
-                    Some([style("SYNC UTXO").red().to_string(), style(total.separated_string()).dim().to_string()].join(" "))
+                SyncState::PruningPointUTXOs { processed, total } => {
+                    let progress = (*processed as f64 / *total as f64).round() as u64;
+                    Some(
+                        [
+                            style("SYNC IBD Pruning Point UTXOs ").red().to_string(),
+                            style(format!("{} ({}%)", processed.separated_string(), progress)).dim().to_string(),
+                        ]
+                        .join(" "),
+                    )
                 }
-                SyncState::UtxoResync => Some([style("SYNC").red().to_string(), style("UTXO").black().to_string()].join(" ")),
+                SyncState::VirtualUTXOs { processed, total } => {
+                    let progress = (*processed as f64 / *total as f64).round() as u64;
+                    Some(
+                        [
+                            style("SYNC Virtual UTXOs").red().to_string(),
+                            style(format!("{} ({}%)", processed.separated_string(), progress)).dim().to_string(),
+                        ]
+                        .join(" "),
+                    )
+                }
+                SyncState::UtxoIndexUTXOs { processed, total } => {
+                    let progress = (*processed as f64 / *total as f64).round() as u64;
+                    Some(
+                        [
+                            style("SYNC UtxoIndex UTXOs").red().to_string(),
+                            style(format!("{} ({}%)", processed.separated_string(), progress)).dim().to_string(),
+                        ]
+                        .join(" "),
+                    )
+                }
                 SyncState::NotSynced => Some([style("SYNC").red().to_string(), style("...").black().to_string()].join(" ")),
                 SyncState::Synced { .. } => None,
             }
