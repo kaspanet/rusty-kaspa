@@ -442,6 +442,9 @@ impl Wallet {
                     .as_legacy_account()?;
                 legacy_account.clone().start().await?;
                 legacy_account.clear_private_context().await?;
+            } else if let Some(account) = self.active_accounts().get(account_storage.id()) {
+                //lets start the account again
+                account.clone().start().await?;
             } else {
                 let account = try_load_account(self, account_storage, meta).await?;
                 account.clone().start().await?;
