@@ -1,7 +1,6 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
-    mass::Kip9Version,
     tx::{TransactionInput, VerifiableTransaction},
 };
 use kaspa_core::warn;
@@ -126,8 +125,7 @@ impl TransactionValidator {
     }
 
     fn check_mass_commitment(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
-        let calculated_contextual_mass =
-            self.mass_calculator.calc_tx_overall_mass(tx, None, Kip9Version::Alpha).ok_or(TxRuleError::MassIncomputable)?;
+        let calculated_contextual_mass = self.mass_calculator.calc_tx_overall_mass(tx, None).ok_or(TxRuleError::MassIncomputable)?;
         let committed_contextual_mass = tx.tx().mass();
         if committed_contextual_mass != calculated_contextual_mass {
             return Err(TxRuleError::WrongMass(calculated_contextual_mass, committed_contextual_mass));
