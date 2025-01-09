@@ -130,6 +130,9 @@ pub struct Params {
     pub skip_proof_of_work: bool,
     pub max_block_level: BlockLevel,
     pub pruning_proof_m: u64,
+
+    /// Activation rules for when to enable using the payload field in transactions
+    pub payload_activation: ForkActivation,
 }
 
 fn unix_now() -> u64 {
@@ -406,6 +409,8 @@ pub const MAINNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 225,
     pruning_proof_m: 1000,
+
+    payload_activation: ForkActivation::never(),
 };
 
 pub const TESTNET_PARAMS: Params = Params {
@@ -469,6 +474,8 @@ pub const TESTNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
+
+    payload_activation: ForkActivation::never(),
 };
 
 pub const TESTNET11_PARAMS: Params = Params {
@@ -526,7 +533,9 @@ pub const TESTNET11_PARAMS: Params = Params {
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
     storage_mass_activation: ForkActivation::always(),
-    kip10_activation: ForkActivation::never(),
+    // Roughly at Dec 3, 2024 1800 UTC
+    kip10_activation: ForkActivation::new(287238000),
+    payload_activation: ForkActivation::new(287238000),
 
     skip_proof_of_work: false,
     max_block_level: 250,
@@ -584,6 +593,8 @@ pub const SIMNET_PARAMS: Params = Params {
 
     skip_proof_of_work: true, // For simnet only, PoW can be simulated by default
     max_block_level: 250,
+
+    payload_activation: ForkActivation::never(),
 };
 
 pub const DEVNET_PARAMS: Params = Params {
@@ -641,4 +652,6 @@ pub const DEVNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
+
+    payload_activation: ForkActivation::never(),
 };

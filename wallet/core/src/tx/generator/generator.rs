@@ -66,7 +66,6 @@ use crate::tx::{
 use crate::utxo::{NetworkParams, UtxoContext, UtxoEntryReference};
 use kaspa_consensus_client::UtxoEntry;
 use kaspa_consensus_core::constants::UNACCEPTED_DAA_SCORE;
-use kaspa_consensus_core::mass::Kip9Version;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_txscript::pay_to_address_script;
@@ -357,7 +356,7 @@ impl Generator {
 
         let network_type = NetworkType::from(network_id);
         let network_params = NetworkParams::from(network_id);
-        let mass_calculator = MassCalculator::new(&network_id.into(), network_params);
+        let mass_calculator = MassCalculator::new(&network_id.into());
 
         let (final_transaction_outputs, final_transaction_amount) = match final_transaction_destination {
             PaymentDestination::Change => {
@@ -592,7 +591,6 @@ impl Generator {
 
     }
     */
-
     fn generate_transaction_data(&self, context: &mut Context, stage: &mut Stage) -> Result<(DataKind, Data)> {
         let calc = &self.inner.mass_calculator;
         let mut data = Data::new(calc);
@@ -868,10 +866,7 @@ impl Generator {
                 // TODO - review and potentially simplify:
                 // this profiles the storage mass with change and without change
                 // and decides which one to use based on the fees
-                if storage_mass_with_change == 0
-                    || (self.inner.network_params.kip9_version() == Kip9Version::Beta // max(compute vs storage)
-                        && storage_mass_with_change < compute_mass_with_change)
-                {
+                if storage_mass_with_change == 0 || (storage_mass_with_change < compute_mass_with_change) {
                     0
                 } else {
                     let storage_mass_no_change = self.calc_storage_mass(data, self.inner.final_transaction_outputs_harmonic);

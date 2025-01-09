@@ -2666,6 +2666,69 @@ impl Deserializer for GetCurrentBlockColorResponse {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUtxoReturnAddressRequest {
+    pub txid: RpcHash,
+    pub accepting_block_daa_score: u64,
+}
+
+impl GetUtxoReturnAddressRequest {
+    pub fn new(txid: RpcHash, accepting_block_daa_score: u64) -> Self {
+        Self { txid, accepting_block_daa_score }
+    }
+}
+
+impl Serializer for GetUtxoReturnAddressRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.txid, writer)?;
+        store!(u64, &self.accepting_block_daa_score, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxoReturnAddressRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let txid = load!(RpcHash, reader)?;
+        let accepting_block_daa_score = load!(u64, reader)?;
+
+        Ok(Self { txid, accepting_block_daa_score })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUtxoReturnAddressResponse {
+    pub return_address: RpcAddress,
+}
+
+impl GetUtxoReturnAddressResponse {
+    pub fn new(return_address: RpcAddress) -> Self {
+        Self { return_address }
+    }
+}
+
+impl Serializer for GetUtxoReturnAddressResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcAddress, &self.return_address, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxoReturnAddressResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let return_address = load!(RpcAddress, reader)?;
+
+        Ok(Self { return_address })
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Subscriptions & notifications
 // ----------------------------------------------------------------------------

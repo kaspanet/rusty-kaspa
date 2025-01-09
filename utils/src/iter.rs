@@ -25,7 +25,7 @@ impl<'a, I> ReusableIterFormat<'a, I> {
     }
 }
 
-impl<'a, I> std::fmt::Display for ReusableIterFormat<'a, I>
+impl<I> std::fmt::Display for ReusableIterFormat<'_, I>
 where
     I: std::clone::Clone,
     I: Iterator,
@@ -37,7 +37,7 @@ where
     }
 }
 
-impl<'a, I> std::fmt::Debug for ReusableIterFormat<'a, I>
+impl<I> std::fmt::Debug for ReusableIterFormat<'_, I>
 where
     I: std::clone::Clone,
     I: Iterator,
