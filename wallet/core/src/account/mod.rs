@@ -22,6 +22,7 @@ use crate::imports::*;
 use crate::storage::account::AccountSettings;
 use crate::storage::AccountMetadata;
 use crate::storage::{PrvKeyData, PrvKeyDataId};
+use crate::tx::generator::settings::PayloadDistribution;
 use crate::tx::PaymentOutput;
 use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, Signer};
 use crate::utxo::balance::{AtomicBalance, BalanceStrings};
@@ -310,8 +311,13 @@ pub trait Account: AnySync + Send + Sync + 'static {
     ) -> Result<(GeneratorSummary, Vec<kaspa_hashes::Hash>)> {
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
-        let settings =
-            GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), PaymentDestination::Change, Fees::None, None)?;
+        let settings = GeneratorSettings::try_new_with_account(
+            self.clone().as_dyn_arc(),
+            PaymentDestination::Change,
+            Fees::None,
+            None,
+            PayloadDistribution::default(),
+        )?;
         let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
 
         let mut stream = generator.stream();
@@ -344,7 +350,13 @@ pub trait Account: AnySync + Send + Sync + 'static {
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
 
-        let settings = GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, priority_fee_sompi, payload)?;
+        let settings = GeneratorSettings::try_new_with_account(
+            self.clone().as_dyn_arc(),
+            destination,
+            priority_fee_sompi,
+            payload,
+            PayloadDistribution::default(),
+        )?;
 
         let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
 
@@ -372,7 +384,13 @@ pub trait Account: AnySync + Send + Sync + 'static {
         payment_secret: Option<Secret>,
         abortable: &Abortable,
     ) -> Result<Bundle, Error> {
-        let settings = GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, priority_fee_sompi, payload)?;
+        let settings = GeneratorSettings::try_new_with_account(
+            self.clone().as_dyn_arc(),
+            destination,
+            priority_fee_sompi,
+            payload,
+            PayloadDistribution::default(),
+        )?;
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(PSKBSigner::new(self.clone().as_dyn_arc(), keydata, payment_secret));
         let generator = Generator::try_new(settings, None, Some(abortable))?;
@@ -453,6 +471,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
             final_transaction_destination,
             priority_fee_sompi,
             final_transaction_payload,
+            PayloadDistribution::default(),
         )?
         .utxo_context_transfer(destination_account.utxo_context());
 
@@ -480,7 +499,13 @@ pub trait Account: AnySync + Send + Sync + 'static {
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
     ) -> Result<GeneratorSummary> {
-        let settings = GeneratorSettings::try_new_with_account(self.as_dyn_arc(), destination, priority_fee_sompi, payload)?;
+        let settings = GeneratorSettings::try_new_with_account(
+            self.as_dyn_arc(),
+            destination,
+            priority_fee_sompi,
+            payload,
+            PayloadDistribution::default(),
+        )?;
 
         let generator = Generator::try_new(settings, None, Some(abortable))?;
 
@@ -607,6 +632,7 @@ pub trait DerivationCapableAccount: Account {
                         PaymentDestination::Change,
                         Fees::None,
                         None,
+                        PayloadDistribution::default(),
                         None,
                     )?;
 

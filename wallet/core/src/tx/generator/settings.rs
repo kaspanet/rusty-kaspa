@@ -11,6 +11,22 @@ use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoIterator};
 use kaspa_addresses::Address;
 use workflow_core::channel::Multiplexer;
 
+/// Defines how payload data is distributed across transactions in a multi-transaction sequence.
+/// This is particularly relevant when a large transaction is split into multiple smaller ones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PayloadDistribution {
+    /// Payload is included only in the final transaction.
+    FinalOnly,
+    /// Payload is included in all transactions.
+    AllTxs,
+}
+
+impl Default for PayloadDistribution {
+    fn default() -> Self {
+        Self::FinalOnly
+    }
+}
+
 pub struct GeneratorSettings {
     // Network type
     pub network_id: NetworkId,
@@ -36,6 +52,7 @@ pub struct GeneratorSettings {
     pub final_transaction_payload: Option<Vec<u8>>,
     // transaction is a transfer between accounts
     pub destination_utxo_context: Option<UtxoContext>,
+    pub payload_distribution: PayloadDistribution,
 }
 
 // impl std::fmt::Debug for GeneratorSettings {
@@ -62,6 +79,7 @@ impl GeneratorSettings {
         final_transaction_destination: PaymentDestination,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
+        payload_distribution: PayloadDistribution,
     ) -> Result<Self> {
         let network_id = account.utxo_context().processor().network_id()?;
         let change_address = account.change_address()?;
@@ -85,6 +103,7 @@ impl GeneratorSettings {
             final_transaction_destination,
             final_transaction_payload,
             destination_utxo_context: None,
+            payload_distribution,
         };
 
         Ok(settings)
@@ -99,6 +118,7 @@ impl GeneratorSettings {
         final_transaction_destination: PaymentDestination,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
+        payload_distribution: PayloadDistribution,
         multiplexer: Option<Multiplexer<Box<Events>>>,
     ) -> Result<Self> {
         let network_id = utxo_context.processor().network_id()?;
@@ -118,11 +138,13 @@ impl GeneratorSettings {
             final_transaction_destination,
             final_transaction_payload,
             destination_utxo_context: None,
+            payload_distribution,
         };
 
         Ok(settings)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new_with_iterator(
         network_id: NetworkId,
         utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
@@ -133,6 +155,7 @@ impl GeneratorSettings {
         final_transaction_destination: PaymentDestination,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
+        payload_distribution: PayloadDistribution,
         multiplexer: Option<Multiplexer<Box<Events>>>,
     ) -> Result<Self> {
         let settings = GeneratorSettings {
@@ -149,6 +172,7 @@ impl GeneratorSettings {
             final_transaction_destination,
             final_transaction_payload,
             destination_utxo_context: None,
+            payload_distribution,
         };
 
         Ok(settings)
