@@ -51,7 +51,7 @@ pub fn sompi_to_kaspa_string_with_suffix(sompi: ISompiToKaspa, network: &Network
 #[allow(non_snake_case)]
 pub fn get_network_params(networkId: NetworkIdT) -> Result<INetworkParams> {
     let params = NetworkParams::from(*networkId.try_into_cast()?);
-    Ok(params.try_into()?)
+    params.try_into()
 }
 
 #[wasm_bindgen(js_name = "getTransactionMaturityProgress")]
