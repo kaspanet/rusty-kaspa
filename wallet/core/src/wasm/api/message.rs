@@ -1701,6 +1701,34 @@ try_from! ( args: TransactionsDataGetResponse, ITransactionsDataGetResponse, {
 // ---
 
 declare! {
+    INetworkParams,
+    r#"
+    /**
+     * 
+     * 
+     * @category Wallet API
+     */
+    export interface INetworkParams {
+        coinbaseTransactionMaturityPeriodDaa : number;
+        coinbaseTransactionStasisPeriodDaa : number;
+        userTransactionMaturityPeriodDaa : number;
+        additionalCompoundTransactionMass : number;
+    }
+    "#,
+}
+
+try_from! ( args: &NetworkParams, INetworkParams, {
+    let response = INetworkParams::default();
+    response.set("coinbaseTransactionMaturityPeriodDaa", &to_value(&args.coinbase_transaction_maturity_period_daa)?)?;
+    response.set("coinbaseTransactionStasisPeriodDaa", &to_value(&args.coinbase_transaction_stasis_period_daa)?)?;
+    response.set("userTransactionMaturityPeriodDaa", &to_value(&args.user_transaction_maturity_period_daa)?)?;
+    response.set("additionalCompoundTransactionMass", &to_value(&args.additional_compound_transaction_mass)?)?;
+    Ok(response)
+});
+
+// ---
+
+declare! {
     ITransactionsReplaceNoteRequest,
     r#"
     /**
