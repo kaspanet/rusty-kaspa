@@ -243,33 +243,30 @@ pub fn unlock_utxo(
     Ok(pskt.into())
 }
 
-// Build UTXO spending PSKB with custom input to be used in atomic transaction batch.
-pub fn unlock_utxo_as_batch_transaction_pskb(
+// Build UTXO spending PSKB with custom input and multiple outputs
+// to be used in atomic transaction batch.
+pub fn unlock_utxo_outputs_as_batch_transaction_pskb(
     amount: u64,
     start_address: &Address,
-    end_address: &Address,
     script_sig: &[u8],
-    priority_fee_sompi: Option<u64>,
+    destination_outputs: Vec<(Address, u64)>,
 ) -> Result<Bundle, Error> {
     let origin_spk = pay_to_address_script(start_address);
-    let destination_spk = pay_to_address_script(end_address);
 
-    // The transaction input is built with the assumption to be used in
-    // a transaction batch and thus spending the UTXO of the given amount
-    // that is locked in the current batch of transactions.
     let utxo_entry = UtxoEntry { amount, script_public_key: origin_spk, block_daa_score: UNACCEPTED_DAA_SCORE, is_coinbase: false };
 
     let input =
         InputBuilder::default().utxo_entry(utxo_entry.to_owned()).sig_op_count(1).redeem_script(script_sig.to_vec()).build()?;
 
-    let output_amount = match priority_fee_sompi {
-        Some(sompi) => amount - sompi,
-        None => amount,
-    };
+    let outputs: Vec<Output> = destination_outputs
+        .iter()
+        .filter_map(|(address, amount)| {
+            OutputBuilder::default().amount(*amount).script_public_key(pay_to_address_script(address)).build().ok()
+        })
+        .collect();
 
-    let output = OutputBuilder::default().amount(output_amount).script_public_key(destination_spk).build()?;
-
-    let pskt: PSKT<Constructor> = PSKT::<Creator>::default().constructor().input(input).output(output);
+    let pskt: PSKT<Constructor> =
+        outputs.into_iter().fold(PSKT::<Creator>::default().constructor().input(input), |pskt, output| pskt.output(output));
     Ok(pskt.into())
 }
 
