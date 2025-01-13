@@ -171,15 +171,20 @@ pub async fn fetch_spendable_utxos(
     {
         assert!(resp_entry.address.is_some());
         assert_eq!(*resp_entry.address.as_ref().unwrap(), address);
-        utxos.push((TransactionOutpoint::from(resp_entry.outpoint), UtxoEntry::from(resp_entry.utxo_entry)));
+        utxos.push((
+            TransactionOutpoint::try_from(resp_entry.outpoint)
+                .expect("expected conversion from RpcTransactionOutpoint to TransactionOutpoint to succeed"),
+            UtxoEntry::try_from(resp_entry.utxo_entry).expect("expected conversion from RpcUtxoEntry to UtxoEntry to succeed"),
+        ));
     }
     utxos.sort_by(|a, b| b.1.amount.cmp(&a.1.amount));
     utxos
 }
 
 pub fn is_utxo_spendable(entry: &RpcUtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
-    let needed_confirmations = if !entry.is_coinbase { 10 } else { coinbase_maturity };
-    entry.block_daa_score + needed_confirmations <= virtual_daa_score
+    let needed_confirmations =
+        if !entry.is_coinbase.expect("expected RpcUtxoEntry is_coinbase field to be set") { 10 } else { coinbase_maturity };
+    entry.block_daa_score.expect("expected RpcUtxoEntry block_daa_score field to be set") + needed_confirmations <= virtual_daa_score
 }
 
 pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, listening_clients: &[ListeningClient]) {
@@ -188,7 +193,7 @@ pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, li
 
     // Mine a block
     let template = submitting_client.get_block_template(pay_address.clone(), vec![]).await.unwrap();
-    let header: Header = (&template.block.header).into();
+    let header: Header = template.block.header.clone().into();
     let block_hash = header.hash;
     submitting_client.submit_block(template.block, false).await.unwrap();
 
@@ -200,8 +205,11 @@ pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, li
             .unwrap()
         {
             Notification::BlockAdded(BlockAddedNotification { block }) => {
-                assert_eq!(block.header.hash, block_hash);
-                block.header.daa_score
+                assert_eq!(
+                    block.header.as_ref().expect("expected header").hash.expect("expected RpcHeader hash field to be set"),
+                    block_hash
+                );
+                block.header.as_ref().expect("expected header").daa_score.expect("expected RpcHeader daa_score field to be set")
             }
             _ => panic!("wrong notification type"),
         };

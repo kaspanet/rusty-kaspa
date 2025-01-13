@@ -10,23 +10,43 @@ use std::str::FromStr;
 
 from!(item: &kaspa_rpc_core::RpcHeader, protowire::RpcBlockHeader, {
     Self {
-        version: item.version.into(),
+        hash: item.hash.map(|x| x.to_string()).unwrap_or_default(),
+        version: item.version.map(|x| x.into()).unwrap_or_default(),
         parents: item.parents_by_level.iter().map(protowire::RpcBlockLevelParents::from).collect(),
-        hash_merkle_root: item.hash_merkle_root.to_string(),
-        accepted_id_merkle_root: item.accepted_id_merkle_root.to_string(),
-        utxo_commitment: item.utxo_commitment.to_string(),
-        timestamp: item.timestamp.try_into().expect("timestamp is always convertible to i64"),
-        bits: item.bits,
-        nonce: item.nonce,
-        daa_score: item.daa_score,
-        blue_work: item.blue_work.to_rpc_hex(),
-        blue_score: item.blue_score,
-        pruning_point: item.pruning_point.to_string(),
+        hash_merkle_root: item.hash_merkle_root.map(|x| x.to_string()).unwrap_or_default(),
+        accepted_id_merkle_root: item.accepted_id_merkle_root.map(|x| x.to_string()).unwrap_or_default(),
+        utxo_commitment: item.utxo_commitment.map(|x| x.to_string()).unwrap_or_default(),
+        timestamp: item.timestamp.map(|x| x.try_into().expect("timestamp is always convertible to i64")).unwrap_or_default(),
+        bits: item.bits.unwrap_or_default(),
+        nonce: item.nonce.unwrap_or_default(),
+        daa_score: item.daa_score.unwrap_or_default(),
+        blue_work: item.blue_work.map(|x| x.to_rpc_hex()).unwrap_or_default(),
+        blue_score: item.blue_score.unwrap_or_default(),
+        pruning_point: item.pruning_point.map(|x| x.to_string()).unwrap_or_default(),
+    }
+});
+
+from!(item: &kaspa_rpc_core::RpcHeaderVerbosity, protowire::RpcBlockHeaderVerbosity, {
+    Self {
+        include_hash: item.include_hash,
+        include_version: item.include_version,
+        include_parents: item.include_parents_by_level,
+        include_hash_merkle_root: item.include_hash_merkle_root,
+        include_accepted_id_merkle_root: item.include_accepted_id_merkle_root,
+        include_utxo_commitment: item.include_utxo_commitment,
+        include_timestamp: item.include_timestamp,
+        include_bits: item.include_bits,
+        include_nonce: item.include_nonce,
+        include_daa_score: item.include_daa_score,
+        include_blue_work: item.include_blue_work,
+        include_blue_score: item.include_blue_score,
+        include_pruning_point: item.include_pruning_point,
     }
 });
 
 from!(item: &kaspa_rpc_core::RpcRawHeader, protowire::RpcBlockHeader, {
     Self {
+        hash: Default::default(), // We don't include the hash for the raw header
         version: item.version.into(),
         parents: item.parents_by_level.iter().map(protowire::RpcBlockLevelParents::from).collect(),
         hash_merkle_root: item.hash_merkle_root.to_string(),
@@ -48,6 +68,41 @@ from!(item: &Vec<RpcHash>, protowire::RpcBlockLevelParents, { Self { parent_hash
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
 
+try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcRawHeader, {
+    Self {
+        version: item.version.try_into()?,
+        parents_by_level: item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?,
+        hash_merkle_root: RpcHash::from_str(&item.hash_merkle_root)?,
+        accepted_id_merkle_root: RpcHash::from_str(&item.accepted_id_merkle_root)?,
+        utxo_commitment: RpcHash::from_str(&item.utxo_commitment)?,
+        timestamp: item.timestamp.try_into()?,
+        bits: item.bits,
+        nonce: item.nonce,
+        daa_score: item.daa_score,
+        blue_work: kaspa_rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
+        blue_score: item.blue_score,
+        pruning_point: RpcHash::from_str(&item.pruning_point)?,
+    }
+});
+
+try_from!(item: &protowire::RpcBlockHeaderVerbosity, kaspa_rpc_core::RpcHeaderVerbosity, {
+    Self {
+        include_hash: item.include_hash,
+        include_version: item.include_version,
+        include_parents_by_level: item.include_parents,
+        include_hash_merkle_root: item.include_hash_merkle_root,
+        include_accepted_id_merkle_root: item.include_accepted_id_merkle_root,
+        include_utxo_commitment: item.include_utxo_commitment,
+        include_timestamp: item.include_timestamp,
+        include_bits: item.include_bits,
+        include_nonce: item.include_nonce,
+        include_daa_score: item.include_daa_score,
+        include_blue_work: item.include_blue_work,
+        include_blue_score: item.include_blue_score,
+        include_pruning_point: item.include_pruning_point,
+    }
+});
+
 try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
     // We re-hash the block to remain as most trustless as possible
     let header = Header::new_finalized(
@@ -65,25 +120,9 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
         RpcHash::from_str(&item.pruning_point)?,
     );
 
-    header.into()
-});
-
-try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcRawHeader, {
-    Self {
-        version: item.version.try_into()?,
-        parents_by_level: item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?,
-        hash_merkle_root: RpcHash::from_str(&item.hash_merkle_root)?,
-        accepted_id_merkle_root: RpcHash::from_str(&item.accepted_id_merkle_root)?,
-        utxo_commitment: RpcHash::from_str(&item.utxo_commitment)?,
-        timestamp: item.timestamp.try_into()?,
-        bits: item.bits,
-        nonce: item.nonce,
-        daa_score: item.daa_score,
-        blue_work: kaspa_rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
-        blue_score: item.blue_score,
-        pruning_point: RpcHash::from_str(&item.pruning_point)?,
-    }
-});
+    kaspa_rpc_core::RpcHeader::from(header)
+}
+);
 
 try_from!(item: &protowire::RpcBlockLevelParents, Vec<RpcHash>, {
     item.parent_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?
@@ -198,15 +237,15 @@ mod tests {
         let r3: RpcBlock = (&b2).into();
         let p2: protowire::RpcBlock = (&r3).into();
 
-        assert_eq!(r.header.parents_by_level, r2.header.parents_by_level);
+        assert_eq!(r.header.as_ref().unwrap().parents_by_level, r2.header.as_ref().unwrap().parents_by_level);
         assert_eq!(p.header.as_ref().unwrap().parents, p2.header.as_ref().unwrap().parents);
-        test_parents_by_level_rxr(&r.header.parents_by_level, &r2.header.parents_by_level);
-        test_parents_by_level_rxr(&r.header.parents_by_level, &r3.header.parents_by_level);
-        test_parents_by_level_rxr(&b.header.parents_by_level, &r2.header.parents_by_level);
+        test_parents_by_level_rxr(&r.header.as_ref().unwrap().parents_by_level, &r2.header.as_ref().unwrap().parents_by_level);
+        test_parents_by_level_rxr(&r.header.as_ref().unwrap().parents_by_level, &r3.header.as_ref().unwrap().parents_by_level);
+        test_parents_by_level_rxr(&b.header.parents_by_level, &r2.header.as_ref().unwrap().parents_by_level);
         test_parents_by_level_rxr(&b.header.parents_by_level, &b2.header.parents_by_level);
-        test_parents_by_level_rxp(&r.header.parents_by_level, &p.header.as_ref().unwrap().parents);
-        test_parents_by_level_rxp(&r.header.parents_by_level, &p2.header.as_ref().unwrap().parents);
-        test_parents_by_level_rxp(&r2.header.parents_by_level, &p2.header.as_ref().unwrap().parents);
+        test_parents_by_level_rxp(&r.header.as_ref().unwrap().parents_by_level, &p.header.as_ref().unwrap().parents);
+        test_parents_by_level_rxp(&r.header.as_ref().unwrap().parents_by_level, &p2.header.as_ref().unwrap().parents);
+        test_parents_by_level_rxp(&r2.header.as_ref().unwrap().parents_by_level, &p2.header.as_ref().unwrap().parents);
 
         assert_eq!(b.hash(), b2.hash());
         assert_eq!(p, p2);

@@ -284,6 +284,99 @@ impl Rpc {
 
                 self.println(&ctx, result);
             }
+            RpcApiOps::GetVirtualChainFromBlockV2 => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Missing startHash argument"));
+                };
+                let start_hash = RpcHash::from_hex(argv.remove(0).as_str())?;
+
+                argv.reverse(); // reverse so we can pop from the end
+
+                let acceptance_data_verbosity = Some(RpcAcceptanceDataVerbosity {
+                    accepting_chain_header_verbosity: Some(RpcHeaderVerbosity {
+                        include_hash: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                        include_version: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                        include_parents_by_level: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                        include_hash_merkle_root: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                        include_accepted_id_merkle_root: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                        include_utxo_commitment: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                        include_timestamp: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                        include_bits: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                        include_nonce: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                        include_daa_score: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                        include_blue_work: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                        include_blue_score: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                        include_pruning_point: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                    }),
+                    mergeset_block_acceptance_data_verbosity: Some(RpcMergesetBlockAcceptanceDataVerbosity {
+                        merged_header_verbosity: Some(RpcHeaderVerbosity {
+                            include_hash: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_version: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_parents_by_level: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_hash_merkle_root: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_accepted_id_merkle_root: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_utxo_commitment: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_timestamp: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_bits: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_nonce: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_daa_score: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_blue_work: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_blue_score: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_pruning_point: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                        }),
+                        accepted_transactions_verbosity: Some(RpcTransactionVerbosity {
+                            include_version: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            input_verbosity: Some(RpcTransactionInputVerbosity {
+                                include_previous_outpoint: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                include_signature_script: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                include_sequence: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                include_sig_op_count: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                verbose_data_verbosity: Some(RpcTransactionInputVerboseDataVerbosity {
+                                    utxo_entry_verbosity: Some(RpcUtxoEntryVerbosity {
+                                        include_amount: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                        include_script_public_key: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                        include_block_daa_score: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                        include_is_coinbase: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                        verbose_data_verbosity: Some(RpcUtxoEntryVerboseDataVerbosity {
+                                            include_script_public_key_type: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                            include_script_public_key_address: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                        }),
+                                    }),
+                                }),
+                            }),
+                            output_verbosity: Some(RpcTransactionOutputVerbosity {
+                                include_amount: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                include_script_public_key: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                verbose_data_verbosity: Some(RpcTransactionOutputVerboseDataVerbosity {
+                                    include_script_public_key_type: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                    include_script_public_key_address: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                }),
+                            }),
+                            include_lock_time: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_subnetwork_id: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_gas: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_payload: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            include_mass: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            verbose_data_verbosity: Some(RpcTransactionVerboseDataVerbosity {
+                                include_transaction_id: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                include_hash: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                include_compute_mass: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                include_block_hash: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                                include_block_time: argv.pop().and_then(|arg| arg.parse::<bool>().ok()),
+                            }),
+                        }),
+                    }),
+                });
+
+                let result = rpc
+                    .get_virtual_chain_from_block_v_2_call(
+                        None,
+                        GetVirtualChainFromBlockV2Request { start_hash, acceptance_data_verbosity },
+                    )
+                    .await;
+
+                self.println(&ctx, result);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

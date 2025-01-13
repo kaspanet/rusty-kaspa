@@ -402,7 +402,14 @@ async fn populate_pending_outpoints_from_mempool(
     for entry in entries {
         for entry in entry.sending {
             for input in entry.transaction.inputs {
-                pending_outpoints.insert(input.previous_outpoint.into(), now);
+                pending_outpoints.insert(
+                    input
+                        .previous_outpoint
+                        .expect("expected outpoint")
+                        .try_into()
+                        .expect("expected converstion from RpcTransactionOutpoint to TransactionOutpoint to not fail"),
+                    now,
+                );
             }
         }
     }
@@ -421,7 +428,7 @@ async fn fetch_spendable_utxos(
         .filter(|entry| {
             is_utxo_spendable(&entry.utxo_entry, dag_info.virtual_daa_score, coinbase_maturity)
         })
-        .map(|entry| (TransactionOutpoint::from(entry.outpoint), UtxoEntry::from(entry.utxo_entry)))
+        .map(|entry| (TransactionOutpoint::try_from(entry.outpoint).expect("expected converstion from RpcTransactionOutpoint to TransactionOutpoint to succeed"), UtxoEntry::try_from(entry.utxo_entry).expect("expected conversion from RpcUtxoEntry to UtxoEntry to succeed")))
         // Eliminates UTXOs we already tried to spend so we don't try to spend them again in this period
         .filter(|(outpoint,_)| !pending.contains_key(outpoint))
         .collect::<Vec<_>>();
@@ -430,12 +437,12 @@ async fn fetch_spendable_utxos(
 }
 
 fn is_utxo_spendable(entry: &RpcUtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
-    let needed_confs = if !entry.is_coinbase {
+    let needed_confs = if !entry.is_coinbase.expect("expected `is coinbase` field") {
         10
     } else {
         coinbase_maturity * 2 // TODO: We should compare with sink blue score in the case of coinbase
     };
-    entry.block_daa_score + needed_confs < virtual_daa_score
+    (entry.block_daa_score.expect("expected block_daa_score field to be set") + needed_confs) < virtual_daa_score
 }
 
 async fn maybe_send_tx(
