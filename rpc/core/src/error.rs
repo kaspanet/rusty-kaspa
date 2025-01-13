@@ -134,6 +134,12 @@ pub enum RpcError {
 
     #[error(transparent)]
     ConsensusClient(#[from] kaspa_consensus_client::error::Error),
+
+    #[error("header hashes to {0}, provided is {1}")]
+    BadBlockHash(RpcHash, RpcHash),
+
+    #[error("consensus converter required {0} - but was not found")]
+    ConsensusConverterNotFound(String),
 }
 
 impl From<String> for RpcError {

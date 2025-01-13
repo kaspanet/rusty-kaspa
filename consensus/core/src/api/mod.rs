@@ -17,9 +17,13 @@ use crate::{
         tx::TxResult,
     },
     header::Header,
+    mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{
+        MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, TransactionQueryResult,
+        TransactionType, UtxoEntry,
+    },
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
@@ -89,11 +93,11 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
         unimplemented!()
     }
 
-    fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
+    fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
         unimplemented!()
     }
 
@@ -133,6 +137,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
+        unimplemented!()
+    }
+
     fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
         unimplemented!()
     }
@@ -141,19 +149,12 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    /// source refers to the earliest block from which the current node has full header & block data  
-    fn get_source(&self) -> Hash {
+    /// retention period root refers to the earliest block from which the current node has full header & block data  
+    fn get_retention_period_root(&self) -> Hash {
         unimplemented!()
     }
 
     fn estimate_block_count(&self) -> BlockCount {
-        unimplemented!()
-    }
-
-    /// Returns whether this consensus is considered synced or close to being synced.
-    ///
-    /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
-    fn is_nearly_synced(&self) -> bool {
         unimplemented!()
     }
 
@@ -167,6 +168,27 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
+        unimplemented!()
+    }
+
+    /// Returns the fully populated transaction with the given txid which was accepted at the provided accepting_block_daa_score.
+    /// The argument `accepting_block_daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
+    /// Note: If the transaction vec is None, the function returns all accepted transactions.
+    fn get_transactions_by_accepting_daa_score(
+        &self,
+        accepting_daa_score: u64,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        unimplemented!()
+    }
+
+    fn get_transactions_by_accepting_block(
+        &self,
+        accepting_block: Hash,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
         unimplemented!()
     }
 
@@ -211,7 +233,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn import_pruning_points(&self, pruning_points: PruningPointsList) {
+    fn import_pruning_points(&self, pruning_points: PruningPointsList) -> PruningImportResult<()> {
         unimplemented!()
     }
 
@@ -272,6 +294,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_block(&self, hash: Hash) -> ConsensusResult<Block> {
+        unimplemented!()
+    }
+
+    fn get_block_transactions(&self, hash: Hash, indices: Option<Vec<TransactionIndexType>>) -> ConsensusResult<Vec<Transaction>> {
         unimplemented!()
     }
 
@@ -347,7 +373,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn validate_pruning_points(&self) -> ConsensusResult<()> {
+    fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         unimplemented!()
     }
 

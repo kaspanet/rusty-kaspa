@@ -1,3 +1,4 @@
+pub mod acceptance_data;
 pub mod address;
 pub mod block;
 pub mod error;

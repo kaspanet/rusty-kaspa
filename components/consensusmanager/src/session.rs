@@ -10,9 +10,10 @@ use kaspa_consensus_core::{
     daa_score_timestamp::DaaScoreTimestamp,
     errors::consensus::ConsensusResult,
     header::Header,
+    mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, TransactionQueryResult, TransactionType, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, Hash,
 };
 use kaspa_utils::sync::rwlock::*;
@@ -190,14 +191,14 @@ impl ConsensusSessionOwned {
         self.consensus.validate_and_insert_trusted_block(tb)
     }
 
-    pub fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
+    pub fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
         // This method performs pure calculations so no need for an async wrapper
-        self.consensus.calculate_transaction_compute_mass(transaction)
+        self.consensus.calculate_transaction_non_contextual_masses(transaction)
     }
 
-    pub fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
+    pub fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
         // This method performs pure calculations so no need for an async wrapper
-        self.consensus.calculate_transaction_storage_mass(transaction)
+        self.consensus.calculate_transaction_contextual_masses(transaction)
     }
 
     pub fn get_virtual_daa_score(&self) -> u64 {
@@ -248,24 +249,21 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_sink_timestamp()).await
     }
 
+    pub async fn async_get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
+        self.clone().spawn_blocking(|c| c.get_sink_daa_score_timestamp()).await
+    }
+
     pub async fn async_get_current_block_color(&self, hash: Hash) -> Option<bool> {
         self.clone().spawn_blocking(move |c| c.get_current_block_color(hash)).await
     }
 
-    /// source refers to the earliest block from which the current node has full header & block data  
-    pub async fn async_get_source(&self) -> Hash {
-        self.clone().spawn_blocking(|c| c.get_source()).await
+    /// retention period root refers to the earliest block from which the current node has full header & block data  
+    pub async fn async_get_retention_period_root(&self) -> Hash {
+        self.clone().spawn_blocking(|c| c.get_retention_period_root()).await
     }
 
     pub async fn async_estimate_block_count(&self) -> BlockCount {
         self.clone().spawn_blocking(|c| c.estimate_block_count()).await
-    }
-
-    /// Returns whether this consensus is considered synced or close to being synced.
-    ///
-    /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
-    pub async fn async_is_nearly_synced(&self) -> bool {
-        self.clone().spawn_blocking(|c| c.is_nearly_synced()).await
     }
 
     pub async fn async_get_virtual_chain_from_block(
@@ -311,6 +309,24 @@ impl ConsensusSessionOwned {
 
     pub async fn async_get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
         self.clone().spawn_blocking(|c| c.get_chain_block_samples()).await
+    }
+
+    pub async fn async_get_transactions_by_accepting_daa_score(
+        &self,
+        accepting_daa_score: u64,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        self.clone().spawn_blocking(move |c| c.get_transactions_by_accepting_daa_score(accepting_daa_score, tx_ids, tx_type)).await
+    }
+
+    pub async fn async_get_transactions_by_accepting_block(
+        &self,
+        accepting_block: Hash,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        self.clone().spawn_blocking(move |c| c.get_transactions_by_accepting_block(accepting_block, tx_ids, tx_type)).await
     }
 
     /// Returns the antipast of block `hash` from the POV of `context`, i.e. `antipast(hash) ∩ past(context)`.
@@ -433,8 +449,8 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.estimate_network_hashes_per_second(start_hash, window_size)).await
     }
 
-    pub async fn async_validate_pruning_points(&self) -> ConsensusResult<()> {
-        self.clone().spawn_blocking(move |c| c.validate_pruning_points()).await
+    pub async fn async_validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
+        self.clone().spawn_blocking(move |c| c.validate_pruning_points(syncer_virtual_selected_parent)).await
     }
 
     pub async fn async_are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {

@@ -438,6 +438,18 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetDaaScoreTimestampEstimateRequest,
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse>;
 
+    async fn get_utxo_return_address(&self, txid: RpcHash, accepting_block_daa_score: u64) -> RpcResult<RpcAddress> {
+        Ok(self
+            .get_utxo_return_address_call(None, GetUtxoReturnAddressRequest { txid, accepting_block_daa_score })
+            .await?
+            .return_address)
+    }
+    async fn get_utxo_return_address_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetUtxoReturnAddressRequest,
+    ) -> RpcResult<GetUtxoReturnAddressResponse>;
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Fee estimation API
 
@@ -468,6 +480,20 @@ pub trait RpcApi: Sync + Send + AnySync {
         connection: Option<&DynRpcConnection>,
         request: GetCurrentBlockColorRequest,
     ) -> RpcResult<GetCurrentBlockColorResponse>;
+
+    async fn get_virtual_chain_from_block_v_2(
+        &self,
+        start_hash: RpcHash,
+        acceptance_data_verbosity: Option<RpcAcceptanceDataVerbosity>,
+    ) -> RpcResult<GetVirtualChainFromBlockV2Response> {
+        self.get_virtual_chain_from_block_v_2_call(None, GetVirtualChainFromBlockV2Request::new(start_hash, acceptance_data_verbosity))
+            .await
+    }
+    async fn get_virtual_chain_from_block_v_2_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetVirtualChainFromBlockV2Request,
+    ) -> RpcResult<GetVirtualChainFromBlockV2Response>;
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

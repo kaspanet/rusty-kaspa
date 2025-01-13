@@ -1210,7 +1210,7 @@ declare! {
 
 try_from! ( args: GetUtxosByAddressesResponse, IGetUtxosByAddressesResponse, {
     let GetUtxosByAddressesResponse { entries } = args;
-    let entries = entries.into_iter().map(UtxoEntryReference::from).collect::<Vec<UtxoEntryReference>>();
+    let entries = entries.into_iter().map(UtxoEntryReference::try_from).collect::<Result<Vec<UtxoEntryReference>>>()?;
     let entries = js_sys::Array::from_iter(entries.into_iter().map(JsValue::from));
     let response = IGetUtxosByAddressesResponse::default();
     response.set("entries", entries.as_ref())?;
@@ -1725,6 +1725,43 @@ try_from!( args: GetFeeEstimateExperimentalResponse, IGetFeeEstimateExperimental
     }
 
     Ok(response)
+});
+
+declare! {
+    IGetUtxoReturnAddressRequest,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxoReturnAddressRequest {
+        txid: HexString;
+        acceptingBlockDaaScore: bigint;
+    }
+    "#,
+}
+
+try_from!(args: IGetUtxoReturnAddressRequest, GetUtxoReturnAddressRequest, {
+   Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetUtxoReturnAddressResponse,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxoReturnAddressResponse {
+        returnAddress: Address;
+    }
+    "#,
+}
+
+try_from!(args: GetUtxoReturnAddressResponse, IGetUtxoReturnAddressResponse, {
+    Ok(to_value(&args)?.into())
 });
 
 // ---

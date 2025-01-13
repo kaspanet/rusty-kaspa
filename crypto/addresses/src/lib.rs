@@ -512,7 +512,7 @@ impl TryCastFromJs for Address {
     {
         Self::resolve(value, || {
             if let Some(string) = value.as_ref().as_string() {
-                Address::try_from(string)
+                Address::try_from(string.trim())
             } else if let Some(object) = js_sys::Object::try_from(value.as_ref()) {
                 let prefix: Prefix = object.get_string("prefix")?.as_str().try_into()?;
                 let payload = object.get_string("payload")?; //.as_str();
@@ -638,11 +638,16 @@ mod tests {
         // cspell:enable
     }
 
+    #[cfg(target_arch = "wasm32")]
     use js_sys::Object;
+    #[cfg(target_arch = "wasm32")]
     use wasm_bindgen::{JsValue, __rt::IntoJsResult};
+    #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::wasm_bindgen_test;
+    #[cfg(target_arch = "wasm32")]
     use workflow_wasm::{extensions::ObjectExtension, serde::from_value, serde::to_value};
 
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_constructor() {
         let str = "kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j";
@@ -654,6 +659,7 @@ mod tests {
         assert_eq!(a, from_value(value).unwrap());
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     pub fn test_wasm_js_serde_object() {
         let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
@@ -678,6 +684,7 @@ mod tests {
         assert_eq!(expected, actual);
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_object() {
         use wasm_bindgen::convert::IntoWasmAbi;

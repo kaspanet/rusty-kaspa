@@ -157,7 +157,7 @@ impl Miner {
             .into_par_iter()
             .map(|mutable_tx| {
                 let signed_tx = sign(mutable_tx, schnorr_key);
-                let mass = self.mass_calculator.calc_tx_overall_mass(&signed_tx.as_verifiable(), None).unwrap();
+                let mass = self.mass_calculator.calc_contextual_masses(&signed_tx.as_verifiable()).unwrap().storage_mass;
                 signed_tx.tx.set_mass(mass);
                 let mut signed_tx = signed_tx.tx;
                 signed_tx.finalize();
@@ -179,7 +179,8 @@ impl Miner {
     ) -> Option<UtxoEntry> {
         let entry = utxo_view.get(&outpoint)?;
         if entry.amount < 2
-            || (entry.is_coinbase && (virtual_daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity as i64)
+            || (entry.is_coinbase
+                && (virtual_daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity().upper_bound() as i64)
         {
             return None;
         }

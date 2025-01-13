@@ -9,4 +9,5 @@ pub const RPC_MAX_MESSAGE_SIZE: usize = 1024 * 1024 * 1024; // 1GB
 
 pub mod protowire {
     tonic::include_proto!("protowire");
+    //pub(crate) const FILE_DESCRIPTOR_SET: &[u8] = tonic::include_file_descriptor_set!("/reflection/fd.bin");
 }

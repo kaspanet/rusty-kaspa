@@ -116,7 +116,7 @@ impl HandleRelayInvsFlow {
                 }
             }
 
-            if self.ctx.is_ibd_running() && !session.async_is_nearly_synced().await {
+            if self.ctx.is_ibd_running() && !self.ctx.should_mine(&session).await {
                 // Note: If the node is considered nearly synced we continue processing relay blocks even though an IBD is in progress.
                 // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks.
                 debug!("Got relay block {} while in IBD and the node is out of sync, continuing...", inv.hash);
@@ -209,8 +209,9 @@ impl HandleRelayInvsFlow {
             // can continue processing the following relay blocks
             let ctx = self.ctx.clone();
             tokio::spawn(async move {
+                let daa_score = block.header.daa_score;
                 ctx.on_new_block(&session, ancestor_batch, block, virtual_state_task).await;
-                ctx.log_block_event(BlockLogEvent::Relay(inv.hash));
+                ctx.log_new_block_event(BlockLogEvent::Relay(inv.hash), daa_score);
             });
         }
     }

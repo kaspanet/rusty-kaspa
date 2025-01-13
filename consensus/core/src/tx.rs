@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
+use std::sync::Arc;
 use std::{
     fmt::Display,
     ops::Range,
@@ -26,6 +27,7 @@ use std::{
 };
 use wasm_bindgen::prelude::*;
 
+use crate::mass::{ContextualMasses, NonContextualMasses};
 use crate::{
     hashing,
     subnets::{self, SubnetworkId},
@@ -174,6 +176,8 @@ pub struct Transaction {
     #[serde(with = "serde_bytes")]
     pub payload: Vec<u8>,
 
+    /// Holds a commitment to the storage mass (KIP-0009)
+    /// TODO: rename field and related methods to storage_mass
     #[serde(default)]
     mass: TransactionMass,
 
@@ -230,16 +234,18 @@ impl Transaction {
         self.id
     }
 
-    /// Set the mass field of this transaction. The mass field is expected depending on hard-forks which are currently
-    /// activated only on some testnets. The field has no effect on tx ID so no need to finalize following this call.
+    /// Set the storage mass commitment field of this transaction. This field is expected to be activated on mainnet
+    /// as part of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
     pub fn set_mass(&self, mass: u64) {
         self.mass.0.store(mass, SeqCst)
     }
 
+    /// Read the storage mass commitment
     pub fn mass(&self) -> u64 {
         self.mass.0.load(SeqCst)
     }
 
+    /// Set the storage mass commitment of the passed transaction
     pub fn with_mass(self, mass: u64) -> Self {
         self.set_mass(mass);
         self
@@ -301,6 +307,12 @@ pub trait VerifiableTransaction {
 pub struct PopulatedInputIterator<'a, T: VerifiableTransaction> {
     tx: &'a T,
     r: Range<usize>,
+}
+
+impl<T: VerifiableTransaction> Clone for PopulatedInputIterator<'_, T> {
+    fn clone(&self) -> Self {
+        Self { tx: self.tx, r: self.r.clone() }
+    }
 }
 
 impl<'a, T: VerifiableTransaction> PopulatedInputIterator<'a, T> {
@@ -398,14 +410,14 @@ pub struct MutableTransaction<T: AsRef<Transaction> = std::sync::Arc<Transaction
     pub entries: Vec<Option<UtxoEntry>>,
     /// Populated fee
     pub calculated_fee: Option<u64>,
-    /// Populated compute mass (does not include the storage mass)
-    pub calculated_compute_mass: Option<u64>,
+    /// Populated non-contextual masses (does not include the storage mass)
+    pub calculated_non_contextual_masses: Option<NonContextualMasses>,
 }
 
 impl<T: AsRef<Transaction>> MutableTransaction<T> {
     pub fn new(tx: T) -> Self {
         let num_inputs = tx.as_ref().inputs.len();
-        Self { tx, entries: vec![None; num_inputs], calculated_fee: None, calculated_compute_mass: None }
+        Self { tx, entries: vec![None; num_inputs], calculated_fee: None, calculated_non_contextual_masses: None }
     }
 
     pub fn id(&self) -> TransactionId {
@@ -414,7 +426,7 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
 
     pub fn with_entries(tx: T, entries: Vec<UtxoEntry>) -> Self {
         assert_eq!(tx.as_ref().inputs.len(), entries.len());
-        Self { tx, entries: entries.into_iter().map(Some).collect(), calculated_fee: None, calculated_compute_mass: None }
+        Self { tx, entries: entries.into_iter().map(Some).collect(), calculated_fee: None, calculated_non_contextual_masses: None }
     }
 
     /// Returns the tx wrapped as a [`VerifiableTransaction`]. Note that this function
@@ -430,7 +442,7 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
     }
 
     pub fn is_fully_populated(&self) -> bool {
-        self.is_verifiable() && self.calculated_fee.is_some() && self.calculated_compute_mass.is_some()
+        self.is_verifiable() && self.calculated_fee.is_some() && self.calculated_non_contextual_masses.is_some()
     }
 
     pub fn missing_outpoints(&self) -> impl Iterator<Item = TransactionOutpoint> + '_ {
@@ -450,17 +462,14 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
         }
     }
 
-    /// Returns the calculated feerate. The feerate is calculated as the amount of fee
-    /// this transactions pays per gram of the full contextual (compute & storage) mass. The
-    /// function returns a value when calculated fee exists and the contextual mass is greater
-    /// than zero, otherwise `None` is returned.
+    /// Returns the calculated feerate. The feerate is calculated as the amount of fee this
+    /// transactions pays per gram of the aggregated contextual mass (max over compute, transient
+    /// and storage masses). The function returns a value when calculated fee and calculated masses
+    /// exist, otherwise `None` is returned.
     pub fn calculated_feerate(&self) -> Option<f64> {
-        let contextual_mass = self.tx.as_ref().mass();
-        if contextual_mass > 0 {
-            self.calculated_fee.map(|fee| fee as f64 / contextual_mass as f64)
-        } else {
-            None
-        }
+        self.calculated_non_contextual_masses
+            .map(|non_contextual_masses| ContextualMasses::new(self.tx.as_ref().mass()).max(non_contextual_masses))
+            .and_then(|max_mass| self.calculated_fee.map(|fee| fee as f64 / max_mass as f64))
     }
 
     /// A function for estimating the amount of memory bytes used by this transaction (dedicated to mempool usage).
@@ -533,6 +542,18 @@ impl MutableTransaction {
 /// Alias for a fully mutable and owned transaction which can be populated with external data
 /// and can also be modified internally and signed etc.
 pub type SignableTransaction = MutableTransaction<Transaction>;
+
+#[derive(Debug, Clone)]
+pub enum TransactionType {
+    Transaction,
+    SignableTransaction,
+}
+
+#[derive(Debug, Clone)]
+pub enum TransactionQueryResult {
+    Transaction(Arc<Vec<Transaction>>),
+    SignableTransaction(Arc<Vec<SignableTransaction>>),
+}
 
 #[cfg(test)]
 mod tests {

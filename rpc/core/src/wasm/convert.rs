@@ -2,27 +2,42 @@
 //! WASM specific conversion functions
 //!
 
-use crate::model::*;
+use crate::{model::*, RpcError, RpcResult};
 use kaspa_consensus_client::*;
 use std::sync::Arc;
 
-impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
-    fn from(entry: RpcUtxosByAddressesEntry) -> UtxoEntry {
+impl TryFrom<RpcUtxosByAddressesEntry> for UtxoEntry {
+    type Error = RpcError;
+
+    fn try_from(entry: RpcUtxosByAddressesEntry) -> RpcResult<UtxoEntry> {
         let RpcUtxosByAddressesEntry { address, outpoint, utxo_entry } = entry;
-        let RpcUtxoEntry { amount, script_public_key, block_daa_score, is_coinbase } = utxo_entry;
-        UtxoEntry { address, outpoint: outpoint.into(), amount, script_public_key, block_daa_score, is_coinbase }
+        let RpcUtxoEntry { amount, script_public_key, block_daa_score, is_coinbase, .. } = utxo_entry;
+        Ok(UtxoEntry {
+            address,
+            outpoint: outpoint.try_into()?,
+            amount: amount.ok_or(RpcError::MissingRpcFieldError("RpcUtxoEntry".to_string(), "amount".to_string()))?,
+            script_public_key: script_public_key
+                .ok_or(RpcError::MissingRpcFieldError("RpcUtxoEntry".to_string(), "script_public_key".to_string()))?,
+            block_daa_score: block_daa_score
+                .ok_or(RpcError::MissingRpcFieldError("RpcUtxoEntry".to_string(), "block_daa_score".to_string()))?,
+            is_coinbase: is_coinbase.ok_or(RpcError::MissingRpcFieldError("RpcUtxoEntry".to_string(), "is_coinbase".to_string()))?,
+        })
     }
 }
 
-impl From<RpcUtxosByAddressesEntry> for UtxoEntryReference {
-    fn from(entry: RpcUtxosByAddressesEntry) -> Self {
-        Self { utxo: Arc::new(entry.into()) }
+impl TryFrom<RpcUtxosByAddressesEntry> for UtxoEntryReference {
+    type Error = RpcError;
+
+    fn try_from(entry: RpcUtxosByAddressesEntry) -> RpcResult<Self> {
+        Ok(Self { utxo: Arc::new(entry.try_into()?) })
     }
 }
 
-impl From<&RpcUtxosByAddressesEntry> for UtxoEntryReference {
-    fn from(entry: &RpcUtxosByAddressesEntry) -> Self {
-        Self { utxo: Arc::new(entry.clone().into()) }
+impl TryFrom<&RpcUtxosByAddressesEntry> for UtxoEntryReference {
+    type Error = RpcError;
+
+    fn try_from(entry: &RpcUtxosByAddressesEntry) -> RpcResult<Self> {
+        Ok(Self { utxo: Arc::new(entry.clone().try_into()?) })
     }
 }
 
@@ -33,10 +48,10 @@ cfg_if::cfg_if! {
             fn from(tx_input: TransactionInput) -> Self {
                 let inner = tx_input.inner();
                 RpcTransactionInput {
-                    previous_outpoint: inner.previous_outpoint.clone().into(),
-                    signature_script: inner.signature_script.clone().unwrap_or_default(),
-                    sequence: inner.sequence,
-                    sig_op_count: inner.sig_op_count,
+                    previous_outpoint: Some(inner.previous_outpoint.clone().into()),
+                    signature_script: Some(inner.signature_script.clone().unwrap_or_default()),
+                    sequence: Some(inner.sequence),
+                    sig_op_count: Some(inner.sig_op_count),
                     verbose_data: None,
                 }
             }
@@ -45,7 +60,7 @@ cfg_if::cfg_if! {
         impl From<TransactionOutput> for RpcTransactionOutput {
             fn from(output: TransactionOutput) -> Self {
                 let inner = output.inner();
-                RpcTransactionOutput { value: inner.value, script_public_key: inner.script_public_key.clone(), verbose_data: None }
+                RpcTransactionOutput { value: Some(inner.value), script_public_key: Some(inner.script_public_key.clone()), verbose_data: None }
             }
         }
 
@@ -56,6 +71,7 @@ cfg_if::cfg_if! {
         }
 
         impl From<&Transaction> for RpcTransaction {
+
             fn from(tx: &Transaction) -> Self {
                 let inner = tx.inner();
                 let inputs: Vec<RpcTransactionInput> =
@@ -64,14 +80,14 @@ cfg_if::cfg_if! {
                     inner.outputs.clone().into_iter().map(|output| output.into()).collect::<Vec<RpcTransactionOutput>>();
 
                 RpcTransaction {
-                    version: inner.version,
+                    version: Some(inner.version),
                     inputs,
                     outputs,
-                    lock_time: inner.lock_time,
-                    subnetwork_id: inner.subnetwork_id.clone(),
-                    gas: inner.gas,
-                    payload: inner.payload.clone(),
-                    mass: inner.mass,
+                    lock_time: Some(inner.lock_time),
+                    subnetwork_id: Some(inner.subnetwork_id.clone()),
+                    gas: Some(inner.gas),
+                    payload: Some(inner.payload.clone()),
+                    mass: Some(inner.mass),
                     verbose_data: None,
                 }
             }

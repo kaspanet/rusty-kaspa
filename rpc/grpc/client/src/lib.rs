@@ -93,10 +93,10 @@ impl GrpcClient {
     /// `notification_mode` determines how notifications are handled:
     ///
     /// - `MultiListeners` => Multiple listeners are supported via the [`RpcApi`] implementation.
-    ///                       Registering listeners is needed before subscribing to notifications.
+    ///   Registering listeners is needed before subscribing to notifications.
     /// - `Direct` => A single listener receives the notification via a channel (see  `self.notification_channel_receiver()`).
-    ///               Registering a listener is pointless and ignored.
-    ///               Subscribing to notifications ignores the listener ID.
+    ///   Registering a listener is pointless and ignored.
+    ///   Subscribing to notifications ignores the listener ID.
     ///
     /// `url`: the server to connect to
     ///
@@ -276,6 +276,8 @@ impl RpcApi for GrpcClient {
     route!(get_fee_estimate_call, GetFeeEstimate);
     route!(get_fee_estimate_experimental_call, GetFeeEstimateExperimental);
     route!(get_current_block_color_call, GetCurrentBlockColor);
+    route!(get_utxo_return_address_call, GetUtxoReturnAddress);
+    route!(get_virtual_chain_from_block_v_2_call, GetVirtualChainFromBlockV2);
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
