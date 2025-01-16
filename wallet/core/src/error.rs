@@ -348,8 +348,32 @@ pub enum Error {
     #[error("Address not found")]
     AddressNotFound,
 
-    #[error("Something went wrong while generating commit reveal transaction batch")]
-    CommitRevealBatchGeneratorError,
+    #[error("Invalid payment destination: expected PaymentOutputs, found Change")]
+    CommitRevealInvalidPaymentDestination,
+
+    #[error("No payment outputs found in destination")]
+    CommitRevealEmptyPaymentOutputs,
+
+    #[error("Failed to generate redeem script")]
+    RevealRedeemScriptTemplateError,
+
+    #[error("Failed to generate PSKT: {0}")]
+    PSKTGenerationError(String),
+
+    #[error("Failed to sign commit transaction")]
+    CommitTransactionSigningError,
+
+    #[error("Failed to finalize PSKT")]
+    PSKTFinalizationError,
+
+    #[error("Failed to extract transaction ID from PSKT")]
+    CommitTransactionIdExtractionError,
+
+    #[error("No valid reveal address found for signing")]
+    NoQualifiedRevealSignerFound,
+
+    #[error("Failed to merge bundles")]
+    CommitRevealBundleMergeError,
 }
 
 impl From<Aborted> for Error {
