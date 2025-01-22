@@ -442,6 +442,7 @@ mod tests {
     use wasm_bindgen_test::wasm_bindgen_test;
     use workflow_wasm::serde::{from_value, to_value};
 
+    #[test]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_constructor() {
         let version = 0xc0de;
@@ -459,6 +460,7 @@ mod tests {
         assert_eq!(JsValue::from_str("string"), spk_js.js_typeof());
     }
 
+    #[test]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_js_spk_object() {
         let version = 0xc0de;
@@ -478,6 +480,7 @@ mod tests {
         assert_eq!(spk, actual);
     }
 
+    #[test]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_spk_object() {
         let version = 0xc0de;

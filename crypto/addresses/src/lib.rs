@@ -643,6 +643,7 @@ mod tests {
     use wasm_bindgen_test::wasm_bindgen_test;
     use workflow_wasm::{extensions::ObjectExtension, serde::from_value, serde::to_value};
 
+    #[test]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_constructor() {
         let str = "kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j";
@@ -654,6 +655,7 @@ mod tests {
         assert_eq!(a, from_value(value).unwrap());
     }
 
+    #[test]
     #[wasm_bindgen_test]
     pub fn test_wasm_js_serde_object() {
         let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
@@ -678,6 +680,7 @@ mod tests {
         assert_eq!(expected, actual);
     }
 
+    #[test]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_object() {
         use wasm_bindgen::convert::IntoWasmAbi;
