@@ -845,6 +845,7 @@ impl KaspadGoParams {
             max_block_level: self.MaxBlockLevel,
             pruning_proof_m: self.PruningProofM,
             payload_activation: ForkActivation::never(),
+            sig_op_on_fly: ForkActivation::never(),
         }
     }
 }

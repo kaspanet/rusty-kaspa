@@ -16,9 +16,14 @@ use crate::caches::Cache;
 use crate::data_stack::{DataStack, Stack};
 use crate::opcodes::{deserialize_next_opcode, OpCodeImplementation};
 use itertools::Itertools;
-use kaspa_consensus_core::hashing::sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues};
+use kaspa_consensus_core::hashing::sighash::{
+    calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues, SigHashReusedValuesUnsync,
+};
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
-use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
+use kaspa_consensus_core::tx::{
+    PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, UtxoEntry,
+    VerifiableTransaction,
+};
 use kaspa_txscript_errors::TxScriptError;
 use log::trace;
 use opcodes::codes::OpReturn;
@@ -72,6 +77,12 @@ enum ScriptSource<'a, T: VerifiableTransaction> {
     StandAloneScripts(Vec<&'a [u8]>),
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct SigOpOnFly {
+    pub sig_op_limit: u8,
+    pub sig_op_remaining: u8,
+}
+
 pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> {
     dstack: Stack,
     astack: Stack,
@@ -86,12 +97,43 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
 
     num_ops: i32,
     kip10_enabled: bool,
+    sig_op_on_fly: Option<SigOpOnFly>,
 }
 
 fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     script: &[u8],
 ) -> impl Iterator<Item = Result<DynOpcodeImplementation<T, Reused>, TxScriptError>> + '_ {
     script.iter().batching(|it| deserialize_next_opcode(it))
+}
+
+pub fn get_sig_op_count_via_simulation<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+    signature_script: &[u8],
+    prev_script_public_key: &ScriptPublicKey,
+    kip10_enabled: bool,
+) -> Result<u8, TxScriptError> {
+    // Ensure encapsulation of variables (no leaking between tests)
+    let mock_input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([
+                0xc9, 0x97, 0xa5, 0xe5, 0x6e, 0x10, 0x41, 0x02, 0xfa, 0x20, 0x9c, 0x6a, 0x85, 0x2d, 0xd9, 0x06, 0x60, 0xa2, 0x0b,
+                0x2d, 0x9c, 0x35, 0x24, 0x23, 0xed, 0xce, 0x25, 0x85, 0x7f, 0xcd, 0x37, 0x04,
+            ]),
+            index: 0,
+        },
+        signature_script: signature_script.to_vec(),
+        sequence: 4294967295,
+        sig_op_count: 255,
+    };
+
+    let tx = Transaction::new(1, vec![mock_input.clone()], vec![], 0, Default::default(), 0, vec![]);
+    let utxo_entry = UtxoEntry::new(0, prev_script_public_key.clone(), 0, false);
+    let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
+    let sig_cache = Cache::new(10_000);
+    let reused_values = SigHashReusedValuesUnsync::new();
+    let mut vm =
+        TxScriptEngine::from_transaction_input(&tx, &mock_input, 0, &utxo_entry, &reused_values, &sig_cache, kip10_enabled, true);
+    vm.execute()?;
+    Ok(vm.sig_op_required().unwrap())
 }
 
 #[must_use]
@@ -165,7 +207,16 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: vec![],
             num_ops: 0,
             kip10_enabled,
+            sig_op_on_fly: None,
         }
+    }
+
+    /// Returns the number of signature operations that were actually required during script execution.
+    /// Must only be called after script execution completes successfully.
+    ///
+    /// Returns the difference between the input's sig_op_limit and remaining sig ops.
+    pub fn sig_op_required(&self) -> Option<u8> {
+        self.sig_op_on_fly.map(|SigOpOnFly { sig_op_limit, sig_op_remaining }| sig_op_limit - sig_op_remaining)
     }
 
     /// Creates a new Script Engine for validating transaction input.
@@ -192,6 +243,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         reused_values: &'a Reused,
         sig_cache: &'a Cache<SigCacheKey, bool>,
         kip10_enabled: bool,
+        sig_op_on_fly: bool,
     ) -> Self {
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
@@ -207,6 +259,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             kip10_enabled,
+            sig_op_on_fly: sig_op_on_fly
+                .then_some(SigOpOnFly { sig_op_limit: input.sig_op_count, sig_op_remaining: input.sig_op_count }),
         }
     }
 
@@ -225,6 +279,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             kip10_enabled,
+            sig_op_on_fly: None, // todo?
         }
     }
 
@@ -405,8 +460,13 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         } else if num_sigs > num_keys {
             return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {num_sigs} > {num_keys}")));
         }
+        if let Some(SigOpOnFly { sig_op_remaining, sig_op_limit }) = &mut self.sig_op_on_fly {
+            let num_sigs =
+                num_sigs.try_into().map_err(|_| TxScriptError::NumberTooBig("Signatures count mustn't exceed 255".to_string()))?;
+            *sig_op_remaining =
+                sig_op_remaining.checked_sub(num_sigs).ok_or(TxScriptError::SigOpCountTooLow(num_sigs as u16, *sig_op_limit))?;
+        }
         let num_sigs = num_sigs as usize;
-
         let signatures = match self.dstack.len() >= num_sigs {
             true => self.dstack.split_off(self.dstack.len() - num_sigs),
             false => return Err(TxScriptError::InvalidStackOperation(num_sigs, self.dstack.len())),
@@ -611,16 +671,19 @@ mod tests {
 
             let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
             [false, true].into_iter().for_each(|kip10_enabled| {
-                let mut vm = TxScriptEngine::from_transaction_input(
-                    &populated_tx,
-                    &input,
-                    0,
-                    &utxo_entry,
-                    &reused_values,
-                    &sig_cache,
-                    kip10_enabled,
-                );
-                assert_eq!(vm.execute(), test.expected_result);
+                [false, true].into_iter().for_each(|sig_op_on_fly| {
+                    let mut vm = TxScriptEngine::from_transaction_input(
+                        &populated_tx,
+                        &input,
+                        0,
+                        &utxo_entry,
+                        &reused_values,
+                        &sig_cache,
+                        kip10_enabled,
+                        sig_op_on_fly,
+                    );
+                    assert_eq!(vm.execute(), test.expected_result);
+                });
             });
         }
     }
@@ -1045,7 +1108,7 @@ mod bitcoind_tests {
     }
 
     impl JsonTestRow {
-        fn test_row(&self, kip10_enabled: bool) -> Result<(), TestError> {
+        fn test_row(&self, kip10_enabled: bool, sig_op_on_fly: bool) -> Result<(), TestError> {
             // Parse test to objects
             let (sig_script, script_pub_key, expected_result) = match self.clone() {
                 JsonTestRow::Test(sig_script, sig_pub_key, _, expected_result) => (sig_script, sig_pub_key, expected_result),
@@ -1057,7 +1120,7 @@ mod bitcoind_tests {
                 }
             };
 
-            let result = Self::run_test(sig_script, script_pub_key, kip10_enabled);
+            let result = Self::run_test(sig_script, script_pub_key, kip10_enabled, sig_op_on_fly);
 
             match Self::result_name(result.clone()).contains(&expected_result.as_str()) {
                 true => Ok(()),
@@ -1065,7 +1128,7 @@ mod bitcoind_tests {
             }
         }
 
-        fn run_test(sig_script: String, script_pub_key: String, kip10_enabled: bool) -> Result<(), UnifiedError> {
+        fn run_test(sig_script: String, script_pub_key: String, kip10_enabled: bool, sig_op_on_fly: bool) -> Result<(), UnifiedError> {
             let script_sig = opcodes::parse_short_form(sig_script).map_err(UnifiedError::ScriptBuilderError)?;
             let script_pub_key =
                 ScriptPublicKey::from_vec(0, opcodes::parse_short_form(script_pub_key).map_err(UnifiedError::ScriptBuilderError)?);
@@ -1086,6 +1149,7 @@ mod bitcoind_tests {
                 &reused_values,
                 &sig_cache,
                 kip10_enabled,
+                sig_op_on_fly,
             );
             vm.execute().map_err(UnifiedError::TxScriptError)
         }
@@ -1189,16 +1253,18 @@ mod bitcoind_tests {
         // When KIP-10 is disabled (pre-activation), the new opcodes will return an InvalidOpcode error
         // and arithmetic is limited to 4 bytes. When enabled, scripts gain full access to transaction
         // data and 8-byte arithmetic capabilities.
-        for (file_name, kip10_enabled) in [("script_tests.json", false), ("script_tests-kip10.json", true)] {
-            let file =
-                File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name)).expect("Could not find test file");
-            let reader = BufReader::new(file);
+        for sig_op_on_fly in [false, true] {
+            for (file_name, kip10_enabled) in [("script_tests.json", false), ("script_tests-kip10.json", true)] {
+                let file = File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name))
+                    .expect("Could not find test file");
+                let reader = BufReader::new(file);
 
-            // Read the JSON contents of the file as an instance of `User`.
-            let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
-            for row in tests {
-                if let Err(error) = row.test_row(kip10_enabled) {
-                    panic!("Test: {:?} failed for {}: {:?}", row.clone(), file_name, error);
+                // Read the JSON contents of the file as an instance of `User`.
+                let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
+                for row in tests {
+                    if let Err(error) = row.test_row(kip10_enabled, sig_op_on_fly) {
+                        panic!("Test: {:?} failed for {}: {:?}", row.clone(), file_name, error);
+                    }
                 }
             }
         }

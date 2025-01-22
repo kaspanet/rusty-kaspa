@@ -188,6 +188,7 @@ impl Mempool {
                 ScriptClass::PubKey => {}
                 ScriptClass::PubKeyECDSA => {}
                 ScriptClass::ScriptHash => {
+                    // todo relax due to on fly calculation
                     let num_sig_ops = get_sig_op_count::<PopulatedTransaction, SigHashReusedValuesUnsync>(
                         &input.signature_script,
                         &entry.script_public_key,

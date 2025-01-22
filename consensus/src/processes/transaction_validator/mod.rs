@@ -31,6 +31,7 @@ pub struct TransactionValidator {
     /// KIP-10 hardfork DAA score
     kip10_activation: ForkActivation,
     payload_activation: ForkActivation,
+    sig_op_on_fly: ForkActivation,
 }
 
 impl TransactionValidator {
@@ -48,6 +49,7 @@ impl TransactionValidator {
         storage_mass_activation: ForkActivation,
         kip10_activation: ForkActivation,
         payload_activation: ForkActivation,
+        sig_op_on_fly: ForkActivation,
     ) -> Self {
         Self {
             max_tx_inputs,
@@ -62,6 +64,7 @@ impl TransactionValidator {
             storage_mass_activation,
             kip10_activation,
             payload_activation,
+            sig_op_on_fly,
         }
     }
 
@@ -88,6 +91,7 @@ impl TransactionValidator {
             storage_mass_activation: ForkActivation::never(),
             kip10_activation: ForkActivation::never(),
             payload_activation: ForkActivation::never(),
+            sig_op_on_fly: ForkActivation::never(),
         }
     }
 }
