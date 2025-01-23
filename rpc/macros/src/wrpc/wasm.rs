@@ -136,6 +136,7 @@ impl Parse for RpcSubscriptions {
 impl ToTokens for RpcSubscriptions {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let mut targets = Vec::new();
+        let regex = Regex::new(r"^Notify").unwrap();
 
         for handler in self.handlers.elems.iter() {
             let (name, docs) = match handler {
@@ -146,7 +147,6 @@ impl ToTokens for RpcSubscriptions {
             };
 
             let name = format!("Notify{}", name.as_str());
-            let regex = Regex::new(r"^Notify").unwrap();
             let blank = regex.replace(&name, "");
             let subscribe = regex.replace(&name, "Subscribe");
             let unsubscribe = regex.replace(&name, "Unsubscribe");
