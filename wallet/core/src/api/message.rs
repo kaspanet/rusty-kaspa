@@ -513,6 +513,35 @@ pub struct AccountsSendResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AccountsPskbSignRequest {
+    pub account_id: AccountId,
+    pub pskb: String,
+    pub wallet_secret: Secret,
+    pub payment_secret: Option<Secret>,
+    pub sign_for_address: Option<Address>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsPskbSignResponse {
+    pub pskb: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsPskbBroadcastRequest {
+    pub account_id: AccountId,
+    pub pskb: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsPskbBroadcastResponse {
+    pub transaction_ids: Vec<TransactionId>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AccountsTransferRequest {
     pub source_account_id: AccountId,
     pub destination_account_id: AccountId,
