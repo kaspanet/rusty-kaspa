@@ -133,7 +133,7 @@ pub struct Params {
 
     /// Activation rules for when to enable using the payload field in transactions
     pub payload_activation: ForkActivation,
-    pub sig_op_on_fly: ForkActivation,
+    pub runtime_sig_op_counting: ForkActivation,
 }
 
 fn unix_now() -> u64 {
@@ -412,7 +412,7 @@ pub const MAINNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 
     payload_activation: ForkActivation::never(),
-    sig_op_on_fly: ForkActivation::never(),
+    runtime_sig_op_counting: ForkActivation::never(),
 };
 
 pub const TESTNET_PARAMS: Params = Params {
@@ -478,7 +478,7 @@ pub const TESTNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 
     payload_activation: ForkActivation::never(),
-    sig_op_on_fly: ForkActivation::never(),
+    runtime_sig_op_counting: ForkActivation::never(),
 };
 
 pub const TESTNET11_PARAMS: Params = Params {
@@ -543,7 +543,7 @@ pub const TESTNET11_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 250,
 
-    sig_op_on_fly: ForkActivation::never(),
+    runtime_sig_op_counting: ForkActivation::never(),
 };
 
 pub const SIMNET_PARAMS: Params = Params {
@@ -600,7 +600,7 @@ pub const SIMNET_PARAMS: Params = Params {
     max_block_level: 250,
 
     payload_activation: ForkActivation::never(),
-    sig_op_on_fly: ForkActivation::never(),
+    runtime_sig_op_counting: ForkActivation::never(),
 };
 
 pub const DEVNET_PARAMS: Params = Params {
@@ -660,5 +660,5 @@ pub const DEVNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 
     payload_activation: ForkActivation::never(),
-    sig_op_on_fly: ForkActivation::never(),
+    runtime_sig_op_counting: ForkActivation::never(),
 };

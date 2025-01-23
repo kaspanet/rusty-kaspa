@@ -74,7 +74,7 @@ pub enum TxScriptError {
     #[error(transparent)]
     Serialization(#[from] SerializationError),
     #[error("sig op count exceed passed limit of {1}")]
-    SigOpCountTooLow(u16, u8),
+    ExceededSigOpLimit(u16, u8),
 }
 
 #[derive(Error, PartialEq, Eq, Debug, Clone, Copy)]

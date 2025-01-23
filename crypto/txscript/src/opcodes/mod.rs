@@ -3,8 +3,8 @@ mod macros;
 
 use crate::{
     data_stack::{DataStack, Kip10I64, OpcodeData},
-    ScriptSource, SigOpOnFly, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE,
-    SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
+    RuntimeSigOpCounter, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM,
+    NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
 };
 use blake2b_simd::Params;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
@@ -720,8 +720,8 @@ opcode_list! {
         match sig.pop() {
             Some(typ) => {
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
-                if let Some(SigOpOnFly{ sig_op_limit, sig_op_remaining} ) = &mut vm.sig_op_on_fly {
-                   *sig_op_remaining = sig_op_remaining.checked_sub(1).ok_or(TxScriptError::SigOpCountTooLow(*sig_op_limit as u16 + 1, *sig_op_limit))?;
+                if let Some(RuntimeSigOpCounter{ sig_op_limit, sig_op_remaining} ) = &mut vm.runtime_sig_op_counting {
+                   *sig_op_remaining = sig_op_remaining.checked_sub(1).ok_or(TxScriptError::ExceededSigOpLimit(*sig_op_limit as u16 + 1, *sig_op_limit))?;
                 }
 
                 match vm.check_ecdsa_signature(hash_type, key.as_slice(), sig.as_slice()) {
@@ -747,8 +747,8 @@ opcode_list! {
         match sig.pop() {
             Some(typ) => {
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
-                if let Some(SigOpOnFly{ sig_op_limit, sig_op_remaining} ) = &mut vm.sig_op_on_fly {
-                   *sig_op_remaining = sig_op_remaining.checked_sub(1).ok_or(TxScriptError::SigOpCountTooLow(*sig_op_limit as u16 + 1, *sig_op_limit))?;
+                if let Some(RuntimeSigOpCounter{ sig_op_limit, sig_op_remaining} ) = &mut vm.runtime_sig_op_counting {
+                   *sig_op_remaining = sig_op_remaining.checked_sub(1).ok_or(TxScriptError::ExceededSigOpLimit(*sig_op_limit as u16 + 1, *sig_op_limit))?;
                 }
                 match vm.check_schnorr_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(valid) => {
@@ -3356,7 +3356,7 @@ mod test {
                 let sig_cache = Cache::new(10_000);
                 let reused_values = SigHashReusedValuesUnsync::new();
 
-                for sig_op_on_fly in [true, false] {
+                for runtime_sig_op_counting in [true, false] {
                     // Test with KIP-10 enabled and disabled
                     for kip10_enabled in [true, false] {
                         let mut vm = TxScriptEngine::from_transaction_input(
@@ -3367,7 +3367,7 @@ mod test {
                             &reused_values,
                             &sig_cache,
                             kip10_enabled,
-                            sig_op_on_fly,
+                            runtime_sig_op_counting,
                         );
 
                         let op_input_count = opcodes::OpTxInputCount::empty().expect("Should accept empty");

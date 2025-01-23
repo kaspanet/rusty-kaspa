@@ -77,9 +77,15 @@ enum ScriptSource<'a, T: VerifiableTransaction> {
     StandAloneScripts(Vec<&'a [u8]>),
 }
 
+/// RuntimeSigOpCounter represents the state tracking of signature operations during script execution.
+/// Unlike the static counting approach which counts all possible signature operations,
+/// this tracks only the actually executed signature operations, leading to more accurate
+/// mass calculations and potentially lower fees for conditional scripts.
 #[derive(Debug, Clone, Copy)]
-pub struct SigOpOnFly {
+pub struct RuntimeSigOpCounter {
+    /// Maximum number of signature operations allowed for this input
     pub sig_op_limit: u8,
+    /// Remaining signature operations that can be executed
     pub sig_op_remaining: u8,
 }
 
@@ -97,7 +103,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
 
     num_ops: i32,
     kip10_enabled: bool,
-    sig_op_on_fly: Option<SigOpOnFly>,
+    runtime_sig_op_counting: Option<RuntimeSigOpCounter>,
 }
 
 fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
@@ -207,7 +213,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: vec![],
             num_ops: 0,
             kip10_enabled,
-            sig_op_on_fly: None,
+            runtime_sig_op_counting: None,
         }
     }
 
@@ -216,7 +222,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     ///
     /// Returns the difference between the input's sig_op_limit and remaining sig ops.
     pub fn sig_op_required(&self) -> Option<u8> {
-        self.sig_op_on_fly.map(|SigOpOnFly { sig_op_limit, sig_op_remaining }| sig_op_limit - sig_op_remaining)
+        self.runtime_sig_op_counting.map(|RuntimeSigOpCounter { sig_op_limit, sig_op_remaining }| sig_op_limit - sig_op_remaining)
     }
 
     /// Creates a new Script Engine for validating transaction input.
@@ -243,7 +249,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         reused_values: &'a Reused,
         sig_cache: &'a Cache<SigCacheKey, bool>,
         kip10_enabled: bool,
-        sig_op_on_fly: bool,
+        runtime_sig_op_counting: bool,
     ) -> Self {
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
@@ -259,8 +265,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             kip10_enabled,
-            sig_op_on_fly: sig_op_on_fly
-                .then_some(SigOpOnFly { sig_op_limit: input.sig_op_count, sig_op_remaining: input.sig_op_count }),
+            runtime_sig_op_counting: runtime_sig_op_counting
+                .then_some(RuntimeSigOpCounter { sig_op_limit: input.sig_op_count, sig_op_remaining: input.sig_op_count }),
         }
     }
 
@@ -279,7 +285,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             kip10_enabled,
-            sig_op_on_fly: None, // todo?
+            runtime_sig_op_counting: None, // todo?
         }
     }
 
@@ -460,11 +466,11 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         } else if num_sigs > num_keys {
             return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {num_sigs} > {num_keys}")));
         }
-        if let Some(SigOpOnFly { sig_op_remaining, sig_op_limit }) = &mut self.sig_op_on_fly {
+        if let Some(RuntimeSigOpCounter { sig_op_remaining, sig_op_limit }) = &mut self.runtime_sig_op_counting {
             let num_sigs =
                 num_sigs.try_into().map_err(|_| TxScriptError::NumberTooBig("Signatures count mustn't exceed 255".to_string()))?;
             *sig_op_remaining =
-                sig_op_remaining.checked_sub(num_sigs).ok_or(TxScriptError::SigOpCountTooLow(num_sigs as u16, *sig_op_limit))?;
+                sig_op_remaining.checked_sub(num_sigs).ok_or(TxScriptError::ExceededSigOpLimit(num_sigs as u16, *sig_op_limit))?;
         }
         let num_sigs = num_sigs as usize;
         let signatures = match self.dstack.len() >= num_sigs {
@@ -671,7 +677,7 @@ mod tests {
 
             let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
             [false, true].into_iter().for_each(|kip10_enabled| {
-                [false, true].into_iter().for_each(|sig_op_on_fly| {
+                [false, true].into_iter().for_each(|runtime_sig_op_counting| {
                     let mut vm = TxScriptEngine::from_transaction_input(
                         &populated_tx,
                         &input,
@@ -680,7 +686,7 @@ mod tests {
                         &reused_values,
                         &sig_cache,
                         kip10_enabled,
-                        sig_op_on_fly,
+                        runtime_sig_op_counting,
                     );
                     assert_eq!(vm.execute(), test.expected_result);
                 });
@@ -1108,7 +1114,7 @@ mod bitcoind_tests {
     }
 
     impl JsonTestRow {
-        fn test_row(&self, kip10_enabled: bool, sig_op_on_fly: bool) -> Result<(), TestError> {
+        fn test_row(&self, kip10_enabled: bool, runtime_sig_op_counting: bool) -> Result<(), TestError> {
             // Parse test to objects
             let (sig_script, script_pub_key, expected_result) = match self.clone() {
                 JsonTestRow::Test(sig_script, sig_pub_key, _, expected_result) => (sig_script, sig_pub_key, expected_result),
@@ -1120,7 +1126,7 @@ mod bitcoind_tests {
                 }
             };
 
-            let result = Self::run_test(sig_script, script_pub_key, kip10_enabled, sig_op_on_fly);
+            let result = Self::run_test(sig_script, script_pub_key, kip10_enabled, runtime_sig_op_counting);
 
             match Self::result_name(result.clone()).contains(&expected_result.as_str()) {
                 true => Ok(()),
@@ -1128,7 +1134,12 @@ mod bitcoind_tests {
             }
         }
 
-        fn run_test(sig_script: String, script_pub_key: String, kip10_enabled: bool, sig_op_on_fly: bool) -> Result<(), UnifiedError> {
+        fn run_test(
+            sig_script: String,
+            script_pub_key: String,
+            kip10_enabled: bool,
+            runtime_sig_op_counting: bool,
+        ) -> Result<(), UnifiedError> {
             let script_sig = opcodes::parse_short_form(sig_script).map_err(UnifiedError::ScriptBuilderError)?;
             let script_pub_key =
                 ScriptPublicKey::from_vec(0, opcodes::parse_short_form(script_pub_key).map_err(UnifiedError::ScriptBuilderError)?);
@@ -1149,7 +1160,7 @@ mod bitcoind_tests {
                 &reused_values,
                 &sig_cache,
                 kip10_enabled,
-                sig_op_on_fly,
+                runtime_sig_op_counting,
             );
             vm.execute().map_err(UnifiedError::TxScriptError)
         }
@@ -1253,7 +1264,7 @@ mod bitcoind_tests {
         // When KIP-10 is disabled (pre-activation), the new opcodes will return an InvalidOpcode error
         // and arithmetic is limited to 4 bytes. When enabled, scripts gain full access to transaction
         // data and 8-byte arithmetic capabilities.
-        for sig_op_on_fly in [false, true] {
+        for runtime_sig_op_counting in [false, true] {
             for (file_name, kip10_enabled) in [("script_tests.json", false), ("script_tests-kip10.json", true)] {
                 let file = File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name))
                     .expect("Could not find test file");
@@ -1262,7 +1273,7 @@ mod bitcoind_tests {
                 // Read the JSON contents of the file as an instance of `User`.
                 let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
                 for row in tests {
-                    if let Err(error) = row.test_row(kip10_enabled, sig_op_on_fly) {
+                    if let Err(error) = row.test_row(kip10_enabled, runtime_sig_op_counting) {
                         panic!("Test: {:?} failed for {}: {:?}", row.clone(), file_name, error);
                     }
                 }
