@@ -2,13 +2,13 @@ use std::ops::Deref;
 
 use super::error::*;
 use super::result::*;
-use crate::bundle::Bundle;
+use crate::bundle::Bundle as Inner;
 use crate::pskt::Combiner;
 use crate::pskt::Constructor;
 use crate::pskt::Creator;
 use crate::pskt::Extractor;
 use crate::pskt::Finalizer;
-use crate::pskt::Inner;
+use crate::pskt::Inner as PSKTInner;
 use crate::pskt::Signer;
 use crate::pskt::Updater;
 use crate::pskt::PSKT as Native;
@@ -17,20 +17,20 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(getter_with_clone)]
 #[derive(Debug)]
-pub struct PsktBundle(Bundle);
+pub struct PSKB(Inner);
 
-impl Clone for Bundle {
+impl Clone for PSKB {
     fn clone(&self) -> Self {
-        Bundle(self.0.clone())
+        PSKB(Inner(self.0.0.clone()))
     }
 }
 
 #[wasm_bindgen]
-impl PsktBundle {
+impl PSKB {
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Result<PsktBundle> {
-        let bundle = Bundle::new();
-        Ok(PsktBundle(bundle))
+    pub fn new() -> Result<PSKB> {
+        let bundle = Inner::new();
+        Ok(PSKB(bundle))
     }
 
     #[wasm_bindgen]
@@ -39,9 +39,9 @@ impl PsktBundle {
     }
 
     #[wasm_bindgen]
-    pub fn deserialize(hex_data: &str) -> Result<PsktBundle> {
-        let bundle = Bundle::deserialize(hex_data).map_err(Error::from)?;
-        Ok(PsktBundle(bundle))
+    pub fn deserialize(hex_data: &str) -> Result<PSKB> {
+        let bundle = Inner::deserialize(hex_data).map_err(Error::from)?;
+        Ok(PSKB(bundle))
     }
 
     #[wasm_bindgen]
@@ -57,7 +57,7 @@ impl PsktBundle {
         println!("{}", payload_str);
 
         // Try multiple deserialization methods
-        if let Ok(inner) = serde_wasm_bindgen::from_value::<Inner>(payload.clone()) {
+        if let Ok(inner) = serde_wasm_bindgen::from_value::<PSKTInner>(payload.clone()) {
             self.0.add_inner(inner);
             Ok(())
         } else if let Ok(state) = serde_wasm_bindgen::from_value::<State>(payload) {
@@ -90,25 +90,25 @@ impl PsktBundle {
     }
 
     #[wasm_bindgen]
-    pub fn merge(&mut self, other: &PsktBundle) {
-        self.0.merge(other.0.clone());
+    pub fn merge(&mut self, other: &PSKB) {
+        self.0.merge(other.clone().0);
     }
 }
 
-impl From<Bundle> for PsktBundle {
-    fn from(bundle: Bundle) -> Self {
-        PsktBundle(bundle)
+impl From<Inner> for PSKB {
+    fn from(bundle: Inner) -> Self {
+        PSKB(bundle)
     }
 }
 
-impl From<PsktBundle> for Bundle {
-    fn from(bundle: PsktBundle) -> Self {
+impl From<PSKB> for Inner {
+    fn from(bundle: PSKB) -> Self {
         bundle.0
     }
 }
 
-impl AsRef<Bundle> for PsktBundle {
-    fn as_ref(&self) -> &Bundle {
+impl AsRef<Inner> for PSKB {
+    fn as_ref(&self) -> &Inner {
         &self.0
     }
 }
@@ -130,20 +130,20 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn test_pskt_bundle_creation() {
-        let bundle = PsktBundle::new().expect("Failed to create PsktBundle");
+        let bundle = PSKB::new().expect("Failed to create PSKB");
         assert_eq!(bundle.pskt_count(), 0, "New bundle should have zero PSKTs");
     }
 
     #[wasm_bindgen_test]
     fn test_empty_pskt_bundle_serialize_deserialize() {
         // Create a bundle
-        let mut bundle: PsktBundle = PsktBundle::new().expect("Failed to create PsktBundle");
+        let mut bundle = PSKB::new().expect("Failed to create PsktBundle");
 
         // Serialize the bundle
         let serialized = bundle.serialize().expect("Failed to serialize bundle");
 
         // Deserialize the bundle
-        let deserialized_bundle = PsktBundle::deserialize(&serialized).expect("Failed to deserialize bundle");
+        let deserialized_bundle = PSKB::deserialize(&serialized).expect("Failed to deserialize bundle");
 
         // Check that the deserialized bundle has the same number of PSKTs
         assert_eq!(bundle.pskt_count(), deserialized_bundle.pskt_count(), "Deserialized bundle should have same PSKT count");
@@ -198,14 +198,14 @@ mod tests {
             ]
         });
         let json_str = pskt_json.to_string();
-        let inner: Inner = serde_json::from_str(&json_str).expect("Failed to parse JSON");
+        let inner: PSKTInner = serde_json::from_str(&json_str).expect("Failed to parse JSON");
 
         let native = Native::<Finalizer>::from(inner);
 
         let wasm_pskt = PSKT::from(State::Finalizer(native));
 
         // Create a bundle
-        let mut bundle: PsktBundle = PsktBundle::new().expect("Failed to create PsktBundle");
+        let mut bundle = PSKB::new().expect("Failed to create PsktBundle");
         bundle.add_pskt(&wasm_pskt).expect("add pskt");
 
         // Serialize the bundle
@@ -214,7 +214,7 @@ mod tests {
         console_log!("{}", serialized);
 
         // Deserialize the bundle
-        let deserialized_bundle = PsktBundle::deserialize(&serialized).expect("Failed to deserialize bundle");
+        let deserialized_bundle = PSKB::deserialize(&serialized).expect("Failed to deserialize bundle");
 
         // Check that the deserialized bundle has the same number of PSKTs
         assert_eq!(bundle.pskt_count(), deserialized_bundle.pskt_count(), "Deserialized bundle should have same PSKT count");
@@ -223,7 +223,7 @@ mod tests {
     fn test_deser() {
         let pskb = "PSKB5b7b22676c6f62616c223a7b2276657273696f6e223a302c22747856657273696f6e223a302c2266616c6c6261636b4c6f636b54696d65223a6e756c6c2c22696e707574734d6f6469666961626c65223a66616c73652c226f7574707574734d6f6469666961626c65223a66616c73652c22696e707574436f756e74223a302c226f7574707574436f756e74223a302c227870756273223a7b7d2c226964223a6e756c6c2c2270726f70726965746172696573223a7b7d7d2c22696e70757473223a5b7b227574786f456e747279223a7b22616d6f756e74223a3436383932383838372c227363726970745075626c69634b6579223a22303030303230326438613134313465363265303831666236626366363434653634386331383036316332383535353735636163373232663836333234636164393164643066616163222c22626c6f636b44616153636f7265223a38343938313138362c226973436f696e62617365223a66616c73657d2c2270726576696f75734f7574706f696e74223a7b227472616e73616374696f6e4964223a2236393135356430653333383065383831366466666532363731323934616431303466306233373736663335626365316132326630633231623166393038353030222c22696e646578223a307d2c2273657175656e6365223a6e756c6c2c226d696e54696d65223a6e756c6c2c227061727469616c53696773223a7b7d2c227369676861736854797065223a312c2272656465656d536372697074223a6e756c6c2c227369674f70436f756e74223a312c22626970333244657269766174696f6e73223a7b7d2c2266696e616c536372697074536967223a6e756c6c2c2270726f70726965746172696573223a7b7d7d5d2c226f757470757473223a5b7b22616d6f756e74223a313530303030303030302c227363726970745075626c69634b6579223a2230303030222c2272656465656d536372697074223a6e756c6c2c22626970333244657269766174696f6e73223a7b7d2c2270726f70726965746172696573223a7b7d7d5d7d5d";
         // Deserialize the bundle
-        let deserialized_bundle = PsktBundle::deserialize(&pskb).expect("Failed to deserialize bundle");
+        let deserialized_bundle = PSKB::deserialize(&pskb).expect("Failed to deserialize bundle");
         assert_eq!(deserialized_bundle.pskt_count(), 1, "Should be length 1");
         let inner = deserialized_bundle.0.0.first().expect("pskt after deserialize");
         assert_eq!(inner.inputs.len(), 1);

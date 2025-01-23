@@ -3443,6 +3443,8 @@ dependencies = [
  "serde_repr",
  "thiserror",
  "wasm-bindgen",
+ "wasm-bindgen-test",
+ "web-sys",
  "workflow-wasm",
 ]
 
