@@ -432,6 +432,18 @@ impl WalletApi for super::Wallet {
         Ok(AccountsPskbBroadcastResponse { transaction_ids })
     }
 
+    async fn accounts_pskb_send_call(self: Arc<Self>, request: AccountsPskbSendRequest) -> Result<AccountsPskbSendResponse> {
+        let AccountsPskbSendRequest { account_id, pskb, wallet_secret, payment_secret, sign_for_address } = request;
+        let pskb = Bundle::deserialize(&pskb)?;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
+        let pskb = account.clone().pskb_sign(&pskb, wallet_secret, payment_secret, sign_for_address.as_ref()).await?;
+        let transaction_ids = account.pskb_broadcast(&pskb).await?;
+        Ok(AccountsPskbSendResponse { transaction_ids })
+    }
+
     async fn accounts_transfer_call(self: Arc<Self>, request: AccountsTransferRequest) -> Result<AccountsTransferResponse> {
         let AccountsTransferRequest {
             source_account_id,

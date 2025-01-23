@@ -1479,7 +1479,7 @@ try_from! ( args: IAccountsPskbSignRequest, AccountsPskbSignRequest, {
     let payment_secret = args.try_get_secret("paymentSecret")?;
     let pskb = args.get_string("pskb")?;
     let sign_for_address = match args.try_get_value("signForAddress")? {
-        Some(v) => Some(     Address::try_cast_from(&v)?.into_owned()),
+        Some(v) => Some(Address::try_cast_from(&v)?.into_owned()),
         None => None,
     };
     Ok(AccountsPskbSignRequest { account_id, wallet_secret, payment_secret, pskb, sign_for_address })
@@ -1547,6 +1547,73 @@ declare! {
 }
 
 try_from! ( args: AccountsPskbBroadcastResponse, IAccountsPskbBroadcastResponse, {
+    Ok(to_value(&args)?.into())
+});
+
+declare! {
+    IAccountsPskbSendRequest,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsPskbSendRequest {
+        /**
+         * Hex identifier of the account.
+         */
+        accountId : HexString;
+        /**
+         * Wallet encryption secret.
+         */
+        walletSecret : string;
+        /**
+         * Optional key encryption secret or BIP39 passphrase.
+         */
+        paymentSecret? : string;
+
+        /**
+         * PSKB to sign.
+         */
+        pskb : string;
+
+        /**
+         * Address to sign for.
+         */
+        signForAddress? : Address | string;
+    }
+    "#,
+}
+
+try_from! ( args: IAccountsPskbSendRequest, AccountsPskbSendRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let wallet_secret = args.get_secret("walletSecret")?;
+    let payment_secret = args.try_get_secret("paymentSecret")?;
+    let pskb = args.get_string("pskb")?;
+    let sign_for_address = match args.try_get_value("signForAddress")? {
+        Some(v) => Some(Address::try_cast_from(&v)?.into_owned()),
+        None => None,
+    };
+    Ok(AccountsPskbSendRequest { account_id, wallet_secret, payment_secret, pskb, sign_for_address })
+});
+
+// ---
+
+declare! {
+    IAccountsPskbSendResponse,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsPskbSendResponse {
+        transactionIds : HexString[];
+    }
+    "#,
+}
+
+try_from! ( args: AccountsPskbSendResponse, IAccountsPskbSendResponse, {
     Ok(to_value(&args)?.into())
 });
 
