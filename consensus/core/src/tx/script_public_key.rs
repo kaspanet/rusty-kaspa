@@ -405,7 +405,9 @@ impl TryCastFromJs for ScriptPublicKey {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_arch = "wasm32")]
     use js_sys::Object;
+    #[cfg(target_arch = "wasm32")]
     use wasm_bindgen::__rt::IntoJsResult;
 
     #[test]
@@ -438,10 +440,14 @@ mod tests {
         assert_eq!(spk, spk2);
     }
 
+    #[cfg(target_arch = "wasm32")]
     use wasm_bindgen::convert::IntoWasmAbi;
+    #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::wasm_bindgen_test;
+    #[cfg(target_arch = "wasm32")]
     use workflow_wasm::serde::{from_value, to_value};
 
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_constructor() {
         let version = 0xc0de;
@@ -459,6 +465,7 @@ mod tests {
         assert_eq!(JsValue::from_str("string"), spk_js.js_typeof());
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_js_spk_object() {
         let version = 0xc0de;
@@ -478,6 +485,7 @@ mod tests {
         assert_eq!(spk, actual);
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_spk_object() {
         let version = 0xc0de;
