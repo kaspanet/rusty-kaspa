@@ -9,6 +9,7 @@ use crate::tx::PaymentOutput;
 use crate::tx::PaymentOutputs;
 use futures::stream;
 use kaspa_bip32::{DerivationPath, KeyFingerprint, PrivateKey};
+use kaspa_consensus_client::TransactionOutput;
 use kaspa_consensus_client::UtxoEntry as ClientUTXO;
 use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
 use kaspa_consensus_core::tx::VerifiableTransaction;
@@ -22,6 +23,7 @@ use kaspa_wallet_pskt::bundle::{script_sig_to_address, unlock_utxo_outputs_as_ba
 use kaspa_wallet_pskt::prelude::lock_script_sig_templating_bytes;
 use kaspa_wallet_pskt::prelude::KeySource;
 use kaspa_wallet_pskt::prelude::{Finalizer, Inner, SignInputOk, Signature, Signer};
+use kaspa_wallet_pskt::pskt::Output;
 pub use kaspa_wallet_pskt::pskt::{Creator, PSKT};
 use secp256k1::schnorr;
 use secp256k1::{Message, PublicKey};
@@ -303,25 +305,31 @@ pub fn pskt_to_pending_transaction(
 
     let inner_pskt = finalized_pskt.deref().clone();
 
-    let utxo_entries_ref: Vec<UtxoEntryReference> = inner_pskt
+    let (utxo_entries_ref, aggregate_input_value): (Vec<UtxoEntryReference>, u64) = inner_pskt
         .inputs
         .iter()
         .filter_map(|input| {
             if let Some(ue) = input.clone().utxo_entry {
-                return Some(UtxoEntryReference {
-                    utxo: Arc::new(ClientUTXO {
-                        address: Some(extract_script_pub_key_address(&ue.script_public_key, network_id.into()).unwrap()),
-                        amount: ue.amount,
-                        outpoint: input.previous_outpoint.into(),
-                        script_public_key: ue.script_public_key,
-                        block_daa_score: ue.block_daa_score,
-                        is_coinbase: ue.is_coinbase,
-                    }),
-                });
+                return Some((
+                    UtxoEntryReference {
+                        utxo: Arc::new(ClientUTXO {
+                            address: Some(extract_script_pub_key_address(&ue.script_public_key, network_id.into()).unwrap()),
+                            amount: ue.amount,
+                            outpoint: input.previous_outpoint.into(),
+                            script_public_key: ue.script_public_key,
+                            block_daa_score: ue.block_daa_score,
+                            is_coinbase: ue.is_coinbase,
+                        }),
+                    },
+                    ue.amount,
+                ));
             }
             None
         })
-        .collect();
+        .fold((Vec::new(), 0), |(mut vec, sum), (entry, amount)| {
+            vec.push(entry);
+            (vec, sum + amount)
+        });
 
     let output: Vec<kaspa_consensus_core::tx::TransactionOutput> = signed_tx.outputs.clone();
     let recipient = extract_script_pub_key_address(&output[0].script_public_key, network_id.into())?;
@@ -337,7 +345,7 @@ pub fn pskt_to_pending_transaction(
         multiplexer: None,
         sig_op_count: 1,
         minimum_signatures: 1,
-        change_address,
+        change_address: change_address.clone(),
         utxo_iterator,
         priority_utxo_entries: None,
         source_utxo_context,
@@ -351,6 +359,24 @@ pub fn pskt_to_pending_transaction(
     // Create the Generator
     let generator = Generator::try_new(settings, None, None)?;
 
+    let aggregate_output_value = output.clone().iter().map(|output| output.value).sum::<u64>();
+
+    let (change_output_index, change_output_value) = output
+        .iter()
+        .enumerate()
+        .find_map(|(idx, output)| {
+            if let Ok(address) = extract_script_pub_key_address(&output.script_public_key, change_address.prefix) {
+                if address == change_address {
+                    Some((Some(idx), output.value))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .unwrap_or((None, 0));
+
     // Create PendingTransaction (WIP)
     let pending_tx = PendingTransaction::try_new(
         &generator,
@@ -358,10 +384,10 @@ pub fn pskt_to_pending_transaction(
         utxo_entries_ref.clone(),
         vec![],
         None,
-        None,
-        0,
-        0,
-        0,
+        change_output_index,
+        change_output_value,
+        aggregate_input_value,
+        aggregate_output_value,
         1,
         0,
         0,
