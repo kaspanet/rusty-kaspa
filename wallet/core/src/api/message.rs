@@ -513,6 +513,51 @@ pub struct AccountsSendResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AccountsPskbSignRequest {
+    pub account_id: AccountId,
+    pub pskb: String,
+    pub wallet_secret: Secret,
+    pub payment_secret: Option<Secret>,
+    pub sign_for_address: Option<Address>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsPskbSignResponse {
+    pub pskb: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsPskbBroadcastRequest {
+    pub account_id: AccountId,
+    pub pskb: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsPskbBroadcastResponse {
+    pub transaction_ids: Vec<TransactionId>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsPskbSendRequest {
+    pub account_id: AccountId,
+    pub pskb: String,
+    pub wallet_secret: Secret,
+    pub payment_secret: Option<Secret>,
+    pub sign_for_address: Option<Address>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsPskbSendResponse {
+    pub transaction_ids: Vec<TransactionId>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AccountsTransferRequest {
     pub source_account_id: AccountId,
     pub destination_account_id: AccountId,
@@ -679,7 +724,7 @@ pub struct AccountsCommitRevealManualRequest {
     pub wallet_secret: Secret,
     pub payment_secret: Option<Secret>,
     pub fee_rate: Option<f64>,
-    pub reveal_fee_sompi: Option<u64>,
+    pub reveal_fee_sompi: u64,
     pub payload: Option<Vec<u8>>,
 }
 
@@ -725,7 +770,7 @@ pub struct AccountsCommitRevealRequest {
     pub commit_amount_sompi: u64,
     pub payment_secret: Option<Secret>,
     pub fee_rate: Option<f64>,
-    pub reveal_fee_sompi: Option<u64>,
+    pub reveal_fee_sompi: u64,
     pub payload: Option<Vec<u8>>,
 }
 

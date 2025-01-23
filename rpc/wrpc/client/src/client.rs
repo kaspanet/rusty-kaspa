@@ -644,6 +644,7 @@ impl RpcApi for KaspaRpcClient {
             GetSubnetwork,
             GetSyncStatus,
             GetSystemInfo,
+            GetUtxoReturnAddress,
             GetUtxosByAddresses,
             GetVirtualChainFromBlock,
             ResolveFinalityConflict,

@@ -389,7 +389,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         wallet_secret: Secret,
         payment_secret: Option<Secret>,
         fee_rate: Option<f64>,
-        reveal_fee_sompi: Option<u64>,
+        reveal_fee_sompi: u64,
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
     ) -> Result<Bundle, Error> {
@@ -415,7 +415,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         payment_secret: Option<Secret>,
         commit_amount_sompi: u64,
         fee_rate: Option<f64>,
-        reveal_fee_sompi: Option<u64>,
+        reveal_fee_sompi: u64,
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
     ) -> Result<Bundle, Error> {
@@ -484,7 +484,8 @@ pub trait Account: AnySync + Send + Sync + 'static {
             match result {
                 Ok(pskt) => {
                     let change = self.change_address()?;
-                    let transaction = pskt_to_pending_transaction(pskt, self.wallet().network_id()?, change)?;
+                    let transaction =
+                        pskt_to_pending_transaction(pskt, self.wallet().network_id()?, change, self.utxo_context().clone().into())?;
                     ids.push(transaction.try_submit(&self.wallet().rpc_api()).await?);
                 }
                 Err(e) => {
