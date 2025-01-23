@@ -9,7 +9,6 @@ use crate::tx::PaymentOutput;
 use crate::tx::PaymentOutputs;
 use futures::stream;
 use kaspa_bip32::{DerivationPath, KeyFingerprint, PrivateKey};
-use kaspa_consensus_client::TransactionOutput;
 use kaspa_consensus_client::UtxoEntry as ClientUTXO;
 use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
 use kaspa_consensus_core::tx::VerifiableTransaction;
@@ -23,7 +22,6 @@ use kaspa_wallet_pskt::bundle::{script_sig_to_address, unlock_utxo_outputs_as_ba
 use kaspa_wallet_pskt::prelude::lock_script_sig_templating_bytes;
 use kaspa_wallet_pskt::prelude::KeySource;
 use kaspa_wallet_pskt::prelude::{Finalizer, Inner, SignInputOk, Signature, Signer};
-use kaspa_wallet_pskt::pskt::Output;
 pub use kaspa_wallet_pskt::pskt::{Creator, PSKT};
 use secp256k1::schnorr;
 use secp256k1::{Message, PublicKey};
@@ -382,7 +380,7 @@ pub fn pskt_to_pending_transaction(
         &generator,
         signed_tx.clone(),
         utxo_entries_ref.clone(),
-        utxo_entries_ref.iter().map(|a| a.address()).flatten().collect(),
+        utxo_entries_ref.iter().filter_map(|a| a.address()).collect(),
         Some(aggregate_output_value),
         change_output_index,
         change_output_value,
@@ -427,7 +425,7 @@ pub async fn commit_reveal_batch_bundle(
     let network_id = account.wallet().clone().network_id()?;
 
     // A default minimum reveal transaction fee is set to 100_000.
-    let default_reveal_fee = 100_00;
+    let default_reveal_fee = 10_000;
 
     // Configure atomic batch of commit reveal transactions
     let conf: BundleCommitRevealConfig = match batch_config {
