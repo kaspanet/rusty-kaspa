@@ -2108,7 +2108,7 @@ declare! {
         commitAmountSompi : bigint;
         paymentSecret? : string;
         feeRate? : number;
-        revealFeeSompi? : bigint;
+        revealFeeSompi : bigint;
         payload? : Uint8Array | HexString;
     }
     "#,
@@ -2131,7 +2131,7 @@ try_from! ( args: IAccountsCommitRevealRequest, AccountsCommitRevealRequest, {
     let commit_amount_sompi = args.get_u64("commitAmountSompi")?;
     let fee_rate = args.get_f64("feeRate").ok();
 
-    let reveal_fee_sompi = args.get_u64("revealFeeSompi").ok();
+    let reveal_fee_sompi = args.get_u64("revealFeeSompi")?;
 
     let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
 
@@ -2199,7 +2199,7 @@ declare! {
         walletSecret : string;
         paymentSecret? : string;
         feeRate? : number;
-        revealFeeSompi? : bigint;
+        revealFeeSompi : bigint;
         payload? : Uint8Array | HexString;
     }
     "#,
@@ -2220,7 +2220,7 @@ try_from! ( args: IAccountsCommitRevealManualRequest, AccountsCommitRevealManual
     if reveal_output.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(reveal_output)?.into() };
 
     let fee_rate = args.get_f64("feeRate").ok();
-    let reveal_fee_sompi = args.get_u64("revealFeeSompi").ok();
+    let reveal_fee_sompi = args.get_u64("revealFeeSompi")?;
 
     let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
 

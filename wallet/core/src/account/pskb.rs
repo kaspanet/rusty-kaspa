@@ -413,7 +413,7 @@ struct BundleCommitRevealConfig {
 // Create signed atomic commit reveal PSKB.
 pub async fn commit_reveal_batch_bundle(
     batch_config: CommitRevealBatchKind,
-    reveal_fee_sompi: Option<u64>,
+    reveal_fee_sompi: u64,
     script_sig: Vec<u8>,
     payload: Option<Vec<u8>>,
     fee_rate: Option<f64>,
@@ -423,9 +423,6 @@ pub async fn commit_reveal_batch_bundle(
     abortable: &Abortable,
 ) -> Result<Bundle, Error> {
     let network_id = account.wallet().clone().network_id()?;
-
-    // A default minimum reveal transaction fee is set to 100_000.
-    let default_reveal_fee = 10_000;
 
     // Configure atomic batch of commit reveal transactions
     let conf: BundleCommitRevealConfig = match batch_config {
@@ -458,7 +455,7 @@ pub async fn commit_reveal_batch_bundle(
 
             let lock_address = script_sig_to_address(&redeem_script, network_id.into())?;
 
-            let amt_reveal: u64 = commit_amount_sompi - reveal_fee_sompi.unwrap_or(default_reveal_fee);
+            let amt_reveal: u64 = commit_amount_sompi - reveal_fee_sompi;
 
             BundleCommitRevealConfig {
                 address_commit: lock_address.clone(),
