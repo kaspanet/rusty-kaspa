@@ -9,7 +9,6 @@ use crate::tx::PaymentOutput;
 use crate::tx::PaymentOutputs;
 use futures::stream;
 use kaspa_bip32::{DerivationPath, KeyFingerprint, PrivateKey};
-use kaspa_consensus_client::TransactionOutput;
 use kaspa_consensus_client::UtxoEntry as ClientUTXO;
 use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
 use kaspa_consensus_core::tx::VerifiableTransaction;
@@ -23,7 +22,6 @@ use kaspa_wallet_pskt::bundle::{script_sig_to_address, unlock_utxo_outputs_as_ba
 use kaspa_wallet_pskt::prelude::lock_script_sig_templating_bytes;
 use kaspa_wallet_pskt::prelude::KeySource;
 use kaspa_wallet_pskt::prelude::{Finalizer, Inner, SignInputOk, Signature, Signer};
-use kaspa_wallet_pskt::pskt::Output;
 pub use kaspa_wallet_pskt::pskt::{Creator, PSKT};
 use secp256k1::schnorr;
 use secp256k1::{Message, PublicKey};
@@ -382,7 +380,7 @@ pub fn pskt_to_pending_transaction(
         &generator,
         signed_tx.clone(),
         utxo_entries_ref.clone(),
-        utxo_entries_ref.iter().map(|a| a.address()).flatten().collect(),
+        utxo_entries_ref.iter().filter_map(|a| a.address()).collect(),
         Some(aggregate_output_value),
         change_output_index,
         change_output_value,
@@ -415,7 +413,7 @@ struct BundleCommitRevealConfig {
 // Create signed atomic commit reveal PSKB.
 pub async fn commit_reveal_batch_bundle(
     batch_config: CommitRevealBatchKind,
-    reveal_fee_sompi: Option<u64>,
+    reveal_fee_sompi: u64,
     script_sig: Vec<u8>,
     payload: Option<Vec<u8>>,
     fee_rate: Option<f64>,
@@ -425,9 +423,6 @@ pub async fn commit_reveal_batch_bundle(
     abortable: &Abortable,
 ) -> Result<Bundle, Error> {
     let network_id = account.wallet().clone().network_id()?;
-
-    // A default minimum reveal transaction fee is set to 100_000.
-    let default_reveal_fee = 100_00;
 
     // Configure atomic batch of commit reveal transactions
     let conf: BundleCommitRevealConfig = match batch_config {
@@ -460,7 +455,7 @@ pub async fn commit_reveal_batch_bundle(
 
             let lock_address = script_sig_to_address(&redeem_script, network_id.into())?;
 
-            let amt_reveal: u64 = commit_amount_sompi - reveal_fee_sompi.unwrap_or(default_reveal_fee);
+            let amt_reveal: u64 = commit_amount_sompi - reveal_fee_sompi;
 
             BundleCommitRevealConfig {
                 address_commit: lock_address.clone(),

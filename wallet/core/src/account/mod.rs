@@ -389,7 +389,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         wallet_secret: Secret,
         payment_secret: Option<Secret>,
         fee_rate: Option<f64>,
-        reveal_fee_sompi: Option<u64>,
+        reveal_fee_sompi: u64,
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
     ) -> Result<Bundle, Error> {
@@ -415,7 +415,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         payment_secret: Option<Secret>,
         commit_amount_sompi: u64,
         fee_rate: Option<f64>,
-        reveal_fee_sompi: Option<u64>,
+        reveal_fee_sompi: u64,
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
     ) -> Result<Bundle, Error> {
