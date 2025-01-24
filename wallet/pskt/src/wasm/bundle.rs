@@ -44,13 +44,12 @@ impl PSKB {
         Ok(PSKB(bundle))
     }
 
-    #[wasm_bindgen(getter, js_name = "psktCount")]
-    pub fn pskt_count(&self) -> usize {
+    #[wasm_bindgen(getter, js_name = "length")]
+    pub fn length(&self) -> usize {
         self.0 .0.len()
     }
 
-    #[wasm_bindgen(js_name = "addPskt")]
-    pub fn add_pskt(&mut self, pskt: &PSKT) -> Result<()> {
+    pub fn add(&mut self, pskt: &PSKT) -> Result<()> {
         let payload = pskt.payload_getter();
 
         let payload_str: String = payload.as_string().unwrap_or_else(|| "Unable to convert to string".to_string());
@@ -133,7 +132,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn _test_pskt_bundle_creation() {
         let bundle = PSKB::new().expect("Failed to create PSKB");
-        assert_eq!(bundle.pskt_count(), 0, "New bundle should have zero PSKTs");
+        assert_eq!(bundle.length(), 0, "New bundle should have zero PSKTs");
     }
 
     #[wasm_bindgen_test]
@@ -148,7 +147,7 @@ mod tests {
         let deserialized_bundle = PSKB::deserialize(&serialized).expect("Failed to deserialize bundle");
 
         // Check that the deserialized bundle has the same number of PSKTs
-        assert_eq!(bundle.pskt_count(), deserialized_bundle.pskt_count(), "Deserialized bundle should have same PSKT count");
+        assert_eq!(bundle.length(), deserialized_bundle.length(), "Deserialized bundle should have same PSKT count");
     }
 
     #[wasm_bindgen_test]
@@ -208,7 +207,7 @@ mod tests {
 
         // Create a bundle
         let mut bundle = PSKB::new().expect("Failed to create PsktBundle");
-        bundle.add_pskt(&wasm_pskt).expect("add pskt");
+        bundle.add(&wasm_pskt).expect("add pskt");
 
         // Serialize the bundle
         let serialized = bundle.serialize().expect("Failed to serialize bundle");
@@ -219,14 +218,14 @@ mod tests {
         let deserialized_bundle = PSKB::deserialize(&serialized).expect("Failed to deserialize bundle");
 
         // Check that the deserialized bundle has the same number of PSKTs
-        assert_eq!(bundle.pskt_count(), deserialized_bundle.pskt_count(), "Deserialized bundle should have same PSKT count");
+        assert_eq!(bundle.length(), deserialized_bundle.length(), "Deserialized bundle should have same PSKT count");
     }
 
     fn _test_deser() {
         let pskb = "PSKB5b7b22676c6f62616c223a7b2276657273696f6e223a302c22747856657273696f6e223a302c2266616c6c6261636b4c6f636b54696d65223a6e756c6c2c22696e707574734d6f6469666961626c65223a66616c73652c226f7574707574734d6f6469666961626c65223a66616c73652c22696e707574436f756e74223a302c226f7574707574436f756e74223a302c227870756273223a7b7d2c226964223a6e756c6c2c2270726f70726965746172696573223a7b7d7d2c22696e70757473223a5b7b227574786f456e747279223a7b22616d6f756e74223a3436383932383838372c227363726970745075626c69634b6579223a22303030303230326438613134313465363265303831666236626366363434653634386331383036316332383535353735636163373232663836333234636164393164643066616163222c22626c6f636b44616153636f7265223a38343938313138362c226973436f696e62617365223a66616c73657d2c2270726576696f75734f7574706f696e74223a7b227472616e73616374696f6e4964223a2236393135356430653333383065383831366466666532363731323934616431303466306233373736663335626365316132326630633231623166393038353030222c22696e646578223a307d2c2273657175656e6365223a6e756c6c2c226d696e54696d65223a6e756c6c2c227061727469616c53696773223a7b7d2c227369676861736854797065223a312c2272656465656d536372697074223a6e756c6c2c227369674f70436f756e74223a312c22626970333244657269766174696f6e73223a7b7d2c2266696e616c536372697074536967223a6e756c6c2c2270726f70726965746172696573223a7b7d7d5d2c226f757470757473223a5b7b22616d6f756e74223a313530303030303030302c227363726970745075626c69634b6579223a2230303030222c2272656465656d536372697074223a6e756c6c2c22626970333244657269766174696f6e73223a7b7d2c2270726f70726965746172696573223a7b7d7d5d7d5d";
         // Deserialize the bundle
         let deserialized_bundle = PSKB::deserialize(pskb).expect("Failed to deserialize bundle");
-        assert_eq!(deserialized_bundle.pskt_count(), 1, "Should be length 1");
+        assert_eq!(deserialized_bundle.length(), 1, "Should be length 1");
         let inner = deserialized_bundle.0 .0.first().expect("pskt after deserialize");
         assert_eq!(inner.inputs.len(), 1);
         let input_01 = inner.inputs.first().expect("first input");
