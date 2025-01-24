@@ -3,15 +3,15 @@ use std::ops::Deref;
 use super::error::*;
 use super::result::*;
 use crate::bundle::Bundle as Inner;
-use crate::pskt::Combiner;
-use crate::pskt::Constructor;
-use crate::pskt::Creator;
-use crate::pskt::Extractor;
-use crate::pskt::Finalizer;
+// use crate::pskt::Combiner;
+// use crate::pskt::Constructor;
+// use crate::pskt::Creator;
+// use crate::pskt::Extractor;
+// use crate::pskt::Finalizer;
 use crate::pskt::Inner as PSKTInner;
-use crate::pskt::Signer;
-use crate::pskt::Updater;
-use crate::pskt::PSKT as Native;
+// use crate::pskt::Signer;
+// use crate::pskt::Updater;
+// use crate::pskt::PSKT as Native;
 use crate::wasm::pskt::*;
 use wasm_bindgen::prelude::*;
 
@@ -21,7 +21,7 @@ pub struct PSKB(Inner);
 
 impl Clone for PSKB {
     fn clone(&self) -> Self {
-        PSKB(Inner(self.0.0.clone()))
+        PSKB(Inner(self.0 .0.clone()))
     }
 }
 
@@ -44,12 +44,12 @@ impl PSKB {
         Ok(PSKB(bundle))
     }
 
-    #[wasm_bindgen]
+    #[wasm_bindgen(getter, js_name = "psktCount")]
     pub fn pskt_count(&self) -> usize {
         self.0 .0.len()
     }
 
-    #[wasm_bindgen]
+    #[wasm_bindgen(js_name = "addPskt")]
     pub fn add_pskt(&mut self, pskt: &PSKT) -> Result<()> {
         let payload = pskt.payload_getter();
 
@@ -117,27 +117,29 @@ impl AsRef<Inner> for PSKB {
 mod tests {
     use std::str::FromStr;
 
-    use crate::pskt::Creator;
+    //use crate::pskt::Creator;
+    use crate::pskt::Finalizer;
+    use crate::pskt::PSKT as Native;
 
     use super::*;
     use kaspa_consensus_core::tx::ScriptPublicKey;
     use serde_json::json;
-    use wasm_bindgen::convert::IntoWasmAbi;
+    //use wasm_bindgen::convert::IntoWasmAbi;
     use wasm_bindgen_test::wasm_bindgen_test;
     use wasm_bindgen_test::*;
-    use workflow_wasm::convert::TryCastFromJs;
+    // use workflow_wasm::convert::TryCastFromJs;
     // use web_sys::console;
 
     #[wasm_bindgen_test]
-    fn test_pskt_bundle_creation() {
+    fn _test_pskt_bundle_creation() {
         let bundle = PSKB::new().expect("Failed to create PSKB");
         assert_eq!(bundle.pskt_count(), 0, "New bundle should have zero PSKTs");
     }
 
     #[wasm_bindgen_test]
-    fn test_empty_pskt_bundle_serialize_deserialize() {
+    fn _test_empty_pskt_bundle_serialize_deserialize() {
         // Create a bundle
-        let mut bundle = PSKB::new().expect("Failed to create PsktBundle");
+        let bundle = PSKB::new().expect("Failed to create PsktBundle");
 
         // Serialize the bundle
         let serialized = bundle.serialize().expect("Failed to serialize bundle");
@@ -150,7 +152,7 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
-    fn test_bundle_add() {
+    fn _test_bundle_add() {
         let pskt_json = json!({
             "global": {
                 "version": 0,
@@ -220,15 +222,19 @@ mod tests {
         assert_eq!(bundle.pskt_count(), deserialized_bundle.pskt_count(), "Deserialized bundle should have same PSKT count");
     }
 
-    fn test_deser() {
+    fn _test_deser() {
         let pskb = "PSKB5b7b22676c6f62616c223a7b2276657273696f6e223a302c22747856657273696f6e223a302c2266616c6c6261636b4c6f636b54696d65223a6e756c6c2c22696e707574734d6f6469666961626c65223a66616c73652c226f7574707574734d6f6469666961626c65223a66616c73652c22696e707574436f756e74223a302c226f7574707574436f756e74223a302c227870756273223a7b7d2c226964223a6e756c6c2c2270726f70726965746172696573223a7b7d7d2c22696e70757473223a5b7b227574786f456e747279223a7b22616d6f756e74223a3436383932383838372c227363726970745075626c69634b6579223a22303030303230326438613134313465363265303831666236626366363434653634386331383036316332383535353735636163373232663836333234636164393164643066616163222c22626c6f636b44616153636f7265223a38343938313138362c226973436f696e62617365223a66616c73657d2c2270726576696f75734f7574706f696e74223a7b227472616e73616374696f6e4964223a2236393135356430653333383065383831366466666532363731323934616431303466306233373736663335626365316132326630633231623166393038353030222c22696e646578223a307d2c2273657175656e6365223a6e756c6c2c226d696e54696d65223a6e756c6c2c227061727469616c53696773223a7b7d2c227369676861736854797065223a312c2272656465656d536372697074223a6e756c6c2c227369674f70436f756e74223a312c22626970333244657269766174696f6e73223a7b7d2c2266696e616c536372697074536967223a6e756c6c2c2270726f70726965746172696573223a7b7d7d5d2c226f757470757473223a5b7b22616d6f756e74223a313530303030303030302c227363726970745075626c69634b6579223a2230303030222c2272656465656d536372697074223a6e756c6c2c22626970333244657269766174696f6e73223a7b7d2c2270726f70726965746172696573223a7b7d7d5d7d5d";
         // Deserialize the bundle
-        let deserialized_bundle = PSKB::deserialize(&pskb).expect("Failed to deserialize bundle");
+        let deserialized_bundle = PSKB::deserialize(pskb).expect("Failed to deserialize bundle");
         assert_eq!(deserialized_bundle.pskt_count(), 1, "Should be length 1");
-        let inner = deserialized_bundle.0.0.first().expect("pskt after deserialize");
+        let inner = deserialized_bundle.0 .0.first().expect("pskt after deserialize");
         assert_eq!(inner.inputs.len(), 1);
         let input_01 = inner.inputs.first().expect("first input");
         assert_eq!(input_01.clone().utxo_entry.expect("utxo entry").amount, 468928887);
-        assert_eq!(inner.outputs.first().expect("output").script_public_key, ScriptPublicKey::from_str("0000202d8a1414e62e081fb6bcf644e648c18061c2855575cac722f86324cad91dd0faac").expect("convert valid spk"));
+        assert_eq!(
+            inner.outputs.first().expect("output").script_public_key,
+            ScriptPublicKey::from_str("0000202d8a1414e62e081fb6bcf644e648c18061c2855575cac722f86324cad91dd0faac")
+                .expect("convert valid spk")
+        );
     }
 }

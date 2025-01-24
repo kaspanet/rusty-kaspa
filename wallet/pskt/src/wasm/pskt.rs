@@ -95,6 +95,9 @@ impl TryCastFromJs for PSKT {
         R: AsRef<JsValue> + 'a,
     {
         Self::resolve(value, || {
+            if JsValue::is_undefined(value.as_ref()) {
+                return PSKT::from(State::NoOp(None)).creator();
+            }
             if let Some(data) = value.as_ref().as_string() {
                 let pskt_inner: Inner = serde_json::from_str(&data).map_err(|_| Error::InvalidPayload)?;
                 Ok(PSKT::from(State::NoOp(Some(pskt_inner))))
@@ -124,6 +127,11 @@ impl PSKT {
     pub fn payload_getter(&self) -> JsValue {
         let state = self.state();
         serde_wasm_bindgen::to_value(state.as_ref().unwrap()).unwrap()
+    }
+
+    pub fn serialize(&self) -> String {
+        let state = self.state();
+        serde_json::to_string(state.as_ref().unwrap()).unwrap()
     }
 
     fn state(&self) -> MutexGuard<Option<State>> {
@@ -233,7 +241,7 @@ impl PSKT {
     pub fn fallback_lock_time(&self, lock_time: u64) -> Result<PSKT> {
         let state = match self.take() {
             State::Creator(pskt) => State::Creator(pskt.fallback_lock_time(lock_time)),
-            state => Err(Error::state(state))?,
+            _ => Err(Error::expected_state("Creator"))?,
         };
 
         self.replace(state)
@@ -243,7 +251,7 @@ impl PSKT {
     pub fn inputs_modifiable(&self) -> Result<PSKT> {
         let state = match self.take() {
             State::Creator(pskt) => State::Creator(pskt.inputs_modifiable()),
-            state => Err(Error::state(state))?,
+            _ => Err(Error::expected_state("Creator"))?,
         };
 
         self.replace(state)
@@ -253,7 +261,7 @@ impl PSKT {
     pub fn outputs_modifiable(&self) -> Result<PSKT> {
         let state = match self.take() {
             State::Creator(pskt) => State::Creator(pskt.outputs_modifiable()),
-            state => Err(Error::state(state))?,
+            _ => Err(Error::expected_state("Creator"))?,
         };
 
         self.replace(state)
@@ -263,7 +271,7 @@ impl PSKT {
     pub fn no_more_inputs(&self) -> Result<PSKT> {
         let state = match self.take() {
             State::Constructor(pskt) => State::Constructor(pskt.no_more_inputs()),
-            state => Err(Error::state(state))?,
+            _ => Err(Error::expected_state("Constructor"))?,
         };
 
         self.replace(state)
@@ -273,7 +281,7 @@ impl PSKT {
     pub fn no_more_outputs(&self) -> Result<PSKT> {
         let state = match self.take() {
             State::Constructor(pskt) => State::Constructor(pskt.no_more_outputs()),
-            state => Err(Error::state(state))?,
+            _ => Err(Error::expected_state("Constructor"))?,
         };
 
         self.replace(state)
@@ -283,7 +291,7 @@ impl PSKT {
         let input = TransactionInput::try_owned_from(input)?;
         let state = match self.take() {
             State::Constructor(pskt) => State::Constructor(pskt.input(input.try_into()?)),
-            state => Err(Error::state(state))?,
+            _ => Err(Error::expected_state("Constructor"))?,
         };
 
         self.replace(state)
@@ -293,7 +301,7 @@ impl PSKT {
         let output = TransactionOutput::try_owned_from(output)?;
         let state = match self.take() {
             State::Constructor(pskt) => State::Constructor(pskt.output(output.try_into()?)),
-            state => Err(Error::state(state))?,
+            _ => Err(Error::expected_state("Constructor"))?,
         };
 
         self.replace(state)
@@ -303,7 +311,7 @@ impl PSKT {
     pub fn set_sequence(&self, n: u64, input_index: usize) -> Result<PSKT> {
         let state = match self.take() {
             State::Updater(pskt) => State::Updater(pskt.set_sequence(n, input_index)?),
-            state => Err(Error::state(state))?,
+            _ => Err(Error::expected_state("Updater"))?,
         };
 
         self.replace(state)
@@ -314,7 +322,7 @@ impl PSKT {
         let state = self.state();
         match state.as_ref().unwrap() {
             State::Signer(pskt) => Ok(pskt.calculate_id()),
-            state => Err(Error::state(state))?,
+            _ => Err(Error::expected_state("Signer"))?,
         }
     }
 }
