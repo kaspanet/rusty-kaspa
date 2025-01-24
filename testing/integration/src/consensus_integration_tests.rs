@@ -34,7 +34,9 @@ use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::network::{NetworkId, NetworkType::Mainnet};
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
-use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
+use kaspa_consensus_core::tx::{
+    MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+};
 use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
@@ -49,6 +51,7 @@ use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
 use kaspa_consensus_core::errors::tx::TxRuleError;
+use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
 use kaspa_consensus_core::merkle::calc_hash_merkle_root;
 use kaspa_consensus_core::muhash::MuHashExtensions;
 use kaspa_core::core::Core;
@@ -63,6 +66,7 @@ use kaspa_muhash::MuHash;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_txscript::opcodes::codes::OpTrue;
+use kaspa_txscript::script_builder::ScriptBuilderResult;
 use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
 use serde::{Deserialize, Serialize};
@@ -2005,4 +2009,134 @@ async fn payload_activation_test() {
 
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
+}
+
+#[tokio::test]
+async fn runtime_sig_op_counting_test() {
+    use kaspa_consensus_core::{
+        hashing::sighash::SigHashReusedValuesUnsync, hashing::sighash_type::SIG_HASH_ALL, subnets::SUBNETWORK_ID_NATIVE,
+    };
+    use kaspa_txscript::{opcodes::codes::*, script_builder::ScriptBuilder};
+
+    // Runtime sig op counting activates at DAA score 3
+    const RUNTIME_SIGOP_ACTIVATION_DAA_SCORE: u64 = 3;
+
+    init_allocator_with_default_settings();
+
+    // Set up signing key for signature verification
+    let secp = secp256k1::Secp256k1::new();
+    let (secret_key, _) = secp.generate_keypair(&mut rand::thread_rng());
+    let keypair = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
+    let pub_key = keypair.x_only_public_key().0.serialize();
+
+    let reused_values = SigHashReusedValuesUnsync::new();
+
+    // Create redeem script that has 1 sig op in the executed branch (true)
+    // and 3 sig ops in the non-executed branch (false)
+    let redeem_script = || -> ScriptBuilderResult<Vec<u8>> {
+        Ok(ScriptBuilder::new()
+            .add_op(OpTrue)?
+            .add_op(OpIf)?
+            .add_op(OpCheckSig)?     // This sig op gets executed
+            .add_op(OpElse)?
+            .add_op(OpCheckSig)?     // These sig ops are skipped
+            .add_op(OpCheckSig)?
+            .add_op(OpCheckSig)?
+            .add_op(OpEndIf)?
+            .drain())
+    }()
+    .unwrap();
+
+    let script_pub_key = kaspa_txscript::pay_to_script_hash_script(&redeem_script);
+
+    // Set up initial UTXO with P2SH script
+    let initial_utxo_collection = [(
+        TransactionOutpoint::new(1.into(), 0),
+        UtxoEntry { amount: SOMPI_PER_KASPA, script_public_key: script_pub_key.clone(), block_daa_score: 0, is_coinbase: false },
+    )];
+
+    let config = ConfigBuilder::new(DEVNET_PARAMS)
+        .skip_proof_of_work()
+        .apply_args(|cfg| {
+            let mut genesis_multiset = MuHash::new();
+            initial_utxo_collection.iter().for_each(|(outpoint, utxo)| {
+                genesis_multiset.add_utxo(outpoint, utxo);
+            });
+            cfg.params.genesis.utxo_commitment = genesis_multiset.finalize();
+            let genesis_header: Header = (&cfg.params.genesis).into();
+            cfg.params.genesis.hash = genesis_header.hash;
+        })
+        .edit_consensus_params(|p| {
+            p.runtime_sig_op_counting = ForkActivation::new(RUNTIME_SIGOP_ACTIVATION_DAA_SCORE);
+        })
+        .build();
+
+    let consensus = TestConsensus::new(&config);
+    let mut genesis_multiset = MuHash::new();
+    consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
+    consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
+    consensus.init();
+
+    // Build blockchain up to one block before activation
+    let mut index = 0;
+    for _ in 0..RUNTIME_SIGOP_ACTIVATION_DAA_SCORE - 1 {
+        let parent = if index == 0 { config.genesis.hash } else { index.into() };
+        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).await.unwrap();
+        index += 1;
+    }
+
+    // Create transaction spending P2SH with 1 sig op limit
+    let mut tx = Transaction::new(
+        0,
+        vec![TransactionInput::new(
+            initial_utxo_collection[0].0,
+            vec![], // Placeholder for signature script
+            0,
+            1, // Only allowing 1 sig op - important for test
+        )],
+        vec![TransactionOutput::new(initial_utxo_collection[0].1.amount - 5000, ScriptPublicKey::from_vec(0, vec![OpTrue]))],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+
+    // Sign transaction
+    let mut tx_for_signing = MutableTransaction::new(tx.clone());
+    tx_for_signing.entries = vec![Some(initial_utxo_collection[0].1.clone())];
+
+    let signature = {
+        let hash = calc_schnorr_signature_hash(&tx_for_signing.as_verifiable(), 0, SIG_HASH_ALL, &reused_values);
+        let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).unwrap();
+        let sig = keypair.sign_schnorr(msg);
+        let mut signature = sig.as_ref().to_vec();
+        signature.push(SIG_HASH_ALL.to_u8());
+        signature
+    };
+
+    // Complete transaction with signature script
+    tx.inputs[0].signature_script =
+        ScriptBuilder::new().add_data(&signature).unwrap().add_data(&pub_key).unwrap().add_data(&redeem_script).unwrap().drain();
+
+    tx.finalize();
+
+    // Test 1: Before activation, tx should be rejected due to static sig op counting (sees 3 ops)
+    {
+        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
+        let mut block =
+            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
+        block.transactions.push(tx.clone());
+        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter(), false);
+        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
+        assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
+        index += 1;
+    }
+
+    // Add block to reach activation
+    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
+    index += 1;
+
+    // Test 2: After activation, tx should be accepted as runtime counting only sees 1 executed sig op
+    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
 }
