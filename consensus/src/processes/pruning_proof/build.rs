@@ -264,7 +264,7 @@ impl PruningProofManager {
                 Err(e) => return Err(e),
             };
 
-            let root = if self.reachability_service.is_dag_ancestor_of(block_at_depth_2m, block_at_depth_m_at_next_level) {
+            let mut root = if self.reachability_service.is_dag_ancestor_of(block_at_depth_2m, block_at_depth_m_at_next_level) {
                 block_at_depth_2m
             } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m) {
                 block_at_depth_m_at_next_level
@@ -304,6 +304,28 @@ impl PruningProofManager {
             if has_required_block
                 && (root == self.genesis_hash || ghostdag_store.get_blue_score(selected_tip).unwrap() >= required_level_depth)
             {
+                if root != self.genesis_hash {
+                    // Try to adjust the root forward with the new known block_at_depth_2m_buffered
+                    let block_at_depth_2m_buffered =
+                        self.block_at_depth(&*ghostdag_store, selected_tip, required_level_depth + 100).unwrap();
+
+                    root = if self.reachability_service.is_dag_ancestor_of(block_at_depth_2m_buffered, block_at_depth_m_at_next_level)
+                    {
+                        block_at_depth_2m_buffered
+                    } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m_buffered)
+                    {
+                        block_at_depth_m_at_next_level
+                    } else {
+                        self.find_common_ancestor_in_chain_of_a(
+                            &*ghostdag_store,
+                            block_at_depth_m_at_next_level,
+                            block_at_depth_2m_buffered,
+                        )
+                        .map_err(|err| format!("level: {}, err: {}", level, err))
+                        .unwrap()
+                    };
+                }
+
                 break Ok((ghostdag_store, selected_tip, root));
             }
 
