@@ -114,20 +114,14 @@ impl AsRef<Inner> for PSKB {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    //use crate::pskt::Creator;
+    use super::*;
     use crate::pskt::Finalizer;
     use crate::pskt::PSKT as Native;
-
-    use super::*;
     use kaspa_consensus_core::tx::ScriptPublicKey;
     use serde_json::json;
-    //use wasm_bindgen::convert::IntoWasmAbi;
+    use std::str::FromStr;
     use wasm_bindgen_test::wasm_bindgen_test;
     use wasm_bindgen_test::*;
-    // use workflow_wasm::convert::TryCastFromJs;
-    // use web_sys::console;
 
     #[wasm_bindgen_test]
     fn _test_pskt_bundle_creation() {
@@ -136,17 +130,21 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
-    fn _test_empty_pskt_bundle_serialize_deserialize() {
+    fn _test_pskt_bundle_serialize_deserialize() {
         // Create a bundle
-        let bundle = PSKB::new().expect("Failed to create PsktBundle");
+        let mut bundle = PSKB::new().expect("Failed to create PsktBundle");
 
-        // Serialize the bundle
+        let pskts: Vec<PSKT> =
+            (0..3).map(|_| PSKT::new(CtorT::from(JsValue::UNDEFINED)).expect("creator").constructor().expect("constructor")).collect();
+        pskts.iter().for_each(|pskt| bundle.add(pskt).expect("added to bundle"));
+
         let serialized = bundle.serialize().expect("Failed to serialize bundle");
 
         // Deserialize the bundle
         let deserialized_bundle = PSKB::deserialize(&serialized).expect("Failed to deserialize bundle");
 
         // Check that the deserialized bundle has the same number of PSKTs
+        assert_eq!(deserialized_bundle.length(), 3, "Deserialized bundle should have length of 3");
         assert_eq!(bundle.length(), deserialized_bundle.length(), "Deserialized bundle should have same PSKT count");
     }
 
