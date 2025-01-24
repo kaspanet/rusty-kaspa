@@ -616,12 +616,17 @@ impl SpkEncoding for ScriptPublicKey {
 mod tests {
     use std::iter::once;
 
-    use crate::opcodes::codes::{OpBlake2b, OpCheckSig, OpData1, OpData2, OpData32, OpDup, OpEqual, OpPushData1, OpTrue};
+    use crate::opcodes::codes::{
+        OpBlake2b, OpCheckMultiSig, OpCheckSig, OpCheckSigECDSA, OpCheckSigVerify, OpData1, OpData2, OpData32, OpDup, OpEndIf,
+        OpEqual, OpFalse, OpIf, OpPushData1, OpTrue, OpVerify,
+    };
 
     use super::*;
+    use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
+    use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
     use kaspa_consensus_core::tx::{
-        PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
+        MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
     use smallvec::SmallVec;
 
@@ -1042,6 +1047,231 @@ mod tests {
             );
         }
     }
+
+    #[derive(Clone)]
+    struct SignatureData {
+        signature: Vec<u8>,
+        public_key: Vec<u8>,
+    }
+
+    enum SignatureScriptBuilder {
+        Single(SignatureData),
+        Multi(Vec<SignatureData>),
+        Mixed(Vec<SignatureData>),
+        None, // For tests that don't need signatures
+    }
+
+    type SigBuilder = Box<dyn Fn(&MutableTransaction<Transaction>, &SigHashReusedValuesUnsync) -> SignatureScriptBuilder>;
+    type ScriptBuilderFn = Box<dyn Fn(&mut ScriptBuilder) -> ScriptBuilderResult<&mut ScriptBuilder>>;
+
+    struct TestCase {
+        name: &'static str,
+        script_builder: ScriptBuilderFn,
+        sig_builder: SigBuilder,
+        expected_sig_ops: u8,
+        sig_op_limit: u8,
+        should_pass: bool,
+    }
+
+    impl SignatureScriptBuilder {
+        fn build(self, script: &[u8]) -> ScriptBuilderResult<Vec<u8>> {
+            let mut builder = ScriptBuilder::new();
+
+            match self {
+                SignatureScriptBuilder::Single(sig_data) => {
+                    builder.add_data(&sig_data.signature)?;
+                    builder.add_data(&sig_data.public_key)?;
+                }
+                SignatureScriptBuilder::Multi(sig_data_vec) => {
+                    for sig_data in sig_data_vec {
+                        builder.add_data(&sig_data.signature)?;
+                    }
+                }
+                SignatureScriptBuilder::Mixed(sig_data_vec) => {
+                    for sig_data in sig_data_vec {
+                        builder.add_data(&sig_data.signature)?;
+                        builder.add_data(&sig_data.public_key)?;
+                    }
+                }
+                SignatureScriptBuilder::None => {}
+            }
+
+            builder.add_data(script)?;
+            Ok(builder.drain())
+        }
+    }
+
+    #[test]
+    fn test_runtime_sig_op_count() -> ScriptBuilderResult<()> {
+        // Setup keys and test environment
+        let secp = secp256k1::Secp256k1::new();
+        let (secret_key, _) = secp.generate_keypair(&mut rand::thread_rng());
+        let keypair = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
+
+        let sig_cache = Cache::new(10_000);
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        // Helper functions for creating signatures
+        let create_schnorr_signature = move |tx: &MutableTransaction<Transaction>, reused: &SigHashReusedValuesUnsync| {
+            let hash = calc_schnorr_signature_hash(&tx.as_verifiable(), 0, SIG_HASH_ALL, reused);
+            let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).unwrap();
+            let sig = keypair.sign_schnorr(msg);
+            let mut signature = sig.as_ref().to_vec();
+            signature.push(SIG_HASH_ALL.to_u8());
+            SignatureData { signature, public_key: keypair.x_only_public_key().0.serialize().to_vec() }
+        };
+
+        let create_ecdsa_signature = move |tx: &MutableTransaction<Transaction>, reused: &SigHashReusedValuesUnsync| {
+            let hash = calc_ecdsa_signature_hash(&tx.as_verifiable(), 0, SIG_HASH_ALL, reused);
+            let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).unwrap();
+            let sig = keypair.secret_key().sign_ecdsa(msg);
+            let mut signature = sig.serialize_compact().to_vec();
+            signature.push(SIG_HASH_ALL.to_u8());
+            SignatureData { signature, public_key: keypair.public_key().serialize().to_vec() }
+        };
+
+        let test_cases = vec![
+            // Basic Schnorr CheckSig
+            TestCase {
+                name: "Basic Schnorr CheckSig",
+                script_builder: Box::new(|sb| sb.add_op(OpCheckSig)),
+                sig_builder: Box::new(move |tx, reused| SignatureScriptBuilder::Single(create_schnorr_signature(tx, reused))),
+                expected_sig_ops: 1,
+                sig_op_limit: 1,
+                should_pass: true,
+            },
+            // Basic ECDSA CheckSig
+            TestCase {
+                name: "Basic ECDSA CheckSig",
+                script_builder: Box::new(|sb| sb.add_op(OpCheckSigECDSA)),
+                sig_builder: Box::new(move |tx, reused| SignatureScriptBuilder::Single(create_ecdsa_signature(tx, reused))),
+                expected_sig_ops: 1,
+                sig_op_limit: 1,
+                should_pass: true,
+            },
+            // Mixed Schnorr and ECDSA
+            TestCase {
+                name: "Mixed Schnorr and ECDSA",
+                script_builder: Box::new(|sb| sb.add_op(OpCheckSigVerify)?.add_op(OpCheckSigECDSA)),
+                sig_builder: Box::new(move |tx, reused| {
+                    SignatureScriptBuilder::Mixed(vec![create_ecdsa_signature(tx, reused), create_schnorr_signature(tx, reused)])
+                }),
+                expected_sig_ops: 2,
+                sig_op_limit: 2,
+                should_pass: true,
+            },
+            // 2-of-3 MultiSig test case
+            TestCase {
+                name: "2-of-3 MultiSig",
+                script_builder: Box::new(move |sb| {
+                    sb.add_i64(2)?
+                        .add_data(&keypair.x_only_public_key().0.serialize())?
+                        .add_data(&keypair.x_only_public_key().0.serialize())?
+                        .add_data(&keypair.x_only_public_key().0.serialize())?
+                        .add_i64(3)?
+                        .add_op(OpCheckMultiSig)
+                }),
+                sig_builder: Box::new(move |tx, reused| {
+                    let sig = create_schnorr_signature(tx, reused);
+                    SignatureScriptBuilder::Multi(vec![sig.clone(), sig])
+                }),
+                expected_sig_ops: 2,
+                sig_op_limit: 2,
+                should_pass: true,
+            },
+            TestCase {
+                name: "Mixed Schnorr and ECDSA",
+                script_builder: Box::new(|sb| sb.add_op(OpCheckSigVerify)?.add_op(OpCheckSigECDSA)),
+                sig_builder: Box::new(move |tx, reused| {
+                    SignatureScriptBuilder::Mixed(vec![create_ecdsa_signature(tx, reused), create_schnorr_signature(tx, reused)])
+                }),
+                expected_sig_ops: 2,
+                sig_op_limit: 1,
+                should_pass: false,
+            },
+            // Conditional execution with sig ops
+            TestCase {
+                name: "Conditional sig ops",
+                script_builder: Box::new(|sb| sb.add_op(OpTrue)?.add_op(OpIf)?.add_op(OpCheckSigECDSA)?.add_op(OpEndIf)),
+                sig_builder: Box::new(move |tx, reused| SignatureScriptBuilder::Single(create_ecdsa_signature(tx, reused))),
+                expected_sig_ops: 1,
+                sig_op_limit: 1,
+                should_pass: true,
+            },
+            // Conditional execution with sig ops
+            TestCase {
+                name: "Conditional sig ops (false branch)",
+                script_builder: Box::new(|sb| {
+                    sb.add_op(OpFalse)?.add_op(OpIf)?.add_op(OpCheckSigECDSA)?.add_op(OpVerify)?.add_op(OpEndIf)?.add_op(OpTrue)
+                }),
+                sig_builder: Box::new(move |_tx, _reused| SignatureScriptBuilder::None),
+                expected_sig_ops: 0,
+                sig_op_limit: 0,
+                should_pass: true,
+            },
+        ];
+
+        for test in test_cases {
+            // Create script
+            let mut script_builder = ScriptBuilder::new();
+            (test.script_builder)(&mut script_builder)?;
+            let script = script_builder.drain();
+
+            let script_pub_key = pay_to_script_hash_script(&script);
+            let utxo_entry = UtxoEntry::new(1000, script_pub_key.clone(), 0, false);
+
+            // Create transaction
+            let tx = Transaction::new(
+                1,
+                vec![TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::default(), index: 0 },
+                    signature_script: vec![],
+                    sequence: 0,
+                    sig_op_count: test.sig_op_limit,
+                }],
+                vec![],
+                0,
+                Default::default(),
+                0,
+                vec![],
+            );
+
+            let mut tx = MutableTransaction::new(tx);
+            tx.entries = vec![Some(utxo_entry.clone())];
+
+            // Build signature script
+            let signature_script = (test.sig_builder)(&tx, &reused_values).build(&script)?;
+            tx.tx.inputs[0].signature_script = signature_script;
+
+            // Execute script
+            let tx = tx.as_verifiable();
+            let mut vm =
+                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &reused_values, &sig_cache, false, true);
+
+            let result = vm.execute().map(|_| vm.sig_op_required().unwrap());
+
+            match (result, test.should_pass) {
+                (Ok(count), true) => {
+                    assert_eq!(
+                        count, test.expected_sig_ops,
+                        "{} failed: Expected {} sig ops, got {}",
+                        test.name, test.expected_sig_ops, count
+                    );
+                }
+                (Ok(_), false) => {
+                    panic!("{} should have failed but succeeded", test.name);
+                }
+                (Err(err), true) => {
+                    panic!("{} failed but should have succeeded with err: {}", test.name, err);
+                }
+                (Err(_), false) => {
+                    // Test correctly failed
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1088,7 +1318,7 @@ mod bitcoind_tests {
                 TransactionOutpoint::new(TransactionId::default(), 0xffffffffu32),
                 vec![0, 0],
                 MAX_TX_IN_SEQUENCE_NUM,
-                Default::default(),
+                MAX_PUB_KEYS_PER_MUTLTISIG as u8,
             )],
             vec![TransactionOutput::new(0, script_public_key)],
             Default::default(),
@@ -1103,7 +1333,7 @@ mod bitcoind_tests {
                 TransactionOutpoint::new(coinbase.id(), 0u32),
                 sig_script,
                 MAX_TX_IN_SEQUENCE_NUM,
-                Default::default(),
+                MAX_PUB_KEYS_PER_MUTLTISIG as u8,
             )],
             vec![TransactionOutput::new(0, Default::default())],
             Default::default(),
