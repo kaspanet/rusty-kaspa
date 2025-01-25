@@ -21,7 +21,7 @@ use secp256k1::{
     rand::{thread_rng, Rng},
     Keypair,
 };
-use tokio::time::{Instant, interval, MissedTickBehavior};
+use tokio::time::{interval, Instant, MissedTickBehavior};
 
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
 const FEE_RATE: u64 = 10;
@@ -210,9 +210,7 @@ async fn main() {
     }
     info!("{}", log_message);
 
-    let info = rpc_client.get_block_dag_info()
-        .await
-        .expect("Failed to get block dag info.");
+    let info = rpc_client.get_block_dag_info().await.expect("Failed to get block dag info.");
 
     let coinbase_maturity = match info.network.suffix {
         Some(11) => TESTNET11_PARAMS.coinbase_maturity,
@@ -494,15 +492,7 @@ async fn maybe_send_tx(
 
 fn clean_old_pending_outpoints(pending: &mut HashMap<TransactionOutpoint, Instant>) {
     let now = Instant::now();
-
-    let old_keys: Vec<_> = pending
-        .iter()
-        .filter(|(_, &time)| now.duration_since(time) > Duration::from_secs(3600))
-        .map(|(op, _)| *op)
-        .collect();
-    for key in old_keys {
-        pending.remove(&key);
-    }
+    pending.retain(|_, &mut time| now.duration_since(time) <= Duration::from_secs(3600));
 }
 
 fn required_fee(num_utxos: usize, num_outs: u64) -> u64 {
