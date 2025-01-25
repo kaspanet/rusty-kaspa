@@ -173,7 +173,8 @@ pub async fn pskb_signer_for_address(
         bundle
             .iter()
             .map(|inner| {
-                inner.inputs
+                inner
+                    .inputs
                     .iter()
                     .filter_map(|input| input.utxo_entry.as_ref())
                     .filter_map(|utxo_entry| {
@@ -185,17 +186,14 @@ pub async fn pskb_signer_for_address(
     };
 
     // Prepare the signer with all unique addresses
-    let all_addresses: Vec<Address> = addresses_per_pskt
-        .iter()
-        .flat_map(|addresses| addresses.iter().cloned())
-        .collect();
+    let all_addresses: Vec<Address> = addresses_per_pskt.iter().flat_map(|addresses| addresses.iter().cloned()).collect();
     signer.ingest(all_addresses.as_slice())?;
 
     // Process each PSKT in the bundle
     for (pskt_idx, pskt_inner) in bundle.iter().cloned().enumerate() {
         let pskt: PSKT<Signer> = PSKT::from(pskt_inner);
         let current_addresses = &addresses_per_pskt[pskt_idx];
-        
+
         // Create new reused values for each PSKT
         let reused_values = SigHashReusedValuesUnsync::new();
 
@@ -207,39 +205,24 @@ pub async fn pskb_signer_for_address(
                         .iter()
                         .enumerate()
                         .map(|(input_idx, _input)| {
-                            let hash = calc_schnorr_signature_hash(
-                                &tx.as_verifiable(),
-                                input_idx,
-                                sighash[input_idx],
-                                &reused_values
-                            );
-                            let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice())
-                                .map_err(|e| e.to_string())?;
+                            let hash = calc_schnorr_signature_hash(&tx.as_verifiable(), input_idx, sighash[input_idx], &reused_values);
+                            let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).map_err(|e| e.to_string())?;
 
                             // Get the appropriate address for this input
                             let address = if let Some(sign_addr) = sign_for_address {
                                 sign_addr
                             } else {
-                                current_addresses
-                                    .get(input_idx)
-                                    .ok_or_else(|| format!("No address found for input {}", input_idx))?
+                                current_addresses.get(input_idx).ok_or_else(|| format!("No address found for input {}", input_idx))?
                             };
 
-                            let public_key = signer
-                                .public_key(address)
-                                .map_err(|e| format!("Failed to get public key: {}", e))?;
+                            let public_key = signer.public_key(address).map_err(|e| format!("Failed to get public key: {}", e))?;
 
-                            let signature = signer
-                                .sign_schnorr(address, msg)
-                                .map_err(|e| format!("Failed to sign: {}", e))?;
+                            let signature = signer.sign_schnorr(address, msg).map_err(|e| format!("Failed to sign: {}", e))?;
 
                             Ok(SignInputOk {
                                 signature: Signature::Schnorr(signature),
                                 pub_key: public_key,
-                                key_source: Some(KeySource {
-                                    key_fingerprint,
-                                    derivation_path: derivation_path.clone(),
-                                }),
+                                key_source: Some(KeySource { key_fingerprint, derivation_path: derivation_path.clone() }),
                             })
                         })
                         .collect()
