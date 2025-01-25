@@ -442,6 +442,14 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// Sign and broadcast a PSKB.
     async fn accounts_pskb_send_call(self: Arc<Self>, request: AccountsPskbSendRequest) -> Result<AccountsPskbSendResponse>;
 
+    /// Wrapper around [`accounts_get_utxos_call()`](Self::accounts_get_utxos_call)
+    async fn accounts_get_utxos(self: Arc<Self>, request: AccountsGetUtxosRequest) -> Result<AccountsGetUtxosResponse> {
+        self.accounts_get_utxos_call(request).await
+    }
+
+    /// Get UTXOs for an account.
+    async fn accounts_get_utxos_call(self: Arc<Self>, request: AccountsGetUtxosRequest) -> Result<AccountsGetUtxosResponse>;
+
     /// Transfer funds to another account. Returns an [`AccountsTransferResponse`]
     /// struct that contains a [`GeneratorSummary`] as well `transaction_ids`
     /// containing a list of submitted transaction ids. Unlike funds sent to an

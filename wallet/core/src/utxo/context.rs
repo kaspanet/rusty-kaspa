@@ -14,6 +14,7 @@ use crate::utxo::{
     Maturity, NetworkParams, OutgoingTransaction, PendingUtxoEntryReference, UtxoContextBinding, UtxoEntryId, UtxoEntryReference,
     UtxoEntryReferenceExtension, UtxoProcessor,
 };
+use kaspa_consensus_client::UtxoEntry;
 use kaspa_hashes::Hash;
 use sorted_insert::SortedInsertBinaryByKey;
 
@@ -701,6 +702,48 @@ impl UtxoContext {
         self.extend_from_scan(refs, current_daa_score).await?;
         self.update_balance().await?;
         Ok(())
+    }
+
+    pub async fn get_utxos(&self, addresses: Option<Vec<Address>>, min_amount_sompi: Option<u64>) -> Result<Vec<UtxoEntry>> {
+        let utxos = &self.context().mature;
+        let mut amount = 0;
+        if let Some(addresses) = &addresses {
+            let filtered_utxos = utxos.iter().filter_map(|utxo| {
+                if let Some(address) = utxo.address() {
+                    if addresses.contains(&address) {
+                        return Some(utxo.entry().clone());
+                    }
+                }
+                None
+            });
+            if let Some(min_amount_sompi) = min_amount_sompi {
+                let filtered_utxos: Vec<_> = filtered_utxos
+                    .filter_map(|utxo| {
+                        amount += utxo.amount();
+                        if amount < min_amount_sompi {
+                            return Some(utxo);
+                        }
+                        None
+                    })
+                    .collect();
+                return Ok(filtered_utxos);
+            }
+            return Ok(filtered_utxos.collect());
+        }
+        if let Some(min_amount_sompi) = min_amount_sompi {
+            let filtered_utxos: Vec<_> = utxos
+                .iter()
+                .filter_map(|utxo| {
+                    amount += utxo.amount();
+                    if amount < min_amount_sompi {
+                        return Some(utxo.entry().clone());
+                    }
+                    None
+                })
+                .collect();
+            return Ok(filtered_utxos);
+        }
+        Ok(utxos.iter().map(|utxo| utxo.entry().clone()).collect())
     }
 }
 

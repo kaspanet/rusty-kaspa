@@ -8,6 +8,7 @@
 use crate::imports::*;
 use crate::tx::{Fees, GeneratorSummary, PaymentDestination};
 use kaspa_addresses::Address;
+use kaspa_consensus_client::{TransactionOutpoint, UtxoEntry};
 use kaspa_rpc_core::RpcFeerateBucket;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -554,6 +555,96 @@ pub struct AccountsPskbSendRequest {
 #[serde(rename_all = "camelCase")]
 pub struct AccountsPskbSendResponse {
     pub transaction_ids: Vec<TransactionId>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsGetUtxosRequest {
+    pub account_id: AccountId,
+    pub addresses: Option<Vec<Address>>,
+    pub min_amount_sompi: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsGetUtxosResponse {
+    pub utxos: Vec<UtxoEntryWrapper>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UtxoEntryWrapper {
+    pub address: Option<Address>,
+    pub outpoint: TransactionOutpointWrapper,
+    pub amount: u64,
+    pub script_public_key: ScriptPublicKey,
+    pub block_daa_score: u64,
+    pub is_coinbase: bool,
+}
+impl UtxoEntryWrapper {
+    pub fn to_js_object(&self) -> Result<js_sys::Object> {
+        let obj = js_sys::Object::new();
+        if let Some(address) = &self.address {
+            obj.set("address", &address.to_string().into())?;
+        }
+
+        let outpoint = js_sys::Object::new();
+        outpoint.set("transactionId", &self.outpoint.transaction_id.to_string().into())?;
+        outpoint.set("index", &self.outpoint.index.into())?;
+
+        obj.set("amount", &self.amount.to_string().into())?;
+        obj.set("outpoint", &outpoint.into())?;
+        obj.set("scriptPublicKey", &workflow_wasm::serde::to_value(&self.script_public_key)?)?;
+        obj.set("blockDaaScore", &self.block_daa_score.to_string().into())?;
+        obj.set("isCoinbase", &self.is_coinbase.into())?;
+
+        Ok(obj)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionOutpointWrapper {
+    pub transaction_id: TransactionId,
+    pub index: TransactionIndexType,
+}
+
+impl From<TransactionOutpoint> for TransactionOutpointWrapper {
+    fn from(outpoint: TransactionOutpoint) -> Self {
+        Self { transaction_id: outpoint.transaction_id(), index: outpoint.index() }
+    }
+}
+
+impl From<TransactionOutpointWrapper> for TransactionOutpoint {
+    fn from(outpoint: TransactionOutpointWrapper) -> Self {
+        Self::new(outpoint.transaction_id, outpoint.index)
+    }
+}
+
+impl From<UtxoEntryWrapper> for UtxoEntry {
+    fn from(entry: UtxoEntryWrapper) -> Self {
+        Self {
+            address: entry.address,
+            outpoint: entry.outpoint.into(),
+            amount: entry.amount,
+            script_public_key: entry.script_public_key,
+            block_daa_score: entry.block_daa_score,
+            is_coinbase: entry.is_coinbase,
+        }
+    }
+}
+
+impl From<UtxoEntry> for UtxoEntryWrapper {
+    fn from(entry: UtxoEntry) -> Self {
+        Self {
+            address: entry.address,
+            outpoint: entry.outpoint.into(),
+            amount: entry.amount,
+            script_public_key: entry.script_public_key,
+            block_daa_score: entry.block_daa_score,
+            is_coinbase: entry.is_coinbase,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

@@ -8,10 +8,9 @@ use crate::tx::{Fees, PaymentDestination, PaymentOutputs};
 use crate::wasm::tx::fees::IFees;
 use crate::wasm::tx::GeneratorSummary;
 use js_sys::Array;
+use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use serde_wasm_bindgen::from_value;
 use workflow_wasm::serde::to_value;
-
-use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 
 macro_rules! try_from {
     ($name:ident : $from_type:ty, $to_type:ty, $body:block) => {
@@ -1615,6 +1614,55 @@ declare! {
 
 try_from! ( args: AccountsPskbSendResponse, IAccountsPskbSendResponse, {
     Ok(to_value(&args)?.into())
+});
+
+// ---
+
+declare! {
+    IAccountsGetUtxosRequest,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsGetUtxosRequest {
+        accountId : HexString;
+        addresses : Address[] | string[];
+        minAmountSompi? : bigint;
+    }
+    "#,
+}
+
+try_from! ( args: IAccountsGetUtxosRequest, AccountsGetUtxosRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let addresses = args.try_get_addresses("addresses")?;
+    let min_amount_sompi = args.get_u64("minAmountSompi").ok();
+    Ok(AccountsGetUtxosRequest { account_id, addresses, min_amount_sompi })
+});
+
+declare! {
+    IAccountsGetUtxosResponse,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsGetUtxosResponse {
+        utxos : UtxoEntry[];
+    }
+    "#,
+}
+
+try_from! ( args: AccountsGetUtxosResponse, IAccountsGetUtxosResponse, {
+    let response = IAccountsGetUtxosResponse::default();
+
+
+    let utxos = args.utxos.into_iter().map(|entry| entry.to_js_object()).collect::<Result<Vec<js_sys::Object>>>()?;
+    let utxos = js_sys::Array::from_iter(utxos.into_iter());
+    response.set("utxos", &utxos)?;
+    Ok(response)
 });
 
 // ---
