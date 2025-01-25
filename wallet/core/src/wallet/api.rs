@@ -530,6 +530,47 @@ impl WalletApi for super::Wallet {
         Ok(AccountsCommitRevealManualResponse { transaction_ids })
     }
 
+    async fn accounts_commit_reveal_pskb_manual_call(
+        self: Arc<Self>,
+        request: AccountsCommitRevealPSKBManualRequest,
+    ) -> Result<AccountsCommitRevealPSKBManualResponse> {
+        let AccountsCommitRevealPSKBManualRequest {
+            account_id,
+            script_sig,
+            start_destination,
+            end_destination,
+            wallet_secret,
+            payment_secret,
+            fee_rate,
+            reveal_fee_sompi,
+            payload,
+        } = request;
+
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
+
+        let abortable = Abortable::new();
+
+        let bundle = account
+            .clone()
+            .commit_reveal_manual(
+                start_destination,
+                end_destination,
+                script_sig,
+                wallet_secret,
+                payment_secret,
+                fee_rate,
+                reveal_fee_sompi,
+                payload,
+                &abortable,
+            )
+            .await?;
+
+        Ok(AccountsCommitRevealPSKBManualResponse { pskb: bundle.serialize()? })
+    }
+
     async fn accounts_commit_reveal_call(
         self: Arc<Self>,
         request: AccountsCommitRevealRequest,
@@ -578,6 +619,55 @@ impl WalletApi for super::Wallet {
 
         let transaction_ids = account.pskb_broadcast(&bundle).await?;
         Ok(AccountsCommitRevealResponse { transaction_ids })
+    }
+
+    async fn accounts_commit_reveal_pskb_call(
+        self: Arc<Self>,
+        request: AccountsCommitRevealPSKBRequest,
+    ) -> Result<AccountsCommitRevealPSKBResponse> {
+        let AccountsCommitRevealPSKBRequest {
+            account_id,
+            address_type,
+            address_index,
+            script_sig,
+            commit_amount_sompi,
+            wallet_secret,
+            payment_secret,
+            fee_rate,
+            reveal_fee_sompi,
+            payload,
+        } = request;
+
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
+
+        let address = match address_type {
+            CommitRevealAddressKind::Receive => {
+                account.clone().as_derivation_capable()?.receive_address_at_index(address_index).await?
+            }
+            CommitRevealAddressKind::Change => account.clone().as_derivation_capable()?.change_address_at_index(address_index).await?,
+        };
+
+        let abortable = Abortable::new();
+
+        let bundle = account
+            .clone()
+            .commit_reveal(
+                address,
+                script_sig,
+                wallet_secret,
+                payment_secret,
+                commit_amount_sompi,
+                fee_rate,
+                reveal_fee_sompi,
+                payload,
+                &abortable,
+            )
+            .await?;
+
+        Ok(AccountsCommitRevealPSKBResponse { pskb: bundle.serialize()? })
     }
 
     async fn accounts_estimate_call(self: Arc<Self>, request: AccountsEstimateRequest) -> Result<AccountsEstimateResponse> {

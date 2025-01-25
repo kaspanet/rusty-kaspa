@@ -870,3 +870,45 @@ pub struct AccountsCommitRevealRequest {
 pub struct AccountsCommitRevealResponse {
     pub transaction_ids: Vec<TransactionId>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsCommitRevealPSKBManualRequest {
+    pub account_id: AccountId,
+    pub script_sig: Vec<u8>,
+    pub start_destination: PaymentDestination,
+    pub end_destination: PaymentDestination,
+    pub wallet_secret: Secret,
+    pub payment_secret: Option<Secret>,
+    pub fee_rate: Option<f64>,
+    pub reveal_fee_sompi: u64,
+    pub payload: Option<Vec<u8>>,
+}
+
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsCommitRevealPSKBManualResponse {
+    pub pskb: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsCommitRevealPSKBRequest {
+    pub account_id: AccountId,
+    pub address_type: CommitRevealAddressKind,
+    pub address_index: u32,
+    pub script_sig: Vec<u8>,
+    pub wallet_secret: Secret,
+    pub commit_amount_sompi: u64,
+    pub payment_secret: Option<Secret>,
+    pub fee_rate: Option<f64>,
+    pub reveal_fee_sompi: u64,
+    pub payload: Option<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsCommitRevealPSKBResponse {
+    pub pskb: String,
+}

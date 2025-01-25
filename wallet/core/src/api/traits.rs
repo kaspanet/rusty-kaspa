@@ -466,6 +466,11 @@ pub trait WalletApi: Send + Sync + AnySync {
         request: AccountsCommitRevealManualRequest,
     ) -> Result<AccountsCommitRevealManualResponse>;
 
+    async fn accounts_commit_reveal_pskb_manual_call(
+        self: Arc<Self>,
+        request: AccountsCommitRevealPSKBManualRequest,
+    ) -> Result<AccountsCommitRevealPSKBManualResponse>;
+
     /// Commit-reveal funds to P2SH of given script signature present in
     /// [`AccountsCommitRevealRequest`] that provides a pubkey placeholder
     /// used by given address type and address index looked up in derivation
@@ -476,6 +481,10 @@ pub trait WalletApi: Send + Sync + AnySync {
         self: Arc<Self>,
         request: AccountsCommitRevealRequest,
     ) -> Result<AccountsCommitRevealResponse>;
+    async fn accounts_commit_reveal_pskb_call(
+        self: Arc<Self>,
+        request: AccountsCommitRevealPSKBRequest,
+    ) -> Result<AccountsCommitRevealPSKBResponse>;
 
     /// Performs a transaction estimate, returning [`AccountsEstimateResponse`]
     /// that contains [`GeneratorSummary`]. This call will estimate the total
