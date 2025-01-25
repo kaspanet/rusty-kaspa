@@ -708,34 +708,43 @@ impl UtxoContext {
         let utxos = &self.context().mature;
         let mut amount = 0;
         if let Some(addresses) = &addresses {
-            let filtered_utxos = utxos.iter().filter_map(|utxo| {
-                if let Some(address) = utxo.address() {
-                    if addresses.contains(&address) {
-                        return Some(utxo.entry().clone());
-                    }
-                }
-                None
-            });
             if let Some(min_amount_sompi) = min_amount_sompi {
-                let filtered_utxos: Vec<_> = filtered_utxos
+                let mut amount = 0;
+                let filtered_utxos = utxos
+                    .iter()
                     .filter_map(|utxo| {
-                        amount += utxo.amount();
-                        if amount < min_amount_sompi {
-                            return Some(utxo);
+                        if let Some(address) = utxo.address() {
+                            if addresses.contains(&address) && amount < min_amount_sompi {
+                                amount += utxo.amount();
+                                return Some(utxo.entry().clone());
+                            }
+                        }
+
+                        None
+                    })
+                    .collect();
+                return Ok(filtered_utxos);
+            } else {
+                let filtered_utxos = utxos
+                    .iter()
+                    .filter_map(|utxo| {
+                        if let Some(address) = utxo.address() {
+                            if addresses.contains(&address) {
+                                return Some(utxo.entry().clone());
+                            }
                         }
                         None
                     })
                     .collect();
                 return Ok(filtered_utxos);
             }
-            return Ok(filtered_utxos.collect());
         }
         if let Some(min_amount_sompi) = min_amount_sompi {
-            let filtered_utxos: Vec<_> = utxos
+            let filtered_utxos = utxos
                 .iter()
                 .filter_map(|utxo| {
-                    amount += utxo.amount();
                     if amount < min_amount_sompi {
+                        amount += utxo.amount();
                         return Some(utxo.entry().clone());
                     }
                     None
