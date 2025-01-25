@@ -163,7 +163,6 @@ pub async fn pskb_signer_for_address(
     key_fingerprint: KeyFingerprint,
 ) -> Result<Bundle, Error> {
     let mut signed_bundle = Bundle::new();
-    let reused_values = SigHashReusedValuesUnsync::new();
 
     // If set, sign-for address is used for signing.
     // Else, all addresses from inputs are.
@@ -188,6 +187,7 @@ pub async fn pskb_signer_for_address(
 
     for pskt_inner in bundle.iter().cloned() {
         let pskt: PSKT<Signer> = PSKT::from(pskt_inner);
+        let reused_values = SigHashReusedValuesUnsync::new();
 
         let sign = |signer_pskt: PSKT<Signer>| {
             signer_pskt
