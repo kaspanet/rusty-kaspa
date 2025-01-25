@@ -432,6 +432,15 @@ impl WalletApi for super::Wallet {
         Ok(AccountsPskbBroadcastResponse { transaction_ids })
     }
 
+    async fn accounts_get_utxos_call(self: Arc<Self>, request: AccountsGetUtxosRequest) -> Result<AccountsGetUtxosResponse> {
+        let AccountsGetUtxosRequest { account_id, addresses, min_amount_sompi } = request;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
+        let utxos = account.get_utxos(addresses, min_amount_sompi).await?;
+        Ok(AccountsGetUtxosResponse { utxos: utxos.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryWrapper>>() })
+    }
+
     async fn accounts_pskb_send_call(self: Arc<Self>, request: AccountsPskbSendRequest) -> Result<AccountsPskbSendResponse> {
         let AccountsPskbSendRequest { account_id, pskb, wallet_secret, payment_secret, sign_for_address } = request;
         let pskb = Bundle::deserialize(&pskb)?;

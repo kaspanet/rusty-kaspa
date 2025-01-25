@@ -27,6 +27,7 @@ use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, PaymentDes
 use crate::utxo::balance::{AtomicBalance, BalanceStrings};
 use crate::utxo::UtxoContextBinding;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, PrivateKey};
+use kaspa_consensus_client::UtxoEntry;
 use kaspa_consensus_client::UtxoEntryReference;
 use kaspa_wallet_keys::derivation::gen0::WalletDerivationManagerV0;
 use workflow_core::abortable::Abortable;
@@ -494,6 +495,11 @@ pub trait Account: AnySync + Send + Sync + 'static {
             }
         }
         Ok(ids)
+    }
+
+    async fn get_utxos(self: Arc<Self>, addresses: Option<Vec<Address>>, min_amount_sompi: Option<u64>) -> Result<Vec<UtxoEntry>> {
+        let utxos = self.utxo_context().get_utxos(addresses, min_amount_sompi).await?;
+        Ok(utxos)
     }
 
     /// Execute a transfer to another wallet account.
