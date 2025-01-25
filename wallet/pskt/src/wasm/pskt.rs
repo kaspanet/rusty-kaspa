@@ -96,9 +96,8 @@ impl TryCastFromJs for PSKT {
     {
         Self::resolve(value, || {
             if JsValue::is_undefined(value.as_ref()) {
-                return PSKT::from(State::NoOp(None)).creator();
-            }
-            if let Some(data) = value.as_ref().as_string() {
+                Ok(PSKT::from(State::Creator(Native::<Creator>::default())))
+            } else if let Some(data) = value.as_ref().as_string() {
                 let pskt_inner: Inner = serde_json::from_str(&data).map_err(|_| Error::InvalidPayload)?;
                 Ok(PSKT::from(State::NoOp(Some(pskt_inner))))
             } else if let Ok(transaction) = Transaction::try_owned_from(value) {
