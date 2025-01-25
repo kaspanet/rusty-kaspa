@@ -256,9 +256,9 @@ tonic = { version = "0.12.3", features = ["tls-webpki-roots", "gzip", "transport
 tonic-build = { version = "0.12.3", features = ["prost"] }
 triggered = "0.1.2"
 uuid = { version = "1.5.0", features = ["v4", "fast-rng", "serde"] }
-wasm-bindgen = { version = "0.2.93", features = ["serde-serialize"] }
+wasm-bindgen = { version = "0.2.100", features = ["serde-serialize"] }
 wasm-bindgen-futures = "0.4.43"
-wasm-bindgen-test = "0.3.43"
+wasm-bindgen-test = "0.3.50"
 web-sys = "0.3.70"
 xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }
