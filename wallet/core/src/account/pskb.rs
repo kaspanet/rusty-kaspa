@@ -198,7 +198,7 @@ pub async fn pskb_signer_for_address(
         let reused_values = SigHashReusedValuesUnsync::new();
 
         let sign = |signer_pskt: PSKT<Signer>| -> Result<PSKT<Signer>, Error> {
-            Ok(signer_pskt
+            signer_pskt
                 .pass_signature_sync(|tx, sighash| -> Result<Vec<SignInputOk>, String> {
                     tx.tx
                         .inputs
@@ -227,7 +227,7 @@ pub async fn pskb_signer_for_address(
                         })
                         .collect()
                 })
-                .map_err(|e| Error::from(e))?)
+                .map_err(Error::from)
         };
 
         let signed_pskt = sign(pskt)?;
