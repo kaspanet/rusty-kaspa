@@ -125,7 +125,7 @@ impl PSKT {
     #[wasm_bindgen(getter, js_name = "payload")]
     pub fn payload_getter(&self) -> JsValue {
         let state = self.state();
-        serde_wasm_bindgen::to_value(state.as_ref().unwrap()).unwrap()
+        workflow_wasm::serde::to_value(state.as_ref().unwrap()).unwrap()
     }
 
     pub fn serialize(&self) -> String {

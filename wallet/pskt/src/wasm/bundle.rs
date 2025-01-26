@@ -82,6 +82,10 @@ impl PSKB {
                     self.0.add_inner(native_pskt.deref().clone());
                     Ok(())
                 }
+                State::Signer(native_pskt) => {
+                    self.0.add_inner(native_pskt.deref().clone());
+                    Ok(())
+                }
                 State::Extractor(native_pskt) => {
                     self.0.add_inner(native_pskt.deref().clone());
                     Ok(())
