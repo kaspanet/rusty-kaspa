@@ -286,8 +286,9 @@ impl PSKT {
         self.replace(state)
     }
 
-    pub fn input_with_redeem(&self, input: &JsValue) -> Result<PSKT> {
-        let obj = js_sys::Object::from(input.clone());
+    #[wasm_bindgen(js_name = inputAndRedeemScript)]
+    pub fn input_with_redeem(&self, input: &TransactionInputT, data: &JsValue) -> Result<PSKT> {
+        let obj = js_sys::Object::from(data.clone());
 
         let input = TransactionInput::try_owned_from(input)?;
         let mut input:Input= input.try_into()?;
