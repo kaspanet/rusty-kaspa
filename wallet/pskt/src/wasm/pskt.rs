@@ -291,12 +291,14 @@ impl PSKT {
         let obj = js_sys::Object::from(data.clone());
 
         let input = TransactionInput::try_owned_from(input)?;
-        let mut input:Input= input.try_into()?;
+        let mut input: Input = input.try_into()?;
         let redeem_script = js_sys::Reflect::get(&obj, &"redeemScript".into())
-        .expect("Missing redeemscript field")
-        .as_string()
-        .expect("redeemscript must be a string");
-        input.redeem_script = Some(redeem_script.as_bytes().to_vec());
+            .expect("Missing redeemscript field")
+            .as_string()
+            .expect("redeemscript must be a string");
+        input.redeem_script = Some(
+            hex::decode(redeem_script).map_err(|e| Error::custom(format!("Redeem script is not a hex string: {}", e.to_string())))?,
+        );
         let state = match self.take() {
             State::Constructor(pskt) => State::Constructor(pskt.input(input)),
             _ => Err(Error::expected_state("Constructor"))?,
