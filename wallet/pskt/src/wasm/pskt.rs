@@ -1,4 +1,4 @@
-use crate::pskt::PSKT as Native;
+use crate::pskt::{Input, PSKT as Native};
 use crate::role::*;
 use kaspa_consensus_core::tx::TransactionId;
 use wasm_bindgen::prelude::*;
@@ -280,6 +280,24 @@ impl PSKT {
     pub fn no_more_outputs(&self) -> Result<PSKT> {
         let state = match self.take() {
             State::Constructor(pskt) => State::Constructor(pskt.no_more_outputs()),
+            _ => Err(Error::expected_state("Constructor"))?,
+        };
+
+        self.replace(state)
+    }
+
+    pub fn input_with_redeem(&self, input: &JsValue) -> Result<PSKT> {
+        let obj = js_sys::Object::from(input.clone());
+
+        let input = TransactionInput::try_owned_from(input)?;
+        let mut input:Input= input.try_into()?;
+        let redeem_script = js_sys::Reflect::get(&obj, &"amount".into())
+        .expect("Missing redeemscript field")
+        .as_string()
+        .expect("redeemscript must be a string");
+        input.redeem_script = Some(redeem_script.as_bytes().to_vec());
+        let state = match self.take() {
+            State::Constructor(pskt) => State::Constructor(pskt.input(input)),
             _ => Err(Error::expected_state("Constructor"))?,
         };
 
