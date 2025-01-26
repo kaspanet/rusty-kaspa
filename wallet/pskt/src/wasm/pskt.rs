@@ -291,7 +291,7 @@ impl PSKT {
 
         let input = TransactionInput::try_owned_from(input)?;
         let mut input:Input= input.try_into()?;
-        let redeem_script = js_sys::Reflect::get(&obj, &"amount".into())
+        let redeem_script = js_sys::Reflect::get(&obj, &"redeemScript".into())
         .expect("Missing redeemscript field")
         .as_string()
         .expect("redeemscript must be a string");
