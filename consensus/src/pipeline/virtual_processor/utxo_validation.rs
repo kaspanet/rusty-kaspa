@@ -38,6 +38,7 @@ use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_utils::refs::Refs;
 
+use crate::model::stores::headers::HeaderStoreReader;
 use rayon::prelude::*;
 use smallvec::{smallvec, SmallVec};
 use std::{iter::once, ops::Deref};
@@ -144,7 +145,10 @@ impl VirtualStateProcessor {
 
         // Make sure accepted tx ids are sorted before building the merkle root
         // NOTE: when subnetworks will be enabled, the sort should consider them in order to allow grouping under a merkle subtree
-        ctx.accepted_tx_ids.sort();
+        // Preserve canonical order of accepted transactions after hard-fork
+        if !self.accepted_id_merkle_root.is_active(pov_daa_score) {
+            ctx.accepted_tx_ids.sort();
+        }
     }
 
     /// Verify that the current block fully respects its own UTXO view. We define a block as
@@ -168,7 +172,14 @@ impl VirtualStateProcessor {
         trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
         // Verify header accepted_id_merkle_root
-        let expected_accepted_id_merkle_root = kaspa_merkle::calc_merkle_root(ctx.accepted_tx_ids.iter().copied());
+        let expected_accepted_id_merkle_root = if self.accepted_id_merkle_root.is_active(header.daa_score) {
+            kaspa_merkle::merkle_hash(
+                self.headers_store.get_header(ctx.selected_parent()).unwrap().accepted_id_merkle_root,
+                kaspa_merkle::calc_merkle_root(ctx.accepted_tx_ids.iter().copied()),
+            )
+        } else {
+            kaspa_merkle::calc_merkle_root(ctx.accepted_tx_ids.iter().copied())
+        };
         if expected_accepted_id_merkle_root != header.accepted_id_merkle_root {
             return Err(BadAcceptedIDMerkleRoot(header.hash, header.accepted_id_merkle_root, expected_accepted_id_merkle_root));
         }
