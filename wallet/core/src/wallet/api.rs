@@ -10,8 +10,8 @@ use crate::storage::interface::TransactionRangeResult;
 use crate::storage::Binding;
 use crate::tx::Fees;
 use kaspa_rpc_core::RpcFeeEstimate;
+use kaspa_wallet_pskt::bundle::Bundle;
 use workflow_core::channel::Receiver;
-
 #[async_trait]
 impl WalletApi for super::Wallet {
     async fn register_notifications(self: Arc<Self>, _channel: Receiver<WalletNotification>) -> Result<u64> {
@@ -404,6 +404,53 @@ impl WalletApi for super::Wallet {
             account.send(destination, fee_rate, priority_fee_sompi, payload, wallet_secret, payment_secret, &abortable, None).await?;
 
         Ok(AccountsSendResponse { generator_summary, transaction_ids })
+    }
+
+    async fn accounts_pskb_sign_call(self: Arc<Self>, request: AccountsPskbSignRequest) -> Result<AccountsPskbSignResponse> {
+        let AccountsPskbSignRequest { account_id, pskb, wallet_secret, payment_secret, sign_for_address } = request;
+        let pskb = Bundle::deserialize(&pskb)?;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
+        let pskb = account.pskb_sign(&pskb, wallet_secret, payment_secret, sign_for_address.as_ref()).await?;
+
+        Ok(AccountsPskbSignResponse { pskb: pskb.serialize()? })
+    }
+
+    async fn accounts_pskb_broadcast_call(
+        self: Arc<Self>,
+        request: AccountsPskbBroadcastRequest,
+    ) -> Result<AccountsPskbBroadcastResponse> {
+        let AccountsPskbBroadcastRequest { account_id, pskb } = request;
+        let pskb = Bundle::deserialize(&pskb)?;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
+        let transaction_ids = account.pskb_broadcast(&pskb).await?;
+        Ok(AccountsPskbBroadcastResponse { transaction_ids })
+    }
+
+    async fn accounts_get_utxos_call(self: Arc<Self>, request: AccountsGetUtxosRequest) -> Result<AccountsGetUtxosResponse> {
+        let AccountsGetUtxosRequest { account_id, addresses, min_amount_sompi } = request;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
+        let utxos = account.get_utxos(addresses, min_amount_sompi).await?;
+        Ok(AccountsGetUtxosResponse { utxos: utxos.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryWrapper>>() })
+    }
+
+    async fn accounts_pskb_send_call(self: Arc<Self>, request: AccountsPskbSendRequest) -> Result<AccountsPskbSendResponse> {
+        let AccountsPskbSendRequest { account_id, pskb, wallet_secret, payment_secret, sign_for_address } = request;
+        let pskb = Bundle::deserialize(&pskb)?;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
+        let pskb = account.clone().pskb_sign(&pskb, wallet_secret, payment_secret, sign_for_address.as_ref()).await?;
+        let transaction_ids = account.pskb_broadcast(&pskb).await?;
+        Ok(AccountsPskbSendResponse { transaction_ids })
     }
 
     async fn accounts_transfer_call(self: Arc<Self>, request: AccountsTransferRequest) -> Result<AccountsTransferResponse> {
