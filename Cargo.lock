@@ -3375,7 +3375,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet-grpc-core"
-version = "0.15.4"
+version = "0.16.0"
 dependencies = [
  "prost",
  "tonic",
@@ -3384,7 +3384,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet-grpc-server"
-version = "0.15.4"
+version = "0.16.0"
 dependencies = [
  "kaspa-wallet-grpc-core",
  "tokio",
