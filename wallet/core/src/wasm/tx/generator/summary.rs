@@ -28,8 +28,13 @@ impl GeneratorSummary {
     }
 
     #[wasm_bindgen(getter, js_name = fees)]
-    pub fn aggregated_fees(&self) -> BigInt {
-        BigInt::from(self.inner.aggregated_fees())
+    pub fn aggregate_fees(&self) -> BigInt {
+        BigInt::from(self.inner.aggregate_fees())
+    }
+
+    #[wasm_bindgen(getter, js_name = mass)]
+    pub fn aggregate_mass(&self) -> BigInt {
+        BigInt::from(self.inner.aggregate_mass())
     }
 
     #[wasm_bindgen(getter, js_name = transactions)]
