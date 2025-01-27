@@ -51,17 +51,17 @@ impl Kaspawalletd for KaspaWalletService {
     }
 
     async fn broadcast(&self, _request: Request<BroadcastRequest>) -> Result<Response<BroadcastResponse>, Status> {
-        let response = BroadcastResponse { tx_i_ds: vec![] };
+        let response = BroadcastResponse { tx_ids: vec![] };
         Ok(Response::new(response))
     }
 
     async fn broadcast_replacement(&self, _request: Request<BroadcastRequest>) -> Result<Response<BroadcastResponse>, Status> {
-        let response = BroadcastResponse { tx_i_ds: vec![] };
+        let response = BroadcastResponse { tx_ids: vec![] };
         Ok(Response::new(response))
     }
 
     async fn send(&self, _request: Request<SendRequest>) -> Result<Response<SendResponse>, Status> {
-        let response = SendResponse { tx_i_ds: vec![], signed_transactions: vec![] };
+        let response = SendResponse { tx_ids: vec![], signed_transactions: vec![] };
         Ok(Response::new(response))
     }
 
@@ -76,7 +76,7 @@ impl Kaspawalletd for KaspaWalletService {
     }
 
     async fn bump_fee(&self, _request: Request<BumpFeeRequest>) -> Result<Response<BumpFeeResponse>, Status> {
-        let response = BumpFeeResponse { transactions: vec![], tx_i_ds: vec![] };
+        let response = BumpFeeResponse { transactions: vec![], tx_ids: vec![] };
         Ok(Response::new(response))
     }
 }

@@ -73,7 +73,7 @@ message BroadcastRequest {
   repeated bytes transactions = 2;
 }
 
-message BroadcastResponse { repeated string txIDs = 1; }
+message BroadcastResponse { repeated string txIds = 1; }
 
 message ShutdownRequest {}
 
@@ -120,7 +120,7 @@ message SendRequest {
 }
 
 message SendResponse {
-  repeated string txIDs = 1;
+  repeated string txIds = 1;
   repeated bytes signedTransactions = 2;
 }
 
@@ -142,10 +142,10 @@ message BumpFeeRequest {
   repeated string from = 2;
   bool useExistingChangeAddress = 3;
   FeePolicy feePolicy = 4;
-  string txID = 5;
+  string txId = 5;
 }
 
 message BumpFeeResponse {
   repeated bytes transactions = 1;
-  repeated string txIDs = 2;
+  repeated string txIds = 2;
 }
