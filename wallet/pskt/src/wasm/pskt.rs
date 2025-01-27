@@ -296,9 +296,8 @@ impl PSKT {
             .expect("Missing redeemscript field")
             .as_string()
             .expect("redeemscript must be a string");
-        input.redeem_script = Some(
-            hex::decode(redeem_script).map_err(|e| Error::custom(format!("Redeem script is not a hex string: {}", e.to_string())))?,
-        );
+        input.redeem_script =
+            Some(hex::decode(redeem_script).map_err(|e| Error::custom(format!("Redeem script is not a hex string: {}", e)))?);
         let state = match self.take() {
             State::Constructor(pskt) => State::Constructor(pskt.input(input)),
             _ => Err(Error::expected_state("Constructor"))?,
