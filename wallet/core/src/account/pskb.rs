@@ -306,6 +306,7 @@ pub fn pskt_to_pending_transaction(
     source_utxo_context: Option<UtxoContext>,
 ) -> Result<PendingTransaction, Error> {
     let mass = 10;
+    log_info!("A");
     let (signed_tx, _) = match finalized_pskt.clone().extractor() {
         Ok(extractor) => match extractor.extract_tx() {
             Ok(once_mass) => once_mass(mass),
@@ -313,7 +314,7 @@ pub fn pskt_to_pending_transaction(
         },
         Err(e) => return Err(Error::PendingTransactionFromPSKTError(e.to_string())),
     };
-
+    log_info!("B");
     let inner_pskt = finalized_pskt.deref().clone();
 
     let (utxo_entries_ref, aggregate_input_value): (Vec<UtxoEntryReference>, u64) = inner_pskt
@@ -341,13 +342,16 @@ pub fn pskt_to_pending_transaction(
             vec.push(entry);
             (vec, sum + amount)
         });
+    log_info!("C");
 
     let output: Vec<kaspa_consensus_core::tx::TransactionOutput> = signed_tx.outputs.clone();
     let recipient = extract_script_pub_key_address(&output[0].script_public_key, network_id.into())?;
     let fee_u: u64 = 0;
+    log_info!("D");
 
     let utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static> =
         Box::new(utxo_entries_ref.clone().into_iter());
+        log_info!("E");
 
     let final_transaction_destination = PaymentDestination::PaymentOutputs(PaymentOutputs::from((recipient.clone(), output[0].value)));
 
@@ -369,8 +373,10 @@ pub fn pskt_to_pending_transaction(
 
     // Create the Generator
     let generator = Generator::try_new(settings, None, None)?;
+    log_info!("F");
 
     let aggregate_output_value = output.clone().iter().map(|output| output.value).sum::<u64>();
+    log_info!("G");
 
     let (change_output_index, change_output_value) = output
         .iter()
@@ -387,6 +393,7 @@ pub fn pskt_to_pending_transaction(
             }
         })
         .unwrap_or((None, 0));
+    log_info!("H");
 
     // Create PendingTransaction (WIP)
     let pending_tx = PendingTransaction::try_new(
