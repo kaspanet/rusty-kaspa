@@ -487,10 +487,12 @@ pub trait Account: AnySync + Send + Sync + 'static {
                     let change = self.change_address()?;
                     let transaction =
                         pskt_to_pending_transaction(pskt, self.wallet().network_id()?, change, self.utxo_context().clone().into())?;
+                        log_info!("Submitting to rpc");
                     ids.push(transaction.try_submit(&self.wallet().rpc_api()).await?);
+                    log_info!("Submitted to rpc");
                 }
                 Err(e) => {
-                    eprintln!("Error processing a PSKT from bundle: {:?}", e);
+                    log_info!("Error processing a PSKT from bundle: {:?}", e);
                 }
             }
         }
