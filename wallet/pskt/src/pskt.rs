@@ -454,9 +454,7 @@ impl PSKT<Extractor> {
             log_info!("2");
 
             tx.populated_inputs().enumerate().try_for_each(|(idx, (input, entry))| {
-                log_info!("2.1");
                 TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &reused_values, &cache, false).execute()?;
-                log_info!("2.2");
                 <Result<(), ExtractError>>::Ok(())
             })?;
             log_info!("2");
