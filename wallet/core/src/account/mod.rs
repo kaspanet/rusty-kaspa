@@ -490,7 +490,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
                     ids.push(transaction.try_submit(&self.wallet().rpc_api()).await?);
                 }
                 Err(e) => {
-                    log_info!("Error processing a PSKT from bundle: {:?}", e);
+                    eprintln!("Error processing a PSKT from bundle: {:?}", e);
                 }
             }
         }
