@@ -6,7 +6,6 @@ use kaspa_bip32::{secp256k1, DerivationPath, KeyFingerprint};
 use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, Hash};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use workflow_log::log_info;
 use std::{collections::BTreeMap, fmt::Display, fmt::Formatter, future::Future, marker::PhantomData, ops::Deref};
 
 pub use crate::error::Error;
@@ -442,23 +441,18 @@ impl PSKT<Extractor> {
 
     pub fn extract_tx(self) -> Result<impl FnOnce(u64) -> (Transaction, Vec<Option<UtxoEntry>>), ExtractError> {
         let (tx, entries) = self.extract_tx_unchecked()?(0);
-        log_info!("0");
+
         let tx = MutableTransaction::with_entries(tx, entries.into_iter().flatten().collect());
         use kaspa_consensus_core::tx::VerifiableTransaction;
         {
-            log_info!("1");
-
             let tx = tx.as_verifiable();
             let cache = Cache::new(10_000);
             let reused_values = SigHashReusedValuesUnsync::new();
-            log_info!("2");
 
             tx.populated_inputs().enumerate().try_for_each(|(idx, (input, entry))| {
                 TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &reused_values, &cache, false).execute()?;
                 <Result<(), ExtractError>>::Ok(())
             })?;
-            log_info!("2");
-
         }
         let entries = tx.entries;
         let tx = tx.tx;
@@ -466,8 +460,6 @@ impl PSKT<Extractor> {
             tx.set_mass(mass);
             (tx, entries)
         };
-        log_info!("3");
-
         Ok(closure)
     }
 }
