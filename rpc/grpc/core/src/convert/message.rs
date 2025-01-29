@@ -183,6 +183,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetInfoResponse>, protowire::GetInfoRespo
         server_version: item.server_version.clone(),
         is_utxo_indexed: item.is_utxo_indexed,
         is_synced: item.is_synced,
+        namespaces: item.namespaces.clone(),
         has_notify_command: item.has_notify_command,
         has_message_id: item.has_message_id,
         error: None,
@@ -648,6 +649,7 @@ try_from!(item: &protowire::GetInfoResponseMessage, RpcResult<kaspa_rpc_core::Ge
         server_version: item.server_version.clone(),
         is_utxo_indexed: item.is_utxo_indexed,
         is_synced: item.is_synced,
+        namespaces: item.namespaces.clone(),
         has_notify_command: item.has_notify_command,
         has_message_id: item.has_message_id,
     }

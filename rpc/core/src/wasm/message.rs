@@ -243,6 +243,7 @@ declare! {
         serverVersion : string;
         isUtxoIndexed : boolean;
         isSynced : boolean;
+        namespaces : string[];
         /** GRPC ONLY */
         hasNotifyCommand : boolean;
         /** GRPC ONLY */
