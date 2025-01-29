@@ -305,10 +305,9 @@ pub fn pskt_to_pending_transaction(
     change_address: Address,
     source_utxo_context: Option<UtxoContext>,
 ) -> Result<PendingTransaction, Error> {
-    let mass = 10;
-    let (signed_tx, _) = match finalized_pskt.clone().extractor() {
-        Ok(extractor) => match extractor.extract_tx() {
-            Ok(once_mass) => once_mass(mass),
+    let signed_tx = match finalized_pskt.clone().extractor() {
+        Ok(extractor) => match extractor.extract_tx(&network_id.into()) {
+            Ok(tx) => tx.tx,
             Err(e) => return Err(Error::PendingTransactionFromPSKTError(e.to_string())),
         },
         Err(e) => return Err(Error::PendingTransactionFromPSKTError(e.to_string())),

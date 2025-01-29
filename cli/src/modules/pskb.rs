@@ -214,13 +214,12 @@ impl Pskb {
                 for (pskt_index, bundle_inner) in pskb.0.iter().enumerate() {
                     tprintln!(ctx, "PSKT #{:03} finalized check:", pskt_index + 1);
                     let pskt: PSKT<Signer> = PSKT::<Signer>::from(bundle_inner.to_owned());
-
+                    let params = ctx.wallet().network_id()?.into();
                     let finalizer = pskt.finalizer();
-
                     if let Ok(pskt_finalizer) = finalize_pskt_one_or_more_sig_and_redeem_script(finalizer) {
                         // Verify if extraction is possible.
                         match pskt_finalizer.extractor() {
-                            Ok(ex) => match ex.extract_tx() {
+                            Ok(ex) => match ex.extract_tx(&params) {
                                 Ok(_) => tprintln!(
                                     ctx,
                                     "  Transaction extracted successfully: PSKT is finalized with a valid script signature."
