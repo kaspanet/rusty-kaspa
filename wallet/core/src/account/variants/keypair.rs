@@ -188,4 +188,22 @@ impl Account for Keypair {
 
         Ok(descriptor)
     }
+
+    fn create_address_private_keys<'l>(
+        self: Arc<Self>,
+        key_data: &PrvKeyData,
+        payment_secret: &Option<Secret>,
+        addresses: &[&'l Address],
+    ) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
+        let private_key =
+            key_data.as_secret_key(payment_secret.as_ref())?.ok_or(Error::Custom("Unable to derive private key".to_string()))?;
+        let mut private_keys = vec![];
+        let wallet_address = self.receive_address()?;
+        for address in addresses.iter() {
+            if **address == wallet_address {
+                private_keys.push((*address, private_key));
+            }
+        }
+        Ok(private_keys)
+    }
 }
