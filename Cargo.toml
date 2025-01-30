@@ -6,6 +6,8 @@ members = [
     "core",
     "wallet/macros",
     "wallet/core",
+    "wallet/grpc/core",
+    "wallet/grpc/server",
     "wallet/native",
     "wallet/wasm",
     "wallet/bip32",
@@ -125,6 +127,8 @@ kaspa-wallet-cli-wasm = { version = "0.16.0", path = "wallet/wasm" }
 kaspa-wallet-keys = { version = "0.16.0", path = "wallet/keys" }
 kaspa-wallet-pskt = { version = "0.16.0", path = "wallet/pskt" }
 kaspa-wallet-core = { version = "0.16.0", path = "wallet/core" }
+kaspa-wallet-grpc-core = { version = "0.16.0", path = "wallet/grpc/core" }
+kaspa-wallet-grpc-server = { version = "0.16.0", path = "wallet/grpc/server" }
 kaspa-wallet-macros = { version = "0.16.0", path = "wallet/macros" }
 kaspa-wasm = { version = "0.16.0", path = "wasm" }
 kaspa-wasm-core = { version = "0.16.0", path = "wasm/core" }
