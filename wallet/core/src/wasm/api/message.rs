@@ -5,6 +5,7 @@ use crate::account::descriptor::IAccountDescriptor;
 use crate::api::message::*;
 use crate::imports::*;
 use crate::tx::{Fees, PaymentDestination, PaymentOutputs};
+use crate::wasm::api::keydata::PrvKeyDataVariantKind;
 use crate::wasm::tx::fees::IFees;
 use crate::wasm::tx::GeneratorSummary;
 use js_sys::Array;
@@ -748,8 +749,12 @@ declare! {
          * to be provided.
          */
         paymentSecret? : string;
-        /** BIP39 mnemonic phrase (12 or 24 words)*/
-        mnemonic : string;
+        /** BIP39 mnemonic phrase (12 or 24 words) if kind is mnemonic */
+        mnemonic? : string;
+        /** Secret key if kind is secretKey */
+        secretKey? : string;
+        /** Kind of the private key data */
+        kind : "mnemonic" | "secretKey";
     }
     "#,
 }
@@ -758,12 +763,27 @@ try_from! ( args: IPrvKeyDataCreateRequest, PrvKeyDataCreateRequest, {
     let wallet_secret = args.get_secret("walletSecret")?;
     let name = args.try_get_string("name")?;
     let payment_secret = args.try_get_secret("paymentSecret")?;
-    let mnemonic = args.get_secret("mnemonic")?;
+    let kind = args.get_string("kind")?;
+    let (secret, kind) = match kind.as_str() {
+        "mnemonic" => (args.get_secret("mnemonic")?, PrvKeyDataVariantKind::Mnemonic),
+        "secretKey" => {
+            let mut hex_key = args.get_string("secretKey")?;
+            let mut secret = [0u8; 32];
+            faster_hex::hex_decode(hex_key.as_bytes(), &mut secret).map_err(|err|Error::custom(format!("secretKey: {err}")))?;
+            hex_key.zeroize();
+            let secret = Secret::new(secret.to_vec());
+            (secret, PrvKeyDataVariantKind::SecretKey)
+        },
+        _ => return Err(Error::custom("Invalid kind, supported: mnemonic, secretKey".to_string())),
+    };
+
+    //log_info!("secret: {:?}", secret);
 
     let prv_key_data_args = PrvKeyDataCreateArgs {
         name,
         payment_secret,
-        mnemonic,
+        kind,
+        secret,
     };
 
     Ok(PrvKeyDataCreateRequest { wallet_secret, prv_key_data_args })
@@ -1032,16 +1052,14 @@ declare! {
         accountIndex?:number;
         prvKeyDataId:string;
         paymentSecret?:string;
+    } | {
+        walletSecret: string;
+        type: "kaspa-keypair-standard";
+        accountName:string;
+        prvKeyDataId:string;
+        paymentSecret?:string;
+        ecdsa?:boolean;
     };
-    //   |{
-    //     walletSecret: string;
-    //     type: "multisig";
-    //     accountName:string;
-    //     accountIndex?:number;
-    //     prvKeyDataId:string;
-    //     pubkeys:HexString[];
-    //     paymentSecret?:string;
-    //   }
 
     //   |{
     //     walletSecret: string;
@@ -1059,21 +1077,32 @@ try_from! (args: IAccountsCreateRequest, AccountsCreateRequest, {
 
     let kind = AccountKind::try_from(args.try_get_value("type")?.ok_or(Error::custom("type is required"))?)?;
 
-    if kind != crate::account::BIP32_ACCOUNT_KIND {
-        return Err(Error::custom("only BIP32 accounts are currently supported"));
-    }
+    let account_create_args = match kind.as_str() {
+        crate::account::BIP32_ACCOUNT_KIND => {
+            let prv_key_data_args = PrvKeyDataArgs {
+                prv_key_data_id: args.try_get_prv_key_data_id("prvKeyDataId")?.ok_or(Error::custom("prvKeyDataId is required"))?,
+                payment_secret: args.try_get_secret("paymentSecret")?,
+            };
 
-    let prv_key_data_args = PrvKeyDataArgs {
-        prv_key_data_id: args.try_get_prv_key_data_id("prvKeyDataId")?.ok_or(Error::custom("prvKeyDataId is required"))?,
-        payment_secret: args.try_get_secret("paymentSecret")?,
+            let account_args = AccountCreateArgsBip32 {
+                account_name: args.try_get_string("accountName")?,
+                account_index: args.get_u64("accountIndex").ok(),
+            };
+
+            AccountCreateArgs::Bip32 { prv_key_data_args, account_args }
+
+        }
+        crate::account::KEYPAIR_ACCOUNT_KIND => {
+            AccountCreateArgs::Keypair {
+                prv_key_data_id: args.try_get_prv_key_data_id("prvKeyDataId")?.ok_or(Error::custom("prvKeyDataId is required"))?,
+                account_name: args.try_get_string("accountName")?,
+                ecdsa: args.get_bool("ecdsa").unwrap_or(false),
+            }
+        }
+        _ => {
+            return Err(Error::custom("only BIP32/kaspa-keypair-standard accounts are currently supported"));
+        }
     };
-
-    let account_args = AccountCreateArgsBip32 {
-        account_name: args.try_get_string("accountName")?,
-        account_index: args.get_u64("accountIndex").ok(),
-    };
-
-    let account_create_args = AccountCreateArgs::Bip32 { prv_key_data_args, account_args };
 
     Ok(AccountsCreateRequest { wallet_secret, account_create_args })
 });

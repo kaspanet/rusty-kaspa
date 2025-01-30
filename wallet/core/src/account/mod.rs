@@ -487,7 +487,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
                     let change = self.change_address()?;
                     let transaction =
                         pskt_to_pending_transaction(pskt, self.wallet().network_id()?, change, self.utxo_context().clone().into())?;
-                        log_info!("Submitting to rpc");
+                    log_info!("Submitting to rpc");
                     ids.push(transaction.try_submit(&self.wallet().rpc_api()).await?);
                     log_info!("Submitted to rpc");
                 }
