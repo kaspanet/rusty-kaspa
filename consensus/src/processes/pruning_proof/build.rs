@@ -28,6 +28,9 @@ use crate::{
 
 use super::{PruningProofManager, PruningProofManagerInternalResult};
 
+// The amount of extra depth we try to create per level after the usual 2M
+const SAFETY_MARGIN: u64 = 100;
+
 #[derive(Clone)]
 struct RelationsStoreInFutureOfRoot<T: RelationsStoreReader, U: ReachabilityService> {
     relations_store: T,
@@ -96,19 +99,14 @@ impl PruningProofManager {
                         .block_at_depth(&*ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m)
                         .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
                         .unwrap();
-                    if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m) {
-                        block_at_depth_m_at_next_level
-                    } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_2m, block_at_depth_m_at_next_level) {
-                        block_at_depth_2m
-                    } else {
-                        self.find_common_ancestor_in_chain_of_a(
-                            &*ghostdag_stores[level],
-                            block_at_depth_m_at_next_level,
-                            block_at_depth_2m,
-                        )
-                        .map_err(|err| format!("level: {}, err: {}", level, err))
-                        .unwrap()
-                    }
+
+                    self.find_latest_common_ancestor_in_store(
+                        &*ghostdag_stores[level],
+                        block_at_depth_m_at_next_level,
+                        block_at_depth_2m,
+                    )
+                    .map_err(|err| format!("level: {}, err: {}", level, err))
+                    .unwrap()
                 } else {
                     block_at_depth_2m
                 };
@@ -209,6 +207,33 @@ impl PruningProofManager {
         )
     }
 
+    /// Given two hashes (both are assumed to exist in the passed ghostdag store),
+    /// find their latest common ancestor. The latest common ancestor is minimum block
+    /// such that both 'a' and 'b' are either equal to it or in its future.
+    /// This ancestor must also be in the selected parent chain of 'a'.
+    ///
+    /// Additional Notes:
+    /// - 'a' and 'b' are expected to be hashes acquired via block_at_depth.
+    ///   By virtue of this, they are both chain block hashes.
+    fn find_latest_common_ancestor_in_store(
+        &self,
+        ghostdag_store: &DbGhostdagStore,
+        a: Hash,
+        b: Hash,
+    ) -> Result<Hash, PruningProofManagerInternalError> {
+        // These two hashes are expected to be acquired from the passed ghostdag store
+        assert!(ghostdag_store.has(a).unwrap());
+        assert!(ghostdag_store.has(b).unwrap());
+
+        if self.reachability_service.is_dag_ancestor_of(a, b) {
+            Ok(a)
+        } else if self.reachability_service.is_dag_ancestor_of(b, a) {
+            Ok(b)
+        } else {
+            self.find_common_ancestor_in_chain_of_a(ghostdag_store, a, b)
+        }
+    }
+
     /// Find a sufficient root at a given level by going through the headers store and looking
     /// for a deep enough level block
     /// For each root candidate, fill in the ghostdag data to see if it actually is deep enough.
@@ -221,7 +246,7 @@ impl PruningProofManager {
         &self,
         pp_header: &HeaderWithBlockLevel,
         level: BlockLevel,
-        _current_dag_level: BlockLevel,
+        current_dag_level: BlockLevel,
         required_block: Option<Hash>,
         temp_db: Arc<DB>,
     ) -> PruningProofManagerInternalResult<(Arc<DbGhostdagStore>, Hash, Hash)> {
@@ -237,17 +262,15 @@ impl PruningProofManager {
 
         // We only have the headers store (which has level 0 blue_scores) to assemble the proof data from.
         // We need to look deeper at higher levels (2x deeper every level) to find 2M (plus margin) blocks at that level
-        // TODO: uncomment when the full fix to minimize proof sizes comes.
-        // let mut required_base_level_depth = self.estimated_blue_depth_at_level_0(
-        //     level,
-        //     required_level_depth + 100, // We take a safety margin
-        //     current_dag_level,
-        // );
+        let mut required_base_level_depth = self.estimated_blue_depth_at_level_0(
+            level,
+            required_level_depth + SAFETY_MARGIN, // We take a safety margin
+            current_dag_level,
+        );
         // NOTE: Starting from required_level_depth (a much lower starting point than normal) will typically require O(N) iterations
         // for level L + N where L is the current dag level. This is fine since the steps per iteration are still exponential
         // and so we will complete each level in not much more than N iterations per level.
         // We start here anyway so we can try to minimize the proof size when the current dag level goes down significantly.
-        let mut required_base_level_depth = required_level_depth + 100;
 
         let mut is_last_level_header;
         let mut tries = 0;
@@ -307,23 +330,16 @@ impl PruningProofManager {
                 if root != self.genesis_hash {
                     // Try to adjust the root forward with the new known block_at_depth_2m_buffered
                     let block_at_depth_2m_buffered =
-                        self.block_at_depth(&*ghostdag_store, selected_tip, required_level_depth + 100).unwrap();
+                        self.block_at_depth(&*ghostdag_store, selected_tip, required_level_depth + SAFETY_MARGIN).unwrap();
 
-                    root = if self.reachability_service.is_dag_ancestor_of(block_at_depth_2m_buffered, block_at_depth_m_at_next_level)
-                    {
-                        block_at_depth_2m_buffered
-                    } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m_buffered)
-                    {
-                        block_at_depth_m_at_next_level
-                    } else {
-                        self.find_common_ancestor_in_chain_of_a(
+                    root = self
+                        .find_latest_common_ancestor_in_store(
                             &*ghostdag_store,
                             block_at_depth_m_at_next_level,
                             block_at_depth_2m_buffered,
                         )
                         .map_err(|err| format!("level: {}, err: {}", level, err))
-                        .unwrap()
-                    };
+                        .unwrap();
                 }
 
                 break Ok((ghostdag_store, selected_tip, root));
