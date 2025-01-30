@@ -5,6 +5,7 @@
 use crate::imports::*;
 use crate::storage::interface::CreateArgs;
 use crate::storage::{Hint, PrvKeyDataId};
+use crate::wallet::keydata::PrvKeyDataVariantKind;
 use borsh::{BorshDeserialize, BorshSerialize};
 use zeroize::Zeroize;
 
@@ -62,18 +63,20 @@ impl WalletOpenArgs {
 pub struct PrvKeyDataCreateArgs {
     pub name: Option<String>,
     pub payment_secret: Option<Secret>,
-    pub mnemonic: Secret,
+    pub secret: Secret,
+    pub kind: PrvKeyDataVariantKind,
 }
 
 impl PrvKeyDataCreateArgs {
-    pub fn new(name: Option<String>, payment_secret: Option<Secret>, mnemonic: Secret) -> Self {
-        Self { name, payment_secret, mnemonic }
+    pub fn new(name: Option<String>, payment_secret: Option<Secret>, secret: Secret, kind: PrvKeyDataVariantKind) -> Self {
+        Self { name, payment_secret, secret, kind }
     }
 }
 
 impl Zeroize for PrvKeyDataCreateArgs {
     fn zeroize(&mut self) {
-        self.mnemonic.zeroize();
+        self.secret.zeroize();
+        self.payment_secret.zeroize();
     }
 }
 
@@ -156,6 +159,11 @@ pub enum AccountCreateArgs {
     Bip32Watch {
         account_args: AccountCreateArgsBip32Watch,
     },
+    Keypair {
+        prv_key_data_id: PrvKeyDataId,
+        account_name: Option<String>,
+        ecdsa: bool,
+    },
 }
 
 impl AccountCreateArgs {
@@ -172,6 +180,10 @@ impl AccountCreateArgs {
 
     pub fn new_legacy(prv_key_data_id: PrvKeyDataId, account_name: Option<String>) -> Self {
         AccountCreateArgs::Legacy { prv_key_data_id, account_name }
+    }
+
+    pub fn new_keypair_key(prv_key_data_id: PrvKeyDataId, account_name: Option<String>, ecdsa: bool) -> Self {
+        AccountCreateArgs::Keypair { prv_key_data_id, account_name, ecdsa }
     }
 
     pub fn new_multisig(

@@ -554,9 +554,19 @@ impl WalletApi for super::Wallet {
 
         let address = match address_type {
             CommitRevealAddressKind::Receive => {
-                account.clone().as_derivation_capable()?.receive_address_at_index(address_index).await?
+                if account.account_kind() == KEYPAIR_ACCOUNT_KIND {
+                    account.receive_address()?
+                } else {
+                    account.clone().as_derivation_capable()?.receive_address_at_index(address_index).await?
+                }
             }
-            CommitRevealAddressKind::Change => account.clone().as_derivation_capable()?.change_address_at_index(address_index).await?,
+            CommitRevealAddressKind::Change => {
+                if account.account_kind() == KEYPAIR_ACCOUNT_KIND {
+                    account.change_address()?
+                } else {
+                    account.clone().as_derivation_capable()?.change_address_at_index(address_index).await?
+                }
+            }
         };
 
         let abortable = Abortable::new();

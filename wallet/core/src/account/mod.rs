@@ -464,12 +464,19 @@ pub trait Account: AnySync + Send + Sync + 'static {
         let signer = Arc::new(PSKBSigner::new(self.clone().as_dyn_arc(), keydata.clone(), payment_secret.clone()));
 
         let network_id = self.wallet().clone().network_id()?;
-        let derivation = self.as_derivation_capable()?;
+        let (derivation_path, key_fingerprint) = if self.account_kind() == KEYPAIR_ACCOUNT_KIND {
+            // let secret_key = keydata.as_secret_key(payment_secret.as_ref())?.ok_or(Error::Custom(format!("Private key not found for account")))?;
+            // (None, secp256k1::PublicKey::from_secret_key_global(&secret_key).fingerprint())
+            (None, None)
+        } else {
+            let derivation = self.as_derivation_capable()?;
 
-        let (derivation_path, _) =
-            build_derivate_paths(&derivation.account_kind(), derivation.account_index(), derivation.cosigner_index())?;
+            let (derivation_path, _) =
+                build_derivate_paths(&derivation.account_kind(), derivation.account_index(), derivation.cosigner_index())?;
 
-        let key_fingerprint = keydata.get_xprv(payment_secret.clone().as_ref())?.public_key().fingerprint();
+            let key_fingerprint = keydata.get_xprv(payment_secret.clone().as_ref())?.public_key().fingerprint();
+            (Some(derivation_path), Some(key_fingerprint))
+        };
 
         match pskb_signer_for_address(bundle, signer, network_id, sign_for_address, derivation_path, key_fingerprint).await {
             Ok(signer) => Ok(signer),
@@ -487,7 +494,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
                     let change = self.change_address()?;
                     let transaction =
                         pskt_to_pending_transaction(pskt, self.wallet().network_id()?, change, self.utxo_context().clone().into())?;
-                        log_info!("Submitting to rpc");
+                    log_info!("Submitting to rpc");
                     ids.push(transaction.try_submit(&self.wallet().rpc_api()).await?);
                     log_info!("Submitted to rpc");
                 }
@@ -582,6 +589,18 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
     fn as_legacy_account(self: Arc<Self>) -> Result<Arc<dyn AsLegacyAccount>> {
         Err(Error::InvalidAccountKind)
+    }
+
+    fn create_address_private_keys<'l>(
+        self: Arc<Self>,
+        key_data: &PrvKeyData,
+        payment_secret: &Option<Secret>,
+        addresses: &[&'l Address],
+    ) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
+        let account = self.clone().as_derivation_capable().expect("expecting derivation capable account");
+        let (receive, change) = account.derivation().addresses_indexes(addresses)?;
+        let private_keys = account.create_private_keys(key_data, payment_secret, &receive, &change)?;
+        Ok(private_keys)
     }
 }
 
