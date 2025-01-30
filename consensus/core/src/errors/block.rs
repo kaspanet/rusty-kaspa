@@ -100,8 +100,8 @@ pub enum RuleError {
     #[error("transaction in isolation validation failed for tx {0}: {1}")]
     TxInIsolationValidationFailed(TransactionId, TxRuleError),
 
-    #[error("block exceeded mass limit of {0}")]
-    ExceedsMassLimit(u64),
+    #[error("block {0} with mass {0} exceeds limit of {1}")]
+    ExceedsMassLimit(Hash, u64, u64),
 
     #[error("transaction {0} has mass field of {1} but mass should be at least {2}")]
     MassFieldTooLow(TransactionId, u64, u64),
