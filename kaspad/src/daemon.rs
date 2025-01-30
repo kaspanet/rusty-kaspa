@@ -14,6 +14,8 @@ use kaspa_database::{
 };
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
+use kaspa_p2p_lib::Hub;
+use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::git;
@@ -543,6 +545,14 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         tick_service.clone(),
     ));
 
+    let hub = Hub::new();
+    let mining_rule_engine = Arc::new(MiningRuleEngine::new(
+        consensus_manager.clone(),
+        config.clone(),
+        processing_counters.clone(),
+        tick_service.clone(),
+        hub.clone(),
+    ));
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
         address_manager,
@@ -550,6 +560,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         mining_manager.clone(),
         tick_service.clone(),
         notification_root,
+        hub.clone(),
+        mining_rule_engine.clone(),
     ));
     let p2p_service = Arc::new(P2pService::new(
         flow_context.clone(),
@@ -580,6 +592,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         p2p_tower_counters.clone(),
         grpc_tower_counters.clone(),
         system_info,
+        mining_rule_engine.clone(),
     ));
     let grpc_service_broadcasters: usize = 3; // TODO: add a command line argument or derive from other arg/config/host-related fields
     let grpc_service = if !args.disable_grpc {
@@ -613,6 +626,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     async_runtime.register(consensus_monitor);
     async_runtime.register(mining_monitor);
     async_runtime.register(perf_monitor);
+    async_runtime.register(mining_rule_engine);
+
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments
     [
