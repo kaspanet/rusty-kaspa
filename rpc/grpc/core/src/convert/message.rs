@@ -311,6 +311,8 @@ from!(item: RpcResult<&kaspa_rpc_core::GetBlockDagInfoResponse>, protowire::GetB
         pruning_point_hash: item.pruning_point_hash.to_string(),
         virtual_daa_score: item.virtual_daa_score,
         sink: item.sink.to_string(),
+        virtual_utxo_count: item.virtual_utxo_count,
+        pruning_point_utxo_count: item.pruning_point_utxo_count,
         error: None,
     }
 });
@@ -803,6 +805,8 @@ try_from!(item: &protowire::GetBlockDagInfoResponseMessage, RpcResult<kaspa_rpc_
         pruning_point_hash: RpcHash::from_str(&item.pruning_point_hash)?,
         virtual_daa_score: item.virtual_daa_score,
         sink: item.sink.parse()?,
+        virtual_utxo_count: item.virtual_utxo_count,
+        pruning_point_utxo_count: item.pruning_point_utxo_count,
     }
 });
 
