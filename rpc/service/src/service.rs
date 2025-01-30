@@ -53,6 +53,7 @@ use kaspa_notify::{
 };
 use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_p2p_lib::common::ProtocolError;
+use kaspa_p2p_mining::rule_engine::{MiningRuleEngine, NearlySyncedFinder};
 use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
 use kaspa_rpc_core::{
     api::{
@@ -119,6 +120,7 @@ pub struct RpcCoreService {
     system_info: SystemInfo,
     fee_estimate_cache: ExpiringCache<RpcFeeEstimate>,
     fee_estimate_verbose_cache: ExpiringCache<kaspa_mining::errors::MiningManagerResult<GetFeeEstimateExperimentalResponse>>,
+    mining_rule_engine: Arc<MiningRuleEngine>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -144,6 +146,7 @@ impl RpcCoreService {
         p2p_tower_counters: Arc<TowerConnectionCounters>,
         grpc_tower_counters: Arc<TowerConnectionCounters>,
         system_info: SystemInfo,
+        mining_rule_engine: Arc<MiningRuleEngine>,
     ) -> Self {
         // This notifier UTXOs subscription granularity to index-processor or consensus notifier
         let policies = match index_notifier {
@@ -222,6 +225,7 @@ impl RpcCoreService {
             system_info,
             fee_estimate_cache: ExpiringCache::new(Duration::from_millis(500), Duration::from_millis(1000)),
             fee_estimate_verbose_cache: ExpiringCache::new(Duration::from_millis(500), Duration::from_millis(1000)),
+            mining_rule_engine,
         }
     }
 
@@ -297,7 +301,7 @@ impl RpcApi for RpcCoreService {
         let session = self.consensus_manager.consensus().unguarded_session();
 
         // TODO: consider adding an error field to SubmitBlockReport to document both the report and error fields
-        let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
+        let is_synced: bool = self.mining_rule_engine.should_mine(NearlySyncedFinder::BySession(&session)).await;
 
         if !self.config.enable_unsynced_mining && !is_synced {
             // error = "Block not submitted - node is not synced"
@@ -379,11 +383,15 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             return Err(RpcError::CoinbasePayloadLengthAboveMax(self.config.max_coinbase_payload_len));
         }
 
-        let is_nearly_synced =
-            self.config.is_nearly_synced(block_template.selected_parent_timestamp, block_template.selected_parent_daa_score);
         Ok(GetBlockTemplateResponse {
             block: block_template.block.into(),
-            is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
+            is_synced: self
+                .mining_rule_engine
+                .should_mine(NearlySyncedFinder::ByTimestampAndScore((
+                    block_template.selected_parent_timestamp,
+                    block_template.selected_parent_daa_score,
+                )))
+                .await,
         })
     }
 
@@ -466,13 +474,13 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     }
 
     async fn get_info_call(&self, _connection: Option<&DynRpcConnection>, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
-        let is_nearly_synced = self.consensus_manager.consensus().unguarded_session().async_is_nearly_synced().await;
+        let session = self.consensus_manager.consensus().unguarded_session();
         Ok(GetInfoResponse {
             p2p_id: self.flow_context.node_id.to_string(),
             mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
-            is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
+            is_synced: self.mining_rule_engine.should_mine(NearlySyncedFinder::BySession(&session)).await,
             has_notify_command: true,
             has_message_id: true,
         })

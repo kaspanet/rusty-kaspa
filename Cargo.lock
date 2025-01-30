@@ -2983,6 +2983,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-p2p-mining"
+version = "0.16.1"
+dependencies = [
+ "kaspa-consensus-core",
+ "kaspa-consensusmanager",
+ "kaspa-core",
+ "kaspa-hashes",
+ "kaspa-math",
+ "kaspa-mining-errors",
+ "kaspa-p2p-flows",
+ "kaspa-utils",
+ "kaspa-utils-tower",
+ "log",
+ "tokio",
+]
+
+[[package]]
 name = "kaspa-perf-monitor"
 version = "0.16.1"
 dependencies = [
@@ -3081,6 +3098,7 @@ dependencies = [
  "kaspa-notify",
  "kaspa-p2p-flows",
  "kaspa-p2p-lib",
+ "kaspa-p2p-mining",
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
  "kaspa-txscript",
@@ -3649,6 +3667,7 @@ dependencies = [
  "kaspa-mining",
  "kaspa-notify",
  "kaspa-p2p-flows",
+ "kaspa-p2p-mining",
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
  "kaspa-rpc-service",

@@ -14,6 +14,7 @@ use kaspa_database::{
 };
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
+use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::git;
@@ -557,6 +558,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         p2p_tower_counters.clone(),
     ));
 
+    let mining_rule_engine = Arc::new(MiningRuleEngine::new(flow_context.clone(), processing_counters.clone(), tick_service.clone()));
+
     let rpc_core_service = Arc::new(RpcCoreService::new(
         consensus_manager.clone(),
         notify_service.notifier(),
@@ -574,6 +577,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         p2p_tower_counters.clone(),
         grpc_tower_counters.clone(),
         system_info,
+        mining_rule_engine.clone(),
     ));
     let grpc_service_broadcasters: usize = 3; // TODO: add a command line argument or derive from other arg/config/host-related fields
     let grpc_service = if !args.disable_grpc {
@@ -607,6 +611,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     async_runtime.register(consensus_monitor);
     async_runtime.register(mining_monitor);
     async_runtime.register(perf_monitor);
+    async_runtime.register(mining_rule_engine);
+
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments
     [
