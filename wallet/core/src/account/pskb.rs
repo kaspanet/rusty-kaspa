@@ -49,9 +49,14 @@ impl PSKBSigner {
         // Skip addresses that are already present in the key map.
         let addresses = addresses.iter().filter(|a| !keys.contains_key(a)).collect::<Vec<_>>();
         if !addresses.is_empty() {
-            let account = self.inner.account.clone().as_derivation_capable().expect("expecting derivation capable account");
-            let (receive, change) = account.derivation().addresses_indexes(&addresses)?;
-            let private_keys = account.create_private_keys(&self.inner.keydata, &self.inner.payment_secret, &receive, &change)?;
+            // let account = self.inner.account.clone().as_derivation_capable().expect("expecting derivation capable account");
+            // let (receive, change) = account.derivation().addresses_indexes(&addresses)?;
+            // let private_keys = account.create_private_keys(&self.inner.keydata, &self.inner.payment_secret, &receive, &change)?;
+            let private_keys = self.inner.account.clone().create_address_private_keys(
+                &self.inner.keydata,
+                &self.inner.payment_secret,
+                addresses.as_slice(),
+            )?;
             for (address, private_key) in private_keys {
                 keys.insert(address.clone(), private_key.to_bytes());
             }
@@ -158,8 +163,8 @@ pub async fn pskb_signer_for_address(
     signer: Arc<PSKBSigner>,
     network_id: NetworkId,
     sign_for_address: Option<&Address>,
-    derivation_path: DerivationPath,
-    key_fingerprint: KeyFingerprint,
+    derivation_path: Option<DerivationPath>,
+    key_fingerprint: Option<KeyFingerprint>,
 ) -> Result<Bundle, Error> {
     let mut signed_bundle = Bundle::new();
 
@@ -189,6 +194,15 @@ pub async fn pskb_signer_for_address(
     let all_addresses: Vec<Address> = addresses_per_pskt.iter().flat_map(|addresses| addresses.iter().cloned()).collect();
     signer.ingest(all_addresses.as_slice())?;
 
+    // in case of keypair account, we don't have a derivation path,
+    // so we need to skip the key source
+    let mut key_source = None;
+    if let Some(key_fingerprint) = key_fingerprint {
+        if let Some(derivation_path) = derivation_path {
+            key_source = Some(KeySource { key_fingerprint, derivation_path: derivation_path.clone() });
+        }
+    }
+
     // Process each PSKT in the bundle
     for (pskt_idx, pskt_inner) in bundle.iter().cloned().enumerate() {
         let pskt: PSKT<Signer> = PSKT::from(pskt_inner);
@@ -215,15 +229,11 @@ pub async fn pskb_signer_for_address(
                                 current_addresses.get(input_idx).ok_or_else(|| format!("No address found for input {}", input_idx))?
                             };
 
-                            let public_key = signer.public_key(address).map_err(|e| format!("Failed to get public key: {}", e))?;
+                            let pub_key = signer.public_key(address).map_err(|e| format!("Failed to get public key: {}", e))?;
 
                             let signature = signer.sign_schnorr(address, msg).map_err(|e| format!("Failed to sign: {}", e))?;
 
-                            Ok(SignInputOk {
-                                signature: Signature::Schnorr(signature),
-                                pub_key: public_key,
-                                key_source: Some(KeySource { key_fingerprint, derivation_path: derivation_path.clone() }),
-                            })
+                            Ok(SignInputOk { signature: Signature::Schnorr(signature), pub_key, key_source: key_source.clone() })
                         })
                         .collect()
                 })
@@ -530,7 +540,7 @@ pub async fn commit_reveal_batch_bundle(
         let transaction_id = pskt_to_pending_transaction(
             pskt_finalizer.clone(),
             network_id,
-            account.clone().as_derivation_capable()?.change_address()?,
+            account.change_address()?,
             account.utxo_context().clone().into(),
         )
         .map_err(|_| Error::CommitTransactionIdExtractionError)?
