@@ -1,11 +1,14 @@
 use crate::pskt::{Input, PSKT as Native};
 use crate::role::*;
+use kaspa_consensus_core::network::NetworkType;
 use kaspa_consensus_core::tx::TransactionId;
 use wasm_bindgen::prelude::*;
+use workflow_log::log_error;
 // use js_sys::Object;
 use crate::pskt::Inner;
 use kaspa_consensus_client::{Transaction, TransactionInput, TransactionInputT, TransactionOutput, TransactionOutputT};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::sync::MutexGuard;
 use std::sync::{Arc, Mutex};
 use workflow_wasm::{
@@ -342,6 +345,44 @@ impl PSKT {
         match state.as_ref().unwrap() {
             State::Signer(pskt) => Ok(pskt.calculate_id()),
             _ => Err(Error::expected_state("Signer"))?,
+        }
+    }
+
+    #[wasm_bindgen(js_name = calculateMass)]
+    pub fn calculate_mass(&self, data: &JsValue) -> Result<u64> {
+        let obj = js_sys::Object::from(data.clone());
+        let network_id = js_sys::Reflect::get(&obj, &"networkId".into())
+            .unwrap_or_else(|_| {
+                log_error!("networkId not specified");
+                panic!("networkId not specified");
+            })
+            .as_string()
+            .unwrap_or_else(|| {
+                log_error!("networkId must be string");
+                panic!("networkId must be string");
+            });
+        let network_id = NetworkType::from_str(&network_id).unwrap_or_else(|e| {
+            log_error!("Invalid networkId: {}", e);
+            panic!("Invalid networkId: {}", e);
+        });
+
+        let cloned_pskt = self.clone();
+        let extractor = cloned_pskt.extractor()?;
+        let state = extractor.state().clone();
+        if let Some(pskt) = state {
+            match pskt {
+                State::Extractor(pskt) => {
+                    let tx = pskt.extract_tx(&network_id.into()).unwrap_or_else(|e| {
+                        log_error!("Failed to extract transaction: {}", e);
+                        panic!("Failed to extract transaction: {}", e);
+                    });
+                    Ok(tx.tx.mass())
+                }
+                _ => Err(Error::expected_state("Extractor"))?,
+            }
+        } else {
+            log_error!("PSKT inner state is None");
+            Err(Error::NotInitialized)
         }
     }
 }
