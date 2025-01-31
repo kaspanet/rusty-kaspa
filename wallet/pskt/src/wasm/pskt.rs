@@ -3,7 +3,6 @@ use crate::role::*;
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_consensus_core::tx::TransactionId;
 use wasm_bindgen::prelude::*;
-use workflow_log::log_error;
 // use js_sys::Object;
 use crate::pskt::Inner;
 use kaspa_consensus_client::{Transaction, TransactionInput, TransactionInputT, TransactionOutput, TransactionOutputT};
@@ -361,9 +360,10 @@ impl PSKT {
         let cloned_pskt = self.clone();
         let extractor = cloned_pskt.extractor()?;
         let state = extractor.state().clone().expect("Extractor state is not valid");
-        match pskt {
+        match state {
             State::Extractor(pskt) => {
-                let tx = pskt.extract_tx(&network_id.into()).map_err(|_| Error::custom("Failed to extract transaction"))?;
+                let tx =
+                    pskt.extract_tx(&network_id.into()).map_err(|e| Error::custom(format!("Failed to extract transaction: {e}")))?;
                 Ok(tx.tx.mass())
             }
             _ => panic!("Extractor state is not valid"),
