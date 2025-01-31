@@ -365,10 +365,9 @@ impl PSKT {
             match pskt {
                 State::Extractor(pskt) => {
                     let tx = pskt.extract_tx(&network_id.into()).map_err(|_| Error::custom("Failed to extract transaction"))?;
-
                     Ok(tx.tx.mass())
                 }
-                _ => Err(Error::expected_state("Extractor"))?,
+                _ => panic!("Extractor state is not valid"),
             }
         } else {
             log_error!("PSKT inner state is None");
