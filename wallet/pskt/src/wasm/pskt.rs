@@ -352,19 +352,11 @@ impl PSKT {
     pub fn calculate_mass(&self, data: &JsValue) -> Result<u64> {
         let obj = js_sys::Object::from(data.clone());
         let network_id = js_sys::Reflect::get(&obj, &"networkId".into())
-            .unwrap_or_else(|_| {
-                log_error!("networkId not specified");
-                panic!("networkId not specified");
-            })
+            .map_err(|_| Error::custom("networkId is missing"))?
             .as_string()
-            .unwrap_or_else(|| {
-                log_error!("networkId must be string");
-                panic!("networkId must be string");
-            });
-        let network_id = NetworkType::from_str(&network_id).unwrap_or_else(|e| {
-            log_error!("Invalid networkId: {}", e);
-            panic!("Invalid networkId: {}", e);
-        });
+            .ok_or_else(|| Error::custom("networkId must be a string"))?;
+
+        let network_id = NetworkType::from_str(&network_id).map_err(|e| Error::custom(format!("Invalid networkId: {}", e)))?;
 
         let cloned_pskt = self.clone();
         let extractor = cloned_pskt.extractor()?;
@@ -372,10 +364,8 @@ impl PSKT {
         if let Some(pskt) = state {
             match pskt {
                 State::Extractor(pskt) => {
-                    let tx = pskt.extract_tx(&network_id.into()).unwrap_or_else(|e| {
-                        log_error!("Failed to extract transaction: {}", e);
-                        panic!("Failed to extract transaction: {}", e);
-                    });
+                    let tx = pskt.extract_tx(&network_id.into()).map_err(|_| Error::custom("Failed to extract transaction"))?;
+
                     Ok(tx.tx.mass())
                 }
                 _ => Err(Error::expected_state("Extractor"))?,
