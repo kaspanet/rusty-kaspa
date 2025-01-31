@@ -360,18 +360,13 @@ impl PSKT {
 
         let cloned_pskt = self.clone();
         let extractor = cloned_pskt.extractor()?;
-        let state = extractor.state().clone();
-        if let Some(pskt) = state {
-            match pskt {
-                State::Extractor(pskt) => {
-                    let tx = pskt.extract_tx(&network_id.into()).map_err(|_| Error::custom("Failed to extract transaction"))?;
-                    Ok(tx.tx.mass())
-                }
-                _ => panic!("Extractor state is not valid"),
+        let state = extractor.state().clone().expect("Extractor state is not valid");
+        match pskt {
+            State::Extractor(pskt) => {
+                let tx = pskt.extract_tx(&network_id.into()).map_err(|_| Error::custom("Failed to extract transaction"))?;
+                Ok(tx.tx.mass())
             }
-        } else {
-            log_error!("PSKT inner state is None");
-            Err(Error::NotInitialized)
+            _ => panic!("Extractor state is not valid"),
         }
     }
 }
