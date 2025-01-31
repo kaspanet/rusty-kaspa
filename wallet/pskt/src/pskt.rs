@@ -13,7 +13,8 @@ pub use crate::global::{Global, GlobalBuilder};
 pub use crate::input::{Input, InputBuilder};
 pub use crate::output::{Output, OutputBuilder};
 pub use crate::role::{Combiner, Constructor, Creator, Extractor, Finalizer, Signer, Updater};
-use kaspa_consensus_core::tx::UtxoEntry;
+use kaspa_consensus_core::config::params::Params;
+use kaspa_consensus_core::mass::MassCalculator;
 use kaspa_consensus_core::{
     hashing::sighash_type::SigHashType,
     subnets::SUBNETWORK_ID_NATIVE,
@@ -425,7 +426,7 @@ impl PSKT<Finalizer> {
 }
 
 impl PSKT<Extractor> {
-    pub fn extract_tx_unchecked(self) -> Result<impl FnOnce(u64) -> (Transaction, Vec<Option<UtxoEntry>>), TxNotFinalized> {
+    pub fn extract_tx_unchecked(self, params: &Params) -> Result<MutableTransaction<Transaction>, TxNotFinalized> {
         let tx = self.unsigned_tx();
         let entries = tx.entries;
         let mut tx = tx.tx;
@@ -433,16 +434,15 @@ impl PSKT<Extractor> {
             dest.signature_script = src.final_script_sig.ok_or(TxNotFinalized {})?;
             Ok(())
         })?;
-        Ok(move |mass| {
-            tx.set_mass(mass);
-            (tx, entries)
-        })
+        let tx = MutableTransaction { tx, entries, calculated_fee: None, calculated_compute_mass: None };
+        let calculator = MassCalculator::new_with_consensus_params(params);
+        let mass = calculator.calc_tx_overall_mass(&tx.as_verifiable(), None).unwrap_or_default();
+        tx.tx.set_mass(mass);
+        Ok(tx)
     }
 
-    pub fn extract_tx(self) -> Result<impl FnOnce(u64) -> (Transaction, Vec<Option<UtxoEntry>>), ExtractError> {
-        let (tx, entries) = self.extract_tx_unchecked()?(0);
-
-        let tx = MutableTransaction::with_entries(tx, entries.into_iter().flatten().collect());
+    pub fn extract_tx(self, params: &Params) -> Result<MutableTransaction<Transaction>, ExtractError> {
+        let tx = self.extract_tx_unchecked(params)?;
         use kaspa_consensus_core::tx::VerifiableTransaction;
         {
             let tx = tx.as_verifiable();
@@ -454,13 +454,7 @@ impl PSKT<Extractor> {
                 <Result<(), ExtractError>>::Ok(())
             })?;
         }
-        let entries = tx.entries;
-        let tx = tx.tx;
-        let closure = move |mass| {
-            tx.set_mass(mass);
-            (tx, entries)
-        };
-        Ok(closure)
+        Ok(tx)
     }
 }
 
