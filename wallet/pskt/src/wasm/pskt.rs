@@ -358,15 +358,30 @@ impl PSKT {
         let network_id = NetworkType::from_str(&network_id).map_err(|e| Error::custom(format!("Invalid networkId: {}", e)))?;
 
         let cloned_pskt = self.clone();
-        let extractor = cloned_pskt.extractor()?;
-        let state = extractor.state().clone().expect("Extractor state is not valid");
-        match state {
-            State::Extractor(pskt) => {
-                let tx =
-                    pskt.extract_tx(&network_id.into()).map_err(|e| Error::custom(format!("Failed to extract transaction: {e}")))?;
-                Ok(tx.tx.mass())
+
+        let extractor = {
+            let finalizer = cloned_pskt.finalizer()?;
+
+            let finalizer_state = finalizer.state().clone().unwrap();
+
+            match finalizer_state {
+                State::Finalizer(pskt) => {
+                    for output in pskt.inputs.iter() {
+                        if output.redeem_script.is_some() {
+                            return Err(Error::custom("Mass calculation is not supported for inputs with redeem scripts"));
+                        }
+                    }
+                    let pskt = pskt
+                        .finalize_sync(|inner: &Inner| -> Result<Vec<Vec<u8>>> { Ok(vec![vec![0u8, 65]; inner.inputs.len()]) })
+                        .unwrap();
+                    pskt.extractor()?
+                }
+                _ => panic!("Finalizer state is not valid"),
             }
-            _ => panic!("Extractor state is not valid"),
-        }
+        };
+        let tx = extractor
+            .extract_tx_unchecked(&network_id.into())
+            .map_err(|e| Error::custom(format!("Failed to extract transaction: {e}")))?;
+        Ok(tx.tx.mass())
     }
 }
