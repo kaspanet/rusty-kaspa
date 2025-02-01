@@ -366,14 +366,14 @@ impl PSKT {
 
             match finalizer_state {
                 State::Finalizer(pskt) => {
-                    for output in pskt.inputs.iter() {
-                        if output.redeem_script.is_some() {
+                    for input in pskt.inputs.iter() {
+                        if input.redeem_script.is_some() {
                             return Err(Error::custom("Mass calculation is not supported for inputs with redeem scripts"));
                         }
                     }
                     let pskt = pskt
                         .finalize_sync(|inner: &Inner| -> Result<Vec<Vec<u8>>> { Ok(vec![vec![0u8, 65]; inner.inputs.len()]) })
-                        .unwrap();
+                        .map_err(|e| Error::custom(format!("Failed to finalize PSKT: {e}")))?;
                     pskt.extractor()?
                 }
                 _ => panic!("Finalizer state is not valid"),
