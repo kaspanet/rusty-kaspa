@@ -1,11 +1,13 @@
 use crate::pskt::{Input, PSKT as Native};
 use crate::role::*;
+use kaspa_consensus_core::network::NetworkType;
 use kaspa_consensus_core::tx::TransactionId;
 use wasm_bindgen::prelude::*;
 // use js_sys::Object;
 use crate::pskt::Inner;
 use kaspa_consensus_client::{Transaction, TransactionInput, TransactionInputT, TransactionOutput, TransactionOutputT};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::sync::MutexGuard;
 use std::sync::{Arc, Mutex};
 use workflow_wasm::{
@@ -342,6 +344,29 @@ impl PSKT {
         match state.as_ref().unwrap() {
             State::Signer(pskt) => Ok(pskt.calculate_id()),
             _ => Err(Error::expected_state("Signer"))?,
+        }
+    }
+
+    #[wasm_bindgen(js_name = calculateMass)]
+    pub fn calculate_mass(&self, data: &JsValue) -> Result<u64> {
+        let obj = js_sys::Object::from(data.clone());
+        let network_id = js_sys::Reflect::get(&obj, &"networkId".into())
+            .map_err(|_| Error::custom("networkId is missing"))?
+            .as_string()
+            .ok_or_else(|| Error::custom("networkId must be a string"))?;
+
+        let network_id = NetworkType::from_str(&network_id).map_err(|e| Error::custom(format!("Invalid networkId: {}", e)))?;
+
+        let cloned_pskt = self.clone();
+        let extractor = cloned_pskt.extractor()?;
+        let state = extractor.state().clone().expect("Extractor state is not valid");
+        match state {
+            State::Extractor(pskt) => {
+                let tx =
+                    pskt.extract_tx(&network_id.into()).map_err(|e| Error::custom(format!("Failed to extract transaction: {e}")))?;
+                Ok(tx.tx.mass())
+            }
+            _ => panic!("Extractor state is not valid"),
         }
     }
 }
