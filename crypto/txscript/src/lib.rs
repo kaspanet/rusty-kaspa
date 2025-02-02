@@ -93,7 +93,6 @@ impl RuntimeSigOpCounter {
     /// Attempts to consume the specified number of signature operations.
     ///
     /// This method handles:
-    /// - Converting the number of signatures to u8 (failing if > 255)
     /// - Checking if we have enough remaining operations
     /// - Updating the remaining count if successful
     ///
