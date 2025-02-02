@@ -111,11 +111,11 @@ impl RuntimeSigOpCounter {
     /// };
     ///
     /// // Consume 3 operations
-    /// counter.consume_sig_ops(3)?; // Ok(())
+    /// counter.consume_sig_ops(3).unwrap(); // Ok(())
     /// assert_eq!(counter.sig_op_remaining, 2);
     ///
     /// // Try to consume too many
-    /// counter.consume_sig_ops(3)?; // Err(ExceededSigOpLimit)
+    /// counter.consume_sig_ops(3).unwrap_err(); // Err(ExceededSigOpLimit)
     /// ```
     pub fn consume_sig_ops(&mut self, num_sigs: u8) -> Result<(), TxScriptError> {
         self.sig_op_remaining =
