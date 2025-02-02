@@ -81,12 +81,69 @@ enum ScriptSource<'a, T: VerifiableTransaction> {
 /// Unlike the static counting approach which counts all possible signature operations,
 /// this tracks only the actually executed signature operations, leading to more accurate
 /// mass calculations and potentially lower fees for conditional scripts.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct RuntimeSigOpCounter {
     /// Maximum number of signature operations allowed for this input
     pub sig_op_limit: u8,
     /// Remaining signature operations that can be executed
     pub sig_op_remaining: u8,
+}
+
+impl RuntimeSigOpCounter {
+    /// Attempts to consume the specified number of signature operations.
+    ///
+    /// This method handles:
+    /// - Converting the number of signatures to u8 (failing if > 255)
+    /// - Checking if we have enough remaining operations
+    /// - Updating the remaining count if successful
+    ///
+    /// # Arguments
+    /// * `num_sigs` - The number of signature operations to consume
+    ///
+    /// # Returns
+    /// * `Ok(())` if the operations were successfully consumed
+    /// * `Err(TxScriptError::NumberTooBig)` if num_sigs > 255
+    /// * `Err(TxScriptError::ExceededSigOpLimit)` if not enough operations remain
+    ///
+    /// # Example
+    /// ```
+    /// let mut counter = RuntimeSigOpCounter {
+    ///     sig_op_limit: 10,
+    ///     sig_op_remaining: 5
+    /// };
+    ///
+    /// // Consume 3 operations
+    /// counter.consume_sig_ops(3)?; // Ok(())
+    /// assert_eq!(counter.sig_op_remaining, 2);
+    ///
+    /// // Try to consume too many
+    /// counter.consume_sig_ops(3)?; // Err(ExceededSigOpLimit)
+    /// ```
+    pub fn consume_sig_ops(&mut self, num_sigs: u8) -> Result<(), TxScriptError> {
+        self.sig_op_remaining =
+            self.sig_op_remaining.checked_sub(num_sigs).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit))?;
+
+        Ok(())
+    }
+}
+
+pub trait SigOpConsumer {
+    fn consume_sig_ops(&mut self, num_sigs: u8) -> Result<(), TxScriptError>;
+}
+
+impl SigOpConsumer for RuntimeSigOpCounter {
+    fn consume_sig_ops(&mut self, num_sigs: u8) -> Result<(), TxScriptError> {
+        RuntimeSigOpCounter::consume_sig_ops(self, num_sigs)
+    }
+}
+impl SigOpConsumer for Option<RuntimeSigOpCounter> {
+    fn consume_sig_ops(&mut self, num_sigs: u8) -> Result<(), TxScriptError> {
+        if let Some(consumer) = self {
+            consumer.consume_sig_ops(num_sigs)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> {
@@ -103,7 +160,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
 
     num_ops: i32,
     kip10_enabled: bool,
-    runtime_sig_op_counting: Option<RuntimeSigOpCounter>,
+    runtime_sig_op_counter: Option<RuntimeSigOpCounter>,
 }
 
 fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
@@ -213,7 +270,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: vec![],
             num_ops: 0,
             kip10_enabled,
-            runtime_sig_op_counting: None,
+            runtime_sig_op_counter: None,
         }
     }
 
@@ -222,7 +279,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     ///
     /// Returns the difference between the input's sig_op_limit and remaining sig ops.
     pub fn used_sig_ops(&self) -> Option<u8> {
-        self.runtime_sig_op_counting.map(|RuntimeSigOpCounter { sig_op_limit, sig_op_remaining }| sig_op_limit - sig_op_remaining)
+        self.runtime_sig_op_counter.as_ref().map(|RuntimeSigOpCounter { sig_op_limit, sig_op_remaining }| sig_op_limit - sig_op_remaining)
     }
 
     /// Creates a new Script Engine for validating transaction input.
@@ -265,7 +322,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             kip10_enabled,
-            runtime_sig_op_counting: runtime_sig_op_counting
+            runtime_sig_op_counter: runtime_sig_op_counting
                 .then_some(RuntimeSigOpCounter { sig_op_limit: input.sig_op_count, sig_op_remaining: input.sig_op_count }),
         }
     }
@@ -286,7 +343,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             num_ops: 0,
             kip10_enabled,
             // Runtime sig op counting is not needed for standalone scripts, only inputs have sig op count value
-            runtime_sig_op_counting: None,
+            runtime_sig_op_counter: None,
         }
     }
 
@@ -467,12 +524,9 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         } else if num_sigs > num_keys {
             return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {num_sigs} > {num_keys}")));
         }
-        if let Some(RuntimeSigOpCounter { sig_op_remaining, sig_op_limit }) = &mut self.runtime_sig_op_counting {
-            let num_sigs =
-                num_sigs.try_into().map_err(|_| TxScriptError::NumberTooBig("Signatures count mustn't exceed 255".to_string()))?;
-            *sig_op_remaining =
-                sig_op_remaining.checked_sub(num_sigs).ok_or(TxScriptError::ExceededSigOpLimit(num_sigs as u16, *sig_op_limit))?;
-        }
+        let num_sigs =
+            num_sigs.try_into().map_err(|_| TxScriptError::NumberTooBig("Signatures count mustn't exceed 255".to_string()))?;
+        self.runtime_sig_op_counter.consume_sig_ops(num_sigs)?;
         let num_sigs = num_sigs as usize;
         let signatures = match self.dstack.len() >= num_sigs {
             true => self.dstack.split_off(self.dstack.len() - num_sigs),

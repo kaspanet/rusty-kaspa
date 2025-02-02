@@ -3,8 +3,8 @@ mod macros;
 
 use crate::{
     data_stack::{DataStack, Kip10I64, OpcodeData},
-    RuntimeSigOpCounter, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM,
-    NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
+    ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM,
+    NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK, SigOpConsumer,
 };
 use blake2b_simd::Params;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
@@ -720,9 +720,7 @@ opcode_list! {
         match sig.pop() {
             Some(typ) => {
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
-                if let Some(RuntimeSigOpCounter{ sig_op_limit, sig_op_remaining} ) = &mut vm.runtime_sig_op_counting {
-                   *sig_op_remaining = sig_op_remaining.checked_sub(1).ok_or(TxScriptError::ExceededSigOpLimit(*sig_op_limit as u16 + 1, *sig_op_limit))?;
-                }
+                vm.runtime_sig_op_counter.consume_sig_ops(1)?;
 
                 match vm.check_ecdsa_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(valid) => {
@@ -747,9 +745,7 @@ opcode_list! {
         match sig.pop() {
             Some(typ) => {
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
-                if let Some(RuntimeSigOpCounter{ sig_op_limit, sig_op_remaining} ) = &mut vm.runtime_sig_op_counting {
-                   *sig_op_remaining = sig_op_remaining.checked_sub(1).ok_or(TxScriptError::ExceededSigOpLimit(*sig_op_limit as u16 + 1, *sig_op_limit))?;
-                }
+                vm.runtime_sig_op_counter.consume_sig_ops(1)?;
                 match vm.check_schnorr_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(valid) => {
                         vm.dstack.push_item(valid)?;
