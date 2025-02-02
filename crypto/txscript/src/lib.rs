@@ -1055,11 +1055,19 @@ mod tests {
         public_key: Vec<u8>,
     }
 
+    /// Builder for constructing signature scripts with different signature types and combinations.
     enum SignatureScriptBuilder {
+        /// Multisignature script that requires multiple signatures to be valid.
+        Multisig(Vec<SignatureData>),
+
+        /// Single signature script with one signature and its corresponding public key.
         Single(SignatureData),
-        Multi(Vec<SignatureData>),
+
+        /// Mixed signature script that mix different signature types (e.g., ECDSA and Schnorr)
         Mixed(Vec<SignatureData>),
-        None, // For tests that don't need signatures
+
+        /// Empty signature script builder
+        None,
     }
 
     type SigBuilder = Box<dyn Fn(&MutableTransaction<Transaction>, &SigHashReusedValuesUnsync) -> SignatureScriptBuilder>;
@@ -1083,7 +1091,7 @@ mod tests {
                     builder.add_data(&sig_data.signature)?;
                     builder.add_data(&sig_data.public_key)?;
                 }
-                SignatureScriptBuilder::Multi(sig_data_vec) => {
+                SignatureScriptBuilder::Multisig(sig_data_vec) => {
                     for sig_data in sig_data_vec {
                         builder.add_data(&sig_data.signature)?;
                     }
@@ -1174,7 +1182,7 @@ mod tests {
                 }),
                 sig_builder: Box::new(move |tx, reused| {
                     let sig = create_schnorr_signature(tx, reused);
-                    SignatureScriptBuilder::Multi(vec![sig.clone(), sig])
+                    SignatureScriptBuilder::Multisig(vec![sig.clone(), sig])
                 }),
                 expected_sig_ops: 2,
                 sig_op_limit: 2,
