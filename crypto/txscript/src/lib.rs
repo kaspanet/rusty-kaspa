@@ -1196,7 +1196,7 @@ mod tests {
         let test_cases = vec![
             // Basic Schnorr CheckSig
             TestCase {
-                name: "Basic Schnorr CheckSig",
+                name: "Basic Schnorr CheckSig - Single signature",
                 script_builder: Box::new(|sb| sb.add_op(OpCheckSig)),
                 sig_builder: Box::new(move |tx, reused| SignatureScriptBuilder::Single(create_schnorr_signature(tx, reused))),
                 expected_sig_ops: 1,
@@ -1205,7 +1205,7 @@ mod tests {
             },
             // Basic ECDSA CheckSig
             TestCase {
-                name: "Basic ECDSA CheckSig",
+                name: "Basic ECDSA CheckSig - Single signature",
                 script_builder: Box::new(|sb| sb.add_op(OpCheckSigECDSA)),
                 sig_builder: Box::new(move |tx, reused| SignatureScriptBuilder::Single(create_ecdsa_signature(tx, reused))),
                 expected_sig_ops: 1,
@@ -1214,7 +1214,7 @@ mod tests {
             },
             // Mixed Schnorr and ECDSA
             TestCase {
-                name: "Mixed Schnorr and ECDSA",
+                name: "Mixed Schnorr and ECDSA - Within limit",
                 script_builder: Box::new(|sb| sb.add_op(OpCheckSigVerify)?.add_op(OpCheckSigECDSA)),
                 sig_builder: Box::new(move |tx, reused| {
                     SignatureScriptBuilder::Mixed(vec![create_ecdsa_signature(tx, reused), create_schnorr_signature(tx, reused)])
@@ -1225,7 +1225,7 @@ mod tests {
             },
             // 2-of-3 MultiSig test case
             TestCase {
-                name: "2-of-3 MultiSig",
+                name: "2-of-3 MultiSig - Basic validation",
                 script_builder: Box::new(move |sb| {
                     sb.add_i64(2)?
                         .add_data(&keypair.x_only_public_key().0.serialize())?
@@ -1243,7 +1243,7 @@ mod tests {
                 should_pass: true,
             },
             TestCase {
-                name: "Mixed Schnorr and ECDSA",
+                name: "Mixed Schnorr and ECDSA - Exceeds limit",
                 script_builder: Box::new(|sb| sb.add_op(OpCheckSigVerify)?.add_op(OpCheckSigECDSA)),
                 sig_builder: Box::new(move |tx, reused| {
                     SignatureScriptBuilder::Mixed(vec![create_ecdsa_signature(tx, reused), create_schnorr_signature(tx, reused)])
@@ -1254,7 +1254,7 @@ mod tests {
             },
             // Conditional execution with sig ops
             TestCase {
-                name: "Conditional sig ops",
+                name: "Conditional sig ops - True branch execution",
                 script_builder: Box::new(|sb| sb.add_op(OpTrue)?.add_op(OpIf)?.add_op(OpCheckSigECDSA)?.add_op(OpEndIf)),
                 sig_builder: Box::new(move |tx, reused| SignatureScriptBuilder::Single(create_ecdsa_signature(tx, reused))),
                 expected_sig_ops: 1,
@@ -1263,7 +1263,7 @@ mod tests {
             },
             // Conditional execution with sig ops
             TestCase {
-                name: "Conditional sig ops (false branch)",
+                name: "Conditional sig ops - False branch skips validation",
                 script_builder: Box::new(|sb| {
                     sb.add_op(OpFalse)?.add_op(OpIf)?.add_op(OpCheckSigECDSA)?.add_op(OpVerify)?.add_op(OpEndIf)?.add_op(OpTrue)
                 }),
