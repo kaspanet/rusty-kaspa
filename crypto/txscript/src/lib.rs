@@ -139,7 +139,7 @@ pub fn get_sig_op_count_via_simulation<T: VerifiableTransaction, Reused: SigHash
     let mut vm =
         TxScriptEngine::from_transaction_input(&tx, &mock_input, 0, &utxo_entry, &reused_values, &sig_cache, kip10_enabled, true);
     vm.execute()?;
-    Ok(vm.sig_op_required().unwrap())
+    Ok(vm.used_sig_ops().unwrap())
 }
 
 #[must_use]
@@ -221,7 +221,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     /// Must only be called after script execution completes successfully.
     ///
     /// Returns the difference between the input's sig_op_limit and remaining sig ops.
-    pub fn sig_op_required(&self) -> Option<u8> {
+    pub fn used_sig_ops(&self) -> Option<u8> {
         self.runtime_sig_op_counting.map(|RuntimeSigOpCounter { sig_op_limit, sig_op_remaining }| sig_op_limit - sig_op_remaining)
     }
 
@@ -1248,7 +1248,7 @@ mod tests {
             let mut vm =
                 TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &reused_values, &sig_cache, false, true);
 
-            let result = vm.execute().map(|_| vm.sig_op_required().unwrap());
+            let result = vm.execute().map(|_| vm.used_sig_ops().unwrap());
 
             match (result, test.should_pass) {
                 (Ok(count), true) => {
