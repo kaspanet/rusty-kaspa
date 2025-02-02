@@ -102,7 +102,6 @@ impl RuntimeSigOpCounter {
     ///
     /// # Returns
     /// * `Ok(())` if the operations were successfully consumed
-    /// * `Err(TxScriptError::NumberTooBig)` if num_sigs > 255
     /// * `Err(TxScriptError::ExceededSigOpLimit)` if not enough operations remain
     ///
     /// # Example
