@@ -285,7 +285,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             kip10_enabled,
-            runtime_sig_op_counting: None, // todo?
+            // Runtime sig op counting is not needed for standalone scripts, only inputs have sig op count value
+            runtime_sig_op_counting: None,
         }
     }
 
