@@ -107,7 +107,7 @@ impl RuntimeSigOpCounter {
     ///
     /// # Example
     /// ```
-    /// let mut counter = RuntimeSigOpCounter {
+    /// let mut counter = kaspa_txscript::RuntimeSigOpCounter {
     ///     sig_op_limit: 10,
     ///     sig_op_remaining: 5
     /// };
@@ -279,7 +279,9 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     ///
     /// Returns the difference between the input's sig_op_limit and remaining sig ops.
     pub fn used_sig_ops(&self) -> Option<u8> {
-        self.runtime_sig_op_counter.as_ref().map(|RuntimeSigOpCounter { sig_op_limit, sig_op_remaining }| sig_op_limit - sig_op_remaining)
+        self.runtime_sig_op_counter
+            .as_ref()
+            .map(|RuntimeSigOpCounter { sig_op_limit, sig_op_remaining }| sig_op_limit - sig_op_remaining)
     }
 
     /// Creates a new Script Engine for validating transaction input.
