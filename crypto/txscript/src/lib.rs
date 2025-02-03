@@ -20,10 +20,7 @@ use kaspa_consensus_core::hashing::sighash::{
     calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues, SigHashReusedValuesUnsync,
 };
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
-use kaspa_consensus_core::tx::{
-    PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, UtxoEntry,
-    VerifiableTransaction,
-};
+use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_txscript_errors::TxScriptError;
 use log::trace;
 use opcodes::codes::OpReturn;
@@ -175,32 +172,41 @@ fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     script.iter().batching(|it| deserialize_next_opcode(it))
 }
 
-pub fn get_sig_op_count_via_simulation<T: VerifiableTransaction, Reused: SigHashReusedValues>(
-    signature_script: &[u8],
-    prev_script_public_key: &ScriptPublicKey,
+/// Simulates script execution to determine the actual number of signature operations that would be executed,
+/// rather than counting them statically. This provides a more accurate count for scripts with conditional
+/// logic where not all signature operations may be executed.
+///
+/// Script with conditional sig ops:
+/// IF
+///   CHECKSIG        // 1 sig op if true branch taken
+/// ELSE
+///     CHECKSIG        // 3 sig ops if false branch taken
+///     CHECKSIG
+///     CHECKSIG
+/// ENDIF
+///
+/// This function is particularly useful for:
+/// - Accurately calculating transaction fees based on executed sig ops
+/// - Validating transactions against signature operation limits
+/// - Working with complex scripts containing conditional branches
+/// - Optimizing transaction costs by determining actual sig op usage
+pub fn get_sig_op_count_via_simulation<T: VerifiableTransaction>(
+    tx: &T,
+    input_idx: usize,
     kip10_enabled: bool,
 ) -> Result<u8, TxScriptError> {
-    // Ensure encapsulation of variables (no leaking between tests)
-    let mock_input = TransactionInput {
-        previous_outpoint: TransactionOutpoint {
-            transaction_id: TransactionId::from_bytes([
-                0xc9, 0x97, 0xa5, 0xe5, 0x6e, 0x10, 0x41, 0x02, 0xfa, 0x20, 0x9c, 0x6a, 0x85, 0x2d, 0xd9, 0x06, 0x60, 0xa2, 0x0b,
-                0x2d, 0x9c, 0x35, 0x24, 0x23, 0xed, 0xce, 0x25, 0x85, 0x7f, 0xcd, 0x37, 0x04,
-            ]),
-            index: 0,
-        },
-        signature_script: signature_script.to_vec(),
-        sequence: 4294967295,
-        sig_op_count: 255,
-    };
-
-    let tx = Transaction::new(1, vec![mock_input.clone()], vec![], 0, Default::default(), 0, vec![]);
-    let utxo_entry = UtxoEntry::new(0, prev_script_public_key.clone(), 0, false);
-    let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
     let sig_cache = Cache::new(10_000);
     let reused_values = SigHashReusedValuesUnsync::new();
-    let mut vm =
-        TxScriptEngine::from_transaction_input(&tx, &mock_input, 0, &utxo_entry, &reused_values, &sig_cache, kip10_enabled, true);
+    let mut vm = TxScriptEngine::from_transaction_input(
+        tx,
+        &tx.inputs()[input_idx],
+        input_idx,
+        tx.utxo(input_idx).ok_or_else(|| TxScriptError::InvalidInputIndex(input_idx as i32, tx.inputs().len()))?,
+        &reused_values,
+        &sig_cache,
+        kip10_enabled,
+        true,
+    );
     vm.execute()?;
     Ok(vm.used_sig_ops().unwrap())
 }
