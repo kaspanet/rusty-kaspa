@@ -4,7 +4,7 @@ use kaspa_consensus_core::{
     tx::{TransactionInput, VerifiableTransaction},
 };
 use kaspa_core::warn;
-use kaspa_txscript::{caches::Cache, get_sig_op_count, SigCacheKey, TxScriptEngine};
+use kaspa_txscript::{caches::Cache, get_sig_op_count_upper_bound, SigCacheKey, TxScriptEngine};
 use kaspa_txscript_errors::TxScriptError;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon::ThreadPool;
@@ -164,7 +164,8 @@ impl TransactionValidator {
 
     fn check_sig_op_counts<T: VerifiableTransaction>(tx: &T) -> TxResult<()> {
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            let calculated = get_sig_op_count::<T, SigHashReusedValuesUnsync>(&input.signature_script, &entry.script_public_key);
+            let calculated =
+                get_sig_op_count_upper_bound::<T, SigHashReusedValuesUnsync>(&input.signature_script, &entry.script_public_key);
             if calculated != input.sig_op_count as u64 {
                 return Err(TxRuleError::WrongSigOpCount(i, input.sig_op_count as u64, calculated));
             }

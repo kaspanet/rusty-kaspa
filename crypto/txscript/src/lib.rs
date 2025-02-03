@@ -172,29 +172,38 @@ fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     script.iter().batching(|it| deserialize_next_opcode(it))
 }
 
-/// Simulates script execution to determine the actual number of signature operations that would be executed,
-/// rather than counting them statically. This provides a more accurate count for scripts with conditional
-/// logic where not all signature operations may be executed.
+/// Determines the exact number of signature operations executed in a transaction input
+/// by simulating the script execution. Takes into account conditional branches and only
+/// counts signature operations that are actually executed.
 ///
-/// Script with conditional sig ops:
+/// Example of how counts differ:
+/// ```text
 /// IF
-///   CHECKSIG        // 1 sig op if true branch taken
+///     CHECKSIG        // 1 sig op if true branch taken
 /// ELSE
 ///     CHECKSIG        // 3 sig ops if false branch taken
 ///     CHECKSIG
 ///     CHECKSIG
 /// ENDIF
+/// ```
+/// `get_sig_op_upper_bound` would return 4, while this function returns 1 or 3
+/// depending on which branch is actually executed.
 ///
-/// This function is particularly useful for:
-/// - Accurately calculating transaction fees based on executed sig ops
-/// - Validating transactions against signature operation limits
-/// - Working with complex scripts containing conditional branches
-/// - Optimizing transaction costs by determining actual sig op usage
-pub fn get_sig_op_count_via_simulation<T: VerifiableTransaction>(
-    tx: &T,
-    input_idx: usize,
-    kip10_enabled: bool,
-) -> Result<u8, TxScriptError> {
+/// This function should be used:
+/// - After the runtime signature operation counting hardfork activation
+/// - When exact sig op counts are needed for fee calculation
+/// - For accurate validation of sig op limits
+/// - When working with scripts that have conditional logic
+///
+/// # Arguments
+/// * `tx` - The transaction containing the input to analyze
+/// * `input_idx` - Index of the input to analyze
+/// * `kip10_enabled` - Whether KIP-10 features are enabled
+///
+/// # Returns
+/// * `Ok(u8)` - The exact number of signature operations executed
+/// * `Err(TxScriptError)` - If script execution fails or input index is invalid
+pub fn get_sig_op_count<T: VerifiableTransaction>(tx: &T, input_idx: usize, kip10_enabled: bool) -> Result<u8, TxScriptError> {
     let sig_cache = Cache::new(10_000);
     let reused_values = SigHashReusedValuesUnsync::new();
     let mut vm = TxScriptEngine::from_transaction_input(
@@ -211,8 +220,24 @@ pub fn get_sig_op_count_via_simulation<T: VerifiableTransaction>(
     Ok(vm.used_sig_ops().unwrap())
 }
 
+/// Calculates an upper bound of signature operations in a script without executing it.
+/// This is faster than `get_sig_op_count` but may overestimate the count in scripts
+/// with conditional logic.
+///
+/// This function should be used:
+/// - Before the runtime signature operation counting hardfork activation
+/// - When you need a conservative upper bound for validation
+/// - When fast static analysis is preferred over exact counting
+/// - For preliminary transaction size and fee estimation
+///
+/// # Arguments
+/// * `signature_script` - The signature script to analyze
+/// * `prev_script_public_key` - The previous output's script public key
+///
+/// # Returns
+/// * `u64` - Upper bound of possible signature operations in the script
 #[must_use]
-pub fn get_sig_op_count<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+pub fn get_sig_op_count_upper_bound<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     signature_script: &[u8],
     prev_script_public_key: &ScriptPublicKey,
 ) -> u64 {
@@ -1083,7 +1108,7 @@ mod tests {
 
         for test in tests {
             assert_eq!(
-                get_sig_op_count::<VerifiableTransactionMock, SigHashReusedValuesUnsync>(
+                get_sig_op_count_upper_bound::<VerifiableTransactionMock, SigHashReusedValuesUnsync>(
                     test.signature_script,
                     &test.prev_script_public_key
                 ),
