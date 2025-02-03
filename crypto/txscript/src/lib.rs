@@ -84,12 +84,15 @@ enum ScriptSource<'a, T: VerifiableTransaction> {
 #[derive(Debug, Clone)]
 pub struct RuntimeSigOpCounter {
     /// Maximum number of signature operations allowed for this input
-    pub sig_op_limit: u8,
+    sig_op_limit: u8,
     /// Remaining signature operations that can be executed
-    pub sig_op_remaining: u8,
+    sig_op_remaining: u8,
 }
 
 impl RuntimeSigOpCounter {
+    pub fn new(sig_op_limit: u8) -> Self {
+        Self { sig_op_limit, sig_op_remaining: sig_op_limit }
+    }
     /// Attempts to consume the specified number of signature operations.
     ///
     /// This method handles:
@@ -105,14 +108,11 @@ impl RuntimeSigOpCounter {
     ///
     /// # Example
     /// ```
-    /// let mut counter = kaspa_txscript::RuntimeSigOpCounter {
-    ///     sig_op_limit: 10,
-    ///     sig_op_remaining: 5
-    /// };
+    /// let mut counter = kaspa_txscript::RuntimeSigOpCounter::new(5);
     ///
     /// // Consume 3 operations
     /// counter.consume_sig_ops(3).unwrap(); // Ok(())
-    /// assert_eq!(counter.sig_op_remaining, 2);
+    /// assert_eq!(counter.sig_op_remaining(), 2);
     ///
     /// // Try to consume too many
     /// counter.consume_sig_ops(3).unwrap_err(); // Err(ExceededSigOpLimit)
@@ -122,6 +122,14 @@ impl RuntimeSigOpCounter {
             self.sig_op_remaining.checked_sub(num_sigs).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit))?;
 
         Ok(())
+    }
+
+    pub fn sig_op_remaining(&self) -> u8 {
+        self.sig_op_remaining
+    }
+
+    pub fn sig_op_limit(&self) -> u8 {
+        self.sig_op_limit
     }
 }
 
