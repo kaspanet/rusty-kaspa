@@ -8,7 +8,7 @@ use kaspa_consensus_core::{
     mass,
     tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
 };
-use kaspa_txscript::{get_sig_op_count, is_unspendable, script_class::ScriptClass};
+use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class::ScriptClass};
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
 /// that are considered standard in a pay-to-script-hash script.
@@ -188,7 +188,8 @@ impl Mempool {
                 ScriptClass::PubKey => {}
                 ScriptClass::PubKeyECDSA => {}
                 ScriptClass::ScriptHash => {
-                    let num_sig_ops = get_sig_op_count::<PopulatedTransaction, SigHashReusedValuesUnsync>(
+                    // todo relax due to on fly calculation
+                    let num_sig_ops = get_sig_op_count_upper_bound::<PopulatedTransaction, SigHashReusedValuesUnsync>(
                         &input.signature_script,
                         &entry.script_public_key,
                     );
