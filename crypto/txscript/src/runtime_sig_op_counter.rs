@@ -22,9 +22,6 @@ impl RuntimeSigOpCounter {
     /// - Checking if we have enough remaining operations
     /// - Updating the remaining count if successful
     ///
-    /// # Arguments
-    /// * `num_sigs` - The number of signature operations to consume
-    ///
     /// # Returns
     /// * `Ok(())` if the operations were successfully consumed
     /// * `Err(TxScriptError::ExceededSigOpLimit)` if not enough operations remain
@@ -33,7 +30,7 @@ impl RuntimeSigOpCounter {
     /// ```
     /// let mut counter = kaspa_txscript::runtime_sig_op_counter::RuntimeSigOpCounter::new(1);
     ///
-    /// // Consume 3 operations
+    /// // Consume 1 operation
     /// counter.consume_sig_op().unwrap(); // Ok(())
     /// assert_eq!(counter.sig_op_remaining(), 0);
     /// assert_eq!(counter.used_sig_ops(), 1);
