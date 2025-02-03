@@ -105,18 +105,17 @@ impl RuntimeSigOpCounter {
     ///
     /// # Example
     /// ```
-    /// let mut counter = kaspa_txscript::RuntimeSigOpCounter::new(5);
+    /// let mut counter = kaspa_txscript::RuntimeSigOpCounter::new(1);
     ///
     /// // Consume 3 operations
-    /// counter.consume_sig_ops(3).unwrap(); // Ok(())
-    /// assert_eq!(counter.sig_op_remaining(), 2);
+    /// counter.consume_sig_op().unwrap(); // Ok(())
+    /// assert_eq!(counter.sig_op_remaining(), 0);
     ///
     /// // Try to consume too many
-    /// counter.consume_sig_ops(3).unwrap_err(); // Err(ExceededSigOpLimit)
+    /// counter.consume_sig_op().unwrap_err(); // Err(ExceededSigOpLimit)
     /// ```
-    pub fn consume_sig_ops(&mut self, num_sigs: u8) -> Result<(), TxScriptError> {
-        self.sig_op_remaining =
-            self.sig_op_remaining.checked_sub(num_sigs).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit))?;
+    pub fn consume_sig_op(&mut self) -> Result<(), TxScriptError> {
+        self.sig_op_remaining = self.sig_op_remaining.checked_sub(1).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit))?;
 
         Ok(())
     }
@@ -131,18 +130,18 @@ impl RuntimeSigOpCounter {
 }
 
 pub trait SigOpConsumer {
-    fn consume_sig_ops(&mut self, num_sigs: u8) -> Result<(), TxScriptError>;
+    fn consume_sig_op(&mut self) -> Result<(), TxScriptError>;
 }
 
 impl SigOpConsumer for RuntimeSigOpCounter {
-    fn consume_sig_ops(&mut self, num_sigs: u8) -> Result<(), TxScriptError> {
-        RuntimeSigOpCounter::consume_sig_ops(self, num_sigs)
+    fn consume_sig_op(&mut self) -> Result<(), TxScriptError> {
+        RuntimeSigOpCounter::consume_sig_op(self)
     }
 }
 impl SigOpConsumer for Option<RuntimeSigOpCounter> {
-    fn consume_sig_ops(&mut self, num_sigs: u8) -> Result<(), TxScriptError> {
+    fn consume_sig_op(&mut self) -> Result<(), TxScriptError> {
         if let Some(consumer) = self {
-            consumer.consume_sig_ops(num_sigs)
+            consumer.consume_sig_op()
         } else {
             Ok(())
         }
@@ -361,8 +360,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             kip10_enabled,
-            runtime_sig_op_counter: runtime_sig_op_counting
-                .then_some(RuntimeSigOpCounter { sig_op_limit: input.sig_op_count, sig_op_remaining: input.sig_op_count }),
+            runtime_sig_op_counter: runtime_sig_op_counting.then_some(RuntimeSigOpCounter::new(input.sig_op_count)),
         }
     }
 
@@ -563,16 +561,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         } else if num_sigs > num_keys {
             return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {num_sigs} > {num_keys}")));
         }
-
-        // Compile-time check that MAX_PUB_KEYS_PER_MUTLTISIG is within u8 range.
-        // Since num_sigs <= num_keys <= MAX_PUB_KEYS_PER_MUTLTISIG, this ensures
-        // num_sigs can be safely converted to u8.
-        // This will fail to compile if MAX_PUB_KEYS_PER_MUTLTISIG > u8::MAX (255)
-        // due to const arithmetic underflow.
-        const _: usize = u8::MAX as usize - MAX_PUB_KEYS_PER_MUTLTISIG as usize;
-        let num_sigs = num_sigs as u8;
-        self.runtime_sig_op_counter.consume_sig_ops(num_sigs)?;
         let num_sigs = num_sigs as usize;
+
         let signatures = match self.dstack.len() >= num_sigs {
             true => self.dstack.split_off(self.dstack.len() - num_sigs),
             false => return Err(TxScriptError::InvalidStackOperation(num_sigs, self.dstack.len())),
@@ -633,6 +623,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
 
     #[inline]
     fn check_schnorr_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+        self.runtime_sig_op_counter.consume_sig_op()?;
         match self.script_source {
             ScriptSource::TxInput { tx, idx, .. } => {
                 if sig.len() != 64 {
@@ -668,6 +659,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 
     fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+        self.runtime_sig_op_counter.consume_sig_op()?;
         match self.script_source {
             ScriptSource::TxInput { tx, idx, .. } => {
                 if sig.len() != 64 {
