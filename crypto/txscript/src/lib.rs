@@ -524,8 +524,10 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         } else if num_sigs > num_keys {
             return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {num_sigs} > {num_keys}")));
         }
-        let num_sigs =
-            num_sigs.try_into().map_err(|_| TxScriptError::NumberTooBig("Signatures count mustn't exceed 255".to_string()))?;
+
+        // ensure that the number of signatures(which is <= number of keys) is less than u8::MAX
+        const _: usize = u8::MAX as usize - MAX_PUB_KEYS_PER_MUTLTISIG as usize;
+        let num_sigs = num_sigs as u8;
         self.runtime_sig_op_counter.consume_sig_ops(num_sigs)?;
         let num_sigs = num_sigs as usize;
         let signatures = match self.dstack.len() >= num_sigs {
