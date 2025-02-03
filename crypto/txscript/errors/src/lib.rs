@@ -73,6 +73,8 @@ pub enum TxScriptError {
     InvalidOutputIndex(i32, usize),
     #[error(transparent)]
     Serialization(#[from] SerializationError),
+    #[error("sig op count exceeds passed limit of {0}")]
+    ExceededSigOpLimit(u8),
 }
 
 #[derive(Error, PartialEq, Eq, Debug, Clone, Copy)]
