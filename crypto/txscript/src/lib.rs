@@ -525,7 +525,11 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {num_sigs} > {num_keys}")));
         }
 
-        // ensure that the number of signatures(which is <= number of keys) is less than u8::MAX
+        // Compile-time check that MAX_PUB_KEYS_PER_MUTLTISIG is within u8 range.
+        // Since num_sigs <= num_keys <= MAX_PUB_KEYS_PER_MUTLTISIG, this ensures
+        // num_sigs can be safely converted to u8.
+        // This will fail to compile if MAX_PUB_KEYS_PER_MUTLTISIG > u8::MAX (255)
+        // due to const arithmetic underflow.
         const _: usize = u8::MAX as usize - MAX_PUB_KEYS_PER_MUTLTISIG as usize;
         let num_sigs = num_sigs as u8;
         self.runtime_sig_op_counter.consume_sig_ops(num_sigs)?;
