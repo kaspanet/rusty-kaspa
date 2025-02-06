@@ -14,6 +14,7 @@ use kaspa_database::{
 };
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
+use kaspa_p2p_lib::Hub;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
@@ -538,6 +539,14 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let mining_monitor =
         Arc::new(MiningMonitor::new(mining_manager.clone(), mining_counters, tx_script_cache_counters.clone(), tick_service.clone()));
 
+    let hub = Hub::new();
+    let mining_rule_engine = Arc::new(MiningRuleEngine::new(
+        consensus_manager.clone(),
+        config.clone(),
+        processing_counters.clone(),
+        tick_service.clone(),
+        hub.clone(),
+    ));
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
         address_manager,
@@ -545,6 +554,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         mining_manager.clone(),
         tick_service.clone(),
         notification_root,
+        hub.clone(),
+        mining_rule_engine.clone(),
     ));
     let p2p_service = Arc::new(P2pService::new(
         flow_context.clone(),
@@ -557,8 +568,6 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         config.default_p2p_port(),
         p2p_tower_counters.clone(),
     ));
-
-    let mining_rule_engine = Arc::new(MiningRuleEngine::new(flow_context.clone(), processing_counters.clone(), tick_service.clone()));
 
     let rpc_core_service = Arc::new(RpcCoreService::new(
         consensus_manager.clone(),

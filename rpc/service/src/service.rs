@@ -3,9 +3,9 @@
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::feerate_estimate::{FeeEstimateConverter, FeeEstimateVerboseConverter};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
-use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
+use kaspa_consensus_core::daa_score_timestamp::DaaScoreTimestamp;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::utxo::utxo_inquirer::UtxoInquirerError;
 use kaspa_consensus_core::{
@@ -53,7 +53,7 @@ use kaspa_notify::{
 };
 use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_p2p_lib::common::ProtocolError;
-use kaspa_p2p_mining::rule_engine::{MiningRuleEngine, NearlySyncedFinder};
+use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
 use kaspa_rpc_core::{
     api::{
@@ -274,11 +274,6 @@ impl RpcCoreService {
             .unwrap_or_default()
     }
 
-    fn has_sufficient_peer_connectivity(&self) -> bool {
-        // Other network types can be used in an isolated environment without peers
-        !matches!(self.flow_context.config.net.network_type, Mainnet | Testnet) || self.flow_context.hub().has_peers()
-    }
-
     fn extract_tx_query(&self, filter_transaction_pool: bool, include_orphan_pool: bool) -> RpcResult<TransactionQuery> {
         match (filter_transaction_pool, include_orphan_pool) {
             (true, true) => Ok(TransactionQuery::OrphansOnly),
@@ -299,9 +294,10 @@ impl RpcApi for RpcCoreService {
         request: SubmitBlockRequest,
     ) -> RpcResult<SubmitBlockResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
+        let sink_daa_score_timestamp = session.async_get_sink_daa_score_timestamp().await;
 
         // TODO: consider adding an error field to SubmitBlockReport to document both the report and error fields
-        let is_synced: bool = self.mining_rule_engine.should_mine(NearlySyncedFinder::BySession(&session)).await;
+        let is_synced: bool = self.mining_rule_engine.should_mine(sink_daa_score_timestamp);
 
         if !self.config.enable_unsynced_mining && !is_synced {
             // error = "Block not submitted - node is not synced"
@@ -385,13 +381,10 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         Ok(GetBlockTemplateResponse {
             block: block_template.block.into(),
-            is_synced: self
-                .mining_rule_engine
-                .should_mine(NearlySyncedFinder::ByTimestampAndScore((
-                    block_template.selected_parent_timestamp,
-                    block_template.selected_parent_daa_score,
-                )))
-                .await,
+            is_synced: self.mining_rule_engine.should_mine(DaaScoreTimestamp {
+                timestamp: block_template.selected_parent_timestamp,
+                daa_score: block_template.selected_parent_daa_score,
+            }),
         })
     }
 
@@ -474,13 +467,14 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     }
 
     async fn get_info_call(&self, _connection: Option<&DynRpcConnection>, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
-        let session = self.consensus_manager.consensus().unguarded_session();
+        let sink_daa_score_timestamp =
+            self.consensus_manager.consensus().unguarded_session().async_get_sink_daa_score_timestamp().await;
         Ok(GetInfoResponse {
             p2p_id: self.flow_context.node_id.to_string(),
             mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
-            is_synced: self.mining_rule_engine.should_mine(NearlySyncedFinder::BySession(&session)).await,
+            is_synced: self.mining_rule_engine.should_mine(sink_daa_score_timestamp),
             has_notify_command: true,
             has_message_id: true,
         })
@@ -1128,7 +1122,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _request: GetServerInfoRequest,
     ) -> RpcResult<GetServerInfoResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
-        let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
+        let sink_daa_score_timestamp = session.async_get_sink_daa_score_timestamp().await;
+        let is_synced: bool = self.mining_rule_engine.should_mine(sink_daa_score_timestamp);
         let virtual_daa_score = session.get_virtual_daa_score();
 
         Ok(GetServerInfoResponse {
@@ -1147,8 +1142,9 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         _request: GetSyncStatusRequest,
     ) -> RpcResult<GetSyncStatusResponse> {
-        let session = self.consensus_manager.consensus().unguarded_session();
-        let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
+        let sink_daa_score_timestamp =
+            self.consensus_manager.consensus().unguarded_session().async_get_sink_daa_score_timestamp().await;
+        let is_synced: bool = self.mining_rule_engine.should_mine(sink_daa_score_timestamp);
         Ok(GetSyncStatusResponse { is_synced })
     }
 

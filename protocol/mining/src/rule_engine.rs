@@ -8,9 +8,11 @@ use std::{
 
 use kaspa_consensus_core::{
     api::counters::ProcessingCounters,
+    config::Config,
+    daa_score_timestamp::DaaScoreTimestamp,
     network::NetworkType::{Mainnet, Testnet},
 };
-use kaspa_consensusmanager::ConsensusSessionOwned;
+use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{
     task::{
         service::{AsyncService, AsyncServiceFuture},
@@ -19,23 +21,20 @@ use kaspa_core::{
     time::unix_now,
     trace, warn,
 };
-use kaspa_p2p_flows::flow_context::FlowContext;
+use kaspa_p2p_lib::Hub;
 
 const RULE_ENGINE: &str = "mining-rule-engine";
 const SYNC_RATE_THRESHOLD: f64 = 0.10;
 
-pub enum NearlySyncedFinder<'a> {
-    BySession(&'a ConsensusSessionOwned),
-    ByTimestampAndScore((u64, u64)),
-}
-
 #[derive(Clone)]
 pub struct MiningRuleEngine {
-    flow_context: Arc<FlowContext>,
+    config: Arc<Config>,
     processing_counters: Arc<ProcessingCounters>,
     tick_service: Arc<TickService>,
     // Sync Rate Rule: Allow mining if sync rate is below threshold AND finality point is "recent" (defined below)
     use_sync_rate_rule: Arc<AtomicBool>,
+    consensus_manager: Arc<ConsensusManager>,
+    hub: Hub,
 }
 
 impl MiningRuleEngine {
@@ -63,17 +62,16 @@ impl MiningRuleEngine {
             let delta = &snapshot - &last_snapshot;
 
             if elapsed_time.as_secs() > 0 {
-                let expected_blocks = (elapsed_time.as_millis() as u64) / self.flow_context.config.target_time_per_block;
+                let expected_blocks = (elapsed_time.as_millis() as u64) / self.config.target_time_per_block;
                 let received_blocks = delta.body_counts.max(delta.header_counts);
                 let rate: f64 = (received_blocks as f64) / (expected_blocks as f64);
 
-                let session = self.flow_context.consensus().unguarded_session();
+                let session = self.consensus_manager.consensus().unguarded_session();
 
                 let finality_point = session.async_finality_point().await;
                 let finality_point_timestamp = session.async_get_header(finality_point).await.unwrap().timestamp;
                 // Finality point is considered "recent" if it is within 3 finality durations from the current time
-                let is_finality_recent =
-                    finality_point_timestamp >= unix_now().saturating_sub(self.flow_context.config.finality_duration() * 3);
+                let is_finality_recent = finality_point_timestamp >= unix_now().saturating_sub(self.config.finality_duration() * 3);
 
                 trace!(
                     "Sync rate: {:.2} | Finality point recent: {} | Elapsed time: {}s | Found/Expected blocks: {}/{}",
@@ -108,32 +106,44 @@ impl MiningRuleEngine {
         }
     }
 
-    pub fn new(flow_context: Arc<FlowContext>, processing_counters: Arc<ProcessingCounters>, tick_service: Arc<TickService>) -> Self {
-        Self { flow_context, processing_counters, tick_service, use_sync_rate_rule: Arc::new(AtomicBool::new(false)) }
+    pub fn new(
+        consensus_manager: Arc<ConsensusManager>,
+        config: Arc<Config>,
+        processing_counters: Arc<ProcessingCounters>,
+        tick_service: Arc<TickService>,
+        hub: Hub,
+    ) -> Self {
+        Self {
+            consensus_manager,
+            config,
+            processing_counters,
+            tick_service,
+            hub,
+            use_sync_rate_rule: Arc::new(AtomicBool::new(false)),
+        }
     }
 
-    pub async fn should_mine(&self, nearly_synced_finder: NearlySyncedFinder<'_>) -> bool {
+    pub fn should_mine(&self, sink_daa_score_timestamp: DaaScoreTimestamp) -> bool {
         if !self.has_sufficient_peer_connectivity() {
             return false;
         }
 
-        let is_nearly_synced = self.is_nearly_sycned(nearly_synced_finder).await;
+        let is_nearly_synced = self.is_nearly_synced(sink_daa_score_timestamp);
 
         is_nearly_synced || self.use_sync_rate_rule.load(std::sync::atomic::Ordering::Relaxed)
     }
 
-    pub async fn is_nearly_sycned(&self, nearly_synced_finder: NearlySyncedFinder<'_>) -> bool {
-        match nearly_synced_finder {
-            NearlySyncedFinder::ByTimestampAndScore((sink_timestamp, sink_daa_score)) => {
-                self.flow_context.config.is_nearly_synced(sink_timestamp, sink_daa_score)
-            }
-            NearlySyncedFinder::BySession(session) => session.async_is_nearly_synced().await,
-        }
+    /// Returns whether this consensus is considered synced or close to being synced.
+    ///
+    /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
+    pub fn is_nearly_synced(&self, sink_daa_score_timestamp: DaaScoreTimestamp) -> bool {
+        // See comment within `config.is_nearly_synced`
+        self.config.is_nearly_synced(sink_daa_score_timestamp.timestamp, sink_daa_score_timestamp.daa_score)
     }
 
     fn has_sufficient_peer_connectivity(&self) -> bool {
         // Other network types can be used in an isolated environment without peers
-        !matches!(self.flow_context.config.net.network_type, Mainnet | Testnet) || self.flow_context.hub().has_peers()
+        !matches!(self.config.net.network_type, Mainnet | Testnet) || self.hub.has_peers()
     }
 }
 
