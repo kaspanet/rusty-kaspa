@@ -273,7 +273,7 @@ mod tests {
     use super::*;
     use crate::params::MAINNET_PARAMS;
     use kaspa_consensus_core::{
-        config::params::{Params, TESTNET11_PARAMS},
+        config::params::{Params, SIMNET_PARAMS},
         constants::SOMPI_PER_KASPA,
         network::NetworkId,
         tx::scriptvec,
@@ -286,11 +286,11 @@ mod tests {
         let legacy_cbm = create_legacy_manager();
         let pre_deflationary_rewards = legacy_cbm.pre_deflationary_phase_base_subsidy * legacy_cbm.deflationary_phase_daa_score;
         let total_rewards: u64 = pre_deflationary_rewards + SUBSIDY_BY_MONTH_TABLE.iter().map(|x| x * SECONDS_PER_MONTH).sum::<u64>();
-        let testnet_11_bps = TESTNET11_PARAMS.bps();
+        let testnet_11_bps = SIMNET_PARAMS.bps();
         let total_high_bps_rewards_rounded_up: u64 = pre_deflationary_rewards
             + SUBSIDY_BY_MONTH_TABLE.iter().map(|x| (x.div_ceil(testnet_11_bps) * testnet_11_bps) * SECONDS_PER_MONTH).sum::<u64>();
 
-        let cbm = create_manager(&TESTNET11_PARAMS);
+        let cbm = create_manager(&SIMNET_PARAMS);
         let total_high_bps_rewards: u64 =
             pre_deflationary_rewards + cbm.subsidy_by_month_table.iter().map(|x| x * cbm.blocks_per_month).sum::<u64>();
         assert_eq!(total_high_bps_rewards_rounded_up, total_high_bps_rewards, "subsidy adjusted to bps must be rounded up");

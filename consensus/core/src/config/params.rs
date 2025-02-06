@@ -322,7 +322,6 @@ impl From<NetworkId> for Params {
             NetworkType::Mainnet => MAINNET_PARAMS,
             NetworkType::Testnet => match value.suffix {
                 Some(10) => TESTNET_PARAMS,
-                Some(11) => TESTNET11_PARAMS,
                 Some(x) => panic!("Testnet suffix {} is not supported", x),
                 None => panic!("Testnet suffix not provided"),
             },
@@ -481,7 +480,7 @@ pub const TESTNET_PARAMS: Params = Params {
     runtime_sig_op_counting: ForkActivation::never(),
 };
 
-pub const TESTNET11_PARAMS: Params = Params {
+pub const _TESTNET11_PARAMS: Params = Params {
     dns_seeders: &[
         // This DNS seeder is run by Tiram
         "seeder1-testnet-11.kaspad.net",

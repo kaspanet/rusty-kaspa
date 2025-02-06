@@ -13,7 +13,7 @@ use kaspa_consensus::{
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
     },
-    params::{ForkActivation, Params, Testnet11Bps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, TESTNET11_PARAMS},
+    params::{ForkActivation, Params, Testnet11Bps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, SIMNET_PARAMS},
 };
 use kaspa_consensus_core::{
     api::ConsensusApi, block::Block, blockstatus::BlockStatus, config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult,
@@ -190,7 +190,7 @@ fn main_impl(mut args: Args) {
         );
     }
     args.bps = if args.testnet11 { Testnet11Bps::bps() as f64 } else { args.bps };
-    let mut params = if args.testnet11 { TESTNET11_PARAMS } else { DEVNET_PARAMS };
+    let mut params = if args.testnet11 { SIMNET_PARAMS } else { DEVNET_PARAMS };
     params.storage_mass_activation = ForkActivation::new(400);
     params.storage_mass_parameter = 10_000;
     params.payload_activation = ForkActivation::always();
