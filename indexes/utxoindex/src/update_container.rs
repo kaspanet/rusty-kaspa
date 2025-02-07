@@ -27,12 +27,9 @@ impl UtxoIndexChanges {
 
     /// Add a [`UtxoDiff`] the [`UtxoIndexChanges`] struct.
     pub fn update_utxo_diff(&mut self, utxo_diff: UtxoDiff) {
-        let (to_add, mut to_remove) = (utxo_diff.add, utxo_diff.remove);
+        let (to_add, to_remove) = (utxo_diff.add, utxo_diff.remove);
 
         for (transaction_outpoint, utxo_entry) in to_add.into_iter() {
-            if to_remove.remove(&transaction_outpoint).is_some() {
-                continue;
-            }; // We try and remove from `utxo_diff.remove`, if we do, discard utxo.
             self.supply_change += utxo_entry.amount as CirculatingSupplyDiff;
 
             self.utxo_changes.added.insert_into_nested(
