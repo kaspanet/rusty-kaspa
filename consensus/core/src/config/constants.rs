@@ -27,11 +27,9 @@ pub mod consensus {
     pub const LEGACY_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132;
 
     /// **New** timestamp deviation tolerance (seconds).
-    /// TODO: KIP-0004: 605 (~10 minutes)
     pub const NEW_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132;
 
     /// The desired interval between samples of the median time window (seconds).
-    /// KIP-0004: 10 seconds
     pub const PAST_MEDIAN_TIME_SAMPLE_INTERVAL: u64 = 10;
 
     /// Size of the **sampled** median time window (independent of BPS)
@@ -63,11 +61,9 @@ pub mod consensus {
     pub const LEGACY_DIFFICULTY_WINDOW_SIZE: usize = 2641;
 
     /// **New** difficulty window duration expressed in time units (seconds).
-    /// TODO: KIP-0004: 30,000 (500 minutes)
     pub const NEW_DIFFICULTY_WINDOW_DURATION: u64 = 2641;
 
     /// The desired interval between samples of the difficulty window (seconds).
-    /// TODO: KIP-0004: 30 seconds
     pub const DIFFICULTY_WINDOW_SAMPLE_INTERVAL: u64 = 4;
 
     /// Size of the **sampled** difficulty window (independent of BPS)
@@ -81,7 +77,6 @@ pub mod consensus {
     pub const LEGACY_FINALITY_DEPTH: u64 = 86_400;
 
     /// **New** finality duration expressed in time units (seconds).
-    /// TODO: finalize this value (consider 6-24 hours)
     pub const NEW_FINALITY_DURATION: u64 = 43_200; // 12 hours
 
     /// Merge depth bound duration (in seconds). For 1 BPS networks this equals the legacy depth

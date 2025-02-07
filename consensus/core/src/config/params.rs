@@ -1,5 +1,5 @@
 pub use super::{
-    bps::{Bps, Testnet11Bps},
+    bps::{Bps, TenBps},
     constants::consensus::*,
     genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET11_GENESIS, TESTNET_GENESIS},
 };
@@ -104,7 +104,7 @@ pub struct Params {
     pub mass_per_sig_op: u64,
     pub max_block_mass: u64,
 
-    /// The parameter for scaling inverse KAS value to mass units (unpublished KIP-0009)
+    /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
     pub storage_mass_parameter: u64,
 
     /// DAA score from which storage mass calculation and transaction mass field are activated as a consensus rule
@@ -331,6 +331,57 @@ impl From<NetworkId> for Params {
     }
 }
 
+/// Fork params for bps-modifying forks (i.e., Crescendo)
+pub struct ForkParams {
+    /// Target time per block (in milliseconds)
+    pub target_time_per_block: u64,
+    pub ghostdag_k: KType,
+
+    pub timestamp_deviation_tolerance: u64,
+    pub past_median_time_sample_rate: u64,
+    pub past_median_time_sampled_window_size: u64,
+
+    pub difficulty_sample_rate: u64,
+    pub sampled_difficulty_window_size: u64,
+    pub min_difficulty_window_len: usize,
+
+    pub max_block_parents: u8,
+    pub mergeset_size_limit: u64,
+    pub merge_depth: u64,
+    pub finality_depth: u64,
+    pub pruning_depth: u64,
+
+    pub max_tx_inputs: usize,
+    pub max_tx_outputs: usize,
+    pub max_signature_script_len: usize,
+    pub max_script_public_key_len: usize,
+
+    pub coinbase_maturity: u64,
+}
+
+pub const TEN_BPS_FORK_PARAMS: ForkParams = ForkParams {
+    target_time_per_block: TenBps::target_time_per_block(),
+    ghostdag_k: TenBps::ghostdag_k(),
+    timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
+    past_median_time_sample_rate: TenBps::past_median_time_sample_rate(),
+    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
+    difficulty_sample_rate: TenBps::difficulty_adjustment_sample_rate(),
+    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
+    min_difficulty_window_len: 60, // = 4 minutes. TODO: finalize
+    max_block_parents: TenBps::max_block_parents(),
+    mergeset_size_limit: TenBps::mergeset_size_limit(),
+    merge_depth: TenBps::merge_depth_bound(),
+    finality_depth: TenBps::finality_depth(),
+    pruning_depth: TenBps::pruning_depth(),
+    coinbase_maturity: TenBps::coinbase_maturity(),
+
+    // TODO: finalize all below
+    max_tx_inputs: 1000,
+    max_tx_outputs: 1000,
+    max_signature_script_len: 100_000,
+    max_script_public_key_len: 10_000,
+};
+
 pub const MAINNET_PARAMS: Params = Params {
     dns_seeders: &[
         // This DNS seeder is run by Denis Mashkevich
@@ -506,19 +557,19 @@ pub const _TESTNET11_PARAMS: Params = Params {
     //
     // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
     //
-    ghostdag_k: Testnet11Bps::ghostdag_k(),
-    target_time_per_block: Testnet11Bps::target_time_per_block(),
-    past_median_time_sample_rate: Testnet11Bps::past_median_time_sample_rate(),
-    difficulty_sample_rate: Testnet11Bps::difficulty_adjustment_sample_rate(),
-    max_block_parents: Testnet11Bps::max_block_parents(),
-    mergeset_size_limit: Testnet11Bps::mergeset_size_limit(),
-    merge_depth: Testnet11Bps::merge_depth_bound(),
-    finality_depth: Testnet11Bps::finality_depth(),
-    pruning_depth: Testnet11Bps::pruning_depth(),
-    pruning_proof_m: Testnet11Bps::pruning_proof_m(),
-    deflationary_phase_daa_score: Testnet11Bps::deflationary_phase_daa_score(),
-    pre_deflationary_phase_base_subsidy: Testnet11Bps::pre_deflationary_phase_base_subsidy(),
-    coinbase_maturity: Testnet11Bps::coinbase_maturity(),
+    ghostdag_k: TenBps::ghostdag_k(),
+    target_time_per_block: TenBps::target_time_per_block(),
+    past_median_time_sample_rate: TenBps::past_median_time_sample_rate(),
+    difficulty_sample_rate: TenBps::difficulty_adjustment_sample_rate(),
+    max_block_parents: TenBps::max_block_parents(),
+    mergeset_size_limit: TenBps::mergeset_size_limit(),
+    merge_depth: TenBps::merge_depth_bound(),
+    finality_depth: TenBps::finality_depth(),
+    pruning_depth: TenBps::pruning_depth(),
+    pruning_proof_m: TenBps::pruning_proof_m(),
+    deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
+    pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
+    coinbase_maturity: TenBps::coinbase_maturity(),
 
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
@@ -563,20 +614,20 @@ pub const SIMNET_PARAMS: Params = Params {
     // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
     //
     // Note we use a 10 BPS configuration for simnet
-    ghostdag_k: Testnet11Bps::ghostdag_k(),
-    target_time_per_block: Testnet11Bps::target_time_per_block(),
-    past_median_time_sample_rate: Testnet11Bps::past_median_time_sample_rate(),
-    difficulty_sample_rate: Testnet11Bps::difficulty_adjustment_sample_rate(),
+    ghostdag_k: TenBps::ghostdag_k(),
+    target_time_per_block: TenBps::target_time_per_block(),
+    past_median_time_sample_rate: TenBps::past_median_time_sample_rate(),
+    difficulty_sample_rate: TenBps::difficulty_adjustment_sample_rate(),
     // For simnet, we deviate from TN11 configuration and allow at least 64 parents in order to support mempool benchmarks out of the box
-    max_block_parents: if Testnet11Bps::max_block_parents() > 64 { Testnet11Bps::max_block_parents() } else { 64 },
-    mergeset_size_limit: Testnet11Bps::mergeset_size_limit(),
-    merge_depth: Testnet11Bps::merge_depth_bound(),
-    finality_depth: Testnet11Bps::finality_depth(),
-    pruning_depth: Testnet11Bps::pruning_depth(),
-    pruning_proof_m: Testnet11Bps::pruning_proof_m(),
-    deflationary_phase_daa_score: Testnet11Bps::deflationary_phase_daa_score(),
-    pre_deflationary_phase_base_subsidy: Testnet11Bps::pre_deflationary_phase_base_subsidy(),
-    coinbase_maturity: Testnet11Bps::coinbase_maturity(),
+    max_block_parents: if TenBps::max_block_parents() > 64 { TenBps::max_block_parents() } else { 64 },
+    mergeset_size_limit: TenBps::mergeset_size_limit(),
+    merge_depth: TenBps::merge_depth_bound(),
+    finality_depth: TenBps::finality_depth(),
+    pruning_depth: TenBps::pruning_depth(),
+    pruning_proof_m: TenBps::pruning_proof_m(),
+    deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
+    pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
+    coinbase_maturity: TenBps::coinbase_maturity(),
 
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,

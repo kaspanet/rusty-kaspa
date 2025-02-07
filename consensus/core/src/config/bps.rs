@@ -20,8 +20,8 @@ pub fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
     }
 }
 
-/// Bps-related constants generator for testnet 11
-pub type Testnet11Bps = Bps<10>;
+/// Bps-related constants generator 10-bps networks
+pub type TenBps = Bps<10>;
 
 /// Struct representing network blocks-per-second. Provides a bunch of const functions
 /// computing various constants which are functions of the BPS value
@@ -98,6 +98,7 @@ impl<const BPS: u64> Bps<BPS> {
         Self::ghostdag_k() as u64 * 10
     }
 
+    // TODO: finalize
     pub const fn pruning_depth() -> u64 {
         // Based on the analysis at https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf
         // and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
