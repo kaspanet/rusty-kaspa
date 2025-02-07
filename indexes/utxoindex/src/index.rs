@@ -88,11 +88,11 @@ impl UtxoIndexApi for UtxoIndex {
         // Commit changed utxo state to db
         self.store.update_utxo_state(&utxoindex_changes.utxo_changes.added, &utxoindex_changes.utxo_changes.removed, false)?;
 
-        // Commit circulating supply change (if monotonic) to db.
-        if utxoindex_changes.supply_change > 0 {
-            //we force monotonic here
-            let _circulating_supply =
-                self.store.update_circulating_supply(utxoindex_changes.supply_change as CirculatingSupply, false)?;
+        // Update the stored circulating supply with the accumulated delta of the changes
+        let updated_circulating_supply = self.store.update_circulating_supply(utxoindex_changes.supply_change, false)?;
+
+
+        
         }
 
         // Commit new consensus virtual tips.

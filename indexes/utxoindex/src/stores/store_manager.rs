@@ -75,7 +75,7 @@ impl Store {
         self.circulating_supply_store.get()
     }
 
-    pub fn update_circulating_supply(&mut self, circulating_supply_diff: u64, try_reset_on_err: bool) -> StoreResult<u64> {
+    pub fn update_circulating_supply(&mut self, circulating_supply_diff: i64, try_reset_on_err: bool) -> StoreResult<u64> {
         let res = self.circulating_supply_store.update_circulating_supply(circulating_supply_diff);
         if try_reset_on_err && res.is_err() {
             self.delete_all()?;
