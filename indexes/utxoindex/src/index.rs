@@ -28,14 +28,20 @@ const RESYNC_CHUNK_SIZE: usize = 2048; //Increased from 1k (used in go-kaspad), 
 pub struct UtxoIndex {
     consensus_manager: Arc<ConsensusManager>,
     store: Store,
+    /// A runtime value holding a monotonic supply value. Used to prevent supply fluctuations due
+    /// to the single round gap between fee deduction and its payment to miners
+    monotonic_circulating_supply: CirculatingSupply,
 }
 
 impl UtxoIndex {
     /// Creates a new [`UtxoIndex`] within a [`RwLock`]
     pub fn new(consensus_manager: Arc<ConsensusManager>, db: Arc<DB>) -> UtxoIndexResult<Arc<RwLock<Self>>> {
-        let mut utxoindex = Self { consensus_manager: consensus_manager.clone(), store: Store::new(db) };
+        let mut utxoindex =
+            Self { consensus_manager: consensus_manager.clone(), store: Store::new(db), monotonic_circulating_supply: 0 };
         if !utxoindex.is_synced()? {
             utxoindex.resync()?;
+        } else {
+            utxoindex.monotonic_circulating_supply = utxoindex.store.get_circulating_supply()?;
         }
         let utxoindex = Arc::new(RwLock::new(utxoindex));
         consensus_manager.register_consensus_reset_handler(Arc::new(UtxoIndexConsensusResetHandler::new(Arc::downgrade(&utxoindex))));
@@ -48,7 +54,7 @@ impl UtxoIndexApi for UtxoIndex {
     fn get_circulating_supply(&self) -> StoreResult<u64> {
         trace!("[{0}] retrieving circulating supply", IDENT);
 
-        self.store.get_circulating_supply()
+        Ok(self.monotonic_circulating_supply)
     }
 
     /// Retrieve utxos by script public keys from the utxoindex db.
@@ -88,11 +94,12 @@ impl UtxoIndexApi for UtxoIndex {
         // Commit changed utxo state to db
         self.store.update_utxo_state(&utxoindex_changes.utxo_changes.added, &utxoindex_changes.utxo_changes.removed, false)?;
 
-        // Commit circulating supply change (if monotonic) to db.
-        if utxoindex_changes.supply_change > 0 {
-            //we force monotonic here
-            let _circulating_supply =
-                self.store.update_circulating_supply(utxoindex_changes.supply_change as CirculatingSupply, false)?;
+        // Update the stored circulating supply with the accumulated delta of the changes
+        let updated_circulating_supply = self.store.update_circulating_supply(utxoindex_changes.supply_change, false)?;
+
+        // Update the monotonic runtime value
+        if updated_circulating_supply > self.monotonic_circulating_supply {
+            self.monotonic_circulating_supply = updated_circulating_supply;
         }
 
         // Commit new consensus virtual tips.
@@ -175,6 +182,7 @@ impl UtxoIndexApi for UtxoIndex {
 
         trace!("[{0}] committing circulating supply {1} from consensus db", IDENT, circulating_supply);
         self.store.insert_circulating_supply(circulating_supply, true)?;
+        self.monotonic_circulating_supply = circulating_supply;
 
         trace!("[{0}] committing consensus tips {consensus_tips:?} from consensus db", IDENT);
         self.store.set_tips(consensus_tips, true)?;
