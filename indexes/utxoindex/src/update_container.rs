@@ -33,7 +33,7 @@ impl UtxoIndexChanges {
             if to_remove.remove(&transaction_outpoint).is_some() {
                 continue;
             }; // We try and remove from `utxo_diff.remove`, if we do, discard utxo.
-            self.supply_change += utxo_entry.amount as CirculatingSupplyDiff; // TODO: Using `virtual_state.mergeset_rewards` might be a better way to extract this.
+            self.supply_change += utxo_entry.amount as CirculatingSupplyDiff;
 
             self.utxo_changes.added.insert_into_nested(
                 utxo_entry.script_public_key,
@@ -43,7 +43,7 @@ impl UtxoIndexChanges {
         }
 
         for (transaction_outpoint, utxo_entry) in to_remove.into_iter() {
-            self.supply_change -= utxo_entry.amount as CirculatingSupplyDiff; // TODO: Using `virtual_state.mergeset_rewards` might be a better way to extract this.
+            self.supply_change -= utxo_entry.amount as CirculatingSupplyDiff;
 
             self.utxo_changes.removed.insert_into_nested(
                 utxo_entry.script_public_key,
