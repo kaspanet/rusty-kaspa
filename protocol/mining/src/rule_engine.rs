@@ -8,7 +8,7 @@ use std::{
 
 use kaspa_consensus_core::{
     api::counters::ProcessingCounters,
-    config::Config,
+    config::{params::NEW_DIFFICULTY_WINDOW_DURATION, Config},
     daa_score_timestamp::DaaScoreTimestamp,
     network::NetworkType::{Mainnet, Testnet},
 };
@@ -133,12 +133,32 @@ impl MiningRuleEngine {
         is_nearly_synced || self.use_sync_rate_rule.load(std::sync::atomic::Ordering::Relaxed)
     }
 
-    /// Returns whether this consensus is considered synced or close to being synced.
+    /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
     ///
     /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
     pub fn is_nearly_synced(&self, sink_daa_score_timestamp: DaaScoreTimestamp) -> bool {
-        // See comment within `config.is_nearly_synced`
-        self.config.is_nearly_synced(sink_daa_score_timestamp.timestamp, sink_daa_score_timestamp.daa_score)
+        let sink_timestamp = sink_daa_score_timestamp.timestamp;
+
+        if self.config.net.is_mainnet() {
+            // We consider the node close to being synced if the sink (virtual selected parent) block
+            // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
+            // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
+            let daa_window_duration = self.config.expected_daa_window_duration_in_milliseconds(sink_daa_score_timestamp.daa_score);
+
+            unix_now() < sink_timestamp + daa_window_duration
+        } else {
+            // For testnets we consider the node to be synced if the sink timestamp is within a time range which
+            // is overwhelmingly unlikely to pass without mined blocks even if net hashrate decreased dramatically.
+            //
+            // This period is smaller than the above mainnet calculation in order to ensure that an IBDing miner
+            // with significant testnet hashrate does not overwhelm the network with deep side-DAGs.
+            //
+            // We use DAA duration as baseline and scale it down with BPS (and divide by 3 for mining only when very close to current time on TN11)
+            let max_expected_duration_without_blocks_in_milliseconds =
+                self.config.target_time_per_block * NEW_DIFFICULTY_WINDOW_DURATION / 3; // = DAA duration in milliseconds / bps / 3
+
+            unix_now() < sink_timestamp + max_expected_duration_without_blocks_in_milliseconds
+        }
     }
 
     fn has_sufficient_peer_connectivity(&self) -> bool {
