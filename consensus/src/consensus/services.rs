@@ -148,6 +148,7 @@ impl ConsensusServices {
             params.storage_mass_activation,
             params.kip10_activation,
             params.payload_activation,
+            params.runtime_sig_op_counting,
         );
 
         let pruning_point_manager = PruningPointManager::new(
