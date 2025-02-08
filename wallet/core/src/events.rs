@@ -25,15 +25,25 @@ pub enum SyncState {
         blocks: u64,
         progress: u64,
     },
-    UtxoSync {
-        chunks: u64,
+    PruningPointUTXOs {
+        // This refers to the initial download of the PruningPoint UTXO set.
+        processed: u64,
         total: u64,
     },
     TrustSync {
         processed: u64,
         total: u64,
     },
-    UtxoResync,
+    UtxoIndexUTXOs {
+        // This refers to the UTXO index sync with the virtual UTXO set.
+        processed: u64,
+        total: u64,
+    },
+    VirtualUTXOs {
+        // This refers to the virtual UTXO store sync with the Initial PruningPoint UTXO set Download.
+        processed: u64,
+        total: u64,
+    },
     /// General cases when the node is waiting
     /// for information from peers or waiting to
     /// connect to peers.

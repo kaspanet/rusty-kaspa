@@ -19,6 +19,7 @@ use crate::{
         tips::DbTipsStore,
         utxo_diffs::DbUtxoDiffsStore,
         utxo_multisets::DbUtxoMultisetsStore,
+        utxo_set::{self, UtxoSetStoreReader},
         virtual_state::{LkgVirtualState, VirtualStores},
         DB,
     },
@@ -28,6 +29,7 @@ use crate::{
 use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
 use itertools::Itertools;
 use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHashSet};
+use kaspa_core::info;
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
@@ -231,6 +233,34 @@ impl ConsensusStorage {
         reachability::init(reachability_store.write().deref_mut()).unwrap();
         relations::init(reachability_relations_store.write().deref_mut());
 
+        // Ensure that the the `num_of_entries`` cached items are initialized for the utxo set stores.
+        // TODO: below inits should be removable with the next HF, a once off init should suffice.
+        if utxo_set::init(&mut pruning_utxoset_stores.write().utxo_set).unwrap() {
+            info!(
+                "Initialized the `num_of_entries` cached item db for the pruning utxoset with {0} entries",
+                pruning_utxoset_stores.write().utxo_set.num_of_entries().unwrap()
+            );
+        }
+
+        if utxo_set::init(&mut virtual_stores.write().utxo_set).unwrap() {
+            info!(
+                "Initialized the `num_of_entries` cached item db for the virtual utxoset with {0} entries",
+                virtual_stores.write().utxo_set.num_of_entries().unwrap()
+            );
+        }
+
+        // Sanity checks:
+        if config.enable_sanity_checks {
+            info!("Running sanity checks on the consensus storage, this may take a while...");
+            assert_eq!(
+                pruning_utxoset_stores.read().utxo_set.num_of_entries().unwrap(),
+                pruning_utxoset_stores.read().utxo_set.iterator().count() as u64
+            );
+            assert_eq!(
+                virtual_stores.read().utxo_set.num_of_entries().unwrap(),
+                virtual_stores.read().utxo_set.iterator().count() as u64
+            );
+        }
         Arc::new(Self {
             db,
             statuses_store,

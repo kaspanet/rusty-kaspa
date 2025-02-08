@@ -717,6 +717,8 @@ mod mockery {
                 pruning_point_hash: mock(),
                 virtual_daa_score: mock(),
                 sink: mock(),
+                virtual_utxo_count: mock(),
+                pruning_point_utxo_count: mock(),
             }
         }
     }

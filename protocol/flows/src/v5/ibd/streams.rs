@@ -10,7 +10,7 @@ use kaspa_consensus_core::{
 use kaspa_core::{debug, info};
 use kaspa_p2p_lib::{
     common::{ProtocolError, DEFAULT_TIMEOUT},
-    convert::model::trusted::TrustedDataEntry,
+    convert::{error::ConversionError, model::trusted::TrustedDataEntry},
     make_message,
     pb::{
         kaspad_message::Payload, RequestNextHeadersMessage, RequestNextPruningPointAndItsAnticoneBlocksMessage,
@@ -142,50 +142,72 @@ pub struct PruningPointUtxosetChunkStream<'a, 'b> {
     incoming_route: &'b mut IncomingRoute,
     i: usize, // Chunk index
     utxo_count: usize,
+    signaled_utxoset_size: usize,
 }
 
 impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
+    pub const IDENT: &'static str = "PruningPointUtxosetChunkStream";
+
     pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
-        Self { router, incoming_route, i: 0, utxo_count: 0 }
+        Self { router, incoming_route, i: 0, utxo_count: 0, signaled_utxoset_size: 0 }
     }
 
-    pub async fn next(&mut self) -> Result<Option<UtxosetChunk>, ProtocolError> {
-        let res: Result<Option<UtxosetChunk>, ProtocolError> = match timeout(DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
-            Ok(op) => {
-                if let Some(msg) = op {
-                    match msg.payload {
-                        Some(Payload::PruningPointUtxoSetChunk(payload)) => Ok(Some(payload.try_into()?)),
-                        Some(Payload::DonePruningPointUtxoSetChunks(_)) => {
-                            info!("Finished receiving the UTXO set. Total UTXOs: {}", self.utxo_count);
-                            Ok(None)
+    pub async fn next(&mut self) -> Result<Option<(UtxosetChunk, usize)>, ProtocolError> {
+        let res: Result<Option<(UtxosetChunk, usize)>, ProtocolError> =
+            match timeout(DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
+                Ok(op) => {
+                    if let Some(msg) = op {
+                        match msg.payload {
+                            Some(Payload::PruningPointUtxoSetChunk(payload)) => {
+                                Ok(Some(payload.try_into().map_err(|_| ConversionError::General)?))
+                            }
+                            Some(Payload::DonePruningPointUtxoSetChunks(_)) => {
+                                info!("[{0}] Finished receiving the UTXO set. Total UTXOs: {1}", Self::IDENT, self.utxo_count);
+                                Ok(None)
+                            }
+                            Some(Payload::UnexpectedPruningPoint(_)) => {
+                                // Although this can happen also to an honest syncer (if his pruning point moves during the sync),
+                                // we prefer erring and disconnecting to avoid possible exploits by a syncer repeating this failure
+                                Err(ProtocolError::ConsensusError(ConsensusError::UnexpectedPruningPoint))
+                            }
+                            _ => Err(ProtocolError::UnexpectedMessage(
+                                stringify!(
+                                    Payload::PruningPointUtxoSetChunk
+                                        | Payload::DonePruningPointUtxoSetChunks
+                                        | Payload::UnexpectedPruningPoint
+                                ),
+                                msg.payload.as_ref().map(|v| v.into()),
+                            )),
                         }
-                        Some(Payload::UnexpectedPruningPoint(_)) => {
-                            // Although this can happen also to an honest syncer (if his pruning point moves during the sync),
-                            // we prefer erring and disconnecting to avoid possible exploits by a syncer repeating this failure
-                            Err(ProtocolError::ConsensusError(ConsensusError::UnexpectedPruningPoint))
-                        }
-                        _ => Err(ProtocolError::UnexpectedMessage(
-                            stringify!(
-                                Payload::PruningPointUtxoSetChunk
-                                    | Payload::DonePruningPointUtxoSetChunks
-                                    | Payload::UnexpectedPruningPoint
-                            ),
-                            msg.payload.as_ref().map(|v| v.into()),
-                        )),
+                    } else {
+                        Err(ProtocolError::ConnectionClosed)
                     }
-                } else {
-                    Err(ProtocolError::ConnectionClosed)
                 }
-            }
-            Err(_) => Err(ProtocolError::Timeout(DEFAULT_TIMEOUT)),
-        };
+                Err(_) => Err(ProtocolError::Timeout(DEFAULT_TIMEOUT)),
+            };
 
         // Request the next batch only if the stream is still live
         if let Ok(Some(chunk)) = res {
             self.i += 1;
-            self.utxo_count += chunk.len();
-            if self.i % IBD_BATCH_SIZE == 0 {
-                info!("Received {} UTXO set chunks so far, totaling in {} UTXOs", self.i, self.utxo_count);
+            self.utxo_count += chunk.0.len();
+            if self.i == 1 && chunk.1 > 0 {
+                // We expect a signaled set size only in first chunk, and if `chunk.1 == 0`, we are probably ibding from a node without this feature.
+                info!("[{0}]: Start Streaming of pruning point Utxo set; signaled set size: {1}", Self::IDENT, chunk.1);
+                self.signaled_utxoset_size = chunk.1;
+            }
+            if self.i % IBD_BATCH_SIZE == 0 || self.utxo_count == self.signaled_utxoset_size {
+                info!(
+                    "[{0}]: Received {1} + {2} / {3} signaled UTXOs ({4:.0}%)",
+                    Self::IDENT,
+                    self.utxo_count,
+                    chunk.0.len() * IBD_BATCH_SIZE,
+                    if self.signaled_utxoset_size > 0 { self.signaled_utxoset_size.to_string() } else { f64::NAN.to_string() },
+                    if self.signaled_utxoset_size > 0 {
+                        (self.utxo_count as f64 / self.signaled_utxoset_size as f64) * 100.0
+                    } else {
+                        f64::NAN
+                    }
+                );
                 self.router
                     .enqueue(make_message!(
                         Payload::RequestNextPruningPointUtxoSetChunk,

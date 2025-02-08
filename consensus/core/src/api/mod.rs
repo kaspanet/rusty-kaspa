@@ -194,6 +194,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_virtual_utxoset_count(&self) -> u64 {
+        unimplemented!()
+    }
+
     fn get_tips(&self) -> Vec<Hash> {
         unimplemented!()
     }
@@ -328,6 +332,10 @@ pub trait ConsensusApi: Send + Sync {
         chunk_size: usize,
         skip_first: bool,
     ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
+        unimplemented!()
+    }
+
+    fn get_pruning_point_utxoset_count(&self) -> u64 {
         unimplemented!()
     }
 

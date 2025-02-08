@@ -493,7 +493,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             multiset = consensus
                 .clone()
                 .spawn_blocking(move |c| {
-                    c.append_imported_pruning_point_utxos(&chunk, &mut multiset);
+                    c.append_imported_pruning_point_utxos(&chunk.0, &mut multiset);
                     multiset
                 })
                 .await;

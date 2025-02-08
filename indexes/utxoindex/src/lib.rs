@@ -9,4 +9,4 @@ mod testutils;
 pub use crate::core::*; //Expose all things intended for external usage.
 pub use crate::index::UtxoIndex; //we expose this separately to initiate the index.
 
-const IDENT: &str = "utxoindex";
+const IDENT: &str = "UtxoIndex";

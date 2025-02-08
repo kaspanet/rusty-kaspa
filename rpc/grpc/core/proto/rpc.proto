@@ -439,6 +439,8 @@ message GetBlockDagInfoResponseMessage{
   string networkName = 1;
   uint64 blockCount = 2;
   uint64 headerCount = 3;
+  uint64 virtualUtxoCount = 11;
+  uint64 pruningPointUtxoCount = 12;
   repeated string tipHashes = 4;
   double difficulty = 5;
   int64 pastMedianTime = 6;

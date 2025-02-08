@@ -1047,9 +1047,12 @@ pub struct GetBlockDagInfoResponse {
     pub pruning_point_hash: RpcHash,
     pub virtual_daa_score: u64,
     pub sink: RpcHash,
+    pub virtual_utxo_count: u64,
+    pub pruning_point_utxo_count: u64,
 }
 
 impl GetBlockDagInfoResponse {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         network: RpcNetworkId,
         block_count: u64,
@@ -1061,6 +1064,8 @@ impl GetBlockDagInfoResponse {
         pruning_point_hash: RpcHash,
         virtual_daa_score: u64,
         sink: RpcHash,
+        virtual_utxo_count: u64,
+        pruning_point_utxo_count: u64,
     ) -> Self {
         Self {
             network,
@@ -1073,6 +1078,8 @@ impl GetBlockDagInfoResponse {
             pruning_point_hash,
             virtual_daa_score,
             sink,
+            virtual_utxo_count,
+            pruning_point_utxo_count,
         }
     }
 }
@@ -1090,7 +1097,8 @@ impl Serializer for GetBlockDagInfoResponse {
         store!(RpcHash, &self.pruning_point_hash, writer)?;
         store!(u64, &self.virtual_daa_score, writer)?;
         store!(RpcHash, &self.sink, writer)?;
-
+        store!(u64, &self.virtual_utxo_count, writer)?;
+        store!(u64, &self.pruning_point_utxo_count, writer)?;
         Ok(())
     }
 }
@@ -1108,6 +1116,8 @@ impl Deserializer for GetBlockDagInfoResponse {
         let pruning_point_hash = load!(RpcHash, reader)?;
         let virtual_daa_score = load!(u64, reader)?;
         let sink = load!(RpcHash, reader)?;
+        let virtual_utxo_count = load!(u64, reader)?;
+        let pruning_point_utxo_count = load!(u64, reader)?;
 
         Ok(Self {
             network,
@@ -1120,6 +1130,8 @@ impl Deserializer for GetBlockDagInfoResponse {
             pruning_point_hash,
             virtual_daa_score,
             sink,
+            virtual_utxo_count,
+            pruning_point_utxo_count,
         })
     }
 }

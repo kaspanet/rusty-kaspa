@@ -159,6 +159,17 @@ message RequestPruningPointUTXOSetMessage{
 
 message PruningPointUtxoSetChunkMessage{
   repeated OutpointAndUtxoEntryPair outpointAndUtxoEntryPairs = 1;
+  /// This represents the total amount of UTXOs to process.
+  ///
+  /// Note: because grpc 
+  ///   a) translates empty to default values in clients, 
+  ///   b) default values have no bandwidth cost,
+  /// It is optimized to only be be populated in the first chunk, which means:
+  ///   1) none-updated syncers are still able transmit the message without this data i.e. it is a none-breaking changes. 
+  ///   2) We save on bandwidth by not sending this data in every chunk.
+  ///
+  /// This means the only drawback is both the client and syncer need to be updated to make use of this extra data.  
+  uint64 utxosetSize = 2; 
 }
 
 message OutpointAndUtxoEntryPair{
