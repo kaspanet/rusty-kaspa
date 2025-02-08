@@ -23,7 +23,7 @@ As an illustration, let's pretend that we add a new `submit_block` method.
    Implement the first as a call to the second.
    (ie. `async fn submit_block(&self, block: RpcBlock, allow_non_daa_blocks: bool) -> RpcResult<SubmitBlockResponse>` and
    `async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse>;`)
-6. Implement the function having a `_call` suffix into `kaspa_rpc_core::server::service::RpcCoreService`.
+6. Implement the function having a `_call` suffix into `kaspa_rpc_core::server::service::RpcCoreService` and wrap it with namespace macro with its corresponding category.
 
 ## rpc-grpc
 
