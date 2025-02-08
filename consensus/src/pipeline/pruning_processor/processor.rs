@@ -25,7 +25,7 @@ use crate::{
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    blockhash::ORIGIN,
+    blockhash::{BlockHashExtensions, ORIGIN},
     blockstatus::BlockStatus::StatusHeaderOnly,
     config::Config,
     muhash::MuHashExtensions,
@@ -378,13 +378,16 @@ impl PruningProcessor {
             drop(tips_write);
         }
 
+        // Adjust the pruning point back if needed
+        let adjusted_root = self.adjust_for_extra_days(new_pruning_point);
+
         // Now we traverse the anti-future of the new pruning point starting from origin and going up.
         // The most efficient way to traverse the entire DAG from the bottom-up is via the reachability tree
         let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
         let (mut counter, mut traversed) = (0, 0);
         info!("Header and Block pruning: starting traversal from: {} (genesis: {})", queue.iter().reusable_format(", "), genesis);
         while let Some(current) = queue.pop_front() {
-            if reachability_read.is_dag_ancestor_of_result(new_pruning_point, current).unwrap() {
+            if reachability_read.is_dag_ancestor_of_result(adjusted_root, current).unwrap() {
                 continue;
             }
             traversed += 1;
@@ -517,10 +520,44 @@ impl PruningProcessor {
             // Set the history root to the new pruning point only after we successfully pruned its past
             let mut pruning_point_write = self.pruning_point_store.write();
             let mut batch = WriteBatch::default();
-            pruning_point_write.set_history_root(&mut batch, new_pruning_point).unwrap();
+            pruning_point_write.set_history_root(&mut batch, adjusted_root).unwrap();
             self.db.write(batch).unwrap();
             drop(pruning_point_write);
         }
+    }
+
+    /// Adjusts the passed hash backwards through the selected parent chain until there's enough
+    /// to accommodate the configured extra number of days of data
+    fn adjust_for_extra_days(&self, reference_hash: Hash) -> Hash {
+        // Short circuit if not keeping extra days to avoid doing store lookups
+        if self.config.keep_extra_days_data == 0 {
+            return reference_hash;
+        }
+
+        let pp_reference_timestamp = self.headers_store.get_compact_header_data(reference_hash).unwrap().timestamp;
+        // days * seconds/day * milliseconds/second
+        let extra_days_ms = self.config.keep_extra_days_data as u64 * 86400 * 1000;
+
+        let mut adjusted_hash = reference_hash;
+
+        while pp_reference_timestamp.saturating_sub(self.headers_store.get_compact_header_data(adjusted_hash).unwrap().timestamp)
+            < extra_days_ms
+        {
+            let selected_parent = if let Ok(selected_parent) = self.ghostdag_store.get_selected_parent(adjusted_hash) {
+                selected_parent
+            } else {
+                break;
+            };
+
+            if selected_parent.is_origin() || !self.headers_store.has(selected_parent).unwrap() {
+                // Can't go further back
+                break;
+            }
+
+            adjusted_hash = selected_parent;
+        }
+
+        adjusted_hash
     }
 
     fn past_pruning_points(&self) -> BlockHashSet {
