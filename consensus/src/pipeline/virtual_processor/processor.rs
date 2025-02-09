@@ -964,7 +964,9 @@ impl VirtualStateProcessor {
         // We call for the initial tx batch before acquiring the virtual read lock,
         // optimizing for the common case where all txs are valid. Following selection calls
         // are called within the lock in order to preserve validness of already validated txs
-        let mut txs = tx_selector.select_transactions();
+        let mut txs =
+            if self.mining_rules.no_transactions.load(Ordering::Relaxed) { vec![] } else { tx_selector.select_transactions() };
+
         let mut calculated_fees = Vec::with_capacity(txs.len());
         let virtual_read = self.virtual_stores.read();
         let virtual_state = virtual_read.state.get().unwrap();
