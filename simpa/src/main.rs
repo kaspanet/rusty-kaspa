@@ -311,13 +311,13 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         if args.daa_legacy {
             // Scale DAA and median-time windows linearly with BPS
             params.sampling_activation = ForkActivation::never();
-            params.legacy_timestamp_deviation_tolerance = (params.legacy_timestamp_deviation_tolerance as f64 * args.bps) as u64;
+            params.timestamp_deviation_tolerance = (params.timestamp_deviation_tolerance as f64 * args.bps) as u64;
             params.legacy_difficulty_window_size = (params.legacy_difficulty_window_size as f64 * args.bps) as usize;
         } else {
             // Use the new sampling algorithms
             params.sampling_activation = ForkActivation::always();
+            params.timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
             params.crescendo.past_median_time_sample_rate = (10.0 * args.bps) as u64;
-            params.crescendo.timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
             params.crescendo.difficulty_sample_rate = (2.0 * args.bps) as u64;
         }
 
@@ -326,8 +326,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
     if args.test_pruning {
         params.pruning_proof_m = 16;
         params.legacy_difficulty_window_size = 64;
-        params.legacy_timestamp_deviation_tolerance = 16;
-        params.crescendo.timestamp_deviation_tolerance = 16;
+        params.timestamp_deviation_tolerance = 16;
         params.crescendo.sampled_difficulty_window_size = params.crescendo.sampled_difficulty_window_size.min(32);
         params.finality_depth = 128;
         params.merge_depth = 128;

@@ -31,6 +31,11 @@ impl ForkActivation {
         Self(0)
     }
 
+    /// Returns whether the fork is already scheduled (i.e., `self != ForkActivation::never()`)
+    pub fn is_scheduled(self) -> bool {
+        self.0 < u64::MAX
+    }
+
     pub fn is_active(self, current_daa_score: u64) -> bool {
         current_daa_score >= self.0
     }
@@ -45,7 +50,6 @@ impl ForkActivation {
 /// Fork params for the Crescendo hardfork
 #[derive(Clone, Debug)]
 pub struct CrescendoParams {
-    pub timestamp_deviation_tolerance: u64,
     pub past_median_time_sampled_window_size: u64,
     pub sampled_difficulty_window_size: u64,
     pub min_difficulty_window_len: usize,
@@ -72,7 +76,6 @@ pub struct CrescendoParams {
 }
 
 pub const CRESCENDO: CrescendoParams = CrescendoParams {
-    timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
     min_difficulty_window_len: 60, // = 4 minutes. TODO: finalize
@@ -108,17 +111,9 @@ pub struct Params {
     pub genesis: GenesisBlock,
     pub ghostdag_k: KType,
 
-    /// Legacy timestamp deviation tolerance (in seconds)
-    pub legacy_timestamp_deviation_tolerance: u64,
+    /// Timestamp deviation tolerance (in seconds)
+    pub timestamp_deviation_tolerance: u64,
 
-    // /// New timestamp deviation tolerance (in seconds, activated with sampling)
-    // pub new_timestamp_deviation_tolerance: u64,
-
-    // /// Block sample rate for filling the past median time window (selects one every N blocks)
-    // pub past_median_time_sample_rate: u64,
-
-    // /// Size of sampled blocks window that is inspected to calculate the past median time of each block
-    // pub past_median_time_sampled_window_size: u64,
     /// Target time per block (in milliseconds)
     pub target_time_per_block: u64,
 
@@ -202,7 +197,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn legacy_past_median_time_window_size(&self) -> usize {
-        (2 * self.legacy_timestamp_deviation_tolerance - 1) as usize
+        (2 * self.timestamp_deviation_tolerance - 1) as usize
     }
 
     /// Returns the size of the sampled blocks window that is inspected to calculate the past median time
@@ -221,18 +216,6 @@ impl Params {
             self.sampled_past_median_time_window_size()
         } else {
             self.legacy_past_median_time_window_size()
-        }
-    }
-
-    /// Returns the timestamp deviation tolerance,
-    /// depending on a selected parent DAA score
-    #[inline]
-    #[must_use]
-    pub fn timestamp_deviation_tolerance(&self, selected_parent_daa_score: u64) -> u64 {
-        if self.sampling_activation.is_active(selected_parent_daa_score) {
-            self.crescendo.timestamp_deviation_tolerance
-        } else {
-            self.legacy_timestamp_deviation_tolerance
         }
     }
 
@@ -418,7 +401,7 @@ pub const MAINNET_PARAMS: Params = Params {
     net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
-    legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
+    timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     target_time_per_block: 1000,
     sampling_activation: ForkActivation::never(),
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
@@ -483,7 +466,7 @@ pub const TESTNET_PARAMS: Params = Params {
     net: NetworkId::with_suffix(NetworkType::Testnet, 10),
     genesis: TESTNET_GENESIS,
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
-    legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
+    timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     target_time_per_block: 1000,
     sampling_activation: ForkActivation::never(),
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
@@ -548,7 +531,7 @@ pub const _TESTNET11_PARAMS: Params = Params {
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 11),
     genesis: TESTNET11_GENESIS,
-    legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
+    timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     sampling_activation: ForkActivation::always(), // Sampling is activated from network inception
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
@@ -602,7 +585,7 @@ pub const SIMNET_PARAMS: Params = Params {
     dns_seeders: &[],
     net: NetworkId::new(NetworkType::Simnet),
     genesis: SIMNET_GENESIS,
-    legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
+    timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     sampling_activation: ForkActivation::always(), // Sampling is activated from network inception
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
@@ -658,7 +641,7 @@ pub const DEVNET_PARAMS: Params = Params {
     net: NetworkId::new(NetworkType::Devnet),
     genesis: DEVNET_GENESIS,
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
-    legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
+    timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     target_time_per_block: 1000,
     sampling_activation: ForkActivation::never(),
     max_difficulty_target: MAX_DIFFICULTY_TARGET,

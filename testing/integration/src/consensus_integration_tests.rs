@@ -427,7 +427,7 @@ async fn header_in_isolation_validation_test() {
         block.header.hash = 2.into();
 
         let now = unix_now();
-        let block_ts = now + config.legacy_timestamp_deviation_tolerance * config.target_time_per_block + 2000;
+        let block_ts = now + config.timestamp_deviation_tolerance * config.target_time_per_block + 2000;
         block.header.timestamp = block_ts;
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TimeTooFarIntoTheFuture(ts, _)) => {
@@ -573,7 +573,7 @@ async fn median_time_test() {
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
                     p.sampling_activation = ForkActivation::always();
-                    p.crescendo.timestamp_deviation_tolerance = 120;
+                    p.timestamp_deviation_tolerance = 120;
                     p.crescendo.past_median_time_sample_rate = 3;
                     p.crescendo.past_median_time_sampled_window_size = (2 * 120 - 1) / 3;
                 })
@@ -586,7 +586,7 @@ async fn median_time_test() {
         let wait_handles = consensus.init();
 
         let num_blocks = test.config.past_median_time_window_size(0) as u64 * test.config.past_median_time_sample_rate(0);
-        let timestamp_deviation_tolerance = test.config.timestamp_deviation_tolerance(0);
+        let timestamp_deviation_tolerance = test.config.timestamp_deviation_tolerance;
         for i in 1..(num_blocks + 1) {
             let parent = if i == 1 { test.config.genesis.hash } else { (i - 1).into() };
             let mut block = consensus.build_block_with_parents(i.into(), vec![parent]);
@@ -812,7 +812,7 @@ impl KaspadGoParams {
             net: NetworkId { network_type: Mainnet, suffix: None },
             genesis: GENESIS,
             ghostdag_k: self.K,
-            legacy_timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
+            timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
             target_time_per_block: self.TargetTimePerBlock / 1_000_000,
             sampling_activation: ForkActivation::never(),
             max_block_parents: self.MaxBlockParents,
@@ -1401,7 +1401,7 @@ async fn difficulty_test() {
                     p.sampling_activation = ForkActivation::never();
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
-                    p.legacy_timestamp_deviation_tolerance = 60;
+                    p.timestamp_deviation_tolerance = 60;
                 })
                 .build(),
         },
@@ -1419,7 +1419,7 @@ async fn difficulty_test() {
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.crescendo.past_median_time_sample_rate = PMT_SAMPLE_RATE;
                     p.crescendo.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
-                    p.crescendo.timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
+                    p.timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
                 })
                 .build(),
         },
@@ -1438,7 +1438,7 @@ async fn difficulty_test() {
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.crescendo.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;
                     p.crescendo.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
-                    p.crescendo.timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
+                    p.timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
                 })
                 .build(),
         },

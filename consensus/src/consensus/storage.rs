@@ -107,8 +107,19 @@ impl ConsensusStorage {
         let reachability_data_bytes = size_of::<Hash>() + size_of::<ReachabilityData>();
         let ghostdag_compact_bytes = size_of::<Hash>() + size_of::<CompactGhostdagData>();
         let headers_compact_bytes = size_of::<Hash>() + size_of::<CompactHeaderData>();
-        let difficulty_window_bytes = params.difficulty_window_size(0) * size_of::<SortableBlock>();
-        let median_window_bytes = params.past_median_time_window_size(0) * size_of::<SortableBlock>();
+
+        // If the fork is already scheduled, prefer the long-term, final values
+        let (difficulty_window_bytes, median_window_bytes) = if params.crescendo_activation.is_scheduled() {
+            (
+                params.crescendo.sampled_difficulty_window_size as usize * size_of::<SortableBlock>(),
+                params.crescendo.past_median_time_sampled_window_size as usize * size_of::<SortableBlock>(),
+            )
+        } else {
+            (
+                params.legacy_difficulty_window_size * size_of::<SortableBlock>(),
+                params.legacy_past_median_time_window_size() * size_of::<SortableBlock>(),
+            )
+        };
 
         // Cache policy builders
         let daa_excluded_builder =

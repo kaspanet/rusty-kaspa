@@ -23,18 +23,15 @@ pub mod consensus {
     // ~~~~~~~~~~~~~~~~~~ Timestamp deviation & Median time ~~~~~~~~~~~~~~~~~~
     //
 
-    /// **Legacy** timestamp deviation tolerance (seconds)
-    pub const LEGACY_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132;
-
-    /// **New** timestamp deviation tolerance (seconds).
-    pub const NEW_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132;
+    /// Timestamp deviation tolerance (seconds)
+    pub const TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132;
 
     /// The desired interval between samples of the median time window (seconds).
     pub const PAST_MEDIAN_TIME_SAMPLE_INTERVAL: u64 = 10;
 
     /// Size of the **sampled** median time window (independent of BPS)
     pub const MEDIAN_TIME_SAMPLED_WINDOW_SIZE: u64 =
-        (2 * NEW_TIMESTAMP_DEVIATION_TOLERANCE - 1).div_ceil(PAST_MEDIAN_TIME_SAMPLE_INTERVAL);
+        (2 * TIMESTAMP_DEVIATION_TOLERANCE - 1).div_ceil(PAST_MEDIAN_TIME_SAMPLE_INTERVAL);
 
     //
     // ~~~~~~~~~~~~~~~~~~~~~~~~~ Max difficulty target ~~~~~~~~~~~~~~~~~~~~~~~~~

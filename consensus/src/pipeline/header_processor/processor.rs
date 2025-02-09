@@ -199,8 +199,8 @@ impl HeaderProcessor {
             task_manager: BlockTaskDependencyManager::new(),
             pruning_lock,
             counters,
-            // TODO (HF): make sure to also pass `new_timestamp_deviation_tolerance` and use according to HF activation score
-            timestamp_deviation_tolerance: params.timestamp_deviation_tolerance(0),
+
+            timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
             target_time_per_block: params.target_time_per_block,
             max_block_parents: params.max_block_parents,
             mergeset_size_limit: params.mergeset_size_limit,
