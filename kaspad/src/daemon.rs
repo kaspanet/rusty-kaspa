@@ -4,6 +4,7 @@ use async_channel::unbounded;
 use kaspa_consensus_core::{
     config::ConfigBuilder,
     errors::config::{ConfigError, ConfigResult},
+    mining_rules::MiningRules,
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
 use kaspa_core::{core::Core, debug, info, trace};
@@ -481,6 +482,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let grpc_tower_counters = Arc::new(TowerConnectionCounters::default());
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
+    let mining_rules = Arc::new(MiningRules::default());
     let consensus_db_parallelism = num_cpus::get();
     let consensus_factory = Arc::new(ConsensusFactory::new(
         meta_db.clone(),
@@ -491,6 +493,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         processing_counters.clone(),
         tx_script_cache_counters.clone(),
         fd_remaining,
+        mining_rules.clone(),
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
     let consensus_monitor = Arc::new(ConsensusMonitor::new(processing_counters.clone(), tick_service.clone()));
@@ -552,6 +555,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         processing_counters.clone(),
         tick_service.clone(),
         hub.clone(),
+        mining_rules,
     ));
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
