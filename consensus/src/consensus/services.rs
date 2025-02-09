@@ -96,12 +96,12 @@ impl ConsensusServices {
             params.target_time_per_block,
             params.sampling_activation,
             params.legacy_difficulty_window_size,
-            params.sampled_difficulty_window_size,
+            params.crescendo.sampled_difficulty_window_size as usize,
             params.min_difficulty_window_len,
-            params.difficulty_sample_rate,
+            params.crescendo.difficulty_sample_rate,
             params.legacy_past_median_time_window_size(),
             params.sampled_past_median_time_window_size(),
-            params.past_median_time_sample_rate,
+            params.crescendo.past_median_time_sample_rate,
         );
         let depth_manager = BlockDepthManager::new(
             params.merge_depth,

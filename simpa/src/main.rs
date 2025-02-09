@@ -316,9 +316,9 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         } else {
             // Use the new sampling algorithms
             params.sampling_activation = ForkActivation::always();
-            params.past_median_time_sample_rate = (10.0 * args.bps) as u64;
-            params.new_timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
-            params.difficulty_sample_rate = (2.0 * args.bps) as u64;
+            params.crescendo.past_median_time_sample_rate = (10.0 * args.bps) as u64;
+            params.crescendo.timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
+            params.crescendo.difficulty_sample_rate = (2.0 * args.bps) as u64;
         }
 
         info!("2Dλ={}, GHOSTDAG K={}, DAA window size={}", 2.0 * args.delay * args.bps, k, params.difficulty_window_size(0));
@@ -327,8 +327,8 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.pruning_proof_m = 16;
         params.legacy_difficulty_window_size = 64;
         params.legacy_timestamp_deviation_tolerance = 16;
-        params.new_timestamp_deviation_tolerance = 16;
-        params.sampled_difficulty_window_size = params.sampled_difficulty_window_size.min(32);
+        params.crescendo.timestamp_deviation_tolerance = 16;
+        params.crescendo.sampled_difficulty_window_size = params.crescendo.sampled_difficulty_window_size.min(32);
         params.finality_depth = 128;
         params.merge_depth = 128;
         params.mergeset_size_limit = 32;

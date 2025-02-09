@@ -42,6 +42,62 @@ impl ForkActivation {
     }
 }
 
+/// Fork params for the Crescendo hardfork
+#[derive(Clone, Debug)]
+pub struct CrescendoParams {
+    pub timestamp_deviation_tolerance: u64,
+    pub past_median_time_sampled_window_size: u64,
+    pub sampled_difficulty_window_size: u64,
+    pub min_difficulty_window_len: usize,
+
+    /// Target time per block (in milliseconds)
+    pub target_time_per_block: u64,
+    pub ghostdag_k: KType,
+
+    pub past_median_time_sample_rate: u64,
+    pub difficulty_sample_rate: u64,
+
+    pub max_block_parents: u8,
+    pub mergeset_size_limit: u64,
+    pub merge_depth: u64,
+    pub finality_depth: u64,
+    pub pruning_depth: u64,
+
+    pub max_tx_inputs: usize,
+    pub max_tx_outputs: usize,
+    pub max_signature_script_len: usize,
+    pub max_script_public_key_len: usize,
+
+    pub coinbase_maturity: u64,
+}
+
+pub const CRESCENDO: CrescendoParams = CrescendoParams {
+    timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
+    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
+    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
+    min_difficulty_window_len: 60, // = 4 minutes. TODO: finalize
+
+    //
+    // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
+    //
+    target_time_per_block: TenBps::target_time_per_block(),
+    ghostdag_k: TenBps::ghostdag_k(),
+    past_median_time_sample_rate: TenBps::past_median_time_sample_rate(),
+    difficulty_sample_rate: TenBps::difficulty_adjustment_sample_rate(),
+    max_block_parents: TenBps::max_block_parents(),
+    mergeset_size_limit: TenBps::mergeset_size_limit(),
+    merge_depth: TenBps::merge_depth_bound(),
+    finality_depth: TenBps::finality_depth(),
+    pruning_depth: TenBps::pruning_depth(),
+    coinbase_maturity: TenBps::coinbase_maturity(),
+
+    // TODO: finalize all below
+    max_tx_inputs: 1000,
+    max_tx_outputs: 1000,
+    max_signature_script_len: 100_000,
+    max_script_public_key_len: 10_000,
+};
+
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
 /// Changing one of these on a network node would exclude and prevent it from reaching consensus
 /// with the other unmodified nodes.
@@ -55,15 +111,14 @@ pub struct Params {
     /// Legacy timestamp deviation tolerance (in seconds)
     pub legacy_timestamp_deviation_tolerance: u64,
 
-    /// New timestamp deviation tolerance (in seconds, activated with sampling)
-    pub new_timestamp_deviation_tolerance: u64,
+    // /// New timestamp deviation tolerance (in seconds, activated with sampling)
+    // pub new_timestamp_deviation_tolerance: u64,
 
-    /// Block sample rate for filling the past median time window (selects one every N blocks)
-    pub past_median_time_sample_rate: u64,
+    // /// Block sample rate for filling the past median time window (selects one every N blocks)
+    // pub past_median_time_sample_rate: u64,
 
-    /// Size of sampled blocks window that is inspected to calculate the past median time of each block
-    pub past_median_time_sampled_window_size: u64,
-
+    // /// Size of sampled blocks window that is inspected to calculate the past median time of each block
+    // pub past_median_time_sampled_window_size: u64,
     /// Target time per block (in milliseconds)
     pub target_time_per_block: u64,
 
@@ -76,12 +131,11 @@ pub struct Params {
     /// Highest allowed proof of work difficulty as a floating number
     pub max_difficulty_target_f64: f64,
 
-    /// Block sample rate for filling the difficulty window (selects one every N blocks)
-    pub difficulty_sample_rate: u64,
+    // /// Block sample rate for filling the difficulty window (selects one every N blocks)
+    // pub difficulty_sample_rate: u64,
 
-    /// Size of sampled blocks window that is inspected to calculate the required difficulty of each block
-    pub sampled_difficulty_window_size: usize,
-
+    // /// Size of sampled blocks window that is inspected to calculate the required difficulty of each block
+    // pub sampled_difficulty_window_size: usize,
     /// Size of full blocks window that is inspected to calculate the required difficulty of each block
     pub legacy_difficulty_window_size: usize,
 
@@ -134,6 +188,9 @@ pub struct Params {
     /// Activation rules for when to enable using the payload field in transactions
     pub payload_activation: ForkActivation,
     pub runtime_sig_op_counting: ForkActivation,
+
+    pub crescendo: CrescendoParams,
+    pub crescendo_activation: ForkActivation,
 }
 
 fn unix_now() -> u64 {
@@ -152,7 +209,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn sampled_past_median_time_window_size(&self) -> usize {
-        self.past_median_time_sampled_window_size as usize
+        self.crescendo.past_median_time_sampled_window_size as usize
     }
 
     /// Returns the size of the blocks window that is inspected to calculate the past median time,
@@ -173,7 +230,7 @@ impl Params {
     #[must_use]
     pub fn timestamp_deviation_tolerance(&self, selected_parent_daa_score: u64) -> u64 {
         if self.sampling_activation.is_active(selected_parent_daa_score) {
-            self.new_timestamp_deviation_tolerance
+            self.crescendo.timestamp_deviation_tolerance
         } else {
             self.legacy_timestamp_deviation_tolerance
         }
@@ -185,7 +242,7 @@ impl Params {
     #[must_use]
     pub fn past_median_time_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
         if self.sampling_activation.is_active(selected_parent_daa_score) {
-            self.past_median_time_sample_rate
+            self.crescendo.past_median_time_sample_rate
         } else {
             1
         }
@@ -197,7 +254,7 @@ impl Params {
     #[must_use]
     pub fn difficulty_window_size(&self, selected_parent_daa_score: u64) -> usize {
         if self.sampling_activation.is_active(selected_parent_daa_score) {
-            self.sampled_difficulty_window_size
+            self.crescendo.sampled_difficulty_window_size as usize
         } else {
             self.legacy_difficulty_window_size
         }
@@ -209,7 +266,7 @@ impl Params {
     #[must_use]
     pub fn difficulty_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
         if self.sampling_activation.is_active(selected_parent_daa_score) {
-            self.difficulty_sample_rate
+            self.crescendo.difficulty_sample_rate
         } else {
             1
         }
@@ -232,7 +289,7 @@ impl Params {
 
     pub fn daa_window_duration_in_blocks(&self, selected_parent_daa_score: u64) -> u64 {
         if self.sampling_activation.is_active(selected_parent_daa_score) {
-            self.difficulty_sample_rate * self.sampled_difficulty_window_size as u64
+            self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size
         } else {
             self.legacy_difficulty_window_size as u64
         }
@@ -240,7 +297,9 @@ impl Params {
 
     fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
         if self.sampling_activation.is_active(selected_parent_daa_score) {
-            self.target_time_per_block * self.difficulty_sample_rate * self.sampled_difficulty_window_size as u64
+            self.crescendo.target_time_per_block
+                * self.crescendo.difficulty_sample_rate
+                * self.crescendo.sampled_difficulty_window_size
         } else {
             self.target_time_per_block * self.legacy_difficulty_window_size as u64
         }
@@ -331,57 +390,6 @@ impl From<NetworkId> for Params {
     }
 }
 
-/// Fork params for bps-modifying forks (i.e., Crescendo)
-pub struct ForkParams {
-    /// Target time per block (in milliseconds)
-    pub target_time_per_block: u64,
-    pub ghostdag_k: KType,
-
-    pub timestamp_deviation_tolerance: u64,
-    pub past_median_time_sample_rate: u64,
-    pub past_median_time_sampled_window_size: u64,
-
-    pub difficulty_sample_rate: u64,
-    pub sampled_difficulty_window_size: u64,
-    pub min_difficulty_window_len: usize,
-
-    pub max_block_parents: u8,
-    pub mergeset_size_limit: u64,
-    pub merge_depth: u64,
-    pub finality_depth: u64,
-    pub pruning_depth: u64,
-
-    pub max_tx_inputs: usize,
-    pub max_tx_outputs: usize,
-    pub max_signature_script_len: usize,
-    pub max_script_public_key_len: usize,
-
-    pub coinbase_maturity: u64,
-}
-
-pub const TEN_BPS_FORK_PARAMS: ForkParams = ForkParams {
-    target_time_per_block: TenBps::target_time_per_block(),
-    ghostdag_k: TenBps::ghostdag_k(),
-    timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
-    past_median_time_sample_rate: TenBps::past_median_time_sample_rate(),
-    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    difficulty_sample_rate: TenBps::difficulty_adjustment_sample_rate(),
-    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
-    min_difficulty_window_len: 60, // = 4 minutes. TODO: finalize
-    max_block_parents: TenBps::max_block_parents(),
-    mergeset_size_limit: TenBps::mergeset_size_limit(),
-    merge_depth: TenBps::merge_depth_bound(),
-    finality_depth: TenBps::finality_depth(),
-    pruning_depth: TenBps::pruning_depth(),
-    coinbase_maturity: TenBps::coinbase_maturity(),
-
-    // TODO: finalize all below
-    max_tx_inputs: 1000,
-    max_tx_outputs: 1000,
-    max_signature_script_len: 100_000,
-    max_script_public_key_len: 10_000,
-};
-
 pub const MAINNET_PARAMS: Params = Params {
     dns_seeders: &[
         // This DNS seeder is run by Denis Mashkevich
@@ -411,15 +419,10 @@ pub const MAINNET_PARAMS: Params = Params {
     genesis: GENESIS,
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
-    new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
-    past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
-    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     target_time_per_block: 1000,
     sampling_activation: ForkActivation::never(),
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
-    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
@@ -463,6 +466,9 @@ pub const MAINNET_PARAMS: Params = Params {
 
     payload_activation: ForkActivation::never(),
     runtime_sig_op_counting: ForkActivation::never(),
+
+    crescendo: CRESCENDO,
+    crescendo_activation: ForkActivation::never(),
 };
 
 pub const TESTNET_PARAMS: Params = Params {
@@ -478,15 +484,10 @@ pub const TESTNET_PARAMS: Params = Params {
     genesis: TESTNET_GENESIS,
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
-    new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
-    past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
-    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     target_time_per_block: 1000,
     sampling_activation: ForkActivation::never(),
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
-    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
@@ -529,6 +530,9 @@ pub const TESTNET_PARAMS: Params = Params {
 
     payload_activation: ForkActivation::never(),
     runtime_sig_op_counting: ForkActivation::never(),
+
+    crescendo: CRESCENDO,
+    crescendo_activation: ForkActivation::never(),
 };
 
 pub const _TESTNET11_PARAMS: Params = Params {
@@ -545,12 +549,9 @@ pub const _TESTNET11_PARAMS: Params = Params {
     net: NetworkId::with_suffix(NetworkType::Testnet, 11),
     genesis: TESTNET11_GENESIS,
     legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
-    new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
-    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     sampling_activation: ForkActivation::always(), // Sampling is activated from network inception
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
 
@@ -559,8 +560,6 @@ pub const _TESTNET11_PARAMS: Params = Params {
     //
     ghostdag_k: TenBps::ghostdag_k(),
     target_time_per_block: TenBps::target_time_per_block(),
-    past_median_time_sample_rate: TenBps::past_median_time_sample_rate(),
-    difficulty_sample_rate: TenBps::difficulty_adjustment_sample_rate(),
     max_block_parents: TenBps::max_block_parents(),
     mergeset_size_limit: TenBps::mergeset_size_limit(),
     merge_depth: TenBps::merge_depth_bound(),
@@ -594,6 +593,9 @@ pub const _TESTNET11_PARAMS: Params = Params {
     max_block_level: 250,
 
     runtime_sig_op_counting: ForkActivation::never(),
+
+    crescendo: CRESCENDO,
+    crescendo_activation: ForkActivation::never(),
 };
 
 pub const SIMNET_PARAMS: Params = Params {
@@ -601,12 +603,9 @@ pub const SIMNET_PARAMS: Params = Params {
     net: NetworkId::new(NetworkType::Simnet),
     genesis: SIMNET_GENESIS,
     legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
-    new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
-    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     sampling_activation: ForkActivation::always(), // Sampling is activated from network inception
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
 
@@ -616,8 +615,6 @@ pub const SIMNET_PARAMS: Params = Params {
     // Note we use a 10 BPS configuration for simnet
     ghostdag_k: TenBps::ghostdag_k(),
     target_time_per_block: TenBps::target_time_per_block(),
-    past_median_time_sample_rate: TenBps::past_median_time_sample_rate(),
-    difficulty_sample_rate: TenBps::difficulty_adjustment_sample_rate(),
     // For simnet, we deviate from TN11 configuration and allow at least 64 parents in order to support mempool benchmarks out of the box
     max_block_parents: if TenBps::max_block_parents() > 64 { TenBps::max_block_parents() } else { 64 },
     mergeset_size_limit: TenBps::mergeset_size_limit(),
@@ -651,6 +648,9 @@ pub const SIMNET_PARAMS: Params = Params {
 
     payload_activation: ForkActivation::never(),
     runtime_sig_op_counting: ForkActivation::never(),
+
+    crescendo: CRESCENDO,
+    crescendo_activation: ForkActivation::always(),
 };
 
 pub const DEVNET_PARAMS: Params = Params {
@@ -659,15 +659,10 @@ pub const DEVNET_PARAMS: Params = Params {
     genesis: DEVNET_GENESIS,
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
-    new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
-    past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
-    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     target_time_per_block: 1000,
     sampling_activation: ForkActivation::never(),
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
-    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
@@ -711,4 +706,7 @@ pub const DEVNET_PARAMS: Params = Params {
 
     payload_activation: ForkActivation::never(),
     runtime_sig_op_counting: ForkActivation::never(),
+
+    crescendo: CRESCENDO,
+    crescendo_activation: ForkActivation::never(),
 };
