@@ -56,6 +56,7 @@ use kaspa_consensus_core::{
     config::{genesis::GenesisBlock, params::ForkActivation},
     header::Header,
     merkle::calc_hash_merkle_root,
+    mining_rules::MiningRules,
     pruning::PruningPointsList,
     tx::{MutableTransaction, Transaction},
     utxo::{
@@ -167,6 +168,9 @@ pub struct VirtualStateProcessor {
     // Storage mass hardfork DAA score
     pub(crate) storage_mass_activation: ForkActivation,
     pub(crate) kip10_activation: ForkActivation,
+
+    // Mining Rule
+    mining_rules: Arc<MiningRules>,
 }
 
 impl VirtualStateProcessor {
@@ -183,6 +187,7 @@ impl VirtualStateProcessor {
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
+        mining_rules: Arc<MiningRules>,
     ) -> Self {
         Self {
             receiver,
@@ -232,6 +237,8 @@ impl VirtualStateProcessor {
             counters,
             storage_mass_activation: params.storage_mass_activation,
             kip10_activation: params.kip10_activation,
+
+            mining_rules,
         }
     }
 
