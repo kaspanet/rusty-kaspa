@@ -65,6 +65,7 @@ use kaspa_consensus_core::{
     header::Header,
     mass::{ContextualMasses, NonContextualMasses},
     merkle::calc_hash_merkle_root,
+    mining_rules::MiningRules,
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
@@ -162,6 +163,7 @@ impl Consensus {
         counters: Arc<ProcessingCounters>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
         creation_timestamp: u64,
+        mining_rules: Arc<MiningRules>,
     ) -> Self {
         let params = &config.params;
         let perf_params = &config.perf;
@@ -266,6 +268,7 @@ impl Consensus {
             pruning_lock.clone(),
             notification_root.clone(),
             counters.clone(),
+            mining_rules,
         ));
 
         let pruning_processor = Arc::new(PruningProcessor::new(

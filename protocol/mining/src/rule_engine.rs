@@ -10,6 +10,7 @@ use kaspa_consensus_core::{
     api::counters::ProcessingCounters,
     config::{params::NEW_DIFFICULTY_WINDOW_DURATION, Config},
     daa_score_timestamp::DaaScoreTimestamp,
+    mining_rules::MiningRules,
     network::NetworkType::{Mainnet, Testnet},
 };
 use kaspa_consensusmanager::ConsensusManager;
@@ -35,6 +36,7 @@ pub struct MiningRuleEngine {
     use_sync_rate_rule: Arc<AtomicBool>,
     consensus_manager: Arc<ConsensusManager>,
     hub: Hub,
+    mining_rules: Arc<MiningRules>,
 }
 
 impl MiningRuleEngine {
@@ -44,6 +46,7 @@ impl MiningRuleEngine {
         let mut last_snapshot = self.processing_counters.snapshot();
         let mut last_log_time = Instant::now();
         loop {
+            // START: Sync monitor
             if let TickReason::Shutdown = self.tick_service.tick(Duration::from_secs(snapshot_interval)).await {
                 // Let the system print final logs before exiting
                 tokio::time::sleep(Duration::from_millis(500)).await;
@@ -102,6 +105,12 @@ impl MiningRuleEngine {
                         trace!("Finality period is old. Timestamp: {}. Sync rate: {:.2}", finality_point_timestamp, rate);
                     }
                 }
+
+                // END - Sync monitor
+
+                // START - Rule Engine
+                trace!("Current Mining Rule: {:?}", self.mining_rules);
+                // End - Rule Engine
             }
 
             last_snapshot = snapshot;
@@ -115,6 +124,7 @@ impl MiningRuleEngine {
         processing_counters: Arc<ProcessingCounters>,
         tick_service: Arc<TickService>,
         hub: Hub,
+        mining_rules: Arc<MiningRules>,
     ) -> Self {
         Self {
             consensus_manager,
@@ -123,6 +133,7 @@ impl MiningRuleEngine {
             tick_service,
             hub,
             use_sync_rate_rule: Arc::new(AtomicBool::new(false)),
+            mining_rules,
         }
     }
 
