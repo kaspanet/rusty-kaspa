@@ -140,20 +140,12 @@ pub struct Params {
     /// Target time per block (in milliseconds)
     pub target_time_per_block: u64,
 
-    /// DAA score from which the window sampling starts for difficulty and past median time calculation
-    pub sampling_activation: ForkActivation,
-
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
     pub max_difficulty_target: Uint256,
 
     /// Highest allowed proof of work difficulty as a floating number
     pub max_difficulty_target_f64: f64,
 
-    // /// Block sample rate for filling the difficulty window (selects one every N blocks)
-    // pub difficulty_sample_rate: u64,
-
-    // /// Size of sampled blocks window that is inspected to calculate the required difficulty of each block
-    // pub sampled_difficulty_window_size: usize,
     /// Size of full blocks window that is inspected to calculate the required difficulty of each block
     pub legacy_difficulty_window_size: usize,
 
@@ -179,21 +171,6 @@ pub struct Params {
     /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
     pub storage_mass_parameter: u64,
 
-    /// DAA score from which storage mass calculation and transaction mass field are activated as a consensus rule
-    pub storage_mass_activation: ForkActivation,
-
-    /// DAA score from which tx engine:
-    /// 1. Supports 8-byte integer arithmetic operations (previously limited to 4 bytes)
-    /// 2. Supports transaction introspection opcodes:
-    ///    - OpTxInputCount (0xb3): Get number of inputs
-    ///    - OpTxOutputCount (0xb4): Get number of outputs
-    ///    - OpTxInputIndex (0xb9): Get current input index
-    ///    - OpTxInputAmount (0xbe): Get input amount
-    ///    - OpTxInputSpk (0xbf): Get input script public key
-    ///    - OpTxOutputAmount (0xc2): Get output amount
-    ///    - OpTxOutputSpk (0xc3): Get output script public key
-    pub kip10_activation: ForkActivation,
-
     /// DAA score after which the pre-deflationary period switches to the deflationary period
     pub deflationary_phase_daa_score: u64,
 
@@ -202,10 +179,6 @@ pub struct Params {
     pub skip_proof_of_work: bool,
     pub max_block_level: BlockLevel,
     pub pruning_proof_m: u64,
-
-    /// Activation rules for when to enable using the payload field in transactions
-    pub payload_activation: ForkActivation,
-    pub runtime_sig_op_counting: ForkActivation,
 
     pub crescendo: CrescendoParams,
     pub crescendo_activation: ForkActivation,
@@ -235,7 +208,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn past_median_time_window_size(&self, selected_parent_daa_score: u64) -> usize {
-        if self.sampling_activation.is_active(selected_parent_daa_score) {
+        if self.crescendo_activation.is_active(selected_parent_daa_score) {
             self.sampled_past_median_time_window_size()
         } else {
             self.legacy_past_median_time_window_size()
@@ -247,7 +220,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn past_median_time_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
-        if self.sampling_activation.is_active(selected_parent_daa_score) {
+        if self.crescendo_activation.is_active(selected_parent_daa_score) {
             self.crescendo.past_median_time_sample_rate
         } else {
             1
@@ -259,7 +232,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn difficulty_window_size(&self, selected_parent_daa_score: u64) -> usize {
-        if self.sampling_activation.is_active(selected_parent_daa_score) {
+        if self.crescendo_activation.is_active(selected_parent_daa_score) {
             self.crescendo.sampled_difficulty_window_size as usize
         } else {
             self.legacy_difficulty_window_size
@@ -271,7 +244,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn difficulty_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
-        if self.sampling_activation.is_active(selected_parent_daa_score) {
+        if self.crescendo_activation.is_active(selected_parent_daa_score) {
             self.crescendo.difficulty_sample_rate
         } else {
             1
@@ -294,7 +267,7 @@ impl Params {
     }
 
     pub fn daa_window_duration_in_blocks(&self, selected_parent_daa_score: u64) -> u64 {
-        if self.sampling_activation.is_active(selected_parent_daa_score) {
+        if self.crescendo_activation.is_active(selected_parent_daa_score) {
             self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size
         } else {
             self.legacy_difficulty_window_size as u64
@@ -302,7 +275,7 @@ impl Params {
     }
 
     fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
-        if self.sampling_activation.is_active(selected_parent_daa_score) {
+        if self.crescendo_activation.is_active(selected_parent_daa_score) {
             self.crescendo.target_time_per_block
                 * self.crescendo.difficulty_sample_rate
                 * self.crescendo.sampled_difficulty_window_size
@@ -426,7 +399,6 @@ pub const MAINNET_PARAMS: Params = Params {
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     target_time_per_block: 1000,
-    sampling_activation: ForkActivation::never(),
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
@@ -454,8 +426,6 @@ pub const MAINNET_PARAMS: Params = Params {
     max_block_mass: 500_000,
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
-    storage_mass_activation: ForkActivation::never(),
-    kip10_activation: ForkActivation::never(),
 
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:
@@ -469,9 +439,6 @@ pub const MAINNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 225,
     pruning_proof_m: 1000,
-
-    payload_activation: ForkActivation::never(),
-    runtime_sig_op_counting: ForkActivation::never(),
 
     crescendo: CRESCENDO,
     crescendo_activation: ForkActivation::never(),
@@ -491,7 +458,6 @@ pub const TESTNET_PARAMS: Params = Params {
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     target_time_per_block: 1000,
-    sampling_activation: ForkActivation::never(),
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
@@ -519,8 +485,6 @@ pub const TESTNET_PARAMS: Params = Params {
     max_block_mass: 500_000,
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
-    storage_mass_activation: ForkActivation::never(),
-    kip10_activation: ForkActivation::never(),
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:
     // We define a year as 365.25 days
@@ -534,72 +498,6 @@ pub const TESTNET_PARAMS: Params = Params {
     max_block_level: 250,
     pruning_proof_m: 1000,
 
-    payload_activation: ForkActivation::never(),
-    runtime_sig_op_counting: ForkActivation::never(),
-
-    crescendo: CRESCENDO,
-    crescendo_activation: ForkActivation::never(),
-};
-
-pub const _TESTNET11_PARAMS: Params = Params {
-    dns_seeders: &[
-        // This DNS seeder is run by Tiram
-        "seeder1-testnet-11.kaspad.net",
-        // This DNS seeder is run by supertypo
-        "n-testnet-11.kaspa.ws",
-        // This DNS seeder is run by -gerri-
-        "dnsseeder-kaspa-testnet11.x-con.at",
-        // This DNS seeder is run by H@H
-        "ns-testnet11.kaspa-dnsseeder.net",
-    ],
-    net: NetworkId::with_suffix(NetworkType::Testnet, 11),
-    genesis: TESTNET11_GENESIS,
-    timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
-    sampling_activation: ForkActivation::always(), // Sampling is activated from network inception
-    max_difficulty_target: MAX_DIFFICULTY_TARGET,
-    max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
-    min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
-
-    //
-    // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
-    //
-    ghostdag_k: TenBps::ghostdag_k(),
-    target_time_per_block: TenBps::target_time_per_block(),
-    max_block_parents: TenBps::max_block_parents(),
-    mergeset_size_limit: TenBps::mergeset_size_limit(),
-    merge_depth: TenBps::merge_depth_bound(),
-    finality_depth: TenBps::finality_depth(),
-    pruning_depth: TenBps::pruning_depth(),
-    pruning_proof_m: TenBps::pruning_proof_m(),
-    deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
-    pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
-    coinbase_maturity: TenBps::coinbase_maturity(),
-
-    coinbase_payload_script_public_key_max_len: 150,
-    max_coinbase_payload_len: 204,
-
-    max_tx_inputs: 10_000,
-    max_tx_outputs: 10_000,
-    max_signature_script_len: 1_000_000,
-    max_script_public_key_len: 1_000_000,
-
-    mass_per_tx_byte: 1,
-    mass_per_script_pub_key_byte: 10,
-    mass_per_sig_op: 1000,
-    max_block_mass: 500_000,
-
-    storage_mass_parameter: STORAGE_MASS_PARAMETER,
-    storage_mass_activation: ForkActivation::always(),
-    // Roughly at Dec 3, 2024 1800 UTC
-    kip10_activation: ForkActivation::new(287238000),
-    payload_activation: ForkActivation::new(287238000),
-
-    skip_proof_of_work: false,
-    max_block_level: 250,
-
-    runtime_sig_op_counting: ForkActivation::never(),
-
     crescendo: CRESCENDO,
     crescendo_activation: ForkActivation::never(),
 };
@@ -609,7 +507,6 @@ pub const SIMNET_PARAMS: Params = Params {
     net: NetworkId::new(NetworkType::Simnet),
     genesis: SIMNET_GENESIS,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
-    sampling_activation: ForkActivation::always(), // Sampling is activated from network inception
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
@@ -646,14 +543,9 @@ pub const SIMNET_PARAMS: Params = Params {
     max_block_mass: 500_000,
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
-    storage_mass_activation: ForkActivation::always(),
-    kip10_activation: ForkActivation::never(),
 
     skip_proof_of_work: true, // For simnet only, PoW can be simulated by default
     max_block_level: 250,
-
-    payload_activation: ForkActivation::never(),
-    runtime_sig_op_counting: ForkActivation::never(),
 
     crescendo: CRESCENDO,
     crescendo_activation: ForkActivation::always(),
@@ -666,7 +558,6 @@ pub const DEVNET_PARAMS: Params = Params {
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     target_time_per_block: 1000,
-    sampling_activation: ForkActivation::never(),
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
@@ -694,8 +585,6 @@ pub const DEVNET_PARAMS: Params = Params {
     max_block_mass: 500_000,
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
-    storage_mass_activation: ForkActivation::never(),
-    kip10_activation: ForkActivation::never(),
 
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:
@@ -709,9 +598,6 @@ pub const DEVNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
-
-    payload_activation: ForkActivation::never(),
-    runtime_sig_op_counting: ForkActivation::never(),
 
     crescendo: CRESCENDO,
     crescendo_activation: ForkActivation::never(),

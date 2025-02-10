@@ -94,7 +94,7 @@ impl ConsensusServices {
             storage.block_window_cache_for_past_median_time.clone(),
             params.max_difficulty_target,
             params.target_time_per_block,
-            params.sampling_activation,
+            params.crescendo_activation,
             params.legacy_difficulty_window_size,
             params.crescendo.sampled_difficulty_window_size as usize,
             params.min_difficulty_window_len,
@@ -145,10 +145,7 @@ impl ConsensusServices {
             params.coinbase_maturity,
             tx_script_cache_counters,
             mass_calculator.clone(),
-            params.storage_mass_activation,
-            params.kip10_activation,
-            params.payload_activation,
-            params.runtime_sig_op_counting,
+            params.crescendo_activation,
         );
 
         let pruning_point_manager = PruningPointManager::new(

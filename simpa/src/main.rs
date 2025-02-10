@@ -191,9 +191,8 @@ fn main_impl(mut args: Args) {
     }
     args.bps = if args.testnet11 { TenBps::bps() as f64 } else { args.bps };
     let mut params = if args.testnet11 { SIMNET_PARAMS } else { DEVNET_PARAMS };
-    params.storage_mass_activation = ForkActivation::new(400);
+    params.crescendo_activation = ForkActivation::always();
     params.storage_mass_parameter = 10_000;
-    params.payload_activation = ForkActivation::always();
     let mut builder = ConfigBuilder::new(params)
         .apply_args(|config| apply_args_to_consensus_params(&args, &mut config.params))
         .apply_args(|config| apply_args_to_perf_params(&args, &mut config.perf))
@@ -310,12 +309,12 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
 
         if args.daa_legacy {
             // Scale DAA and median-time windows linearly with BPS
-            params.sampling_activation = ForkActivation::never();
+            params.crescendo_activation = ForkActivation::never();
             params.timestamp_deviation_tolerance = (params.timestamp_deviation_tolerance as f64 * args.bps) as u64;
             params.legacy_difficulty_window_size = (params.legacy_difficulty_window_size as f64 * args.bps) as usize;
         } else {
             // Use the new sampling algorithms
-            params.sampling_activation = ForkActivation::always();
+            params.crescendo_activation = ForkActivation::always();
             params.timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
             params.crescendo.past_median_time_sample_rate = (10.0 * args.bps) as u64;
             params.crescendo.difficulty_sample_rate = (2.0 * args.bps) as u64;

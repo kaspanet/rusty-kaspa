@@ -23,6 +23,7 @@ use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus::processes::window::{WindowManager, WindowType};
+use kaspa_consensus_core::api::args::TransactionValidationArgs;
 use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::blockhash::new_unique;
@@ -45,6 +46,7 @@ use kaspa_core::task::tick::TickService;
 use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::Hash;
+use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
 use flate2::read::GzDecoder;
@@ -563,7 +565,7 @@ async fn median_time_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.sampling_activation = ForkActivation::never();
+                    p.crescendo_activation = ForkActivation::never();
                 })
                 .build(),
         },
@@ -572,7 +574,7 @@ async fn median_time_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.sampling_activation = ForkActivation::always();
+                    p.crescendo_activation = ForkActivation::always();
                     p.timestamp_deviation_tolerance = 120;
                     p.crescendo.past_median_time_sample_rate = 3;
                     p.crescendo.past_median_time_sampled_window_size = (2 * 120 - 1) / 3;
@@ -814,7 +816,6 @@ impl KaspadGoParams {
             ghostdag_k: self.K,
             timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
             target_time_per_block: self.TargetTimePerBlock / 1_000_000,
-            sampling_activation: ForkActivation::never(),
             max_block_parents: self.MaxBlockParents,
             max_difficulty_target: MAX_DIFFICULTY_TARGET,
             max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
@@ -835,16 +836,12 @@ impl KaspadGoParams {
             mass_per_sig_op: self.MassPerSigOp,
             max_block_mass: self.MaxBlockMass,
             storage_mass_parameter: STORAGE_MASS_PARAMETER,
-            storage_mass_activation: ForkActivation::never(),
-            kip10_activation: ForkActivation::never(),
             deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
             pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
             coinbase_maturity: MAINNET_PARAMS.coinbase_maturity,
             skip_proof_of_work: self.SkipProofOfWork,
             max_block_level: self.MaxBlockLevel,
             pruning_proof_m: self.PruningProofM,
-            payload_activation: ForkActivation::never(),
-            runtime_sig_op_counting: ForkActivation::never(),
             crescendo: CRESCENDO,
             crescendo_activation: ForkActivation::never(),
         }
@@ -1398,7 +1395,7 @@ async fn difficulty_test() {
                 .edit_consensus_params(|p| {
                     p.ghostdag_k = 1;
                     p.legacy_difficulty_window_size = FULL_WINDOW_SIZE;
-                    p.sampling_activation = ForkActivation::never();
+                    p.crescendo_activation = ForkActivation::never();
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.timestamp_deviation_tolerance = 60;
@@ -1414,7 +1411,7 @@ async fn difficulty_test() {
                     p.ghostdag_k = 1;
                     p.crescendo.sampled_difficulty_window_size = SAMPLED_WINDOW_SIZE;
                     p.crescendo.difficulty_sample_rate = SAMPLE_RATE;
-                    p.sampling_activation = ForkActivation::always();
+                    p.crescendo_activation = ForkActivation::always();
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.crescendo.past_median_time_sample_rate = PMT_SAMPLE_RATE;
@@ -1433,7 +1430,7 @@ async fn difficulty_test() {
                     p.target_time_per_block /= HIGH_BPS;
                     p.crescendo.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
                     p.crescendo.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
-                    p.sampling_activation = ForkActivation::always();
+                    p.crescendo_activation = ForkActivation::always();
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.crescendo.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;
@@ -1809,7 +1806,7 @@ async fn run_kip10_activation_test() {
             cfg.params.genesis.hash = genesis_header.hash;
         })
         .edit_consensus_params(|p| {
-            p.kip10_activation = ForkActivation::new(KIP10_ACTIVATION_DAA_SCORE);
+            p.crescendo_activation = ForkActivation::new(KIP10_ACTIVATION_DAA_SCORE);
         })
         .build();
 
@@ -1829,7 +1826,7 @@ async fn run_kip10_activation_test() {
     assert_eq!(consensus.get_virtual_daa_score(), index);
 
     // Create transaction that attempts to use the KIP-10 opcode
-    let mut spending_tx = Transaction::new(
+    let mut tx = Transaction::new(
         0,
         vec![TransactionInput::new(
             initial_utxo_collection[0].0,
@@ -1843,8 +1840,14 @@ async fn run_kip10_activation_test() {
         0,
         vec![],
     );
-    spending_tx.finalize();
-    let tx_id = spending_tx.id();
+    tx.finalize();
+    let tx_id = tx.id();
+
+    let mut tx = MutableTransaction::from_tx(tx);
+    // This triggers storage mass population
+    let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
+    let tx = tx.tx.unwrap_or_clone();
+
     // Test 1: Build empty block, then manually insert invalid tx and verify consensus rejects it
     {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
@@ -1854,8 +1857,9 @@ async fn run_kip10_activation_test() {
             consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
 
         // Insert our test transaction and recalculate block hashes
-        block.transactions.push(spending_tx.clone());
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter(), false);
+        block.transactions.push(tx.clone());
+        block.header.hash_merkle_root =
+            calc_hash_merkle_root(block.transactions.iter(), config.crescendo_activation.is_active(block.header.daa_score));
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
         assert_eq!(consensus.lkg_virtual_state.load().daa_score, 2);
@@ -1866,7 +1870,7 @@ async fn run_kip10_activation_test() {
     index += 1;
 
     // Test 2: Verify the same transaction is accepted after activation
-    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![spending_tx.clone()]).await;
+    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }
@@ -1877,7 +1881,7 @@ async fn payload_test() {
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.coinbase_maturity = 0;
-            p.payload_activation = ForkActivation::always()
+            p.crescendo_activation = ForkActivation::always()
         })
         .build();
     let consensus = TestConsensus::new(&config);
@@ -1887,22 +1891,28 @@ async fn payload_test() {
     let b = consensus.build_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], miner_data.clone(), vec![]);
     consensus.validate_and_insert_block(b.to_immutable()).virtual_state_task.await.unwrap();
     let funding_block = consensus.build_utxo_valid_block_with_parents(2.into(), vec![1.into()], miner_data, vec![]);
-    let cb_id = {
+    let (cb_id, cb_amount) = {
         let mut cb = funding_block.transactions[0].clone();
         cb.finalize();
-        cb.id()
+        (cb.id(), cb.outputs[0].value)
     };
+
     consensus.validate_and_insert_block(funding_block.to_immutable()).virtual_state_task.await.unwrap();
     let tx = Transaction::new(
         0,
         vec![TransactionInput::new(TransactionOutpoint { transaction_id: cb_id, index: 0 }, vec![], 0, 0)],
-        vec![TransactionOutput::new(1, ScriptPublicKey::default())],
+        vec![TransactionOutput::new(cb_amount / 2, ScriptPublicKey::default())],
         0,
         SubnetworkId::default(),
         0,
         vec![0; (config.params.max_block_mass / 2) as usize],
     );
-    consensus.add_utxo_valid_block_with_parents(3.into(), vec![2.into()], vec![tx]).await.unwrap();
+
+    let mut tx = MutableTransaction::from_tx(tx);
+    // This triggers storage mass population
+    let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
+
+    consensus.add_utxo_valid_block_with_parents(3.into(), vec![2.into()], vec![tx.tx.unwrap_or_clone()]).await.unwrap();
 
     consensus.shutdown(wait_handles);
 }
@@ -1940,7 +1950,7 @@ async fn payload_activation_test() {
             cfg.params.genesis.hash = genesis_header.hash;
         })
         .edit_consensus_params(|p| {
-            p.payload_activation = ForkActivation::new(PAYLOAD_ACTIVATION_DAA_SCORE);
+            p.crescendo_activation = ForkActivation::new(PAYLOAD_ACTIVATION_DAA_SCORE);
         })
         .build();
 
@@ -1986,10 +1996,15 @@ async fn payload_activation_test() {
         let mut block =
             consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
 
-        // Insert our test transaction and recalculate block hashes
-        block.transactions.push(tx_with_payload.clone());
+        let mut tx = MutableTransaction::from_tx(tx_with_payload.clone());
+        // This triggers storage mass population
+        let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
 
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter(), false);
+        // Insert our test transaction and recalculate block hashes
+        block.transactions.push(tx.tx.unwrap_or_clone());
+
+        block.header.hash_merkle_root =
+            calc_hash_merkle_root(block.transactions.iter(), config.crescendo_activation.is_active(block.header.daa_score));
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Err(RuleError::TxInContextFailed(tx, TxRuleError::NonCoinbaseTxHasPayload)) if tx == tx_id));
         assert_eq!(consensus.lkg_virtual_state.load().daa_score, PAYLOAD_ACTIVATION_DAA_SCORE - 1);
@@ -2000,9 +2015,13 @@ async fn payload_activation_test() {
     consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
     index += 1;
 
+    let mut tx = MutableTransaction::from_tx(tx_with_payload.clone());
+    // This triggers storage mass population
+    let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
+
     // Test 2: Verify the same transaction is accepted after activation
     let status =
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx_with_payload.clone()]).await;
+        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx.tx.unwrap_or_clone()]).await;
 
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
@@ -2064,7 +2083,7 @@ async fn runtime_sig_op_counting_test() {
             cfg.params.genesis.hash = genesis_header.hash;
         })
         .edit_consensus_params(|p| {
-            p.runtime_sig_op_counting = ForkActivation::new(RUNTIME_SIGOP_ACTIVATION_DAA_SCORE);
+            p.crescendo_activation = ForkActivation::new(RUNTIME_SIGOP_ACTIVATION_DAA_SCORE);
         })
         .build();
 
@@ -2117,13 +2136,19 @@ async fn runtime_sig_op_counting_test() {
 
     tx.finalize();
 
+    let mut tx = MutableTransaction::from_tx(tx);
+    // This triggers storage mass population
+    let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
+    let tx = tx.tx.unwrap_or_clone();
+
     // Test 1: Before activation, tx should be rejected due to static sig op counting (sees 3 ops)
     {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
         let mut block =
             consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
         block.transactions.push(tx.clone());
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter(), false);
+        block.header.hash_merkle_root =
+            calc_hash_merkle_root(block.transactions.iter(), config.crescendo_activation.is_active(block.header.daa_score));
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
         index += 1;

@@ -164,9 +164,8 @@ pub struct VirtualStateProcessor {
     // Counters
     counters: Arc<ProcessingCounters>,
 
-    // Storage mass hardfork DAA score
-    pub(crate) storage_mass_activation: ForkActivation,
-    pub(crate) kip10_activation: ForkActivation,
+    // Crescendo hardfork activation score (used here for activating KIPs 9,10)
+    pub(crate) crescendo_activation: ForkActivation,
 }
 
 impl VirtualStateProcessor {
@@ -230,8 +229,7 @@ impl VirtualStateProcessor {
             pruning_lock,
             notification_root,
             counters,
-            storage_mass_activation: params.storage_mass_activation,
-            kip10_activation: params.kip10_activation,
+            crescendo_activation: params.crescendo_activation,
         }
     }
 
@@ -1036,7 +1034,7 @@ impl VirtualStateProcessor {
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_info.pruning_point, &virtual_state.parents);
 
         // Hash according to hardfork activation
-        let storage_mass_activated = self.storage_mass_activation.is_active(virtual_state.daa_score);
+        let storage_mass_activated = self.crescendo_activation.is_active(virtual_state.daa_score);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter(), storage_mass_activated);
 
         let accepted_id_merkle_root = kaspa_merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
