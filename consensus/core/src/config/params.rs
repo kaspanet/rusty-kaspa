@@ -19,21 +19,19 @@ use std::{
 pub struct ForkActivation(u64);
 
 impl ForkActivation {
+    const NEVER: u64 = u64::MAX;
+    const ALWAYS: u64 = 0;
+
     pub const fn new(daa_score: u64) -> Self {
         Self(daa_score)
     }
 
     pub const fn never() -> Self {
-        Self(u64::MAX)
+        Self(Self::NEVER)
     }
 
     pub const fn always() -> Self {
-        Self(0)
-    }
-
-    /// Returns whether the fork is already scheduled (i.e., `self != ForkActivation::never()`)
-    pub fn is_scheduled(self) -> bool {
-        self.0 < u64::MAX
+        Self(Self::ALWAYS)
     }
 
     pub fn is_active(self, current_daa_score: u64) -> bool {
@@ -51,6 +49,7 @@ impl ForkActivation {
     }
 }
 
+/// A consensus parameter which depends on forking activation
 #[derive(Clone, Copy, Debug)]
 pub struct ForkedParam<T: Copy> {
     pre: T,
@@ -68,6 +67,50 @@ impl<T: Copy> ForkedParam<T> {
             self.post
         } else {
             self.pre
+        }
+    }
+
+    /// Returns the value at inception (which is `pre` unless activation = always)
+    pub fn bootstrap(&self) -> T {
+        match self.activation.0 {
+            ForkActivation::ALWAYS => self.post,
+            _ => self.pre,
+        }
+    }
+
+    /// Returns the permanent long-term value (which is `post` unless the activation is never scheduled)
+    pub fn permanent(&self) -> T {
+        match self.activation.0 {
+            ForkActivation::NEVER => self.pre,
+            _ => self.post,
+        }
+    }
+}
+
+impl<T: Copy + Ord> ForkedParam<T> {
+    /// Returns the min of `pre` and `post` values. Useful for non-consensus initializations
+    /// which require knowledge of the value bounds.
+    ///
+    /// Note that if activation is not scheduled (set to never) then pre is always returned,
+    /// and if activation is set to always (since inception), post will be returned.
+    pub fn lower_bound(&self) -> T {
+        match self.activation.0 {
+            ForkActivation::NEVER => self.pre,
+            ForkActivation::ALWAYS => self.post,
+            _ => self.pre.min(self.post),
+        }
+    }
+
+    /// Returns the max of `pre` and `post` values. Useful for non-consensus initializations
+    /// which require knowledge of the value bounds.
+    ///
+    /// Note that if activation is not scheduled (set to never) then pre is always returned,
+    /// and if activation is set to always (since inception), post will be returned.
+    pub fn upper_bound(&self) -> T {
+        match self.activation.0 {
+            ForkActivation::NEVER => self.pre,
+            ForkActivation::ALWAYS => self.post,
+            _ => self.pre.max(self.post),
         }
     }
 }
@@ -117,7 +160,7 @@ pub const CRESCENDO: CrescendoParams = CrescendoParams {
     pruning_depth: TenBps::pruning_depth(),
     coinbase_maturity: TenBps::coinbase_maturity(),
 
-    // TODO: finalize all below
+    // TODO (crescendo): finalize all below
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
     max_signature_script_len: 100_000,
@@ -138,7 +181,7 @@ pub struct Params {
     pub timestamp_deviation_tolerance: u64,
 
     /// Target time per block (in milliseconds)
-    pub target_time_per_block: u64,
+    pub prior_target_time_per_block: u64,
 
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
     pub max_difficulty_target: Uint256,
@@ -147,7 +190,7 @@ pub struct Params {
     pub max_difficulty_target_f64: f64,
 
     /// Size of full blocks window that is inspected to calculate the required difficulty of each block
-    pub legacy_difficulty_window_size: usize,
+    pub prior_difficulty_window_size: usize,
 
     /// The minimum size a difficulty window (full or sampled) must have to trigger a DAA calculation
     pub min_difficulty_window_size: usize,
@@ -192,7 +235,7 @@ impl Params {
     /// Returns the size of the full blocks window that is inspected to calculate the past median time (legacy)
     #[inline]
     #[must_use]
-    pub fn legacy_past_median_time_window_size(&self) -> usize {
+    pub fn prior_past_median_time_window_size(&self) -> usize {
         (2 * self.timestamp_deviation_tolerance - 1) as usize
     }
 
@@ -203,16 +246,15 @@ impl Params {
         self.crescendo.past_median_time_sampled_window_size as usize
     }
 
-    /// Returns the size of the blocks window that is inspected to calculate the past median time,
-    /// depending on a selected parent DAA score
+    /// Returns the size of the blocks window that is inspected to calculate the past median time.
     #[inline]
     #[must_use]
-    pub fn past_median_time_window_size(&self, selected_parent_daa_score: u64) -> usize {
-        if self.crescendo_activation.is_active(selected_parent_daa_score) {
-            self.sampled_past_median_time_window_size()
-        } else {
-            self.legacy_past_median_time_window_size()
-        }
+    pub fn past_median_time_window_size(&self) -> ForkedParam<usize> {
+        ForkedParam::new(
+            self.prior_past_median_time_window_size(),
+            self.sampled_past_median_time_window_size(),
+            self.crescendo_activation,
+        )
     }
 
     /// Returns the past median time sample rate,
@@ -231,12 +273,12 @@ impl Params {
     /// depending on a selected parent DAA score
     #[inline]
     #[must_use]
-    pub fn difficulty_window_size(&self, selected_parent_daa_score: u64) -> usize {
-        if self.crescendo_activation.is_active(selected_parent_daa_score) {
-            self.crescendo.sampled_difficulty_window_size as usize
-        } else {
-            self.legacy_difficulty_window_size
-        }
+    pub fn difficulty_window_size(&self) -> ForkedParam<usize> {
+        ForkedParam::new(
+            self.prior_difficulty_window_size,
+            self.crescendo.sampled_difficulty_window_size as usize,
+            self.crescendo_activation,
+        )
     }
 
     /// Returns the difficulty sample rate,
@@ -251,26 +293,29 @@ impl Params {
         }
     }
 
-    /// Returns the target time per block,
-    /// depending on a selected parent DAA score
+    /// Returns the target time per block
     #[inline]
     #[must_use]
-    pub fn target_time_per_block(&self, _selected_parent_daa_score: u64) -> u64 {
-        self.target_time_per_block
+    pub fn target_time_per_block(&self) -> ForkedParam<u64> {
+        ForkedParam::new(self.prior_target_time_per_block, self.crescendo.target_time_per_block, self.crescendo_activation)
     }
 
     /// Returns the expected number of blocks per second
     #[inline]
     #[must_use]
-    pub fn bps(&self) -> u64 {
-        1000 / self.target_time_per_block
+    pub fn bps(&self) -> ForkedParam<u64> {
+        ForkedParam::new(
+            1000 / self.prior_target_time_per_block,
+            1000 / self.crescendo.target_time_per_block,
+            self.crescendo_activation,
+        )
     }
 
     pub fn daa_window_duration_in_blocks(&self, selected_parent_daa_score: u64) -> u64 {
         if self.crescendo_activation.is_active(selected_parent_daa_score) {
             self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size
         } else {
-            self.legacy_difficulty_window_size as u64
+            self.prior_difficulty_window_size as u64
         }
     }
 
@@ -280,7 +325,7 @@ impl Params {
                 * self.crescendo.difficulty_sample_rate
                 * self.crescendo.sampled_difficulty_window_size
         } else {
-            self.target_time_per_block * self.legacy_difficulty_window_size as u64
+            self.prior_target_time_per_block * self.prior_difficulty_window_size as u64
         }
     }
 
@@ -317,7 +362,8 @@ impl Params {
             // with significant testnet hashrate does not overwhelm the network with deep side-DAGs.
             //
             // We use DAA duration as baseline and scale it down with BPS (and divide by 3 for mining only when very close to current time on TN11)
-            let max_expected_duration_without_blocks_in_milliseconds = self.target_time_per_block * NEW_DIFFICULTY_WINDOW_DURATION / 3; // = DAA duration in milliseconds / bps / 3
+            let max_expected_duration_without_blocks_in_milliseconds =
+                self.prior_target_time_per_block * NEW_DIFFICULTY_WINDOW_DURATION / 3; // = DAA duration in milliseconds / bps / 3
             unix_now() < sink_timestamp + max_expected_duration_without_blocks_in_milliseconds
         }
     }
@@ -339,7 +385,7 @@ impl Params {
     }
 
     pub fn finality_duration(&self) -> u64 {
-        self.target_time_per_block * self.finality_depth
+        self.prior_target_time_per_block * self.finality_depth
     }
 }
 
@@ -398,10 +444,10 @@ pub const MAINNET_PARAMS: Params = Params {
     genesis: GENESIS,
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
-    target_time_per_block: 1000,
+    prior_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     max_block_parents: 10,
     mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
@@ -457,10 +503,10 @@ pub const TESTNET_PARAMS: Params = Params {
     genesis: TESTNET_GENESIS,
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
-    target_time_per_block: 1000,
+    prior_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     max_block_parents: 10,
     mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
@@ -509,7 +555,7 @@ pub const SIMNET_PARAMS: Params = Params {
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
 
     //
@@ -517,7 +563,7 @@ pub const SIMNET_PARAMS: Params = Params {
     //
     // Note we use a 10 BPS configuration for simnet
     ghostdag_k: TenBps::ghostdag_k(),
-    target_time_per_block: TenBps::target_time_per_block(),
+    prior_target_time_per_block: TenBps::target_time_per_block(),
     // For simnet, we deviate from TN11 configuration and allow at least 64 parents in order to support mempool benchmarks out of the box
     max_block_parents: if TenBps::max_block_parents() > 64 { TenBps::max_block_parents() } else { 64 },
     mergeset_size_limit: TenBps::mergeset_size_limit(),
@@ -557,10 +603,10 @@ pub const DEVNET_PARAMS: Params = Params {
     genesis: DEVNET_GENESIS,
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
-    target_time_per_block: 1000,
+    prior_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     max_block_parents: 10,
     mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,

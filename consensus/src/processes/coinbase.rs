@@ -286,7 +286,7 @@ mod tests {
         let legacy_cbm = create_legacy_manager();
         let pre_deflationary_rewards = legacy_cbm.pre_deflationary_phase_base_subsidy * legacy_cbm.deflationary_phase_daa_score;
         let total_rewards: u64 = pre_deflationary_rewards + SUBSIDY_BY_MONTH_TABLE.iter().map(|x| x * SECONDS_PER_MONTH).sum::<u64>();
-        let testnet_11_bps = SIMNET_PARAMS.bps();
+        let testnet_11_bps = SIMNET_PARAMS.bps().upper_bound();
         let total_high_bps_rewards_rounded_up: u64 = pre_deflationary_rewards
             + SUBSIDY_BY_MONTH_TABLE.iter().map(|x| (x.div_ceil(testnet_11_bps) * testnet_11_bps) * SECONDS_PER_MONTH).sum::<u64>();
 
@@ -332,10 +332,11 @@ mod tests {
         for network_id in NetworkId::iter() {
             let params = &network_id.into();
             let cbm = create_manager(params);
+            let bps = params.bps().upper_bound();
 
-            let pre_deflationary_phase_base_subsidy = PRE_DEFLATIONARY_PHASE_BASE_SUBSIDY / params.bps();
-            let deflationary_phase_initial_subsidy = DEFLATIONARY_PHASE_INITIAL_SUBSIDY / params.bps();
-            let blocks_per_halving = SECONDS_PER_HALVING * params.bps();
+            let pre_deflationary_phase_base_subsidy = PRE_DEFLATIONARY_PHASE_BASE_SUBSIDY / bps;
+            let deflationary_phase_initial_subsidy = DEFLATIONARY_PHASE_INITIAL_SUBSIDY / bps;
+            let blocks_per_halving = SECONDS_PER_HALVING * bps;
 
             struct Test {
                 name: &'static str,
@@ -389,7 +390,7 @@ mod tests {
 
             for t in tests {
                 assert_eq!(cbm.calc_block_subsidy(t.daa_score), t.expected, "{} test '{}' failed", network_id, t.name);
-                if params.bps() == 1 {
+                if bps == 1 {
                     assert_eq!(cbm.legacy_calc_block_subsidy(t.daa_score), t.expected, "{} test '{}' failed", network_id, t.name);
                 }
             }
@@ -478,7 +479,7 @@ mod tests {
             params.max_coinbase_payload_len,
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
-            params.target_time_per_block,
+            params.prior_target_time_per_block,
         )
     }
 

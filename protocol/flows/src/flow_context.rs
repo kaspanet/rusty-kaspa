@@ -228,6 +228,9 @@ pub struct FlowContextInner {
     // Special sampling logger used only for high-bps networks where logs must be throttled
     block_event_logger: Option<BlockEventLogger>,
 
+    // Bps upper bound
+    bps_upper_bound: usize,
+
     // Orphan parameters
     orphan_resolution_range: u32,
     max_orphans: usize,
@@ -306,7 +309,8 @@ impl FlowContext {
     ) -> Self {
         let hub = Hub::new();
 
-        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (config.bps() as f64).log2().ceil() as u32;
+        let bps_upper_bound = config.bps().upper_bound() as usize;
+        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps_upper_bound as f64).log2().ceil() as u32;
 
         // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
         // of how many orphans there can possibly be on average bounded by an upper bound.
@@ -327,7 +331,8 @@ impl FlowContext {
                 mining_manager,
                 tick_service,
                 notification_root,
-                block_event_logger: if config.bps() > 1 { Some(BlockEventLogger::new(config.bps() as usize)) } else { None },
+                block_event_logger: if bps_upper_bound > 1 { Some(BlockEventLogger::new(bps_upper_bound)) } else { None },
+                bps_upper_bound,
                 orphan_resolution_range,
                 max_orphans,
                 config,
@@ -336,7 +341,7 @@ impl FlowContext {
     }
 
     pub fn block_invs_channel_size(&self) -> usize {
-        self.config.bps() as usize * Router::incoming_flow_baseline_channel_size()
+        self.bps_upper_bound * Router::incoming_flow_baseline_channel_size()
     }
 
     pub fn orphan_resolution_range(&self) -> u32 {

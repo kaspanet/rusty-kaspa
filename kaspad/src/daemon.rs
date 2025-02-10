@@ -527,7 +527,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let (address_manager, port_mapping_extender_svc) = AddressManager::new(config.clone(), meta_db, tick_service.clone());
 
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_extended_config(
-        config.target_time_per_block,
+        config.prior_target_time_per_block, // TODO (crescendo)
         false,
         config.max_block_mass,
         config.ram_scale,

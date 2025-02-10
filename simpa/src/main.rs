@@ -293,8 +293,8 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         info!(
             "Using kaspa-testnet-11 configuration (GHOSTDAG K={}, DAA window size={}, Median time window size={})",
             params.ghostdag_k,
-            params.difficulty_window_size(0),
-            params.past_median_time_window_size(0),
+            params.difficulty_window_size().bootstrap(),
+            params.past_median_time_window_size().bootstrap(),
         );
     } else {
         let max_delay = args.delay.max(NETWORK_DELAY_BOUND as f64);
@@ -303,7 +303,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.ghostdag_k = k;
         params.mergeset_size_limit = k as u64 * 10;
         params.max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
-        params.target_time_per_block = (1000.0 / args.bps) as u64;
+        params.prior_target_time_per_block = (1000.0 / args.bps) as u64;
         params.merge_depth = (params.merge_depth as f64 * args.bps) as u64;
         params.coinbase_maturity = (params.coinbase_maturity as f64 * f64::max(1.0, args.bps * args.delay * 0.25)) as u64;
 
@@ -311,7 +311,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
             // Scale DAA and median-time windows linearly with BPS
             params.crescendo_activation = ForkActivation::never();
             params.timestamp_deviation_tolerance = (params.timestamp_deviation_tolerance as f64 * args.bps) as u64;
-            params.legacy_difficulty_window_size = (params.legacy_difficulty_window_size as f64 * args.bps) as usize;
+            params.prior_difficulty_window_size = (params.prior_difficulty_window_size as f64 * args.bps) as usize;
         } else {
             // Use the new sampling algorithms
             params.crescendo_activation = ForkActivation::always();
@@ -320,11 +320,16 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
             params.crescendo.difficulty_sample_rate = (2.0 * args.bps) as u64;
         }
 
-        info!("2Dλ={}, GHOSTDAG K={}, DAA window size={}", 2.0 * args.delay * args.bps, k, params.difficulty_window_size(0));
+        info!(
+            "2Dλ={}, GHOSTDAG K={}, DAA window size={}",
+            2.0 * args.delay * args.bps,
+            k,
+            params.difficulty_window_size().bootstrap()
+        );
     }
     if args.test_pruning {
         params.pruning_proof_m = 16;
-        params.legacy_difficulty_window_size = 64;
+        params.prior_difficulty_window_size = 64;
         params.timestamp_deviation_tolerance = 16;
         params.crescendo.sampled_difficulty_window_size = params.crescendo.sampled_difficulty_window_size.min(32);
         params.finality_depth = 128;

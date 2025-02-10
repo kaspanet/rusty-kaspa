@@ -93,13 +93,13 @@ impl ConsensusServices {
             storage.block_window_cache_for_difficulty.clone(),
             storage.block_window_cache_for_past_median_time.clone(),
             params.max_difficulty_target,
-            params.target_time_per_block,
+            params.prior_target_time_per_block,
             params.crescendo_activation,
-            params.legacy_difficulty_window_size,
+            params.prior_difficulty_window_size,
             params.crescendo.sampled_difficulty_window_size as usize,
             params.min_difficulty_window_size,
             params.crescendo.difficulty_sample_rate,
-            params.legacy_past_median_time_window_size(),
+            params.prior_past_median_time_window_size(),
             params.sampled_past_median_time_window_size(),
             params.crescendo.past_median_time_sample_rate,
         );
@@ -125,7 +125,7 @@ impl ConsensusServices {
             params.max_coinbase_payload_len,
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
-            params.target_time_per_block,
+            params.prior_target_time_per_block,
         );
 
         let mass_calculator = MassCalculator::new(

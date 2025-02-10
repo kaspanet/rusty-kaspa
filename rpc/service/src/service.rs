@@ -718,6 +718,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let mut header_idx = 0;
         let mut req_idx = 0;
 
+        // TODO (crescendo)
+
         // Loop runs at O(n + m) where n = # pp headers, m = # requested daa_scores
         // Loop will always end because in the worst case the last header with daa_score = 0 (the genesis)
         // will cause every remaining requested daa_score to be "found in range"
@@ -732,7 +734,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 // For daa_score later than the last header, we estimate in milliseconds based on the difference
                 let time_adjustment = if header_idx == 0 {
                     // estimate milliseconds = (daa_score * target_time_per_block)
-                    (curr_daa_score - header.daa_score).checked_mul(self.config.target_time_per_block).unwrap_or(u64::MAX)
+                    (curr_daa_score - header.daa_score).checked_mul(self.config.prior_target_time_per_block).unwrap_or(u64::MAX)
                 } else {
                     // "next" header is the one that we processed last iteration
                     let next_header = &headers[header_idx - 1];
