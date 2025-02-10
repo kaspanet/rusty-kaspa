@@ -94,6 +94,7 @@ impl ConsensusServices {
             storage.block_window_cache_for_past_median_time.clone(),
             params.max_difficulty_target,
             params.prior_target_time_per_block,
+            params.crescendo.target_time_per_block,
             params.crescendo_activation,
             params.prior_difficulty_window_size,
             params.crescendo.sampled_difficulty_window_size as usize,

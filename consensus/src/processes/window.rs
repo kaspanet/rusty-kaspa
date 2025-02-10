@@ -310,7 +310,7 @@ pub struct SampledWindowManager<
     difficulty_sample_rate: u64,
     past_median_time_window_size: usize,
     past_median_time_sample_rate: u64,
-    difficulty_manager: SampledDifficultyManager<V>,
+    difficulty_manager: SampledDifficultyManager<V, T>,
     past_median_time_manager: SampledPastMedianTimeManager<V>,
 }
 
@@ -326,6 +326,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         block_window_cache_for_difficulty: Arc<U>,
         block_window_cache_for_past_median_time: Arc<U>,
         max_difficulty_target: Uint256,
+        prior_target_time_per_block: u64,
         target_time_per_block: u64,
         crescendo_activation: ForkActivation,
         difficulty_window_size: usize,
@@ -336,12 +337,16 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
     ) -> Self {
         let difficulty_manager = SampledDifficultyManager::new(
             headers_store.clone(),
+            ghostdag_store.clone(),
+            genesis.hash,
             genesis.bits,
             max_difficulty_target,
             difficulty_window_size,
             min_difficulty_window_size,
             difficulty_sample_rate,
+            prior_target_time_per_block,
             target_time_per_block,
+            crescendo_activation,
         );
         let past_median_time_manager = SampledPastMedianTimeManager::new(headers_store.clone(), genesis.timestamp);
         Self {
@@ -639,8 +644,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         Ok(DaaWindow::new(window, daa_score, mergeset_non_daa))
     }
 
-    fn calculate_difficulty_bits(&self, _high_ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32 {
-        self.difficulty_manager.calculate_difficulty_bits(&daa_window.window)
+    fn calculate_difficulty_bits(&self, ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32 {
+        self.difficulty_manager.calculate_difficulty_bits(&daa_window.window, ghostdag_data)
     }
 
     fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
@@ -743,7 +748,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         block_window_cache_for_difficulty: Arc<U>,
         block_window_cache_for_past_median_time: Arc<U>,
         max_difficulty_target: Uint256,
-        target_time_per_block: u64,
+        prior_target_time_per_block: u64,
+        crescendo_target_time_per_block: u64,
         crescendo_activation: ForkActivation,
         full_difficulty_window_size: usize,
         sampled_difficulty_window_size: usize,
@@ -760,7 +766,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time.clone(),
             max_difficulty_target,
-            target_time_per_block,
+            prior_target_time_per_block,
             full_difficulty_window_size,
             min_difficulty_window_size.min(full_difficulty_window_size),
             full_past_median_time_window_size,
@@ -773,7 +779,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             max_difficulty_target,
-            target_time_per_block,
+            prior_target_time_per_block,
+            crescendo_target_time_per_block,
             crescendo_activation,
             sampled_difficulty_window_size,
             min_difficulty_window_size.min(sampled_difficulty_window_size),

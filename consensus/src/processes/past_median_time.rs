@@ -45,6 +45,17 @@ impl<T: HeaderStoreReader> SampledPastMedianTimeManager<T> {
         // of the sorted timestamps
         const AVERAGE_FRAME_SIZE: usize = 11;
 
+        /*
+           [Crescendo]: For the median time window we to not filter non-activated blocks from the window (as oppose to DAA).
+                        This means that post activation the window will not be empty (hence the condition
+                        below is kept as is).
+                        However it should be noted that this means that in the first few minutes post activation
+                        the median time lower-bound will actually decrease (because the sampled window will go 10x
+                        time back). This is safe and does not allow difficulty<>timestamp manipulation since DAA
+                        remains constant for a stability phase of 10 minutes, at which point the median time window
+                        (4.5 minutes) will be fully within the new block rate period.
+        */
+
         if window.is_empty() {
             return Ok(self.genesis_timestamp);
         }

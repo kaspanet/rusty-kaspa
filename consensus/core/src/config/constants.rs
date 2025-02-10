@@ -53,11 +53,11 @@ pub mod consensus {
 
     /// Minimal size of the difficulty window. Affects the DA algorithm at the starting period of a new net.
     /// Also used during BPS fork transitions to stabilize the new rate before applying DA (see KIP-14).
-    /// With 4 seconds sampling interval, a value of 60 indicates 4 minutes of fixed
+    /// With 4 seconds sampling interval, a value of 150 indicates 10 minutes of fixed
     /// difficulty until the window grows large enough.
     ///
     /// TODO (crescendo): finalize
-    pub const MIN_DIFFICULTY_WINDOW_SIZE: usize = 60;
+    pub const MIN_DIFFICULTY_WINDOW_SIZE: usize = 150;
 
     /// **Legacy** difficulty adjustment window size corresponding to ~44 minutes with 1 BPS
     pub const LEGACY_DIFFICULTY_WINDOW_SIZE: usize = 2641;

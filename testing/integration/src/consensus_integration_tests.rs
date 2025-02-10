@@ -1413,6 +1413,7 @@ async fn difficulty_test() {
                     p.crescendo.sampled_difficulty_window_size = SAMPLED_WINDOW_SIZE;
                     p.crescendo.difficulty_sample_rate = SAMPLE_RATE;
                     p.crescendo_activation = ForkActivation::always();
+                    p.prior_target_time_per_block = p.crescendo.target_time_per_block;
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.crescendo.past_median_time_sample_rate = PMT_SAMPLE_RATE;
@@ -1432,6 +1433,7 @@ async fn difficulty_test() {
                     p.crescendo.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
                     p.crescendo.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
                     p.crescendo_activation = ForkActivation::always();
+                    p.prior_target_time_per_block = p.crescendo.target_time_per_block;
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.crescendo.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;
