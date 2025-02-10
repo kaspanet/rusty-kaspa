@@ -40,10 +40,35 @@ impl ForkActivation {
         current_daa_score >= self.0
     }
 
+    pub fn to_forked_param<T: Copy>(self, pre: T, post: T) -> ForkedParam<T> {
+        ForkedParam::new(pre, post, self)
+    }
+
     /// Checks if the fork was "recently" activated, i.e., in the time frame of the provided range.
     /// This function returns false for forks that were always active, since they were never activated.
     pub fn is_within_range_from_activation(self, current_daa_score: u64, range: u64) -> bool {
         self != Self::always() && self.is_active(current_daa_score) && current_daa_score < self.0 + range
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ForkedParam<T: Copy> {
+    pre: T,
+    post: T,
+    activation: ForkActivation,
+}
+
+impl<T: Copy> ForkedParam<T> {
+    fn new(pre: T, post: T, activation: ForkActivation) -> Self {
+        Self { pre, post, activation }
+    }
+
+    pub fn get(&self, daa_score: u64) -> T {
+        if self.activation.is_active(daa_score) {
+            self.post
+        } else {
+            self.pre
+        }
     }
 }
 
