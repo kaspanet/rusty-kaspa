@@ -97,7 +97,7 @@ impl ConsensusServices {
             params.crescendo_activation,
             params.legacy_difficulty_window_size,
             params.crescendo.sampled_difficulty_window_size as usize,
-            params.min_difficulty_window_len,
+            params.min_difficulty_window_size,
             params.crescendo.difficulty_sample_rate,
             params.legacy_past_median_time_window_size(),
             params.sampled_past_median_time_window_size(),

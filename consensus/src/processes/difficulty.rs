@@ -62,11 +62,11 @@ trait DifficultyManagerExtension {
     }
 
     #[inline]
-    fn check_min_difficulty_window_len(difficulty_window_size: usize, min_difficulty_window_len: usize) {
+    fn check_min_difficulty_window_size(difficulty_window_size: usize, min_difficulty_window_size: usize) {
         assert!(
-            min_difficulty_window_len <= difficulty_window_size,
-            "min_difficulty_window_len {} is expected to be <= difficulty_window_size {}",
-            min_difficulty_window_len,
+            min_difficulty_window_size <= difficulty_window_size,
+            "min_difficulty_window_size {} is expected to be <= difficulty_window_size {}",
+            min_difficulty_window_size,
             difficulty_window_size
         );
     }
@@ -80,7 +80,7 @@ pub struct FullDifficultyManager<T: HeaderStoreReader> {
     genesis_bits: u32,
     max_difficulty_target: Uint320,
     difficulty_window_size: usize,
-    min_difficulty_window_len: usize,
+    min_difficulty_window_size: usize,
     target_time_per_block: u64,
 }
 
@@ -90,16 +90,16 @@ impl<T: HeaderStoreReader> FullDifficultyManager<T> {
         genesis_bits: u32,
         max_difficulty_target: Uint256,
         difficulty_window_size: usize,
-        min_difficulty_window_len: usize,
+        min_difficulty_window_size: usize,
         target_time_per_block: u64,
     ) -> Self {
-        Self::check_min_difficulty_window_len(difficulty_window_size, min_difficulty_window_len);
+        Self::check_min_difficulty_window_size(difficulty_window_size, min_difficulty_window_size);
         Self {
             headers_store,
             genesis_bits,
             max_difficulty_target: max_difficulty_target.into(),
             difficulty_window_size,
-            min_difficulty_window_len,
+            min_difficulty_window_size,
             target_time_per_block,
         }
     }
@@ -130,7 +130,7 @@ impl<T: HeaderStoreReader> FullDifficultyManager<T> {
         let mut difficulty_blocks = self.get_difficulty_blocks(window);
 
         // Until there are enough blocks for a valid calculation the difficulty should remain constant.
-        if difficulty_blocks.len() < self.min_difficulty_window_len {
+        if difficulty_blocks.len() < self.min_difficulty_window_size {
             return self.genesis_bits;
         }
 
@@ -170,7 +170,7 @@ pub struct SampledDifficultyManager<T: HeaderStoreReader> {
     genesis_bits: u32,
     max_difficulty_target: Uint320,
     difficulty_window_size: usize,
-    min_difficulty_window_len: usize,
+    min_difficulty_window_size: usize,
     difficulty_sample_rate: u64,
     target_time_per_block: u64,
 }
@@ -181,17 +181,17 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
         genesis_bits: u32,
         max_difficulty_target: Uint256,
         difficulty_window_size: usize,
-        min_difficulty_window_len: usize,
+        min_difficulty_window_size: usize,
         difficulty_sample_rate: u64,
         target_time_per_block: u64,
     ) -> Self {
-        Self::check_min_difficulty_window_len(difficulty_window_size, min_difficulty_window_len);
+        Self::check_min_difficulty_window_size(difficulty_window_size, min_difficulty_window_size);
         Self {
             headers_store,
             genesis_bits,
             max_difficulty_target: max_difficulty_target.into(),
             difficulty_window_size,
-            min_difficulty_window_len,
+            min_difficulty_window_size,
             difficulty_sample_rate,
             target_time_per_block,
         }
@@ -234,7 +234,7 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
         let mut difficulty_blocks = self.get_difficulty_blocks(window);
 
         // Until there are enough blocks for a valid calculation the difficulty should remain constant.
-        if difficulty_blocks.len() < self.min_difficulty_window_len {
+        if difficulty_blocks.len() < self.min_difficulty_window_size {
             return self.genesis_bits;
         }
 

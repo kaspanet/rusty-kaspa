@@ -57,7 +57,7 @@ pub mod consensus {
     /// difficulty until the window grows large enough.
     ///
     /// TODO: finalize
-    pub const MIN_DIFFICULTY_WINDOW_LEN: usize = 60;
+    pub const MIN_DIFFICULTY_WINDOW_SIZE: usize = 60;
 
     /// **Legacy** difficulty adjustment window size corresponding to ~44 minutes with 1 BPS
     pub const LEGACY_DIFFICULTY_WINDOW_SIZE: usize = 2641;

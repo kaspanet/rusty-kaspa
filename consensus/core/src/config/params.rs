@@ -149,8 +149,8 @@ pub struct Params {
     /// Size of full blocks window that is inspected to calculate the required difficulty of each block
     pub legacy_difficulty_window_size: usize,
 
-    /// The minimum length a difficulty window (full or sampled) must have to trigger a DAA calculation
-    pub min_difficulty_window_len: usize,
+    /// The minimum size a difficulty window (full or sampled) must have to trigger a DAA calculation
+    pub min_difficulty_window_size: usize,
 
     pub max_block_parents: u8,
     pub mergeset_size_limit: u64,
@@ -402,7 +402,7 @@ pub const MAINNET_PARAMS: Params = Params {
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
-    min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
+    min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     max_block_parents: 10,
     mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
@@ -461,7 +461,7 @@ pub const TESTNET_PARAMS: Params = Params {
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
-    min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
+    min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     max_block_parents: 10,
     mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
@@ -510,7 +510,7 @@ pub const SIMNET_PARAMS: Params = Params {
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
-    min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
+    min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
 
     //
     // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
@@ -561,7 +561,7 @@ pub const DEVNET_PARAMS: Params = Params {
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
-    min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
+    min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     max_block_parents: 10,
     mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,

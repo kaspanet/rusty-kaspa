@@ -265,7 +265,7 @@ async fn ghostdag_test() {
             .edit_consensus_params(|p| {
                 p.genesis.hash = string_to_hash(&test.genesis_id);
                 p.ghostdag_k = test.k;
-                p.min_difficulty_window_len = p.legacy_difficulty_window_size;
+                p.min_difficulty_window_size = p.legacy_difficulty_window_size;
             })
             .build();
         let consensus = TestConsensus::new(&config);
@@ -820,7 +820,7 @@ impl KaspadGoParams {
             max_difficulty_target: MAX_DIFFICULTY_TARGET,
             max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
             legacy_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
-            min_difficulty_window_len: self.DifficultyAdjustmentWindowSize,
+            min_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
             mergeset_size_limit: self.MergeSetSizeLimit,
             merge_depth: self.MergeDepth,
             finality_depth,
@@ -929,13 +929,13 @@ async fn json_test(file_path: &str, concurrency: bool) {
             let genesis_block = json_line_to_block(second_line);
             params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
         }
-        params.min_difficulty_window_len = params.legacy_difficulty_window_size;
+        params.min_difficulty_window_size = params.legacy_difficulty_window_size;
         params
     } else {
         let genesis_block = json_line_to_block(first_line);
         let mut params = DEVNET_PARAMS;
         params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
-        params.min_difficulty_window_len = params.legacy_difficulty_window_size;
+        params.min_difficulty_window_size = params.legacy_difficulty_window_size;
         params
     };
 
@@ -1662,7 +1662,7 @@ async fn selected_chain_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.min_difficulty_window_len = p.legacy_difficulty_window_size;
+            p.min_difficulty_window_size = p.legacy_difficulty_window_size;
         })
         .build();
     let consensus = TestConsensus::new(&config);
