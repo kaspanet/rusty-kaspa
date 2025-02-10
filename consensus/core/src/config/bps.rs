@@ -98,7 +98,7 @@ impl<const BPS: u64> Bps<BPS> {
         Self::ghostdag_k() as u64 * 10
     }
 
-    // TODO: finalize
+    // TODO (crescendo): finalize
     pub const fn pruning_depth() -> u64 {
         // Based on the analysis at https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf
         // and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
