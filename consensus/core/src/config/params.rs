@@ -52,7 +52,6 @@ impl ForkActivation {
 pub struct CrescendoParams {
     pub past_median_time_sampled_window_size: u64,
     pub sampled_difficulty_window_size: u64,
-    pub min_difficulty_window_len: usize,
 
     /// Target time per block (in milliseconds)
     pub target_time_per_block: u64,
@@ -78,7 +77,6 @@ pub struct CrescendoParams {
 pub const CRESCENDO: CrescendoParams = CrescendoParams {
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
-    min_difficulty_window_len: 60, // = 4 minutes. TODO: finalize
 
     //
     // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~

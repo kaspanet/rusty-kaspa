@@ -4,7 +4,6 @@ use crate::model::stores::{
     headers::HeaderStoreReader,
 };
 use kaspa_consensus_core::{
-    config::params::MIN_DIFFICULTY_WINDOW_LEN,
     errors::difficulty::{DifficultyError, DifficultyResult},
     BlockHashSet, BlueWorkType, MAX_WORK_LEVEL,
 };
@@ -65,10 +64,9 @@ trait DifficultyManagerExtension {
     #[inline]
     fn check_min_difficulty_window_len(difficulty_window_size: usize, min_difficulty_window_len: usize) {
         assert!(
-            MIN_DIFFICULTY_WINDOW_LEN <= min_difficulty_window_len && min_difficulty_window_len <= difficulty_window_size,
-            "min_difficulty_window_len {} is expected to fit within {}..={}",
+            min_difficulty_window_len <= difficulty_window_size,
+            "min_difficulty_window_len {} is expected to be <= difficulty_window_size {}",
             min_difficulty_window_len,
-            MIN_DIFFICULTY_WINDOW_LEN,
             difficulty_window_size
         );
     }
