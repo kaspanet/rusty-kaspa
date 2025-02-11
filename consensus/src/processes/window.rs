@@ -394,13 +394,13 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             return Err(RuleError::InsufficientDaaWindowSize(0));
         }
 
-        // [Crescendo]: for DAA, filter non activated blocks from the window
-        let filter_non_activated = matches!(window_type, WindowType::DifficultyWindow | WindowType::VaryingWindow(_));
+        // [Crescendo]: filter non activated blocks from the window
+        let filter_non_activated = true;
 
         /*
             Crescendo extended explanation
 
-            Background: for the post-activation DAA window we filter all previously non activated blocks.
+            Background: for the post-activation window we filter all previously non activated blocks.
             See https://github.com/kaspanet/kips/blob/master/kip-0014.md#handling-difficulty-adjustment-during-the-transition
 
             We consider a block C to be not activated from the pov of this block (B) if either:
@@ -413,7 +413,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             (since the window will remain smaller than the target size so the blue work exit condition will not suffice).
 
             Note that the DAA score *is* monotonic over chain blocks, so once we identify a block on chain(B) which is not
-            activated we can halt the search.
+            activated we can halt the search (since we are traversing down the chain).
         */
 
         let inner_cache = match window_type {
@@ -650,13 +650,15 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
 
     fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
         let window = self.block_window(ghostdag_data, WindowType::MedianTimeWindow)?;
-        let past_median_time = self.past_median_time_manager.calc_past_median_time(&window)?;
+        let past_median_time = self.past_median_time_manager.calc_past_median_time(&window, ghostdag_data.selected_parent)?;
         Ok((past_median_time, window))
     }
 
     fn calc_past_median_time_for_known_hash(&self, hash: Hash) -> Result<u64, RuleError> {
         if let Some(window) = self.block_window_cache_for_past_median_time.get(&hash, WindowOrigin::Sampled) {
-            let past_median_time = self.past_median_time_manager.calc_past_median_time(&window)?;
+            let past_median_time = self
+                .past_median_time_manager
+                .calc_past_median_time(&window, self.ghostdag_store.get_selected_parent(hash).unwrap())?;
             Ok(past_median_time)
         } else {
             let ghostdag_data = self.ghostdag_store.get_data(hash).unwrap();
