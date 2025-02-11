@@ -114,7 +114,6 @@ pub struct HeaderProcessor {
     // Config
     pub(super) genesis: GenesisBlock,
     pub(super) timestamp_deviation_tolerance: u64,
-    pub(super) target_time_per_block: u64,
     pub(super) max_block_parents: u8,
     pub(super) mergeset_size_limit: u64,
     pub(super) skip_proof_of_work: bool,
@@ -201,7 +200,6 @@ impl HeaderProcessor {
             counters,
 
             timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
-            target_time_per_block: params.prior_target_time_per_block,
             max_block_parents: params.max_block_parents,
             mergeset_size_limit: params.mergeset_size_limit,
             skip_proof_of_work: params.skip_proof_of_work,
