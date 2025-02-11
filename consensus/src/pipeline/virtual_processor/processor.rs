@@ -715,7 +715,10 @@ impl VirtualStateProcessor {
         let max_candidates = self.max_virtual_parent_candidates(max_block_parents);
 
         // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
-        if candidates.len() > max_candidates {
+        if self.mining_rules.blue_parents_only.load(Ordering::Relaxed) {
+            // pick 100% of the top blue work blocks
+            candidates.truncate(max_candidates);
+        } else if candidates.len() > max_candidates {
             // make_contiguous should be a no op since the deque was just built
             let slice = candidates.make_contiguous();
 
@@ -804,25 +807,32 @@ impl VirtualStateProcessor {
         let mut ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
         let merge_depth_root = self.depth_manager.calc_merge_depth_root(&ghostdag_data, current_pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;
-        let mut bad_reds = Vec::new();
+        let bad_reds = if self.mining_rules.blue_parents_only.load(Ordering::Relaxed) {
+            // Treat all reds as bad reds when this rule is triggered
+            ghostdag_data.mergeset_reds.as_ref().to_vec()
+        } else {
+            let mut inner_bad_reds = Vec::new();
 
-        //
-        // Note that the code below optimizes for the usual case where there are no merge-bound-violating blocks.
-        //
+            //
+            // Note that the code below optimizes for the usual case where there are no merge-bound-violating blocks.
+            //
 
-        // Find red blocks violating the merge bound and which are not kosherized by any blue
-        for red in ghostdag_data.mergeset_reds.iter().copied() {
-            if self.reachability_service.is_dag_ancestor_of(merge_depth_root, red) {
-                continue;
+            // Find red blocks violating the merge bound and which are not kosherized by any blue
+            for red in ghostdag_data.mergeset_reds.iter().copied() {
+                if self.reachability_service.is_dag_ancestor_of(merge_depth_root, red) {
+                    continue;
+                }
+                // Lazy load the kosherizing blocks since this case is extremely rare
+                if kosherizing_blues.is_none() {
+                    kosherizing_blues = Some(self.depth_manager.kosherizing_blues(&ghostdag_data, merge_depth_root).collect());
+                }
+                if !self.reachability_service.is_dag_ancestor_of_any(red, &mut kosherizing_blues.as_ref().unwrap().iter().copied()) {
+                    inner_bad_reds.push(red);
+                }
             }
-            // Lazy load the kosherizing blocks since this case is extremely rare
-            if kosherizing_blues.is_none() {
-                kosherizing_blues = Some(self.depth_manager.kosherizing_blues(&ghostdag_data, merge_depth_root).collect());
-            }
-            if !self.reachability_service.is_dag_ancestor_of_any(red, &mut kosherizing_blues.as_ref().unwrap().iter().copied()) {
-                bad_reds.push(red);
-            }
-        }
+
+            inner_bad_reds
+        };
 
         if !bad_reds.is_empty() {
             // Remove all parents which lead to merging a bad red
