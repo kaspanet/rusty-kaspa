@@ -445,21 +445,20 @@ impl IbdFlow {
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::BlockHeaders)?;
         let chunk: HeadersChunk = msg.try_into()?;
-
-        let jobs =
-            chunk.into_iter().map(|header| consensus.validate_and_insert_block(Block::from_header_arc(header)).virtual_state_task);
-
+        let jobs: Vec<BlockValidationFuture> =
+            chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task).collect();
         try_join_all(jobs).await?;
         dequeue_with_timeout!(self.incoming_route, Payload::DoneHeaders)?;
 
         if consensus.async_get_block_status(relay_block_hash).await.is_none() {
             // If the relay block has still not been received, the peer is misbehaving
-            return Err(ProtocolError::OtherOwned(format!(
+            Err(ProtocolError::OtherOwned(format!(
                 "did not receive relay block {} from peer {} during block download",
                 relay_block_hash, self.router
-            )));
+            )))
+        } else {
+            Ok(())
         }
-        Ok(())
     }
 
     async fn validate_staging_timestamps(
