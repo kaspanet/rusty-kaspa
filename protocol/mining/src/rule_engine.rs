@@ -24,6 +24,8 @@ use kaspa_core::{
 };
 use kaspa_p2p_lib::Hub;
 
+use crate::rules::mining_rule::MiningRule;
+
 const RULE_ENGINE: &str = "mining-rule-engine";
 const SYNC_RATE_THRESHOLD: f64 = 0.10;
 
@@ -37,6 +39,7 @@ pub struct MiningRuleEngine {
     consensus_manager: Arc<ConsensusManager>,
     hub: Hub,
     mining_rules: Arc<MiningRules>,
+    rules: Vec<Arc<dyn MiningRule>>,
 }
 
 impl MiningRuleEngine {
@@ -80,11 +83,12 @@ impl MiningRuleEngine {
                         .saturating_sub(self.config.finality_duration_in_milliseconds().get(sink_daa_timestamp.daa_score) * 3);
 
                 trace!(
-                    "Sync rate: {:.2} | Finality point recent: {} | Elapsed time: {}s | Found/Expected blocks: {}/{}",
+                    "Sync rate: {:.2} | Finality point recent: {} | Elapsed time: {}s | Connected: {} | Found/Expected blocks: {}/{}",
                     rate,
                     is_finality_recent,
                     elapsed_time.as_secs(),
                     delta.body_counts,
+                    self.has_sufficient_peer_connectivity(),
                     expected_blocks,
                 );
 
@@ -110,6 +114,15 @@ impl MiningRuleEngine {
 
                 // START - Rule Engine
                 trace!("Current Mining Rule: {:?}", self.mining_rules);
+
+                // Blue Parents Only Check:
+                for rule in &self.rules {
+                    rule.check_rule(&snapshot);
+                }
+
+                // No Transactions Check:
+                // TODO: implement this part
+
                 // End - Rule Engine
             }
 
@@ -126,6 +139,8 @@ impl MiningRuleEngine {
         hub: Hub,
         mining_rules: Arc<MiningRules>,
     ) -> Self {
+        let rules: Vec<Arc<(dyn MiningRule + 'static)>> = vec![];
+
         Self {
             consensus_manager,
             config,
@@ -134,6 +149,7 @@ impl MiningRuleEngine {
             hub,
             use_sync_rate_rule: Arc::new(AtomicBool::new(false)),
             mining_rules,
+            rules,
         }
     }
 
