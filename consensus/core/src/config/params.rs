@@ -34,12 +34,15 @@ impl ForkActivation {
         Self(Self::ALWAYS)
     }
 
-    pub fn is_active(self, current_daa_score: u64) -> bool {
-        current_daa_score >= self.0
+    /// Returns the actual DAA score triggering the activation. Should be used only
+    /// for cases where the explicit value is required for computations (e.g., coinbase subsidy).
+    /// Otherwise, **activation checks should always go through `self.is_active(..)`**
+    pub fn daa_score(self) -> u64 {
+        self.0
     }
 
-    pub fn to_forked_param<T: Copy>(self, pre: T, post: T) -> ForkedParam<T> {
-        ForkedParam::new(pre, post, self)
+    pub fn is_active(self, current_daa_score: u64) -> bool {
+        current_daa_score >= self.0
     }
 
     /// Checks if the fork was "recently" activated, i.e., in the time frame of the provided range.
@@ -64,6 +67,10 @@ impl<T: Copy> ForkedParam<T> {
 
     pub fn new_const(val: T) -> Self {
         Self { pre: val, post: val, activation: ForkActivation::never() }
+    }
+
+    pub fn activation(&self) -> ForkActivation {
+        self.activation
     }
 
     pub fn get(&self, daa_score: u64) -> T {
