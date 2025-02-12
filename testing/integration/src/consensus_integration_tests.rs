@@ -264,7 +264,7 @@ async fn ghostdag_test() {
             .skip_proof_of_work()
             .edit_consensus_params(|p| {
                 p.genesis.hash = string_to_hash(&test.genesis_id);
-                p.ghostdag_k = test.k;
+                p.prior_ghostdag_k = test.k;
                 p.min_difficulty_window_size = p.prior_difficulty_window_size;
             })
             .build();
@@ -339,7 +339,7 @@ async fn block_window_test() {
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.genesis.hash = string_to_hash("A");
-            p.ghostdag_k = 1;
+            p.prior_ghostdag_k = 1;
         })
         .build();
     let consensus = TestConsensus::new(&config);
@@ -587,7 +587,7 @@ async fn median_time_test() {
         let consensus = TestConsensus::new(&test.config);
         let wait_handles = consensus.init();
 
-        let num_blocks = test.config.past_median_time_window_size().bootstrap() as u64 * test.config.past_median_time_sample_rate(0);
+        let num_blocks = test.config.past_median_time_window_size().before() as u64 * test.config.past_median_time_sample_rate(0);
         let timestamp_deviation_tolerance = test.config.timestamp_deviation_tolerance;
         for i in 1..(num_blocks + 1) {
             let parent = if i == 1 { test.config.genesis.hash } else { (i - 1).into() };
@@ -813,7 +813,7 @@ impl KaspadGoParams {
             dns_seeders: &[],
             net: NetworkId { network_type: Mainnet, suffix: None },
             genesis: GENESIS,
-            ghostdag_k: self.K,
+            prior_ghostdag_k: self.K,
             timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
             prior_target_time_per_block: self.TargetTimePerBlock / 1_000_000,
             max_block_parents: self.MaxBlockParents,
@@ -1261,12 +1261,12 @@ async fn bounded_merge_depth_test() {
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.ghostdag_k = 5;
+            p.prior_ghostdag_k = 5;
             p.merge_depth = 7;
         })
         .build();
 
-    assert!((config.ghostdag_k as u64) < config.merge_depth, "K must be smaller than merge depth for this test to run");
+    assert!((config.ghostdag_k().before() as u64) < config.merge_depth, "K must be smaller than merge depth for this test to run");
 
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
@@ -1317,7 +1317,7 @@ async fn bounded_merge_depth_test() {
         .unwrap();
 
     // We extend the selected chain until kosherizing_hash will be red from the virtual POV.
-    for i in 0..config.ghostdag_k {
+    for i in 0..config.ghostdag_k().before() {
         let hash = Hash::from_u64_word((i + 1) as u64 * 1000);
         consensus.add_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
@@ -1364,8 +1364,7 @@ async fn difficulty_test() {
     }
 
     fn full_window_bits(consensus: &TestConsensus, hash: Hash) -> u32 {
-        let window_size =
-            consensus.params().difficulty_window_size().bootstrap() * consensus.params().difficulty_sample_rate(0) as usize;
+        let window_size = consensus.params().difficulty_window_size().before() * consensus.params().difficulty_sample_rate(0) as usize;
         let ghostdag_data = &consensus.ghostdag_store().get_data(hash).unwrap();
         let window = consensus.window_manager().block_window(ghostdag_data, WindowType::VaryingWindow(window_size)).unwrap();
         assert_eq!(window.blocks.len(), window_size);
@@ -1394,7 +1393,7 @@ async fn difficulty_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.ghostdag_k = 1;
+                    p.prior_ghostdag_k = 1;
                     p.prior_difficulty_window_size = FULL_WINDOW_SIZE;
                     p.crescendo_activation = ForkActivation::never();
                     // Define past median time so that calls to add_block_with_min_time create blocks
@@ -1409,7 +1408,8 @@ async fn difficulty_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.ghostdag_k = 1;
+                    p.prior_ghostdag_k = 1;
+                    p.crescendo.ghostdag_k = 1;
                     p.crescendo.sampled_difficulty_window_size = SAMPLED_WINDOW_SIZE;
                     p.crescendo.difficulty_sample_rate = SAMPLE_RATE;
                     p.crescendo_activation = ForkActivation::always();
@@ -1428,7 +1428,8 @@ async fn difficulty_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.ghostdag_k = 1;
+                    p.prior_ghostdag_k = 1;
+                    p.crescendo.ghostdag_k = 1;
                     p.prior_target_time_per_block /= HIGH_BPS;
                     p.crescendo.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
                     p.crescendo.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
@@ -1450,7 +1451,7 @@ async fn difficulty_test() {
         let wait_handles = consensus.init();
 
         let sample_rate = test.config.difficulty_sample_rate(0);
-        let expanded_window_size = test.config.difficulty_window_size().bootstrap() * sample_rate as usize;
+        let expanded_window_size = test.config.difficulty_window_size().before() * sample_rate as usize;
 
         let fake_genesis = Header {
             hash: test.config.genesis.hash,

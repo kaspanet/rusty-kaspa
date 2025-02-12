@@ -62,6 +62,10 @@ impl<T: Copy> ForkedParam<T> {
         Self { pre, post, activation }
     }
 
+    pub fn new_const(val: T) -> Self {
+        Self { pre: val, post: val, activation: ForkActivation::never() }
+    }
+
     pub fn get(&self, daa_score: u64) -> T {
         if self.activation.is_active(daa_score) {
             self.post
@@ -70,16 +74,16 @@ impl<T: Copy> ForkedParam<T> {
         }
     }
 
-    /// Returns the value at inception (which is `pre` unless activation = always)
-    pub fn bootstrap(&self) -> T {
+    /// Returns the value before activation (=pre unless activation = always)
+    pub fn before(&self) -> T {
         match self.activation.0 {
             ForkActivation::ALWAYS => self.post,
             _ => self.pre,
         }
     }
 
-    /// Returns the permanent long-term value (which is `post` unless the activation is never scheduled)
-    pub fn permanent(&self) -> T {
+    /// Returns the permanent long-term value after activation (=post unless the activation is never scheduled)
+    pub fn after(&self) -> T {
         match self.activation.0 {
             ForkActivation::NEVER => self.pre,
             _ => self.post,
@@ -175,7 +179,7 @@ pub struct Params {
     pub dns_seeders: &'static [&'static str],
     pub net: NetworkId,
     pub genesis: GenesisBlock,
-    pub ghostdag_k: KType,
+    pub prior_ghostdag_k: KType,
 
     /// Timestamp deviation tolerance (in seconds)
     pub timestamp_deviation_tolerance: u64,
@@ -311,6 +315,10 @@ impl Params {
         )
     }
 
+    pub fn ghostdag_k(&self) -> ForkedParam<KType> {
+        ForkedParam::new(self.prior_ghostdag_k, self.crescendo.ghostdag_k, self.crescendo_activation)
+    }
+
     pub fn daa_window_duration_in_blocks(&self, selected_parent_daa_score: u64) -> u64 {
         if self.crescendo_activation.is_active(selected_parent_daa_score) {
             self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size
@@ -335,8 +343,8 @@ impl Params {
     pub fn anticone_finalization_depth(&self) -> u64 {
         let anticone_finalization_depth = self.finality_depth
             + self.merge_depth
-            + 4 * self.mergeset_size_limit * self.ghostdag_k as u64
-            + 2 * self.ghostdag_k as u64
+            + 4 * self.mergeset_size_limit * self.prior_ghostdag_k as u64
+            + 2 * self.prior_ghostdag_k as u64
             + 2;
 
         // In mainnet it's guaranteed that `self.pruning_depth` is greater
@@ -442,7 +450,7 @@ pub const MAINNET_PARAMS: Params = Params {
     ],
     net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
-    ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
+    prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     prior_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
@@ -501,7 +509,7 @@ pub const TESTNET_PARAMS: Params = Params {
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 10),
     genesis: TESTNET_GENESIS,
-    ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
+    prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     prior_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
@@ -562,7 +570,7 @@ pub const SIMNET_PARAMS: Params = Params {
     // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
     //
     // Note we use a 10 BPS configuration for simnet
-    ghostdag_k: TenBps::ghostdag_k(),
+    prior_ghostdag_k: TenBps::ghostdag_k(),
     prior_target_time_per_block: TenBps::target_time_per_block(),
     // For simnet, we deviate from TN11 configuration and allow at least 64 parents in order to support mempool benchmarks out of the box
     max_block_parents: if TenBps::max_block_parents() > 64 { TenBps::max_block_parents() } else { 64 },
@@ -601,7 +609,7 @@ pub const DEVNET_PARAMS: Params = Params {
     dns_seeders: &[],
     net: NetworkId::new(NetworkType::Devnet),
     genesis: DEVNET_GENESIS,
-    ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
+    prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     prior_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,

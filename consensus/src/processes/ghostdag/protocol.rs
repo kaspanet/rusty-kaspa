@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use kaspa_consensus_core::{
     blockhash::{self, BlockHashExtensions, BlockHashes},
+    config::params::ForkedParam,
     BlockHashMap, BlockLevel, BlueWorkType, HashMapCustomHasher,
 };
 use kaspa_hashes::Hash;
@@ -24,7 +25,7 @@ use super::ordering::*;
 #[derive(Clone)]
 pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> {
     genesis_hash: Hash,
-    pub(super) k: KType,
+    pub(super) k: ForkedParam<KType>,
     pub(super) ghostdag_store: Arc<T>,
     pub(super) relations_store: S,
     pub(super) headers_store: Arc<V>,
@@ -43,7 +44,7 @@ pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: R
 impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
     pub fn new(
         genesis_hash: Hash,
-        k: KType,
+        k: ForkedParam<KType>,
         ghostdag_store: Arc<T>,
         relations_store: S,
         headers_store: Arc<V>,
@@ -65,7 +66,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
     ) -> Self {
         Self {
             genesis_hash,
-            k,
+            k: ForkedParam::new_const(k),
             ghostdag_store,
             relations_store,
             reachability_service,
@@ -128,13 +129,15 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
         // Run the GHOSTDAG parent selection algorithm
         let selected_parent = self.find_selected_parent(parents.iter().copied());
+        // [Crescendo]: get k as function of the selected parent DAA score
+        let k = self.k.get(self.headers_store.get_daa_score(selected_parent).unwrap());
         // Initialize new GHOSTDAG block data with the selected parent
-        let mut new_block_data = GhostdagData::new_with_selected_parent(selected_parent, self.k);
+        let mut new_block_data = GhostdagData::new_with_selected_parent(selected_parent, k);
         // Get the mergeset in consensus-agreed topological order (topological here means forward in time from blocks to children)
         let ordered_mergeset = self.ordered_mergeset_without_selected_parent(selected_parent, parents);
 
         for blue_candidate in ordered_mergeset.iter().cloned() {
-            let coloring = self.check_blue_candidate(&new_block_data, blue_candidate);
+            let coloring = self.check_blue_candidate(&new_block_data, blue_candidate, k);
 
             if let ColoringOutput::Blue(blue_anticone_size, blues_anticone_sizes) = coloring {
                 // No k-cluster violation found, we can now set the candidate block as blue
@@ -172,6 +175,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         blue_candidate: Hash,
         candidate_blues_anticone_sizes: &mut BlockHashMap<KType>,
         candidate_blue_anticone_size: &mut KType,
+        k: KType,
     ) -> ColoringState {
         // If blue_candidate is in the future of chain_block, it means
         // that all remaining blues are in the past of chain_block and thus
@@ -198,12 +202,12 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             candidate_blues_anticone_sizes.insert(block, self.blue_anticone_size(block, new_block_data));
 
             *candidate_blue_anticone_size += 1;
-            if *candidate_blue_anticone_size > self.k {
+            if *candidate_blue_anticone_size > k {
                 // k-cluster violation: The candidate's blue anticone exceeded k
                 return ColoringState::Red;
             }
 
-            if *candidate_blues_anticone_sizes.get(&block).unwrap() == self.k {
+            if *candidate_blues_anticone_sizes.get(&block).unwrap() == k {
                 // k-cluster violation: A block in candidate's blue anticone already
                 // has k blue blocks in its own anticone
                 return ColoringState::Red;
@@ -211,7 +215,9 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
             // This is a sanity check that validates that a blue
             // block's blue anticone is not already larger than K.
-            assert!(*candidate_blues_anticone_sizes.get(&block).unwrap() <= self.k, "found blue anticone larger than K");
+            assert!(*candidate_blues_anticone_sizes.get(&block).unwrap() <= k, "found blue anticone larger than K");
+            // [Crescendo]: this ^ is a valid assert since we are increasing k. Had we decreased k, this line would
+            //              need to be removed and the condition above would to be changed to >= k
         }
 
         ColoringState::Pending
@@ -236,14 +242,14 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         }
     }
 
-    fn check_blue_candidate(&self, new_block_data: &GhostdagData, blue_candidate: Hash) -> ColoringOutput {
+    fn check_blue_candidate(&self, new_block_data: &GhostdagData, blue_candidate: Hash, k: KType) -> ColoringOutput {
         // The maximum length of new_block_data.mergeset_blues can be K+1 because
         // it contains the selected parent.
-        if new_block_data.mergeset_blues.len() as KType == self.k + 1 {
+        if new_block_data.mergeset_blues.len() as KType == k + 1 {
             return ColoringOutput::Red;
         }
 
-        let mut candidate_blues_anticone_sizes: BlockHashMap<KType> = BlockHashMap::with_capacity(self.k as usize);
+        let mut candidate_blues_anticone_sizes: BlockHashMap<KType> = BlockHashMap::with_capacity(k as usize);
         // Iterate over all blocks in the blue past of the new block that are not in the past
         // of blue_candidate, and check for each one of them if blue_candidate potentially
         // enlarges their blue anticone to be over K, or that they enlarge the blue anticone
@@ -258,6 +264,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
                 blue_candidate,
                 &mut candidate_blues_anticone_sizes,
                 &mut candidate_blue_anticone_size,
+                k,
             );
 
             match state {

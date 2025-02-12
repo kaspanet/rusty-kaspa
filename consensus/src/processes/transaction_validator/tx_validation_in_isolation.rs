@@ -35,17 +35,23 @@ impl TransactionValidator {
         self.check_transaction_script_public_keys(tx)
     }
 
-    fn check_coinbase_in_isolation(&self, tx: &kaspa_consensus_core::tx::Transaction) -> TxResult<()> {
+    fn check_coinbase_in_isolation(&self, tx: &Transaction) -> TxResult<()> {
         if !tx.is_coinbase() {
             return Ok(());
         }
         if !tx.inputs.is_empty() {
             return Err(TxRuleError::CoinbaseHasInputs(tx.inputs.len()));
         }
+
+        /*
+        [Crescendo]: moved this specific check to body_validation_in_context since it depends on fork activation
+                     TODO (post HF): move back here
+
         let outputs_limit = self.ghostdag_k as u64 + 2;
         if tx.outputs.len() as u64 > outputs_limit {
             return Err(TxRuleError::CoinbaseTooManyOutputs(tx.outputs.len(), outputs_limit));
         }
+        */
         for (i, output) in tx.outputs.iter().enumerate() {
             if output.script_public_key.script().len() > self.coinbase_payload_script_public_key_max_len as usize {
                 return Err(TxRuleError::CoinbaseScriptPublicKeyTooLong(i));
@@ -175,7 +181,6 @@ mod tests {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
-            params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             Default::default(),

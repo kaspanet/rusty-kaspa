@@ -109,8 +109,8 @@ impl ConsensusStorage {
         let headers_compact_bytes = size_of::<Hash>() + size_of::<CompactHeaderData>();
 
         // If the fork is already scheduled, prefer the long-term, permanent values
-        let difficulty_window_bytes = params.difficulty_window_size().permanent() * size_of::<SortableBlock>();
-        let median_window_bytes = params.past_median_time_window_size().permanent() * size_of::<SortableBlock>();
+        let difficulty_window_bytes = params.difficulty_window_size().after() * size_of::<SortableBlock>();
+        let median_window_bytes = params.past_median_time_window_size().after() * size_of::<SortableBlock>();
 
         // Cache policy builders
         let daa_excluded_builder =

@@ -114,7 +114,7 @@ impl ConsensusServices {
         );
         let ghostdag_manager = GhostdagManager::new(
             params.genesis.hash,
-            params.ghostdag_k,
+            params.ghostdag_k(),
             storage.ghostdag_store.clone(),
             relations_services[0].clone(),
             storage.headers_store.clone(),
@@ -141,7 +141,6 @@ impl ConsensusServices {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
-            params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             tx_script_cache_counters,
@@ -180,7 +179,7 @@ impl ConsensusServices {
             params.genesis.hash,
             params.pruning_proof_m,
             params.anticone_finalization_depth(),
-            params.ghostdag_k,
+            params.prior_ghostdag_k, // TODO (Crescendo)
             is_consensus_exiting,
         ));
 

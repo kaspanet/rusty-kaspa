@@ -292,15 +292,15 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
     if args.testnet11 {
         info!(
             "Using kaspa-testnet-11 configuration (GHOSTDAG K={}, DAA window size={}, Median time window size={})",
-            params.ghostdag_k,
-            params.difficulty_window_size().bootstrap(),
-            params.past_median_time_window_size().bootstrap(),
+            params.ghostdag_k().before(),
+            params.difficulty_window_size().before(),
+            params.past_median_time_window_size().before(),
         );
     } else {
         let max_delay = args.delay.max(NETWORK_DELAY_BOUND as f64);
-        let k = u64::max(calculate_ghostdag_k(2.0 * max_delay * args.bps, 0.05), params.ghostdag_k as u64);
+        let k = u64::max(calculate_ghostdag_k(2.0 * max_delay * args.bps, 0.05), params.ghostdag_k().before() as u64);
         let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
-        params.ghostdag_k = k;
+        params.prior_ghostdag_k = k;
         params.mergeset_size_limit = k as u64 * 10;
         params.max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
         params.prior_target_time_per_block = (1000.0 / args.bps) as u64;
@@ -320,12 +320,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
             params.crescendo.difficulty_sample_rate = (2.0 * args.bps) as u64;
         }
 
-        info!(
-            "2Dλ={}, GHOSTDAG K={}, DAA window size={}",
-            2.0 * args.delay * args.bps,
-            k,
-            params.difficulty_window_size().bootstrap()
-        );
+        info!("2Dλ={}, GHOSTDAG K={}, DAA window size={}", 2.0 * args.delay * args.bps, k, params.difficulty_window_size().before());
     }
     if args.test_pruning {
         params.pruning_proof_m = 16;
@@ -352,7 +347,7 @@ fn apply_args_to_perf_params(args: &Args, perf_params: &mut PerfParams) {
 async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: &Params, delay: f64, bps: f64, header_only: bool) {
     let hashes = topologically_ordered_hashes(src_consensus, params.genesis.hash);
     let num_blocks = hashes.len();
-    let num_txs = print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k);
+    let num_txs = print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k().before());
     if header_only {
         info!("Validating {num_blocks} headers...");
     } else {
