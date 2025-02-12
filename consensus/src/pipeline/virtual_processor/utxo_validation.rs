@@ -146,7 +146,7 @@ impl VirtualStateProcessor {
         // Make sure accepted tx ids are sorted before building the merkle root
         // NOTE: when subnetworks will be enabled, the sort should consider them in order to allow grouping under a merkle subtree
         // Preserve canonical order of accepted transactions after hard-fork
-        if !self.accepted_id_merkle_root.is_active(pov_daa_score) {
+        if !self.crescendo_activation.is_active(pov_daa_score) {
             ctx.accepted_tx_ids.sort();
         }
     }
@@ -172,7 +172,7 @@ impl VirtualStateProcessor {
         trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
         // Verify header accepted_id_merkle_root
-        let expected_accepted_id_merkle_root = if self.accepted_id_merkle_root.is_active(header.daa_score) {
+        let expected_accepted_id_merkle_root = if self.crescendo_activation.is_active(header.daa_score) {
             kaspa_merkle::merkle_hash(
                 self.headers_store.get_header(ctx.selected_parent()).unwrap().accepted_id_merkle_root,
                 kaspa_merkle::calc_merkle_root(ctx.accepted_tx_ids.iter().copied()),
@@ -180,6 +180,7 @@ impl VirtualStateProcessor {
         } else {
             kaspa_merkle::calc_merkle_root(ctx.accepted_tx_ids.iter().copied())
         };
+
         if expected_accepted_id_merkle_root != header.accepted_id_merkle_root {
             return Err(BadAcceptedIDMerkleRoot(header.hash, header.accepted_id_merkle_root, expected_accepted_id_merkle_root));
         }
