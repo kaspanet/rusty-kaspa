@@ -6,7 +6,7 @@ use std::sync::{
 use kaspa_consensus_core::api::counters::ProcessingCountersSnapshot;
 use kaspa_core::{trace, warn};
 
-use super::mining_rule::MiningRule;
+use super::{mining_rule::MiningRule, ExtraData};
 
 const VIRTUAL_PROCESSING_TRIGGER_THRESHOLD: f64 = 500.0; // 500 milliseconds
 const VIRTUAL_PROCESSING_RECOVERY_THRESHOLD: f64 = 100.0; // 100 milliseconds
@@ -22,7 +22,7 @@ impl BlueParentsOnlyRule {
 }
 
 impl MiningRule for BlueParentsOnlyRule {
-    fn check_rule(&self, delta: &ProcessingCountersSnapshot) {
+    fn check_rule(&self, delta: &ProcessingCountersSnapshot, _extra_data: &ExtraData) {
         let received_blocks = delta.body_counts.max(delta.header_counts) as f64;
         let virtual_processing_avg_time_per_block_ms =
             if received_blocks > 0.0 { (delta.virtual_processing_time as f64) / received_blocks } else { 0.0 };
