@@ -958,9 +958,11 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv, subscription_context.clone()));
 
     // External storage for storing block bodies. This allows separating header and body processing phases
-    let (_external_db_lifetime, external_storage) = create_temp_db!(ConnBuilder::default().with_files_limit(10)).expect("Failed to create temp db");
+    let (_external_db_lifetime, external_storage) =
+        create_temp_db!(ConnBuilder::default().with_files_limit(10)).expect("Failed to create temp db");
     let external_block_store = DbBlockTransactionsStore::new(external_storage, CachePolicy::Count(config.perf.block_data_cache_size));
-    let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10)).expect("Failed to create temp db");
+    let (_utxoindex_db_lifetime, utxoindex_db) =
+        create_temp_db!(ConnBuilder::default().with_files_limit(10)).expect("Failed to create temp db");
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(

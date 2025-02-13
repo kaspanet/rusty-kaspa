@@ -388,15 +388,11 @@ impl Drop for UtxosChangedSubscription {
             if count > 0 {
                 Some(count - 1)
             } else {
-                None 
+                None
             }
         });
 
-        trace!(
-            "UtxosChangedSubscription: {} in total (drop {})",
-            UTXOS_CHANGED_SUBSCRIPTIONS.load(Ordering::SeqCst),
-            self
-        );
+        trace!("UtxosChangedSubscription: {} in total (drop {})", UTXOS_CHANGED_SUBSCRIPTIONS.load(Ordering::SeqCst), self);
     }
 }
 

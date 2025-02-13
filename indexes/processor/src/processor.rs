@@ -154,7 +154,8 @@ mod tests {
     impl NotifyPipeline {
         fn new() -> Self {
             let (consensus_sender, consensus_receiver) = unbounded();
-            let (utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10)).expect("Failed to create temp db");
+            let (utxoindex_db_lifetime, utxoindex_db) =
+                create_temp_db!(ConnBuilder::default().with_files_limit(10)).expect("Failed to create temp db");
             let config = Arc::new(Config::new(DEVNET_PARAMS));
             let tc = TestConsensus::new(&config);
             tc.init();
