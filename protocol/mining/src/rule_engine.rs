@@ -78,6 +78,8 @@ impl MiningRuleEngine {
                     has_sufficient_peer_connectivity: self.has_sufficient_peer_connectivity(),
                     finality_duration: self.config.finality_duration(),
                     elapsed_time,
+                    sink_daa_score_timestamp: session.async_get_sink_daa_score_timestamp().await,
+                    merge_depth: self.config.merge_depth,
                 };
 
                 trace!("Current Mining Rule: {:?}", self.mining_rules);
