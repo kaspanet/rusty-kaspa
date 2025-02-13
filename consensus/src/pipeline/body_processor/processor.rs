@@ -193,6 +193,11 @@ impl BlockBodyProcessor {
         let mass = match self.validate_body(block, is_trusted) {
             Ok(mass) => mass,
             Err(e) => {
+                // Count the number of bad merkle root errors as this may trigger NoTransactions rule
+                if matches!(e, RuleError::BadMerkleRoot(_, _)) {
+                    self.counters.bad_merkle_root_count.fetch_add(1, Ordering::Relaxed);
+                }
+
                 // We mark invalid blocks with status StatusInvalid except in the
                 // case of the following errors:
                 // MissingParents - If we got MissingParents the block shouldn't be
