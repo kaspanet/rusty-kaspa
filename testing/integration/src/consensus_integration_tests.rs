@@ -125,7 +125,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
     map.get_mut(&blocks[0]).unwrap().parents.push(root);
 
     // Act
-    let (_temp_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10)).expect("Failed to create temp db");
+    let (_temp_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10)).unwrap();
     let mut store = DbReachabilityStore::new(db.clone(), CachePolicy::Count(50_000), CachePolicy::Count(50_000));
     let mut relations = DbRelationsStore::new(db, 0, CachePolicy::Count(100_000), CachePolicy::Count(100_000)); // TODO: remove level
     let mut builder = DagBuilder::new(&mut store, &mut relations);
@@ -959,10 +959,10 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
     // External storage for storing block bodies. This allows separating header and body processing phases
     let (_external_db_lifetime, external_storage) =
-        create_temp_db!(ConnBuilder::default().with_files_limit(10)).expect("Failed to create temp db");
+        create_temp_db!(ConnBuilder::default().with_files_limit(10)).unwrap();
     let external_block_store = DbBlockTransactionsStore::new(external_storage, CachePolicy::Count(config.perf.block_data_cache_size));
     let (_utxoindex_db_lifetime, utxoindex_db) =
-        create_temp_db!(ConnBuilder::default().with_files_limit(10)).expect("Failed to create temp db");
+        create_temp_db!(ConnBuilder::default().with_files_limit(10)).unwrap();
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(

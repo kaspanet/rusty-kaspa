@@ -71,10 +71,10 @@ impl KaspaNetworkSimulator {
 
                 (_, _, true, Some(rocksdb_stats_period_sec)) => {
                     create_temp_db!(builder.enable_stats().with_stats_period(rocksdb_stats_period_sec))
-                        .expect("Failed to create temp db")
+                        .unwrap()
                 }
-                (_, _, true, None) => create_temp_db!(builder.enable_stats()).expect("Failed to create temp db"),
-                (_, _, false, _) => create_temp_db!(builder).expect("Failed to create temp db"),
+                (_, _, true, None) => create_temp_db!(builder.enable_stats()).unwrap(),
+                (_, _, false, _) => create_temp_db!(builder).unwrap(),
             };
 
             let (dummy_notification_sender, _) = unbounded();

@@ -420,7 +420,7 @@ mod tests {
     #[test]
     fn test_db_relations_store() {
         let (lt, db) =
-            create_temp_db!(kaspa_database::prelude::ConnBuilder::default().with_files_limit(10)).expect("Failed to create temp db");
+            create_temp_db!(kaspa_database::prelude::ConnBuilder::default().with_files_limit(10)).unwrap();
         test_relations_store(DbRelationsStore::new(
             db,
             0,
