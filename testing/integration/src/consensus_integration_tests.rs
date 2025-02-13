@@ -1769,6 +1769,7 @@ async fn staging_consensus_test() {
 
     core.shutdown();
     core.join(joins);
+    drop(consensus_manager);
 }
 
 /// Tests the KIP-10 transaction introspection opcode activation by verifying that:
@@ -1822,7 +1823,7 @@ async fn run_kip10_activation_test() {
     let mut genesis_multiset = MuHash::new();
     consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
     consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
-    consensus.init();
+    let wait_handles = consensus.init();
 
     // Build blockchain up to one block before activation
     let mut index = 0;
@@ -1874,6 +1875,8 @@ async fn run_kip10_activation_test() {
     let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![spending_tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
+    consensus.shutdown(wait_handles);
+    drop(consensus);
 }
 
 #[tokio::test]
@@ -1953,7 +1956,7 @@ async fn payload_activation_test() {
     let mut genesis_multiset = MuHash::new();
     consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
     consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
-    consensus.init();
+    let wait_handles = consensus.init();
 
     // Build blockchain up to one block before activation
     let mut index = 0;
@@ -2011,6 +2014,8 @@ async fn payload_activation_test() {
 
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
+    consensus.shutdown(wait_handles);
+    drop(consensus);
 }
 
 #[tokio::test]
@@ -2077,7 +2082,7 @@ async fn runtime_sig_op_counting_test() {
     let mut genesis_multiset = MuHash::new();
     consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
     consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
-    consensus.init();
+    let wait_handles = consensus.init();
 
     // Build blockchain up to one block before activation
     let mut index = 0;
@@ -2141,4 +2146,6 @@ async fn runtime_sig_op_counting_test() {
     // Test 2: After activation, tx should be accepted as runtime counting only sees 1 executed sig op
     let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+    consensus.shutdown(wait_handles);
+    drop(consensus);
 }
