@@ -388,6 +388,7 @@ impl Drop for UtxosChangedSubscription {
             if count > 0 {
                 Some(count - 1)
             } else {
+                log::warn!("Tried subtracting UtxosChangedSubscription when it's already zero!");
                 None
             }
         });
