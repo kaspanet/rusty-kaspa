@@ -85,9 +85,11 @@ impl ConnectionHandler {
                 .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
                 .await;
 
+            // log:error! was panic! before, but crashes testing ungracefully (error! not implemented)
+            // Now error is propagated
             match serve_result {
                 Ok(_) => info!("P2P Server stopped: {}", serve_address),
-                Err(err) => panic!("P2P, Server {serve_address} stopped with error: {err:?}"),
+                Err(err) => log::error!("P2P, Server {serve_address} stopped with error: {err:?}"),
             }
         });
         Ok(termination_sender)

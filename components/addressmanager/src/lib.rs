@@ -546,7 +546,7 @@ mod address_store_with_cache {
             // Assert that initial distribution is skewed, and hence not uniform from the outset.
             assert!(bucket_reduction_ratio >= 1.25);
 
-            let db = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+            let db = create_temp_db!(ConnBuilder::default().with_files_limit(10)).expect("Failed to create temp db");
             let config = Config::new(SIMNET_PARAMS);
             let (am, _) = AddressManager::new(Arc::new(config), db.1, Arc::new(TickService::default()));
 
