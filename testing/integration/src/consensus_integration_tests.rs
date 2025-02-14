@@ -31,6 +31,7 @@ use kaspa_consensus_core::coinbase::MinerData;
 use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::header::Header;
+use kaspa_consensus_core::mining_rules::MiningRules;
 use kaspa_consensus_core::network::{NetworkId, NetworkType::Mainnet};
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
@@ -1755,6 +1756,7 @@ async fn staging_consensus_test() {
         counters,
         tx_script_cache_counters,
         200,
+        Arc::new(MiningRules::default()),
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
 

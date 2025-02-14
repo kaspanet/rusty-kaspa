@@ -62,6 +62,7 @@ use kaspa_consensus_core::{
     },
     header::Header,
     merkle::calc_hash_merkle_root,
+    mining_rules::MiningRules,
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
@@ -159,6 +160,7 @@ impl Consensus {
         counters: Arc<ProcessingCounters>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
         creation_timestamp: u64,
+        mining_rules: Arc<MiningRules>,
     ) -> Self {
         let params = &config.params;
         let perf_params = &config.perf;
@@ -263,6 +265,7 @@ impl Consensus {
             pruning_lock.clone(),
             notification_root.clone(),
             counters.clone(),
+            mining_rules,
         ));
 
         let pruning_processor = Arc::new(PruningProcessor::new(
@@ -502,6 +505,12 @@ impl ConsensusApi for Consensus {
         self.headers_store.get_timestamp(self.get_sink()).unwrap()
     }
 
+    fn get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
+        let sink = self.get_sink();
+        let compact = self.headers_store.get_compact_header_data(sink).unwrap();
+        DaaScoreTimestamp { daa_score: compact.daa_score, timestamp: compact.timestamp }
+    }
+
     fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
         let _guard = self.pruning_lock.blocking_read();
 
@@ -590,13 +599,6 @@ impl ConsensusApi for Consensus {
             - source_score;
         let block_count = virtual_score - source_score;
         BlockCount { header_count, block_count }
-    }
-
-    fn is_nearly_synced(&self) -> bool {
-        // See comment within `config.is_nearly_synced`
-        let sink = self.get_sink();
-        let compact = self.headers_store.get_compact_header_data(sink).unwrap();
-        self.config.is_nearly_synced(compact.timestamp, compact.daa_score)
     }
 
     fn get_virtual_chain_from_block(&self, low: Hash, chain_path_added_limit: Option<usize>) -> ConsensusResult<ChainPath> {
