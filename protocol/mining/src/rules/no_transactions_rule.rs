@@ -8,6 +8,12 @@ use kaspa_core::{trace, warn};
 
 use super::{mining_rule::MiningRule, ExtraData};
 
+/// NoTransactionsRule
+/// Attempt to recover from consistent BadMerkleRoot errors by mining blocks without
+/// any transactions.
+///
+/// Trigger: BadMerkleRoot error count is higher than the number of successfully validated blocks
+/// Recovery: Two cooldown periods have passed
 pub struct NoTransactionsRule {
     pub is_enabled: Arc<AtomicBool>,
     pub cooldown: AtomicU8,

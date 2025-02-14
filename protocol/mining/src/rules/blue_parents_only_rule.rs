@@ -11,6 +11,12 @@ use super::{mining_rule::MiningRule, ExtraData};
 const VIRTUAL_PROCESSING_TRIGGER_THRESHOLD: f64 = 500.0; // 500 milliseconds
 const VIRTUAL_PROCESSING_RECOVERY_THRESHOLD: f64 = 100.0; // 100 milliseconds
 
+/// BlueParentsOnlyRule
+/// Attempt to recover from high virtual processing times possibly caused merging red blocks.
+/// by only pointing to blue parents.
+///
+/// Trigger: virtual processing average time is above threshold
+/// Recovery: virtual processing average time is below threshold and a merge depth bound has passed
 pub struct BlueParentsOnlyRule {
     pub is_enabled: Arc<AtomicBool>,
     pub trigger_daa_score: AtomicU64,

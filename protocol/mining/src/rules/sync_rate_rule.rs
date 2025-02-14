@@ -20,6 +20,13 @@ impl SyncRateRule {
     }
 }
 
+/// SyncRateRule
+/// Allow mining even if the node is "not nearly synced" if the sync rate is below threshold
+/// and the finality point is recent. This is to prevent the network from undermining and to allow
+/// the network to automatically recover from any short-term mining halt.
+///
+/// Trigger: Sync rate is below threshold and finality point is recent
+/// Recovery: Sync rate is back above threshold
 impl MiningRule for SyncRateRule {
     fn check_rule(&self, delta: &ProcessingCountersSnapshot, extra_data: &ExtraData) {
         let expected_blocks = (extra_data.elapsed_time.as_millis() as u64) / extra_data.target_time_per_block;
