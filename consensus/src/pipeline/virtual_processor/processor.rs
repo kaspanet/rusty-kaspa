@@ -338,6 +338,7 @@ impl VirtualStateProcessor {
 
         let elapsed = swo.elapsed();
         self.counters.virtual_processing_time.fetch_add(elapsed.as_millis() as u64, Ordering::Relaxed);
+        self.counters.virtual_resolve_counts.fetch_add(1, Ordering::Relaxed);
         drop(swo);
 
         let compact_sink_ghostdag_data = if let Some(sink_ghostdag_data) = Lazy::get(&sink_ghostdag_data) {
