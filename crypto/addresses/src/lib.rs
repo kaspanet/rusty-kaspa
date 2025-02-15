@@ -512,7 +512,7 @@ impl TryCastFromJs for Address {
     {
         Self::resolve(value, || {
             if let Some(string) = value.as_ref().as_string() {
-                Address::try_from(string)
+                Address::try_from(string.trim())
             } else if let Some(object) = js_sys::Object::try_from(value.as_ref()) {
                 let prefix: Prefix = object.get_string("prefix")?.as_str().try_into()?;
                 let payload = object.get_string("payload")?; //.as_str();
