@@ -32,7 +32,7 @@ use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::{BlockHashes, ORIGIN},
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-    config::genesis::GenesisBlock,
+    config::{genesis::GenesisBlock, params::ForkedParam},
     header::Header,
     BlockHashSet, BlockLevel,
 };
@@ -114,8 +114,8 @@ pub struct HeaderProcessor {
     // Config
     pub(super) genesis: GenesisBlock,
     pub(super) timestamp_deviation_tolerance: u64,
-    pub(super) max_block_parents: u8,
-    pub(super) mergeset_size_limit: u64,
+    pub(super) max_block_parents: ForkedParam<u8>,
+    pub(super) mergeset_size_limit: ForkedParam<u64>,
     pub(super) skip_proof_of_work: bool,
     pub(super) max_block_level: BlockLevel,
 
@@ -200,8 +200,8 @@ impl HeaderProcessor {
             counters,
 
             timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
-            max_block_parents: params.max_block_parents,
-            mergeset_size_limit: params.mergeset_size_limit,
+            max_block_parents: params.max_block_parents(),
+            mergeset_size_limit: params.mergeset_size_limit(),
             skip_proof_of_work: params.skip_proof_of_work,
             max_block_level: params.max_block_level,
         }

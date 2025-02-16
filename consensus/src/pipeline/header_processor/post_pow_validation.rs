@@ -1,6 +1,7 @@
 use super::{HeaderProcessingContext, HeaderProcessor};
 use crate::errors::{BlockProcessResult, RuleError, TwoDimVecDisplay};
 use crate::model::services::reachability::ReachabilityService;
+use crate::model::stores::headers::HeaderStoreReader;
 use crate::processes::window::WindowManager;
 use kaspa_consensus_core::header::Header;
 use kaspa_hashes::Hash;
@@ -11,7 +12,7 @@ impl HeaderProcessor {
         self.check_blue_score(ctx, header)?;
         self.check_blue_work(ctx, header)?;
         self.check_median_timestamp(ctx, header)?;
-        self.check_merge_size_limit(ctx)?;
+        self.check_mergeset_size_limit(ctx)?;
         self.check_bounded_merge_depth(ctx)?;
         self.check_pruning_point(ctx, header)?;
         self.check_indirect_parents(ctx, header)
@@ -28,10 +29,12 @@ impl HeaderProcessor {
         Ok(())
     }
 
-    pub fn check_merge_size_limit(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
+    pub fn check_mergeset_size_limit(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
         let mergeset_size = ctx.ghostdag_data().mergeset_size() as u64;
-        if mergeset_size > self.mergeset_size_limit {
-            return Err(RuleError::MergeSetTooBig(mergeset_size, self.mergeset_size_limit));
+        let mergeset_size_limit =
+            self.mergeset_size_limit.get(self.headers_store.get_daa_score(ctx.ghostdag_data().selected_parent).unwrap());
+        if mergeset_size > mergeset_size_limit {
+            return Err(RuleError::MergeSetTooBig(mergeset_size, mergeset_size_limit));
         }
         Ok(())
     }

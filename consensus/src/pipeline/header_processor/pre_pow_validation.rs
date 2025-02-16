@@ -1,13 +1,30 @@
 use super::*;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
+use crate::model::stores::headers::HeaderStoreReader;
 use crate::processes::window::WindowManager;
 use kaspa_consensus_core::header::Header;
 
 impl HeaderProcessor {
     pub(super) fn pre_pow_validation(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
+        self.check_parents_limit(ctx, header)?;
         self.check_pruning_violation(ctx)?;
         self.check_difficulty_and_daa_score(ctx, header)?;
+        Ok(())
+    }
+
+    // TODO (post HF): move back to pre_ghostdag_validation (substitute for check_parents_limit_upper_bound)
+    fn check_parents_limit(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
+        if header.direct_parents().is_empty() {
+            return Err(RuleError::NoParents);
+        }
+
+        let max_block_parents =
+            self.max_block_parents.get(self.headers_store.get_daa_score(ctx.ghostdag_data().selected_parent).unwrap()) as usize;
+        if header.direct_parents().len() > max_block_parents {
+            return Err(RuleError::TooManyParents(header.direct_parents().len(), max_block_parents));
+        }
+
         Ok(())
     }
 

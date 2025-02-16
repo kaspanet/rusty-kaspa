@@ -217,7 +217,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             // block's blue anticone is not already larger than K.
             assert!(*candidate_blues_anticone_sizes.get(&block).unwrap() <= k, "found blue anticone larger than K");
             // [Crescendo]: this ^ is a valid assert since we are increasing k. Had we decreased k, this line would
-            //              need to be removed and the condition above would to be changed to >= k
+            //              need to be removed and the condition above would need to be changed to >= k
         }
 
         ColoringState::Pending

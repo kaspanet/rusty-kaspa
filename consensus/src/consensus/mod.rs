@@ -813,7 +813,7 @@ impl ConsensusApi for Consensus {
     // max_blocks has to be greater than the merge set size limit
     fn get_hashes_between(&self, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
         let _guard = self.pruning_lock.blocking_read();
-        assert!(max_blocks as u64 > self.config.mergeset_size_limit);
+        assert!(max_blocks as u64 > self.config.mergeset_size_limit().upper_bound());
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
 

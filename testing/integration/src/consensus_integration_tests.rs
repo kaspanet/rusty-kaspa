@@ -456,11 +456,11 @@ async fn header_in_isolation_validation_test() {
     {
         let mut block = block.clone();
         block.header.hash = 4.into();
-        block.header.parents_by_level[0] = (5..(config.max_block_parents + 6)).map(|x| (x as u64).into()).collect();
+        block.header.parents_by_level[0] = (5..(config.prior_max_block_parents + 6)).map(|x| (x as u64).into()).collect();
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TooManyParents(num_parents, limit)) => {
-                assert_eq!((config.max_block_parents + 1) as usize, num_parents);
-                assert_eq!(limit, config.max_block_parents as usize);
+                assert_eq!((config.prior_max_block_parents + 1) as usize, num_parents);
+                assert_eq!(limit, config.prior_max_block_parents as usize);
             }
             res => {
                 panic!("Unexpected result: {res:?}")
@@ -632,7 +632,7 @@ async fn mergeset_size_limit_test() {
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
-    let num_blocks_per_chain = config.mergeset_size_limit + 1;
+    let num_blocks_per_chain = config.prior_mergeset_size_limit + 1;
 
     let mut tip1_hash = config.genesis.hash;
     for i in 1..(num_blocks_per_chain + 1) {
@@ -651,8 +651,8 @@ async fn mergeset_size_limit_test() {
     let block = consensus.build_block_with_parents((3 * num_blocks_per_chain + 1).into(), vec![tip1_hash, tip2_hash]);
     match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
         Err(RuleError::MergeSetTooBig(a, b)) => {
-            assert_eq!(a, config.mergeset_size_limit + 1);
-            assert_eq!(b, config.mergeset_size_limit);
+            assert_eq!(a, config.prior_mergeset_size_limit + 1);
+            assert_eq!(b, config.prior_mergeset_size_limit);
         }
         res => {
             panic!("Unexpected result: {res:?}")
@@ -816,12 +816,12 @@ impl KaspadGoParams {
             prior_ghostdag_k: self.K,
             timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
             prior_target_time_per_block: self.TargetTimePerBlock / 1_000_000,
-            max_block_parents: self.MaxBlockParents,
+            prior_max_block_parents: self.MaxBlockParents,
             max_difficulty_target: MAX_DIFFICULTY_TARGET,
             max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
             prior_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
             min_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
-            mergeset_size_limit: self.MergeSetSizeLimit,
+            prior_mergeset_size_limit: self.MergeSetSizeLimit,
             merge_depth: self.MergeDepth,
             finality_depth,
             pruning_depth: 2 * finality_depth + 4 * self.MergeSetSizeLimit * self.K as u64 + 2 * self.K as u64 + 2,

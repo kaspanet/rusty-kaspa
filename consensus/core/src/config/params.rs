@@ -206,8 +206,8 @@ pub struct Params {
     /// The minimum size a difficulty window (full or sampled) must have to trigger a DAA calculation
     pub min_difficulty_window_size: usize,
 
-    pub max_block_parents: u8,
-    pub mergeset_size_limit: u64,
+    pub prior_max_block_parents: u8,
+    pub prior_mergeset_size_limit: u64,
     pub merge_depth: u64,
     pub finality_depth: u64,
     pub pruning_depth: u64,
@@ -326,6 +326,14 @@ impl Params {
         ForkedParam::new(self.prior_ghostdag_k, self.crescendo.ghostdag_k, self.crescendo_activation)
     }
 
+    pub fn max_block_parents(&self) -> ForkedParam<u8> {
+        ForkedParam::new(self.prior_max_block_parents, self.crescendo.max_block_parents, self.crescendo_activation)
+    }
+
+    pub fn mergeset_size_limit(&self) -> ForkedParam<u64> {
+        ForkedParam::new(self.prior_mergeset_size_limit, self.crescendo.mergeset_size_limit, self.crescendo_activation)
+    }
+
     pub fn daa_window_duration_in_blocks(&self, selected_parent_daa_score: u64) -> u64 {
         if self.crescendo_activation.is_active(selected_parent_daa_score) {
             self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size
@@ -350,7 +358,7 @@ impl Params {
     pub fn anticone_finalization_depth(&self) -> u64 {
         let anticone_finalization_depth = self.finality_depth
             + self.merge_depth
-            + 4 * self.mergeset_size_limit * self.prior_ghostdag_k as u64
+            + 4 * self.prior_mergeset_size_limit * self.prior_ghostdag_k as u64
             + 2 * self.prior_ghostdag_k as u64
             + 2;
 
@@ -464,8 +472,8 @@ pub const MAINNET_PARAMS: Params = Params {
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
-    max_block_parents: 10,
-    mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
+    prior_max_block_parents: 10,
+    prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
     pruning_depth: 185798,
@@ -523,8 +531,8 @@ pub const TESTNET_PARAMS: Params = Params {
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
-    max_block_parents: 10,
-    mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
+    prior_max_block_parents: 10,
+    prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
     pruning_depth: 185798,
@@ -580,8 +588,8 @@ pub const SIMNET_PARAMS: Params = Params {
     prior_ghostdag_k: TenBps::ghostdag_k(),
     prior_target_time_per_block: TenBps::target_time_per_block(),
     // For simnet, we deviate from TN11 configuration and allow at least 64 parents in order to support mempool benchmarks out of the box
-    max_block_parents: if TenBps::max_block_parents() > 64 { TenBps::max_block_parents() } else { 64 },
-    mergeset_size_limit: TenBps::mergeset_size_limit(),
+    prior_max_block_parents: if TenBps::max_block_parents() > 64 { TenBps::max_block_parents() } else { 64 },
+    prior_mergeset_size_limit: TenBps::mergeset_size_limit(),
     merge_depth: TenBps::merge_depth_bound(),
     finality_depth: TenBps::finality_depth(),
     pruning_depth: TenBps::pruning_depth(),
@@ -623,8 +631,8 @@ pub const DEVNET_PARAMS: Params = Params {
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
-    max_block_parents: 10,
-    mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
+    prior_max_block_parents: 10,
+    prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
     pruning_depth: 185798,

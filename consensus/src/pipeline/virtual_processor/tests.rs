@@ -174,8 +174,8 @@ async fn antichain_merge_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.max_block_parents = 4;
-            p.mergeset_size_limit = 10;
+            p.prior_max_block_parents = 4;
+            p.prior_mergeset_size_limit = 10;
         })
         .build();
 
@@ -202,8 +202,8 @@ async fn basic_utxo_disqualified_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.max_block_parents = 4;
-            p.mergeset_size_limit = 10;
+            p.prior_max_block_parents = 4;
+            p.prior_mergeset_size_limit = 10;
         })
         .build();
 
@@ -234,8 +234,8 @@ async fn double_search_disqualified_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.max_block_parents = 4;
-            p.mergeset_size_limit = 10;
+            p.prior_max_block_parents = 4;
+            p.prior_mergeset_size_limit = 10;
             p.min_difficulty_window_size = p.prior_difficulty_window_size;
         })
         .build();

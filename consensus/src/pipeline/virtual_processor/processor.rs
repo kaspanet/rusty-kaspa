@@ -53,7 +53,10 @@ use kaspa_consensus_core::{
     block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     blockstatus::BlockStatus::{StatusDisqualifiedFromChain, StatusUTXOValid},
     coinbase::MinerData,
-    config::{genesis::GenesisBlock, params::ForkActivation},
+    config::{
+        genesis::GenesisBlock,
+        params::{ForkActivation, ForkedParam},
+    },
     header::Header,
     merkle::calc_hash_merkle_root,
     pruning::PruningPointsList,
@@ -112,8 +115,8 @@ pub struct VirtualStateProcessor {
 
     // Config
     pub(super) genesis: GenesisBlock,
-    pub(super) max_block_parents: u8,
-    pub(super) mergeset_size_limit: u64,
+    pub(super) max_block_parents: ForkedParam<u8>,
+    pub(super) mergeset_size_limit: ForkedParam<u64>,
     pub(super) pruning_depth: u64,
 
     // Stores
@@ -190,8 +193,8 @@ impl VirtualStateProcessor {
             thread_pool,
 
             genesis: params.genesis.clone(),
-            max_block_parents: params.max_block_parents,
-            mergeset_size_limit: params.mergeset_size_limit,
+            max_block_parents: params.max_block_parents(),
+            mergeset_size_limit: params.mergeset_size_limit(),
             pruning_depth: params.pruning_depth,
 
             db,
@@ -586,11 +589,11 @@ impl VirtualStateProcessor {
     /// Returns the max number of tips to consider as virtual parents in a single virtual resolve operation.
     ///
     /// Guaranteed to be `>= self.max_block_parents`
-    fn max_virtual_parent_candidates(&self) -> usize {
+    fn max_virtual_parent_candidates(&self, max_block_parents: usize) -> usize {
         // Limit to max_block_parents x 3 candidates. This way we avoid going over thousands of tips when the network isn't healthy.
         // There's no specific reason for a factor of 3, and its not a consensus rule, just an estimation for reducing the amount
         // of candidates considered.
-        self.max_block_parents as usize * 3
+        max_block_parents * 3
     }
 
     /// Searches for the next valid sink block (SINK = Virtual selected parent). The search is performed
@@ -678,8 +681,10 @@ impl VirtualStateProcessor {
         // we might touch such data prior to validating the bounded merge rule. All in all, this function is short
         // enough so we avoid making further optimizations
         let _prune_guard = self.pruning_lock.blocking_read();
-        let max_block_parents = self.max_block_parents as usize;
-        let max_candidates = self.max_virtual_parent_candidates();
+        let selected_parent_daa_score = self.headers_store.get_daa_score(selected_parent).unwrap();
+        let max_block_parents = self.max_block_parents.get(selected_parent_daa_score) as usize;
+        let mergeset_size_limit = self.mergeset_size_limit.get(selected_parent_daa_score);
+        let max_candidates = self.max_virtual_parent_candidates(max_block_parents);
 
         // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
         if candidates.len() > max_candidates {
@@ -708,10 +713,10 @@ impl VirtualStateProcessor {
 
         // Try adding parents as long as mergeset size and number of parents limits are not reached
         while let Some(candidate) = candidates.pop_front() {
-            if mergeset_size >= self.mergeset_size_limit || virtual_parents.len() >= max_block_parents {
+            if mergeset_size >= mergeset_size_limit || virtual_parents.len() >= max_block_parents {
                 break;
             }
-            match self.mergeset_increase(&virtual_parents, candidate, self.mergeset_size_limit - mergeset_size) {
+            match self.mergeset_increase(&virtual_parents, candidate, mergeset_size_limit - mergeset_size) {
                 MergesetIncreaseResult::Accepted { increase_size } => {
                     mergeset_size += increase_size;
                     virtual_parents.push(candidate);
@@ -727,7 +732,7 @@ impl VirtualStateProcessor {
                 }
             }
         }
-        assert!(mergeset_size <= self.mergeset_size_limit);
+        assert!(mergeset_size <= mergeset_size_limit);
         assert!(virtual_parents.len() <= max_block_parents);
         self.remove_bounded_merge_breaking_parents(virtual_parents, pruning_point)
     }

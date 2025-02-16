@@ -184,7 +184,7 @@ impl ConsensusServices {
         ));
 
         let sync_manager = SyncManager::new(
-            params.mergeset_size_limit as usize,
+            params.mergeset_size_limit(),
             reachability_service.clone(),
             dag_traversal_manager.clone(),
             storage.ghostdag_store.clone(),

@@ -301,8 +301,8 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         let k = u64::max(calculate_ghostdag_k(2.0 * max_delay * args.bps, 0.05), params.ghostdag_k().before() as u64);
         let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
         params.prior_ghostdag_k = k;
-        params.mergeset_size_limit = k as u64 * 10;
-        params.max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
+        params.prior_mergeset_size_limit = k as u64 * 10;
+        params.prior_max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
         params.prior_target_time_per_block = (1000.0 / args.bps) as u64;
         params.merge_depth = (params.merge_depth as f64 * args.bps) as u64;
         params.coinbase_maturity = (params.coinbase_maturity as f64 * f64::max(1.0, args.bps * args.delay * 0.25)) as u64;
@@ -329,7 +329,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.crescendo.sampled_difficulty_window_size = params.crescendo.sampled_difficulty_window_size.min(32);
         params.finality_depth = 128;
         params.merge_depth = 128;
-        params.mergeset_size_limit = 32;
+        params.prior_mergeset_size_limit = 32;
         params.pruning_depth = params.anticone_finalization_depth();
         info!("Setting pruning depth to {}", params.pruning_depth);
     }
