@@ -822,8 +822,8 @@ impl KaspadGoParams {
             prior_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
             min_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
             prior_mergeset_size_limit: self.MergeSetSizeLimit,
-            merge_depth: self.MergeDepth,
-            finality_depth,
+            prior_merge_depth: self.MergeDepth,
+            prior_finality_depth: finality_depth,
             pruning_depth: 2 * finality_depth + 4 * self.MergeSetSizeLimit * self.K as u64 + 2 * self.K as u64 + 2,
             coinbase_payload_script_public_key_max_len: self.CoinbasePayloadScriptPublicKeyMaxLength,
             max_coinbase_payload_len: self.MaxCoinbasePayloadLength,
@@ -1262,17 +1262,20 @@ async fn bounded_merge_depth_test() {
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.prior_ghostdag_k = 5;
-            p.merge_depth = 7;
+            p.prior_merge_depth = 7;
         })
         .build();
 
-    assert!((config.ghostdag_k().before() as u64) < config.merge_depth, "K must be smaller than merge depth for this test to run");
+    assert!(
+        (config.ghostdag_k().before() as u64) < config.prior_merge_depth,
+        "K must be smaller than merge depth for this test to run"
+    );
 
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
     let mut selected_chain = vec![config.genesis.hash];
-    for i in 1..(config.merge_depth + 3) {
+    for i in 1..(config.prior_merge_depth + 3) {
         let hash: Hash = (i + 1).into();
         consensus.add_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
@@ -1280,8 +1283,8 @@ async fn bounded_merge_depth_test() {
 
     // The length of block_chain_2 is shorter by one than selected_chain, so selected_chain will remain the selected chain.
     let mut block_chain_2 = vec![config.genesis.hash];
-    for i in 1..(config.merge_depth + 2) {
-        let hash: Hash = (i + config.merge_depth + 3).into();
+    for i in 1..(config.prior_merge_depth + 2) {
+        let hash: Hash = (i + config.prior_merge_depth + 3).into();
         consensus.add_block_with_parents(hash, vec![*block_chain_2.last().unwrap()]).await.unwrap();
         block_chain_2.push(hash);
     }

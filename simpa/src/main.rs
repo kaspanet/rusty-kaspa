@@ -304,7 +304,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.prior_mergeset_size_limit = k as u64 * 10;
         params.prior_max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
         params.prior_target_time_per_block = (1000.0 / args.bps) as u64;
-        params.merge_depth = (params.merge_depth as f64 * args.bps) as u64;
+        params.prior_merge_depth = (params.prior_merge_depth as f64 * args.bps) as u64;
         params.coinbase_maturity = (params.coinbase_maturity as f64 * f64::max(1.0, args.bps * args.delay * 0.25)) as u64;
 
         if args.daa_legacy {
@@ -327,8 +327,8 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.prior_difficulty_window_size = 64;
         params.timestamp_deviation_tolerance = 16;
         params.crescendo.sampled_difficulty_window_size = params.crescendo.sampled_difficulty_window_size.min(32);
-        params.finality_depth = 128;
-        params.merge_depth = 128;
+        params.prior_finality_depth = 128;
+        params.prior_merge_depth = 128;
         params.prior_mergeset_size_limit = 32;
         params.pruning_depth = params.anticone_finalization_depth();
         info!("Setting pruning depth to {}", params.pruning_depth);

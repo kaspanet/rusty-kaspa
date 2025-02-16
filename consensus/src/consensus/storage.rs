@@ -82,7 +82,8 @@ impl ConsensusStorage {
 
         // Lower and upper bounds
         let pruning_depth = params.pruning_depth as usize;
-        let pruning_size_for_caches = (params.pruning_depth + params.finality_depth) as usize; // Upper bound for any block/header related data
+        // TODO (Crescendo)
+        let pruning_size_for_caches = (params.pruning_depth + params.prior_finality_depth) as usize; // Upper bound for any block/header related data
         let level_lower_bound = 2 * params.pruning_proof_m as usize; // Number of items lower bound for level-related caches
 
         // Budgets in bytes. All byte budgets overall sum up to ~1GB of memory (which obviously takes more low level alloc space)

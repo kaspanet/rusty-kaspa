@@ -208,8 +208,8 @@ pub struct Params {
 
     pub prior_max_block_parents: u8,
     pub prior_mergeset_size_limit: u64,
-    pub merge_depth: u64,
-    pub finality_depth: u64,
+    pub prior_merge_depth: u64,
+    pub prior_finality_depth: u64,
     pub pruning_depth: u64,
     pub coinbase_payload_script_public_key_max_len: u8,
     pub max_coinbase_payload_len: usize,
@@ -334,6 +334,14 @@ impl Params {
         ForkedParam::new(self.prior_mergeset_size_limit, self.crescendo.mergeset_size_limit, self.crescendo_activation)
     }
 
+    pub fn merge_depth(&self) -> ForkedParam<u64> {
+        ForkedParam::new(self.prior_merge_depth, self.crescendo.merge_depth, self.crescendo_activation)
+    }
+
+    pub fn finality_depth(&self) -> ForkedParam<u64> {
+        ForkedParam::new(self.prior_finality_depth, self.crescendo.finality_depth, self.crescendo_activation)
+    }
+
     pub fn daa_window_duration_in_blocks(&self, selected_parent_daa_score: u64) -> u64 {
         if self.crescendo_activation.is_active(selected_parent_daa_score) {
             self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size
@@ -356,8 +364,8 @@ impl Params {
     /// Based on the analysis at <https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf>
     /// and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
     pub fn anticone_finalization_depth(&self) -> u64 {
-        let anticone_finalization_depth = self.finality_depth
-            + self.merge_depth
+        let anticone_finalization_depth = self.prior_finality_depth
+            + self.prior_merge_depth
             + 4 * self.prior_mergeset_size_limit * self.prior_ghostdag_k as u64
             + 2 * self.prior_ghostdag_k as u64
             + 2;
@@ -408,7 +416,7 @@ impl Params {
     }
 
     pub fn finality_duration(&self) -> u64 {
-        self.prior_target_time_per_block * self.finality_depth
+        self.prior_target_time_per_block * self.prior_finality_depth
     }
 }
 
@@ -474,8 +482,8 @@ pub const MAINNET_PARAMS: Params = Params {
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     prior_max_block_parents: 10,
     prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
-    merge_depth: 3600,
-    finality_depth: 86400,
+    prior_merge_depth: 3600,
+    prior_finality_depth: 86400,
     pruning_depth: 185798,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
@@ -533,8 +541,8 @@ pub const TESTNET_PARAMS: Params = Params {
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     prior_max_block_parents: 10,
     prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
-    merge_depth: 3600,
-    finality_depth: 86400,
+    prior_merge_depth: 3600,
+    prior_finality_depth: 86400,
     pruning_depth: 185798,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
@@ -590,8 +598,8 @@ pub const SIMNET_PARAMS: Params = Params {
     // For simnet, we deviate from TN11 configuration and allow at least 64 parents in order to support mempool benchmarks out of the box
     prior_max_block_parents: if TenBps::max_block_parents() > 64 { TenBps::max_block_parents() } else { 64 },
     prior_mergeset_size_limit: TenBps::mergeset_size_limit(),
-    merge_depth: TenBps::merge_depth_bound(),
-    finality_depth: TenBps::finality_depth(),
+    prior_merge_depth: TenBps::merge_depth_bound(),
+    prior_finality_depth: TenBps::finality_depth(),
     pruning_depth: TenBps::pruning_depth(),
     pruning_proof_m: TenBps::pruning_proof_m(),
     deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
@@ -633,8 +641,8 @@ pub const DEVNET_PARAMS: Params = Params {
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     prior_max_block_parents: 10,
     prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
-    merge_depth: 3600,
-    finality_depth: 86400,
+    prior_merge_depth: 3600,
+    prior_finality_depth: 86400,
     pruning_depth: 185798,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,

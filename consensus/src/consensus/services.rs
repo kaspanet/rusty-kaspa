@@ -40,7 +40,7 @@ pub type DbSyncManager = SyncManager<
 
 pub type DbPruningPointManager =
     PruningPointManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore, DbHeadersSelectedTipStore>;
-pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>;
+pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore, DbHeadersStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 
 pub struct ConsensusServices {
@@ -105,12 +105,13 @@ impl ConsensusServices {
             params.crescendo.past_median_time_sample_rate,
         );
         let depth_manager = BlockDepthManager::new(
-            params.merge_depth,
-            params.finality_depth,
+            params.merge_depth(),
+            params.finality_depth(),
             params.genesis.hash,
             storage.depth_store.clone(),
             reachability_service.clone(),
             storage.ghostdag_store.clone(),
+            storage.headers_store.clone(),
         );
         let ghostdag_manager = GhostdagManager::new(
             params.genesis.hash,
@@ -150,7 +151,7 @@ impl ConsensusServices {
 
         let pruning_point_manager = PruningPointManager::new(
             params.pruning_depth,
-            params.finality_depth,
+            params.prior_finality_depth, // TODO (Crescendo)
             params.genesis.hash,
             reachability_service.clone(),
             storage.ghostdag_store.clone(),
