@@ -1,28 +1,24 @@
 {
-  "name": "kaspa",
-  "version": "0.13.5",
-  "description": "Kaspa SDK",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
+  "name": "@onekeyfe/kaspa-wasm",
+  "collaborators": [
+    "Kaspa developers"
+  ],
+  "description": "KASPA WASM bindings",
+  "version": "1.0.0",
+  "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kaspanet/rusty-kaspa.git"
+    "url": "https://github.com/OneKeyHQ/rusty-kaspa"
   },
-  "keywords": [
-    "kaspa",
-    "wasm",
-    "sdk"
+  "files": [
+    "kaspa_bg.wasm.d.ts",
+    "kaspa_bg.wasm.bin",
+    "kaspa.js",
+    "kaspa.d.ts"
   ],
-  "author": "Kaspa developers",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/kaspanet/rusty-kaspa/issues"
-  },
-  "homepage": "https://github.com/kaspanet/rusty-kaspa#readme",
-  "dependencies": {
-    "websocket": "1.0.34",
-    "kaspa-wasm": "0.13.5"
-  }
+  "module": "kaspa.js",
+  "types": "kaspa.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
 }

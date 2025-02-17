@@ -1,0 +1,18 @@
+name: publish-npm-package
+
+on: workflow_dispatch
+
+jobs:
+  publish-npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: "18"
+          registry-url: "https://registry.npmjs.org"
+      - name: Publish package
+        working-directory: ./wasm/npm
+        run: npm publish -y --no-verify-access --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
