@@ -99,10 +99,7 @@ impl<
     /// its finality score is still equal to P. It serves as an optimal starting point for searching
     /// up rather then restarting the search from P each time.    
     ///
-    /// Assumptions: P ∈ chain(C), C ∈ chain(B), P and C have the same finality score,
-    ///              P has pruning depth from B (i.e., P.blue_score - B.blue_score >= pruning_depth)
-    ///
-    ///              [Crescendo]: Note that this ^ last assumption might be violated in the short period following the fork
+    /// Assumptions: P ∈ chain(C), C ∈ chain(B), P and C have the same finality score
     ///
     /// Returns: new pruning points ordered from bottom up and an updated candidate
     fn next_pruning_points_and_candidate_by_ghostdag_data_inner(
