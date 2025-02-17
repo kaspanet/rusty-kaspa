@@ -117,7 +117,6 @@ pub struct VirtualStateProcessor {
     pub(super) genesis: GenesisBlock,
     pub(super) max_block_parents: ForkedParam<u8>,
     pub(super) mergeset_size_limit: ForkedParam<u64>,
-    pub(super) pruning_depth: u64,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -195,7 +194,6 @@ impl VirtualStateProcessor {
             genesis: params.genesis.clone(),
             max_block_parents: params.max_block_parents(),
             mergeset_size_limit: params.mergeset_size_limit(),
-            pruning_depth: params.pruning_depth,
 
             db,
             statuses_store: storage.statuses_store.clone(),

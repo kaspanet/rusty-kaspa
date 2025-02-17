@@ -169,7 +169,6 @@ impl PruningProcessor {
         let current_pruning_info = pruning_point_read.get().unwrap();
         let (new_pruning_points, new_candidate) = self.pruning_point_manager.next_pruning_points_and_candidate_by_ghostdag_data(
             sink_ghostdag_data,
-            None,
             current_pruning_info.candidate,
             current_pruning_info.pruning_point,
         );

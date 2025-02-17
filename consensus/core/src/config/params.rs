@@ -210,7 +210,8 @@ pub struct Params {
     pub prior_mergeset_size_limit: u64,
     pub prior_merge_depth: u64,
     pub prior_finality_depth: u64,
-    pub pruning_depth: u64,
+    pub prior_pruning_depth: u64,
+
     pub coinbase_payload_script_public_key_max_len: u8,
     pub max_coinbase_payload_len: usize,
     pub max_tx_inputs: usize,
@@ -342,6 +343,16 @@ impl Params {
         ForkedParam::new(self.prior_finality_depth, self.crescendo.finality_depth, self.crescendo_activation)
     }
 
+    pub fn pruning_depth(&self) -> ForkedParam<u64> {
+        ForkedParam::new(self.prior_pruning_depth, self.crescendo.pruning_depth, self.crescendo_activation)
+    }
+
+    // TODO (Crescendo)
+    pub fn finality_duration(&self) -> u64 {
+        self.prior_target_time_per_block * self.prior_finality_depth
+    }
+
+    // TODO (Crescendo)
     pub fn daa_window_duration_in_blocks(&self, selected_parent_daa_score: u64) -> u64 {
         if self.crescendo_activation.is_active(selected_parent_daa_score) {
             self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size
@@ -350,6 +361,7 @@ impl Params {
         }
     }
 
+    // TODO (Crescendo)
     fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
         if self.crescendo_activation.is_active(selected_parent_daa_score) {
             self.crescendo.target_time_per_block
@@ -364,6 +376,7 @@ impl Params {
     /// Based on the analysis at <https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf>
     /// and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
     pub fn anticone_finalization_depth(&self) -> u64 {
+        // TODO (Crescendo)
         let anticone_finalization_depth = self.prior_finality_depth
             + self.prior_merge_depth
             + 4 * self.prior_mergeset_size_limit * self.prior_ghostdag_k as u64
@@ -375,7 +388,7 @@ impl Params {
         // a smaller (unsafe) pruning depth, so we return the minimum of
         // the two to avoid a situation where a block can be pruned and
         // not finalized.
-        min(self.pruning_depth, anticone_finalization_depth)
+        min(self.prior_pruning_depth, anticone_finalization_depth)
     }
 
     /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
@@ -413,10 +426,6 @@ impl Params {
 
     pub fn default_rpc_port(&self) -> u16 {
         self.net.default_rpc_port()
-    }
-
-    pub fn finality_duration(&self) -> u64 {
-        self.prior_target_time_per_block * self.prior_finality_depth
     }
 }
 
@@ -484,7 +493,7 @@ pub const MAINNET_PARAMS: Params = Params {
     prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
     prior_merge_depth: 3600,
     prior_finality_depth: 86400,
-    pruning_depth: 185798,
+    prior_pruning_depth: 185798,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
@@ -543,7 +552,7 @@ pub const TESTNET_PARAMS: Params = Params {
     prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
     prior_merge_depth: 3600,
     prior_finality_depth: 86400,
-    pruning_depth: 185798,
+    prior_pruning_depth: 185798,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
@@ -600,7 +609,7 @@ pub const SIMNET_PARAMS: Params = Params {
     prior_mergeset_size_limit: TenBps::mergeset_size_limit(),
     prior_merge_depth: TenBps::merge_depth_bound(),
     prior_finality_depth: TenBps::finality_depth(),
-    pruning_depth: TenBps::pruning_depth(),
+    prior_pruning_depth: TenBps::pruning_depth(),
     pruning_proof_m: TenBps::pruning_proof_m(),
     deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
     pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
@@ -643,7 +652,7 @@ pub const DEVNET_PARAMS: Params = Params {
     prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
     prior_merge_depth: 3600,
     prior_finality_depth: 86400,
-    pruning_depth: 185798,
+    prior_pruning_depth: 185798,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 

@@ -824,7 +824,7 @@ impl KaspadGoParams {
             prior_mergeset_size_limit: self.MergeSetSizeLimit,
             prior_merge_depth: self.MergeDepth,
             prior_finality_depth: finality_depth,
-            pruning_depth: 2 * finality_depth + 4 * self.MergeSetSizeLimit * self.K as u64 + 2 * self.K as u64 + 2,
+            prior_pruning_depth: 2 * finality_depth + 4 * self.MergeSetSizeLimit * self.K as u64 + 2 * self.K as u64 + 2,
             coinbase_payload_script_public_key_max_len: self.CoinbasePayloadScriptPublicKeyMaxLength,
             max_coinbase_payload_len: self.MaxCoinbasePayloadLength,
             max_tx_inputs: MAINNET_PARAMS.max_tx_inputs,

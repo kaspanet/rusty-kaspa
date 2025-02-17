@@ -81,6 +81,9 @@ pub mod consensus {
     /// **New** finality duration expressed in time units (seconds).
     pub const NEW_FINALITY_DURATION: u64 = 43_200; // 12 hours
 
+    /// **New** pruning duration expressed in time units (seconds).
+    pub const NEW_PRUNING_DURATION: u64 = 108_000; // 30 hours
+
     /// Merge depth bound duration (in seconds). For 1 BPS networks this equals the legacy depth
     /// bound in block units. For higher BPS networks this should be scaled up.
     ///
