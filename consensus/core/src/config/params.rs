@@ -269,20 +269,14 @@ impl Params {
         )
     }
 
-    /// Returns the past median time sample rate,
-    /// depending on a selected parent DAA score
+    /// Returns the past median time sample rate
     #[inline]
     #[must_use]
-    pub fn past_median_time_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
-        if self.crescendo_activation.is_active(selected_parent_daa_score) {
-            self.crescendo.past_median_time_sample_rate
-        } else {
-            1
-        }
+    pub fn past_median_time_sample_rate(&self) -> ForkedParam<u64> {
+        ForkedParam::new(1, self.crescendo.past_median_time_sample_rate, self.crescendo_activation)
     }
 
-    /// Returns the size of the blocks window that is inspected to calculate the difficulty,
-    /// depending on a selected parent DAA score
+    /// Returns the size of the blocks window that is inspected to calculate the difficulty
     #[inline]
     #[must_use]
     pub fn difficulty_window_size(&self) -> ForkedParam<usize> {
@@ -293,16 +287,11 @@ impl Params {
         )
     }
 
-    /// Returns the difficulty sample rate,
-    /// depending on a selected parent DAA score
+    /// Returns the difficulty sample rate
     #[inline]
     #[must_use]
-    pub fn difficulty_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
-        if self.crescendo_activation.is_active(selected_parent_daa_score) {
-            self.crescendo.difficulty_sample_rate
-        } else {
-            1
-        }
+    pub fn difficulty_sample_rate(&self) -> ForkedParam<u64> {
+        ForkedParam::new(1, self.crescendo.difficulty_sample_rate, self.crescendo_activation)
     }
 
     /// Returns the target time per block
@@ -347,40 +336,46 @@ impl Params {
         ForkedParam::new(self.prior_pruning_depth, self.crescendo.pruning_depth, self.crescendo_activation)
     }
 
-    // TODO (Crescendo)
-    pub fn finality_duration(&self) -> u64 {
-        self.prior_target_time_per_block * self.prior_finality_depth
+    pub fn finality_duration_in_milliseconds(&self) -> ForkedParam<u64> {
+        ForkedParam::new(
+            self.prior_target_time_per_block * self.prior_finality_depth,
+            self.crescendo.target_time_per_block * self.crescendo.finality_depth,
+            self.crescendo_activation,
+        )
     }
 
-    // TODO (Crescendo)
-    pub fn daa_window_duration_in_blocks(&self, selected_parent_daa_score: u64) -> u64 {
-        if self.crescendo_activation.is_active(selected_parent_daa_score) {
-            self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size
-        } else {
-            self.prior_difficulty_window_size as u64
-        }
+    pub fn difficulty_window_duration_in_block_units(&self) -> ForkedParam<u64> {
+        ForkedParam::new(
+            self.prior_difficulty_window_size as u64,
+            self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size,
+            self.crescendo_activation,
+        )
     }
 
-    // TODO (Crescendo)
-    fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
-        if self.crescendo_activation.is_active(selected_parent_daa_score) {
+    fn expected_difficulty_window_duration_in_milliseconds(&self) -> ForkedParam<u64> {
+        ForkedParam::new(
+            self.prior_target_time_per_block * self.prior_difficulty_window_size as u64,
             self.crescendo.target_time_per_block
                 * self.crescendo.difficulty_sample_rate
-                * self.crescendo.sampled_difficulty_window_size
-        } else {
-            self.prior_target_time_per_block * self.prior_difficulty_window_size as u64
-        }
+                * self.crescendo.sampled_difficulty_window_size,
+            self.crescendo_activation,
+        )
     }
 
     /// Returns the depth at which the anticone of a chain block is final (i.e., is a permanently closed set).
     /// Based on the analysis at <https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf>
     /// and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
-    pub fn anticone_finalization_depth(&self) -> u64 {
-        // TODO (Crescendo)
-        let anticone_finalization_depth = self.prior_finality_depth
+    pub fn anticone_finalization_depth(&self) -> ForkedParam<u64> {
+        let prior_anticone_finalization_depth = self.prior_finality_depth
             + self.prior_merge_depth
             + 4 * self.prior_mergeset_size_limit * self.prior_ghostdag_k as u64
             + 2 * self.prior_ghostdag_k as u64
+            + 2;
+
+        let new_anticone_finalization_depth = self.crescendo.finality_depth
+            + self.crescendo.merge_depth
+            + 4 * self.crescendo.mergeset_size_limit * self.crescendo.ghostdag_k as u64
+            + 2 * self.crescendo.ghostdag_k as u64
             + 2;
 
         // In mainnet it's guaranteed that `self.pruning_depth` is greater
@@ -388,7 +383,11 @@ impl Params {
         // a smaller (unsafe) pruning depth, so we return the minimum of
         // the two to avoid a situation where a block can be pruned and
         // not finalized.
-        min(self.prior_pruning_depth, anticone_finalization_depth)
+        ForkedParam::new(
+            min(self.prior_pruning_depth, prior_anticone_finalization_depth),
+            min(self.crescendo.pruning_depth, new_anticone_finalization_depth),
+            self.crescendo_activation,
+        )
     }
 
     /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
@@ -397,7 +396,9 @@ impl Params {
             // We consider the node close to being synced if the sink (virtual selected parent) block
             // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
             // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
-            unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds(sink_daa_score)
+            //
+            // [Crescendo]: both durations are nearly equal so this decision is negligible
+            unix_now() < sink_timestamp + self.expected_difficulty_window_duration_in_milliseconds().get(sink_daa_score)
         } else {
             // For testnets we consider the node to be synced if the sink timestamp is within a time range which
             // is overwhelmingly unlikely to pass without mined blocks even if net hashrate decreased dramatically.

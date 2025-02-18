@@ -318,8 +318,14 @@ impl RpcApi for RpcCoreService {
 
             // A simple heuristic check which signals that the mined block is out of date
             // and should not be accepted unless user explicitly requests
-            let daa_window_block_duration = self.config.daa_window_duration_in_blocks(virtual_daa_score);
-            if virtual_daa_score > daa_window_block_duration && block.header.daa_score < virtual_daa_score - daa_window_block_duration
+            //
+            // [Crescendo]: switch to the larger duration only after a full window with the new duration is reached post activation
+            let difficulty_window_duration = self
+                .config
+                .difficulty_window_duration_in_block_units()
+                .get(virtual_daa_score.saturating_sub(self.config.difficulty_window_duration_in_block_units().after()));
+            if virtual_daa_score > difficulty_window_duration
+                && block.header.daa_score < virtual_daa_score - difficulty_window_duration
             {
                 // error = format!("Block rejected. Reason: block DAA score {0} is too far behind virtual's DAA score {1}", block.header.daa_score, virtual_daa_score)
                 return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) });

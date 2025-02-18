@@ -194,10 +194,18 @@ impl IbdFlow {
         // thing is that we eventually adjust to the longer period.
         let pruning_depth = self.ctx.config.pruning_depth().get(hst_header.daa_score);
         if relay_header.blue_score >= hst_header.blue_score + pruning_depth && relay_header.blue_work > hst_header.blue_work {
-            if unix_now() > consensus.async_creation_timestamp().await + self.ctx.config.finality_duration() {
+            // [Crescendo]: switch to the new *shorter* finality duration only after sufficient time has passed
+            // since activation (measured via the new *larger* finality depth).
+            // Note: these are not critical execution paths so such estimation heuristics are completely ok in this context.
+            let finality_duration_in_milliseconds = self
+                .ctx
+                .config
+                .finality_duration_in_milliseconds()
+                .get(hst_header.daa_score.saturating_sub(self.ctx.config.finality_depth().upper_bound()));
+            if unix_now() > consensus.async_creation_timestamp().await + finality_duration_in_milliseconds {
                 let fp = consensus.async_finality_point().await;
                 let fp_ts = consensus.async_get_header(fp).await?.timestamp;
-                if unix_now() < fp_ts + self.ctx.config.finality_duration() * 3 / 2 {
+                if unix_now() < fp_ts + finality_duration_in_milliseconds * 3 / 2 {
                     // We reject the headers proof if the node has a relatively up-to-date finality point and current
                     // consensus has matured for long enough (and not recently synced). This is mostly a spam-protector
                     // since subsequent checks identify these violations as well

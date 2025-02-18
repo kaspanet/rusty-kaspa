@@ -587,7 +587,8 @@ async fn median_time_test() {
         let consensus = TestConsensus::new(&test.config);
         let wait_handles = consensus.init();
 
-        let num_blocks = test.config.past_median_time_window_size().before() as u64 * test.config.past_median_time_sample_rate(0);
+        let num_blocks =
+            test.config.past_median_time_window_size().before() as u64 * test.config.past_median_time_sample_rate().before();
         let timestamp_deviation_tolerance = test.config.timestamp_deviation_tolerance;
         for i in 1..(num_blocks + 1) {
             let parent = if i == 1 { test.config.genesis.hash } else { (i - 1).into() };
@@ -1367,7 +1368,8 @@ async fn difficulty_test() {
     }
 
     fn full_window_bits(consensus: &TestConsensus, hash: Hash) -> u32 {
-        let window_size = consensus.params().difficulty_window_size().before() * consensus.params().difficulty_sample_rate(0) as usize;
+        let window_size =
+            consensus.params().difficulty_window_size().before() * consensus.params().difficulty_sample_rate().before() as usize;
         let ghostdag_data = &consensus.ghostdag_store().get_data(hash).unwrap();
         let window = consensus.window_manager().block_window(ghostdag_data, WindowType::VaryingWindow(window_size)).unwrap();
         assert_eq!(window.blocks.len(), window_size);
@@ -1453,7 +1455,7 @@ async fn difficulty_test() {
         let consensus = TestConsensus::new(&test.config);
         let wait_handles = consensus.init();
 
-        let sample_rate = test.config.difficulty_sample_rate(0);
+        let sample_rate = test.config.difficulty_sample_rate().before();
         let expanded_window_size = test.config.difficulty_window_size().before() * sample_rate as usize;
 
         let fake_genesis = Header {

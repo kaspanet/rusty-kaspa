@@ -330,7 +330,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.prior_finality_depth = 128;
         params.prior_merge_depth = 128;
         params.prior_mergeset_size_limit = 32;
-        params.prior_pruning_depth = params.anticone_finalization_depth();
+        params.prior_pruning_depth = params.anticone_finalization_depth().before();
         info!("Setting pruning depth to {}", params.prior_pruning_depth);
     }
 }

@@ -16,6 +16,7 @@ use rocksdb::WriteBatch;
 
 use kaspa_consensus_core::{
     blockhash::{self, BlockHashExtensions},
+    config::params::ForkedParam,
     errors::consensus::{ConsensusError, ConsensusResult},
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData},
@@ -121,8 +122,8 @@ pub struct PruningProofManager {
     max_block_level: BlockLevel,
     genesis_hash: Hash,
     pruning_proof_m: u64,
-    anticone_finalization_depth: u64,
-    ghostdag_k: KType,
+    anticone_finalization_depth: ForkedParam<u64>,
+    ghostdag_k: ForkedParam<KType>,
 
     is_consensus_exiting: Arc<AtomicBool>,
 }
@@ -140,8 +141,8 @@ impl PruningProofManager {
         max_block_level: BlockLevel,
         genesis_hash: Hash,
         pruning_proof_m: u64,
-        anticone_finalization_depth: u64,
-        ghostdag_k: KType,
+        anticone_finalization_depth: ForkedParam<u64>,
+        ghostdag_k: ForkedParam<KType>,
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -244,10 +245,10 @@ impl PruningProofManager {
     /// the search is halted and a partial chain is returned.
     ///
     /// The returned hashes are guaranteed to have GHOSTDAG data
-    pub(crate) fn get_ghostdag_chain_k_depth(&self, hash: Hash) -> Vec<Hash> {
-        let mut hashes = Vec::with_capacity(self.ghostdag_k as usize + 1);
+    pub(crate) fn get_ghostdag_chain_k_depth(&self, hash: Hash, ghostdag_k: KType) -> Vec<Hash> {
+        let mut hashes = Vec::with_capacity(ghostdag_k as usize + 1);
         let mut current = hash;
-        for _ in 0..=self.ghostdag_k {
+        for _ in 0..=ghostdag_k {
             hashes.push(current);
             let Some(parent) = self.ghostdag_store.get_selected_parent(current).unwrap_option() else {
                 break;
@@ -275,6 +276,10 @@ impl PruningProofManager {
         let mut daa_window_blocks = BlockHashMap::new();
         let mut ghostdag_blocks = BlockHashMap::new();
 
+        // [Crescendo]: get ghostdag k based on the pruning point's DAA score. The off-by-one of not going by selected parent
+        // DAA score is not important here as we simply increase K one block earlier which is more conservative (saving/sending more data)
+        let ghostdag_k = self.ghostdag_k.get(self.headers_store.get_daa_score(pruning_point).unwrap());
+
         // PRUNE SAFETY: called either via consensus under the prune guard or by the pruning processor (hence no pruning in parallel)
 
         for anticone_block in anticone.iter().copied() {
@@ -291,7 +296,7 @@ impl PruningProofManager {
                 }
             }
 
-            let ghostdag_chain = self.get_ghostdag_chain_k_depth(anticone_block);
+            let ghostdag_chain = self.get_ghostdag_chain_k_depth(anticone_block, ghostdag_k);
             for hash in ghostdag_chain {
                 if let Entry::Vacant(e) = ghostdag_blocks.entry(hash) {
                     let ghostdag = self.ghostdag_store.get_data(hash).unwrap();
@@ -369,8 +374,12 @@ impl PruningProofManager {
         let virtual_state = self.virtual_stores.read().state.get().unwrap();
         let pp_bs = self.headers_store.get_blue_score(pp).unwrap();
 
+        // [Crescendo]: use pruning point DAA score for activation. This means that only after sufficient time
+        // post activation we will require the increased finalization depth
+        let pruning_point_daa_score = self.headers_store.get_daa_score(pp).unwrap();
+
         // The anticone is considered final only if the pruning point is at sufficient depth from virtual
-        if virtual_state.ghostdag_data.blue_score >= pp_bs + self.anticone_finalization_depth {
+        if virtual_state.ghostdag_data.blue_score >= pp_bs + self.anticone_finalization_depth.get(pruning_point_daa_score) {
             let anticone = Arc::new(self.calculate_pruning_point_anticone_and_trusted_data(pp, virtual_state.parents.iter().copied()));
             cache_lock.replace(CachedPruningPointData { pruning_point: pp, data: anticone.clone() });
             Ok(anticone)

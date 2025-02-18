@@ -180,7 +180,7 @@ impl ConsensusServices {
             params.genesis.hash,
             params.pruning_proof_m,
             params.anticone_finalization_depth(),
-            params.prior_ghostdag_k, // TODO (Crescendo)
+            params.ghostdag_k(),
             is_consensus_exiting,
         ));
 
