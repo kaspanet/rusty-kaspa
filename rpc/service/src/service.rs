@@ -774,8 +774,16 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _request: GetFeeEstimateRequest,
     ) -> RpcResult<GetFeeEstimateResponse> {
         let mining_manager = self.mining_manager.clone();
-        let estimate =
-            self.fee_estimate_cache.get(async move { mining_manager.get_realtime_feerate_estimations().await.into_rpc() }).await;
+        let consensus_manager = self.consensus_manager.clone();
+        let estimate = self
+            .fee_estimate_cache
+            .get(async move {
+                mining_manager
+                    .get_realtime_feerate_estimations(consensus_manager.consensus().unguarded_session().get_virtual_daa_score())
+                    .await
+                    .into_rpc()
+            })
+            .await;
         Ok(GetFeeEstimateResponse { estimate })
     }
 

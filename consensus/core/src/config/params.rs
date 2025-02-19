@@ -61,11 +61,11 @@ pub struct ForkedParam<T: Copy> {
 }
 
 impl<T: Copy> ForkedParam<T> {
-    fn new(pre: T, post: T, activation: ForkActivation) -> Self {
+    const fn new(pre: T, post: T, activation: ForkActivation) -> Self {
         Self { pre, post, activation }
     }
 
-    pub fn new_const(val: T) -> Self {
+    pub const fn new_const(val: T) -> Self {
         Self { pre: val, post: val, activation: ForkActivation::never() }
     }
 
@@ -95,6 +95,11 @@ impl<T: Copy> ForkedParam<T> {
             ForkActivation::NEVER => self.pre,
             _ => self.post,
         }
+    }
+
+    /// Maps the ForkedParam<T> to a new ForkedParam<U> by applying a map function on both pre and post
+    pub fn map<U: Copy, F: Fn(T) -> U>(&self, f: F) -> ForkedParam<U> {
+        ForkedParam::new(f(self.pre), f(self.post), self.activation)
     }
 }
 

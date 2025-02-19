@@ -314,7 +314,8 @@ impl TransactionsPool {
 
     pub(crate) fn collect_expired_low_priority_transactions(&mut self, virtual_daa_score: u64) -> Vec<TransactionId> {
         let now = unix_now();
-        if virtual_daa_score < self.last_expire_scan_daa_score + self.config.transaction_expire_scan_interval_daa_score
+        if virtual_daa_score
+            < self.last_expire_scan_daa_score + self.config.transaction_expire_scan_interval_daa_score.get(virtual_daa_score)
             || now < self.last_expire_scan_time + self.config.transaction_expire_scan_interval_milliseconds
         {
             return vec![];
@@ -329,7 +330,8 @@ impl TransactionsPool {
             .values()
             .filter_map(|x| {
                 if (x.priority == Priority::Low)
-                    && virtual_daa_score > x.added_at_daa_score + self.config.transaction_expire_interval_daa_score
+                    && virtual_daa_score
+                        > x.added_at_daa_score + self.config.transaction_expire_interval_daa_score.get(virtual_daa_score)
                 {
                     Some(x.id())
                 } else {
