@@ -2,12 +2,12 @@ use crate::mempool::{
     errors::{NonStandardError, NonStandardResult},
     Mempool,
 };
-use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
     mass,
     tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
 };
+use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, mass::NonContextualMasses};
 use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class::ScriptClass};
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
@@ -61,12 +61,12 @@ impl Mempool {
         // almost as much to process as the sender fees, limit the maximum
         // size of a transaction. This also helps mitigate CPU exhaustion
         // attacks.
-        if transaction.calculated_non_contextual_masses.unwrap().max() > MAXIMUM_STANDARD_TRANSACTION_MASS {
-            return Err(NonStandardError::RejectMass(
-                transaction_id,
-                transaction.calculated_non_contextual_masses.unwrap().max(),
-                MAXIMUM_STANDARD_TRANSACTION_MASS,
-            ));
+        let NonContextualMasses { compute_mass, transient_mass } = transaction.calculated_non_contextual_masses.unwrap();
+        if compute_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
+            return Err(NonStandardError::RejectComputeMass(transaction_id, compute_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
+        }
+        if transient_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
+            return Err(NonStandardError::RejectTransientMass(transaction_id, transient_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
         }
 
         for (i, input) in transaction.tx.inputs.iter().enumerate() {
@@ -173,7 +173,7 @@ impl Mempool {
         let transaction_id = transaction.id();
         let contextual_mass = transaction.tx.mass();
         if contextual_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
-            return Err(NonStandardError::RejectContextualMass(transaction_id, contextual_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
+            return Err(NonStandardError::RejectStorageMass(transaction_id, contextual_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
         }
         for (i, input) in transaction.tx.inputs.iter().enumerate() {
             // It is safe to elide existence and index checks here since
@@ -198,9 +198,10 @@ impl Mempool {
                 }
             }
 
-            // TODO: For now, until wallets adapt, we do not require fee as function of full overall mass (but the fee/mass ratio
-            // will affect tx selection to block template)
-            let minimum_fee = self.minimum_required_transaction_relay_fee(transaction.calculated_non_contextual_masses.unwrap().max());
+            // TODO: For now, until wallets adapt, we only require minimum fee as function of compute mass (but the fee/mass ratio will
+            // use the max over all masses and will affect tx selection to block template)
+            let minimum_fee =
+                self.minimum_required_transaction_relay_fee(transaction.calculated_non_contextual_masses.unwrap().compute_mass);
             if transaction.calculated_fee.unwrap() < minimum_fee {
                 return Err(NonStandardError::RejectInsufficientFee(transaction_id, transaction.calculated_fee.unwrap(), minimum_fee));
             }

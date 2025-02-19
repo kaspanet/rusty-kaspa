@@ -453,8 +453,8 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
 
     /// Returns the calculated feerate. The feerate is calculated as the amount of fee this
     /// transactions pays per gram of the aggregated contextual mass (max over compute, transient
-    /// and storage masses). The function returns a value when calculated fee exists and the
-    /// contextual mass is greater than zero, otherwise `None` is returned.
+    /// and storage masses). The function returns a value when calculated fee and calculated masses
+    /// exist, otherwise `None` is returned.
     pub fn calculated_feerate(&self) -> Option<f64> {
         self.calculated_non_contextual_masses
             .map(|non_contextual_masses| ContextualMasses::new(self.tx.as_ref().mass()).max(non_contextual_masses))

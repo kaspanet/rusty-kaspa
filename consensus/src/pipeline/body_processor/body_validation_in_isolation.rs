@@ -72,7 +72,7 @@ impl BlockBodyProcessor {
                 let NonContextualMasses { compute_mass, transient_mass } = self.mass_calculator.calc_non_contextual_masses(tx);
 
                 // Read the storage mass commitment. This value cannot be computed here w/o UTXO context
-                // so we use the commitment. Later on, when he transaction is verified in context, we use
+                // so we use the commitment. Later on, when the transaction is verified in context, we use
                 // the context to calculate the expected storage mass and verify it matches this commitment
                 let storage_mass_commitment = tx.mass();
 
