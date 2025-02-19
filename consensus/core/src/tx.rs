@@ -175,6 +175,7 @@ pub struct Transaction {
     #[serde(with = "serde_bytes")]
     pub payload: Vec<u8>,
 
+    /// Holds a commitment to the storage mass (KIP-0009)
     #[serde(default)]
     mass: TransactionMass,
 
@@ -231,16 +232,18 @@ impl Transaction {
         self.id
     }
 
-    /// Set the mass field of this transaction. The mass field is expected depending on hard-forks which are currently
-    /// activated only on some testnets. The field has no effect on tx ID so no need to finalize following this call.
+    /// Set the storage mass commitment field of this transaction. This field is expected to be activated on mainnet
+    /// as part of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
     pub fn set_mass(&self, mass: u64) {
         self.mass.0.store(mass, SeqCst)
     }
 
+    /// Read the storage mass commitment
     pub fn mass(&self) -> u64 {
         self.mass.0.load(SeqCst)
     }
 
+    /// Set the storage mass commitment of the passed transaction
     pub fn with_mass(self, mass: u64) -> Self {
         self.set_mass(mass);
         self
