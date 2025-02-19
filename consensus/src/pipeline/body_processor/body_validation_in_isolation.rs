@@ -2,17 +2,22 @@ use std::{collections::HashSet, sync::Arc};
 
 use super::BlockBodyProcessor;
 use crate::errors::{BlockProcessResult, RuleError};
-use kaspa_consensus_core::{block::Block, merkle::calc_hash_merkle_root, tx::TransactionOutpoint};
+use kaspa_consensus_core::{
+    block::Block,
+    mass::{ContextualMasses, Mass, NonContextualMasses},
+    merkle::calc_hash_merkle_root,
+    tx::TransactionOutpoint,
+};
 
 impl BlockBodyProcessor {
-    pub fn validate_body_in_isolation(self: &Arc<Self>, block: &Block) -> BlockProcessResult<u64> {
-        let storage_mass_activated = self.crescendo_activation.is_active(block.header.daa_score);
+    pub fn validate_body_in_isolation(self: &Arc<Self>, block: &Block) -> BlockProcessResult<Mass> {
+        let crescendo_activated = self.crescendo_activation.is_active(block.header.daa_score);
 
         Self::check_has_transactions(block)?;
-        Self::check_hash_merkle_root(block, storage_mass_activated)?;
+        Self::check_hash_merkle_root(block, crescendo_activated)?;
         Self::check_only_one_coinbase(block)?;
         self.check_transactions_in_isolation(block)?;
-        let mass = self.check_block_mass(block, storage_mass_activated)?;
+        let mass = self.check_block_mass(block, crescendo_activated)?;
         self.check_duplicate_transactions(block)?;
         self.check_block_double_spends(block)?;
         self.check_no_chained_transactions(block)?;
@@ -28,8 +33,8 @@ impl BlockBodyProcessor {
         Ok(())
     }
 
-    fn check_hash_merkle_root(block: &Block, storage_mass_activated: bool) -> BlockProcessResult<()> {
-        let calculated = calc_hash_merkle_root(block.transactions.iter(), storage_mass_activated);
+    fn check_hash_merkle_root(block: &Block, crescendo_activated: bool) -> BlockProcessResult<()> {
+        let calculated = calc_hash_merkle_root(block.transactions.iter(), crescendo_activated);
         if calculated != block.header.hash_merkle_root {
             return Err(RuleError::BadMerkleRoot(block.header.hash_merkle_root, calculated));
         }
@@ -57,34 +62,46 @@ impl BlockBodyProcessor {
         Ok(())
     }
 
-    fn check_block_mass(self: &Arc<Self>, block: &Block, storage_mass_activated: bool) -> BlockProcessResult<u64> {
-        let mut total_mass: u64 = 0;
-        if storage_mass_activated {
+    fn check_block_mass(self: &Arc<Self>, block: &Block, crescendo_activated: bool) -> BlockProcessResult<Mass> {
+        if crescendo_activated {
+            let mut total_non_contextual_masses = NonContextualMasses::zero();
+            let mut total_contextual_masses = ContextualMasses::zero();
             for tx in block.transactions.iter() {
-                // This is only the compute part of the mass, the storage part cannot be computed here
-                let calculated_tx_compute_mass = self.mass_calculator.calc_tx_compute_mass(tx);
-                let committed_contextual_mass = tx.mass();
-                // We only check the lower-bound here, a precise check of the mass commitment
-                // is done when validating the tx in context
-                if committed_contextual_mass < calculated_tx_compute_mass {
-                    return Err(RuleError::MassFieldTooLow(tx.id(), committed_contextual_mass, calculated_tx_compute_mass));
+                // Calculate the non-contextual masses
+                let transaction_non_contextual_masses = self.mass_calculator.calc_non_contextual_masses(tx);
+
+                // Extract the storage mass commitment. This value cannot be computed here w/o UTXO context
+                // so we verify its commitments comply with limits, and later on verify the transaction complies
+                // with the commitment as an acceptance condition (when context is available)
+                let transaction_storage_mass_commitment = tx.mass();
+
+                // Sum over the various masses separately
+                total_non_contextual_masses = total_non_contextual_masses.saturating_add(transaction_non_contextual_masses);
+                total_contextual_masses =
+                    total_contextual_masses.saturating_add(ContextualMasses::new(transaction_storage_mass_commitment));
+
+                if total_non_contextual_masses.compute_mass > self.max_block_mass {
+                    return Err(RuleError::ExceedsComputeMassLimit(total_non_contextual_masses.compute_mass, self.max_block_mass));
                 }
-                // Sum over the committed masses
-                total_mass = total_mass.saturating_add(committed_contextual_mass);
-                if total_mass > self.max_block_mass {
-                    return Err(RuleError::ExceedsMassLimit(self.max_block_mass));
+                if total_non_contextual_masses.transient_mass > self.max_block_mass {
+                    return Err(RuleError::ExceedsTransientMassLimit(total_non_contextual_masses.transient_mass, self.max_block_mass));
+                }
+                if total_contextual_masses.storage_mass > self.max_block_mass {
+                    return Err(RuleError::ExceedsStorageMassLimit(total_contextual_masses.storage_mass, self.max_block_mass));
                 }
             }
+            Ok((total_non_contextual_masses, total_contextual_masses))
         } else {
+            let mut total_mass: u64 = 0;
             for tx in block.transactions.iter() {
-                let calculated_tx_mass = self.mass_calculator.calc_tx_compute_mass(tx);
-                total_mass = total_mass.saturating_add(calculated_tx_mass);
+                let compute_mass = self.mass_calculator.calc_non_contextual_masses(tx).compute_mass;
+                total_mass = total_mass.saturating_add(compute_mass);
                 if total_mass > self.max_block_mass {
-                    return Err(RuleError::ExceedsMassLimit(self.max_block_mass));
+                    return Err(RuleError::ExceedsComputeMassLimit(total_mass, self.max_block_mass));
                 }
             }
+            Ok((NonContextualMasses::new(total_mass, 0), ContextualMasses::zero()))
         }
-        Ok(total_mass)
     }
 
     fn check_block_double_spends(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
@@ -415,7 +432,7 @@ mod tests {
         txs[1].inputs[0].sig_op_count = 255;
         txs[1].inputs[1].sig_op_count = 255;
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ExceedsMassLimit(_)));
+        assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ExceedsComputeMassLimit(_, _)));
 
         let mut block = example_block.clone();
         let txs = &mut block.transactions;

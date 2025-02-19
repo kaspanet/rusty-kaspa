@@ -1,5 +1,6 @@
 use crate::{
     config::params::Params,
+    constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
     subnets::SUBNETWORK_ID_SIZE,
     tx::{Transaction, TransactionInput, TransactionOutput, VerifiableTransaction},
 };
@@ -57,6 +58,93 @@ pub fn transaction_output_estimated_serialized_size(output: &TransactionOutput) 
     size
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct NonContextualMasses {
+    /// Compute mass
+    pub compute_mass: u64,
+
+    /// Transient storage mass
+    pub transient_mass: u64,
+}
+
+impl NonContextualMasses {
+    pub fn new(compute_mass: u64, transient_mass: u64) -> Self {
+        Self { compute_mass, transient_mass }
+    }
+
+    pub fn zero() -> Self {
+        Self { compute_mass: 0, transient_mass: 0 }
+    }
+
+    pub fn saturating_add(&self, other: Self) -> Self {
+        Self::new(self.compute_mass.saturating_add(other.compute_mass), self.transient_mass.saturating_add(other.transient_mass))
+    }
+
+    /// Returns the maximum over all non-contextual masses (currently compute and transient). This
+    /// max value has no consensus meaning and should only be used for mempool-level simplification
+    /// such as obtaining a one-dimensional mass value when composing blocks templates.  
+    pub fn max(&self) -> u64 {
+        self.compute_mass.max(self.transient_mass)
+    }
+}
+
+impl std::fmt::Display for NonContextualMasses {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "compute: {}, transient: {}", self.compute_mass, self.transient_mass)
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ContextualMasses {
+    /// Permanent storage mass
+    pub storage_mass: u64,
+}
+
+impl ContextualMasses {
+    pub fn new(storage_mass: u64) -> Self {
+        Self { storage_mass }
+    }
+
+    pub fn zero() -> Self {
+        Self { storage_mass: 0 }
+    }
+
+    pub fn saturating_add(&self, other: Self) -> Self {
+        Self::new(self.storage_mass.saturating_add(other.storage_mass))
+    }
+
+    /// Returns the maximum over *all masses* (currently compute, transient and storage). This max
+    /// value has no consensus meaning and should only be used for mempool-level simplification such
+    /// as obtaining a one-dimensional mass value when composing blocks templates.  
+    pub fn max(&self, non_contextual_masses: NonContextualMasses) -> u64 {
+        self.storage_mass.max(non_contextual_masses.max())
+    }
+}
+
+impl std::fmt::Display for ContextualMasses {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "storage: {}", self.storage_mass)
+    }
+}
+
+impl std::cmp::PartialEq<u64> for ContextualMasses {
+    fn eq(&self, other: &u64) -> bool {
+        self.storage_mass.eq(other)
+    }
+}
+
+pub type Mass = (NonContextualMasses, ContextualMasses);
+
+pub trait MassOps {
+    fn max(&self) -> u64;
+}
+
+impl MassOps for Mass {
+    fn max(&self) -> u64 {
+        self.1.max(self.0)
+    }
+}
+
 // Note: consensus mass calculator operates on signed transactions.
 // To calculate mass for unsigned transactions, please use
 // `kaspa_wallet_core::tx::mass::MassCalculator`
@@ -82,11 +170,12 @@ impl MassCalculator {
         }
     }
 
-    /// Calculates the compute mass of this transaction. This does not include the storage mass calculation below which
-    /// requires full UTXO context
-    pub fn calc_tx_compute_mass(&self, tx: &Transaction) -> u64 {
+    /// Calculates the non-contextual masses for this transaction (i.e., masses which can be calculated from
+    /// the transaction alone). These include compute and transient storage masses of this transaction. This
+    /// does not include the permanent storage mass calculation below which requires full UTXO context
+    pub fn calc_non_contextual_masses(&self, tx: &Transaction) -> NonContextualMasses {
         if tx.is_coinbase() {
-            return 0;
+            return NonContextualMasses::new(0, 0);
         }
 
         let size = transaction_estimated_serialized_size(tx);
@@ -101,27 +190,26 @@ impl MassCalculator {
         let total_sigops: u64 = tx.inputs.iter().map(|input| input.sig_op_count as u64).sum();
         let total_sigops_mass = total_sigops * self.mass_per_sig_op;
 
-        mass_for_size + total_script_public_key_mass + total_sigops_mass
+        let compute_mass = mass_for_size + total_script_public_key_mass + total_sigops_mass;
+        let transient_mass = size * TRANSIENT_BYTE_TO_MASS_FACTOR;
+
+        NonContextualMasses::new(compute_mass, transient_mass)
     }
 
-    /// Calculates the storage mass for this populated transaction.
+    /// Calculates the contextual masses for this populated transaction.
     /// Assumptions which must be verified before this call:
     ///     1. All output values are non-zero
     ///     2. At least one input (unless coinbase)
     ///
     /// Otherwise this function should never fail.
-    pub fn calc_tx_storage_mass(&self, tx: &impl VerifiableTransaction) -> Option<u64> {
+    pub fn calc_contextual_masses(&self, tx: &impl VerifiableTransaction) -> Option<ContextualMasses> {
         calc_storage_mass(
             tx.is_coinbase(),
             tx.populated_inputs().map(|(_, entry)| entry.amount),
             tx.outputs().iter().map(|out| out.value),
             self.storage_mass_parameter,
         )
-    }
-
-    /// Calculates the overall mass of this transaction, combining both compute and storage masses.
-    pub fn calc_tx_overall_mass(&self, tx: &impl VerifiableTransaction, cached_compute_mass: Option<u64>) -> Option<u64> {
-        self.calc_tx_storage_mass(tx).map(|mass| mass.max(cached_compute_mass.unwrap_or_else(|| self.calc_tx_compute_mass(tx.tx()))))
+        .map(ContextualMasses::new)
     }
 }
 
@@ -209,26 +297,26 @@ mod tests {
         // Assert the formula: max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
         //
 
-        let storage_mass = MassCalculator::new(0, 0, 0, 10u64.pow(12)).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, 10u64.pow(12)).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0); // Compounds from 3 to 2, with symmetric outputs and no fee, should be zero
 
         // Create asymmetry
         tx.tx.outputs[0].value = 50;
         tx.tx.outputs[1].value = 550;
         let storage_mass_parameter = 10u64.pow(12);
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, storage_mass_parameter / 50 + storage_mass_parameter / 550 - 3 * (storage_mass_parameter / 200));
 
         // Create a tx with more outs than ins
         let base_value = 10_000 * SOMPI_PER_KASPA;
         let mut tx = generate_tx_from_amounts(&[base_value, base_value, base_value * 2], &[base_value; 4]);
         let storage_mass_parameter = STORAGE_MASS_PARAMETER;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 4); // Inputs are above C so they don't contribute negative mass, 4 outputs exactly equal C each charge 1
 
         let mut tx2 = tx.clone();
         tx2.tx.outputs[0].value = 10 * SOMPI_PER_KASPA;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx2.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx2.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 1003);
 
         // Increase values over the lim
@@ -236,7 +324,7 @@ mod tests {
             out.value += 1
         }
         tx.entries[0].as_mut().unwrap().amount += tx.tx.outputs.len() as u64;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0);
 
         // Now create 2:2 transaction
@@ -244,19 +332,19 @@ mod tests {
         let mut tx = generate_tx_from_amounts(&[100, 200], &[50, 250]);
         let storage_mass_parameter = 10u64.pow(12);
 
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 9000000000);
 
         // Set outputs to be equal to inputs
         tx.tx.outputs[0].value = 100;
         tx.tx.outputs[1].value = 200;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0);
 
         // Remove an output and make sure the other is small enough to make storage mass greater than zero
         tx.tx.outputs.pop();
         tx.tx.outputs[0].value = 50;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_contextual_masses(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 5000000000);
     }
 

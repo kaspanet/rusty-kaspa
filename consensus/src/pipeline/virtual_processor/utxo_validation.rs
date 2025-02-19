@@ -325,18 +325,20 @@ impl VirtualStateProcessor {
     ) -> TxResult<()> {
         self.populate_mempool_transaction_in_utxo_context(mutable_tx, utxo_view)?;
 
-        // Calc the full contextual mass including storage mass
+        // Calc the contextual storage mass
         let contextual_mass = self
             .transaction_validator
             .mass_calculator
-            .calc_tx_overall_mass(&mutable_tx.as_verifiable(), mutable_tx.calculated_compute_mass)
+            .calc_contextual_masses(&mutable_tx.as_verifiable())
             .ok_or(TxRuleError::MassIncomputable)?;
 
         // Set the inner mass field
-        mutable_tx.tx.set_mass(contextual_mass);
+        mutable_tx.tx.set_mass(contextual_mass.storage_mass);
 
         // At this point we know all UTXO entries are populated, so we can safely pass the tx as verifiable
-        let mass_and_feerate_threshold = args.feerate_threshold.map(|threshold| (contextual_mass, threshold));
+        let mass_and_feerate_threshold = args
+            .feerate_threshold
+            .map(|threshold| (contextual_mass.max(mutable_tx.calculated_non_contextual_masses.unwrap()), threshold));
         let calculated_fee = self.transaction_validator.validate_populated_transaction_and_get_fee(
             &mutable_tx.as_verifiable(),
             pov_daa_score,

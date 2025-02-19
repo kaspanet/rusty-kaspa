@@ -248,7 +248,7 @@ impl TransactionsPool {
             }
 
             // We are iterating ready txs by ascending feerate so the pending tx has lower feerate than all remaining txs
-            if tx.fee_rate() > feerate_threshold {
+            if tx.feerate() > feerate_threshold {
                 let err = RuleError::RejectMempoolIsFull;
                 debug!("Transaction {} with feerate {} has been rejected: {}", transaction.id(), feerate_threshold, err);
                 return Err(err);
