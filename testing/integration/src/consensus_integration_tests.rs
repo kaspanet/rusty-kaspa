@@ -29,7 +29,7 @@ use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::blockhash::new_unique;
 use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER};
+use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER, TRANSIENT_BYTE_TO_MASS_FACTOR};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::network::{NetworkId, NetworkType::Mainnet};
@@ -1907,21 +1907,31 @@ async fn payload_test() {
     };
 
     consensus.validate_and_insert_block(funding_block.to_immutable()).virtual_state_task.await.unwrap();
-    let tx = Transaction::new(
+    let mut txx = Transaction::new(
         0,
         vec![TransactionInput::new(TransactionOutpoint { transaction_id: cb_id, index: 0 }, vec![], 0, 0)],
         vec![TransactionOutput::new(cb_amount / 2, ScriptPublicKey::default())],
         0,
         SubnetworkId::default(),
         0,
-        vec![0; (config.params.max_block_mass / 2) as usize],
+        vec![0; (config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize],
     );
 
-    let mut tx = MutableTransaction::from_tx(tx);
+    // Create a tx with transient mass over the block limit
+    txx.payload = vec![0; (config.params.max_block_mass / 2) as usize];
+    let mut tx = MutableTransaction::from_tx(txx.clone());
     // This triggers storage mass population
-    let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
+    consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
+    let consensus_res = consensus.add_utxo_valid_block_with_parents(4.into(), vec![2.into()], vec![tx.tx.unwrap_or_clone()]).await;
+    assert_match!(consensus_res, Err(RuleError::ExceedsTransientMassLimit(_, _)));
 
-    consensus.add_utxo_valid_block_with_parents(3.into(), vec![2.into()], vec![tx.tx.unwrap_or_clone()]).await.unwrap();
+    // Fix the payload to be below the limit
+    txx.payload = vec![0; (config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
+    let mut tx = MutableTransaction::from_tx(txx.clone());
+    // This triggers storage mass population
+    consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
+    let status = consensus.add_utxo_valid_block_with_parents(3.into(), vec![2.into()], vec![tx.tx.unwrap_or_clone()]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
 
     consensus.shutdown(wait_handles);
 }
@@ -1979,7 +1989,7 @@ async fn payload_activation_test() {
     assert_eq!(consensus.get_virtual_daa_score(), index);
 
     // Create transaction with large payload
-    let large_payload = vec![0u8; (config.params.max_block_mass / 2) as usize];
+    let large_payload = vec![0u8; (config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
     let mut tx_with_payload = Transaction::new(
         0,
         vec![TransactionInput::new(

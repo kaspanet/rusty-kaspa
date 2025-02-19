@@ -30,7 +30,7 @@ use kaspa_consensus_core::{
         genesis::GenesisBlock,
         params::{ForkActivation, ForkedParam, Params},
     },
-    mass::MassCalculator,
+    mass::{Mass, MassCalculator, MassOps},
     tx::Transaction,
     KType,
 };
@@ -220,11 +220,11 @@ impl BlockBodyProcessor {
         // Report counters
         self.counters.body_counts.fetch_add(1, Ordering::Relaxed);
         self.counters.txs_counts.fetch_add(block.transactions.len() as u64, Ordering::Relaxed);
-        self.counters.mass_counts.fetch_add(mass, Ordering::Relaxed);
+        self.counters.mass_counts.fetch_add(mass.max(), Ordering::Relaxed);
         Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 
-    fn validate_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<u64> {
+    fn validate_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<Mass> {
         let mass = self.validate_body_in_isolation(block)?;
         if !is_trusted {
             self.validate_body_in_context(block)?;

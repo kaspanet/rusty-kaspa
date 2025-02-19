@@ -61,6 +61,7 @@ use kaspa_consensus_core::{
         tx::TxResult,
     },
     header::Header,
+    mass::{ContextualMasses, NonContextualMasses},
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
     network::NetworkType,
@@ -443,13 +444,12 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.populate_mempool_transactions_in_parallel(transactions)
     }
 
-    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
-        self.services.mass_calculator.calc_tx_compute_mass(transaction)
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
+        self.services.mass_calculator.calc_non_contextual_masses(transaction)
     }
 
-    fn calculate_transaction_storage_mass(&self, _transaction: &MutableTransaction) -> Option<u64> {
-        // self.services.mass_calculator.calc_tx_storage_mass(&transaction.as_verifiable())
-        unimplemented!("unsupported at the API level until KIP9 is finalized")
+    fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
+        self.services.mass_calculator.calc_contextual_masses(&transaction.as_verifiable())
     }
 
     fn get_stats(&self) -> ConsensusStats {

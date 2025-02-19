@@ -17,6 +17,7 @@ use crate::{
         tx::TxResult,
     },
     header::Header,
+    mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
@@ -90,11 +91,11 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
         unimplemented!()
     }
 
-    fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
+    fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
         unimplemented!()
     }
 
