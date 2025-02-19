@@ -64,33 +64,35 @@ impl BlockBodyProcessor {
 
     fn check_block_mass(self: &Arc<Self>, block: &Block, crescendo_activated: bool) -> BlockProcessResult<Mass> {
         if crescendo_activated {
-            let mut total_non_contextual_masses = NonContextualMasses::zero();
-            let mut total_contextual_masses = ContextualMasses::zero();
+            let mut total_compute_mass: u64 = 0;
+            let mut total_transient_mass: u64 = 0;
+            let mut total_storage_mass: u64 = 0;
             for tx in block.transactions.iter() {
                 // Calculate the non-contextual masses
-                let transaction_non_contextual_masses = self.mass_calculator.calc_non_contextual_masses(tx);
+                let NonContextualMasses { compute_mass, transient_mass } = self.mass_calculator.calc_non_contextual_masses(tx);
 
-                // Extract the storage mass commitment. This value cannot be computed here w/o UTXO context
-                // so we verify its commitments comply with limits, and later on verify the transaction complies
-                // with the commitment as an acceptance condition (when context is available)
-                let transaction_storage_mass_commitment = tx.mass();
+                // Read the storage mass commitment. This value cannot be computed here w/o UTXO context
+                // so we use the commitment. Later on, when he transaction is verified in context, we use
+                // the context to calculate the expected storage mass and verify it matches this commitment
+                let storage_mass_commitment = tx.mass();
 
                 // Sum over the various masses separately
-                total_non_contextual_masses = total_non_contextual_masses.saturating_add(transaction_non_contextual_masses);
-                total_contextual_masses =
-                    total_contextual_masses.saturating_add(ContextualMasses::new(transaction_storage_mass_commitment));
+                total_compute_mass = total_compute_mass.saturating_add(compute_mass);
+                total_transient_mass = total_transient_mass.saturating_add(transient_mass);
+                total_storage_mass = total_storage_mass.saturating_add(storage_mass_commitment);
 
-                if total_non_contextual_masses.compute_mass > self.max_block_mass {
-                    return Err(RuleError::ExceedsComputeMassLimit(total_non_contextual_masses.compute_mass, self.max_block_mass));
+                // Verify all limits
+                if total_compute_mass > self.max_block_mass {
+                    return Err(RuleError::ExceedsComputeMassLimit(total_compute_mass, self.max_block_mass));
                 }
-                if total_non_contextual_masses.transient_mass > self.max_block_mass {
-                    return Err(RuleError::ExceedsTransientMassLimit(total_non_contextual_masses.transient_mass, self.max_block_mass));
+                if total_transient_mass > self.max_block_mass {
+                    return Err(RuleError::ExceedsTransientMassLimit(total_transient_mass, self.max_block_mass));
                 }
-                if total_contextual_masses.storage_mass > self.max_block_mass {
-                    return Err(RuleError::ExceedsStorageMassLimit(total_contextual_masses.storage_mass, self.max_block_mass));
+                if total_storage_mass > self.max_block_mass {
+                    return Err(RuleError::ExceedsStorageMassLimit(total_storage_mass, self.max_block_mass));
                 }
             }
-            Ok((total_non_contextual_masses, total_contextual_masses))
+            Ok((NonContextualMasses::new(total_compute_mass, total_transient_mass), ContextualMasses::new(total_storage_mass)))
         } else {
             let mut total_mass: u64 = 0;
             for tx in block.transactions.iter() {
@@ -100,7 +102,7 @@ impl BlockBodyProcessor {
                     return Err(RuleError::ExceedsComputeMassLimit(total_mass, self.max_block_mass));
                 }
             }
-            Ok((NonContextualMasses::new(total_mass, 0), ContextualMasses::zero()))
+            Ok((NonContextualMasses::new(total_mass, 0), ContextualMasses::new(0)))
         }
     }
 

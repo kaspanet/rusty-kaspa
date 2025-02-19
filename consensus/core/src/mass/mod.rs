@@ -72,14 +72,6 @@ impl NonContextualMasses {
         Self { compute_mass, transient_mass }
     }
 
-    pub fn zero() -> Self {
-        Self { compute_mass: 0, transient_mass: 0 }
-    }
-
-    pub fn saturating_add(&self, other: Self) -> Self {
-        Self::new(self.compute_mass.saturating_add(other.compute_mass), self.transient_mass.saturating_add(other.transient_mass))
-    }
-
     /// Returns the maximum over all non-contextual masses (currently compute and transient). This
     /// max value has no consensus meaning and should only be used for mempool-level simplification
     /// such as obtaining a one-dimensional mass value when composing blocks templates.  
@@ -103,14 +95,6 @@ pub struct ContextualMasses {
 impl ContextualMasses {
     pub fn new(storage_mass: u64) -> Self {
         Self { storage_mass }
-    }
-
-    pub fn zero() -> Self {
-        Self { storage_mass: 0 }
-    }
-
-    pub fn saturating_add(&self, other: Self) -> Self {
-        Self::new(self.storage_mass.saturating_add(other.storage_mass))
     }
 
     /// Returns the maximum over *all masses* (currently compute, transient and storage). This max
