@@ -117,10 +117,24 @@ impl CoinbaseManager {
         // Collect all rewards from mergeset reds ∩ DAA window and create a
         // single output rewarding all to the current block (the "merging" block)
         let mut red_reward = 0u64;
-        for red in ghostdag_data.mergeset_reds.iter().filter(|h| !mergeset_non_daa.contains(h)) {
-            let reward_data = mergeset_rewards.get(red).unwrap();
-            red_reward += reward_data.subsidy + reward_data.total_fees;
+
+        // bps activation = crescendo activation
+        if self.bps.activation().is_active(daa_score) {
+            for red in ghostdag_data.mergeset_reds.iter() {
+                let reward_data = mergeset_rewards.get(red).unwrap();
+                if mergeset_non_daa.contains(red) {
+                    red_reward += reward_data.total_fees;
+                } else {
+                    red_reward += reward_data.subsidy + reward_data.total_fees;
+                }
+            }
+        } else {
+            for red in ghostdag_data.mergeset_reds.iter().filter(|h| !mergeset_non_daa.contains(h)) {
+                let reward_data = mergeset_rewards.get(red).unwrap();
+                red_reward += reward_data.subsidy + reward_data.total_fees;
+            }
         }
+
         if red_reward > 0 {
             outputs.push(TransactionOutput::new(red_reward, miner_data.script_public_key.clone()));
         }

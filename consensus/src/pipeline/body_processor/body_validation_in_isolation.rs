@@ -17,6 +17,7 @@ impl BlockBodyProcessor {
         Self::check_hash_merkle_root(block, crescendo_activated)?;
         Self::check_only_one_coinbase(block)?;
         self.check_transactions_in_isolation(block)?;
+        self.check_coinbase_has_zero_mass(block, crescendo_activated)?;
         let mass = self.check_block_mass(block, crescendo_activated)?;
         self.check_duplicate_transactions(block)?;
         self.check_block_double_spends(block)?;
@@ -58,6 +59,14 @@ impl BlockBodyProcessor {
             if let Err(e) = self.transaction_validator.validate_tx_in_isolation(tx) {
                 return Err(RuleError::TxInIsolationValidationFailed(tx.id(), e));
             }
+        }
+        Ok(())
+    }
+
+    fn check_coinbase_has_zero_mass(&self, block: &Block, crescendo_activated: bool) -> BlockProcessResult<()> {
+        // TODO (post HF): move to check_coinbase_in_isolation
+        if crescendo_activated && block.transactions[0].mass() > 0 {
+            return Err(RuleError::CoinbaseNonZeroMassCommitment);
         }
         Ok(())
     }
