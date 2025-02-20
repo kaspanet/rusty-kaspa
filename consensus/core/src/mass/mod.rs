@@ -88,7 +88,7 @@ impl std::fmt::Display for NonContextualMasses {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ContextualMasses {
-    /// Permanent storage mass
+    /// Persistent storage mass
     pub storage_mass: u64,
 }
 
@@ -156,7 +156,7 @@ impl MassCalculator {
 
     /// Calculates the non-contextual masses for this transaction (i.e., masses which can be calculated from
     /// the transaction alone). These include compute and transient storage masses of this transaction. This
-    /// does not include the permanent storage mass calculation below which requires full UTXO context
+    /// does not include the persistent storage mass calculation below which requires full UTXO context
     pub fn calc_non_contextual_masses(&self, tx: &Transaction) -> NonContextualMasses {
         if tx.is_coinbase() {
             return NonContextualMasses::new(0, 0);

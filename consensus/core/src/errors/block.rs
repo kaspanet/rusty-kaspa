@@ -106,7 +106,7 @@ pub enum RuleError {
     #[error("block transient storage mass {0} exceeds limit of {1}")]
     ExceedsTransientMassLimit(u64, u64),
 
-    #[error("block permanent storage mass {0} exceeds limit of {1}")]
+    #[error("block persistent storage mass {0} exceeds limit of {1}")]
     ExceedsStorageMassLimit(u64, u64),
 
     #[error("transaction {0} has mass field of {1} but mass should be at least {2}")]
