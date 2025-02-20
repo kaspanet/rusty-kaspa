@@ -1,7 +1,6 @@
 use super::*;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
-use crate::model::stores::headers::HeaderStoreReader;
 use crate::processes::window::WindowManager;
 use kaspa_consensus_core::header::Header;
 
@@ -19,8 +18,7 @@ impl HeaderProcessor {
             return Err(RuleError::NoParents);
         }
 
-        let max_block_parents =
-            self.max_block_parents.get(self.headers_store.get_daa_score(ctx.ghostdag_data().selected_parent).unwrap()) as usize;
+        let max_block_parents = self.max_block_parents.get(ctx.selected_parent_daa_score()) as usize;
         if header.direct_parents().len() > max_block_parents {
             return Err(RuleError::TooManyParents(header.direct_parents().len(), max_block_parents));
         }

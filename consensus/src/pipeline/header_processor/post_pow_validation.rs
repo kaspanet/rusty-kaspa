@@ -1,7 +1,6 @@
 use super::{HeaderProcessingContext, HeaderProcessor};
 use crate::errors::{BlockProcessResult, RuleError, TwoDimVecDisplay};
 use crate::model::services::reachability::ReachabilityService;
-use crate::model::stores::headers::HeaderStoreReader;
 use crate::processes::window::WindowManager;
 use kaspa_consensus_core::header::Header;
 use kaspa_hashes::Hash;
@@ -31,8 +30,7 @@ impl HeaderProcessor {
 
     pub fn check_mergeset_size_limit(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
         let mergeset_size = ctx.ghostdag_data().mergeset_size() as u64;
-        let mergeset_size_limit =
-            self.mergeset_size_limit.get(self.headers_store.get_daa_score(ctx.ghostdag_data().selected_parent).unwrap());
+        let mergeset_size_limit = self.mergeset_size_limit.get(ctx.selected_parent_daa_score());
         if mergeset_size > mergeset_size_limit {
             return Err(RuleError::MergeSetTooBig(mergeset_size, mergeset_size_limit));
         }
@@ -57,15 +55,23 @@ impl HeaderProcessor {
 
     pub fn check_indirect_parents(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
         let expected_block_parents = self.parents_manager.calc_block_parents(ctx.pruning_point(), header.direct_parents());
+        let crescendo_activated = self.crescendo_activation.is_active(ctx.selected_parent_daa_score());
         if header.parents_by_level.len() != expected_block_parents.len()
             || !expected_block_parents.iter().enumerate().all(|(block_level, expected_level_parents)| {
                 let header_level_parents = &header.parents_by_level[block_level];
                 if header_level_parents.len() != expected_level_parents.len() {
                     return false;
                 }
-
-                let expected_set = HashSet::<&Hash>::from_iter(expected_level_parents);
-                header_level_parents.iter().all(|header_parent| expected_set.contains(header_parent))
+                // Optimistic path where both arrays are identical also in terms of order
+                if header_level_parents == expected_level_parents {
+                    return true;
+                }
+                if crescendo_activated {
+                    HashSet::<&Hash>::from_iter(header_level_parents) == HashSet::<&Hash>::from_iter(expected_level_parents)
+                } else {
+                    let expected_set = HashSet::<&Hash>::from_iter(expected_level_parents);
+                    header_level_parents.iter().all(|header_parent| expected_set.contains(header_parent))
+                }
             })
         {
             return Err(RuleError::UnexpectedIndirectParents(
