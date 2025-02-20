@@ -107,27 +107,19 @@ impl VirtualStateProcessor {
                 block_fee += validated_tx.calculated_fee;
             }
 
-            if is_selected_parent {
+            ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
+                block_hash: merged_block,
                 // For the selected parent, we prepend the coinbase tx
-                ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
-                    block_hash: merged_block,
-                    accepted_transactions: once(AcceptedTxEntry { transaction_id: validated_coinbase_id, index_within_block: 0 })
-                        .chain(
-                            validated_transactions
-                                .into_iter()
-                                .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx }),
-                        )
-                        .collect(),
-                });
-            } else {
-                ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
-                    block_hash: merged_block,
-                    accepted_transactions: validated_transactions
-                        .into_iter()
-                        .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx })
-                        .collect(),
-                });
-            }
+                accepted_transactions: is_selected_parent
+                    .then_some(AcceptedTxEntry { transaction_id: validated_coinbase_id, index_within_block: 0 })
+                    .into_iter()
+                    .chain(
+                        validated_transactions
+                            .into_iter()
+                            .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx }),
+                    )
+                    .collect(),
+            });
 
             let coinbase_data = self.coinbase_manager.deserialize_coinbase_payload(&txs[0].payload).unwrap();
             ctx.mergeset_rewards.insert(
