@@ -129,6 +129,11 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
         // Run the GHOSTDAG parent selection algorithm
         let selected_parent = self.find_selected_parent(parents.iter().copied());
+        // Handle the special case of origin children first
+        if selected_parent.is_origin() {
+            // ORIGIN is always a single parent so both blue score and work should remain zero
+            return GhostdagData::new_with_selected_parent(selected_parent, 1); // k is only a capacity hint here
+        }
         // [Crescendo]: get k as function of the selected parent DAA score
         let k = self.k.get(self.headers_store.get_daa_score(selected_parent).unwrap());
         // Initialize new GHOSTDAG block data with the selected parent
@@ -145,12 +150,6 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             } else {
                 new_block_data.add_red(blue_candidate);
             }
-        }
-
-        // Handle the special case of origin children first
-        if selected_parent.is_origin() {
-            // ORIGIN is always a single parent so both blue score and work should remain zero
-            return new_block_data;
         }
 
         let blue_score = self.ghostdag_store.get_blue_score(selected_parent).unwrap() + new_block_data.mergeset_blues.len() as u64;
@@ -193,13 +192,20 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             }
         }
 
-        for &block in chain_block.data.mergeset_blues.iter() {
-            // Skip blocks that exist in the past of blue_candidate.
-            if self.reachability_service.is_dag_ancestor_of(block, blue_candidate) {
+        // Iterate over blue peers and check for k-cluster violations
+        for &peer in chain_block.data.mergeset_blues.iter() {
+            // Skip blocks that are in the past of blue_candidate (since they are not in its anticone)
+            if self.reachability_service.is_dag_ancestor_of(peer, blue_candidate) {
                 continue;
             }
 
-            candidate_blues_anticone_sizes.insert(block, self.blue_anticone_size(block, new_block_data));
+            // Otherwise, peer must be in the anticone of blue_candidate, so we check for k limits.
+            // Note that peer cannot be in the future of blue_candidate because we process the mergeset
+            // in past-to-future topological order, so even if chain_block == new_block, an existing blue
+            // cannot be in the future of a candidate blue
+
+            let peer_blue_anticone_size = self.blue_anticone_size(peer, new_block_data);
+            candidate_blues_anticone_sizes.insert(peer, peer_blue_anticone_size);
 
             *candidate_blue_anticone_size += 1;
             if *candidate_blue_anticone_size > k {
@@ -207,7 +213,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
                 return ColoringState::Red;
             }
 
-            if *candidate_blues_anticone_sizes.get(&block).unwrap() == k {
+            if peer_blue_anticone_size == k {
                 // k-cluster violation: A block in candidate's blue anticone already
                 // has k blue blocks in its own anticone
                 return ColoringState::Red;
@@ -215,7 +221,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
             // This is a sanity check that validates that a blue
             // block's blue anticone is not already larger than K.
-            assert!(*candidate_blues_anticone_sizes.get(&block).unwrap() <= k, "found blue anticone larger than K");
+            assert!(peer_blue_anticone_size <= k, "found blue anticone larger than K");
             // [Crescendo]: this ^ is a valid assert since we are increasing k. Had we decreased k, this line would
             //              need to be removed and the condition above would need to be changed to >= k
         }
