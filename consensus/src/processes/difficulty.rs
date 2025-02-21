@@ -8,13 +8,17 @@ use kaspa_consensus_core::{
     errors::difficulty::{DifficultyError, DifficultyResult},
     BlockHashSet, BlueWorkType, MAX_WORK_LEVEL,
 };
+use kaspa_core::warn;
 use kaspa_hashes::Hash;
 use kaspa_math::{Uint256, Uint320};
 use std::{
     cmp::{max, Ordering},
     iter::once_with,
     ops::Deref,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU8, Ordering as AtomicOrdering},
+        Arc,
+    },
 };
 
 use super::ghostdag::ordering::SortableBlock;
@@ -164,6 +168,40 @@ impl<T: HeaderStoreReader> DifficultyManagerExtension for FullDifficultyManager<
     }
 }
 
+#[derive(Clone)]
+struct CrescendoLogger {
+    steps: Arc<AtomicU8>,
+    activation: ForkActivation,
+}
+
+impl CrescendoLogger {
+    fn new(activation: ForkActivation) -> Self {
+        Self { steps: Arc::new(AtomicU8::new(Self::ACTIVATE)), activation }
+    }
+
+    const ACTIVATE: u8 = 0;
+    const DYNAMIC: u8 = 1;
+    const FULL: u8 = 2;
+
+    pub fn report_activation_progress(&self, step: u8) -> bool {
+        if self.steps.compare_exchange(step, step + 1, AtomicOrdering::SeqCst, AtomicOrdering::SeqCst).is_ok() {
+            match step {
+                Self::ACTIVATE => {
+                    // TODO (Crescendo): ascii art
+                    warn!("--------- Crescendo hardfork was activated successfully!!! ---------");
+                    warn!("[Crescendo] Accelerating block rate 10 fold")
+                }
+                Self::DYNAMIC => {}
+                Self::FULL => {}
+                _ => {}
+            }
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// A difficulty manager implementing [KIP-0004](https://github.com/kaspanet/kips/blob/master/kip-0004.md),
 /// so based on sampled windows
 #[derive(Clone)]
@@ -179,6 +217,7 @@ pub struct SampledDifficultyManager<T: HeaderStoreReader, U: GhostdagStoreReader
     prior_target_time_per_block: u64,
     target_time_per_block: u64,
     crescendo_activation: ForkActivation,
+    crescendo_logger: CrescendoLogger,
 }
 
 impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U> {
@@ -209,6 +248,7 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
             prior_target_time_per_block,
             target_time_per_block,
             crescendo_activation,
+            crescendo_logger: CrescendoLogger::new(crescendo_activation),
         }
     }
 
@@ -274,9 +314,18 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
             } else {
                 // This indicates we are at the first blocks post activation (i.e., all parents were not activated).
                 // We use the selected parent target difficulty as baseline and scale it by the target_time_per_block ratio change
-                let mut target = Uint320::from(Uint256::from_compact_target_bits(bits));
-                target = target * self.prior_target_time_per_block / self.target_time_per_block;
-                let scaled_bits = Uint256::try_from(target.min(self.max_difficulty_target)).unwrap().compact_target_bits();
+                let target = Uint320::from(Uint256::from_compact_target_bits(bits));
+                let scaled_target = target * self.prior_target_time_per_block / self.target_time_per_block;
+                let scaled_bits = Uint256::try_from(scaled_target.min(self.max_difficulty_target)).unwrap().compact_target_bits();
+
+                if self.crescendo_logger.report_activation_progress(CrescendoLogger::ACTIVATE) {
+                    warn!(
+                        "[Crescendo] Block target time change: {} -> {} milliseconds",
+                        self.prior_target_time_per_block, self.target_time_per_block
+                    );
+                    warn!("[Crescendo] Difficulty target change: {} -> {} ", target, scaled_target);
+                }
+
                 return scaled_bits;
             }
         }
@@ -297,6 +346,21 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
         let measured_duration = max(max_ts - min_ts, 1);
         let expected_duration = self.target_time_per_block * self.difficulty_sample_rate * difficulty_blocks_len; // This does differ from FullDifficultyManager version
         let new_target = average_target * measured_duration / expected_duration;
+
+        if difficulty_blocks_len + 1 < self.difficulty_window_size as u64
+            && self.crescendo_logger.report_activation_progress(CrescendoLogger::DYNAMIC)
+        {
+            warn!(
+                "[Crescendo] Dynamic DAA reactivated, scaling the target by the measured/expected duration ratio:
+\t\t\t {} -> {} (measured duration: {}, expected duration: {}, ratio {:.4})",
+                average_target,
+                new_target,
+                measured_duration,
+                expected_duration,
+                measured_duration as f64 / expected_duration as f64
+            );
+        }
+
         Uint256::try_from(new_target.min(self.max_difficulty_target)).expect("max target < Uint256::MAX").compact_target_bits()
     }
 
