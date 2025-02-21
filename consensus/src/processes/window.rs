@@ -112,7 +112,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         max_difficulty_target: Uint256,
         target_time_per_block: u64,
         difficulty_window_size: usize,
-        min_difficulty_window_len: usize,
+        min_difficulty_window_size: usize,
         past_median_time_window_size: usize,
     ) -> Self {
         let difficulty_manager = FullDifficultyManager::new(
@@ -120,7 +120,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             genesis.bits,
             max_difficulty_target,
             difficulty_window_size,
-            min_difficulty_window_len,
+            min_difficulty_window_size,
             target_time_per_block,
         );
         let past_median_time_manager = FullPastMedianTimeManager::new(headers_store, genesis.timestamp);
@@ -305,12 +305,12 @@ pub struct SampledWindowManager<
     block_window_cache_for_difficulty: Arc<U>,
     block_window_cache_for_past_median_time: Arc<U>,
     target_time_per_block: u64,
-    sampling_activation: ForkActivation,
+    crescendo_activation: ForkActivation,
     difficulty_window_size: usize,
     difficulty_sample_rate: u64,
     past_median_time_window_size: usize,
     past_median_time_sample_rate: u64,
-    difficulty_manager: SampledDifficultyManager<V>,
+    difficulty_manager: SampledDifficultyManager<V, T>,
     past_median_time_manager: SampledPastMedianTimeManager<V>,
 }
 
@@ -326,22 +326,27 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         block_window_cache_for_difficulty: Arc<U>,
         block_window_cache_for_past_median_time: Arc<U>,
         max_difficulty_target: Uint256,
+        prior_target_time_per_block: u64,
         target_time_per_block: u64,
-        sampling_activation: ForkActivation,
+        crescendo_activation: ForkActivation,
         difficulty_window_size: usize,
-        min_difficulty_window_len: usize,
+        min_difficulty_window_size: usize,
         difficulty_sample_rate: u64,
         past_median_time_window_size: usize,
         past_median_time_sample_rate: u64,
     ) -> Self {
         let difficulty_manager = SampledDifficultyManager::new(
             headers_store.clone(),
+            ghostdag_store.clone(),
+            genesis.hash,
             genesis.bits,
             max_difficulty_target,
             difficulty_window_size,
-            min_difficulty_window_len,
+            min_difficulty_window_size,
             difficulty_sample_rate,
+            prior_target_time_per_block,
             target_time_per_block,
+            crescendo_activation,
         );
         let past_median_time_manager = SampledPastMedianTimeManager::new(headers_store.clone(), genesis.timestamp);
         Self {
@@ -352,7 +357,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             target_time_per_block,
-            sampling_activation,
+            crescendo_activation,
             difficulty_window_size,
             difficulty_sample_rate,
             past_median_time_window_size,
@@ -360,6 +365,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             difficulty_manager,
             past_median_time_manager,
         }
+    }
+
+    pub(crate) fn crescendo_activated(&self, selected_parent: Hash) -> bool {
+        let sp_daa_score = self.headers_store.get_daa_score(selected_parent).unwrap();
+        self.crescendo_activation.is_active(sp_daa_score)
     }
 
     fn build_block_window(
@@ -384,6 +394,28 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             return Err(RuleError::InsufficientDaaWindowSize(0));
         }
 
+        // [Crescendo]: filter non activated blocks from the window
+        let filter_non_activated = true;
+
+        /*
+            Crescendo extended explanation
+
+            Background: for the post-activation window we filter all previously non activated blocks.
+            See https://github.com/kaspanet/kips/blob/master/kip-0014.md#handling-difficulty-adjustment-during-the-transition
+
+            We consider a block C to be not activated from the pov of this block (B) if either:
+                1. C's selected parent DAA score is below the activation threshold
+                2. The merging block of C from chain(B) is not activated (per definition 1).
+
+            It will be rarely the case where 1. is not satisfied and 2. is, but it is possible combinatorically
+            since the DAA score is not guaranteed to be monotonic. We add definition 2 in order to make it easier
+            for the algorithm below to recognize when to stop the traversal during the activation transition phase
+            (since the window will remain smaller than the target size so the blue work exit condition will not suffice).
+
+            Note that the DAA score *is* monotonic over chain blocks, so once we identify a block on chain(B) which is not
+            activated we can halt the search (since we are traversing down the chain).
+        */
+
         let inner_cache = match window_type {
             WindowType::DifficultyWindow => Some(&self.block_window_cache_for_difficulty),
             WindowType::MedianTimeWindow => Some(&self.block_window_cache_for_past_median_time),
@@ -404,7 +436,10 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             ghostdag_data,
             selected_parent_blue_work,
             Some(&mut mergeset_non_daa_inserter),
+            filter_non_activated,
         ) {
+            // [Crescendo]: the selected parent window will be in the cache only if it was activated (due to tracking of window origin),
+            // so we can safely inherit it, add activated blocks from the mergeset and return
             return Ok(res);
         }
 
@@ -416,7 +451,9 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             ghostdag_data,
             selected_parent_blue_work,
             Some(&mut mergeset_non_daa_inserter),
+            filter_non_activated,
         );
+
         let mut current_ghostdag = self.ghostdag_store.get_data(ghostdag_data.selected_parent).unwrap();
 
         // Note: no need to check for cache here, as we already tried to initialize from the passed ghostdag's selected parent cache in `self.try_init_from_cache`
@@ -437,6 +474,12 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
                 break;
             }
 
+            // [Crescendo]: check whether the current block was activated (by checking its selected parent DAA score).
+            // If not active, break with the currently obtained window (following definition 2 above)
+            if !self.crescendo_activated(current_ghostdag.selected_parent) {
+                break;
+            }
+
             let parent_ghostdag = self.ghostdag_store.get_data(current_ghostdag.selected_parent).unwrap();
 
             // No need to further iterate since past of selected parent has only lower blue work
@@ -445,8 +488,18 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             }
 
             // push the current mergeset into the window
-            self.push_mergeset(&mut &mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work, None::<fn(Hash)>);
+            self.push_mergeset(
+                &mut &mut window_heap,
+                sample_rate,
+                &current_ghostdag,
+                parent_ghostdag.blue_work,
+                None::<fn(Hash)>,
+                filter_non_activated,
+            );
 
+            // [Crescendo]: the chain ancestor window will be in the cache only if it was
+            // activated (due to tracking of window origin), so we can safely inherit it
+            //
             // see if we can inherit and merge with the selected parent cache
             if self.try_merge_with_selected_parent_cache(&mut window_heap, &cache, &current_ghostdag.selected_parent) {
                 // if successful, we may break out of the loop, with the window already filled.
@@ -469,10 +522,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         ghostdag_data: &GhostdagData,
         selected_parent_blue_work: BlueWorkType,
         mergeset_non_daa_inserter: Option<impl FnMut(Hash)>,
+        filter_non_activated: bool,
     ) {
         if let Some(mut mergeset_non_daa_inserter) = mergeset_non_daa_inserter {
-            // If we have a non-daa inserter, we most iterate over the whole mergeset and op the sampled and non-daa blocks.
-            for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
+            // If we have a non-daa inserter, we must iterate over the whole mergeset and operate on the sampled and non-daa blocks.
+            for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work, filter_non_activated) {
                 match block {
                     SampledBlock::Sampled(block) => {
                         heap.try_push(block.hash, block.blue_work);
@@ -482,7 +536,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             }
         } else {
             // If we don't have a non-daa inserter, we can iterate over the sampled mergeset and return early if we can't push anymore.
-            for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
+            for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work, filter_non_activated) {
                 if let SampledBlock::Sampled(block) = block {
                     if !heap.try_push(block.hash, block.blue_work) {
                         return;
@@ -500,11 +554,19 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         ghostdag_data: &GhostdagData,
         selected_parent_blue_work: BlueWorkType,
         mergeset_non_daa_inserter: Option<impl FnMut(Hash)>,
+        filter_non_activated: bool,
     ) -> Option<Arc<BlockWindowHeap>> {
         cache.get(&ghostdag_data.selected_parent).map(|selected_parent_window| {
             let mut heap = Lazy::new(|| BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_window).clone()));
             // We pass a Lazy heap as an optimization to avoid cloning the selected parent heap in cases where the mergeset contains no samples
-            self.push_mergeset(&mut heap, sample_rate, ghostdag_data, selected_parent_blue_work, mergeset_non_daa_inserter);
+            self.push_mergeset(
+                &mut heap,
+                sample_rate,
+                ghostdag_data,
+                selected_parent_blue_work,
+                mergeset_non_daa_inserter,
+                filter_non_activated,
+            );
             if let Ok(heap) = Lazy::into_value(heap) {
                 Arc::new(heap.binary_heap)
             } else {
@@ -532,6 +594,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         sample_rate: u64,
         ghostdag_data: &'a GhostdagData,
         selected_parent_blue_work: BlueWorkType,
+        filter_non_activated: bool,
     ) -> impl Iterator<Item = SampledBlock> + 'a {
         let selected_parent_block = SortableBlock::new(ghostdag_data.selected_parent, selected_parent_blue_work);
         let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
@@ -541,10 +604,14 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         once(selected_parent_block)
             .chain(ghostdag_data.descending_mergeset_without_selected_parent(self.ghostdag_store.deref()))
             .filter_map(move |block| {
-                if self.ghostdag_store.get_blue_score(block.hash).unwrap() < blue_score_threshold {
+                let compact = self.ghostdag_store.get_compact_data(block.hash).unwrap();
+                if compact.blue_score < blue_score_threshold {
                     Some(SampledBlock::NonDaa(block.hash))
                 } else {
                     index += 1;
+                    if filter_non_activated && !self.crescendo_activated(compact.selected_parent) {
+                        return None;
+                    }
                     if (selected_parent_daa_score + index) % sample_rate == 0 {
                         Some(SampledBlock::Sampled(block))
                     } else {
@@ -577,19 +644,21 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         Ok(DaaWindow::new(window, daa_score, mergeset_non_daa))
     }
 
-    fn calculate_difficulty_bits(&self, _high_ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32 {
-        self.difficulty_manager.calculate_difficulty_bits(&daa_window.window)
+    fn calculate_difficulty_bits(&self, ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32 {
+        self.difficulty_manager.calculate_difficulty_bits(&daa_window.window, ghostdag_data)
     }
 
     fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
         let window = self.block_window(ghostdag_data, WindowType::MedianTimeWindow)?;
-        let past_median_time = self.past_median_time_manager.calc_past_median_time(&window)?;
+        let past_median_time = self.past_median_time_manager.calc_past_median_time(&window, ghostdag_data.selected_parent)?;
         Ok((past_median_time, window))
     }
 
     fn calc_past_median_time_for_known_hash(&self, hash: Hash) -> Result<u64, RuleError> {
         if let Some(window) = self.block_window_cache_for_past_median_time.get(&hash, WindowOrigin::Sampled) {
-            let past_median_time = self.past_median_time_manager.calc_past_median_time(&window)?;
+            let past_median_time = self
+                .past_median_time_manager
+                .calc_past_median_time(&window, self.ghostdag_store.get_selected_parent(hash).unwrap())?;
             Ok(past_median_time)
         } else {
             let ghostdag_data = self.ghostdag_store.get_data(hash).unwrap();
@@ -664,7 +733,7 @@ pub struct DualWindowManager<
 > {
     ghostdag_store: Arc<T>,
     headers_store: Arc<V>,
-    sampling_activation: ForkActivation,
+    crescendo_activation: ForkActivation,
     full_window_manager: FullWindowManager<T, U, V>,
     sampled_window_manager: SampledWindowManager<T, U, V, W>,
 }
@@ -681,11 +750,12 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         block_window_cache_for_difficulty: Arc<U>,
         block_window_cache_for_past_median_time: Arc<U>,
         max_difficulty_target: Uint256,
-        target_time_per_block: u64,
-        sampling_activation: ForkActivation,
+        prior_target_time_per_block: u64,
+        crescendo_target_time_per_block: u64,
+        crescendo_activation: ForkActivation,
         full_difficulty_window_size: usize,
         sampled_difficulty_window_size: usize,
-        min_difficulty_window_len: usize,
+        min_difficulty_window_size: usize,
         difficulty_sample_rate: u64,
         full_past_median_time_window_size: usize,
         sampled_past_median_time_window_size: usize,
@@ -698,9 +768,9 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time.clone(),
             max_difficulty_target,
-            target_time_per_block,
+            prior_target_time_per_block,
             full_difficulty_window_size,
-            min_difficulty_window_len.min(full_difficulty_window_size),
+            min_difficulty_window_size.min(full_difficulty_window_size),
             full_past_median_time_window_size,
         );
         let sampled_window_manager = SampledWindowManager::new(
@@ -711,21 +781,22 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             max_difficulty_target,
-            target_time_per_block,
-            sampling_activation,
+            prior_target_time_per_block,
+            crescendo_target_time_per_block,
+            crescendo_activation,
             sampled_difficulty_window_size,
-            min_difficulty_window_len.min(sampled_difficulty_window_size),
+            min_difficulty_window_size.min(sampled_difficulty_window_size),
             difficulty_sample_rate,
             sampled_past_median_time_window_size,
             past_median_time_sample_rate,
         );
-        Self { ghostdag_store, headers_store, sampled_window_manager, full_window_manager, sampling_activation }
+        Self { ghostdag_store, headers_store, sampled_window_manager, full_window_manager, crescendo_activation }
     }
 
     /// Checks whether sampling mode was activated based on the selected parent (internally checking its DAA score)
     pub(crate) fn sampling(&self, selected_parent: Hash) -> bool {
         let sp_daa_score = self.headers_store.get_daa_score(selected_parent).unwrap();
-        self.sampling_activation.is_active(sp_daa_score)
+        self.crescendo_activation.is_active(sp_daa_score)
     }
 }
 

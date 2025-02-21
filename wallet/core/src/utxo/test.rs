@@ -22,7 +22,7 @@ async fn test_utxo_subsystem_bootstrap() -> Result<()> {
 
 #[test]
 fn test_utxo_generator_empty_utxo_noop() -> Result<()> {
-    let network_id = NetworkId::with_suffix(NetworkType::Testnet, 11);
+    let network_id = NetworkId::with_suffix(NetworkType::Testnet, 10);
     let output_address = output_address(network_id.into());
 
     let payment_output = PaymentOutput::new(output_address, kaspa_to_sompi(2.0));

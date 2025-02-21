@@ -13,7 +13,7 @@ use kaspa_consensus_core::{
         tx::{TxResult, TxRuleError},
     },
     header::Header,
-    mass::transaction_estimated_serialized_size,
+    mass::{transaction_estimated_serialized_size, ContextualMasses, NonContextualMasses},
     merkle::calc_hash_merkle_root,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
     utxo::utxo_collection::UtxoCollection,
@@ -133,9 +133,7 @@ impl ConsensusApi for ConsensusMock {
         // At this point we know all UTXO entries are populated, so we can safely calculate the fee
         let total_in: u64 = mutable_tx.entries.iter().map(|x| x.as_ref().unwrap().amount).sum();
         let total_out: u64 = mutable_tx.tx.outputs.iter().map(|x| x.value).sum();
-        mutable_tx
-            .tx
-            .set_mass(self.calculate_transaction_storage_mass(mutable_tx).unwrap() + mutable_tx.calculated_compute_mass.unwrap());
+        mutable_tx.tx.set_mass(self.calculate_transaction_contextual_masses(mutable_tx).unwrap().storage_mass);
 
         if mutable_tx.calculated_fee.is_none() {
             let calculated_fee = total_in - total_out;
@@ -156,16 +154,13 @@ impl ConsensusApi for ConsensusMock {
         transactions.iter_mut().map(|x| self.validate_mempool_transaction(x, &Default::default())).collect()
     }
 
-    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
-        if transaction.is_coinbase() {
-            0
-        } else {
-            transaction_estimated_serialized_size(transaction)
-        }
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
+        let mass = if transaction.is_coinbase() { 0 } else { transaction_estimated_serialized_size(transaction) };
+        NonContextualMasses::new(mass, mass)
     }
 
-    fn calculate_transaction_storage_mass(&self, _transaction: &MutableTransaction) -> Option<u64> {
-        Some(0)
+    fn calculate_transaction_contextual_masses(&self, _transaction: &MutableTransaction) -> Option<ContextualMasses> {
+        Some(ContextualMasses::new(0))
     }
 
     fn get_virtual_daa_score(&self) -> u64 {

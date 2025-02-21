@@ -225,7 +225,7 @@ pub const DEVNET_GENESIS: GenesisBlock = GenesisBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{config::bps::Testnet11Bps, merkle::calc_hash_merkle_root};
+    use crate::{config::bps::TenBps, merkle::calc_hash_merkle_root};
 
     #[test]
     fn test_genesis_hashes() {
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn gen_testnet11_genesis() {
-        let bps = Testnet11Bps::bps();
+        let bps = TenBps::bps();
         let mut genesis = TESTNET_GENESIS;
         let target = kaspa_math::Uint256::from_compact_target_bits(genesis.bits);
         let scaled_target = target * bps / 100;

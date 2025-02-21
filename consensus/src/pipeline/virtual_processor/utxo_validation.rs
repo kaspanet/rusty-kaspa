@@ -107,27 +107,19 @@ impl VirtualStateProcessor {
                 block_fee += validated_tx.calculated_fee;
             }
 
-            if is_selected_parent {
+            ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
+                block_hash: merged_block,
                 // For the selected parent, we prepend the coinbase tx
-                ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
-                    block_hash: merged_block,
-                    accepted_transactions: once(AcceptedTxEntry { transaction_id: validated_coinbase_id, index_within_block: 0 })
-                        .chain(
-                            validated_transactions
-                                .into_iter()
-                                .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx }),
-                        )
-                        .collect(),
-                });
-            } else {
-                ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
-                    block_hash: merged_block,
-                    accepted_transactions: validated_transactions
-                        .into_iter()
-                        .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx })
-                        .collect(),
-                });
-            }
+                accepted_transactions: is_selected_parent
+                    .then_some(AcceptedTxEntry { transaction_id: validated_coinbase_id, index_within_block: 0 })
+                    .into_iter()
+                    .chain(
+                        validated_transactions
+                            .into_iter()
+                            .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx }),
+                    )
+                    .collect(),
+            });
 
             let coinbase_data = self.coinbase_manager.deserialize_coinbase_payload(&txs[0].payload).unwrap();
             ctx.mergeset_rewards.insert(
@@ -204,6 +196,10 @@ impl VirtualStateProcessor {
             .expected_coinbase_transaction(daa_score, miner_data, ghostdag_data, mergeset_rewards, mergeset_non_daa)
             .unwrap()
             .tx;
+        // [Crescendo]: we can pass include_mass_field = false here since post activation coinbase mass field
+        // is guaranteed to be zero (see check_coinbase_has_zero_mass), so after the fork we will be able to
+        // safely remove the include_mass_field parameter. This is because internally include_mass_field = false
+        // and mass = 0 are treated the same.
         if hashing::tx::hash(coinbase, false) != hashing::tx::hash(&expected_coinbase, false) {
             Err(BadCoinbaseTransaction)
         } else {
@@ -325,18 +321,20 @@ impl VirtualStateProcessor {
     ) -> TxResult<()> {
         self.populate_mempool_transaction_in_utxo_context(mutable_tx, utxo_view)?;
 
-        // Calc the full contextual mass including storage mass
+        // Calc the contextual storage mass
         let contextual_mass = self
             .transaction_validator
             .mass_calculator
-            .calc_tx_overall_mass(&mutable_tx.as_verifiable(), mutable_tx.calculated_compute_mass)
+            .calc_contextual_masses(&mutable_tx.as_verifiable())
             .ok_or(TxRuleError::MassIncomputable)?;
 
         // Set the inner mass field
-        mutable_tx.tx.set_mass(contextual_mass);
+        mutable_tx.tx.set_mass(contextual_mass.storage_mass);
 
         // At this point we know all UTXO entries are populated, so we can safely pass the tx as verifiable
-        let mass_and_feerate_threshold = args.feerate_threshold.map(|threshold| (contextual_mass, threshold));
+        let mass_and_feerate_threshold = args
+            .feerate_threshold
+            .map(|threshold| (contextual_mass.max(mutable_tx.calculated_non_contextual_masses.unwrap()), threshold));
         let calculated_fee = self.transaction_validator.validate_populated_transaction_and_get_fee(
             &mutable_tx.as_verifiable(),
             pov_daa_score,

@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes},
     header::Header,
     pruning::PruningPointProof,
-    BlockHashSet, BlockLevel, HashMapCustomHasher,
+    BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::debug;
 use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions, DB};
@@ -285,6 +285,7 @@ impl PruningProofManager {
                 &ghostdag_store,
                 Some(block_at_depth_m_at_next_level),
                 level,
+                self.ghostdag_k.get(pp_header.header.daa_score),
             );
 
             // Step 4 - Check if we actually have enough depth.
@@ -325,6 +326,7 @@ impl PruningProofManager {
         ghostdag_store: &Arc<DbGhostdagStore>,
         required_block: Option<Hash>,
         level: BlockLevel,
+        ghostdag_k: KType,
     ) -> bool {
         let relations_service = RelationsStoreInFutureOfRoot {
             relations_store: self.level_relations_services[level as usize].clone(),
@@ -333,7 +335,7 @@ impl PruningProofManager {
         };
         let gd_manager = GhostdagManager::with_level(
             root,
-            self.ghostdag_k,
+            ghostdag_k,
             ghostdag_store.clone(),
             relations_service.clone(),
             self.headers_store.clone(),

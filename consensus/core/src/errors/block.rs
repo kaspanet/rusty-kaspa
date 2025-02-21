@@ -97,14 +97,20 @@ pub enum RuleError {
     #[error("coinbase blue score of {0} is not the expected value of {1}")]
     BadCoinbasePayloadBlueScore(u64, u64),
 
+    #[error("coinbase mass commitment field is not zero")]
+    CoinbaseNonZeroMassCommitment,
+
     #[error("transaction in isolation validation failed for tx {0}: {1}")]
     TxInIsolationValidationFailed(TransactionId, TxRuleError),
 
-    #[error("block exceeded mass limit of {0}")]
-    ExceedsMassLimit(u64),
+    #[error("block compute mass {0} exceeds limit of {1}")]
+    ExceedsComputeMassLimit(u64, u64),
 
-    #[error("transaction {0} has mass field of {1} but mass should be at least {2}")]
-    MassFieldTooLow(TransactionId, u64, u64),
+    #[error("block transient storage mass {0} exceeds limit of {1}")]
+    ExceedsTransientMassLimit(u64, u64),
+
+    #[error("block persistent storage mass {0} exceeds limit of {1}")]
+    ExceedsStorageMassLimit(u64, u64),
 
     #[error("outpoint {0} is spent more than once on the same block")]
     DoubleSpendInSameBlock(TransactionOutpoint),

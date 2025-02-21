@@ -3,7 +3,6 @@ use kaspa_consensus_core::{
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
     tx::{TransactionInput, VerifiableTransaction},
 };
-use kaspa_core::warn;
 use kaspa_txscript::{caches::Cache, get_sig_op_count_upper_bound, SigCacheKey, TxScriptEngine};
 use kaspa_txscript_errors::TxScriptError;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -43,13 +42,14 @@ impl TransactionValidator {
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         let fee = total_in - total_out;
-        if flags != TxValidationFlags::SkipMassCheck && self.storage_mass_activation.is_active(pov_daa_score) {
+        if flags != TxValidationFlags::SkipMassCheck && self.crescendo_activation.is_active(pov_daa_score) {
             // Storage mass hardfork was activated
             self.check_mass_commitment(tx)?;
 
-            if self.storage_mass_activation.is_within_range_from_activation(pov_daa_score, 10) {
-                warn!("--------- Storage mass hardfork was activated successfully!!! --------- (DAA score: {})", pov_daa_score);
-            }
+            // TODO (crescendo): log in one central location
+            // if self.storage_mass_activation.is_within_range_from_activation(pov_daa_score, 10) {
+            //     kaspa_core::warn!("--------- Storage mass hardfork was activated successfully!!! --------- (DAA score: {})", pov_daa_score);
+            // }
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;
 
@@ -59,7 +59,7 @@ impl TransactionValidator {
 
         match flags {
             TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
-                if !self.runtime_sig_op_counting.is_active(pov_daa_score) {
+                if !self.crescendo_activation.is_active(pov_daa_score) {
                     Self::check_sig_op_counts(tx)?;
                 }
                 self.check_scripts(tx, pov_daa_score)?;
@@ -127,7 +127,8 @@ impl TransactionValidator {
     }
 
     fn check_mass_commitment(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
-        let calculated_contextual_mass = self.mass_calculator.calc_tx_overall_mass(tx, None).ok_or(TxRuleError::MassIncomputable)?;
+        let calculated_contextual_mass =
+            self.mass_calculator.calc_contextual_masses(tx).ok_or(TxRuleError::MassIncomputable)?.storage_mass;
         let committed_contextual_mass = tx.tx().mass();
         if committed_contextual_mass != calculated_contextual_mass {
             return Err(TxRuleError::WrongMass(calculated_contextual_mass, committed_contextual_mass));
@@ -177,8 +178,8 @@ impl TransactionValidator {
         check_scripts(
             &self.sig_cache,
             tx,
-            self.kip10_activation.is_active(pov_daa_score),
-            self.runtime_sig_op_counting.is_active(pov_daa_score),
+            self.crescendo_activation.is_active(pov_daa_score),
+            self.crescendo_activation.is_active(pov_daa_score),
         )
     }
 }
@@ -280,7 +281,6 @@ mod tests {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
-            params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             Default::default(),
@@ -349,7 +349,6 @@ mod tests {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
-            params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             Default::default(),
@@ -422,7 +421,6 @@ mod tests {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
-            params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             Default::default(),
@@ -492,7 +490,6 @@ mod tests {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
-            params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             Default::default(),
@@ -562,7 +559,6 @@ mod tests {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
-            params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             Default::default(),
@@ -632,7 +628,6 @@ mod tests {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
-            params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             Default::default(),
@@ -701,7 +696,6 @@ mod tests {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
-            params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             Default::default(),
@@ -764,7 +758,6 @@ mod tests {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
-            params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             Default::default(),
