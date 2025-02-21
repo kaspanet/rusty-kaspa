@@ -11,6 +11,10 @@ include.workspace = true
 [dependencies]
 kaspa-wallet-grpc-core.workspace = true
 tonic.workspace = true
+kaspa-wallet-core.workspace = true
+tokio.workspace = true
+futures-util.workspace = true
+workflow-core.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "test-util"] }

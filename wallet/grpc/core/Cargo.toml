@@ -9,6 +9,7 @@ edition.workspace = true
 include.workspace = true
 
 [dependencies]
+kaspa-wallet-core.workspace = true
 tonic.workspace = true
 prost.workspace = true
 
