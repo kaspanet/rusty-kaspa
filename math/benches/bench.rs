@@ -33,8 +33,8 @@ where
 fn bench_uint128(c: &mut Criterion) {
     let mut rng = ChaCha8Rng::from_seed([42u8; 32]);
 
-    let u128_one: Vec<_> = (0..ITERS_128).map(|_| (rng.next_u64() as u128) << 64 | rng.next_u64() as u128).collect();
-    let u128_two: Vec<_> = (0..ITERS_128).map(|_| (rng.next_u64() as u128) << 64 | rng.next_u64() as u128).collect();
+    let u128_one: Vec<_> = (0..ITERS_128).map(|_| ((rng.next_u64() as u128) << 64) | rng.next_u64() as u128).collect();
+    let u128_two: Vec<_> = (0..ITERS_128).map(|_| ((rng.next_u64() as u128) << 64) | rng.next_u64() as u128).collect();
     let shifts: Vec<_> = (0..ITERS_128).map(|_| rng.next_u32() % 128 * 8).collect();
     let u64s: Vec<_> = (0..ITERS_128).map(|_| rng.next_u64()).collect();
 
