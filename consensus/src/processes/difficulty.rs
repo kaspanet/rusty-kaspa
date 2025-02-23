@@ -4,7 +4,7 @@ use crate::model::stores::{
     headers::HeaderStoreReader,
 };
 use kaspa_consensus_core::{
-    config::params::ForkActivation,
+    config::params::{ForkActivation, MAX_DIFFICULTY_TARGET_AS_F64},
     errors::difficulty::{DifficultyError, DifficultyResult},
     BlockHashSet, BlueWorkType, MAX_WORK_LEVEL,
 };
@@ -187,8 +187,22 @@ impl CrescendoLogger {
         if self.steps.compare_exchange(step, step + 1, AtomicOrdering::SeqCst, AtomicOrdering::SeqCst).is_ok() {
             match step {
                 Self::ACTIVATE => {
-                    // TODO (Crescendo): ascii art
-                    warn!("--------- Crescendo hardfork was activated successfully!!! ---------");
+                    // TODO (Crescendo): finalize mainnet ascii art
+                    warn!(
+                        r#"
+        ____                                  _             
+       / ___|_ __ ___  ___  ___ ___ _ __   __| | ___        
+      | |   | '__/ _ \/ __|/ __/ _ \ '_ \ / _` |/ _ \       
+      | |___| | |  __/\__ \ (_|  __/ | | | (_| | (_) |      
+       \____|_|  \___||___/\___\___|_| |_|\__,_|\___/       
+  _ _                       __      _  ___  _               
+ / | |__  _ __  ___         \ \    / |/ _ \| |__  _ __  ___ 
+ | | '_ \| '_ \/ __|    _____\ \   | | | | | '_ \| '_ \/ __|
+ | | |_) | |_) \__ \   |_____/ /   | | |_| | |_) | |_) \__ \
+ |_|_.__/| .__/|___/        /_/    |_|\___/|_.__/| .__/|___/
+         |_|                                     |_|    
+"#
+                    );
                     warn!("[Crescendo] Accelerating block rate 10 fold")
                 }
                 Self::DYNAMIC => {}
@@ -200,6 +214,25 @@ impl CrescendoLogger {
             false
         }
     }
+}
+
+fn hash_suffix(n: f64) -> (f64, &'static str) {
+    match n {
+        n if n < 1_000.0 => (n, "hash/block"),
+        n if n < 1_000_000.0 => (n / 1_000.0, "Khash/block"),
+        n if n < 1_000_000_000.0 => (n / 1_000_000.0, "Mhash/block"),
+        n if n < 1_000_000_000_000.0 => (n / 1_000_000_000.0, "Ghash/block"),
+        n if n < 1_000_000_000_000_000.0 => (n / 1_000_000_000_000.0, "Thash/block"),
+        n if n < 1_000_000_000_000_000_000.0 => (n / 1_000_000_000_000_000.0, "Phash/block"),
+        n => (n / 1_000_000_000_000_000_000.0, "Ehash/block"),
+    }
+}
+
+fn difficulty_desc(target: Uint320) -> String {
+    let difficulty = MAX_DIFFICULTY_TARGET_AS_F64 / target.as_f64();
+    let hashrate = difficulty * 2.0;
+    let (rate, suffix) = hash_suffix(hashrate);
+    format!("{:.2} {}", rate, suffix)
 }
 
 /// A difficulty manager implementing [KIP-0004](https://github.com/kaspanet/kips/blob/master/kip-0004.md),
@@ -323,7 +356,7 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
                         "[Crescendo] Block target time change: {} -> {} milliseconds",
                         self.prior_target_time_per_block, self.target_time_per_block
                     );
-                    warn!("[Crescendo] Difficulty target change: {} -> {} ", target, scaled_target);
+                    warn!("[Crescendo] Difficulty change: {} -> {} ", difficulty_desc(target), difficulty_desc(scaled_target));
                 }
 
                 return scaled_bits;
@@ -351,10 +384,10 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
             && self.crescendo_logger.report_activation_progress(CrescendoLogger::DYNAMIC)
         {
             warn!(
-                "[Crescendo] Dynamic DAA reactivated, scaling the target by the measured/expected duration ratio:
-\t\t\t {} -> {} (measured duration: {}, expected duration: {}, ratio {:.4})",
-                average_target,
-                new_target,
+                "[Crescendo] Dynamic DAA reactivated, scaling the difficulty by the measured/expected duration ratio:
+\t\t\t\t\t\t  {} -> {} (measured duration: {}, expected duration: {}, ratio {:.4})",
+                difficulty_desc(average_target),
+                difficulty_desc(new_target),
                 measured_duration,
                 expected_duration,
                 measured_duration as f64 / expected_duration as f64
