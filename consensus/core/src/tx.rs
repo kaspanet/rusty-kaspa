@@ -307,6 +307,12 @@ pub struct PopulatedInputIterator<'a, T: VerifiableTransaction> {
     r: Range<usize>,
 }
 
+impl<T: VerifiableTransaction> Clone for PopulatedInputIterator<'_, T> {
+    fn clone(&self) -> Self {
+        Self { tx: self.tx, r: self.r.clone() }
+    }
+}
+
 impl<'a, T: VerifiableTransaction> PopulatedInputIterator<'a, T> {
     pub fn new(tx: &'a T) -> Self {
         Self { tx, r: (0..tx.inputs().len()) }

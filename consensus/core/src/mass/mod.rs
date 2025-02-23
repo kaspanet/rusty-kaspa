@@ -189,8 +189,8 @@ impl MassCalculator {
     pub fn calc_contextual_masses(&self, tx: &impl VerifiableTransaction) -> Option<ContextualMasses> {
         calc_storage_mass(
             tx.is_coinbase(),
-            tx.populated_inputs().map(|(_, entry)| entry.amount),
-            tx.outputs().iter().map(|out| out.value),
+            tx.populated_inputs().map(|(_, entry)| (entry.script_public_key.plurality(), entry.amount)),
+            tx.outputs().iter().map(|out| (out.script_public_key.plurality(), out.value)),
             self.storage_mass_parameter,
         )
         .map(ContextualMasses::new)
@@ -205,16 +205,16 @@ impl MassCalculator {
 /// Otherwise this function should never fail.
 pub fn calc_storage_mass(
     is_coinbase: bool,
-    input_values: impl ExactSizeIterator<Item = u64>,
-    output_values: impl ExactSizeIterator<Item = u64>,
+    input_values: impl ExactSizeIterator<Item = (u64, u64)> + Clone,
+    output_values: impl ExactSizeIterator<Item = (u64, u64)> + Clone,
     storage_mass_parameter: u64,
 ) -> Option<u64> {
     if is_coinbase {
         return Some(0);
     }
 
-    let outs_len = output_values.len() as u64;
-    let ins_len = input_values.len() as u64;
+    let outs_plurality = output_values.clone().map(|(plurality, _)| plurality).sum::<u64>();
+    let ins_plurality = input_values.clone().map(|(plurality, _)| plurality).sum::<u64>();
 
     /* The code below computes the following formula:
 
@@ -235,8 +235,9 @@ pub fn calc_storage_mass(
     //
     // Note: in theory this can be tighten by subtracting input mass in the process (possibly avoiding the overflow),
     // however the overflow case is so unpractical with current mass limits so we avoid the hassle
-    let harmonic_outs =
-        output_values.map(|out| storage_mass_parameter / out).try_fold(0u64, |total, current| total.checked_add(current))?; // C·|O|/H(O)
+    let harmonic_outs = output_values
+        .map(|(plurality, out)| storage_mass_parameter * plurality * plurality / out)
+        .try_fold(0u64, |total, current| total.checked_add(current))?; // C·|O|/H(O)
 
     /*
       KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
@@ -245,19 +246,20 @@ pub fn calc_storage_mass(
        Note: in the case |I| = 1 both formulas are equal, yet the following code (harmonic_ins) is a bit more efficient.
              Hence, we transform the condition to |O| = 1 OR |I| = 1 OR |O| = |I| = 2 which is equivalent (and faster).
     */
-    if outs_len == 1 || ins_len == 1 || (outs_len == 2 && ins_len == 2) {
-        let harmonic_ins =
-            input_values.map(|value| storage_mass_parameter / value).fold(0u64, |total, current| total.saturating_add(current)); // C·|I|/H(I)
+    if outs_plurality == 1 || ins_plurality == 1 || (outs_plurality == 2 && ins_plurality == 2) {
+        let harmonic_ins = input_values
+            .map(|(plurality, value)| storage_mass_parameter * plurality * plurality / value)
+            .fold(0u64, |total, current| total.saturating_add(current)); // C·|I|/H(I)
         return Some(harmonic_outs.saturating_sub(harmonic_ins)); // max( 0 , C·( |O|/H(O) - |I|/H(I) ) );
     }
 
     // Total supply is bounded, so a sum of existing UTXO entries cannot overflow (nor can it be zero)
-    let sum_ins = input_values.sum::<u64>(); // |I|·A(I)
-    let mean_ins = sum_ins / ins_len;
+    let sum_ins = input_values.map(|(_, value)| value).sum::<u64>(); // |I|·A(I)
+    let mean_ins = sum_ins / ins_plurality;
 
     // Inner fraction must be with C and over the mean value, in order to maximize precision.
     // We can saturate the overall expression at u64::MAX since we lower-bound the subtraction below by zero anyway
-    let arithmetic_ins = ins_len.saturating_mul(storage_mass_parameter / mean_ins); // C·|I|/A(I)
+    let arithmetic_ins = ins_plurality.saturating_mul(storage_mass_parameter / mean_ins); // C·|I|/A(I)
 
     Some(harmonic_outs.saturating_sub(arithmetic_ins)) // max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
 }
