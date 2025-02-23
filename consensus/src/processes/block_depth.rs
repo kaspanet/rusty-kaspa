@@ -1,4 +1,7 @@
-use kaspa_consensus_core::{blockhash::ORIGIN, config::params::ForkedParam};
+use kaspa_consensus_core::{
+    blockhash::{BlockHashExtensions, ORIGIN},
+    config::params::ForkedParam,
+};
 use kaspa_hashes::Hash;
 use std::sync::Arc;
 
@@ -49,6 +52,9 @@ impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader, T:
     }
 
     fn calculate_block_at_depth(&self, ghostdag_data: &GhostdagData, depth_type: BlockDepthType, pruning_point: Hash) -> Hash {
+        if ghostdag_data.selected_parent.is_origin() {
+            return ORIGIN;
+        }
         let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
         let depth = match depth_type {
             BlockDepthType::MergeRoot => self.merge_depth.get(selected_parent_daa_score),
