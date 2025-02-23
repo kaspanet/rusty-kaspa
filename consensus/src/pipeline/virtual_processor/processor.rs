@@ -56,6 +56,7 @@ use kaspa_consensus_core::{
     config::{genesis::GenesisBlock, params::ForkActivation},
     header::Header,
     merkle::calc_hash_merkle_root,
+    mining_rules::MiningRules,
     pruning::PruningPointsList,
     tx::{MutableTransaction, Transaction},
     utxo::{
@@ -72,7 +73,11 @@ use kaspa_consensus_notify::{
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_core::{debug, info, time::unix_now, trace, warn};
+use kaspa_core::{
+    debug, info,
+    time::{unix_now, Stopwatch},
+    trace, warn,
+};
 use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -167,6 +172,9 @@ pub struct VirtualStateProcessor {
     // Storage mass hardfork DAA score
     pub(crate) storage_mass_activation: ForkActivation,
     pub(crate) kip10_activation: ForkActivation,
+
+    // Mining Rule
+    mining_rules: Arc<MiningRules>,
 }
 
 impl VirtualStateProcessor {
@@ -183,6 +191,7 @@ impl VirtualStateProcessor {
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
+        mining_rules: Arc<MiningRules>,
     ) -> Self {
         Self {
             receiver,
@@ -232,6 +241,8 @@ impl VirtualStateProcessor {
             counters,
             storage_mass_activation: params.storage_mass_activation,
             kip10_activation: params.kip10_activation,
+
+            mining_rules,
         }
     }
 
@@ -267,6 +278,7 @@ impl VirtualStateProcessor {
     }
 
     fn resolve_virtual(self: &Arc<Self>) {
+        let swo = Stopwatch::new("virtual_processor.resolve_virtual");
         let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
         let virtual_read = self.virtual_stores.upgradable_read();
         let prev_state = virtual_read.state.get().unwrap();
@@ -316,6 +328,11 @@ impl VirtualStateProcessor {
                 &chain_path,
             )
             .expect("all possible rule errors are unexpected here");
+
+        let elapsed = swo.elapsed();
+        self.counters.virtual_processing_time.fetch_add(elapsed.as_millis() as u64, Ordering::Relaxed);
+        self.counters.virtual_resolve_counts.fetch_add(1, Ordering::Relaxed);
+        drop(swo);
 
         let compact_sink_ghostdag_data = if let Some(sink_ghostdag_data) = Lazy::get(&sink_ghostdag_data) {
             // If we had to retrieve the full data, we convert it to compact
@@ -684,7 +701,10 @@ impl VirtualStateProcessor {
         let max_candidates = self.max_virtual_parent_candidates();
 
         // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
-        if candidates.len() > max_candidates {
+        if self.mining_rules.blue_parents_only.load(Ordering::Relaxed) {
+            // pick 100% of the top blue work blocks
+            candidates.truncate(max_candidates);
+        } else if candidates.len() > max_candidates {
             // make_contiguous should be a no op since the deque was just built
             let slice = candidates.make_contiguous();
 
@@ -773,25 +793,32 @@ impl VirtualStateProcessor {
         let mut ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
         let merge_depth_root = self.depth_manager.calc_merge_depth_root(&ghostdag_data, current_pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;
-        let mut bad_reds = Vec::new();
+        let bad_reds = if self.mining_rules.blue_parents_only.load(Ordering::Relaxed) {
+            // Treat all reds as bad reds when this rule is triggered
+            ghostdag_data.mergeset_reds.as_ref().to_vec()
+        } else {
+            let mut inner_bad_reds = Vec::new();
 
-        //
-        // Note that the code below optimizes for the usual case where there are no merge-bound-violating blocks.
-        //
+            //
+            // Note that the code below optimizes for the usual case where there are no merge-bound-violating blocks.
+            //
 
-        // Find red blocks violating the merge bound and which are not kosherized by any blue
-        for red in ghostdag_data.mergeset_reds.iter().copied() {
-            if self.reachability_service.is_dag_ancestor_of(merge_depth_root, red) {
-                continue;
+            // Find red blocks violating the merge bound and which are not kosherized by any blue
+            for red in ghostdag_data.mergeset_reds.iter().copied() {
+                if self.reachability_service.is_dag_ancestor_of(merge_depth_root, red) {
+                    continue;
+                }
+                // Lazy load the kosherizing blocks since this case is extremely rare
+                if kosherizing_blues.is_none() {
+                    kosherizing_blues = Some(self.depth_manager.kosherizing_blues(&ghostdag_data, merge_depth_root).collect());
+                }
+                if !self.reachability_service.is_dag_ancestor_of_any(red, &mut kosherizing_blues.as_ref().unwrap().iter().copied()) {
+                    inner_bad_reds.push(red);
+                }
             }
-            // Lazy load the kosherizing blocks since this case is extremely rare
-            if kosherizing_blues.is_none() {
-                kosherizing_blues = Some(self.depth_manager.kosherizing_blues(&ghostdag_data, merge_depth_root).collect());
-            }
-            if !self.reachability_service.is_dag_ancestor_of_any(red, &mut kosherizing_blues.as_ref().unwrap().iter().copied()) {
-                bad_reds.push(red);
-            }
-        }
+
+            inner_bad_reds
+        };
 
         if !bad_reds.is_empty() {
             // Remove all parents which lead to merging a bad red
@@ -928,7 +955,9 @@ impl VirtualStateProcessor {
         // We call for the initial tx batch before acquiring the virtual read lock,
         // optimizing for the common case where all txs are valid. Following selection calls
         // are called within the lock in order to preserve validness of already validated txs
-        let mut txs = tx_selector.select_transactions();
+        let mut txs =
+            if self.mining_rules.no_transactions.load(Ordering::Relaxed) { vec![] } else { tx_selector.select_transactions() };
+
         let mut calculated_fees = Vec::with_capacity(txs.len());
         let virtual_read = self.virtual_stores.read();
         let virtual_state = virtual_read.state.get().unwrap();

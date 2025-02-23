@@ -11,6 +11,9 @@ pub struct ProcessingCounters {
     pub chain_block_counts: AtomicU64,
     pub chain_disqualified_counts: AtomicU64,
     pub mass_counts: AtomicU64,
+    pub virtual_processing_time: AtomicU64,
+    pub virtual_resolve_counts: AtomicU64,
+    pub bad_merkle_root_count: AtomicU64,
 }
 
 impl ProcessingCounters {
@@ -25,6 +28,9 @@ impl ProcessingCounters {
             chain_block_counts: self.chain_block_counts.load(Ordering::Relaxed),
             chain_disqualified_counts: self.chain_disqualified_counts.load(Ordering::Relaxed),
             mass_counts: self.mass_counts.load(Ordering::Relaxed),
+            virtual_processing_time: self.virtual_processing_time.load(Ordering::Relaxed),
+            virtual_resolve_counts: self.virtual_resolve_counts.load(Ordering::Relaxed),
+            bad_merkle_root_count: self.bad_merkle_root_count.load(Ordering::Relaxed),
         }
     }
 }
@@ -40,6 +46,9 @@ pub struct ProcessingCountersSnapshot {
     pub chain_block_counts: u64,
     pub chain_disqualified_counts: u64,
     pub mass_counts: u64,
+    pub virtual_processing_time: u64,
+    pub virtual_resolve_counts: u64,
+    pub bad_merkle_root_count: u64,
 }
 
 impl core::ops::Sub for &ProcessingCountersSnapshot {
@@ -56,6 +65,9 @@ impl core::ops::Sub for &ProcessingCountersSnapshot {
             chain_block_counts: self.chain_block_counts.saturating_sub(rhs.chain_block_counts),
             chain_disqualified_counts: self.chain_disqualified_counts.saturating_sub(rhs.chain_disqualified_counts),
             mass_counts: self.mass_counts.saturating_sub(rhs.mass_counts),
+            virtual_processing_time: self.virtual_processing_time.saturating_sub(rhs.virtual_processing_time),
+            virtual_resolve_counts: self.virtual_resolve_counts.saturating_sub(rhs.virtual_resolve_counts),
+            bad_merkle_root_count: self.bad_merkle_root_count.saturating_sub(rhs.bad_merkle_root_count),
         }
     }
 }
