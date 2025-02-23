@@ -44,7 +44,7 @@ impl Matrix {
                 if shift == 0 {
                     val = generator.u64();
                 }
-                (val >> (4 * shift) & 0x0F) as u16
+                ((val >> (4 * shift)) & 0x0F) as u16
             })
         }))
     }
