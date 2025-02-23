@@ -35,6 +35,7 @@ impl TransactionValidator {
         &self,
         tx: &(impl VerifiableTransaction + Sync),
         pov_daa_score: u64,
+        block_daa_score: u64,
         flags: TxValidationFlags,
         mass_and_feerate_threshold: Option<(u64, f64)>,
     ) -> TxResult<u64> {
@@ -42,7 +43,7 @@ impl TransactionValidator {
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         let fee = total_in - total_out;
-        if flags != TxValidationFlags::SkipMassCheck && self.crescendo_activation.is_active(pov_daa_score) {
+        if flags != TxValidationFlags::SkipMassCheck && self.crescendo_activation.is_active(block_daa_score) {
             // Storage mass hardfork was activated
             self.check_mass_commitment(tx)?;
 
@@ -59,10 +60,10 @@ impl TransactionValidator {
 
         match flags {
             TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
-                if !self.crescendo_activation.is_active(pov_daa_score) {
+                if !self.crescendo_activation.is_active(block_daa_score) {
                     Self::check_sig_op_counts(tx)?;
                 }
-                self.check_scripts(tx, pov_daa_score)?;
+                self.check_scripts(tx, block_daa_score)?;
             }
             TxValidationFlags::SkipScriptChecks => {}
         }
@@ -174,12 +175,12 @@ impl TransactionValidator {
         Ok(())
     }
 
-    pub fn check_scripts(&self, tx: &(impl VerifiableTransaction + Sync), pov_daa_score: u64) -> TxResult<()> {
+    pub fn check_scripts(&self, tx: &(impl VerifiableTransaction + Sync), block_daa_score: u64) -> TxResult<()> {
         check_scripts(
             &self.sig_cache,
             tx,
-            self.crescendo_activation.is_active(pov_daa_score),
-            self.crescendo_activation.is_active(pov_daa_score),
+            self.crescendo_activation.is_active(block_daa_score),
+            self.crescendo_activation.is_active(block_daa_score),
         )
     }
 }
