@@ -50,6 +50,16 @@ impl ForkActivation {
     pub fn is_within_range_from_activation(self, current_daa_score: u64, range: u64) -> bool {
         self != Self::always() && self.is_active(current_daa_score) && current_daa_score < self.0 + range
     }
+
+    /// Checks if the fork is expected to be activated "soon", i.e., in the time frame of the provided range.
+    /// Returns the distance from activation if so, or `None` otherwise.  
+    pub fn is_within_range_before_activation(self, current_daa_score: u64, range: u64) -> Option<u64> {
+        if !self.is_active(current_daa_score) && current_daa_score + range > self.0 {
+            Some(self.0 - current_daa_score)
+        } else {
+            None
+        }
+    }
 }
 
 /// A consensus parameter which depends on forking activation
