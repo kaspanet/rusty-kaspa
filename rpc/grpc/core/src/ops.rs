@@ -103,6 +103,8 @@ pub enum KaspadPayloadOps {
     StopNotifyingUtxosChanged,
     StopNotifyingPruningPointUtxoSetOverride,
 
+    GetPruningWindowRoots,
+
     // Please note:
     // Notification payloads existing in ResponsePayload are not considered valid ops.
     // The conversion from a notification ResponsePayload into KaspadPayloadOps fails.

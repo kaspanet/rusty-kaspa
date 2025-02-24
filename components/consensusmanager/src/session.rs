@@ -458,6 +458,10 @@ impl ConsensusSessionOwned {
     pub async fn async_finality_point(&self) -> Hash {
         self.clone().spawn_blocking(move |c| c.finality_point()).await
     }
+
+    pub async fn async_get_pruning_window_roots(&self) -> Vec<(u64, Hash)> {
+        self.clone().spawn_blocking(move |c| c.get_pruning_window_roots()).await
+    }
 }
 
 pub type ConsensusProxy = ConsensusSessionOwned;

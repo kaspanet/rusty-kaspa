@@ -481,6 +481,16 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetCurrentBlockColorRequest,
     ) -> RpcResult<GetCurrentBlockColorResponse>;
 
+    async fn get_pruning_window_roots(&self) -> RpcResult<GetPruningWindowRootsResponse> {
+        Ok(self.get_pruning_window_roots_call(None, GetPruningWindowRootsRequest {}).await?)
+    }
+
+    async fn get_pruning_window_roots_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetPruningWindowRootsRequest,
+    ) -> RpcResult<GetPruningWindowRootsResponse>;
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

@@ -66,6 +66,7 @@ message KaspadRequest {
     GetFeeEstimateExperimentalRequestMessage getFeeEstimateExperimentalRequest = 1108;
     GetCurrentBlockColorRequestMessage getCurrentBlockColorRequest = 1110;
     GetUtxoReturnAddressRequestMessage GetUtxoReturnAddressRequest = 1112;
+    GetPruningWindowRootsRequestMessage getPruningWindowRootsRequest = 1113;
   }
 }
 
@@ -132,6 +133,7 @@ message KaspadResponse {
     GetFeeEstimateExperimentalResponseMessage getFeeEstimateExperimentalResponse = 1109;
     GetCurrentBlockColorResponseMessage getCurrentBlockColorResponse = 1111;
     GetUtxoReturnAddressResponseMessage GetUtxoReturnAddressResponse = 1113;
+    GetPruningWindowRootsResponseMessage getPruningWindowRootsResponse = 1114;
   }
 }
 

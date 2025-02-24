@@ -3511,3 +3511,68 @@ impl Deserializer for UnsubscribeResponse {
         Ok(Self {})
     }
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetPruningWindowRootsRequest {}
+
+impl Serializer for GetPruningWindowRootsRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetPruningWindowRootsRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PruningWindowRoot {
+    pub root: RpcHash,
+    pub pp_index: u64,
+}
+
+impl Serializer for PruningWindowRoot {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.root, writer)?;
+        store!(u64, &self.pp_index, writer)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetPruningWindowRootsResponse {
+    pub roots: Vec<PruningWindowRoot>,
+}
+
+impl GetPruningWindowRootsResponse {
+    pub fn new(roots: Vec<PruningWindowRoot>) -> Self {
+        Self { roots }
+    }
+}
+
+impl Serializer for GetPruningWindowRootsResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<PruningWindowRoot>, &self.roots, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for GetPruningWindowRootsResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let roots = load!(Vec<PruningWindowRoot>, reader)?;
+
+        Ok(Self { roots })
+    }
+}

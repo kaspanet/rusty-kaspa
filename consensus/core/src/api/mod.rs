@@ -370,6 +370,10 @@ pub trait ConsensusApi: Send + Sync {
     fn finality_point(&self) -> Hash {
         unimplemented!()
     }
+
+    fn get_pruning_window_roots(&self) -> Vec<(u64, Hash)> {
+        unimplemented!()
+    }
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

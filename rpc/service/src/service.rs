@@ -1166,6 +1166,18 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetSyncStatusResponse { is_synced })
     }
 
+    async fn get_pruning_window_roots_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetPruningWindowRootsRequest,
+    ) -> RpcResult<GetPruningWindowRootsResponse> {
+        let session = self.consensus_manager.consensus().unguarded_session();
+        let roots = session.async_get_pruning_window_roots().await;
+        Ok(GetPruningWindowRootsResponse {
+            roots: roots.into_iter().map(|(pp_index, root)| PruningWindowRoot { pp_index, root }).collect(),
+        })
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

@@ -243,6 +243,17 @@ from!(item: &kaspa_rpc_core::AddPeerRequest, protowire::AddPeerRequestMessage, {
 });
 from!(RpcResult<&kaspa_rpc_core::AddPeerResponse>, protowire::AddPeerResponseMessage);
 
+from!(&kaspa_rpc_core::GetPruningWindowRootsRequest, protowire::GetPruningWindowRootsRequestMessage);
+from!(item: &kaspa_rpc_core::PruningWindowRoot, protowire::PruningWindowRoot, {
+    Self {
+        root: item.root.to_string(),
+        pp_index: item.pp_index,
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetPruningWindowRootsResponse>, protowire::GetPruningWindowRootsResponseMessage, {
+    Self { roots: item.roots.iter().map(|x| x.into()).collect(), error: None }
+});
+
 from!(item: &kaspa_rpc_core::SubmitTransactionRequest, protowire::SubmitTransactionRequestMessage, {
     Self { transaction: Some((&item.transaction).into()), allow_orphan: item.allow_orphan }
 });
@@ -714,6 +725,20 @@ try_from!(item: &protowire::AddPeerRequestMessage, kaspa_rpc_core::AddPeerReques
     Self { peer_address: RpcContextualPeerAddress::from_str(&item.address)?, is_permanent: item.is_permanent }
 });
 try_from!(&protowire::AddPeerResponseMessage, RpcResult<kaspa_rpc_core::AddPeerResponse>);
+
+try_from!(&protowire::GetPruningWindowRootsRequestMessage, kaspa_rpc_core::GetPruningWindowRootsRequest);
+try_from!(item: &protowire::PruningWindowRoot, kaspa_rpc_core::PruningWindowRoot, {
+    Self { root: RpcHash::from_str(&item.root)?, pp_index: item.pp_index }
+});
+try_from!(item: &protowire::GetPruningWindowRootsResponseMessage, RpcResult<kaspa_rpc_core::GetPruningWindowRootsResponse>, {
+    Self {
+        roots: item
+            .roots
+            .iter()
+            .map(kaspa_rpc_core::PruningWindowRoot::try_from)
+            .collect::<Result<Vec<_>, _>>().map_err(|e| RpcError::General(e.to_string()))? // TODO: More specific error?
+    }
+});
 
 try_from!(item: &protowire::SubmitTransactionRequestMessage, kaspa_rpc_core::SubmitTransactionRequest, {
     Self {
