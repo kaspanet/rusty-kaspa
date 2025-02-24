@@ -184,6 +184,8 @@ pub const CRESCENDO: CrescendoParams = CrescendoParams {
     merge_depth: TenBps::merge_depth_bound(),
     finality_depth: TenBps::finality_depth(),
     pruning_depth: TenBps::pruning_depth(),
+
+    // TODO (crescendo): apply on activation
     coinbase_maturity: TenBps::coinbase_maturity(),
 
     // TODO (crescendo): finalize all below
