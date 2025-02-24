@@ -2,10 +2,17 @@ use super::VirtualStateProcessor;
 use crate::{
     errors::{
         BlockProcessResult,
-        RuleError::{BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext},
+        RuleError::{
+            BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext,
+            WrongHeaderPruningPoint,
+        },
     },
     model::stores::{
-        block_transactions::BlockTransactionsStoreReader, daa::DaaStoreReader, ghostdag::GhostdagData, headers::HeaderStoreReader,
+        block_transactions::BlockTransactionsStoreReader,
+        daa::DaaStoreReader,
+        ghostdag::{GhostdagData, GhostdagStoreReader},
+        headers::HeaderStoreReader,
+        pruning::PruningStoreReader,
     },
     processes::transaction_validator::{
         errors::{TxResult, TxRuleError},
@@ -144,8 +151,9 @@ impl VirtualStateProcessor {
     /// UTXO valid if all the following conditions hold:
     ///     1. The block header includes the expected `utxo_commitment`.
     ///     2. The block header includes the expected `accepted_id_merkle_root`.
-    ///     3. The block coinbase transaction rewards the mergeset blocks correctly.
-    ///     4. All non-coinbase block transactions are valid against its own UTXO view.
+    ///     3. The block header includes the expected `pruning_point`.
+    ///     4. The block coinbase transaction rewards the mergeset blocks correctly.
+    ///     5. All non-coinbase block transactions are valid against its own UTXO view.
     pub(super) fn verify_expected_utxo_state<V: UtxoView + Sync>(
         &self,
         ctx: &mut UtxoProcessingContext,
@@ -176,6 +184,9 @@ impl VirtualStateProcessor {
             &self.daa_excluded_store.get_mergeset_non_daa(header.hash).unwrap(),
         )?;
 
+        // Verify the header pruning point
+        self.verify_header_pruning_point(header)?;
+
         // Verify all transactions are valid in context
         let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
         let validated_transactions = self.validate_transactions_in_parallel(
@@ -190,6 +201,23 @@ impl VirtualStateProcessor {
             return Err(InvalidTransactionsInUtxoContext(txs.len() - 1 - validated_transactions.len(), txs.len() - 1));
         }
 
+        Ok(())
+    }
+
+    fn verify_header_pruning_point(&self, header: &Header) -> BlockProcessResult<()> {
+        // TODO (Crescendo): pass from resolve virtual
+        let pruning_info = self.pruning_point_store.read().get().unwrap();
+        // [Crescendo]: changing expected pruning point check from header validity to chain qualification.
+        // Note that we activate here based on current DAA score and deactivate (in header processor) based on
+        // selected parent DAA score, but that simply means we might perform a double check in the interim
+        if self.crescendo_activation.is_active(header.daa_score) {
+            let expected = self
+                .pruning_point_manager
+                .expected_header_pruning_point(self.ghostdag_store.get_compact_data(header.hash).unwrap(), pruning_info);
+            if expected != header.pruning_point {
+                return Err(WrongHeaderPruningPoint(expected, header.pruning_point));
+            }
+        }
         Ok(())
     }
 

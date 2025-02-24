@@ -83,9 +83,13 @@ impl HeaderProcessor {
     }
 
     pub fn check_pruning_point(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        let expected = self.pruning_point_manager.expected_header_pruning_point(ctx.ghostdag_data().to_compact(), ctx.pruning_info);
-        if expected != header.pruning_point {
-            return Err(RuleError::WrongHeaderPruningPoint(expected, header.pruning_point));
+        // [Crescendo]: changing expected pruning point check from header validity to chain qualification
+        if !self.crescendo_activation.is_active(ctx.selected_parent_daa_score()) {
+            let expected =
+                self.pruning_point_manager.expected_header_pruning_point(ctx.ghostdag_data().to_compact(), ctx.pruning_info);
+            if expected != header.pruning_point {
+                return Err(RuleError::WrongHeaderPruningPoint(expected, header.pruning_point));
+            }
         }
         Ok(())
     }
