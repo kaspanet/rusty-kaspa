@@ -286,9 +286,6 @@ pub fn calc_storage_mass(
     if is_coinbase {
         return Some(0);
     }
-
-    let ins_plurality = inputs.clone().map(|UtxoCell { plurality, .. }| plurality).sum::<u64>();
-
     /* The code below computes the following formula:
 
             max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
@@ -318,13 +315,7 @@ pub fn calc_storage_mass(
         },
     )?;
 
-    /*  KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
-            max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
-
-        Note: in the case |I| = 1 both formulas are equal, yet the following code (harmonic_ins) is a bit more efficient.
-              Hence, we transform the condition to |O| = 1 OR |I| = 1 OR |O| = |I| = 2 which is equivalent (and faster).
-    */
-    if outs_plurality == 1 || ins_plurality == 1 || (outs_plurality == 2 && ins_plurality == 2) {
+    if check_relaxed_formula_conditions(outs_plurality, &inputs) {
         // Existing UTXO entries are verified not to overflow for C·P^2 (see verify_utxo_plurality_limits)
         let harmonic_ins = inputs
             .map(|UtxoCell { plurality, amount }| storage_mass_parameter * plurality * plurality / amount)
@@ -333,7 +324,9 @@ pub fn calc_storage_mass(
     }
 
     // Total supply is bounded, so a sum of existing UTXO entries cannot overflow (nor can it be zero)
-    let sum_ins = inputs.map(|UtxoCell { amount, .. }| amount).sum::<u64>(); // |I|·A(I)
+    let (ins_plurality, sum_ins) =
+        inputs.fold((0u64, 0u64), |(acc_plur, acc_amt), UtxoCell { plurality, amount }| (acc_plur + plurality, acc_amt + amount));
+
     let mean_ins = sum_ins / ins_plurality;
 
     // Inner fraction must be with C and over the mean value, in order to maximize precision.
@@ -341,6 +334,26 @@ pub fn calc_storage_mass(
     let arithmetic_ins = ins_plurality.saturating_mul(storage_mass_parameter / mean_ins); // C·|I|/A(I)
 
     Some(harmonic_outs.saturating_sub(arithmetic_ins)) // max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
+}
+
+/// KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
+///
+///                 max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
+///
+/// Note: in the case |I| = 1 both formulas are equal, yet the harmonic_ins path is a bit more efficient.
+///       Hence, we transform the condition to |O| = 1 OR |I| = 1 OR |O| = |I| = 2 which is equivalent (and faster).
+///
+fn check_relaxed_formula_conditions(outs_plurality: u64, inputs: &(impl ExactSizeIterator<Item = UtxoCell> + Clone)) -> bool {
+    if outs_plurality == 1 {
+        return true;
+    }
+    if inputs.len() > 2 {
+        // Plurality of each element >= 1 => ins_plurality > 2 => we can optimize and avoid consuming the iter
+        return false;
+    }
+    // We clone the iterator only if inputs.len <= 2 which is negligible
+    let ins_plurality = inputs.clone().map(|UtxoCell { plurality, .. }| plurality).sum::<u64>();
+    ins_plurality == 1 || (outs_plurality == 2 && ins_plurality == 2)
 }
 
 #[cfg(test)]
