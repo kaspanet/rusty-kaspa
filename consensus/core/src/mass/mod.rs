@@ -301,7 +301,7 @@ impl MassCalculator {
 ///
 /// where:
 ///
-/// - `C` is the storage mass parameter (`storage_mass_parameter`).
+/// - `C` is the storage mass parameter (`storm_param`).
 /// - `|O|` and `|I|` are the total pluralities of outputs and inputs, respectively.
 /// - `H(O)` is the harmonic mean of the outputs' amounts, generalized to account for per-UTXO
 ///   `plurality`.
@@ -339,7 +339,7 @@ pub fn calc_storage_mass(
     is_coinbase: bool,
     inputs: impl ExactSizeIterator<Item = UtxoCell> + Clone,
     mut outputs: impl Iterator<Item = UtxoCell>,
-    storage_mass_parameter: u64,
+    storm_param: u64,
 ) -> Option<u64> {
     if is_coinbase {
         return Some(0);
@@ -359,7 +359,7 @@ pub fn calc_storage_mass(
         |(acc_plurality, acc_harm), UtxoCell { plurality, amount }| {
             Some((
                 acc_plurality + plurality, // represents in-memory bytes, cannot overflow
-                acc_harm.checked_add(storage_mass_parameter.checked_mul(plurality)?.checked_mul(plurality)? / amount)?,
+                acc_harm.checked_add(storm_param.checked_mul(plurality)?.checked_mul(plurality)? / amount)?,
             ))
         },
     )?;
@@ -389,7 +389,7 @@ pub fn calc_storage_mass(
     if relaxed_formula_path {
         // Each input i contributes C · p(i)^2 / amount(i)
         let harmonic_ins = inputs
-            .map(|UtxoCell { plurality, amount }| storage_mass_parameter * plurality * plurality / amount) // we assume no overflow (see verify_utxo_plurality_limits)
+            .map(|UtxoCell { plurality, amount }| storm_param * plurality * plurality / amount) // we assume no overflow (see verify_utxo_plurality_limits)
             .fold(0u64, |total, current| total.saturating_add(current));
 
         // max(0, harmonic_outs - harmonic_ins)
@@ -405,7 +405,7 @@ pub fn calc_storage_mass(
     let mean_ins = sum_ins / ins_plurality;
 
     // arithmetic_ins:  C · (|I| / A(I)) = |I| · (C / mean_ins)
-    let arithmetic_ins = ins_plurality.saturating_mul(storage_mass_parameter / mean_ins);
+    let arithmetic_ins = ins_plurality.saturating_mul(storm_param / mean_ins);
 
     // max(0, harmonic_outs - arithmetic_ins)
     Some(harmonic_outs.saturating_sub(arithmetic_ins))
@@ -422,6 +422,9 @@ mod tests {
     };
     use std::str::FromStr;
 
+    const UTXO_CONST_STORAGE: u64 = 63;
+    const UTXO_UNIT_SIZE: u64 = 100;
+
     #[test]
     fn verify_utxo_plurality_limits() {
         /*
@@ -432,21 +435,202 @@ mod tests {
             let params: Params = net.into();
             let max_spk_len =
                 (params.max_script_public_key_len as u64).min(params.max_block_mass.div_ceil(params.mass_per_script_pub_key_byte));
-            let max_plurality = (63 + max_spk_len).div_ceil(100); // see utxo_plurality
+            let max_plurality = (UTXO_CONST_STORAGE + max_spk_len).div_ceil(UTXO_UNIT_SIZE); // see utxo_plurality
             let product = params.storage_mass_parameter.checked_mul(max_plurality).and_then(|x| x.checked_mul(max_plurality));
             // verify C·P^2 can never overflow
             assert!(product.is_some());
         }
 
         // verify P >= 1 also when the script is empty
-        assert!(utxo_plurality(&ScriptPublicKey::new(0, ScriptVec::from_slice(&[]))) >= 1);
+        assert!(utxo_plurality(&ScriptPublicKey::new(0, ScriptVec::from_slice(&[]))) == 1);
         // Assert the UTXO_CONST_STORAGE=63, UTXO_UNIT_SIZE=100 constants
-        assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; 37])) == 1);
-        assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; 38])) == 2);
+        assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE) as usize])) == 1);
+        assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE + 1) as usize])) == 2);
+    }
+
+    #[derive(Debug)]
+    struct PluralityTestCase {
+        /// Test name
+        name: &'static str,
+
+        /// Amounts for the first transaction's inputs
+        inputs_tx1: &'static [u64],
+        /// Amounts for the first transaction's outputs
+        outputs_tx1: &'static [u64],
+
+        /// Amounts for the second transaction's inputs
+        inputs_tx2: &'static [u64],
+        /// Amounts for the second transaction's outputs
+        outputs_tx2: &'static [u64],
+
+        /// (Optional) index of the input/output in tx2 whose script we want to override
+        plurality_index: Option<usize>,
+        /// Desired plurality for that UTXO's script
+        desired_plurality: Option<u64>,
+        /// Whether to override an output and not an input
+        override_output: bool,
+
+        /// Mass calculator parameters
+        storage_mass_parameter: u64,
+    }
+
+    impl PluralityTestCase {
+        /// Runs the test and asserts that the masses are equal
+        fn run(&self) {
+            // Sanity
+            assert!(
+                self.inputs_tx1.iter().sum::<u64>() >= self.outputs_tx1.iter().sum::<u64>(),
+                "Test \"{}\": tx1 outs > ins",
+                self.name
+            );
+            assert!(
+                self.inputs_tx2.iter().sum::<u64>() >= self.outputs_tx2.iter().sum::<u64>(),
+                "Test \"{}\": tx2 outs > ins",
+                self.name
+            );
+
+            // Generate
+            let tx1 = generate_tx_from_amounts(self.inputs_tx1, self.outputs_tx1);
+            let mut tx2 = generate_tx_from_amounts(self.inputs_tx2, self.outputs_tx2);
+
+            // If specified, override one of the script public keys in tx2.
+            if let (Some(index), Some(plur)) = (self.plurality_index, self.desired_plurality) {
+                if self.override_output {
+                    tx2.tx.outputs[index].script_public_key = generate_script_for_plurality(plur);
+                } else {
+                    tx2.entries[index].as_mut().unwrap().script_public_key = generate_script_for_plurality(plur);
+                }
+            }
+
+            let mc = MassCalculator::new(0, 0, 0, self.storage_mass_parameter);
+
+            let mass1 = mc.calc_contextual_masses(&tx1.as_verifiable());
+            let mass2 = mc.calc_contextual_masses(&tx2.as_verifiable());
+
+            assert_ne!(mass1, Some(ContextualMasses::new(0)), "Test \"{}\": avoid running meaningless test cases", self.name);
+            assert_eq!(mass1, mass2, "Test \"{}\" failed: mass1 = {:?}, mass2 = {:?}", self.name, mass1, mass2);
+        }
     }
 
     #[test]
-    fn test_mass_storage() {
+    fn test_storage_mass_pluralities() {
+        /*
+            Tests pluralities by comparing transactions with all inputs/outputs with plurality 1
+            with transactions with a super entry (plurality > 1) which replaces several entries
+            in the plurality 1 tx (with equal total value and equal total plurality)
+        */
+        let test_cases = vec![
+            PluralityTestCase {
+                name: "3:4; input index=1, plurality=2",
+                inputs_tx1: &[300, 200, 200],
+                outputs_tx1: &[200, 200, 200, 100],
+                inputs_tx2: &[300, 400],
+                outputs_tx2: &[200, 200, 200, 100],
+                plurality_index: Some(1),
+                desired_plurality: Some(2),
+                override_output: false,
+                storage_mass_parameter: 10_u64.pow(12),
+            },
+            PluralityTestCase {
+                name: "2:3; output index=1, plurality=2",
+                inputs_tx1: &[350, 400],
+                outputs_tx1: &[300, 200, 200],
+                inputs_tx2: &[350, 400],
+                outputs_tx2: &[300, 400],
+                plurality_index: Some(1),
+                desired_plurality: Some(2),
+                override_output: true,
+                storage_mass_parameter: 10_u64.pow(12),
+            },
+            PluralityTestCase {
+                name: "1:2; output index=0, plurality=2",
+                inputs_tx1: &[500],
+                outputs_tx1: &[200, 200],
+                inputs_tx2: &[500],
+                outputs_tx2: &[400],
+                plurality_index: Some(0),
+                desired_plurality: Some(2),
+                override_output: true,
+                storage_mass_parameter: 10_u64.pow(12),
+            },
+            PluralityTestCase {
+                name: "1:3; output index=1, plurality=2",
+                inputs_tx1: &[1000],
+                outputs_tx1: &[200, 200, 200],
+                inputs_tx2: &[1000],
+                outputs_tx2: &[200, 400],
+                plurality_index: Some(1),
+                desired_plurality: Some(2),
+                override_output: true,
+                storage_mass_parameter: 10_u64.pow(12),
+            },
+            PluralityTestCase {
+                name: "1:3; output index=1, plurality=2; kas units",
+                inputs_tx1: &[1000 * SOMPI_PER_KASPA],
+                outputs_tx1: &[200 * SOMPI_PER_KASPA, 200 * SOMPI_PER_KASPA, 200 * SOMPI_PER_KASPA],
+                inputs_tx2: &[1000 * SOMPI_PER_KASPA],
+                outputs_tx2: &[200 * SOMPI_PER_KASPA, 400 * SOMPI_PER_KASPA],
+                plurality_index: Some(1),
+                desired_plurality: Some(2),
+                override_output: true,
+                storage_mass_parameter: 10_u64.pow(12),
+            },
+            PluralityTestCase {
+                name: "1:2; output index=0, plurality=2; kas units",
+                inputs_tx1: &[1000 * SOMPI_PER_KASPA],
+                outputs_tx1: &[200 * SOMPI_PER_KASPA, 200 * SOMPI_PER_KASPA],
+                inputs_tx2: &[1000 * SOMPI_PER_KASPA],
+                outputs_tx2: &[400 * SOMPI_PER_KASPA],
+                plurality_index: Some(0),
+                desired_plurality: Some(2),
+                override_output: true,
+                storage_mass_parameter: 10_u64.pow(12),
+            },
+            PluralityTestCase {
+                name: "2:2; output index=0, plurality=2; kas units",
+                inputs_tx1: &[350 * SOMPI_PER_KASPA, 500 * SOMPI_PER_KASPA],
+                outputs_tx1: &[200 * SOMPI_PER_KASPA, 200 * SOMPI_PER_KASPA],
+                inputs_tx2: &[350 * SOMPI_PER_KASPA, 500 * SOMPI_PER_KASPA],
+                outputs_tx2: &[400 * SOMPI_PER_KASPA],
+                plurality_index: Some(0),
+                desired_plurality: Some(2),
+                override_output: true,
+                storage_mass_parameter: 10_u64.pow(12),
+            },
+            PluralityTestCase {
+                name: "4:6; output index=0, plurality=3; kas units",
+                inputs_tx1: &[350 * SOMPI_PER_KASPA, 500 * SOMPI_PER_KASPA, 350 * SOMPI_PER_KASPA, 500 * SOMPI_PER_KASPA],
+                outputs_tx1: &[
+                    200 * SOMPI_PER_KASPA,
+                    200 * SOMPI_PER_KASPA,
+                    400 * SOMPI_PER_KASPA,
+                    250 * SOMPI_PER_KASPA,
+                    250 * SOMPI_PER_KASPA,
+                    250 * SOMPI_PER_KASPA,
+                ],
+                inputs_tx2: &[350 * SOMPI_PER_KASPA, 500 * SOMPI_PER_KASPA, 350 * SOMPI_PER_KASPA, 500 * SOMPI_PER_KASPA],
+                outputs_tx2: &[200 * SOMPI_PER_KASPA, 200 * SOMPI_PER_KASPA, 400 * SOMPI_PER_KASPA, 750 * SOMPI_PER_KASPA],
+                plurality_index: Some(3),
+                desired_plurality: Some(3),
+                override_output: true,
+                storage_mass_parameter: 10_u64.pow(12),
+            },
+        ];
+
+        for tc in test_cases {
+            tc.run();
+        }
+    }
+
+    /// ScriptPublicKey generator that yields a script with length adjusted
+    /// to match `desired_plurality`.
+    fn generate_script_for_plurality(desired_plurality: u64) -> ScriptPublicKey {
+        let required_script_len = ((desired_plurality - 1) * UTXO_UNIT_SIZE) as usize;
+        ScriptPublicKey::from_vec(0, vec![1; required_script_len])
+    }
+
+    #[test]
+    fn test_storage_mass() {
         // Tx with less outs than ins
         let mut tx = generate_tx_from_amounts(&[100, 200, 300], &[300, 300]);
 
