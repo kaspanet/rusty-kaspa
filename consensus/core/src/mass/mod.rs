@@ -289,14 +289,14 @@ impl MassCalculator {
 ///
 /// This function has been generalized for UTXO entries that may exceed
 /// the max standard 33-byte script public key size. Each `UtxoCell::plurality` indicates
-/// how many 100-byte storage units that UTXO occupies.
+/// how many 100-byte "storage units" that UTXO occupies.
 ///
 /// # Formula Overview
 ///
 /// The core formula is:
 ///
 /// ```ignore
-///     max(0, C * (|O| / H(O) - |I| / A(I)))
+///     max(0, C · (|O| / H(O) - |I| / A(I)))
 /// ```
 ///
 /// where:
@@ -308,32 +308,33 @@ impl MassCalculator {
 ///
 ///   In standard KIP-0009, one has:
 ///
-///```ignore
-///       |O| / H(O) = Σ (1 / o)
-///```
+///   ```ignore
+///   |O| / H(O) = Σ (1 / o)
+///   ```
 ///
-///   Here, each UTXO that occupies `p` "storage units" is treated as if it were `p` sub-entries,
-///   each holding `amount / p`. This effectively turns `1 / o` into `p^2 / amount`. The code
-///   thus accumulates:
+///   Here, each UTXO that occupies `p` storage units is treated as `p` sub-entries,
+///   each holding `amount / p`. This effectively converts `1 / o` into `p^2 / amount`.
+///   Consequently, the code accumulates:
 ///
-///```ignore
-///       Σ [C * p(o)^2 / amount(o)]
-///```
+///   ```ignore
+///   Σ [C · p(o)^2 / amount(o)]
+///   ```
 ///
-/// - `A(I)` is the arithmetic mean of the inputs' amounts, similarly scaled by the total input
-///   plurality (`|I|`), while the sum of amounts can remain unchanged.
+/// - `A(I)` is the arithmetic mean of the inputs' amounts, similarly scaled by `|I|`,
+///   while the sum of amounts remains unchanged.
 ///
 /// Under the “relaxed formula” conditions (`|O| = 1`, `|I| = 1`, or `|O| = |I| = 2`),
-/// we compute the harmonic mean for inputs as well; otherwise, we default to the arithmetic
+/// we compute the harmonic mean for inputs as well; otherwise, we use the arithmetic
 /// approach for inputs.
 ///
-/// Refer to the KIP-0009 specification for full details.
+/// Refer to KIP-0009 for more details.
 ///
 /// Assumptions which must be verified before this call:
-///     1. All input/output values are non-zero
-///     2. At least one input (unless coinbase)
+///   1. All input/output values are non-zero
+///   2. At least one input (unless coinbase)
 ///
-/// Otherwise this function should never fail.
+/// If these assumptions hold, this function should never fail. A `None` return
+/// indicates that the mass is incomputable and can be considered too high.
 pub fn calc_storage_mass(
     is_coinbase: bool,
     inputs: impl ExactSizeIterator<Item = UtxoCell> + Clone,
@@ -345,9 +346,10 @@ pub fn calc_storage_mass(
     }
 
     /*
-        In KIP-0009 terms the canonical formula is: max(0, C · (|O|/H(O) - |I|/A(I))),
+        In KIP-0009 terms, the canonical formula is:
+            max(0, C * (|O|/H(O) - |I|/A(I))).
 
-        The code below calculates the harmonic portion for outputs in a single pass,
+        We first calculate the harmonic portion for outputs in a single pass,
         accumulating:
             1) outs_plurality = Σ p(o)
             2) harmonic_outs  = Σ [C * p(o)^2 / amount(o)]
@@ -362,64 +364,51 @@ pub fn calc_storage_mass(
         },
     )?;
 
-    // If the "relaxed formula" conditions hold (|O|=1, |I|=1, or both =2),
-    // compute a harmonic sum for inputs as well.
-    if check_relaxed_formula_conditions(outs_plurality, &inputs) {
-        /*
-            The relaxed formula is: max(0, C · (|O|/H(O) - |I|/H(I))).
-            Each input i contributes C * p(i)^2 / amount(i).
-        */
+    /*
+        KIP-0009 defines a relaxed formula for the cases:
+            |O| = 1  or  |O| <= |I| <= 2
+
+        The relaxed formula is:
+            max(0, C · (|O| / H(O) - |I| / H(I)))
+
+        If |I| = 1, the harmonic and arithmetic approaches coincide, so the conditions can be expressed as:
+            |O| = 1 or |I| = 1 or |O| = |I| = 2
+    */
+    let relaxed_formula_path = {
+        if outs_plurality == 1 {
+            true // |O| = 1
+        } else if inputs.len() > 2 {
+            false // since element plurality always >= 1 => ins_plurality > 2 => skip harmonic path
+        } else {
+            // For <= 2 inputs, we can afford to clone and sum the pluralities
+            let ins_plurality = inputs.clone().map(|cell| cell.plurality).sum::<u64>();
+            ins_plurality == 1 || (outs_plurality == 2 && ins_plurality == 2)
+        }
+    };
+
+    if relaxed_formula_path {
+        // Each input i contributes C · p(i)^2 / amount(i)
         let harmonic_ins = inputs
-            .map(|UtxoCell { plurality, amount }| {
-                // We assume no overflow here (see verify_utxo_plurality_limits)
-                storage_mass_parameter * plurality * plurality / amount
-            })
+            .map(|UtxoCell { plurality, amount }| storage_mass_parameter * plurality * plurality / amount) // we assume no overflow (see verify_utxo_plurality_limits)
             .fold(0u64, |total, current| total.saturating_add(current));
 
+        // max(0, harmonic_outs - harmonic_ins)
         return Some(harmonic_outs.saturating_sub(harmonic_ins));
     }
 
     // Otherwise, we calculate the arithmetic portion for inputs:
-    // (ins_plurality, sum_ins) =>  (|I|, Σ amounts)
+    // (ins_plurality, sum_ins) =>  (Σ plurality, Σ amounts)
     let (ins_plurality, sum_ins) =
         inputs.fold((0u64, 0u64), |(acc_plur, acc_amt), UtxoCell { plurality, amount }| (acc_plur + plurality, acc_amt + amount));
 
     // mean_ins = (Σ amounts) / (Σ plurality)
     let mean_ins = sum_ins / ins_plurality;
 
-    // Arithmetic path:  C * (|I| / A(I)) = |I| * (C / mean_ins).
-    // Then final mass = max(0, harmonic_outs - arithmetic_ins).
+    // arithmetic_ins:  C · (|I| / A(I)) = |I| · (C / mean_ins)
     let arithmetic_ins = ins_plurality.saturating_mul(storage_mass_parameter / mean_ins);
 
+    // max(0, harmonic_outs - arithmetic_ins)
     Some(harmonic_outs.saturating_sub(arithmetic_ins))
-}
-
-/// KIP-0009 relaxed formula for the cases:
-/// `|O| = 1` or `|O| <= |I| <= 2`,
-///
-/// which can be equivalently expressed as:
-/// `(|O| = 1) OR (|I| = 1) OR (|O| = |I| = 2)`.
-///
-/// The relaxed formula is:
-///
-/// ```text
-/// max(0, C · (|O| / H(O) - |I| / H(I))).
-/// ```
-///
-/// When `|I| = 1`, the harmonic and arithmetic approaches coincide, but the
-/// harmonic path is simpler to compute. Hence, we unify all such small-edge
-/// cases here and compute a direct harmonic sum.
-fn check_relaxed_formula_conditions(outs_plurality: u64, inputs: &(impl ExactSizeIterator<Item = UtxoCell> + Clone)) -> bool {
-    if outs_plurality == 1 {
-        return true;
-    }
-    // If there are more than 2 inputs, we know the sum of input pluralities > 2 => skip
-    if inputs.len() > 2 {
-        return false;
-    }
-    // For <= 2 inputs, re-sum their pluralities to see if we still have 1 or 2.
-    let ins_plurality = inputs.clone().map(|UtxoCell { plurality, .. }| plurality).sum::<u64>();
-    ins_plurality == 1 || (outs_plurality == 2 && ins_plurality == 2)
 }
 
 #[cfg(test)]
