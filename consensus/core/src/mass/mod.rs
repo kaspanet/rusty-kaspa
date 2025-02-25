@@ -271,9 +271,9 @@ impl MassCalculator {
     }
 }
 
-/// Calculates the storage mass for the provided input and output storage cells.
+/// Calculates the storage mass for the provided inputs and outputs.
 /// Assumptions which must be verified before this call:
-///     1. All output values are non-zero
+///     1. All input/output values are non-zero
 ///     2. At least one input (unless coinbase)
 ///
 /// Otherwise this function should never fail.
@@ -293,11 +293,11 @@ pub fn calc_storage_mass(
 
             max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
 
-    where C is the mass storage parameter, O is the set of output values, I is the set of
-    input values, H(S) := |S|/sum_{s in S} 1 / s is the harmonic mean over the set S and
-    A(S) := sum_{s in S} / |S| is the arithmetic mean.
+        where C is the mass storage parameter, O is the set of output values, I is the set of
+        input values, H(S) := |S|/sum_{s in S} 1 / s is the harmonic mean over the set S and
+        A(S) := sum_{s in S} / |S| is the arithmetic mean.
 
-    See KIP-0009 for more details
+        See KIP-0009 for more details
     */
 
     // Since we are doing integer division, we perform the multiplication with C over the inner
@@ -312,20 +312,20 @@ pub fn calc_storage_mass(
         (0u64, 0u64), // (accumulated plurality, accumulated harmonic)
         |(acc_plurality, acc_harm), UtxoCell { plurality, amount }| {
             Some((
-                acc_plurality + plurality, // Represent in-memory bytes, cannot overflow
+                acc_plurality + plurality, // represents in-memory bytes, cannot overflow
                 acc_harm.checked_add(storage_mass_parameter.checked_mul(plurality)?.checked_mul(plurality)? / amount)?,
             ))
         },
     )?;
 
-    /*
-      KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
-          max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
+    /*  KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
+            max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
 
-       Note: in the case |I| = 1 both formulas are equal, yet the following code (harmonic_ins) is a bit more efficient.
-             Hence, we transform the condition to |O| = 1 OR |I| = 1 OR |O| = |I| = 2 which is equivalent (and faster).
+        Note: in the case |I| = 1 both formulas are equal, yet the following code (harmonic_ins) is a bit more efficient.
+              Hence, we transform the condition to |O| = 1 OR |I| = 1 OR |O| = |I| = 2 which is equivalent (and faster).
     */
     if outs_plurality == 1 || ins_plurality == 1 || (outs_plurality == 2 && ins_plurality == 2) {
+        // Existing UTXO entries are verified not to overflow for C·P^2 (see verify_utxo_plurality_limits)
         let harmonic_ins = inputs
             .map(|UtxoCell { plurality, amount }| storage_mass_parameter * plurality * plurality / amount)
             .fold(0u64, |total, current| total.saturating_add(current)); // C·|I|/H(I)
@@ -348,10 +348,27 @@ mod tests {
     use super::*;
     use crate::{
         constants::{SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER},
+        network::NetworkType,
         subnets::SubnetworkId,
         tx::*,
     };
     use std::str::FromStr;
+
+    #[test]
+    fn verify_utxo_plurality_limits() {
+        /*
+           Verify that for all networks, existing UTXO entries can never overflow the product C·P^2 used
+           for harmonic_ins within calc_storage_mass
+        */
+        for net in NetworkType::iter() {
+            let params: Params = net.into();
+            let max_spk_len =
+                (params.max_script_public_key_len as u64).min(params.max_block_mass.div_ceil(params.mass_per_script_pub_key_byte));
+            let max_plurality = (63 + max_spk_len).div_ceil(100); // see utxo_plurality
+            let product = params.storage_mass_parameter.checked_mul(max_plurality).and_then(|x| x.checked_mul(max_plurality));
+            assert!(product.is_some());
+        }
+    }
 
     #[test]
     fn test_mass_storage() {
