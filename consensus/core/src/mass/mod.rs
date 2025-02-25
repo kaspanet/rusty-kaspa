@@ -280,14 +280,13 @@ impl MassCalculator {
 pub fn calc_storage_mass(
     is_coinbase: bool,
     inputs: impl ExactSizeIterator<Item = UtxoCell> + Clone,
-    outputs: impl ExactSizeIterator<Item = UtxoCell> + Clone,
+    mut outputs: impl Iterator<Item = UtxoCell>,
     storage_mass_parameter: u64,
 ) -> Option<u64> {
     if is_coinbase {
         return Some(0);
     }
 
-    let outs_plurality = outputs.clone().map(|UtxoCell { plurality, .. }| plurality).sum::<u64>();
     let ins_plurality = inputs.clone().map(|UtxoCell { plurality, .. }| plurality).sum::<u64>();
 
     /* The code below computes the following formula:
@@ -309,9 +308,15 @@ pub fn calc_storage_mass(
     //
     // Note: in theory this can be tighten by subtracting input mass in the process (possibly avoiding the overflow),
     // however the overflow case is so unpractical with current mass limits so we avoid the hassle
-    let harmonic_outs = outputs
-        .map(|UtxoCell { plurality, amount }| storage_mass_parameter * plurality * plurality / amount)
-        .try_fold(0u64, |total, current| total.checked_add(current))?; // C·|O|/H(O)
+    let (outs_plurality, harmonic_outs) = outputs.try_fold(
+        (0u64, 0u64), // (accumulated plurality, accumulated harmonic)
+        |(acc_plurality, acc_harm), UtxoCell { plurality, amount }| {
+            Some((
+                acc_plurality + plurality, // Represent in-memory bytes, cannot overflow
+                acc_harm.checked_add(storage_mass_parameter.checked_mul(plurality)?.checked_mul(plurality)? / amount)?,
+            ))
+        },
+    )?;
 
     /*
       KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
