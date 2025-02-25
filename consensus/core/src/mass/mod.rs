@@ -75,9 +75,9 @@ pub fn utxo_plurality(spk: &ScriptPublicKey) -> u64 {
 
     // The base (63 bytes) plus the max standard public key length (33 bytes) fits into one 100-byte unit.
     // Hence, all standard SPKs end up with a plurality of 1.
-    const UTXO_UNIT: usize = 100;
+    const UTXO_UNIT_SIZE: usize = 100;
 
-    (UTXO_CONST_STORAGE + spk.script().len()).div_ceil(UTXO_UNIT) as u64
+    (UTXO_CONST_STORAGE + spk.script().len()).div_ceil(UTXO_UNIT_SIZE) as u64
 }
 
 pub trait UtxoPlurality {
@@ -100,6 +100,35 @@ impl UtxoPlurality for UtxoEntry {
 impl UtxoPlurality for TransactionOutput {
     fn plurality(&self) -> u64 {
         utxo_plurality(&self.script_public_key)
+    }
+}
+
+/// Defines an abstract UTXO storage cell.
+///
+/// The cell includes plurality and amount information required for calculating the storage mass.
+#[derive(Clone, Copy)]
+pub struct UtxoCell {
+    /// The plurality of this cell (how many "storage units" it occupies)
+    pub plurality: u64,
+    /// The amount of KAS value locked in the cell (sompis)
+    pub amount: u64,
+}
+
+impl UtxoCell {
+    pub fn new(plurality: u64, amount: u64) -> Self {
+        Self { plurality, amount }
+    }
+}
+
+impl From<&UtxoEntry> for UtxoCell {
+    fn from(entry: &UtxoEntry) -> Self {
+        Self::new(entry.plurality(), entry.amount)
+    }
+}
+
+impl From<&TransactionOutput> for UtxoCell {
+    fn from(output: &TransactionOutput) -> Self {
+        Self::new(output.plurality(), output.value)
     }
 }
 
@@ -234,15 +263,15 @@ impl MassCalculator {
     pub fn calc_contextual_masses(&self, tx: &impl VerifiableTransaction) -> Option<ContextualMasses> {
         calc_storage_mass(
             tx.is_coinbase(),
-            tx.populated_inputs().map(|(_, entry)| (entry.plurality(), entry.amount)),
-            tx.outputs().iter().map(|out| (out.plurality(), out.value)),
+            tx.populated_inputs().map(|(_, entry)| entry.into()),
+            tx.outputs().iter().map(|out| out.into()),
             self.storage_mass_parameter,
         )
         .map(ContextualMasses::new)
     }
 }
 
-/// Calculates the storage mass for the provided input and output values.
+/// Calculates the storage mass for the provided input and output storage cells.
 /// Assumptions which must be verified before this call:
 ///     1. All output values are non-zero
 ///     2. At least one input (unless coinbase)
@@ -250,16 +279,16 @@ impl MassCalculator {
 /// Otherwise this function should never fail.
 pub fn calc_storage_mass(
     is_coinbase: bool,
-    input_values: impl ExactSizeIterator<Item = (u64, u64)> + Clone,
-    output_values: impl ExactSizeIterator<Item = (u64, u64)> + Clone,
+    inputs: impl ExactSizeIterator<Item = UtxoCell> + Clone,
+    outputs: impl ExactSizeIterator<Item = UtxoCell> + Clone,
     storage_mass_parameter: u64,
 ) -> Option<u64> {
     if is_coinbase {
         return Some(0);
     }
 
-    let outs_plurality = output_values.clone().map(|(plurality, _)| plurality).sum::<u64>();
-    let ins_plurality = input_values.clone().map(|(plurality, _)| plurality).sum::<u64>();
+    let outs_plurality = outputs.clone().map(|UtxoCell { plurality, .. }| plurality).sum::<u64>();
+    let ins_plurality = inputs.clone().map(|UtxoCell { plurality, .. }| plurality).sum::<u64>();
 
     /* The code below computes the following formula:
 
@@ -280,8 +309,8 @@ pub fn calc_storage_mass(
     //
     // Note: in theory this can be tighten by subtracting input mass in the process (possibly avoiding the overflow),
     // however the overflow case is so unpractical with current mass limits so we avoid the hassle
-    let harmonic_outs = output_values
-        .map(|(plurality, out)| storage_mass_parameter * plurality * plurality / out)
+    let harmonic_outs = outputs
+        .map(|UtxoCell { plurality, amount }| storage_mass_parameter * plurality * plurality / amount)
         .try_fold(0u64, |total, current| total.checked_add(current))?; // C·|O|/H(O)
 
     /*
@@ -292,14 +321,14 @@ pub fn calc_storage_mass(
              Hence, we transform the condition to |O| = 1 OR |I| = 1 OR |O| = |I| = 2 which is equivalent (and faster).
     */
     if outs_plurality == 1 || ins_plurality == 1 || (outs_plurality == 2 && ins_plurality == 2) {
-        let harmonic_ins = input_values
-            .map(|(plurality, value)| storage_mass_parameter * plurality * plurality / value)
+        let harmonic_ins = inputs
+            .map(|UtxoCell { plurality, amount }| storage_mass_parameter * plurality * plurality / amount)
             .fold(0u64, |total, current| total.saturating_add(current)); // C·|I|/H(I)
         return Some(harmonic_outs.saturating_sub(harmonic_ins)); // max( 0 , C·( |O|/H(O) - |I|/H(I) ) );
     }
 
     // Total supply is bounded, so a sum of existing UTXO entries cannot overflow (nor can it be zero)
-    let sum_ins = input_values.map(|(_, value)| value).sum::<u64>(); // |I|·A(I)
+    let sum_ins = inputs.map(|UtxoCell { amount, .. }| amount).sum::<u64>(); // |I|·A(I)
     let mean_ins = sum_ins / ins_plurality;
 
     // Inner fraction must be with C and over the mean value, in order to maximize precision.

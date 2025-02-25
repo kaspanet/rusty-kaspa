@@ -12,7 +12,7 @@ use crate::imports::*;
 use crate::outpoint::{TransactionOutpoint, TransactionOutpointInner};
 use crate::result::Result;
 use kaspa_addresses::Address;
-use kaspa_consensus_core::mass::UtxoPlurality;
+use kaspa_consensus_core::mass::{UtxoCell, UtxoPlurality};
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_UTXO_ENTRY: &'static str = r#"
@@ -219,12 +219,6 @@ impl UtxoEntryReference {
     }
 }
 
-impl UtxoPlurality for UtxoEntryReference {
-    fn plurality(&self) -> u64 {
-        self.utxo.script_public_key.plurality()
-    }
-}
-
 impl std::hash::Hash for UtxoEntryReference {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id().hash(state);
@@ -253,6 +247,12 @@ impl From<&UtxoEntryReference> for cctx::UtxoEntry {
 impl From<UtxoEntry> for UtxoEntryReference {
     fn from(entry: UtxoEntry) -> Self {
         Self { utxo: Arc::new(entry) }
+    }
+}
+
+impl From<&UtxoEntryReference> for UtxoCell {
+    fn from(entry: &UtxoEntryReference) -> Self {
+        Self::new(entry.utxo.script_public_key.plurality(), entry.amount())
     }
 }
 

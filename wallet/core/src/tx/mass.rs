@@ -6,7 +6,7 @@ use crate::error::Error;
 use crate::result::Result;
 use kaspa_consensus_client as kcc;
 use kaspa_consensus_client::UtxoEntryReference;
-use kaspa_consensus_core::mass::{calc_storage_mass as consensus_calc_storage_mass, UtxoPlurality};
+use kaspa_consensus_core::mass::calc_storage_mass as consensus_calc_storage_mass;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput, SCRIPT_VECTOR_SIZE};
 use kaspa_consensus_core::{config::params::Params, constants::*, subnets::SUBNETWORK_ID_SIZE};
 use kaspa_hashes::HASH_SIZE;
@@ -329,8 +329,8 @@ impl MassCalculator {
     ) -> Option<u64> {
         consensus_calc_storage_mass(
             false,
-            inputs.iter().map(|entry| (entry.plurality(), entry.amount())),
-            outputs.iter().map(|out| (out.plurality(), out.value)),
+            inputs.iter().map(|entry| entry.into()),
+            outputs.iter().map(|out| out.into()),
             self.storage_mass_parameter,
         )
     }
