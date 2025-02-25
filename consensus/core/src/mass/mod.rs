@@ -112,14 +112,14 @@ impl UtxoPlurality for TransactionOutput {
 /// script public keys larger than the standard 33-byte limit. For a UTXO of byte-size
 /// `entry.size`, we define:
 ///
-/// ```text
-/// P := ceil(entry.size / UTXO_UNIT)
+/// ```ignore
+/// p := ceil(entry.size / UTXO_UNIT)
 /// ```
 ///
-/// Conceptually, we treat a large UTXO as `P` sub-entries each holding `entry.amount / P`,
+/// Conceptually, we treat a large UTXO as `p` sub-entries each holding `entry.amount / p`,
 /// preserving the total locked amount but increasing the "count" proportionally to script size.
 ///
-/// Refer to the KIP-0009 specification and related documentation for more details.
+/// Refer to the KIP-0009 specification for more details.
 #[derive(Clone, Copy)]
 pub struct UtxoCell {
     /// The plurality (number of "storage units") for this UTXO
@@ -295,8 +295,8 @@ impl MassCalculator {
 ///
 /// The core formula is:
 ///
-/// ```text
-/// max(0, C * (|O| / H(O) - |I| / A(I)))
+/// ```ignore
+///     max(0, C * (|O| / H(O) - |I| / A(I)))
 /// ```
 ///
 /// where:
@@ -308,13 +308,17 @@ impl MassCalculator {
 ///
 ///   In standard KIP-0009, one has:
 ///
+///```ignore
 ///       |O| / H(O) = Σ (1 / o)
+///```
 ///
-///   Here, each UTXO that occupies `P` "storage units" is treated as if it were `P` sub-entries,
-///   each holding `amount / P`. This effectively turns `1 / o` into `P^2 / amount`. The code
+///   Here, each UTXO that occupies `p` "storage units" is treated as if it were `p` sub-entries,
+///   each holding `amount / p`. This effectively turns `1 / o` into `p^2 / amount`. The code
 ///   thus accumulates:
 ///
-///       Σ [C * P(o)^2 / amount(o)]
+///```ignore
+///       Σ [C * p(o)^2 / amount(o)]
+///```
 ///
 /// - `A(I)` is the arithmetic mean of the inputs' amounts, similarly scaled by the total input
 ///   plurality (`|I|`), while the sum of amounts can remain unchanged.
