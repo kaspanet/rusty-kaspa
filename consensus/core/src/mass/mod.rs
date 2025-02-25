@@ -2,7 +2,7 @@ use crate::{
     config::params::Params,
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
     subnets::SUBNETWORK_ID_SIZE,
-    tx::{Transaction, TransactionInput, TransactionOutput, VerifiableTransaction},
+    tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, UtxoEntry, VerifiableTransaction},
 };
 use kaspa_hashes::HASH_SIZE;
 
@@ -56,6 +56,51 @@ pub fn transaction_output_estimated_serialized_size(output: &TransactionOutput) 
     size += 8; // length of script public key (u64)
     size += output.script_public_key.script().len() as u64;
     size
+}
+
+/// Returns the UTXO storage "plurality" for this script public key.
+/// i.e., how many 100-byte "storage units" it occupies.
+/// The choice of 100 bytes per unit ensures that all standard SPKs have a plurality of 1.
+pub fn utxo_plurality(spk: &ScriptPublicKey) -> u64 {
+    /// A constant representing the number of bytes used by the fixed parts of a UTXO.
+    const UTXO_CONST_STORAGE: usize =
+        32  // outpoint::tx_id
+        + 4 // outpoint::index
+        + 8 // entry amount
+        + 8 // entry DAA score
+        + 1 // entry is coinbase
+        + 2 // entry spk version
+        + 8 // entry spk len
+    ;
+
+    // The base (63 bytes) plus the max standard public key length (33 bytes) fits into one 100-byte unit.
+    // Hence, all standard SPKs end up with a plurality of 1.
+    const UTXO_UNIT: usize = 100;
+
+    (UTXO_CONST_STORAGE + spk.script().len()).div_ceil(UTXO_UNIT) as u64
+}
+
+pub trait UtxoPlurality {
+    /// Returns the UTXO storage plurality for the script public key associated with this object.
+    fn plurality(&self) -> u64;
+}
+
+impl UtxoPlurality for ScriptPublicKey {
+    fn plurality(&self) -> u64 {
+        utxo_plurality(self)
+    }
+}
+
+impl UtxoPlurality for UtxoEntry {
+    fn plurality(&self) -> u64 {
+        utxo_plurality(&self.script_public_key)
+    }
+}
+
+impl UtxoPlurality for TransactionOutput {
+    fn plurality(&self) -> u64 {
+        utxo_plurality(&self.script_public_key)
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -189,8 +234,8 @@ impl MassCalculator {
     pub fn calc_contextual_masses(&self, tx: &impl VerifiableTransaction) -> Option<ContextualMasses> {
         calc_storage_mass(
             tx.is_coinbase(),
-            tx.populated_inputs().map(|(_, entry)| (entry.script_public_key.plurality(), entry.amount)),
-            tx.outputs().iter().map(|out| (out.script_public_key.plurality(), out.value)),
+            tx.populated_inputs().map(|(_, entry)| (entry.plurality(), entry.amount)),
+            tx.outputs().iter().map(|out| (out.plurality(), out.value)),
             self.storage_mass_parameter,
         )
         .map(ContextualMasses::new)

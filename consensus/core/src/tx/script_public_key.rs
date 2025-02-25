@@ -56,14 +56,6 @@ pub struct ScriptPublicKey {
     pub(super) script: ScriptVec, // Kept private to preserve read-only semantics
 }
 
-impl ScriptPublicKey {
-    pub fn plurality(&self) -> u64 {
-        const UTXO_STORAGE: usize = 32 + 4 + 8 + 8 + 1 + 2 + 8;
-        const UTXO_UNIT: usize = 100;
-        (UTXO_STORAGE + self.script.len()).div_ceil(UTXO_UNIT) as u64
-    }
-}
-
 impl std::fmt::Debug for ScriptPublicKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ScriptPublicKey").field("version", &self.version).field("script", &self.script.to_hex()).finish()

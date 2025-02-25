@@ -12,6 +12,7 @@ use crate::imports::*;
 use crate::outpoint::{TransactionOutpoint, TransactionOutpointInner};
 use crate::result::Result;
 use kaspa_addresses::Address;
+use kaspa_consensus_core::mass::UtxoPlurality;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_UTXO_ENTRY: &'static str = r#"
@@ -215,6 +216,12 @@ impl UtxoEntryReference {
     #[inline(always)]
     pub fn transaction_id_as_ref(&self) -> &TransactionId {
         self.utxo.outpoint.transaction_id_as_ref()
+    }
+}
+
+impl UtxoPlurality for UtxoEntryReference {
+    fn plurality(&self) -> u64 {
+        self.utxo.script_public_key.plurality()
     }
 }
 
