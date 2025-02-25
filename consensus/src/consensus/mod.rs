@@ -789,14 +789,16 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 
-    fn validate_pruning_points(&self) -> ConsensusResult<()> {
+    fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         let hst = self.storage.headers_selected_tip_store.read().get().unwrap().hash;
         let pp_info = self.pruning_point_store.read().get().unwrap();
         if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, hst) {
-            return Err(ConsensusError::General("invalid pruning point candidate"));
+            return Err(ConsensusError::General("pruning point does not coincide with the synced header selected tip"));
         }
-
-        if !self.services.pruning_point_manager.are_pruning_points_in_valid_chain(pp_info, hst) {
+        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, syncer_virtual_selected_parent) {
+            return Err(ConsensusError::General("pruning point does not coincide with the syncer's sink (virtual selected parent)"));
+        }
+        if !self.services.pruning_point_manager.are_pruning_points_in_valid_chain(pp_info, syncer_virtual_selected_parent) {
             return Err(ConsensusError::General("past pruning points do not form a valid chain"));
         }
 

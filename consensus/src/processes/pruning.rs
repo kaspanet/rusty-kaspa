@@ -294,24 +294,24 @@ impl<
         pov_blue_score >= pp_bs + pruning_depth
     }
 
-    pub fn is_valid_pruning_point(&self, pp_candidate: Hash, hst: Hash) -> bool {
+    pub fn is_valid_pruning_point(&self, pp_candidate: Hash, tip: Hash) -> bool {
         if pp_candidate == self.genesis_hash {
             return true;
         }
-        if !self.reachability_service.is_chain_ancestor_of(pp_candidate, hst) {
+        if !self.reachability_service.is_chain_ancestor_of(pp_candidate, tip) {
             return false;
         }
 
-        let hst_bs = self.ghostdag_store.get_blue_score(hst).unwrap();
+        let tip_bs = self.ghostdag_store.get_blue_score(tip).unwrap();
         // [Crescendo]: for new nodes syncing right after the fork, it might be difficult to determine whether the
         // full new pruning depth is expected, so we use the DAA score of the pruning point itself as an indicator.
         // This means that in the first few days following the fork we err on the side of a shorter period which is
         // a weaker requirement
         let pruning_depth = self.pruning_depth.get(self.headers_store.get_daa_score(pp_candidate).unwrap());
-        self.is_pruning_point_in_pruning_depth(hst_bs, pp_candidate, pruning_depth)
+        self.is_pruning_point_in_pruning_depth(tip_bs, pp_candidate, pruning_depth)
     }
 
-    pub fn are_pruning_points_in_valid_chain(&self, pruning_info: PruningPointInfo, hst: Hash) -> bool {
+    pub fn are_pruning_points_in_valid_chain(&self, pruning_info: PruningPointInfo, syncer_sink: Hash) -> bool {
         // We want to validate that the past pruning points form a chain to genesis. Since
         // each pruning point's header doesn't point to the previous pruning point, but to
         // the pruning point from its POV, we can't just traverse from one pruning point to
@@ -328,8 +328,16 @@ impl<
         // any other pruning point in the list, so we are compelled to check if it's referenced by
         // the selected chain.
         let mut expected_pps_queue = VecDeque::new();
-        for current in self.reachability_service.backward_chain_iterator(hst, pruning_info.pruning_point, false) {
+        for current in self.reachability_service.backward_chain_iterator(syncer_sink, pruning_info.pruning_point, false) {
             let current_header = self.headers_store.get_header(current).unwrap();
+            // Post-crescendo: expected header pruning point is no longer part of header validity, but we want to make sure
+            // the syncer's virtual chain indeed coincides with the pruning point and past pruning points before downloading
+            // the UTXO set and resolving virtual. Hence we perform the check over this chain here.
+            let expected_header_pruning_point =
+                self.expected_header_pruning_point(self.ghostdag_store.get_compact_data(current).unwrap(), pruning_info);
+            if expected_header_pruning_point != current_header.pruning_point {
+                return false;
+            }
             if expected_pps_queue.back().is_none_or(|&h| h != current_header.pruning_point) {
                 expected_pps_queue.push_back(current_header.pruning_point);
             }
