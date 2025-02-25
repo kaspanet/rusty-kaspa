@@ -93,6 +93,7 @@ impl Factory {
                 StopNotifyingUtxosChanged,
                 StopNotifyingPruningPointUtxoSetOverride,
                 GetPruningWindowRoots,
+                AddArchivalBlocks,
             ]
         );
 

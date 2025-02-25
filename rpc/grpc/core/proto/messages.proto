@@ -67,6 +67,7 @@ message KaspadRequest {
     GetCurrentBlockColorRequestMessage getCurrentBlockColorRequest = 1110;
     GetUtxoReturnAddressRequestMessage GetUtxoReturnAddressRequest = 1112;
     GetPruningWindowRootsRequestMessage getPruningWindowRootsRequest = 1113;
+    AddArchivalBlocksRequestMessage addArchivalBlocksRequest = 1115;
   }
 }
 
@@ -134,6 +135,7 @@ message KaspadResponse {
     GetCurrentBlockColorResponseMessage getCurrentBlockColorResponse = 1111;
     GetUtxoReturnAddressResponseMessage GetUtxoReturnAddressResponse = 1113;
     GetPruningWindowRootsResponseMessage getPruningWindowRootsResponse = 1114;
+    AddArchivalBlocksResponseMessage addArchivalBlocksResponse = 1115;
   }
 }
 

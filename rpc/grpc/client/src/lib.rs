@@ -278,6 +278,7 @@ impl RpcApi for GrpcClient {
     route!(get_current_block_color_call, GetCurrentBlockColor);
     route!(get_utxo_return_address_call, GetUtxoReturnAddress);
     route!(get_pruning_window_roots_call, GetPruningWindowRoots);
+    route!(add_archival_blocks_call, AddArchivalBlocks);
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

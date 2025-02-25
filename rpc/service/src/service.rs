@@ -1178,6 +1178,24 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         })
     }
 
+    async fn add_archival_blocks_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: AddArchivalBlocksRequest,
+    ) -> RpcResult<AddArchivalBlocksResponse> {
+        let session = self.consensus_manager.consensus().unguarded_session();
+        for archival_block in request.blocks {
+            let try_block: RpcResult<Block> = archival_block.block.try_into();
+            if let Err(err) = &try_block {
+                return Err(RpcError::General(format!("Failed to parse block: {err}")));
+            }
+
+            session.async_add_archival_block(try_block.unwrap(), archival_block.child).await?;
+        }
+
+        Ok(AddArchivalBlocksResponse {})
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

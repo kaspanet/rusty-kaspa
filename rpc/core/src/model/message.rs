@@ -3576,3 +3576,54 @@ impl Deserializer for GetPruningWindowRootsResponse {
         Ok(Self { roots })
     }
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchivalBlock {
+    pub child: RpcHash,
+    pub block: RpcRawBlock,
+}
+
+impl Serializer for ArchivalBlock {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.child, writer)?;
+        serialize!(RpcRawBlock, &self.block, writer)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddArchivalBlocksRequest {
+    pub blocks: Vec<ArchivalBlock>,
+}
+
+impl AddArchivalBlocksRequest {
+    pub fn new(blocks: Vec<ArchivalBlock>) -> Self {
+        Self { blocks }
+    }
+}
+
+// impl Serializer for AddArchivalBlockRequest {
+//     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+//         store!(u16, &1, writer)?;
+//         store!(Vec<ArchivalBlock>, &self.blocks, writer)?;
+
+//         Ok(())
+//     }
+// }
+
+// impl Deserializer for AddArchivalBlockRequest {
+//     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+//         let _version = load!(u16, reader)?;
+//         let blocks = load!(Vec<ArchivalBlock>, reader)?;
+
+//         Ok(Self { blocks })
+//     }
+// }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddArchivalBlocksResponse {}

@@ -254,6 +254,17 @@ from!(item: RpcResult<&kaspa_rpc_core::GetPruningWindowRootsResponse>, protowire
     Self { roots: item.roots.iter().map(|x| x.into()).collect(), error: None }
 });
 
+from!(item: &kaspa_rpc_core::ArchivalBlock, protowire::ArchivalBlock, {
+    Self {
+        block: Some((&item.block).into()),
+        child: item.child.to_string(),
+    }
+});
+from!(item: &kaspa_rpc_core::AddArchivalBlocksRequest, protowire::AddArchivalBlocksRequestMessage, {
+    Self { blocks: item.blocks.iter().map(|x| x.into()).collect() }
+});
+from!(RpcResult<&kaspa_rpc_core::AddArchivalBlocksResponse>, protowire::AddArchivalBlocksResponseMessage);
+
 from!(item: &kaspa_rpc_core::SubmitTransactionRequest, protowire::SubmitTransactionRequestMessage, {
     Self { transaction: Some((&item.transaction).into()), allow_orphan: item.allow_orphan }
 });
@@ -738,6 +749,29 @@ try_from!(item: &protowire::GetPruningWindowRootsResponseMessage, RpcResult<kasp
             .map(kaspa_rpc_core::PruningWindowRoot::try_from)
             .collect::<Result<Vec<_>, _>>().map_err(|e| RpcError::General(e.to_string()))? // TODO: More specific error?
     }
+});
+
+try_from!(item: &protowire::ArchivalBlock, kaspa_rpc_core::ArchivalBlock, {
+    Self {
+        block: item
+            .block
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("ArchivalBlock".to_string(), "block".to_string()))?
+            .try_into()?,
+        child: RpcHash::from_str(&item.child)?,
+    }
+});
+try_from!(item: &protowire::AddArchivalBlocksRequestMessage, kaspa_rpc_core::AddArchivalBlocksRequest,{
+    Self {
+        blocks: item
+            .blocks
+            .iter()
+            .map(kaspa_rpc_core::ArchivalBlock::try_from)
+            .collect::<Result<Vec<_>, _>>().map_err(|e| RpcError::General(e.to_string()))? // TODO: More specific error?
+    }
+});
+try_from!(item: &protowire::AddArchivalBlocksResponseMessage, RpcResult<kaspa_rpc_core::AddArchivalBlocksResponse>, {
+    Self {}
 });
 
 try_from!(item: &protowire::SubmitTransactionRequestMessage, kaspa_rpc_core::SubmitTransactionRequest, {
