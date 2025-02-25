@@ -654,6 +654,7 @@ impl RpcApi for KaspaRpcClient {
             SubmitTransactionReplacement,
             Unban,
             GetPruningWindowRoots,
+            AddArchivalBlocks,
         ]
     );
 

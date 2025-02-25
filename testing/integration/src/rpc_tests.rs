@@ -524,6 +524,7 @@ async fn sanity_test() {
                 })
             }
             KaspadPayloadOps::GetPruningWindowRoots => todo!(),
+            KaspadPayloadOps::AddArchivalBlocks => todo!(),
         };
         tasks.push(task);
     }

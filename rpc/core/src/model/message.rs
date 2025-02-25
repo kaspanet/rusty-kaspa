@@ -3606,7 +3606,7 @@ impl AddArchivalBlocksRequest {
     }
 }
 
-// impl Serializer for AddArchivalBlockRequest {
+// impl Serializer for AddArchivalBlocksRequest {
 //     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
 //         store!(u16, &1, writer)?;
 //         store!(Vec<ArchivalBlock>, &self.blocks, writer)?;
@@ -3615,7 +3615,7 @@ impl AddArchivalBlocksRequest {
 //     }
 // }
 
-// impl Deserializer for AddArchivalBlockRequest {
+// impl Deserializer for AddArchivalBlocksRequest {
 //     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
 //         let _version = load!(u16, reader)?;
 //         let blocks = load!(Vec<ArchivalBlock>, reader)?;
@@ -3627,3 +3627,8 @@ impl AddArchivalBlocksRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddArchivalBlocksResponse {}
+impl AddArchivalBlocksResponse {
+    pub fn new() -> Self {
+        Self {}
+    }
+}

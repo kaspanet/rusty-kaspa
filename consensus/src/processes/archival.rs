@@ -36,6 +36,9 @@ pub struct ArchivalManager {
     storage: Arc<ConsensusStorage>,
 }
 
+// TODO: If a node switches back and fortch archival mode, some blocks might be deleted and the root might be incorrect.
+// We can handle this by deleting the roots each time we turn off archival mode, or disallowing to move off archival mode
+// without resetting the database.
 impl ArchivalManager {
     pub fn new(
         max_block_level: BlockLevel,

@@ -140,7 +140,7 @@ pub enum RpcApiOps {
     GetUtxoReturnAddress = 150,
 
     GetPruningWindowRoots = 151,
-    AddArchivalBlock = 152,
+    AddArchivalBlocks = 152,
 }
 
 impl RpcApiOps {
