@@ -367,7 +367,12 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         }
     }
 
-    pub(crate) fn crescendo_activated(&self, selected_parent: Hash) -> bool {
+    pub(crate) fn is_window_block_crescendo_activated(&self, selected_parent: Hash) -> bool {
+        if selected_parent.is_origin() {
+            // Trusted block syncer<>syncee contract: if the selected parent header wasn't provided, we assume activation.
+            // See crescendo-related comment in consecutive_cover_for_window for the syncer side of the contract
+            return true;
+        }
         let sp_daa_score = self.headers_store.get_daa_score(selected_parent).unwrap();
         self.crescendo_activation.is_active(sp_daa_score)
     }
@@ -476,7 +481,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
 
             // [Crescendo]: check whether the current block was activated (by checking its selected parent DAA score).
             // If not active, break with the currently obtained window (following definition 2 above)
-            if !self.crescendo_activated(current_ghostdag.selected_parent) {
+            if !self.is_window_block_crescendo_activated(current_ghostdag.selected_parent) {
                 break;
             }
 
@@ -609,7 +614,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
                     Some(SampledBlock::NonDaa(block.hash))
                 } else {
                     index += 1;
-                    if filter_non_activated && !self.crescendo_activated(compact.selected_parent) {
+                    if filter_non_activated && !self.is_window_block_crescendo_activated(compact.selected_parent) {
                         return None;
                     }
                     if (selected_parent_daa_score + index) % sample_rate == 0 {
@@ -710,7 +715,15 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             //                       reducing the number of trusted blocks sent to a fresh syncing peer.
             for merged in ghostdag.unordered_mergeset() {
                 cover.push(merged);
-                unvisited.remove(&merged);
+                if unvisited.remove(&merged) {
+                    // [Crescendo]: for each block in the original window save its selected parent as well
+                    // since it is required for checking whether the block was activated (when building the
+                    // window by the syncee or when rebuilding following pruning)
+                    let sp = self.ghostdag_store.get_selected_parent(merged).unwrap();
+                    if !sp.is_origin() {
+                        cover.push(sp);
+                    }
+                }
             }
             if unvisited.is_empty() {
                 break;
