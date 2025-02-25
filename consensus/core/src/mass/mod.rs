@@ -103,14 +103,28 @@ impl UtxoPlurality for TransactionOutput {
     }
 }
 
-/// Defines an abstract UTXO storage cell.
+/// An abstract UTXO storage cell.
 ///
-/// The cell includes plurality and amount information required for calculating the storage mass.
+/// # Plurality
+///
+/// Each `UtxoCell` now has a `plurality` field reflecting how many 100-byte "storage units"
+/// this UTXO effectively occupies. This generalizes KIP-0009 to support UTXOs with
+/// script public keys larger than the standard 33-byte limit. For a UTXO of byte-size
+/// `entry.size`, we define:
+///
+/// ```text
+/// P := ceil(entry.size / UTXO_UNIT)
+/// ```
+///
+/// Conceptually, we treat a large UTXO as `P` sub-entries each holding `entry.amount / P`,
+/// preserving the total locked amount but increasing the "count" proportionally to script size.
+///
+/// Refer to the KIP-0009 specification and related documentation for more details.
 #[derive(Clone, Copy)]
 pub struct UtxoCell {
-    /// The plurality of this cell (how many "storage units" it occupies)
+    /// The plurality (number of "storage units") for this UTXO
     pub plurality: u64,
-    /// The amount of KAS value locked in the cell (sompis)
+    /// The amount of KAS (in sompis) locked in this UTXO
     pub amount: u64,
 }
 
@@ -271,7 +285,46 @@ impl MassCalculator {
     }
 }
 
-/// Calculates the storage mass for the provided inputs and outputs.
+/// Calculates the storage mass (KIP-0009) for a given set of inputs and outputs.
+///
+/// This function has been generalized for UTXO entries that may exceed
+/// the max standard 33-byte script public key size. Each `UtxoCell::plurality` indicates
+/// how many 100-byte storage units that UTXO occupies.
+///
+/// # Formula Overview
+///
+/// The core formula is:
+///
+/// ```text
+/// max(0, C * (|O| / H(O) - |I| / A(I)))
+/// ```
+///
+/// where:
+///
+/// - `C` is the storage mass parameter (`storage_mass_parameter`).
+/// - `|O|` and `|I|` are the total pluralities of outputs and inputs, respectively.
+/// - `H(O)` is the harmonic mean of the outputs' amounts, generalized to account for per-UTXO
+///   `plurality`.
+///
+///   In standard KIP-0009, one has:
+///
+///       |O| / H(O) = Σ (1 / o)
+///
+///   Here, each UTXO that occupies `P` "storage units" is treated as if it were `P` sub-entries,
+///   each holding `amount / P`. This effectively turns `1 / o` into `P^2 / amount`. The code
+///   thus accumulates:
+///
+///       Σ [C * P(o)^2 / amount(o)]
+///
+/// - `A(I)` is the arithmetic mean of the inputs' amounts, similarly scaled by the total input
+///   plurality (`|I|`), while the sum of amounts can remain unchanged.
+///
+/// Under the “relaxed formula” conditions (`|O| = 1`, `|I| = 1`, or `|O| = |I| = 2`),
+/// we compute the harmonic mean for inputs as well; otherwise, we default to the arithmetic
+/// approach for inputs.
+///
+/// Refer to the KIP-0009 specification for full details.
+///
 /// Assumptions which must be verified before this call:
 ///     1. All input/output values are non-zero
 ///     2. At least one input (unless coinbase)
@@ -286,25 +339,15 @@ pub fn calc_storage_mass(
     if is_coinbase {
         return Some(0);
     }
-    /* The code below computes the following formula:
 
-            max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
+    /*
+        In KIP-0009 terms the canonical formula is: max(0, C · (|O|/H(O) - |I|/A(I))),
 
-        where C is the mass storage parameter, O is the set of output values, I is the set of
-        input values, H(S) := |S|/sum_{s in S} 1 / s is the harmonic mean over the set S and
-        A(S) := sum_{s in S} / |S| is the arithmetic mean.
-
-        See KIP-0009 for more details
+        The code below calculates the harmonic portion for outputs in a single pass,
+        accumulating:
+            1) outs_plurality = Σ p(o)
+            2) harmonic_outs  = Σ [C * p(o)^2 / amount(o)]
     */
-
-    // Since we are doing integer division, we perform the multiplication with C over the inner
-    // fractions, otherwise we'll get a sum of zeros or ones.
-    //
-    // If sum of fractions overflowed (nearly impossible, requires 10^7 outputs for C = 10^12),
-    // we return `None` indicating mass is incomputable
-    //
-    // Note: in theory this can be tighten by subtracting input mass in the process (possibly avoiding the overflow),
-    // however the overflow case is so unpractical with current mass limits so we avoid the hassle
     let (outs_plurality, harmonic_outs) = outputs.try_fold(
         (0u64, 0u64), // (accumulated plurality, accumulated harmonic)
         |(acc_plurality, acc_harm), UtxoCell { plurality, amount }| {
@@ -315,43 +358,62 @@ pub fn calc_storage_mass(
         },
     )?;
 
+    // If the "relaxed formula" conditions hold (|O|=1, |I|=1, or both =2),
+    // compute a harmonic sum for inputs as well.
     if check_relaxed_formula_conditions(outs_plurality, &inputs) {
-        // Existing UTXO entries are verified not to overflow for C·P^2 (see verify_utxo_plurality_limits)
+        /*
+            The relaxed formula is: max(0, C · (|O|/H(O) - |I|/H(I))).
+            Each input i contributes C * p(i)^2 / amount(i).
+        */
         let harmonic_ins = inputs
-            .map(|UtxoCell { plurality, amount }| storage_mass_parameter * plurality * plurality / amount)
-            .fold(0u64, |total, current| total.saturating_add(current)); // C·|I|/H(I)
-        return Some(harmonic_outs.saturating_sub(harmonic_ins)); // max( 0 , C·( |O|/H(O) - |I|/H(I) ) );
+            .map(|UtxoCell { plurality, amount }| {
+                // We assume no overflow here (see verify_utxo_plurality_limits)
+                storage_mass_parameter * plurality * plurality / amount
+            })
+            .fold(0u64, |total, current| total.saturating_add(current));
+
+        return Some(harmonic_outs.saturating_sub(harmonic_ins));
     }
 
-    // Total supply is bounded, so a sum of existing UTXO entries cannot overflow (nor can it be zero)
+    // Otherwise, we calculate the arithmetic portion for inputs:
+    // (ins_plurality, sum_ins) =>  (|I|, Σ amounts)
     let (ins_plurality, sum_ins) =
         inputs.fold((0u64, 0u64), |(acc_plur, acc_amt), UtxoCell { plurality, amount }| (acc_plur + plurality, acc_amt + amount));
 
+    // mean_ins = (Σ amounts) / (Σ plurality)
     let mean_ins = sum_ins / ins_plurality;
 
-    // Inner fraction must be with C and over the mean value, in order to maximize precision.
-    // We can saturate the overall expression at u64::MAX since we lower-bound the subtraction below by zero anyway
-    let arithmetic_ins = ins_plurality.saturating_mul(storage_mass_parameter / mean_ins); // C·|I|/A(I)
+    // Arithmetic path:  C * (|I| / A(I)) = |I| * (C / mean_ins).
+    // Then final mass = max(0, harmonic_outs - arithmetic_ins).
+    let arithmetic_ins = ins_plurality.saturating_mul(storage_mass_parameter / mean_ins);
 
-    Some(harmonic_outs.saturating_sub(arithmetic_ins)) // max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
+    Some(harmonic_outs.saturating_sub(arithmetic_ins))
 }
 
-/// KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
+/// KIP-0009 relaxed formula for the cases:
+/// `|O| = 1` or `|O| <= |I| <= 2`,
 ///
-///                 max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
+/// which can be equivalently expressed as:
+/// `(|O| = 1) OR (|I| = 1) OR (|O| = |I| = 2)`.
 ///
-/// Note: in the case |I| = 1 both formulas are equal, yet the harmonic_ins path is a bit more efficient.
-///       Hence, we transform the condition to |O| = 1 OR |I| = 1 OR |O| = |I| = 2 which is equivalent (and faster).
+/// The relaxed formula is:
 ///
+/// ```text
+/// max(0, C · (|O| / H(O) - |I| / H(I))).
+/// ```
+///
+/// When `|I| = 1`, the harmonic and arithmetic approaches coincide, but the
+/// harmonic path is simpler to compute. Hence, we unify all such small-edge
+/// cases here and compute a direct harmonic sum.
 fn check_relaxed_formula_conditions(outs_plurality: u64, inputs: &(impl ExactSizeIterator<Item = UtxoCell> + Clone)) -> bool {
     if outs_plurality == 1 {
         return true;
     }
+    // If there are more than 2 inputs, we know the sum of input pluralities > 2 => skip
     if inputs.len() > 2 {
-        // Plurality of each element >= 1 => ins_plurality > 2 => we can optimize and avoid consuming the iter
         return false;
     }
-    // We clone the iterator only if inputs.len <= 2 which is negligible
+    // For <= 2 inputs, re-sum their pluralities to see if we still have 1 or 2.
     let ins_plurality = inputs.clone().map(|UtxoCell { plurality, .. }| plurality).sum::<u64>();
     ins_plurality == 1 || (outs_plurality == 2 && ins_plurality == 2)
 }
@@ -379,8 +441,15 @@ mod tests {
                 (params.max_script_public_key_len as u64).min(params.max_block_mass.div_ceil(params.mass_per_script_pub_key_byte));
             let max_plurality = (63 + max_spk_len).div_ceil(100); // see utxo_plurality
             let product = params.storage_mass_parameter.checked_mul(max_plurality).and_then(|x| x.checked_mul(max_plurality));
+            // verify C·P^2 can never overflow
             assert!(product.is_some());
         }
+
+        // verify P >= 1 also when the script is empty
+        assert!(utxo_plurality(&ScriptPublicKey::new(0, ScriptVec::from_slice(&[]))) >= 1);
+        // Assert the UTXO_CONST_STORAGE=63, UTXO_UNIT_SIZE=100 constants
+        assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; 37])) == 1);
+        assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; 38])) == 2);
     }
 
     #[test]
