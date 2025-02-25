@@ -443,8 +443,8 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.estimate_network_hashes_per_second(start_hash, window_size)).await
     }
 
-    pub async fn async_validate_pruning_points(&self) -> ConsensusResult<()> {
-        self.clone().spawn_blocking(move |c| c.validate_pruning_points()).await
+    pub async fn async_validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
+        self.clone().spawn_blocking(move |c| c.validate_pruning_points(syncer_virtual_selected_parent)).await
     }
 
     pub async fn async_are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {

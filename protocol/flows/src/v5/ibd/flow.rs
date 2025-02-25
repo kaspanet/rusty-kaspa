@@ -233,7 +233,7 @@ impl IbdFlow {
 
         let pruning_point = self.sync_and_validate_pruning_proof(&staging_session, relay_block).await?;
         self.sync_headers(&staging_session, syncer_virtual_selected_parent, pruning_point, relay_block).await?;
-        staging_session.async_validate_pruning_points().await?;
+        staging_session.async_validate_pruning_points(syncer_virtual_selected_parent).await?;
         self.validate_staging_timestamps(&self.ctx.consensus().session().await, &staging_session).await?;
         self.sync_pruning_point_utxoset(&staging_session, pruning_point).await?;
         Ok(())
@@ -426,6 +426,14 @@ impl IbdFlow {
             progress_reporter.report_completion(prev_chunk_len);
         }
 
+        if consensus.async_get_block_status(syncer_virtual_selected_parent).await.is_none() {
+            // If the syncer's claimed sink header has still not been received, the peer is misbehaving
+            return Err(ProtocolError::OtherOwned(format!(
+                "did not receive syncer's virtual selected parent {} from peer {} during header download",
+                syncer_virtual_selected_parent, self.router
+            )));
+        }
+
         self.sync_missing_relay_past_headers(consensus, syncer_virtual_selected_parent, relay_block.hash()).await?;
 
         Ok(())
@@ -466,7 +474,7 @@ impl IbdFlow {
         if consensus.async_get_block_status(relay_block_hash).await.is_none() {
             // If the relay block has still not been received, the peer is misbehaving
             Err(ProtocolError::OtherOwned(format!(
-                "did not receive relay block {} from peer {} during block download",
+                "did not receive relay block {} from peer {} during header download",
                 relay_block_hash, self.router
             )))
         } else {
