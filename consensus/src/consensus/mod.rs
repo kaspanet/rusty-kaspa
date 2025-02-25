@@ -293,7 +293,13 @@ impl Consensus {
             virtual_processor.process_genesis();
         }
 
-        let archival_manager = ArchivalManager::new(params.max_block_level, config.params.genesis.hash, storage.clone());
+        let archival_manager = ArchivalManager::new(
+            params.max_block_level,
+            config.params.genesis.hash,
+            config.is_archival,
+            config.params.crescendo_activation,
+            storage.clone(),
+        );
 
         let this = Self {
             db,
@@ -1144,5 +1150,9 @@ impl ConsensusApi for Consensus {
 
     fn get_pruning_window_roots(&self) -> Vec<(u64, Hash)> {
         self.archival_manager.get_pruning_window_roots()
+    }
+
+    fn add_archival_block(&self, block: Block, child: Hash) -> ConsensusResult<()> {
+        Ok(self.archival_manager.add_archival_block(block, child)?)
     }
 }

@@ -374,6 +374,10 @@ pub trait ConsensusApi: Send + Sync {
     fn get_pruning_window_roots(&self) -> Vec<(u64, Hash)> {
         unimplemented!()
     }
+
+    fn add_archival_block(&self, block: Block, child: Hash) -> ConsensusResult<()> {
+        unimplemented!()
+    }
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

@@ -1,10 +1,19 @@
 use std::sync::Arc;
 
-use kaspa_consensus_core::{block::Block, BlockLevel};
+use itertools::Itertools;
+use kaspa_consensus_core::{
+    block::Block,
+    config::params::ForkActivation,
+    errors::{
+        archival::{ArchivalError, ArchivalResult},
+        block::RuleError,
+    },
+    merkle::calc_hash_merkle_root,
+    BlockLevel,
+};
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
-use thiserror::Error;
 
 use crate::{
     consensus::storage::ConsensusStorage,
@@ -17,36 +26,38 @@ use crate::{
     },
 };
 
-#[derive(Error, Debug)]
-pub enum ArchivalError {
-    #[error("child {0} was not found")]
-    ChildNotFound(Hash),
-
-    #[error("{0} is not a parent of {1}")]
-    NotParentOf(Hash, Hash),
-}
-type ArchivalResult<T> = std::result::Result<T, ArchivalError>;
-
 #[derive(Clone)]
 pub struct ArchivalManager {
     max_block_level: BlockLevel,
     genesis_hash: Hash,
+    is_archival: bool,
+    crescendo_activation: ForkActivation,
 
     storage: Arc<ConsensusStorage>,
 }
 
 impl ArchivalManager {
-    pub fn new(max_block_level: BlockLevel, genesis_hash: Hash, storage: Arc<ConsensusStorage>) -> Self {
-        Self { storage, max_block_level, genesis_hash }
+    pub fn new(
+        max_block_level: BlockLevel,
+        genesis_hash: Hash,
+        is_archival: bool,
+        crescendo_activation: ForkActivation,
+        storage: Arc<ConsensusStorage>,
+    ) -> Self {
+        Self { storage, max_block_level, genesis_hash, is_archival, crescendo_activation }
     }
 
     pub fn add_archival_block(&self, block: Block, child: Hash) -> ArchivalResult<()> {
+        if !self.is_archival {
+            return Err(ArchivalError::NotArchival);
+        }
+
         let block_hash = block.hash();
         if self.storage.block_transactions_store.has(block_hash).unwrap() {
             return Ok(());
         }
 
-        let _ = self
+        if !self
             .storage
             .headers_store
             .get_header(child)
@@ -55,10 +66,14 @@ impl ArchivalManager {
             .direct_parents()
             .iter()
             .copied()
-            .find(|parent| *parent == block_hash)
-            .ok_or(ArchivalError::NotParentOf(block_hash, child))?;
+            .contains(&block_hash)
+        {
+            return Err(ArchivalError::NotParentOf(block_hash, child));
+        }
 
         let block_level = calc_block_level(&block.header, self.max_block_level);
+        let crescendo_activated = self.crescendo_activation.is_active(block.header.daa_score);
+        let merkle_root = block.header.hash_merkle_root;
 
         // TODO: Check locks etc
         if !self.storage.headers_store.has(block_hash).unwrap() {
@@ -66,7 +81,12 @@ impl ArchivalManager {
         }
 
         // TODO: Check locks etc
-        if !self.storage.block_transactions_store.has(block_hash).unwrap() {
+        if !block.transactions.is_empty() {
+            let calculated = calc_hash_merkle_root(block.transactions.iter(), crescendo_activated);
+            if calculated != merkle_root {
+                return Err(RuleError::BadMerkleRoot(merkle_root, calculated).into());
+            }
+
             self.storage.block_transactions_store.insert(block_hash, block.transactions).unwrap();
         }
 
@@ -81,7 +101,7 @@ impl ArchivalManager {
 
         // TODO: Check minimal index value
         let prev_pp = if pp_index > 0 { self.storage.past_pruning_points_store.get(pp_index - 1).unwrap() } else { self.genesis_hash };
-        let prev_pp_daa_score = self.storage.headers_store.get_daa_score(prev_pp).unwrap();
+        let prev_pp_blue_work = self.storage.headers_store.get_header(prev_pp).unwrap().blue_work;
 
         loop {
             if root == prev_pp {
@@ -92,7 +112,9 @@ impl ArchivalManager {
             if root_header.direct_parents().iter().any(|parent| !self.storage.block_transactions_store.has(*parent).unwrap()) {
                 break;
             }
-            if root_header.daa_score <= prev_pp_daa_score {
+
+            // TODO: If the blue work comparison is a bottleneck, we can check it after the loop, and inside the loop check it only if the blue score is smaller.
+            if root_header.blue_work <= prev_pp_blue_work {
                 root = prev_pp
             } else {
                 root = root_header.direct_parents()[0];
