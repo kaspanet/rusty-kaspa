@@ -190,10 +190,11 @@ pub const CRESCENDO: CrescendoParams = CrescendoParams {
     // Limit the cost of calculating compute/transient/storage masses
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    // Transient mass enforces this limit as well
-    max_signature_script_len: 125_000,
-    // Compute mass enforces this limit as well; storage mass will kick in much lower (plurality will be high)
-    max_script_public_key_len: 50_000,
+    // Transient mass enforces a limit of 125Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
+    max_signature_script_len: 10_000,
+    // Compute mass enforces a limit of ~45.5Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
+    // Note that storage mass will kick in and gradually penalize also for lower lengths (generalized KIP-0009, plurality will be high).
+    max_script_public_key_len: 10_000,
 };
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
