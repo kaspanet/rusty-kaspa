@@ -205,12 +205,11 @@ impl VirtualStateProcessor {
     }
 
     fn verify_header_pruning_point(&self, header: &Header) -> BlockProcessResult<()> {
-        // TODO (Crescendo): pass from resolve virtual
-        let pruning_info = self.pruning_point_store.read().get().unwrap();
         // [Crescendo]: changing expected pruning point check from header validity to chain qualification.
         // Note that we activate here based on current DAA score and deactivate (in header processor) based on
         // selected parent DAA score, but that simply means we might perform a double check in the interim
         if self.crescendo_activation.is_active(header.daa_score) {
+            let pruning_info = self.pruning_point_store.read().get().unwrap();
             let expected = self
                 .pruning_point_manager
                 .expected_header_pruning_point(self.ghostdag_store.get_compact_data(header.hash).unwrap(), pruning_info);
