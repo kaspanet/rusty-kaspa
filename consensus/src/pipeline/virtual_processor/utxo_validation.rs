@@ -176,10 +176,11 @@ impl VirtualStateProcessor {
 
         // Before crescendo HF:
         //  - Make sure accepted tx ids are sorted before building the merkle root
-        //  - NOTE: when subnetworks will be enabled, the sort should consider them in order to allow grouping under a merkle subtree
         // After crescendo HF:
         //  - Preserve canonical order of accepted transactions after hard-fork
         if !self.crescendo_activation.is_active(pov_daa_score) {
+            // Note that pov_daa_score is the score of the header which will have its accepted_id_merkle_root
+            // set according to accepted_tx_ids, so we are consistent in activating via the correct score
             ctx.accepted_tx_ids.sort();
         }
     }
