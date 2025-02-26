@@ -39,7 +39,7 @@ impl TransactionValidator {
         flags: TxValidationFlags,
         mass_and_feerate_threshold: Option<(u64, f64)>,
     ) -> TxResult<u64> {
-        self.check_transaction_coinbase_maturity(tx, pov_daa_score)?;
+        self.check_transaction_coinbase_maturity(tx, pov_daa_score, block_daa_score)?;
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         let fee = total_in - total_out;
@@ -82,18 +82,21 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_transaction_coinbase_maturity(&self, tx: &impl VerifiableTransaction, pov_daa_score: u64) -> TxResult<()> {
-        if let Some((index, (input, entry))) = tx
-            .populated_inputs()
-            .enumerate()
-            .find(|(_, (_, entry))| entry.is_coinbase && entry.block_daa_score + self.coinbase_maturity > pov_daa_score)
-        {
+    fn check_transaction_coinbase_maturity(
+        &self,
+        tx: &impl VerifiableTransaction,
+        pov_daa_score: u64,
+        block_daa_score: u64,
+    ) -> TxResult<()> {
+        if let Some((index, (input, entry))) = tx.populated_inputs().enumerate().find(|(_, (_, entry))| {
+            entry.is_coinbase && entry.block_daa_score + self.coinbase_maturity.get(block_daa_score) > pov_daa_score
+        }) {
             return Err(TxRuleError::ImmatureCoinbaseSpend(
                 index,
                 input.previous_outpoint,
                 entry.block_daa_score,
                 pov_daa_score,
-                self.coinbase_maturity,
+                self.coinbase_maturity.get(block_daa_score),
             ));
         }
 
@@ -283,7 +286,7 @@ mod tests {
             params.prior_max_signature_script_len,
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -351,7 +354,7 @@ mod tests {
             params.prior_max_signature_script_len,
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -423,7 +426,7 @@ mod tests {
             params.prior_max_signature_script_len,
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -492,7 +495,7 @@ mod tests {
             params.prior_max_signature_script_len,
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -561,7 +564,7 @@ mod tests {
             params.prior_max_signature_script_len,
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -630,7 +633,7 @@ mod tests {
             params.prior_max_signature_script_len,
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -698,7 +701,7 @@ mod tests {
             params.prior_max_signature_script_len,
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -760,7 +763,7 @@ mod tests {
             params.prior_max_signature_script_len,
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 

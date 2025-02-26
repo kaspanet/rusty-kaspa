@@ -145,10 +145,8 @@ impl TransactionValidator {
     // The main purpose of this check is to avoid overflows when calculating transaction mass later.
     fn check_transaction_script_public_keys_ctx(&self, tx: &Transaction, ctx_daa_score: u64) -> TxResult<()> {
         // TODO (post HF): move back to in isolation validation
-        if let Some(i) = tx
-            .outputs
-            .iter()
-            .position(|out| out.script_public_key.script().len() > self.max_script_public_key_len.get(ctx_daa_score))
+        if let Some(i) =
+            tx.outputs.iter().position(|out| out.script_public_key.script().len() > self.max_script_public_key_len.get(ctx_daa_score))
         {
             return Err(TxRuleError::TooBigScriptPublicKey(i, self.max_script_public_key_len.get(ctx_daa_score)));
         }

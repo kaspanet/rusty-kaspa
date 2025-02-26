@@ -143,7 +143,7 @@ impl ConsensusServices {
             params.max_signature_script_len(),
             params.max_script_public_key_len(),
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.coinbase_maturity(),
             tx_script_cache_counters,
             mass_calculator.clone(),
             params.crescendo_activation,

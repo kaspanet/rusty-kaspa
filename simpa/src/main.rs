@@ -192,6 +192,7 @@ fn main_impl(mut args: Args) {
     args.bps = if args.testnet11 { TenBps::bps() as f64 } else { args.bps };
     let mut params = if args.testnet11 { SIMNET_PARAMS } else { DEVNET_PARAMS };
     params.crescendo_activation = ForkActivation::always();
+    params.crescendo.coinbase_maturity = 200;
     params.storage_mass_parameter = 10_000;
     let mut builder = ConfigBuilder::new(params)
         .apply_args(|config| apply_args_to_consensus_params(&args, &mut config.params))
@@ -305,7 +306,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.prior_max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
         params.prior_target_time_per_block = (1000.0 / args.bps) as u64;
         params.prior_merge_depth = (params.prior_merge_depth as f64 * args.bps) as u64;
-        params.coinbase_maturity = (params.coinbase_maturity as f64 * f64::max(1.0, args.bps * args.delay * 0.25)) as u64;
+        params.prior_coinbase_maturity = (params.prior_coinbase_maturity as f64 * f64::max(1.0, args.bps * args.delay * 0.25)) as u64;
 
         if args.daa_legacy {
             // Scale DAA and median-time windows linearly with BPS

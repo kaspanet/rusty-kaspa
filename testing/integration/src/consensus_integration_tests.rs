@@ -839,7 +839,7 @@ impl KaspadGoParams {
             storage_mass_parameter: STORAGE_MASS_PARAMETER,
             deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
             pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
-            coinbase_maturity: MAINNET_PARAMS.coinbase_maturity,
+            prior_coinbase_maturity: MAINNET_PARAMS.prior_coinbase_maturity,
             skip_proof_of_work: self.SkipProofOfWork,
             max_block_level: self.MaxBlockLevel,
             pruning_proof_m: self.PruningProofM,
@@ -1889,7 +1889,8 @@ async fn payload_test() {
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.coinbase_maturity = 0;
+            p.prior_coinbase_maturity = 0;
+            p.crescendo.coinbase_maturity = 0;
             p.crescendo_activation = ForkActivation::always()
         })
         .build();

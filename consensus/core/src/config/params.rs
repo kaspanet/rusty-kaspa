@@ -250,7 +250,7 @@ pub struct Params {
     pub deflationary_phase_daa_score: u64,
 
     pub pre_deflationary_phase_base_subsidy: u64,
-    pub coinbase_maturity: u64,
+    pub prior_coinbase_maturity: u64,
     pub skip_proof_of_work: bool,
     pub max_block_level: BlockLevel,
     pub pruning_proof_m: u64,
@@ -354,6 +354,10 @@ impl Params {
 
     pub fn pruning_depth(&self) -> ForkedParam<u64> {
         ForkedParam::new(self.prior_pruning_depth, self.crescendo.pruning_depth, self.crescendo_activation)
+    }
+
+    pub fn coinbase_maturity(&self) -> ForkedParam<u64> {
+        ForkedParam::new(self.prior_coinbase_maturity, self.crescendo.coinbase_maturity, self.crescendo_activation)
     }
 
     pub fn finality_duration_in_milliseconds(&self) -> ForkedParam<u64> {
@@ -558,7 +562,7 @@ pub const MAINNET_PARAMS: Params = Params {
     // Three days in seconds = 3 * 24 * 60 * 60 = 259200
     deflationary_phase_daa_score: 15778800 - 259200,
     pre_deflationary_phase_base_subsidy: 50000000000,
-    coinbase_maturity: 100,
+    prior_coinbase_maturity: 100,
     skip_proof_of_work: false,
     max_block_level: 225,
     pruning_proof_m: 1000,
@@ -616,7 +620,7 @@ pub const TESTNET_PARAMS: Params = Params {
     // Three days in seconds = 3 * 24 * 60 * 60 = 259200
     deflationary_phase_daa_score: 15778800 - 259200,
     pre_deflationary_phase_base_subsidy: 50000000000,
-    coinbase_maturity: 100,
+    prior_coinbase_maturity: 100,
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
@@ -649,7 +653,7 @@ pub const SIMNET_PARAMS: Params = Params {
     prior_pruning_depth: TenBps::pruning_depth(),
     deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
     pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
-    coinbase_maturity: TenBps::coinbase_maturity(),
+    prior_coinbase_maturity: TenBps::coinbase_maturity(),
 
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
@@ -717,7 +721,7 @@ pub const DEVNET_PARAMS: Params = Params {
     // Three days in seconds = 3 * 24 * 60 * 60 = 259200
     deflationary_phase_daa_score: 15778800 - 259200,
     pre_deflationary_phase_base_subsidy: 50000000000,
-    coinbase_maturity: 100,
+    prior_coinbase_maturity: 100,
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
