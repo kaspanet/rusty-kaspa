@@ -46,11 +46,6 @@ impl TransactionValidator {
         if flags != TxValidationFlags::SkipMassCheck && self.crescendo_activation.is_active(block_daa_score) {
             // Storage mass hardfork was activated
             self.check_mass_commitment(tx)?;
-
-            // TODO (crescendo): log in one central location
-            // if self.storage_mass_activation.is_within_range_from_activation(pov_daa_score, 10) {
-            //     kaspa_core::warn!("--------- Storage mass hardfork was activated successfully!!! --------- (DAA score: {})", pov_daa_score);
-            // }
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;
 

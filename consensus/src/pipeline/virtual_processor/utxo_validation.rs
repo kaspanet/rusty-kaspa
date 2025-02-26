@@ -42,6 +42,38 @@ use rayon::prelude::*;
 use smallvec::{smallvec, SmallVec};
 use std::{iter::once, ops::Deref};
 
+pub(crate) mod crescendo {
+    use kaspa_consensus_core::config::params::ForkActivation;
+    use kaspa_core::warn;
+    use std::sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    };
+
+    #[derive(Clone)]
+    pub(crate) struct CrescendoLogger {
+        steps: Arc<AtomicU8>,
+        activation: ForkActivation,
+    }
+
+    impl CrescendoLogger {
+        pub fn new(activation: ForkActivation) -> Self {
+            Self { steps: Arc::new(AtomicU8::new(Self::ACTIVATE)), activation }
+        }
+
+        const ACTIVATE: u8 = 0;
+
+        pub fn report_activation(&self) -> bool {
+            if self.steps.compare_exchange(Self::ACTIVATE, Self::ACTIVATE + 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+                warn!("[Crescendo] [--------- Crescendo activated for UTXO state processing rules ---------]");
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
+
 /// A context for processing the UTXO state of a block with respect to its selected parent.
 /// Note this can also be the virtual block.
 pub(super) struct UtxoProcessingContext<'a> {
@@ -216,6 +248,9 @@ impl VirtualStateProcessor {
         // Note that we activate here based on current DAA score and deactivate (in header processor) based on
         // selected parent DAA score, but that simply means we might perform a double check in the interim
         if self.crescendo_activation.is_active(header.daa_score) {
+            if self.crescendo_activation.is_within_range_from_activation(header.daa_score, 1000) {
+                self.crescendo_logger.report_activation();
+            }
             let pruning_info = self.pruning_point_store.read().get().unwrap();
             let expected = self
                 .pruning_point_manager
@@ -335,6 +370,7 @@ impl VirtualStateProcessor {
         match res {
             Ok(calculated_fee) => Ok(ValidatedTransaction::new(populated_tx, calculated_fee)),
             Err(tx_rule_error) => {
+                // TODO (Crescendo): aggregate
                 info!("Rejecting transaction {} due to transaction rule error: {}", transaction.id(), tx_rule_error);
                 Err(tx_rule_error)
             }
