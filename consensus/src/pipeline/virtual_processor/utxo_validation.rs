@@ -38,7 +38,6 @@ use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_utils::refs::Refs;
 
-use crate::model::stores::headers::HeaderStoreReader;
 use rayon::prelude::*;
 use smallvec::{smallvec, SmallVec};
 use std::{iter::once, ops::Deref};
@@ -143,9 +142,11 @@ impl VirtualStateProcessor {
             );
         }
 
-        // Make sure accepted tx ids are sorted before building the merkle root
-        // NOTE: when subnetworks will be enabled, the sort should consider them in order to allow grouping under a merkle subtree
-        // Preserve canonical order of accepted transactions after hard-fork
+        // Before crescendo HF:
+        //  - Make sure accepted tx ids are sorted before building the merkle root
+        //  - NOTE: when subnetworks will be enabled, the sort should consider them in order to allow grouping under a merkle subtree
+        // After crescendo HF:
+        //  - Preserve canonical order of accepted transactions after hard-fork
         if !self.crescendo_activation.is_active(pov_daa_score) {
             ctx.accepted_tx_ids.sort();
         }
@@ -172,14 +173,8 @@ impl VirtualStateProcessor {
         trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
         // Verify header accepted_id_merkle_root
-        let expected_accepted_id_merkle_root = if self.crescendo_activation.is_active(header.daa_score) {
-            kaspa_merkle::merkle_hash(
-                self.headers_store.get_header(ctx.selected_parent()).unwrap().accepted_id_merkle_root,
-                kaspa_merkle::calc_merkle_root(ctx.accepted_tx_ids.iter().copied()),
-            )
-        } else {
-            kaspa_merkle::calc_merkle_root(ctx.accepted_tx_ids.iter().copied())
-        };
+        let expected_accepted_id_merkle_root =
+            self.calc_accepted_id_merkle_root(header.daa_score, ctx.accepted_tx_ids.iter().copied(), ctx.selected_parent());
 
         if expected_accepted_id_merkle_root != header.accepted_id_merkle_root {
             return Err(BadAcceptedIDMerkleRoot(header.hash, header.accepted_id_merkle_root, expected_accepted_id_merkle_root));
@@ -405,6 +400,24 @@ impl VirtualStateProcessor {
         )?;
         mutable_tx.calculated_fee = Some(calculated_fee);
         Ok(())
+    }
+
+    /// Calculates the accepted_id_merkle_root based on the current DAA score and the accepted tx ids
+    /// refer KIP-15 for more details
+    pub(super) fn calc_accepted_id_merkle_root(
+        &self,
+        daa_score: u64,
+        accepted_tx_ids: impl ExactSizeIterator<Item = Hash>,
+        selected_parent: Hash,
+    ) -> Hash {
+        if self.crescendo_activation.is_active(daa_score) {
+            kaspa_merkle::merkle_hash(
+                self.headers_store.get_header(selected_parent).unwrap().accepted_id_merkle_root,
+                kaspa_merkle::calc_merkle_root(accepted_tx_ids),
+            )
+        } else {
+            kaspa_merkle::calc_merkle_root(accepted_tx_ids)
+        }
     }
 }
 
