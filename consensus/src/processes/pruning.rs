@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, sync::Arc};
 
-use super::reachability::ReachabilityResultExtensions;
+use super::{reachability::ReachabilityResultExtensions, utils::CoinFlip};
 use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
     stores::{
@@ -13,6 +13,7 @@ use crate::model::{
     },
 };
 use kaspa_consensus_core::{blockhash::BlockHashExtensions, config::params::ForkedParam};
+use kaspa_core::warn;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 
@@ -265,6 +266,16 @@ impl<
         // [Crescendo]: shortly after fork activation, R is not guaranteed to comply with the new
         // increased pruning depth, so we must manually verify not to go below it
         if sp_pp_blue_score >= self.headers_store.get_blue_score(next_or_current_pp).unwrap() {
+            if self.pruning_depth.activation().is_active(selected_parent_daa_score)
+                && ghostdag_data.blue_score.saturating_sub(sp_pp_blue_score) < self.pruning_depth.after()
+                && CoinFlip::new(1.0 / 1000.0).flip()
+            {
+                warn!(
+                    "[Crescendo] Pruning depth increasing post activation: {} (target: {})",
+                    ghostdag_data.blue_score.saturating_sub(sp_pp_blue_score),
+                    self.pruning_depth.after()
+                );
+            }
             return sp_pp;
         }
 

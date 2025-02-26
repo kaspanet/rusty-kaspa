@@ -21,7 +21,7 @@ use std::{
     },
 };
 
-use super::ghostdag::ordering::SortableBlock;
+use super::{ghostdag::ordering::SortableBlock, utils::CoinFlip};
 use itertools::Itertools;
 
 trait DifficultyManagerExtension {
@@ -380,18 +380,21 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
         let expected_duration = self.target_time_per_block * self.difficulty_sample_rate * difficulty_blocks_len; // This does differ from FullDifficultyManager version
         let new_target = average_target * measured_duration / expected_duration;
 
-        if difficulty_blocks_len + 1 < self.difficulty_window_size as u64
-            && self.crescendo_logger.report_activation_progress(CrescendoLogger::DYNAMIC)
-        {
-            warn!(
-                "[Crescendo] Dynamic DAA reactivated, scaling the difficulty by the measured/expected duration ratio:
+        if difficulty_blocks_len + 1 < self.difficulty_window_size as u64 {
+            if self.crescendo_logger.report_activation_progress(CrescendoLogger::DYNAMIC) {
+                warn!(
+                    "[Crescendo] Dynamic DAA reactivated, scaling the difficulty by the measured/expected duration ratio:
 \t\t\t\t\t\t  {} -> {} (measured duration: {}, expected duration: {}, ratio {:.4})",
-                difficulty_desc(average_target),
-                difficulty_desc(new_target),
-                measured_duration,
-                expected_duration,
-                measured_duration as f64 / expected_duration as f64
-            );
+                    difficulty_desc(average_target),
+                    difficulty_desc(new_target),
+                    measured_duration,
+                    expected_duration,
+                    measured_duration as f64 / expected_duration as f64
+                );
+            }
+            if CoinFlip::default().flip() {
+                warn!("[Crescendo] DAA window increasing post activation: {}", difficulty_blocks_len + 1);
+            }
         }
 
         Uint256::try_from(new_target.min(self.max_difficulty_target)).expect("max target < Uint256::MAX").compact_target_bits()

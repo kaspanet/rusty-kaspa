@@ -13,6 +13,7 @@ use kaspa_consensus_core::{
     errors::{block::RuleError, difficulty::DifficultyResult},
     BlockHashSet, BlueWorkType,
 };
+use kaspa_core::warn;
 use kaspa_hashes::Hash;
 use kaspa_math::Uint256;
 use kaspa_utils::refs::Refs;
@@ -27,6 +28,7 @@ use std::{
 use super::{
     difficulty::{FullDifficultyManager, SampledDifficultyManager},
     past_median_time::{FullPastMedianTimeManager, SampledPastMedianTimeManager},
+    utils::CoinFlip,
 };
 
 #[derive(Clone, Copy)]
@@ -655,6 +657,9 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
 
     fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
         let window = self.block_window(ghostdag_data, WindowType::MedianTimeWindow)?;
+        if window.len() < self.past_median_time_window_size && CoinFlip::default().flip() {
+            warn!("[Crescendo] MDT window increasing post activation: {}", window.len());
+        }
         let past_median_time = self.past_median_time_manager.calc_past_median_time(&window, ghostdag_data.selected_parent)?;
         Ok((past_median_time, window))
     }
