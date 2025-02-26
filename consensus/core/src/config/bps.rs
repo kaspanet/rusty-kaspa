@@ -110,11 +110,6 @@ impl<const BPS: u64> Bps<BPS> {
         }
     }
 
-    pub const fn pruning_proof_m() -> u64 {
-        // No need to scale this constant with BPS since the important block levels (higher) remain logarithmically short
-        PRUNING_PROOF_M
-    }
-
     /// Sample rate for sampling blocks to the median time window (in block units, hence dependent on BPS)
     pub const fn past_median_time_sample_rate() -> u64 {
         BPS * PAST_MEDIAN_TIME_SAMPLE_INTERVAL

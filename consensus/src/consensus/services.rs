@@ -138,10 +138,10 @@ impl ConsensusServices {
         );
 
         let transaction_validator = TransactionValidator::new(
-            params.max_tx_inputs,
-            params.max_tx_outputs,
-            params.max_signature_script_len,
-            params.max_script_public_key_len,
+            params.max_tx_inputs(),
+            params.max_tx_outputs(),
+            params.max_signature_script_len(),
+            params.max_script_public_key_len(),
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             tx_script_cache_counters,

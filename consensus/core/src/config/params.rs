@@ -185,14 +185,15 @@ pub const CRESCENDO: CrescendoParams = CrescendoParams {
     finality_depth: TenBps::finality_depth(),
     pruning_depth: TenBps::pruning_depth(),
 
-    // TODO (crescendo): apply on activation
     coinbase_maturity: TenBps::coinbase_maturity(),
 
-    // TODO (crescendo): finalize all below
+    // Limit the cost of calculating compute/transient/storage masses
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    max_signature_script_len: 100_000,
-    max_script_public_key_len: 10_000,
+    // Transient mass enforces this limit as well
+    max_signature_script_len: 125_000,
+    // Compute mass enforces this limit as well; storage mass will kick in much lower (plurality will be high)
+    max_script_public_key_len: 50_000,
 };
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
@@ -231,10 +232,12 @@ pub struct Params {
 
     pub coinbase_payload_script_public_key_max_len: u8,
     pub max_coinbase_payload_len: usize,
-    pub max_tx_inputs: usize,
-    pub max_tx_outputs: usize,
-    pub max_signature_script_len: usize,
-    pub max_script_public_key_len: usize,
+
+    pub prior_max_tx_inputs: usize,
+    pub prior_max_tx_outputs: usize,
+    pub prior_max_signature_script_len: usize,
+    pub prior_max_script_public_key_len: usize,
+
     pub mass_per_tx_byte: u64,
     pub mass_per_script_pub_key_byte: u64,
     pub mass_per_sig_op: u64,
@@ -407,6 +410,22 @@ impl Params {
         )
     }
 
+    pub fn max_tx_inputs(&self) -> ForkedParam<usize> {
+        ForkedParam::new(self.prior_max_tx_inputs, self.crescendo.max_tx_inputs, self.crescendo_activation)
+    }
+
+    pub fn max_tx_outputs(&self) -> ForkedParam<usize> {
+        ForkedParam::new(self.prior_max_tx_outputs, self.crescendo.max_tx_outputs, self.crescendo_activation)
+    }
+
+    pub fn max_signature_script_len(&self) -> ForkedParam<usize> {
+        ForkedParam::new(self.prior_max_signature_script_len, self.crescendo.max_signature_script_len, self.crescendo_activation)
+    }
+
+    pub fn max_script_public_key_len(&self) -> ForkedParam<usize> {
+        ForkedParam::new(self.prior_max_script_public_key_len, self.crescendo.max_script_public_key_len, self.crescendo_activation)
+    }
+
     /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
     pub fn is_nearly_synced(&self, sink_timestamp: u64, sink_daa_score: u64) -> bool {
         if self.net.is_mainnet() {
@@ -519,10 +538,10 @@ pub const MAINNET_PARAMS: Params = Params {
     // check these rules, but in practice it's enforced by the network layer that limits the message
     // size to 1 GB.
     // These values should be lowered to more reasonable amounts on the next planned HF/SF.
-    max_tx_inputs: 1_000_000_000,
-    max_tx_outputs: 1_000_000_000,
-    max_signature_script_len: 1_000_000_000,
-    max_script_public_key_len: 1_000_000_000,
+    prior_max_tx_inputs: 1_000_000_000,
+    prior_max_tx_outputs: 1_000_000_000,
+    prior_max_signature_script_len: 1_000_000_000,
+    prior_max_script_public_key_len: 1_000_000_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
@@ -578,10 +597,10 @@ pub const TESTNET_PARAMS: Params = Params {
     // check these rules, but in practice it's enforced by the network layer that limits the message
     // size to 1 GB.
     // These values should be lowered to more reasonable amounts on the next planned HF/SF.
-    max_tx_inputs: 1_000_000_000,
-    max_tx_outputs: 1_000_000_000,
-    max_signature_script_len: 1_000_000_000,
-    max_script_public_key_len: 1_000_000_000,
+    prior_max_tx_inputs: 1_000_000_000,
+    prior_max_tx_outputs: 1_000_000_000,
+    prior_max_signature_script_len: 1_000_000_000,
+    prior_max_script_public_key_len: 1_000_000_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
@@ -628,7 +647,6 @@ pub const SIMNET_PARAMS: Params = Params {
     prior_merge_depth: TenBps::merge_depth_bound(),
     prior_finality_depth: TenBps::finality_depth(),
     prior_pruning_depth: TenBps::pruning_depth(),
-    pruning_proof_m: TenBps::pruning_proof_m(),
     deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
     pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
     coinbase_maturity: TenBps::coinbase_maturity(),
@@ -636,10 +654,10 @@ pub const SIMNET_PARAMS: Params = Params {
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
-    max_tx_inputs: 10_000,
-    max_tx_outputs: 10_000,
-    max_signature_script_len: 1_000_000,
-    max_script_public_key_len: 1_000_000,
+    prior_max_tx_inputs: 10_000,
+    prior_max_tx_outputs: 10_000,
+    prior_max_signature_script_len: 1_000_000,
+    prior_max_script_public_key_len: 1_000_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
@@ -650,6 +668,7 @@ pub const SIMNET_PARAMS: Params = Params {
 
     skip_proof_of_work: true, // For simnet only, PoW can be simulated by default
     max_block_level: 250,
+    pruning_proof_m: PRUNING_PROOF_M,
 
     crescendo: CRESCENDO,
     crescendo_activation: ForkActivation::always(),
@@ -678,10 +697,10 @@ pub const DEVNET_PARAMS: Params = Params {
     // check these rules, but in practice it's enforced by the network layer that limits the message
     // size to 1 GB.
     // These values should be lowered to more reasonable amounts on the next planned HF/SF.
-    max_tx_inputs: 1_000_000_000,
-    max_tx_outputs: 1_000_000_000,
-    max_signature_script_len: 1_000_000_000,
-    max_script_public_key_len: 1_000_000_000,
+    prior_max_tx_inputs: 1_000_000_000,
+    prior_max_tx_outputs: 1_000_000_000,
+    prior_max_signature_script_len: 1_000_000_000,
+    prior_max_script_public_key_len: 1_000_000_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
