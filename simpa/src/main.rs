@@ -256,6 +256,7 @@ fn main_impl(mut args: Args) {
     };
 
     if args.test_pruning {
+        consensus.validate_pruning_points(consensus.get_sink()).unwrap();
         drop(consensus);
         return;
     }
@@ -324,15 +325,26 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         info!("2Dλ={}, GHOSTDAG K={}, DAA window size={}", 2.0 * args.delay * args.bps, k, params.difficulty_window_size().before());
     }
     if args.test_pruning {
+        params.crescendo_activation = ForkActivation::new(900.min(args.target_blocks.map(|x| x / 2).unwrap_or(900)));
+
         params.pruning_proof_m = 16;
         params.prior_difficulty_window_size = 64;
         params.timestamp_deviation_tolerance = 16;
         params.crescendo.sampled_difficulty_window_size = params.crescendo.sampled_difficulty_window_size.min(32);
-        params.prior_finality_depth = 128;
-        params.prior_merge_depth = 128;
+
+        params.prior_ghostdag_k = 10;
+        params.prior_finality_depth = 100;
+        params.prior_merge_depth = 64;
         params.prior_mergeset_size_limit = 32;
-        params.prior_pruning_depth = params.anticone_finalization_depth().before();
-        info!("Setting pruning depth to {}", params.prior_pruning_depth);
+        params.prior_pruning_depth = 100 * 2 + 50;
+
+        params.crescendo.ghostdag_k = 20;
+        params.crescendo.finality_depth = 100 * 2;
+        params.crescendo.merge_depth = 64 * 2;
+        params.crescendo.mergeset_size_limit = 32 * 2;
+        params.crescendo.pruning_depth = 100 * 2 * 2 + 50;
+
+        info!("Setting pruning depth to {:?}", params.pruning_depth());
     }
 }
 
