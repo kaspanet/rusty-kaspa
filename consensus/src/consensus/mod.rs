@@ -798,6 +798,13 @@ impl ConsensusApi for Consensus {
         if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, syncer_virtual_selected_parent) {
             return Err(ConsensusError::General("pruning point does not coincide with the syncer's sink (virtual selected parent)"));
         }
+        for p in (0..self.pruning_point_store.read().get().unwrap().index)
+            .map(|index| self.past_pruning_points_store.get(index).unwrap())
+            .map(|h| self.headers_store.get_header(h).unwrap())
+            .take(30)
+        {
+            println!("{} -> {} [{}]", &p.hash.to_string()[58..], &p.pruning_point.to_string()[58..], p.blue_score);
+        }
         if !self.services.pruning_point_manager.are_pruning_points_in_valid_chain(pp_info, syncer_virtual_selected_parent) {
             return Err(ConsensusError::General("past pruning points do not form a valid chain"));
         }
