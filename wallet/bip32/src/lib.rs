@@ -14,7 +14,7 @@ mod attrs;
 mod child_number;
 mod derivation_path;
 mod error;
-mod mnemonic;
+pub mod mnemonic;
 mod prefix;
 mod result;
 pub mod types;
