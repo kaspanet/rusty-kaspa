@@ -13,7 +13,7 @@ use crate::model::{
         reachability::ReachabilityStoreReader,
     },
 };
-use kaspa_consensus_core::{blockhash::BlockHashExtensions, config::params::ForkedParam, KType};
+use kaspa_consensus_core::{blockhash::BlockHashExtensions, config::params::ForkedParam};
 use kaspa_core::warn;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
@@ -63,7 +63,6 @@ impl<
     pub fn new(
         pruning_depth: ForkedParam<u64>,
         finality_depth: ForkedParam<u64>,
-        ghostdag_k: ForkedParam<KType>,
         genesis_hash: Hash,
         reachability_service: MTReachabilityService<T>,
         ghostdag_store: Arc<S>,
@@ -77,15 +76,6 @@ impl<
         assert!(finality_depth.before() <= finality_depth.after());
         assert!(finality_depth.after() % finality_depth.before() == 0);
         assert!(pruning_depth.before() <= pruning_depth.after());
-
-        // Assert P is not a multiple of F +- noise(K)
-        {
-            let mod_before = pruning_depth.before() % finality_depth.before();
-            assert!((ghostdag_k.before() as u64) < mod_before && mod_before < finality_depth.before() - ghostdag_k.before() as u64);
-
-            let mod_after = pruning_depth.after() % finality_depth.after();
-            assert!((ghostdag_k.after() as u64) < mod_after && mod_after < finality_depth.after() - ghostdag_k.after() as u64);
-        }
 
         let pruning_samples_steps = pruning_depth.before().div_ceil(finality_depth.before());
         assert_eq!(pruning_samples_steps, pruning_depth.after().div_ceil(finality_depth.after()));
@@ -514,5 +504,28 @@ impl<
         }
 
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use kaspa_consensus_core::{config::params::Params, network::NetworkType};
+
+    #[test]
+    fn assert_pruning_depth_consistency() {
+        for net in NetworkType::iter() {
+            let params: Params = net.into();
+
+            let pruning_depth = params.pruning_depth();
+            let finality_depth = params.finality_depth();
+            let ghostdag_k = params.ghostdag_k();
+
+            // Assert P is not a multiple of F +- noise(K)
+            let mod_before = pruning_depth.before() % finality_depth.before();
+            assert!((ghostdag_k.before() as u64) < mod_before && mod_before < finality_depth.before() - ghostdag_k.before() as u64);
+
+            let mod_after = pruning_depth.after() % finality_depth.after();
+            assert!((ghostdag_k.after() as u64) < mod_after && mod_after < finality_depth.after() - ghostdag_k.after() as u64);
+        }
     }
 }

@@ -158,7 +158,6 @@ impl ConsensusServices {
         let pruning_point_manager = PruningPointManager::new(
             params.pruning_depth(),
             params.finality_depth(),
-            params.ghostdag_k(),
             params.genesis.hash,
             reachability_service.clone(),
             storage.ghostdag_store.clone(),
