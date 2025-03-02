@@ -449,20 +449,18 @@ impl<
         // any other pruning point in the list, so we are compelled to check if it's referenced by
         // the selected chain.
         let mut expected_pps_queue = VecDeque::new();
-        for current in self.reachability_service.backward_chain_iterator(syncer_sink, pruning_info.pruning_point, false) {
+        for current in self.reachability_service.forward_chain_iterator(pruning_info.pruning_point, syncer_sink, true).skip(1) {
             let current_header = self.headers_store.get_header(current).unwrap();
             // Post-crescendo: expected header pruning point is no longer part of header validity, but we want to make sure
             // the syncer's virtual chain indeed coincides with the pruning point and past pruning points before downloading
             // the UTXO set and resolving virtual. Hence we perform the check over this chain here.
-            //
-            // TODO (Crescendo): use v2 and walk the chain forward
             let expected_header_pruning_point =
                 self.expected_header_pruning_point_v2(self.ghostdag_store.get_compact_data(current).unwrap()).pruning_point;
             if expected_header_pruning_point != current_header.pruning_point {
                 return false;
             }
-            if expected_pps_queue.back().is_none_or(|&h| h != current_header.pruning_point) {
-                expected_pps_queue.push_back(current_header.pruning_point);
+            if expected_pps_queue.front().is_none_or(|&h| h != current_header.pruning_point) {
+                expected_pps_queue.push_front(current_header.pruning_point);
             }
         }
 

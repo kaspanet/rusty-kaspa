@@ -62,6 +62,12 @@ pub enum PruningImportError {
 
     #[error("block {0} at level {1} has invalid proof of work for level")]
     ProofOfWorkFailed(Hash, BlockLevel),
+
+    #[error("past pruning points at indices {0}, {1} have non monotonic blue score {2}, {3}")]
+    InconsistentPastPruningPoints(usize, usize, u64, u64),
+
+    #[error("past pruning points contains {0} duplications")]
+    DuplicatedPastPruningPoints(usize),
 }
 
 pub type PruningImportResult<T> = std::result::Result<T, PruningImportError>;

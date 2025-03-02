@@ -766,7 +766,7 @@ impl ConsensusApi for Consensus {
         self.services.pruning_proof_manager.apply_proof(proof, trusted_set)
     }
 
-    fn import_pruning_points(&self, pruning_points: PruningPointsList) {
+    fn import_pruning_points(&self, pruning_points: PruningPointsList) -> PruningImportResult<()> {
         self.services.pruning_proof_manager.import_pruning_points(&pruning_points)
     }
 

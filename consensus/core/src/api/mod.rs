@@ -219,7 +219,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn import_pruning_points(&self, pruning_points: PruningPointsList) {
+    fn import_pruning_points(&self, pruning_points: PruningPointsList) -> PruningImportResult<()> {
         unimplemented!()
     }
 
