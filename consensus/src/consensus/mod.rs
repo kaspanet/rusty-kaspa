@@ -325,6 +325,15 @@ impl Consensus {
             return;
         }
 
+        // Populate past pruning points (including current one)
+        for (p1, p2) in (0..=self.pruning_point_store.read().get().unwrap().index)
+            .map(|index| self.past_pruning_points_store.get(index).unwrap())
+            .tuple_windows()
+        {
+            // p[i] -> p[i-1]
+            self.pruning_samples_store.insert(p2, p1).unwrap_or_exists();
+        }
+
         let pruning_point = self.pruning_point();
         let reachability = self.reachability_store.read();
 
