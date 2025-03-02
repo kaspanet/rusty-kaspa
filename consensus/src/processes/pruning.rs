@@ -189,21 +189,44 @@ impl<
             return (vec![], current_candidate);
         }
         let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
+        let pruning_depth = self.pruning_depth.get(selected_parent_daa_score);
         if self.pruning_depth.activation().is_active(selected_parent_daa_score) {
-            let v2 = self.next_pruning_points_v2(ghostdag_data, current_pruning_point);
+            let v2 = self.next_pruning_points_v2(ghostdag_data, current_pruning_point, pruning_depth);
             (v2, current_candidate)
         } else {
             let (v1, candidate) = self.next_pruning_points_v1(ghostdag_data, current_candidate, current_pruning_point);
-            let v2 = self.next_pruning_points_v2(ghostdag_data, current_pruning_point);
+            let v2 = self.next_pruning_points_v2(ghostdag_data, current_pruning_point, pruning_depth);
             assert_eq!(v1, v2);
             (v1, candidate)
         }
     }
 
-    fn next_pruning_points_v2(&self, ghostdag_data: CompactGhostdagData, current_pruning_point: Hash) -> Vec<Hash> {
+    fn next_pruning_points_v2(
+        &self,
+        ghostdag_data: CompactGhostdagData,
+        current_pruning_point: Hash,
+        pruning_depth: u64,
+    ) -> Vec<Hash> {
+        let current_pruning_point_blue_score = self.ghostdag_store.get_blue_score(current_pruning_point).unwrap();
+        // Sanity check #1
+        if current_pruning_point_blue_score + pruning_depth > ghostdag_data.blue_score {
+            // The pruning point is not in depth of self.pruning_depth, so there's
+            // no point in checking if it is required to update it. This can happen
+            // because virtual is not immediately updated during IBD, so the pruning point
+            // might be in depth which is less than pruning_depth
+            return vec![];
+        }
+
         let mut deque = VecDeque::with_capacity(self.pruning_samples_steps as usize);
 
-        let mut current = self.expected_header_pruning_point_v2(ghostdag_data).pruning_point;
+        let sink_pruning_point = self.expected_header_pruning_point_v2(ghostdag_data).pruning_point;
+        let sink_pruning_point_blue_score = self.ghostdag_store.get_blue_score(sink_pruning_point).unwrap();
+        // Sanity check #2: if the sink pruning point is lower or equal to current, there is no need to search
+        if sink_pruning_point_blue_score <= current_pruning_point_blue_score {
+            return vec![];
+        }
+
+        let mut current = sink_pruning_point;
         while current != current_pruning_point {
             deque.push_front(current);
             current = self.pruning_samples_store.pruning_sample_from_pov(current).unwrap();
