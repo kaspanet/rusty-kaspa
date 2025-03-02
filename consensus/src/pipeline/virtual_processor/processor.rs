@@ -495,7 +495,8 @@ impl VirtualStateProcessor {
         self.utxo_diffs_store.insert_batch(&mut batch, current, Arc::new(mergeset_diff)).unwrap();
         self.utxo_multisets_store.insert_batch(&mut batch, current, multiset).unwrap();
         self.acceptance_data_store.insert_batch(&mut batch, current, Arc::new(acceptance_data)).unwrap();
-        self.pruning_samples_store.insert_batch(&mut batch, current, pruning_sample_from_pov).unwrap();
+        // We allow the pruning sample field to exist since it can be populated during IBD with headers proof
+        self.pruning_samples_store.insert_batch(&mut batch, current, pruning_sample_from_pov).unwrap_or_exists();
         let write_guard = self.statuses_store.set_batch(&mut batch, current, StatusUTXOValid).unwrap();
         self.db.write(batch).unwrap();
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.

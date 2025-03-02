@@ -9,12 +9,13 @@ use crate::model::{
         headers_selected_tip::HeadersSelectedTipStoreReader,
         past_pruning_points::PastPruningPointsStoreReader,
         pruning::PruningPointInfo,
-        pruning_samples::PruningSamplesStoreReader,
+        pruning_samples::PruningSamplesStore,
         reachability::ReachabilityStoreReader,
     },
 };
 use kaspa_consensus_core::{blockhash::BlockHashExtensions, config::params::ForkedParam};
 use kaspa_core::warn;
+use kaspa_database::prelude::StoreResultEmptyTuple;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 
@@ -34,7 +35,7 @@ pub struct PruningPointManager<
     U: HeaderStoreReader,
     V: PastPruningPointsStoreReader,
     W: HeadersSelectedTipStoreReader,
-    Y: PruningSamplesStoreReader,
+    Y: PruningSamplesStore,
 > {
     pruning_depth: ForkedParam<u64>,
     finality_depth: ForkedParam<u64>,
@@ -57,7 +58,7 @@ impl<
         U: HeaderStoreReader,
         V: PastPruningPointsStoreReader,
         W: HeadersSelectedTipStoreReader,
-        Y: PruningSamplesStoreReader,
+        Y: PruningSamplesStore,
     > PruningPointManager<S, T, U, V, W, Y>
 {
     pub fn new(
@@ -457,11 +458,12 @@ impl<
             // Post-crescendo: expected header pruning point is no longer part of header validity, but we want to make sure
             // the syncer's virtual chain indeed coincides with the pruning point and past pruning points before downloading
             // the UTXO set and resolving virtual. Hence we perform the check over this chain here.
-            let expected_header_pruning_point =
-                self.expected_header_pruning_point_v2(self.ghostdag_store.get_compact_data(current).unwrap()).pruning_point;
-            if expected_header_pruning_point != current_header.pruning_point {
+            let reply = self.expected_header_pruning_point_v2(self.ghostdag_store.get_compact_data(current).unwrap());
+            if reply.pruning_point != current_header.pruning_point {
                 return false;
             }
+            // Save so that following blocks can recursively use this value
+            self.pruning_samples_store.insert(current, reply.pruning_sample).unwrap_or_exists();
             if expected_pps_queue.front().is_none_or(|&h| h != current_header.pruning_point) {
                 expected_pps_queue.push_front(current_header.pruning_point);
             }
