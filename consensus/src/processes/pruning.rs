@@ -12,7 +12,7 @@ use crate::model::{
         reachability::ReachabilityStoreReader,
     },
 };
-use kaspa_consensus_core::{blockhash::BlockHashExtensions, config::params::ForkedParam, BlockHashMap};
+use kaspa_consensus_core::{blockhash::BlockHashExtensions, config::params::ForkedParam, BlockHashMap, KType};
 use kaspa_core::warn;
 use kaspa_hashes::Hash;
 use parking_lot::{Mutex, RwLock};
@@ -53,6 +53,7 @@ impl<
     pub fn new(
         pruning_depth: ForkedParam<u64>,
         finality_depth: ForkedParam<u64>,
+        ghostdag_k: ForkedParam<KType>,
         genesis_hash: Hash,
         reachability_service: MTReachabilityService<T>,
         ghostdag_store: Arc<S>,
@@ -66,7 +67,14 @@ impl<
         assert!(finality_depth.after() % finality_depth.before() == 0);
         assert!(pruning_depth.before() <= pruning_depth.after());
 
-        // TODO (Crescendo): assert P is not multiple of F + noise(K)
+        // Assert P is not a multiple of F +- noise(K)
+        {
+            let mod_before = pruning_depth.before() % finality_depth.before();
+            assert!((ghostdag_k.before() as u64) < mod_before && mod_before < finality_depth.before() - ghostdag_k.before() as u64);
+
+            let mod_after = pruning_depth.after() % finality_depth.after();
+            assert!((ghostdag_k.after() as u64) < mod_after && mod_after < finality_depth.after() - ghostdag_k.after() as u64);
+        }
 
         let pruning_samples_steps = pruning_depth.before().div_ceil(finality_depth.before());
         assert_eq!(pruning_samples_steps, pruning_depth.after().div_ceil(finality_depth.after()));
@@ -114,8 +122,10 @@ impl<
             let selected_parent_pruning_sample_blue_score = self.headers_store.get_blue_score(selected_parent_pruning_sample).unwrap();
 
             if self.is_pruning_sample(selected_parent_blue_score, selected_parent_pruning_sample_blue_score, finality_depth) {
+                // The selected parent is the most recent sample
                 ghostdag_data.selected_parent
             } else {
+                // ...otherwise take the sample from its pov
                 selected_parent_pruning_sample
             }
         };
@@ -124,7 +134,6 @@ impl<
             self.pruning_samples_store.lock().insert(hash, pruning_sample);
         }
 
-        // TODO: fix 2nd arg naming
         let is_self_pruning_sample = self.is_pruning_sample(ghostdag_data.blue_score, selected_parent_blue_score, finality_depth);
         let selected_parent_pruning_point = self.headers_store.get_header(ghostdag_data.selected_parent).unwrap().pruning_point;
         let mut steps = 1;
@@ -134,6 +143,7 @@ impl<
                 break current;
             }
             let current_blue_score = self.headers_store.get_blue_score(current).unwrap();
+            // Find the most recent sample with P depth
             if current_blue_score + pruning_depth <= ghostdag_data.blue_score {
                 break current;
             }
@@ -152,9 +162,13 @@ impl<
         pruning_point
     }
 
-    /// A block is a pruning sample *iff* its own finality score is larger than its pruning sample's finality score
-    fn is_pruning_sample(&self, self_blue_score: u64, pruning_sample_blue_score: u64, finality_depth: u64) -> bool {
-        self.finality_score(pruning_sample_blue_score, finality_depth) < self.finality_score(self_blue_score, finality_depth)
+    /// A block is a pruning sample *iff* its own finality score is larger than its pruning sample
+    /// finality score or its selected parent finality score (or any block in between them).
+    ///
+    /// To see why we can compare to any such block, observe that by definition all blocks in the range
+    /// `[pruning sample, selected parent]` must have the same finality score.
+    fn is_pruning_sample(&self, self_blue_score: u64, epoch_chain_ancestor_blue_score: u64, finality_depth: u64) -> bool {
+        self.finality_score(epoch_chain_ancestor_blue_score, finality_depth) < self.finality_score(self_blue_score, finality_depth)
     }
 
     pub fn next_pruning_points(
@@ -277,8 +291,8 @@ impl<
         (new_pruning_points, new_candidate)
     }
 
-    /// finality_score is the number of finality intervals which have passed since
-    /// genesis and up to the given blue_score.
+    /// Returns the floored integer division of blue score by finality depth.
+    /// The returned number represent the sampling epoch this blue score point belongs to.   
     fn finality_score(&self, blue_score: u64, finality_depth: u64) -> u64 {
         blue_score / finality_depth
     }
