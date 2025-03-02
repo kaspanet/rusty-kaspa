@@ -11,6 +11,7 @@ use crate::{
         headers_selected_tip::DbHeadersSelectedTipStore,
         past_pruning_points::DbPastPruningPointsStore,
         pruning::DbPruningStore,
+        pruning_samples::DbPruningSamplesStore,
         pruning_utxoset::PruningUtxosetStores,
         reachability::{DbReachabilityStore, ReachabilityData},
         relations::DbRelationsStore,
@@ -56,6 +57,7 @@ pub struct ConsensusStorage {
     pub past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     pub daa_excluded_store: Arc<DbDaaStore>,
     pub depth_store: Arc<DbDepthStore>,
+    pub pruning_samples_store: Arc<DbPruningSamplesStore>,
 
     // Utxo-related stores
     pub utxo_diffs_store: Arc<DbUtxoDiffsStore>,
@@ -210,6 +212,7 @@ impl ConsensusStorage {
         let pruning_point_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), past_pruning_points_builder.build()));
         let pruning_utxoset_stores = Arc::new(RwLock::new(PruningUtxosetStores::new(db.clone(), utxo_set_builder.build())));
+        let pruning_samples_store = Arc::new(DbPruningSamplesStore::new(db.clone(), header_data_builder.build()));
 
         // Txs
         let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), transactions_builder.build()));
@@ -253,6 +256,7 @@ impl ConsensusStorage {
             past_pruning_points_store,
             daa_excluded_store,
             depth_store,
+            pruning_samples_store,
             utxo_diffs_store,
             utxo_multisets_store,
             block_window_cache_for_difficulty,

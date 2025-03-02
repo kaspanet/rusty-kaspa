@@ -12,11 +12,13 @@ use crate::{
         daa::DaaStoreReader,
         ghostdag::{GhostdagData, GhostdagStoreReader},
         headers::HeaderStoreReader,
-        pruning::PruningStoreReader,
     },
-    processes::transaction_validator::{
-        errors::{TxResult, TxRuleError},
-        tx_validation_in_utxo_context::TxValidationFlags,
+    processes::{
+        pruning::PruningPointReply,
+        transaction_validator::{
+            errors::{TxResult, TxRuleError},
+            tx_validation_in_utxo_context::TxValidationFlags,
+        },
     },
 };
 use kaspa_consensus_core::{
@@ -83,6 +85,7 @@ pub(super) struct UtxoProcessingContext<'a> {
     pub accepted_tx_ids: Vec<TransactionId>,
     pub mergeset_acceptance_data: Vec<MergesetBlockAcceptanceData>,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
+    pub pruning_sample_from_pov: Option<Hash>,
 }
 
 impl<'a> UtxoProcessingContext<'a> {
@@ -95,6 +98,7 @@ impl<'a> UtxoProcessingContext<'a> {
             accepted_tx_ids: Vec::with_capacity(1), // We expect at least the selected parent coinbase tx
             mergeset_rewards: BlockHashMap::with_capacity(mergeset_size),
             mergeset_acceptance_data: Vec::with_capacity(mergeset_size),
+            pruning_sample_from_pov: Default::default(),
         }
     }
 
@@ -225,7 +229,8 @@ impl VirtualStateProcessor {
         )?;
 
         // Verify the header pruning point
-        self.verify_header_pruning_point(header)?;
+        let reply = self.verify_header_pruning_point(header)?;
+        ctx.pruning_sample_from_pov = Some(reply.pruning_sample);
 
         // Verify all transactions are valid in context
         let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
@@ -244,25 +249,24 @@ impl VirtualStateProcessor {
         Ok(())
     }
 
-    fn verify_header_pruning_point(&self, header: &Header) -> BlockProcessResult<()> {
+    fn verify_header_pruning_point(&self, header: &Header) -> BlockProcessResult<PruningPointReply> {
         // [Crescendo]: changing expected pruning point check from header validity to chain qualification.
-        // Note that we activate here based on current DAA score and deactivate (in header processor) based on
-        // selected parent DAA score, but that simply means we might perform a double check in the interim
-        if self.crescendo_activation.is_active(header.daa_score) {
+        // Note that we activate here based on the selected parent DAA score thus complementing the deactivation
+        // in header processor which is based on selected parent DAA score as well.
+
+        let ghostdag_data = self.ghostdag_store.get_compact_data(header.hash).unwrap();
+        let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
+        // [Crescendo]: we need to save reply.pruning_sample to the database also prior to activation
+        let reply = self.pruning_point_manager.expected_header_pruning_point_v2(ghostdag_data);
+        if self.crescendo_activation.is_active(selected_parent_daa_score) {
             if self.crescendo_activation.is_within_range_from_activation(header.daa_score, 1000) {
                 self.crescendo_logger.report_activation();
             }
-            let pruning_info = self.pruning_point_store.read().get().unwrap();
-            let expected = self.pruning_point_manager.expected_header_pruning_point(
-                self.ghostdag_store.get_compact_data(header.hash).unwrap(),
-                pruning_info,
-                Some(header.hash),
-            );
-            if expected != header.pruning_point {
-                return Err(WrongHeaderPruningPoint(expected, header.pruning_point));
+            if reply.pruning_point != header.pruning_point {
+                return Err(WrongHeaderPruningPoint(reply.pruning_point, header.pruning_point));
             }
         }
-        Ok(())
+        Ok(reply)
     }
 
     fn verify_coinbase_transaction(

@@ -23,6 +23,7 @@ use crate::{
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningStoreReader},
+            pruning_samples::DbPruningSamplesStore,
             pruning_utxoset::PruningUtxosetStores,
             reachability::DbReachabilityStore,
             relations::{DbRelationsStore, RelationsStoreReader},
@@ -77,7 +78,7 @@ use kaspa_consensus_notify::{
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, time::unix_now, trace, warn};
 use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
-use kaspa_hashes::Hash;
+use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::MuHash;
 use kaspa_notify::{events::EventType, notifier::Notify};
 use once_cell::unsync::Lazy;
@@ -132,6 +133,7 @@ pub struct VirtualStateProcessor {
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
     pub(super) depth_store: Arc<DbDepthStore>,
     pub(super) selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
+    pub(super) pruning_samples_store: Arc<DbPruningSamplesStore>,
 
     // Utxo-related stores
     pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
@@ -211,6 +213,7 @@ impl VirtualStateProcessor {
             body_tips_store: storage.body_tips_store.clone(),
             depth_store: storage.depth_store.clone(),
             selected_chain_store: storage.selected_chain_store.clone(),
+            pruning_samples_store: storage.pruning_samples_store.clone(),
             utxo_diffs_store: storage.utxo_diffs_store.clone(),
             utxo_multisets_store: storage.utxo_multisets_store.clone(),
             acceptance_data_store: storage.acceptance_data_store.clone(),
@@ -457,7 +460,13 @@ impl VirtualStateProcessor {
                         // Update the diff point
                         diff_point = current;
                         // Commit UTXO data for current chain block
-                        self.commit_utxo_state(current, ctx.mergeset_diff, ctx.multiset_hash, ctx.mergeset_acceptance_data);
+                        self.commit_utxo_state(
+                            current,
+                            ctx.mergeset_diff,
+                            ctx.multiset_hash,
+                            ctx.mergeset_acceptance_data,
+                            ctx.pruning_sample_from_pov.expect("verified"),
+                        );
                         // Count the number of UTXO-processed chain blocks
                         chain_block_counter += 1;
                     }
@@ -474,11 +483,19 @@ impl VirtualStateProcessor {
         diff_point
     }
 
-    fn commit_utxo_state(&self, current: Hash, mergeset_diff: UtxoDiff, multiset: MuHash, acceptance_data: AcceptanceData) {
+    fn commit_utxo_state(
+        &self,
+        current: Hash,
+        mergeset_diff: UtxoDiff,
+        multiset: MuHash,
+        acceptance_data: AcceptanceData,
+        pruning_sample_from_pov: Hash,
+    ) {
         let mut batch = WriteBatch::default();
         self.utxo_diffs_store.insert_batch(&mut batch, current, Arc::new(mergeset_diff)).unwrap();
         self.utxo_multisets_store.insert_batch(&mut batch, current, multiset).unwrap();
         self.acceptance_data_store.insert_batch(&mut batch, current, Arc::new(acceptance_data)).unwrap();
+        self.pruning_samples_store.insert_batch(&mut batch, current, pruning_sample_from_pov).unwrap();
         let write_guard = self.statuses_store.set_batch(&mut batch, current, StatusUTXOValid).unwrap();
         self.db.write(batch).unwrap();
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
@@ -1032,7 +1049,7 @@ impl VirtualStateProcessor {
         let _prune_guard = self.pruning_lock.blocking_read();
         let pruning_info = self.pruning_point_store.read().get().unwrap();
         let header_pruning_point =
-            self.pruning_point_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info, None);
+            self.pruning_point_manager.expected_header_pruning_point_v2(virtual_state.ghostdag_data.to_compact()).pruning_point;
         let coinbase = self
             .coinbase_manager
             .expected_coinbase_transaction(
@@ -1108,7 +1125,7 @@ impl VirtualStateProcessor {
     /// Note that pruning point-related stores are initialized by `init`
     pub fn process_genesis(self: &Arc<Self>) {
         // Write the UTXO state of genesis
-        self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default());
+        self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default(), ZERO_HASH);
 
         // Init the virtual selected chain store
         let mut batch = WriteBatch::default();

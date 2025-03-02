@@ -117,11 +117,11 @@ impl TestConsensus {
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
         let mut header = header_from_precomputed_hash(hash, parents);
         let ghostdag_data = self.consensus.services.ghostdag_manager.ghostdag(header.direct_parents());
-        header.pruning_point = self.consensus.services.pruning_point_manager.expected_header_pruning_point(
-            ghostdag_data.to_compact(),
-            self.consensus.pruning_point_store.read().get().unwrap(),
-            None,
-        );
+        header.pruning_point = self
+            .consensus
+            .services
+            .pruning_point_manager
+            .expected_header_pruning_point__(ghostdag_data.to_compact(), self.consensus.pruning_point_store.read().get().unwrap());
         let daa_window = self.consensus.services.window_manager.block_daa_window(&ghostdag_data).unwrap();
         header.bits = self.consensus.services.window_manager.calculate_difficulty_bits(&ghostdag_data, &daa_window);
         header.daa_score = daa_window.daa_score;

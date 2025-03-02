@@ -6,8 +6,8 @@ use crate::{
         stores::{
             block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
             headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore,
-            pruning::DbPruningStore, reachability::DbReachabilityStore, relations::DbRelationsStore,
-            selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
+            pruning::DbPruningStore, pruning_samples::DbPruningSamplesStore, reachability::DbReachabilityStore,
+            relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
         },
     },
     processes::{
@@ -38,8 +38,14 @@ pub type DbSyncManager = SyncManager<
     DbStatusesStore,
 >;
 
-pub type DbPruningPointManager =
-    PruningPointManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore, DbHeadersSelectedTipStore>;
+pub type DbPruningPointManager = PruningPointManager<
+    DbGhostdagStore,
+    DbReachabilityStore,
+    DbHeadersStore,
+    DbPastPruningPointsStore,
+    DbHeadersSelectedTipStore,
+    DbPruningSamplesStore,
+>;
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore, DbHeadersStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 
@@ -159,6 +165,7 @@ impl ConsensusServices {
             storage.headers_store.clone(),
             storage.past_pruning_points_store.clone(),
             storage.headers_selected_tip_store.clone(),
+            storage.pruning_samples_store.clone(),
         );
 
         let parents_manager = ParentsManager::new(

@@ -25,7 +25,7 @@ use crate::{
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    blockhash::ORIGIN,
+    blockhash::{BlockHashExtensions, ORIGIN},
     blockstatus::BlockStatus::StatusHeaderOnly,
     config::Config,
     muhash::MuHashExtensions,
@@ -165,6 +165,10 @@ impl PruningProcessor {
     }
 
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
+        if sink_ghostdag_data.selected_parent.is_origin() {
+            // This only happens when sink is genesis
+            return;
+        }
         let pruning_point_read = self.pruning_point_store.upgradable_read();
         let current_pruning_info = pruning_point_read.get().unwrap();
         let (new_pruning_points, new_candidate) = self.pruning_point_manager.next_pruning_points(
@@ -476,6 +480,11 @@ impl PruningProcessor {
                     if !keep_headers.contains(&current) {
                         // Prune the actual headers
                         self.headers_store.delete_batch(&mut batch, current).unwrap();
+
+                        // We want to keep the pruning sample from POV for past pruning points
+                        // so that pruning point queries keep working for blocks right after the current
+                        // pruning point (keep_headers mostly contains the past pruning points)
+                        self.pruning_samples_store.delete_batch(&mut batch, current).unwrap();
                     }
                 }
 
