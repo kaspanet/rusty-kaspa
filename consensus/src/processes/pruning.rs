@@ -66,7 +66,7 @@ impl<
         assert!(finality_depth.after() % finality_depth.before() == 0);
         assert!(pruning_depth.before() <= pruning_depth.after());
 
-        // TODO: assert P is not multiple of F
+        // TODO (Crescendo): assert P is not multiple of F + noise(K)
 
         let pruning_samples_steps = pruning_depth.before().div_ceil(finality_depth.before());
         assert_eq!(pruning_samples_steps, pruning_depth.after().div_ceil(finality_depth.after()));
@@ -92,7 +92,7 @@ impl<
         hash: Option<Hash>,
     ) -> Hash {
         let v1 = self.expected_header_pruning_point_v1(ghostdag_data, pruning_info);
-        let v2 = self.expected_header_pruning_point_v2(ghostdag_data, pruning_info, hash);
+        let v2 = self.expected_header_pruning_point_v2(ghostdag_data, hash);
         // assert_eq!(v1, v2);
         if v1 != v2 {
             println!("{}, {}", &v1.to_string()[58..], &v2.to_string()[58..]);
@@ -104,38 +104,23 @@ impl<
         v2
     }
 
-    pub fn expected_header_pruning_point_v2(
-        &self,
-        ghostdag_data: CompactGhostdagData,
-        _pruning_info: PruningPointInfo,
-        hash: Option<Hash>,
-    ) -> Hash {
-        if ghostdag_data.selected_parent == self.genesis_hash {
-            if let Some(hash) = hash {
-                self.pruning_samples_store.lock().insert(hash, self.genesis_hash);
-            }
-            return self.genesis_hash;
-        }
-
+    pub fn expected_header_pruning_point_v2(&self, ghostdag_data: CompactGhostdagData, hash: Option<Hash>) -> Hash {
         let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
         let pruning_depth = self.pruning_depth.get(selected_parent_daa_score);
         let finality_depth = self.finality_depth.get(selected_parent_daa_score);
 
         let selected_parent_blue_score = self.headers_store.get_blue_score(ghostdag_data.selected_parent).unwrap();
-        let selected_parent_pruning_sample = self.pruning_samples_store.lock().get(&ghostdag_data.selected_parent).copied().unwrap();
-        let pruning_sample = if self
-            .finality_score(self.headers_store.get_blue_score(selected_parent_pruning_sample).unwrap(), finality_depth)
-            < self.finality_score(selected_parent_blue_score, finality_depth)
-        {
-            ghostdag_data.selected_parent
-        } else {
-            selected_parent_pruning_sample
-        };
+
+        let pruning_sample = self.calc_pruning_sample(ghostdag_data, finality_depth);
 
         if let Some(hash) = hash {
             self.pruning_samples_store.lock().insert(hash, pruning_sample);
         }
 
+        // TODO: fix 2nd arg naming
+        let is_self_pruning_sample = self.is_pruning_sample(ghostdag_data.blue_score, selected_parent_blue_score, finality_depth);
+        let selected_parent_pruning_point = self.headers_store.get_header(ghostdag_data.selected_parent).unwrap().pruning_point;
+        let mut steps = 1;
         let mut current = pruning_sample;
         let pruning_point = loop {
             if current == self.genesis_hash {
@@ -145,13 +130,71 @@ impl<
             if current_blue_score + pruning_depth <= ghostdag_data.blue_score {
                 break current;
             }
+            // For samples: special clamp for the period right after the fork
+            if is_self_pruning_sample && steps == self.pruning_samples_steps {
+                break current;
+            }
+            // For non samples: clamp to samples
+            if current == selected_parent_pruning_point {
+                break current;
+            }
             current = self.pruning_samples_store.lock().get(&current).copied().unwrap();
+            steps += 1;
         };
 
         pruning_point
     }
 
-    pub fn next_pruning_points_and_candidate_by_ghostdag_data(
+    pub fn calc_pruning_sample(&self, ghostdag_data: CompactGhostdagData, finality_depth: u64) -> Hash {
+        if ghostdag_data.selected_parent == self.genesis_hash {
+            return self.genesis_hash;
+        }
+
+        let selected_parent_blue_score = self.headers_store.get_blue_score(ghostdag_data.selected_parent).unwrap();
+        let selected_parent_pruning_sample = self.pruning_samples_store.lock().get(&ghostdag_data.selected_parent).copied().unwrap();
+        let selected_parent_pruning_sample_blue_score = self.headers_store.get_blue_score(selected_parent_pruning_sample).unwrap();
+
+        if self.is_pruning_sample(selected_parent_blue_score, selected_parent_pruning_sample_blue_score, finality_depth) {
+            ghostdag_data.selected_parent
+        } else {
+            selected_parent_pruning_sample
+        }
+    }
+
+    /// A block is a pruning sample *iff* its own finality score is larger than its pruning sample's finality score
+    fn is_pruning_sample(&self, self_blue_score: u64, pruning_sample_blue_score: u64, finality_depth: u64) -> bool {
+        self.finality_score(pruning_sample_blue_score, finality_depth) < self.finality_score(self_blue_score, finality_depth)
+    }
+
+    pub fn next_pruning_points(
+        &self,
+        ghostdag_data: CompactGhostdagData,
+        current_candidate: Hash,
+        current_pruning_point: Hash,
+    ) -> (Vec<Hash>, Hash) {
+        let v2 = self.next_pruning_points_v2(ghostdag_data, current_pruning_point);
+        let (v1, candidate) = self.next_pruning_points_v1(ghostdag_data, current_candidate, current_pruning_point);
+        assert_eq!(v1, v2);
+        (v2, candidate)
+    }
+
+    pub fn next_pruning_points_v2(&self, ghostdag_data: CompactGhostdagData, current_pruning_point: Hash) -> Vec<Hash> {
+        // Handle the edge case where sink is genesis
+        if ghostdag_data.selected_parent.is_origin() {
+            return vec![];
+        }
+        let mut deque = VecDeque::with_capacity(self.pruning_samples_steps as usize);
+
+        let mut current = self.expected_header_pruning_point_v2(ghostdag_data, None);
+        while current != current_pruning_point {
+            deque.push_front(current);
+            current = self.pruning_samples_store.lock().get(&current).copied().unwrap();
+        }
+
+        deque.into()
+    }
+
+    fn next_pruning_points_v1(
         &self,
         ghostdag_data: CompactGhostdagData,
         current_candidate: Hash,
@@ -164,13 +207,7 @@ impl<
         let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
         let pruning_depth = self.pruning_depth.get(selected_parent_daa_score);
         let finality_depth = self.finality_depth.get(selected_parent_daa_score);
-        self.next_pruning_points_and_candidate_by_ghostdag_data_inner(
-            ghostdag_data,
-            current_candidate,
-            current_pruning_point,
-            pruning_depth,
-            finality_depth,
-        )
+        self.next_pruning_points_v1_inner(ghostdag_data, current_candidate, current_pruning_point, pruning_depth, finality_depth)
     }
 
     /// Returns the next pruning points and an updated pruning point candidate given the current
@@ -183,7 +220,7 @@ impl<
     /// Assumptions: P ∈ chain(C), C ∈ chain(B), P and C have the same finality score
     ///
     /// Returns: new pruning points ordered from bottom up and an updated candidate
-    fn next_pruning_points_and_candidate_by_ghostdag_data_inner(
+    fn next_pruning_points_v1_inner(
         &self,
         ghostdag_data: CompactGhostdagData,
         current_candidate: Hash,
@@ -255,7 +292,7 @@ impl<
         blue_score / finality_depth
     }
 
-    fn expected_header_pruning_point_inner(
+    fn expected_header_pruning_point_v1_inner(
         &self,
         ghostdag_data: CompactGhostdagData,
         current_candidate: Hash,
@@ -263,18 +300,11 @@ impl<
         pruning_depth: u64,
         finality_depth: u64,
     ) -> Hash {
-        self.next_pruning_points_and_candidate_by_ghostdag_data_inner(
-            ghostdag_data,
-            current_candidate,
-            current_pruning_point,
-            pruning_depth,
-            finality_depth,
-        )
-        .0
-        .iter()
-        .last()
-        .copied()
-        .unwrap_or(current_pruning_point)
+        self.next_pruning_points_v1_inner(ghostdag_data, current_candidate, current_pruning_point, pruning_depth, finality_depth)
+            .0
+            .last()
+            .copied()
+            .unwrap_or(current_pruning_point)
     }
 
     pub fn expected_header_pruning_point_v1(&self, ghostdag_data: CompactGhostdagData, pruning_info: PruningPointInfo) -> Hash {
@@ -338,7 +368,7 @@ impl<
                 (current_pruning_point, current_pruning_point)
             };
 
-            self.expected_header_pruning_point_inner(ghostdag_data, cc, pp, pruning_depth, finality_depth)
+            self.expected_header_pruning_point_v1_inner(ghostdag_data, cc, pp, pruning_depth, finality_depth)
         } else {
             sp_pp
         };
