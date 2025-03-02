@@ -94,7 +94,7 @@ impl<
         }
     }
 
-    pub fn expected_header_pruning_point__(&self, ghostdag_data: CompactGhostdagData, _pruning_info: PruningPointInfo) -> Hash {
+    fn __expected_header_pruning_point(&self, ghostdag_data: CompactGhostdagData, _pruning_info: PruningPointInfo) -> Hash {
         // let v1 = self.expected_header_pruning_point_v1(ghostdag_data, pruning_info);
         // let v2 = self.expected_header_pruning_point_v2(ghostdag_data, hash);
         // assert_eq!(v1, v2);
@@ -185,7 +185,7 @@ impl<
         }
     }
 
-    pub fn next_pruning_points_v2(&self, ghostdag_data: CompactGhostdagData, current_pruning_point: Hash) -> Vec<Hash> {
+    fn next_pruning_points_v2(&self, ghostdag_data: CompactGhostdagData, current_pruning_point: Hash) -> Vec<Hash> {
         let mut deque = VecDeque::with_capacity(self.pruning_samples_steps as usize);
 
         let mut current = self.expected_header_pruning_point_v2(ghostdag_data).pruning_point;
