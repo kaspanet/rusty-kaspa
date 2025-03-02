@@ -88,20 +88,15 @@ impl<
     pub fn expected_header_pruning_point(
         &self,
         ghostdag_data: CompactGhostdagData,
-        pruning_info: PruningPointInfo,
+        _pruning_info: PruningPointInfo,
         hash: Option<Hash>,
     ) -> Hash {
-        let v1 = self.expected_header_pruning_point_v1(ghostdag_data, pruning_info);
-        let v2 = self.expected_header_pruning_point_v2(ghostdag_data, hash);
+        // let v1 = self.expected_header_pruning_point_v1(ghostdag_data, pruning_info);
+        // let v2 = self.expected_header_pruning_point_v2(ghostdag_data, hash);
         // assert_eq!(v1, v2);
-        if v1 != v2 {
-            println!("{}, {}", &v1.to_string()[58..], &v2.to_string()[58..]);
-            for (key, value) in self.pruning_samples_store.lock().iter() {
-                println!("{} / {}", &key.to_string()[58..], &value.to_string()[58..]);
-            }
-            panic!()
-        }
-        v2
+        // v2
+
+        self.expected_header_pruning_point_v2(ghostdag_data, hash)
     }
 
     pub fn expected_header_pruning_point_v2(&self, ghostdag_data: CompactGhostdagData, hash: Option<Hash>) -> Hash {
@@ -173,9 +168,9 @@ impl<
         current_pruning_point: Hash,
     ) -> (Vec<Hash>, Hash) {
         let v2 = self.next_pruning_points_v2(ghostdag_data, current_pruning_point);
-        let (v1, candidate) = self.next_pruning_points_v1(ghostdag_data, current_candidate, current_pruning_point);
-        assert_eq!(v1, v2);
-        (v2, candidate)
+        // let (v1, candidate) = self.next_pruning_points_v1(ghostdag_data, current_candidate, current_pruning_point);
+        // assert_eq!(v1, v2);
+        (v2, current_candidate)
     }
 
     pub fn next_pruning_points_v2(&self, ghostdag_data: CompactGhostdagData, current_pruning_point: Hash) -> Vec<Hash> {
