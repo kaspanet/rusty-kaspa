@@ -1032,7 +1032,7 @@ impl VirtualStateProcessor {
         let _prune_guard = self.pruning_lock.blocking_read();
         let pruning_info = self.pruning_point_store.read().get().unwrap();
         let header_pruning_point =
-            self.pruning_point_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info);
+            self.pruning_point_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info, None);
         let coinbase = self
             .coinbase_manager
             .expected_coinbase_transaction(

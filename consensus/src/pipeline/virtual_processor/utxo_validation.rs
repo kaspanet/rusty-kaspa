@@ -253,9 +253,11 @@ impl VirtualStateProcessor {
                 self.crescendo_logger.report_activation();
             }
             let pruning_info = self.pruning_point_store.read().get().unwrap();
-            let expected = self
-                .pruning_point_manager
-                .expected_header_pruning_point(self.ghostdag_store.get_compact_data(header.hash).unwrap(), pruning_info);
+            let expected = self.pruning_point_manager.expected_header_pruning_point(
+                self.ghostdag_store.get_compact_data(header.hash).unwrap(),
+                pruning_info,
+                Some(header.hash),
+            );
             if expected != header.pruning_point {
                 return Err(WrongHeaderPruningPoint(expected, header.pruning_point));
             }
