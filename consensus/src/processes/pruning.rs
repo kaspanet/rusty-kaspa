@@ -106,7 +106,19 @@ impl<
 
         let selected_parent_blue_score = self.headers_store.get_blue_score(ghostdag_data.selected_parent).unwrap();
 
-        let pruning_sample = self.calc_pruning_sample(ghostdag_data, finality_depth);
+        let pruning_sample = if ghostdag_data.selected_parent == self.genesis_hash {
+            self.genesis_hash
+        } else {
+            let selected_parent_pruning_sample =
+                self.pruning_samples_store.lock().get(&ghostdag_data.selected_parent).copied().unwrap();
+            let selected_parent_pruning_sample_blue_score = self.headers_store.get_blue_score(selected_parent_pruning_sample).unwrap();
+
+            if self.is_pruning_sample(selected_parent_blue_score, selected_parent_pruning_sample_blue_score, finality_depth) {
+                ghostdag_data.selected_parent
+            } else {
+                selected_parent_pruning_sample
+            }
+        };
 
         if let Some(hash) = hash {
             self.pruning_samples_store.lock().insert(hash, pruning_sample);
@@ -138,22 +150,6 @@ impl<
         };
 
         pruning_point
-    }
-
-    pub fn calc_pruning_sample(&self, ghostdag_data: CompactGhostdagData, finality_depth: u64) -> Hash {
-        if ghostdag_data.selected_parent == self.genesis_hash {
-            return self.genesis_hash;
-        }
-
-        let selected_parent_blue_score = self.headers_store.get_blue_score(ghostdag_data.selected_parent).unwrap();
-        let selected_parent_pruning_sample = self.pruning_samples_store.lock().get(&ghostdag_data.selected_parent).copied().unwrap();
-        let selected_parent_pruning_sample_blue_score = self.headers_store.get_blue_score(selected_parent_pruning_sample).unwrap();
-
-        if self.is_pruning_sample(selected_parent_blue_score, selected_parent_pruning_sample_blue_score, finality_depth) {
-            ghostdag_data.selected_parent
-        } else {
-            selected_parent_pruning_sample
-        }
     }
 
     /// A block is a pruning sample *iff* its own finality score is larger than its pruning sample's finality score
