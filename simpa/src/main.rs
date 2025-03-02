@@ -256,6 +256,10 @@ fn main_impl(mut args: Args) {
     };
 
     if args.test_pruning {
+        let hashes = topologically_ordered_hashes(&consensus, consensus.pruning_point());
+        let num_blocks = hashes.len();
+        let num_txs = print_stats(&consensus, &hashes, args.delay, args.bps, config.ghostdag_k().before());
+        info!("There are {num_blocks} blocks with {num_txs} transactions overall above the current pruning point");
         consensus.validate_pruning_points(consensus.get_sink()).unwrap();
         drop(consensus);
         return;
