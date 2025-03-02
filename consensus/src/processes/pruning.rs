@@ -145,6 +145,7 @@ impl<
             }
             // For non samples: clamp to samples
             if current == selected_parent_pruning_point {
+                self.log_post_activation(ghostdag_data, selected_parent_daa_score, current_blue_score);
                 break current;
             }
             current = self.pruning_samples_store.pruning_sample_from_pov(current).unwrap();
@@ -152,6 +153,19 @@ impl<
         };
 
         PruningPointReply { pruning_sample, pruning_point }
+    }
+
+    fn log_post_activation(&self, ghostdag_data: CompactGhostdagData, selected_parent_daa_score: u64, current_blue_score: u64) {
+        if self.pruning_depth.activation().is_active(selected_parent_daa_score)
+            && ghostdag_data.blue_score.saturating_sub(current_blue_score) < self.pruning_depth.after()
+            && CoinFlip::new(1.0 / 1000.0).flip()
+        {
+            warn!(
+                "[Crescendo] Pruning depth increasing post activation: {} (target: {})",
+                ghostdag_data.blue_score.saturating_sub(current_blue_score),
+                self.pruning_depth.after()
+            );
+        }
     }
 
     /// A block is a pruning sample *iff* its own finality score is larger than its pruning sample
@@ -374,18 +388,7 @@ impl<
 
         // [Crescendo]: shortly after fork activation, R is not guaranteed to comply with the new
         // increased pruning depth, so we must manually verify not to go below it
-        // TODO:
         if sp_pp_blue_score >= self.headers_store.get_blue_score(next_or_current_pp).unwrap() {
-            if self.pruning_depth.activation().is_active(selected_parent_daa_score)
-                && ghostdag_data.blue_score.saturating_sub(sp_pp_blue_score) < self.pruning_depth.after()
-                && CoinFlip::new(1.0 / 1000.0).flip()
-            {
-                warn!(
-                    "[Crescendo] Pruning depth increasing post activation: {} (target: {})",
-                    ghostdag_data.blue_score.saturating_sub(sp_pp_blue_score),
-                    self.pruning_depth.after()
-                );
-            }
             return sp_pp;
         }
 
