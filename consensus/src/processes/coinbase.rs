@@ -246,8 +246,10 @@ impl CoinbaseManager {
     /// Note that this function is called only if daa_score >= self.deflationary_phase_daa_score
     fn subsidy_month(&self, daa_score: u64) -> u64 {
         let seconds_since_deflationary_phase_started = if self.crescendo_activation_daa_score < self.deflationary_phase_daa_score {
+            // crescendo_activation < deflationary_phase <= daa_score (activated before deflation)
             (daa_score - self.deflationary_phase_daa_score) / self.bps.after()
         } else if daa_score < self.crescendo_activation_daa_score {
+            // deflationary_phase <= daa_score < crescendo_activation (pre activation)
             (daa_score - self.deflationary_phase_daa_score) / self.bps.before()
         } else {
             // Else - deflationary_phase <= crescendo_activation <= daa_score.
@@ -309,16 +311,14 @@ mod tests {
     use super::*;
     use crate::params::MAINNET_PARAMS;
     use kaspa_consensus_core::{
-        config::params::{Params, SIMNET_PARAMS},
+        config::params::{ForkActivation, Params, SIMNET_PARAMS},
         constants::SOMPI_PER_KASPA,
-        network::NetworkId,
+        network::{NetworkId, NetworkType},
         tx::scriptvec,
     };
 
     #[test]
     fn calc_high_bps_total_rewards_delta() {
-        const SECONDS_PER_MONTH: u64 = 2629800;
-
         let legacy_cbm = create_legacy_manager();
         let pre_deflationary_rewards = legacy_cbm.pre_deflationary_phase_base_subsidy * legacy_cbm.deflationary_phase_daa_score;
         let total_rewards: u64 = pre_deflationary_rewards + SUBSIDY_BY_MONTH_TABLE.iter().map(|x| x * SECONDS_PER_MONTH).sum::<u64>();
@@ -364,6 +364,63 @@ mod tests {
                 );
             });
         }
+    }
+
+    /// Takes over 60 seconds, run with the following command line:
+    /// `cargo test --release --package kaspa-consensus --lib -- processes::coinbase::tests::verify_crescendo_emission_schedule --exact --nocapture --ignored`
+    #[test]
+    #[ignore = "long"]
+    fn verify_crescendo_emission_schedule() {
+        // No need to loop over all nets since the relevant params are only
+        // deflation and activation DAA scores (and the test is long anyway)
+        for network_id in [NetworkId::new(NetworkType::Mainnet)] {
+            let mut params: Params = network_id.into();
+            params.crescendo_activation = ForkActivation::never();
+            let cbm = create_manager(&params);
+            let (baseline_epochs, baseline_total) = calculate_emission(cbm);
+
+            // Loop over a few random activation points
+            for activation in [10000, 33444444, 120727479] {
+                params.crescendo_activation = ForkActivation::new(activation);
+                let cbm = create_manager(&params);
+                let (new_epochs, new_total) = calculate_emission(cbm);
+
+                // Epochs only represents the number of times the subsidy changed (lower after activation due to rounding)
+                println!("BASELINE:\t{}\tepochs, total emission: {}", baseline_epochs, baseline_total);
+                println!("CRESCENDO:\t{}\tepochs, total emission: {}", new_epochs, new_total);
+
+                let diff = (new_total as i64 - baseline_total as i64) / SOMPI_PER_KASPA as i64;
+                assert!(diff.abs() <= 51);
+                println!("DIFF (KAS): {}", diff);
+            }
+        }
+    }
+
+    fn calculate_emission(cbm: CoinbaseManager) -> (u64, u64) {
+        let activation = cbm.bps().activation().daa_score();
+        let mut current = 0;
+        let mut total = 0;
+        let mut epoch = 0u64;
+        let mut prev = cbm.calc_block_subsidy(0);
+        loop {
+            let subsidy = cbm.calc_block_subsidy(current);
+            // Pre activation we expect the legacy calc (1bps)
+            if current < activation {
+                assert_eq!(cbm.legacy_calc_block_subsidy(current), subsidy);
+            }
+            if subsidy == 0 {
+                break;
+            }
+            total += subsidy;
+            if subsidy != prev {
+                println!("epoch: {}, subsidy: {}", epoch, subsidy);
+                prev = subsidy;
+                epoch += 1;
+            }
+            current += 1;
+        }
+
+        (epoch, total)
     }
 
     #[test]
