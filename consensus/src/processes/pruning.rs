@@ -207,7 +207,9 @@ impl<
         let selected_parent_daa_score = self.headers_store.get_daa_score(sink_ghostdag.selected_parent).unwrap();
         if self.pruning_depth.activation().is_active(selected_parent_daa_score) {
             let v2 = self.next_pruning_points_v2(sink_ghostdag, selected_parent_daa_score, current_pruning_point);
-            (v2, current_candidate)
+            // Keep the candidate valid also post activation just in case it's still used by v1 calls
+            let candidate = v2.last().copied().unwrap_or(current_candidate);
+            (v2, candidate)
         } else {
             let (v1, candidate) = self.next_pruning_points_v1(sink_ghostdag, current_candidate, current_pruning_point);
             // [Crescendo]: sanity check that v2 logic pre activation is equivalent to v1
