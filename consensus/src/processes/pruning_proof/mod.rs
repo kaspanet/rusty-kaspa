@@ -17,7 +17,10 @@ use rocksdb::WriteBatch;
 use kaspa_consensus_core::{
     blockhash::{self, BlockHashExtensions},
     config::params::ForkedParam,
-    errors::consensus::{ConsensusError, ConsensusResult},
+    errors::{
+        consensus::{ConsensusError, ConsensusResult},
+        pruning::{PruningImportError, PruningImportResult},
+    },
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::{TrustedGhostdagData, TrustedHeader},
@@ -43,6 +46,7 @@ use crate::{
             headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
             pruning::{DbPruningStore, PruningStoreReader},
+            pruning_samples::{DbPruningSamplesStore, PruningSamplesStore},
             reachability::DbReachabilityStore,
             relations::{DbRelationsStore, RelationsStoreReader},
             selected_chain::DbSelectedChainStore,
@@ -110,6 +114,7 @@ pub struct PruningProofManager {
     headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     depth_store: Arc<DbDepthStore>,
     selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
+    pruning_samples_store: Arc<DbPruningSamplesStore>,
 
     ghostdag_manager: DbGhostdagManager,
     traversal_manager: DbDagTraversalManager,
@@ -160,6 +165,7 @@ impl PruningProofManager {
             headers_selected_tip_store: storage.headers_selected_tip_store.clone(),
             selected_chain_store: storage.selected_chain_store.clone(),
             depth_store: storage.depth_store.clone(),
+            pruning_samples_store: storage.pruning_samples_store.clone(),
 
             traversal_manager,
             window_manager,
@@ -183,9 +189,26 @@ impl PruningProofManager {
         }
     }
 
-    pub fn import_pruning_points(&self, pruning_points: &[Arc<Header>]) {
+    pub fn import_pruning_points(&self, pruning_points: &[Arc<Header>]) -> PruningImportResult<()> {
+        let unique_count = pruning_points.iter().map(|h| h.hash).unique().count();
+        if unique_count < pruning_points.len() {
+            return Err(PruningImportError::DuplicatedPastPruningPoints(pruning_points.len() - unique_count));
+        }
         for (i, header) in pruning_points.iter().enumerate() {
             self.past_pruning_points_store.set(i as u64, header.hash).unwrap();
+
+            if i > 0 {
+                let prev_blue_score = pruning_points[i - 1].blue_score;
+                // This is a sufficient condition for running expected pruning point algo (v2)
+                // over blocks B s.t. pruning point ∈ chain(B) w/o a risk of not converging
+                if prev_blue_score >= header.blue_score {
+                    return Err(PruningImportError::InconsistentPastPruningPoints(i - 1, i, prev_blue_score, header.blue_score));
+                }
+                // Store the i-1 pruning point as the last pruning sample from POV of the i'th pruning point.
+                // If this data is inconsistent, then blocks above the pruning point will fail the expected
+                // pruning point validation performed at are_pruning_points_in_valid_chain
+                self.pruning_samples_store.insert(header.hash, pruning_points[i - 1].hash).unwrap();
+            }
 
             if self.headers_store.has(header.hash).unwrap() {
                 continue;
@@ -204,6 +227,8 @@ impl PruningProofManager {
         pruning_point_write.set_history_root(&mut batch, new_pruning_point).unwrap();
         self.db.write(batch).unwrap();
         drop(pruning_point_write);
+
+        Ok(())
     }
 
     // Used in apply and validate

@@ -991,7 +991,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
             gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
         let pruning_point = past_pruning_points.last().unwrap().hash;
 
-        tc.import_pruning_points(past_pruning_points);
+        tc.import_pruning_points(past_pruning_points).unwrap();
 
         info!("Processing {} trusted blocks...", trusted_blocks.len());
         for tb in trusted_blocks.into_iter() {
