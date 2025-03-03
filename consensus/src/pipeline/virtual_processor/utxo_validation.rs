@@ -374,7 +374,9 @@ impl VirtualStateProcessor {
         match res {
             Ok(calculated_fee) => Ok(ValidatedTransaction::new(populated_tx, calculated_fee)),
             Err(tx_rule_error) => {
-                // TODO (Crescendo): aggregate
+                // TODO (relaxed): aggregate by error types and log through the monitor (in order to not flood the logs)
+                // [Crescendo]: the above suggested aggregate seems not crucial for crescendo since unupdated miners
+                // will mine invalid blocks (due to difficulty, coinbase etc)
                 info!("Rejecting transaction {} due to transaction rule error: {}", transaction.id(), tx_rule_error);
                 Err(tx_rule_error)
             }
