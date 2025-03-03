@@ -238,7 +238,7 @@ impl VirtualStateProcessor {
             pruning_lock,
             notification_root,
             counters,
-            crescendo_logger: CrescendoLogger::new(params.crescendo_activation),
+            crescendo_logger: CrescendoLogger::new(),
             crescendo_activation: params.crescendo_activation,
         }
     }

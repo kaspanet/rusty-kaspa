@@ -45,7 +45,6 @@ use smallvec::{smallvec, SmallVec};
 use std::{iter::once, ops::Deref};
 
 pub(crate) mod crescendo {
-    use kaspa_consensus_core::config::params::ForkActivation;
     use kaspa_core::warn;
     use std::sync::{
         atomic::{AtomicU8, Ordering},
@@ -55,12 +54,11 @@ pub(crate) mod crescendo {
     #[derive(Clone)]
     pub(crate) struct CrescendoLogger {
         steps: Arc<AtomicU8>,
-        activation: ForkActivation,
     }
 
     impl CrescendoLogger {
-        pub fn new(activation: ForkActivation) -> Self {
-            Self { steps: Arc::new(AtomicU8::new(Self::ACTIVATE)), activation }
+        pub fn new() -> Self {
+            Self { steps: Arc::new(AtomicU8::new(Self::ACTIVATE)) }
         }
 
         const ACTIVATE: u8 = 0;

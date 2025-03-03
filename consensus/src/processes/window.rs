@@ -8,10 +8,10 @@ use crate::{
     processes::ghostdag::ordering::SortableBlock,
 };
 use kaspa_consensus_core::{
-    blockhash::BlockHashExtensions,
+    blockhash::{BlockHashExtensions, ORIGIN},
     config::{genesis::GenesisBlock, params::ForkActivation},
     errors::{block::RuleError, difficulty::DifficultyResult},
-    BlockHashSet, BlueWorkType,
+    BlockHashSet, BlueWorkType, HashMapCustomHasher,
 };
 use kaspa_core::warn;
 use kaspa_hashes::Hash;
@@ -658,7 +658,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
     fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
         let window = self.block_window(ghostdag_data, WindowType::MedianTimeWindow)?;
         if window.len() < self.past_median_time_window_size && CoinFlip::default().flip() {
-            warn!("[Crescendo] MDT window increasing post activation: {}", window.len());
+            warn!(
+                "[Crescendo] MDT window increasing post activation: {} (target: {})",
+                window.len(),
+                self.past_median_time_window_size
+            );
         }
         let past_median_time = self.past_median_time_manager.calc_past_median_time(&window, ghostdag_data.selected_parent)?;
         Ok((past_median_time, window))
@@ -708,7 +712,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         let mut unvisited: BlockHashSet = window.iter().map(|b| b.0.hash).collect();
         let capacity_estimate = window.len() * self.difficulty_sample_rate as usize;
         // The full consecutive window covering all sampled window blocks and the full mergesets containing them
-        let mut cover = Vec::with_capacity(capacity_estimate);
+        let mut cover = BlockHashSet::with_capacity(capacity_estimate);
         while !unvisited.is_empty() {
             assert!(!ghostdag.selected_parent.is_origin(), "unvisited still not empty");
             // TODO (relaxed): a possible optimization here is to iterate in the same order as
@@ -719,15 +723,12 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             // * What's the benefit? This might exclude deeply merged blocks which in turn will help
             //                       reducing the number of trusted blocks sent to a fresh syncing peer.
             for merged in ghostdag.unordered_mergeset() {
-                cover.push(merged);
+                cover.insert(merged);
                 if unvisited.remove(&merged) {
                     // [Crescendo]: for each block in the original window save its selected parent as well
                     // since it is required for checking whether the block was activated (when building the
                     // window by the syncee or when rebuilding following pruning)
-                    let sp = self.ghostdag_store.get_selected_parent(merged).unwrap();
-                    if !sp.is_origin() {
-                        cover.push(sp);
-                    }
+                    cover.insert(self.ghostdag_store.get_selected_parent(merged).unwrap());
                 }
             }
             if unvisited.is_empty() {
@@ -735,7 +736,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             }
             ghostdag = self.ghostdag_store.get_data(ghostdag.selected_parent).unwrap();
         }
-        cover
+        cover.remove(&ORIGIN); // remove origin just in case it was inserted as a selected parent of some block/s
+        cover.into_iter().collect()
     }
 }
 

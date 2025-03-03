@@ -171,12 +171,11 @@ impl<T: HeaderStoreReader> DifficultyManagerExtension for FullDifficultyManager<
 #[derive(Clone)]
 struct CrescendoLogger {
     steps: Arc<AtomicU8>,
-    activation: ForkActivation,
 }
 
 impl CrescendoLogger {
-    fn new(activation: ForkActivation) -> Self {
-        Self { steps: Arc::new(AtomicU8::new(Self::ACTIVATE)), activation }
+    fn new() -> Self {
+        Self { steps: Arc::new(AtomicU8::new(Self::ACTIVATE)) }
     }
 
     const ACTIVATE: u8 = 0;
@@ -281,7 +280,7 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
             prior_target_time_per_block,
             target_time_per_block,
             crescendo_activation,
-            crescendo_logger: CrescendoLogger::new(crescendo_activation),
+            crescendo_logger: CrescendoLogger::new(),
         }
     }
 
@@ -322,8 +321,6 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
     }
 
     pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap, ghostdag_data: &GhostdagData) -> u32 {
-        // Note: this fn is duplicated (almost, see `* self.difficulty_sample_rate`) in Full and Sampled structs
-        // so some alternate calculation can be investigated here.
         let mut difficulty_blocks = self.get_difficulty_blocks(window);
 
         // Until there are enough blocks for a valid calculation the difficulty should remain constant.
@@ -345,7 +342,7 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
                 // In this case we simply take the selected parent bits as is
                 return bits;
             } else {
-                // This indicates we are at the first blocks post activation (i.e., all parents were not activated).
+                // This indicates we are at the first blocks post activation (i.e., the selected parent was not activated).
                 // We use the selected parent target difficulty as baseline and scale it by the target_time_per_block ratio change
                 let target = Uint320::from(Uint256::from_compact_target_bits(bits));
                 let scaled_target = target * self.prior_target_time_per_block / self.target_time_per_block;
@@ -393,7 +390,11 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
                 );
             }
             if CoinFlip::default().flip() {
-                warn!("[Crescendo] DAA window increasing post activation: {}", difficulty_blocks_len + 1);
+                warn!(
+                    "[Crescendo] DAA window increasing post activation: {} (target: {})",
+                    difficulty_blocks_len + 1,
+                    self.difficulty_window_size
+                );
             }
         }
 

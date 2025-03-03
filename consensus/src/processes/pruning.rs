@@ -472,7 +472,7 @@ impl<
 
         let tip_bs = self.ghostdag_store.get_blue_score(tip).unwrap();
         // [Crescendo]: for new nodes syncing right after the fork, it might be difficult to determine whether the
-        // full new pruning depth is expected, so we use the DAA score of the pruning point itself as an indicator.
+        // new pruning depth is expected, so we use the DAA score of the pruning point itself as an indicator.
         // This means that in the first few days following the fork we err on the side of a shorter period which is
         // a weaker requirement
         let pruning_depth = self.pruning_depth.get(self.headers_store.get_daa_score(pp_candidate).unwrap());

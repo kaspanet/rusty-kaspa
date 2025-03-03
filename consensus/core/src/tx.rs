@@ -176,6 +176,7 @@ pub struct Transaction {
     pub payload: Vec<u8>,
 
     /// Holds a commitment to the storage mass (KIP-0009)
+    /// TODO: rename field and related methods to storage_mass
     #[serde(default)]
     mass: TransactionMass,
 
