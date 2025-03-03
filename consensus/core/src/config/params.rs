@@ -580,6 +580,8 @@ pub const TESTNET_PARAMS: Params = Params {
         "dnsseeder-kaspa-testnet.x-con.at",
         // This DNS seeder is run by H@H
         "ns-testnet10.kaspa-dnsseeder.net",
+        // This DNS seeder is run by supertypo
+        "n-testnet-10.kaspa.ws",
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 10),
     genesis: TESTNET_GENESIS,
