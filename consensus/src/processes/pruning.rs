@@ -146,7 +146,6 @@ impl<
             }
             // For non samples: clamp to samples
             if current == selected_parent_pruning_point {
-                self.log_post_activation(ghostdag_data, selected_parent_daa_score, current_blue_score);
                 break current;
             }
             current = self.pruning_samples_store.pruning_sample_from_pov(current).unwrap();
@@ -156,14 +155,19 @@ impl<
         PruningPointReply { pruning_sample, pruning_point }
     }
 
-    fn log_post_activation(&self, ghostdag_data: CompactGhostdagData, selected_parent_daa_score: u64, current_blue_score: u64) {
+    fn log_pruning_depth_post_activation(
+        &self,
+        ghostdag_data: CompactGhostdagData,
+        selected_parent_daa_score: u64,
+        pruning_point_blue_score: u64,
+    ) {
         if self.pruning_depth.activation().is_active(selected_parent_daa_score)
-            && ghostdag_data.blue_score.saturating_sub(current_blue_score) < self.pruning_depth.after()
+            && ghostdag_data.blue_score.saturating_sub(pruning_point_blue_score) < self.pruning_depth.after()
             && CoinFlip::new(1.0 / 1000.0).flip()
         {
             warn!(
                 "[Crescendo] Pruning depth increasing post activation: {} (target: {})",
-                ghostdag_data.blue_score.saturating_sub(current_blue_score),
+                ghostdag_data.blue_score.saturating_sub(pruning_point_blue_score),
                 self.pruning_depth.after()
             );
         }
@@ -180,22 +184,22 @@ impl<
 
     pub fn next_pruning_points(
         &self,
-        ghostdag_data: CompactGhostdagData,
+        sink_ghostdag: CompactGhostdagData,
         current_candidate: Hash,
         current_pruning_point: Hash,
     ) -> (Vec<Hash>, Hash) {
-        if ghostdag_data.selected_parent.is_origin() {
+        if sink_ghostdag.selected_parent.is_origin() {
             // This only happens when sink is genesis
             return (vec![], current_candidate);
         }
-        let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
-        let pruning_depth = self.pruning_depth.get(selected_parent_daa_score);
+        let selected_parent_daa_score = self.headers_store.get_daa_score(sink_ghostdag.selected_parent).unwrap();
         if self.pruning_depth.activation().is_active(selected_parent_daa_score) {
-            let v2 = self.next_pruning_points_v2(ghostdag_data, current_pruning_point, pruning_depth);
+            let v2 = self.next_pruning_points_v2(sink_ghostdag, selected_parent_daa_score, current_pruning_point);
             (v2, current_candidate)
         } else {
-            let (v1, candidate) = self.next_pruning_points_v1(ghostdag_data, current_candidate, current_pruning_point);
-            let v2 = self.next_pruning_points_v2(ghostdag_data, current_pruning_point, pruning_depth);
+            let (v1, candidate) = self.next_pruning_points_v1(sink_ghostdag, current_candidate, current_pruning_point);
+            // [Crescendo]: sanity check that v2 logic pre activation is equivalent to v1
+            let v2 = self.next_pruning_points_v2(sink_ghostdag, selected_parent_daa_score, current_pruning_point);
             assert_eq!(v1, v2);
             (v1, candidate)
         }
@@ -203,30 +207,34 @@ impl<
 
     fn next_pruning_points_v2(
         &self,
-        ghostdag_data: CompactGhostdagData,
+        sink_ghostdag: CompactGhostdagData,
+        selected_parent_daa_score: u64,
         current_pruning_point: Hash,
-        pruning_depth: u64,
     ) -> Vec<Hash> {
         let current_pruning_point_blue_score = self.ghostdag_store.get_blue_score(current_pruning_point).unwrap();
+
         // Sanity check #1
-        if current_pruning_point_blue_score + pruning_depth > ghostdag_data.blue_score {
-            // The pruning point is not in depth of self.pruning_depth, so there's
-            // no point in checking if it is required to update it. This can happen
-            // because virtual is not immediately updated during IBD, so the pruning point
-            // might be in depth which is less than pruning_depth
+        if current_pruning_point_blue_score + self.pruning_depth.lower_bound() > sink_ghostdag.blue_score {
+            // During initial IBD the sink can be close to the global pruning point.
+            // We use min(P, P') here and rely on sanity check #2 for post activation edge cases
             return vec![];
         }
 
-        let mut deque = VecDeque::with_capacity(self.pruning_samples_steps as usize);
-
-        let sink_pruning_point = self.expected_header_pruning_point_v2(ghostdag_data).pruning_point;
+        let sink_pruning_point = self.expected_header_pruning_point_v2(sink_ghostdag).pruning_point;
         let sink_pruning_point_blue_score = self.ghostdag_store.get_blue_score(sink_pruning_point).unwrap();
+
+        // Log the current pruning depth if it has not reached P' yet
+        self.log_pruning_depth_post_activation(sink_ghostdag, selected_parent_daa_score, sink_pruning_point_blue_score);
+
         // Sanity check #2: if the sink pruning point is lower or equal to current, there is no need to search
         if sink_pruning_point_blue_score <= current_pruning_point_blue_score {
             return vec![];
         }
 
         let mut current = sink_pruning_point;
+        let mut deque = VecDeque::with_capacity(self.pruning_samples_steps as usize);
+        // At this point we have verified that sink_pruning_point is a chain block above current_pruning_point
+        // (by comparing blue score) so we know the loop must eventually exit correctly
         while current != current_pruning_point {
             deque.push_front(current);
             current = self.pruning_samples_store.pruning_sample_from_pov(current).unwrap();
