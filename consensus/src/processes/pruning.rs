@@ -37,8 +37,14 @@ pub struct PruningPointManager<
     W: HeadersSelectedTipStoreReader,
     Y: PruningSamplesStore,
 > {
+    /// Forked pruning depth param. Throughout this file we use P, P' to indicate the pre, post activation depths respectively
     pruning_depth: ForkedParam<u64>,
+
+    /// Forked finality depth param. Throughout this file we use F, F' to indicate the pre, post activation depths respectively.
+    /// Note that this quantity represents here the interval between pruning point samples and is not tightly coupled with the
+    /// actual concept of finality as used by virtual processor to reject deep reorgs   
     finality_depth: ForkedParam<u64>,
+
     genesis_hash: Hash,
 
     reachability_service: MTReachabilityService<T>,
@@ -48,7 +54,7 @@ pub struct PruningPointManager<
     header_selected_tip_store: Arc<RwLock<W>>,
     pruning_samples_store: Arc<Y>,
 
-    /// The number of hopes to go through pruning samples in order to get the pruning point of a sample
+    /// The number of hops to go through pruning samples in order to get the pruning point of a sample
     pruning_samples_steps: u64,
 }
 
@@ -95,16 +101,22 @@ impl<
         }
     }
 
-    fn __expected_header_pruning_point(&self, ghostdag_data: CompactGhostdagData, _pruning_info: PruningPointInfo) -> Hash {
-        // let v1 = self.expected_header_pruning_point_v1(ghostdag_data, pruning_info);
-        // let v2 = self.expected_header_pruning_point_v2(ghostdag_data, hash);
-        // assert_eq!(v1, v2);
-        // v2
-
-        self.expected_header_pruning_point_v2(ghostdag_data).pruning_point
-    }
-
+    /// The new method for calculating the expected pruning point from some POV (header/virtual) using the new
+    /// pruning samples store. Except for edge cases during fork transition, this method is expected to retain
+    /// the exact semantics of current rules (v1).
+    ///
+    /// Let B denote the current block (represented by `ghostdag_data`)
+    /// Assumptions:
+    ///     1. Unlike v1 this method assumes that the current global pruning point is on B's chain, which
+    ///        is why it should be called only for chain candidates / sink / virtual
+    ///     2. All chain ancestors of B up to the pruning point are expected to have a
+    ///        `pruning_sample_from_pov` store entry    
     pub fn expected_header_pruning_point_v2(&self, ghostdag_data: CompactGhostdagData) -> PruningPointReply {
+        //
+        // Note that past pruning samples are only assumed to have a header store entry and a pruning sample
+        // store entry, se we only use these stores here (and specifically do not use the ghostdag store)
+        //
+
         let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
         let pruning_depth = self.pruning_depth.get(selected_parent_daa_score);
         let finality_depth = self.finality_depth.get(selected_parent_daa_score);
@@ -136,7 +148,7 @@ impl<
                 break current;
             }
             let current_blue_score = self.headers_store.get_blue_score(current).unwrap();
-            // Find the most recent sample with P depth
+            // Find the most recent sample with pruning depth
             if current_blue_score + pruning_depth <= ghostdag_data.blue_score {
                 break current;
             }
@@ -211,9 +223,9 @@ impl<
         selected_parent_daa_score: u64,
         current_pruning_point: Hash,
     ) -> Vec<Hash> {
-        let current_pruning_point_blue_score = self.ghostdag_store.get_blue_score(current_pruning_point).unwrap();
+        let current_pruning_point_blue_score = self.headers_store.get_blue_score(current_pruning_point).unwrap();
 
-        // Sanity check #1
+        // Sanity check #1: global pruning point depth from sink >= min(P, P')
         if current_pruning_point_blue_score + self.pruning_depth.lower_bound() > sink_ghostdag.blue_score {
             // During initial IBD the sink can be close to the global pruning point.
             // We use min(P, P') here and rely on sanity check #2 for post activation edge cases
@@ -221,7 +233,7 @@ impl<
         }
 
         let sink_pruning_point = self.expected_header_pruning_point_v2(sink_ghostdag).pruning_point;
-        let sink_pruning_point_blue_score = self.ghostdag_store.get_blue_score(sink_pruning_point).unwrap();
+        let sink_pruning_point_blue_score = self.headers_store.get_blue_score(sink_pruning_point).unwrap();
 
         // Log the current pruning depth if it has not reached P' yet
         self.log_pruning_depth_post_activation(sink_ghostdag, selected_parent_daa_score, sink_pruning_point_blue_score);
