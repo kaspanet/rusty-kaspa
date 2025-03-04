@@ -46,6 +46,10 @@ impl TransactionValidator {
         lock_time_arg: LockTimeArg,
     ) -> TxResult<()> {
         self.check_transaction_payload(tx, ctx_daa_score)?;
+        self.check_transaction_inputs_count_ctx(tx, ctx_daa_score)?;
+        self.check_transaction_outputs_count_ctx(tx, ctx_daa_score)?;
+        self.check_transaction_signature_scripts_ctx(tx, ctx_daa_score)?;
+        self.check_transaction_script_public_keys_ctx(tx, ctx_daa_score)?;
         self.check_tx_is_finalized(tx, lock_time_arg)
     }
 
@@ -90,7 +94,7 @@ impl TransactionValidator {
 
     fn check_transaction_payload(&self, tx: &Transaction, ctx_daa_score: u64) -> TxResult<()> {
         // TODO (post HF): move back to in isolation validation
-        if self.payload_activation.is_active(ctx_daa_score) {
+        if self.crescendo_activation.is_active(ctx_daa_score) {
             Ok(())
         } else {
             if !tx.is_coinbase() && !tx.payload.is_empty() {
@@ -98,5 +102,55 @@ impl TransactionValidator {
             }
             Ok(())
         }
+    }
+
+    fn check_transaction_outputs_count_ctx(&self, tx: &Transaction, ctx_daa_score: u64) -> TxResult<()> {
+        // TODO (post HF): move back to in isolation validation
+        if tx.is_coinbase() {
+            // We already check coinbase outputs count vs. Ghostdag K + 2
+            return Ok(());
+        }
+        if tx.outputs.len() > self.max_tx_outputs.get(ctx_daa_score) {
+            return Err(TxRuleError::TooManyOutputs(tx.outputs.len(), self.max_tx_inputs.get(ctx_daa_score)));
+        }
+
+        Ok(())
+    }
+
+    fn check_transaction_inputs_count_ctx(&self, tx: &Transaction, ctx_daa_score: u64) -> TxResult<()> {
+        // TODO (post HF): move back to in isolation validation
+        if !tx.is_coinbase() && tx.inputs.is_empty() {
+            return Err(TxRuleError::NoTxInputs);
+        }
+
+        if tx.inputs.len() > self.max_tx_inputs.get(ctx_daa_score) {
+            return Err(TxRuleError::TooManyInputs(tx.inputs.len(), self.max_tx_inputs.get(ctx_daa_score)));
+        }
+
+        Ok(())
+    }
+
+    // The main purpose of this check is to avoid overflows when calculating transaction mass later.
+    fn check_transaction_signature_scripts_ctx(&self, tx: &Transaction, ctx_daa_score: u64) -> TxResult<()> {
+        // TODO (post HF): move back to in isolation validation
+        if let Some(i) =
+            tx.inputs.iter().position(|input| input.signature_script.len() > self.max_signature_script_len.get(ctx_daa_score))
+        {
+            return Err(TxRuleError::TooBigSignatureScript(i, self.max_signature_script_len.get(ctx_daa_score)));
+        }
+
+        Ok(())
+    }
+
+    // The main purpose of this check is to avoid overflows when calculating transaction mass later.
+    fn check_transaction_script_public_keys_ctx(&self, tx: &Transaction, ctx_daa_score: u64) -> TxResult<()> {
+        // TODO (post HF): move back to in isolation validation
+        if let Some(i) =
+            tx.outputs.iter().position(|out| out.script_public_key.script().len() > self.max_script_public_key_len.get(ctx_daa_score))
+        {
+            return Err(TxRuleError::TooBigScriptPublicKey(i, self.max_script_public_key_len.get(ctx_daa_score)));
+        }
+
+        Ok(())
     }
 }
