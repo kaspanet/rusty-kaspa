@@ -46,6 +46,14 @@ While the minimum specs suffice to sync and maintain a TN10 node with the accele
 
 Leave this process running. Closing it will stop your node.
 
+- **Advanced Command-Line Options**:
+  - `--rpclisten=0.0.0.0` to listen for RPC connections on all network interfaces (public RPC).
+  - `--rpclisten-borsh` for local borsh RPC access from the `kaspa-cli` binary.
+  - `--unsaferpc` for allowing P2P peer query and management via RPC (recommended to use only if **not** exposing RPC publicly).
+  - `--perf-metrics --loglevel=info,kaspad_lib::daemon=debug,kaspa_mining::monitor=debug` for detailed performance logs.
+  - `--loglevel=kaspa_grpc_server=warn` for suppressing most RPC connect/disconnect log reports.
+  - `--ram-scale=3.0` for increasing cache size threefold (relevant for utilizing large RAM; can be set between 0.1 and 10).
+
 ---
 
 ## 2. Generate Transactions with Rothschild
