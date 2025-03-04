@@ -18,7 +18,7 @@ use kaspa_consensus_core::{
     config::params::ForkedParam,
     errors::pruning::{PruningImportError, PruningImportResult},
 };
-use kaspa_core::info;
+use kaspa_core::{info, log::CRESCENDO_KEYWORD};
 use kaspa_database::prelude::StoreResultEmptyTuple;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
@@ -181,7 +181,7 @@ impl<
             && ghostdag_data.blue_score.saturating_sub(pruning_point_blue_score) < self.pruning_depth.after()
             && CoinFlip::new(1.0 / 1000.0).flip()
         {
-            info!(target: "crescendo",
+            info!(target: CRESCENDO_KEYWORD,
                 "[Crescendo] Pruning depth increasing post activation: {} (target: {})",
                 ghostdag_data.blue_score.saturating_sub(pruning_point_blue_score),
                 self.pruning_depth.after()

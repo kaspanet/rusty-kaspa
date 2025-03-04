@@ -67,7 +67,7 @@ impl AppenderSpec {
     }
 }
 
-const CRESCENDO_KEYWORD: &str = "crescendo";
+pub const CRESCENDO_KEYWORD: &str = "crescendo";
 const CRESCENDO_LOG_LINE_PATTERN_COLORED: &str = "{d(%Y-%m-%d %H:%M:%S%.3f%:z)} [{h({(CRND):5.5})}] {m}{n}";
 
 // TODO (post HF): remove or hide the custom encoder

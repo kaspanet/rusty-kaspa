@@ -8,7 +8,7 @@ use kaspa_consensus_core::{
     errors::difficulty::{DifficultyError, DifficultyResult},
     BlockHashSet, BlueWorkType, MAX_WORK_LEVEL,
 };
-use kaspa_core::info;
+use kaspa_core::{info, log::CRESCENDO_KEYWORD};
 use kaspa_hashes::Hash;
 use kaspa_math::{Uint256, Uint320};
 use std::{
@@ -187,7 +187,7 @@ impl CrescendoLogger {
             match step {
                 Self::ACTIVATE => {
                     // TODO (Crescendo): finalize mainnet ascii art
-                    info!(target: "crescendo",
+                    info!(target: CRESCENDO_KEYWORD,
                         r#"
         ____                                  _             
        / ___|_ __ ___  ___  ___ ___ _ __   __| | ___        
@@ -202,7 +202,7 @@ impl CrescendoLogger {
          |_|                                     |_|    
 "#
                     );
-                    info!(target: "crescendo", "[Crescendo] Accelerating block rate 10 fold")
+                    info!(target: CRESCENDO_KEYWORD, "[Crescendo] Accelerating block rate 10 fold")
                 }
                 Self::DYNAMIC => {}
                 Self::FULL => {}
@@ -349,8 +349,8 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
                 let scaled_bits = Uint256::try_from(scaled_target.min(self.max_difficulty_target)).unwrap().compact_target_bits();
 
                 if self.crescendo_logger.report_activation_progress(CrescendoLogger::ACTIVATE) {
-                    info!(target: "crescendo", "[Crescendo] Block target time change: {} -> {} milliseconds", self.prior_target_time_per_block, self.target_time_per_block);
-                    info!(target: "crescendo", "[Crescendo] Difficulty change: {} -> {} ", difficulty_desc(target), difficulty_desc(scaled_target));
+                    info!(target: CRESCENDO_KEYWORD, "[Crescendo] Block target time change: {} -> {} milliseconds", self.prior_target_time_per_block, self.target_time_per_block);
+                    info!(target: CRESCENDO_KEYWORD, "[Crescendo] Difficulty change: {} -> {} ", difficulty_desc(target), difficulty_desc(scaled_target));
                 }
 
                 return scaled_bits;
@@ -376,7 +376,7 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
 
         if difficulty_blocks_len + 1 < self.difficulty_window_size as u64 {
             if self.crescendo_logger.report_activation_progress(CrescendoLogger::DYNAMIC) {
-                info!(target: "crescendo",
+                info!(target: CRESCENDO_KEYWORD,
                     "[Crescendo] Dynamic DAA reactivated, scaling the difficulty by the measured/expected duration ratio: \n\t\t\t\t\t\t  {} -> {} (measured duration: {}, expected duration: {}, ratio {:.4})",
                     difficulty_desc(average_target),
                     difficulty_desc(new_target),
@@ -386,7 +386,7 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
                 );
             }
             if CoinFlip::default().flip() {
-                info!(target: "crescendo",
+                info!(target: CRESCENDO_KEYWORD,
                     "[Crescendo] DAA window increasing post activation: {} (target: {})",
                     difficulty_blocks_len + 1,
                     self.difficulty_window_size
