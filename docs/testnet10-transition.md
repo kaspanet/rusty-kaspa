@@ -97,5 +97,5 @@ Leave this process running. Closing it will stop your node.
 - **Mining:**  
   `kaspa-miner --testnet --mining-address <your-address> -p 16210 -t 1`  
 
-By participating in TN10, you help stress-test the Crescendo Hardfork environment and prepare for a robust mainnet in end of April / early May. Share any challenges or successes in the #testnet Discord channel, and thank you for supporting Kaspa’s continued evolution.
+By participating in TN10, you help stress-test the Crescendo Hardfork environment and prepare for a robust mainnet upgrade in end of April / early May. Share any challenges or successes in the #testnet Discord channel, and thank you for supporting Kaspa’s continued evolution.
 
