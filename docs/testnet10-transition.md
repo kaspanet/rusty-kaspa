@@ -1,0 +1,75 @@
+# Kaspa Testnet 10 (TN10) – Crescendo Hardfork Node Setup Guide
+
+Kaspa is about to take a significant leap with the **Crescendo Hardfork**, as detailed in [KIP14](https://github.com/kaspanet/kips/blob/master/kip-0014.md), transitioning from 1 to 10 blocks per second. To ensure a stable rollout, **Testnet 10 (TN10)** will first undergo this shift on approximately **March 6, 2025, 18:30 UTC**. By running TN10 and providing feedback, you help prepare for a smooth mainnet upgrade, tentatively planned for the end of April or early May.
+
+
+**Important Note:**  
+- Version 0.17.0 does **not** support TN11. Some participants should keep TN11 nodes running on the latest stable release or `stable` branch until TN10’s performance is proven stable.
+
+
+---
+
+## 1. Install & Run Your TN10 Node
+
+1. **Obtain Kaspa 0.17.0 binaries**  
+   Download and extract the official 0.17.0 release, or build from the `master` branch by following the instructions in the project README.
+
+2. **Launch the Node**  
+   While TN10 is the default netsuffix, specifying it explicitly is recommended:
+
+   ```
+   kaspad --testnet --netsuffix=10 --utxoindex
+   ```
+
+   *(If running from source code:)*  
+   ```
+   cargo run --bin kaspad --release -- --testnet --netsuffix=10 --utxoindex
+   ```
+
+Leave this process running. Closing it will stop your node.
+
+---
+
+## 2. Generate Transactions with Rothschild
+
+1. **Create a Wallet**
+  ```
+  rothschild
+  ```
+
+   This outputs a private key and a public address. Fund your wallet by mining to it or obtaining test coins from other TN10 participants.
+
+2. **Broadcast Transactions**  
+  ```
+  rothschild --private-key <your-private-key> -t=10
+  ```
+
+   Replace <your-private-key> with the key from step 1. The “-t=10” flag sets your transaction rate to 10 TPS (feel free to try different rates, but keep it below 50 TPS).
+
+---
+
+## 3. Mining on TN10
+
+1. **Download the Miner**  
+   Use the latest Kaspa CPU miner [release](https://github.com/elichai/kaspa-miner/releases) which supports TN10.
+
+2. **Start Mining**  
+  ```
+  kaspa-miner --testnet --mining-address <your-address> -p 16210 -t 1
+  ```
+
+   Replace <your-address> with your TN10 address (e.g., from Rothschild) if you want to mine and generate transactions simultaneously.
+
+---
+
+## Summary & Next Steps
+
+- **Node Sync:**  
+  `kaspad --testnet --netsuffix=10 --utxoindex`
+- **Transaction Generation:**  
+  `rothschild --private-key <your-private-key> -t=10`
+- **Mining:**  
+  `kaspa-miner --testnet --mining-address <your-address> -p 16210 -t 1`  
+
+By participating in TN10, you help stress-test the Crescendo Hardfork environment and prepare for a robust mainnet launch in early May. Share any challenges or successes in the #testnet Discord channel, and thank you for supporting Kaspa’s continued evolution.
+
