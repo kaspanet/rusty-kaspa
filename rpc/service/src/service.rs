@@ -318,8 +318,14 @@ impl RpcApi for RpcCoreService {
 
             // A simple heuristic check which signals that the mined block is out of date
             // and should not be accepted unless user explicitly requests
-            let daa_window_block_duration = self.config.daa_window_duration_in_blocks(virtual_daa_score);
-            if virtual_daa_score > daa_window_block_duration && block.header.daa_score < virtual_daa_score - daa_window_block_duration
+            //
+            // [Crescendo]: switch to the larger duration only after a full window with the new duration is reached post activation
+            let difficulty_window_duration = self
+                .config
+                .difficulty_window_duration_in_block_units()
+                .get(virtual_daa_score.saturating_sub(self.config.difficulty_window_duration_in_block_units().after()));
+            if virtual_daa_score > difficulty_window_duration
+                && block.header.daa_score < virtual_daa_score - difficulty_window_duration
             {
                 // error = format!("Block rejected. Reason: block DAA score {0} is too far behind virtual's DAA score {1}", block.header.daa_score, virtual_daa_score)
                 return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) });
@@ -439,7 +445,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         // We use +1 because low_hash is also returned
         // max_blocks MUST be >= mergeset_size_limit + 1
-        let max_blocks = self.config.mergeset_size_limit as usize + 1;
+        let max_blocks = self.config.mergeset_size_limit().upper_bound() as usize + 1;
         let (block_hashes, high_hash) = session.async_get_hashes_between(low_hash, sink_hash, max_blocks).await?;
 
         // If the high hash is equal to sink it means get_hashes_between didn't skip any hashes, and
@@ -616,7 +622,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         // this bounds by number of merged blocks, if include_accepted_transactions = true
         // else it returns the batch_size amount on pure chain blocks.
         // Note: batch_size does not bound removed chain blocks, only added chain blocks.
-        let batch_size = (self.config.mergeset_size_limit * 10) as usize;
+        let batch_size = (self.config.mergeset_size_limit().upper_bound() * 10) as usize;
         let mut virtual_chain_batch = session.async_get_virtual_chain_from_block(request.start_hash, Some(batch_size)).await?;
         let accepted_transaction_ids = if request.include_accepted_transaction_ids {
             let accepted_transaction_ids = self
@@ -718,6 +724,12 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let mut header_idx = 0;
         let mut req_idx = 0;
 
+        // TODO (relaxed; post-HF): the below interpolation should remain valid also after the hardfork as long
+        // as the two pruning points used are both either from before activation or after. The only exception are
+        // the two pruning points before and after activation. However this inaccuracy can be considered negligible.
+        // Alternatively, we can remedy this post the HF by manually adding a (DAA score, timestamp) point from the
+        // moment of activation.
+
         // Loop runs at O(n + m) where n = # pp headers, m = # requested daa_scores
         // Loop will always end because in the worst case the last header with daa_score = 0 (the genesis)
         // will cause every remaining requested daa_score to be "found in range"
@@ -732,7 +744,9 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 // For daa_score later than the last header, we estimate in milliseconds based on the difference
                 let time_adjustment = if header_idx == 0 {
                     // estimate milliseconds = (daa_score * target_time_per_block)
-                    (curr_daa_score - header.daa_score).checked_mul(self.config.target_time_per_block).unwrap_or(u64::MAX)
+                    (curr_daa_score - header.daa_score)
+                        .checked_mul(self.config.target_time_per_block().get(header.daa_score))
+                        .unwrap_or(u64::MAX)
                 } else {
                     // "next" header is the one that we processed last iteration
                     let next_header = &headers[header_idx - 1];
@@ -766,8 +780,16 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _request: GetFeeEstimateRequest,
     ) -> RpcResult<GetFeeEstimateResponse> {
         let mining_manager = self.mining_manager.clone();
-        let estimate =
-            self.fee_estimate_cache.get(async move { mining_manager.get_realtime_feerate_estimations().await.into_rpc() }).await;
+        let consensus_manager = self.consensus_manager.clone();
+        let estimate = self
+            .fee_estimate_cache
+            .get(async move {
+                mining_manager
+                    .get_realtime_feerate_estimations(consensus_manager.consensus().unguarded_session().get_virtual_daa_score())
+                    .await
+                    .into_rpc()
+            })
+            .await;
         Ok(GetFeeEstimateResponse { estimate })
     }
 
@@ -864,8 +886,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         if !self.config.unsafe_rpc && request.window_size > MAX_SAFE_WINDOW_SIZE {
             return Err(RpcError::WindowSizeExceedingMaximum(request.window_size, MAX_SAFE_WINDOW_SIZE));
         }
-        if request.window_size as u64 > self.config.pruning_depth {
-            return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.pruning_depth));
+        if request.window_size as u64 > self.config.pruning_depth().lower_bound() {
+            return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.prior_pruning_depth));
         }
 
         // In the previous golang implementation the convention for virtual was the following const.
