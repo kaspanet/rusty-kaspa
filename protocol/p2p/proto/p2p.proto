@@ -63,6 +63,9 @@ message BlockMessage{
   repeated TransactionMessage transactions = 2;
 }
 
+message BlockBodyMessage{
+  repeated TransactionMessage transactions = 1;
+}
 message BlockHeader{
   uint32 version = 1;
   repeated BlockLevelParents parents = 12;
@@ -180,6 +183,9 @@ message DonePruningPointUtxoSetChunksMessage {
 }
 
 message RequestIBDBlocksMessage{
+  repeated Hash hashes = 1;
+}
+message RequestIBDBlocksBodiesMessage{
   repeated Hash hashes = 1;
 }
 
