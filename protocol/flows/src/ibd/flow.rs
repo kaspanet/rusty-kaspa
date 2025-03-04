@@ -42,7 +42,7 @@ pub struct IbdFlow {
     pub(super) ctx: FlowContext,
     pub(super) router: Arc<Router>,
     pub(super) incoming_route: IncomingRoute,
-    pub(super) body_flow_permitted: bool,
+    pub(super) body_only_ibd_permitted: bool,
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
     relay_receiver: JobReceiver<Block>,
@@ -78,9 +78,9 @@ impl IbdFlow {
         router: Arc<Router>,
         incoming_route: IncomingRoute,
         relay_receiver: JobReceiver<Block>,
-        body_flow_permitted: bool,
+        body_only_ibd_permitted: bool,
     ) -> Self {
-        Self { ctx, router, incoming_route, relay_receiver, body_flow_permitted }
+        Self { ctx, router, incoming_route, relay_receiver, body_only_ibd_permitted }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -591,57 +591,72 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         consensus: &ConsensusProxy,
         chunk: &[Hash],
     ) -> Result<QueueChunkOutput, ProtocolError> {
+        if self.body_only_ibd_permitted {
+            self.queue_block_processing_chunk_body_only(consensus, chunk).await
+        } else {
+            self.queue_block_processing_chunk_full_block(consensus, chunk).await
+        }
+    }
+    async fn queue_block_processing_chunk_full_block(
+        &mut self,
+        consensus: &ConsensusProxy,
+        chunk: &[Hash],
+    ) -> Result<QueueChunkOutput, ProtocolError> {
         let mut jobs = Vec::with_capacity(chunk.len());
         let mut current_daa_score = 0;
         let mut current_timestamp = 0;
-        if self.body_flow_permitted {
-            self.router
-                .enqueue(make_message!(
-                    Payload::RequestIbdBlocksBodies,
-                    RequestIbdBlocksBodiesMessage { hashes: chunk.iter().map(|h| h.into()).collect() } //change to Request IbdBodyOnlyMessage
-                ))
-                .await?;
-            for &expected_hash in chunk {
-                let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlockBody)?;
-                let blk_header = consensus.async_get_header(expected_hash).await?;
-                let mut blk_body: Vec<Transaction> = vec![];
-                for el in msg.transactions {
-                    // a bit roundabout, but into doesn't work nicely
-                    blk_body.push(el.try_into()?);
-                }
-                if blk_body.is_empty() {
-                    return Err(ProtocolError::OtherOwned(format!("sent empty block body for block {}", expected_hash)));
-                }
-
-                let block = Block { header: blk_header, transactions: blk_body.into() };
-                // if block.hash() != expected_hash {
-                //     return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", expected_hash, block.hash())));
-                // }
-
-                current_daa_score = block.header.daa_score;
-                current_timestamp = block.header.timestamp;
-                jobs.push(consensus.validate_and_insert_body(block).virtual_state_task);
+        self.router
+            .enqueue(make_message!(
+                Payload::RequestIbdBlocks,
+                RequestIbdBlocksMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
+            ))
+            .await?;
+        for &expected_hash in chunk {
+            let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
+            let block: Block = msg.try_into()?;
+            if block.hash() != expected_hash {
+                return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", expected_hash, block.hash())));
             }
-        } else {
-            self.router
-                .enqueue(make_message!(
-                    Payload::RequestIbdBlocks,
-                    RequestIbdBlocksMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
-                ))
-                .await?;
-            for &expected_hash in chunk {
-                let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-                let block: Block = msg.try_into()?;
-                if block.hash() != expected_hash {
-                    return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", expected_hash, block.hash())));
-                }
-                if block.is_header_only() {
-                    return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
-                }
-                current_daa_score = block.header.daa_score;
-                current_timestamp = block.header.timestamp;
-                jobs.push(consensus.validate_and_insert_block(block).virtual_state_task);
+            if block.is_header_only() {
+                return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
+            current_daa_score = block.header.daa_score;
+            current_timestamp = block.header.timestamp;
+            jobs.push(consensus.validate_and_insert_block(block).virtual_state_task);
+        }
+        Ok(QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp })
+    }
+    async fn queue_block_processing_chunk_body_only(
+        &mut self,
+        consensus: &ConsensusProxy,
+        chunk: &[Hash],
+    ) -> Result<QueueChunkOutput, ProtocolError> {
+        let mut jobs = Vec::with_capacity(chunk.len());
+        let mut current_daa_score = 0;
+        let mut current_timestamp = 0;
+        self.router
+            .enqueue(make_message!(
+                Payload::RequestIbdBlocksBodies,
+                RequestIbdBlocksBodiesMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
+            ))
+            .await?;
+        for &expected_hash in chunk {
+            let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlockBody)?;
+            let blk_header = consensus.async_get_header(expected_hash).await?;
+            let mut blk_body: Vec<Transaction> = vec![];
+            for el in msg.transactions {
+                // a bit roundabout, but into doesn't work nicely
+                blk_body.push(el.try_into()?);
+            }
+            if blk_body.is_empty() {
+                return Err(ProtocolError::OtherOwned(format!("sent empty block body for block {}", expected_hash)));
+            }
+
+            let block = Block { header: blk_header, transactions: blk_body.into() };
+
+            current_daa_score = block.header.daa_score;
+            current_timestamp = block.header.timestamp;
+            jobs.push(consensus.validate_and_insert_body(block).virtual_state_task);
         }
         Ok(QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp })
     }
