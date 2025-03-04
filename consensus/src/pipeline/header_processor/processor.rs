@@ -292,8 +292,10 @@ impl HeaderProcessor {
                 let ctx = self.validate_trusted_header(header)?;
                 self.commit_trusted_header(ctx, header);
             }
+            BlockTask::BodyOnly { .. } => {
+                return Ok(StatusHeaderOnly);
+            }
         }
-
         // Report counters
         self.counters.header_counts.fetch_add(1, Ordering::Relaxed);
         self.counters.dep_counts.fetch_add(header.direct_parents().len() as u64, Ordering::Relaxed);

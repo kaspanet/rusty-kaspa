@@ -174,6 +174,9 @@ impl ConsensusSessionOwned {
     pub fn validate_and_insert_block(&self, block: Block) -> BlockValidationFutures {
         self.consensus.validate_and_insert_block(block)
     }
+    pub fn validate_and_insert_body(&self, block: Block) -> BlockValidationFutures {
+        self.consensus.validate_and_insert_body(block)
+    }
 
     pub fn validate_and_insert_block_batch(&self, mut batch: Vec<Block>) -> BlockProcessingBatch {
         // Sort by blue work in order to ensure topological order
