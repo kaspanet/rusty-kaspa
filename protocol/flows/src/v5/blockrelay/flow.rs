@@ -209,8 +209,9 @@ impl HandleRelayInvsFlow {
             // can continue processing the following relay blocks
             let ctx = self.ctx.clone();
             tokio::spawn(async move {
+                let daa_score = block.header.daa_score;
                 ctx.on_new_block(&session, ancestor_batch, block, virtual_state_task).await;
-                ctx.log_block_event(BlockLogEvent::Relay(inv.hash));
+                ctx.log_new_block_event(BlockLogEvent::Relay(inv.hash), daa_score);
             });
         }
     }

@@ -11,6 +11,7 @@ use crate::{
         headers_selected_tip::DbHeadersSelectedTipStore,
         past_pruning_points::DbPastPruningPointsStore,
         pruning::DbPruningStore,
+        pruning_samples::DbPruningSamplesStore,
         pruning_utxoset::PruningUtxosetStores,
         reachability::{DbReachabilityStore, ReachabilityData},
         relations::DbRelationsStore,
@@ -56,6 +57,7 @@ pub struct ConsensusStorage {
     pub past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     pub daa_excluded_store: Arc<DbDaaStore>,
     pub depth_store: Arc<DbDepthStore>,
+    pub pruning_samples_store: Arc<DbPruningSamplesStore>,
 
     // Utxo-related stores
     pub utxo_diffs_store: Arc<DbUtxoDiffsStore>,
@@ -81,8 +83,9 @@ impl ConsensusStorage {
         let perf_params = &config.perf;
 
         // Lower and upper bounds
-        let pruning_depth = params.pruning_depth as usize;
-        let pruning_size_for_caches = (params.pruning_depth + params.finality_depth) as usize; // Upper bound for any block/header related data
+        // [Crescendo]: all usages of pruning upper bounds also bound by actual memory bytes, so we can safely use the larger values
+        let pruning_depth = params.pruning_depth().upper_bound() as usize;
+        let pruning_size_for_caches = pruning_depth + params.finality_depth().upper_bound() as usize; // Upper bound for any block/header related data
         let level_lower_bound = 2 * params.pruning_proof_m as usize; // Number of items lower bound for level-related caches
 
         // Budgets in bytes. All byte budgets overall sum up to ~1GB of memory (which obviously takes more low level alloc space)
@@ -107,8 +110,10 @@ impl ConsensusStorage {
         let reachability_data_bytes = size_of::<Hash>() + size_of::<ReachabilityData>();
         let ghostdag_compact_bytes = size_of::<Hash>() + size_of::<CompactGhostdagData>();
         let headers_compact_bytes = size_of::<Hash>() + size_of::<CompactHeaderData>();
-        let difficulty_window_bytes = params.difficulty_window_size(0) * size_of::<SortableBlock>();
-        let median_window_bytes = params.past_median_time_window_size(0) * size_of::<SortableBlock>();
+
+        // If the fork is already scheduled, prefer the long-term, permanent values
+        let difficulty_window_bytes = params.difficulty_window_size().after() * size_of::<SortableBlock>();
+        let median_window_bytes = params.past_median_time_window_size().after() * size_of::<SortableBlock>();
 
         // Cache policy builders
         let daa_excluded_builder =
@@ -207,6 +212,7 @@ impl ConsensusStorage {
         let pruning_point_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), past_pruning_points_builder.build()));
         let pruning_utxoset_stores = Arc::new(RwLock::new(PruningUtxosetStores::new(db.clone(), utxo_set_builder.build())));
+        let pruning_samples_store = Arc::new(DbPruningSamplesStore::new(db.clone(), header_data_builder.build()));
 
         // Txs
         let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), transactions_builder.build()));
@@ -250,6 +256,7 @@ impl ConsensusStorage {
             past_pruning_points_store,
             daa_excluded_store,
             depth_store,
+            pruning_samples_store,
             utxo_diffs_store,
             utxo_multisets_store,
             block_window_cache_for_difficulty,

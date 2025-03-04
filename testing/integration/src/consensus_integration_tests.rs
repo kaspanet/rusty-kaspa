@@ -17,18 +17,19 @@ use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
 use kaspa_consensus::params::{
-    ForkActivation, Params, DEVNET_PARAMS, MAINNET_PARAMS, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64,
+    ForkActivation, Params, CRESCENDO, DEVNET_PARAMS, MAINNET_PARAMS, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64,
 };
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus::processes::window::{WindowManager, WindowType};
+use kaspa_consensus_core::api::args::TransactionValidationArgs;
 use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::blockhash::new_unique;
 use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER};
+use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER, TRANSIENT_BYTE_TO_MASS_FACTOR};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::network::{NetworkId, NetworkType::Mainnet};
@@ -45,6 +46,7 @@ use kaspa_core::task::tick::TickService;
 use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::Hash;
+use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
 use flate2::read::GzDecoder;
@@ -262,8 +264,8 @@ async fn ghostdag_test() {
             .skip_proof_of_work()
             .edit_consensus_params(|p| {
                 p.genesis.hash = string_to_hash(&test.genesis_id);
-                p.ghostdag_k = test.k;
-                p.min_difficulty_window_len = p.legacy_difficulty_window_size;
+                p.prior_ghostdag_k = test.k;
+                p.min_difficulty_window_size = p.prior_difficulty_window_size;
             })
             .build();
         let consensus = TestConsensus::new(&config);
@@ -337,7 +339,7 @@ async fn block_window_test() {
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.genesis.hash = string_to_hash("A");
-            p.ghostdag_k = 1;
+            p.prior_ghostdag_k = 1;
         })
         .build();
     let consensus = TestConsensus::new(&config);
@@ -427,7 +429,7 @@ async fn header_in_isolation_validation_test() {
         block.header.hash = 2.into();
 
         let now = unix_now();
-        let block_ts = now + config.legacy_timestamp_deviation_tolerance * config.target_time_per_block + 2000;
+        let block_ts = now + config.timestamp_deviation_tolerance * config.prior_target_time_per_block + 2000;
         block.header.timestamp = block_ts;
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TimeTooFarIntoTheFuture(ts, _)) => {
@@ -454,11 +456,11 @@ async fn header_in_isolation_validation_test() {
     {
         let mut block = block.clone();
         block.header.hash = 4.into();
-        block.header.parents_by_level[0] = (5..(config.max_block_parents + 6)).map(|x| (x as u64).into()).collect();
+        block.header.parents_by_level[0] = (5..(config.prior_max_block_parents + 6)).map(|x| (x as u64).into()).collect();
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TooManyParents(num_parents, limit)) => {
-                assert_eq!((config.max_block_parents + 1) as usize, num_parents);
-                assert_eq!(limit, config.max_block_parents as usize);
+                assert_eq!((config.prior_max_block_parents + 1) as usize, num_parents);
+                assert_eq!(limit, config.prior_max_block_parents as usize);
             }
             res => {
                 panic!("Unexpected result: {res:?}")
@@ -563,7 +565,7 @@ async fn median_time_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.sampling_activation = ForkActivation::never();
+                    p.crescendo_activation = ForkActivation::never();
                 })
                 .build(),
         },
@@ -572,10 +574,10 @@ async fn median_time_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.sampling_activation = ForkActivation::always();
-                    p.new_timestamp_deviation_tolerance = 120;
-                    p.past_median_time_sample_rate = 3;
-                    p.past_median_time_sampled_window_size = (2 * 120 - 1) / 3;
+                    p.crescendo_activation = ForkActivation::always();
+                    p.timestamp_deviation_tolerance = 120;
+                    p.crescendo.past_median_time_sample_rate = 3;
+                    p.crescendo.past_median_time_sampled_window_size = (2 * 120 - 1) / 3;
                 })
                 .build(),
         },
@@ -585,8 +587,9 @@ async fn median_time_test() {
         let consensus = TestConsensus::new(&test.config);
         let wait_handles = consensus.init();
 
-        let num_blocks = test.config.past_median_time_window_size(0) as u64 * test.config.past_median_time_sample_rate(0);
-        let timestamp_deviation_tolerance = test.config.timestamp_deviation_tolerance(0);
+        let num_blocks =
+            test.config.past_median_time_window_size().before() as u64 * test.config.past_median_time_sample_rate().before();
+        let timestamp_deviation_tolerance = test.config.timestamp_deviation_tolerance;
         for i in 1..(num_blocks + 1) {
             let parent = if i == 1 { test.config.genesis.hash } else { (i - 1).into() };
             let mut block = consensus.build_block_with_parents(i.into(), vec![parent]);
@@ -630,7 +633,7 @@ async fn mergeset_size_limit_test() {
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
-    let num_blocks_per_chain = config.mergeset_size_limit + 1;
+    let num_blocks_per_chain = config.prior_mergeset_size_limit + 1;
 
     let mut tip1_hash = config.genesis.hash;
     for i in 1..(num_blocks_per_chain + 1) {
@@ -649,8 +652,8 @@ async fn mergeset_size_limit_test() {
     let block = consensus.build_block_with_parents((3 * num_blocks_per_chain + 1).into(), vec![tip1_hash, tip2_hash]);
     match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
         Err(RuleError::MergeSetTooBig(a, b)) => {
-            assert_eq!(a, config.mergeset_size_limit + 1);
-            assert_eq!(b, config.mergeset_size_limit);
+            assert_eq!(a, config.prior_mergeset_size_limit + 1);
+            assert_eq!(b, config.prior_mergeset_size_limit);
         }
         res => {
             panic!("Unexpected result: {res:?}")
@@ -811,45 +814,37 @@ impl KaspadGoParams {
             dns_seeders: &[],
             net: NetworkId { network_type: Mainnet, suffix: None },
             genesis: GENESIS,
-            ghostdag_k: self.K,
-            legacy_timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
-            new_timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
-            past_median_time_sample_rate: 1,
-            past_median_time_sampled_window_size: 2 * self.TimestampDeviationTolerance - 1,
-            target_time_per_block: self.TargetTimePerBlock / 1_000_000,
-            sampling_activation: ForkActivation::never(),
-            max_block_parents: self.MaxBlockParents,
+            prior_ghostdag_k: self.K,
+            timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
+            prior_target_time_per_block: self.TargetTimePerBlock / 1_000_000,
+            prior_max_block_parents: self.MaxBlockParents,
             max_difficulty_target: MAX_DIFFICULTY_TARGET,
             max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-            difficulty_sample_rate: 1,
-            sampled_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
-            legacy_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
-            min_difficulty_window_len: self.DifficultyAdjustmentWindowSize,
-            mergeset_size_limit: self.MergeSetSizeLimit,
-            merge_depth: self.MergeDepth,
-            finality_depth,
-            pruning_depth: 2 * finality_depth + 4 * self.MergeSetSizeLimit * self.K as u64 + 2 * self.K as u64 + 2,
+            prior_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
+            min_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
+            prior_mergeset_size_limit: self.MergeSetSizeLimit,
+            prior_merge_depth: self.MergeDepth,
+            prior_finality_depth: finality_depth,
+            prior_pruning_depth: 2 * finality_depth + 4 * self.MergeSetSizeLimit * self.K as u64 + 2 * self.K as u64 + 2,
             coinbase_payload_script_public_key_max_len: self.CoinbasePayloadScriptPublicKeyMaxLength,
             max_coinbase_payload_len: self.MaxCoinbasePayloadLength,
-            max_tx_inputs: MAINNET_PARAMS.max_tx_inputs,
-            max_tx_outputs: MAINNET_PARAMS.max_tx_outputs,
-            max_signature_script_len: MAINNET_PARAMS.max_signature_script_len,
-            max_script_public_key_len: MAINNET_PARAMS.max_script_public_key_len,
+            prior_max_tx_inputs: MAINNET_PARAMS.prior_max_tx_inputs,
+            prior_max_tx_outputs: MAINNET_PARAMS.prior_max_tx_outputs,
+            prior_max_signature_script_len: MAINNET_PARAMS.prior_max_signature_script_len,
+            prior_max_script_public_key_len: MAINNET_PARAMS.prior_max_script_public_key_len,
             mass_per_tx_byte: self.MassPerTxByte,
             mass_per_script_pub_key_byte: self.MassPerScriptPubKeyByte,
             mass_per_sig_op: self.MassPerSigOp,
             max_block_mass: self.MaxBlockMass,
             storage_mass_parameter: STORAGE_MASS_PARAMETER,
-            storage_mass_activation: ForkActivation::never(),
-            kip10_activation: ForkActivation::never(),
             deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
             pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
-            coinbase_maturity: MAINNET_PARAMS.coinbase_maturity,
+            prior_coinbase_maturity: MAINNET_PARAMS.prior_coinbase_maturity,
             skip_proof_of_work: self.SkipProofOfWork,
             max_block_level: self.MaxBlockLevel,
             pruning_proof_m: self.PruningProofM,
-            payload_activation: ForkActivation::never(),
-            runtime_sig_op_counting: ForkActivation::never(),
+            crescendo: CRESCENDO,
+            crescendo_activation: ForkActivation::never(),
         }
     }
 }
@@ -935,13 +930,13 @@ async fn json_test(file_path: &str, concurrency: bool) {
             let genesis_block = json_line_to_block(second_line);
             params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
         }
-        params.min_difficulty_window_len = params.legacy_difficulty_window_size;
+        params.min_difficulty_window_size = params.prior_difficulty_window_size;
         params
     } else {
         let genesis_block = json_line_to_block(first_line);
         let mut params = DEVNET_PARAMS;
         params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
-        params.min_difficulty_window_len = params.legacy_difficulty_window_size;
+        params.min_difficulty_window_size = params.prior_difficulty_window_size;
         params
     };
 
@@ -996,7 +991,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
             gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
         let pruning_point = past_pruning_points.last().unwrap().hash;
 
-        tc.import_pruning_points(past_pruning_points);
+        tc.import_pruning_points(past_pruning_points).unwrap();
 
         info!("Processing {} trusted blocks...", trusted_blocks.len());
         for tb in trusted_blocks.into_iter() {
@@ -1267,18 +1262,21 @@ async fn bounded_merge_depth_test() {
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.ghostdag_k = 5;
-            p.merge_depth = 7;
+            p.prior_ghostdag_k = 5;
+            p.prior_merge_depth = 7;
         })
         .build();
 
-    assert!((config.ghostdag_k as u64) < config.merge_depth, "K must be smaller than merge depth for this test to run");
+    assert!(
+        (config.ghostdag_k().before() as u64) < config.prior_merge_depth,
+        "K must be smaller than merge depth for this test to run"
+    );
 
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
     let mut selected_chain = vec![config.genesis.hash];
-    for i in 1..(config.merge_depth + 3) {
+    for i in 1..(config.prior_merge_depth + 3) {
         let hash: Hash = (i + 1).into();
         consensus.add_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
@@ -1286,8 +1284,8 @@ async fn bounded_merge_depth_test() {
 
     // The length of block_chain_2 is shorter by one than selected_chain, so selected_chain will remain the selected chain.
     let mut block_chain_2 = vec![config.genesis.hash];
-    for i in 1..(config.merge_depth + 2) {
-        let hash: Hash = (i + config.merge_depth + 3).into();
+    for i in 1..(config.prior_merge_depth + 2) {
+        let hash: Hash = (i + config.prior_merge_depth + 3).into();
         consensus.add_block_with_parents(hash, vec![*block_chain_2.last().unwrap()]).await.unwrap();
         block_chain_2.push(hash);
     }
@@ -1323,7 +1321,7 @@ async fn bounded_merge_depth_test() {
         .unwrap();
 
     // We extend the selected chain until kosherizing_hash will be red from the virtual POV.
-    for i in 0..config.ghostdag_k {
+    for i in 0..config.ghostdag_k().before() {
         let hash = Hash::from_u64_word((i + 1) as u64 * 1000);
         consensus.add_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
@@ -1347,7 +1345,7 @@ async fn difficulty_test() {
     async fn add_block(consensus: &TestConsensus, block_time: Option<u64>, parents: Vec<Hash>) -> Header {
         let selected_parent = consensus.ghostdag_manager().find_selected_parent(parents.iter().copied());
         let block_time = block_time.unwrap_or_else(|| {
-            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params().target_time_per_block(0)
+            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params().prior_target_time_per_block
         });
         let mut header = consensus.build_header_with_parents(new_unique(), parents);
         header.timestamp = block_time;
@@ -1370,7 +1368,8 @@ async fn difficulty_test() {
     }
 
     fn full_window_bits(consensus: &TestConsensus, hash: Hash) -> u32 {
-        let window_size = consensus.params().difficulty_window_size(0) * consensus.params().difficulty_sample_rate(0) as usize;
+        let window_size =
+            consensus.params().difficulty_window_size().before() * consensus.params().difficulty_sample_rate().before() as usize;
         let ghostdag_data = &consensus.ghostdag_store().get_data(hash).unwrap();
         let window = consensus.window_manager().block_window(ghostdag_data, WindowType::VaryingWindow(window_size)).unwrap();
         assert_eq!(window.blocks.len(), window_size);
@@ -1385,12 +1384,12 @@ async fn difficulty_test() {
     }
 
     const FULL_WINDOW_SIZE: usize = 90;
-    const SAMPLED_WINDOW_SIZE: usize = 11;
+    const SAMPLED_WINDOW_SIZE: u64 = 11;
     const SAMPLE_RATE: u64 = 6;
     const PMT_DEVIATION_TOLERANCE: u64 = 20;
     const PMT_SAMPLE_RATE: u64 = 3;
     const PMT_SAMPLED_WINDOW_SIZE: u64 = 13;
-    const HIGH_BPS_SAMPLED_WINDOW_SIZE: usize = 12;
+    const HIGH_BPS_SAMPLED_WINDOW_SIZE: u64 = 12;
     const HIGH_BPS: u64 = 4;
     let tests = vec![
         Test {
@@ -1399,12 +1398,12 @@ async fn difficulty_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.ghostdag_k = 1;
-                    p.legacy_difficulty_window_size = FULL_WINDOW_SIZE;
-                    p.sampling_activation = ForkActivation::never();
+                    p.prior_ghostdag_k = 1;
+                    p.prior_difficulty_window_size = FULL_WINDOW_SIZE;
+                    p.crescendo_activation = ForkActivation::never();
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
-                    p.legacy_timestamp_deviation_tolerance = 60;
+                    p.timestamp_deviation_tolerance = 60;
                 })
                 .build(),
         },
@@ -1414,15 +1413,17 @@ async fn difficulty_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.ghostdag_k = 1;
-                    p.sampled_difficulty_window_size = SAMPLED_WINDOW_SIZE;
-                    p.difficulty_sample_rate = SAMPLE_RATE;
-                    p.sampling_activation = ForkActivation::always();
+                    p.prior_ghostdag_k = 1;
+                    p.crescendo.ghostdag_k = 1;
+                    p.crescendo.sampled_difficulty_window_size = SAMPLED_WINDOW_SIZE;
+                    p.crescendo.difficulty_sample_rate = SAMPLE_RATE;
+                    p.crescendo_activation = ForkActivation::always();
+                    p.prior_target_time_per_block = p.crescendo.target_time_per_block;
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
-                    p.past_median_time_sample_rate = PMT_SAMPLE_RATE;
-                    p.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
-                    p.new_timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
+                    p.crescendo.past_median_time_sample_rate = PMT_SAMPLE_RATE;
+                    p.crescendo.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
+                    p.timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
                 })
                 .build(),
         },
@@ -1432,16 +1433,18 @@ async fn difficulty_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.ghostdag_k = 1;
-                    p.target_time_per_block /= HIGH_BPS;
-                    p.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
-                    p.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
-                    p.sampling_activation = ForkActivation::always();
+                    p.prior_ghostdag_k = 1;
+                    p.crescendo.ghostdag_k = 1;
+                    p.prior_target_time_per_block /= HIGH_BPS;
+                    p.crescendo.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
+                    p.crescendo.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
+                    p.crescendo_activation = ForkActivation::always();
+                    p.prior_target_time_per_block = p.crescendo.target_time_per_block;
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
-                    p.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;
-                    p.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
-                    p.new_timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
+                    p.crescendo.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;
+                    p.crescendo.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
+                    p.timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
                 })
                 .build(),
         },
@@ -1452,8 +1455,8 @@ async fn difficulty_test() {
         let consensus = TestConsensus::new(&test.config);
         let wait_handles = consensus.init();
 
-        let sample_rate = test.config.difficulty_sample_rate(0);
-        let expanded_window_size = test.config.difficulty_window_size(0) * sample_rate as usize;
+        let sample_rate = test.config.difficulty_sample_rate().before();
+        let expanded_window_size = test.config.difficulty_window_size().before() * sample_rate as usize;
 
         let fake_genesis = Header {
             hash: test.config.genesis.hash,
@@ -1569,7 +1572,7 @@ async fn difficulty_test() {
         for _ in 0..sample_rate {
             if (tip.daa_score + 1) % sample_rate == 0 {
                 // This block should be part of the sampled window
-                let slow_block_time = tip.timestamp + test.config.target_time_per_block * 3;
+                let slow_block_time = tip.timestamp + test.config.prior_target_time_per_block * 3;
                 let slow_block = add_block(&consensus, Some(slow_block_time), vec![tip.hash]).await;
                 tip = slow_block;
                 break;
@@ -1668,7 +1671,7 @@ async fn selected_chain_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.min_difficulty_window_len = p.legacy_difficulty_window_size;
+            p.min_difficulty_window_size = p.prior_difficulty_window_size;
         })
         .build();
     let consensus = TestConsensus::new(&config);
@@ -1812,7 +1815,7 @@ async fn run_kip10_activation_test() {
             cfg.params.genesis.hash = genesis_header.hash;
         })
         .edit_consensus_params(|p| {
-            p.kip10_activation = ForkActivation::new(KIP10_ACTIVATION_DAA_SCORE);
+            p.crescendo_activation = ForkActivation::new(KIP10_ACTIVATION_DAA_SCORE);
         })
         .build();
 
@@ -1832,7 +1835,7 @@ async fn run_kip10_activation_test() {
     assert_eq!(consensus.get_virtual_daa_score(), index);
 
     // Create transaction that attempts to use the KIP-10 opcode
-    let mut spending_tx = Transaction::new(
+    let mut tx = Transaction::new(
         0,
         vec![TransactionInput::new(
             initial_utxo_collection[0].0,
@@ -1846,8 +1849,14 @@ async fn run_kip10_activation_test() {
         0,
         vec![],
     );
-    spending_tx.finalize();
-    let tx_id = spending_tx.id();
+    tx.finalize();
+    let tx_id = tx.id();
+
+    let mut tx = MutableTransaction::from_tx(tx);
+    // This triggers storage mass population
+    let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
+    let tx = tx.tx.unwrap_or_clone();
+
     // Test 1: Build empty block, then manually insert invalid tx and verify consensus rejects it
     {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
@@ -1857,8 +1866,9 @@ async fn run_kip10_activation_test() {
             consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
 
         // Insert our test transaction and recalculate block hashes
-        block.transactions.push(spending_tx.clone());
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter(), false);
+        block.transactions.push(tx.clone());
+        block.header.hash_merkle_root =
+            calc_hash_merkle_root(block.transactions.iter(), config.crescendo_activation.is_active(block.header.daa_score));
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
         assert_eq!(consensus.lkg_virtual_state.load().daa_score, 2);
@@ -1869,7 +1879,7 @@ async fn run_kip10_activation_test() {
     index += 1;
 
     // Test 2: Verify the same transaction is accepted after activation
-    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![spending_tx.clone()]).await;
+    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }
@@ -1879,8 +1889,9 @@ async fn payload_test() {
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.coinbase_maturity = 0;
-            p.payload_activation = ForkActivation::always()
+            p.prior_coinbase_maturity = 0;
+            p.crescendo.coinbase_maturity = 0;
+            p.crescendo_activation = ForkActivation::always()
         })
         .build();
     let consensus = TestConsensus::new(&config);
@@ -1890,22 +1901,38 @@ async fn payload_test() {
     let b = consensus.build_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], miner_data.clone(), vec![]);
     consensus.validate_and_insert_block(b.to_immutable()).virtual_state_task.await.unwrap();
     let funding_block = consensus.build_utxo_valid_block_with_parents(2.into(), vec![1.into()], miner_data, vec![]);
-    let cb_id = {
+    let (cb_id, cb_amount) = {
         let mut cb = funding_block.transactions[0].clone();
         cb.finalize();
-        cb.id()
+        (cb.id(), cb.outputs[0].value)
     };
+
     consensus.validate_and_insert_block(funding_block.to_immutable()).virtual_state_task.await.unwrap();
-    let tx = Transaction::new(
+    let mut txx = Transaction::new(
         0,
         vec![TransactionInput::new(TransactionOutpoint { transaction_id: cb_id, index: 0 }, vec![], 0, 0)],
-        vec![TransactionOutput::new(1, ScriptPublicKey::default())],
+        vec![TransactionOutput::new(cb_amount / 2, ScriptPublicKey::default())],
         0,
         SubnetworkId::default(),
         0,
-        vec![0; (config.params.max_block_mass / 2) as usize],
+        vec![0; (config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize],
     );
-    consensus.add_utxo_valid_block_with_parents(3.into(), vec![2.into()], vec![tx]).await.unwrap();
+
+    // Create a tx with transient mass over the block limit
+    txx.payload = vec![0; (2 * config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR) as usize];
+    let mut tx = MutableTransaction::from_tx(txx.clone());
+    // This triggers storage mass population
+    consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
+    let consensus_res = consensus.add_utxo_valid_block_with_parents(4.into(), vec![2.into()], vec![tx.tx.unwrap_or_clone()]).await;
+    assert_match!(consensus_res, Err(RuleError::ExceedsTransientMassLimit(_, _)));
+
+    // Fix the payload to be below the limit
+    txx.payload = vec![0; (config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
+    let mut tx = MutableTransaction::from_tx(txx.clone());
+    // This triggers storage mass population
+    consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
+    let status = consensus.add_utxo_valid_block_with_parents(3.into(), vec![2.into()], vec![tx.tx.unwrap_or_clone()]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
 
     consensus.shutdown(wait_handles);
 }
@@ -1943,7 +1970,7 @@ async fn payload_activation_test() {
             cfg.params.genesis.hash = genesis_header.hash;
         })
         .edit_consensus_params(|p| {
-            p.payload_activation = ForkActivation::new(PAYLOAD_ACTIVATION_DAA_SCORE);
+            p.crescendo_activation = ForkActivation::new(PAYLOAD_ACTIVATION_DAA_SCORE);
         })
         .build();
 
@@ -1963,7 +1990,7 @@ async fn payload_activation_test() {
     assert_eq!(consensus.get_virtual_daa_score(), index);
 
     // Create transaction with large payload
-    let large_payload = vec![0u8; (config.params.max_block_mass / 2) as usize];
+    let large_payload = vec![0u8; (config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
     let mut tx_with_payload = Transaction::new(
         0,
         vec![TransactionInput::new(
@@ -1989,10 +2016,15 @@ async fn payload_activation_test() {
         let mut block =
             consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
 
-        // Insert our test transaction and recalculate block hashes
-        block.transactions.push(tx_with_payload.clone());
+        let mut tx = MutableTransaction::from_tx(tx_with_payload.clone());
+        // This triggers storage mass population
+        let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
 
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter(), false);
+        // Insert our test transaction and recalculate block hashes
+        block.transactions.push(tx.tx.unwrap_or_clone());
+
+        block.header.hash_merkle_root =
+            calc_hash_merkle_root(block.transactions.iter(), config.crescendo_activation.is_active(block.header.daa_score));
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Err(RuleError::TxInContextFailed(tx, TxRuleError::NonCoinbaseTxHasPayload)) if tx == tx_id));
         assert_eq!(consensus.lkg_virtual_state.load().daa_score, PAYLOAD_ACTIVATION_DAA_SCORE - 1);
@@ -2003,9 +2035,13 @@ async fn payload_activation_test() {
     consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
     index += 1;
 
+    let mut tx = MutableTransaction::from_tx(tx_with_payload.clone());
+    // This triggers storage mass population
+    let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
+
     // Test 2: Verify the same transaction is accepted after activation
     let status =
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx_with_payload.clone()]).await;
+        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx.tx.unwrap_or_clone()]).await;
 
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
@@ -2067,7 +2103,7 @@ async fn runtime_sig_op_counting_test() {
             cfg.params.genesis.hash = genesis_header.hash;
         })
         .edit_consensus_params(|p| {
-            p.runtime_sig_op_counting = ForkActivation::new(RUNTIME_SIGOP_ACTIVATION_DAA_SCORE);
+            p.crescendo_activation = ForkActivation::new(RUNTIME_SIGOP_ACTIVATION_DAA_SCORE);
         })
         .build();
 
@@ -2120,13 +2156,19 @@ async fn runtime_sig_op_counting_test() {
 
     tx.finalize();
 
+    let mut tx = MutableTransaction::from_tx(tx);
+    // This triggers storage mass population
+    let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
+    let tx = tx.tx.unwrap_or_clone();
+
     // Test 1: Before activation, tx should be rejected due to static sig op counting (sees 3 ops)
     {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
         let mut block =
             consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
         block.transactions.push(tx.clone());
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter(), false);
+        block.header.hash_merkle_root =
+            calc_hash_merkle_root(block.transactions.iter(), config.crescendo_activation.is_active(block.header.daa_score));
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
         index += 1;

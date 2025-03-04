@@ -140,7 +140,7 @@ impl GeneratorExtension for Generator {
 
 fn test_network_id() -> NetworkId {
     // TODO make this configurable
-    NetworkId::with_suffix(NetworkType::Testnet, 11)
+    NetworkId::with_suffix(NetworkType::Testnet, 10)
 }
 
 #[derive(Default)]

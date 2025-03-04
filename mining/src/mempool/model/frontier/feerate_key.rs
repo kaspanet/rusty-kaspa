@@ -1,5 +1,5 @@
 use crate::{block_template::selector::ALPHA, mempool::model::tx::MempoolTransaction};
-use kaspa_consensus_core::tx::Transaction;
+use kaspa_consensus_core::{mass::ContextualMasses, tx::Transaction};
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
@@ -77,9 +77,13 @@ impl Ord for FeerateTransactionKey {
 
 impl From<&MempoolTransaction> for FeerateTransactionKey {
     fn from(tx: &MempoolTransaction) -> Self {
-        let mass = tx.mtx.tx.mass();
+        // NOTE: The code below is a mempool simplification reducing the various block mass units to a
+        //       single one-dimension value (making it easier to select transactions for block templates).
+        // Future mempool improvements are expected to refine this behavior and use the multi-dimension values
+        // in order to optimize and increase block space usage.
+        let mass = ContextualMasses::new(tx.mtx.tx.mass())
+            .max(tx.mtx.calculated_non_contextual_masses.expect("masses are expected to be calculated"));
         let fee = tx.mtx.calculated_fee.expect("fee is expected to be populated");
-        assert_ne!(mass, 0, "mass field is expected to be set when inserting to the mempool");
         Self::new(fee, mass, tx.mtx.tx.clone())
     }
 }

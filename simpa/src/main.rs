@@ -13,7 +13,7 @@ use kaspa_consensus::{
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
     },
-    params::{ForkActivation, Params, Testnet11Bps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, TESTNET11_PARAMS},
+    params::{ForkActivation, Params, TenBps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, SIMNET_PARAMS},
 };
 use kaspa_consensus_core::{
     api::ConsensusApi, block::Block, blockstatus::BlockStatus, config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult,
@@ -189,11 +189,11 @@ fn main_impl(mut args: Args) {
             args.miners
         );
     }
-    args.bps = if args.testnet11 { Testnet11Bps::bps() as f64 } else { args.bps };
-    let mut params = if args.testnet11 { TESTNET11_PARAMS } else { DEVNET_PARAMS };
-    params.storage_mass_activation = ForkActivation::new(400);
+    args.bps = if args.testnet11 { TenBps::bps() as f64 } else { args.bps };
+    let mut params = if args.testnet11 { SIMNET_PARAMS } else { DEVNET_PARAMS };
+    params.crescendo_activation = ForkActivation::always();
+    params.crescendo.coinbase_maturity = 200;
     params.storage_mass_parameter = 10_000;
-    params.payload_activation = ForkActivation::always();
     let mut builder = ConfigBuilder::new(params)
         .apply_args(|config| apply_args_to_consensus_params(&args, &mut config.params))
         .apply_args(|config| apply_args_to_perf_params(&args, &mut config.perf))
@@ -256,6 +256,11 @@ fn main_impl(mut args: Args) {
     };
 
     if args.test_pruning {
+        let hashes = topologically_ordered_hashes(&consensus, consensus.pruning_point());
+        let num_blocks = hashes.len();
+        let num_txs = print_stats(&consensus, &hashes, args.delay, args.bps, config.ghostdag_k().before());
+        info!("There are {num_blocks} blocks with {num_txs} transactions overall above the current pruning point");
+        consensus.validate_pruning_points(consensus.get_sink()).unwrap();
         drop(consensus);
         return;
     }
@@ -293,47 +298,58 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
     if args.testnet11 {
         info!(
             "Using kaspa-testnet-11 configuration (GHOSTDAG K={}, DAA window size={}, Median time window size={})",
-            params.ghostdag_k,
-            params.difficulty_window_size(0),
-            params.past_median_time_window_size(0),
+            params.ghostdag_k().before(),
+            params.difficulty_window_size().before(),
+            params.past_median_time_window_size().before(),
         );
     } else {
         let max_delay = args.delay.max(NETWORK_DELAY_BOUND as f64);
-        let k = u64::max(calculate_ghostdag_k(2.0 * max_delay * args.bps, 0.05), params.ghostdag_k as u64);
+        let k = u64::max(calculate_ghostdag_k(2.0 * max_delay * args.bps, 0.05), params.ghostdag_k().before() as u64);
         let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
-        params.ghostdag_k = k;
-        params.mergeset_size_limit = k as u64 * 10;
-        params.max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
-        params.target_time_per_block = (1000.0 / args.bps) as u64;
-        params.merge_depth = (params.merge_depth as f64 * args.bps) as u64;
-        params.coinbase_maturity = (params.coinbase_maturity as f64 * f64::max(1.0, args.bps * args.delay * 0.25)) as u64;
+        params.prior_ghostdag_k = k;
+        params.prior_mergeset_size_limit = k as u64 * 10;
+        params.prior_max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
+        params.prior_target_time_per_block = (1000.0 / args.bps) as u64;
+        params.prior_merge_depth = (params.prior_merge_depth as f64 * args.bps) as u64;
+        params.prior_coinbase_maturity = (params.prior_coinbase_maturity as f64 * f64::max(1.0, args.bps * args.delay * 0.25)) as u64;
 
         if args.daa_legacy {
             // Scale DAA and median-time windows linearly with BPS
-            params.sampling_activation = ForkActivation::never();
-            params.legacy_timestamp_deviation_tolerance = (params.legacy_timestamp_deviation_tolerance as f64 * args.bps) as u64;
-            params.legacy_difficulty_window_size = (params.legacy_difficulty_window_size as f64 * args.bps) as usize;
+            params.crescendo_activation = ForkActivation::never();
+            params.timestamp_deviation_tolerance = (params.timestamp_deviation_tolerance as f64 * args.bps) as u64;
+            params.prior_difficulty_window_size = (params.prior_difficulty_window_size as f64 * args.bps) as usize;
         } else {
             // Use the new sampling algorithms
-            params.sampling_activation = ForkActivation::always();
-            params.past_median_time_sample_rate = (10.0 * args.bps) as u64;
-            params.new_timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
-            params.difficulty_sample_rate = (2.0 * args.bps) as u64;
+            params.crescendo_activation = ForkActivation::always();
+            params.timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
+            params.crescendo.past_median_time_sample_rate = (10.0 * args.bps) as u64;
+            params.crescendo.difficulty_sample_rate = (2.0 * args.bps) as u64;
         }
 
-        info!("2Dλ={}, GHOSTDAG K={}, DAA window size={}", 2.0 * args.delay * args.bps, k, params.difficulty_window_size(0));
+        info!("2Dλ={}, GHOSTDAG K={}, DAA window size={}", 2.0 * args.delay * args.bps, k, params.difficulty_window_size().before());
     }
     if args.test_pruning {
+        params.crescendo_activation = ForkActivation::new(1250.min(args.target_blocks.map(|x| x / 2).unwrap_or(900)));
+
         params.pruning_proof_m = 16;
-        params.legacy_difficulty_window_size = 64;
-        params.legacy_timestamp_deviation_tolerance = 16;
-        params.new_timestamp_deviation_tolerance = 16;
-        params.sampled_difficulty_window_size = params.sampled_difficulty_window_size.min(32);
-        params.finality_depth = 128;
-        params.merge_depth = 128;
-        params.mergeset_size_limit = 32;
-        params.pruning_depth = params.anticone_finalization_depth();
-        info!("Setting pruning depth to {}", params.pruning_depth);
+        params.min_difficulty_window_size = 16;
+        params.prior_difficulty_window_size = 64;
+        params.timestamp_deviation_tolerance = 16;
+        params.crescendo.sampled_difficulty_window_size = params.crescendo.sampled_difficulty_window_size.min(32);
+
+        params.prior_ghostdag_k = 10;
+        params.prior_finality_depth = 100;
+        params.prior_merge_depth = 64;
+        params.prior_mergeset_size_limit = 32;
+        params.prior_pruning_depth = 100 * 2 + 50;
+
+        params.crescendo.ghostdag_k = 20;
+        params.crescendo.finality_depth = 100 * 2;
+        params.crescendo.merge_depth = 64 * 2;
+        params.crescendo.mergeset_size_limit = 32 * 2;
+        params.crescendo.pruning_depth = 100 * 2 * 2 + 50;
+
+        info!("Setting pruning depth to {:?}", params.pruning_depth());
     }
 }
 
@@ -349,7 +365,7 @@ fn apply_args_to_perf_params(args: &Args, perf_params: &mut PerfParams) {
 async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: &Params, delay: f64, bps: f64, header_only: bool) {
     let hashes = topologically_ordered_hashes(src_consensus, params.genesis.hash);
     let num_blocks = hashes.len();
-    let num_txs = print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k);
+    let num_txs = print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k().before());
     if header_only {
         info!("Validating {num_blocks} headers...");
     } else {

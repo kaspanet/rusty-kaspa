@@ -21,6 +21,8 @@ use crate::{
             headers_selected_tip::HeadersSelectedTipStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::PruningStoreReader,
+            pruning_samples::{PruningSamplesStore, PruningSamplesStoreReader},
+            reachability::ReachabilityStoreReader,
             relations::RelationsStoreReader,
             statuses::StatusesStoreReader,
             tips::TipsStoreReader,
@@ -61,6 +63,7 @@ use kaspa_consensus_core::{
         tx::TxResult,
     },
     header::Header,
+    mass::{ContextualMasses, NonContextualMasses},
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
     network::NetworkType,
@@ -78,7 +81,7 @@ use crossbeam_channel::{
 use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
@@ -86,7 +89,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use std::{
     cmp::Reverse,
-    collections::BinaryHeap,
+    collections::{BinaryHeap, VecDeque},
     future::Future,
     iter::once,
     ops::Deref,
@@ -287,7 +290,7 @@ impl Consensus {
             virtual_processor.process_genesis();
         }
 
-        Self {
+        let this = Self {
             db,
             block_sender: sender,
             header_processor,
@@ -302,7 +305,62 @@ impl Consensus {
             config,
             creation_timestamp,
             is_consensus_exiting,
+        };
+
+        // TODO (post HF): remove the upgrade
+        // Database upgrade to include pruning samples
+        this.pruning_samples_database_upgrade();
+
+        this
+    }
+
+    fn pruning_samples_database_upgrade(&self) {
+        //
+        // For the first time this version runs, make sure we populate pruning samples
+        // from pov for all qualified chain blocks in the pruning point future
+        //
+
+        let sink = self.get_sink();
+        if self.storage.pruning_samples_store.pruning_sample_from_pov(sink).unwrap_option().is_some() {
+            // Sink is populated so we assume the database is upgraded
+            return;
         }
+
+        // Populate past pruning points (including current one)
+        for (p1, p2) in (0..=self.pruning_point_store.read().get().unwrap().index)
+            .map(|index| self.past_pruning_points_store.get(index).unwrap())
+            .tuple_windows()
+        {
+            // Set p[i] to point at p[i-1]
+            self.pruning_samples_store.insert(p2, p1).unwrap_or_exists();
+        }
+
+        let pruning_point = self.pruning_point();
+        let reachability = self.reachability_store.read();
+
+        // We walk up via reachability tree children so that we only iterate blocks B s.t. pruning point ∈ chain(B)
+        let mut queue = VecDeque::<Hash>::from_iter(reachability.get_children(pruning_point).unwrap().iter().copied());
+        let mut processed = 0;
+        kaspa_core::info!("Upgrading database to include and populate the pruning samples store");
+        while let Some(current) = queue.pop_front() {
+            if !self.get_block_status(current).is_some_and(|s| s == BlockStatus::StatusUTXOValid) {
+                // Skip branches of the tree which are not chain qualified.
+                // This is sufficient since we will only assume this field exists
+                // for such chain qualified blocks
+                continue;
+            }
+            queue.extend(reachability.get_children(current).unwrap().iter());
+
+            processed += 1;
+
+            // Populate the data
+            let ghostdag_data = self.ghostdag_store.get_compact_data(current).unwrap();
+            let pruning_sample_from_pov =
+                self.services.pruning_point_manager.expected_header_pruning_point_v2(ghostdag_data).pruning_sample;
+            self.pruning_samples_store.insert(current, pruning_sample_from_pov).unwrap_or_exists();
+        }
+
+        kaspa_core::info!("Done upgrading database (populated {} entries)", processed);
     }
 
     pub fn run_processors(&self) -> Vec<JoinHandle<()>> {
@@ -443,13 +501,12 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.populate_mempool_transactions_in_parallel(transactions)
     }
 
-    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
-        self.services.mass_calculator.calc_tx_compute_mass(transaction)
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
+        self.services.mass_calculator.calc_non_contextual_masses(transaction)
     }
 
-    fn calculate_transaction_storage_mass(&self, _transaction: &MutableTransaction) -> Option<u64> {
-        // self.services.mass_calculator.calc_tx_storage_mass(&transaction.as_verifiable())
-        unimplemented!("unsupported at the API level until KIP9 is finalized")
+    fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
+        self.services.mass_calculator.calc_contextual_masses(&transaction.as_verifiable())
     }
 
     fn get_stats(&self) -> ConsensusStats {
@@ -750,7 +807,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], pov_daa_score: u64) -> Hash {
-        let storage_mass_activated = self.config.storage_mass_activation.is_active(pov_daa_score);
+        let storage_mass_activated = self.config.crescendo_activation.is_active(pov_daa_score);
         calc_hash_merkle_root(txs.iter(), storage_mass_activated)
     }
 
@@ -766,7 +823,7 @@ impl ConsensusApi for Consensus {
         self.services.pruning_proof_manager.apply_proof(proof, trusted_set)
     }
 
-    fn import_pruning_points(&self, pruning_points: PruningPointsList) {
+    fn import_pruning_points(&self, pruning_points: PruningPointsList) -> PruningImportResult<()> {
         self.services.pruning_proof_manager.import_pruning_points(&pruning_points)
     }
 
@@ -789,18 +846,19 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 
-    fn validate_pruning_points(&self) -> ConsensusResult<()> {
+    fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         let hst = self.storage.headers_selected_tip_store.read().get().unwrap().hash;
         let pp_info = self.pruning_point_store.read().get().unwrap();
         if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, hst) {
-            return Err(ConsensusError::General("invalid pruning point candidate"));
+            return Err(ConsensusError::General("pruning point does not coincide with the synced header selected tip"));
         }
-
-        if !self.services.pruning_point_manager.are_pruning_points_in_valid_chain(pp_info, hst) {
-            return Err(ConsensusError::General("past pruning points do not form a valid chain"));
+        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, syncer_virtual_selected_parent) {
+            return Err(ConsensusError::General("pruning point does not coincide with the syncer's sink (virtual selected parent)"));
         }
-
-        Ok(())
+        self.services
+            .pruning_point_manager
+            .are_pruning_points_in_valid_chain(pp_info, syncer_virtual_selected_parent)
+            .map_err(|e| ConsensusError::GeneralOwned(format!("past pruning points do not form a valid chain: {}", e)))
     }
 
     fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
@@ -813,7 +871,7 @@ impl ConsensusApi for Consensus {
     // max_blocks has to be greater than the merge set size limit
     fn get_hashes_between(&self, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
         let _guard = self.pruning_lock.blocking_read();
-        assert!(max_blocks as u64 > self.config.mergeset_size_limit);
+        assert!(max_blocks as u64 > self.config.mergeset_size_limit().upper_bound());
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
 
@@ -1000,16 +1058,21 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(hash)?;
 
         // In order to guarantee the chain height is at least k, we check that the pruning point is not genesis.
-        if self.pruning_point() == self.config.genesis.hash {
+        let pruning_point = self.pruning_point();
+        if pruning_point == self.config.genesis.hash {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
+
+        // [Crescendo]: get ghostdag k based on the pruning point's DAA score. The off-by-one of not going by selected parent
+        // DAA score is not important here as we simply increase K one block earlier which is more conservative (saving/sending more data)
+        let ghostdag_k = self.config.ghostdag_k().get(self.headers_store.get_daa_score(pruning_point).unwrap());
 
         // Note: the method `get_ghostdag_chain_k_depth` might return a partial chain if data is missing.
         // Ideally this node when synced would validate it got all of the associated data up to k blocks
         // back and then we would be able to assert we actually got `k + 1` blocks, however we choose to
         // simply ignore, since if the data was truly missing we wouldn't accept the staging consensus in
         // the first place
-        Ok(self.services.pruning_proof_manager.get_ghostdag_chain_k_depth(hash))
+        Ok(self.services.pruning_proof_manager.get_ghostdag_chain_k_depth(hash, ghostdag_k))
     }
 
     fn create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {

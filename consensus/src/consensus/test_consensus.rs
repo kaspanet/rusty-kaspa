@@ -121,7 +121,7 @@ impl TestConsensus {
             .consensus
             .services
             .pruning_point_manager
-            .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_point_store.read().get().unwrap());
+            .expected_header_pruning_point_v1(ghostdag_data.to_compact(), self.consensus.pruning_point_store.read().get().unwrap());
         let daa_window = self.consensus.services.window_manager.block_daa_window(&ghostdag_data).unwrap();
         header.bits = self.consensus.services.window_manager.calculate_difficulty_bits(&ghostdag_data, &daa_window);
         header.daa_score = daa_window.daa_score;

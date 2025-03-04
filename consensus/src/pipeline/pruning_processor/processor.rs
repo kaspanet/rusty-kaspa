@@ -167,9 +167,8 @@ impl PruningProcessor {
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
         let pruning_point_read = self.pruning_point_store.upgradable_read();
         let current_pruning_info = pruning_point_read.get().unwrap();
-        let (new_pruning_points, new_candidate) = self.pruning_point_manager.next_pruning_points_and_candidate_by_ghostdag_data(
+        let (new_pruning_points, new_candidate) = self.pruning_point_manager.next_pruning_points(
             sink_ghostdag_data,
-            None,
             current_pruning_info.candidate,
             current_pruning_info.pruning_point,
         );
@@ -477,6 +476,11 @@ impl PruningProcessor {
                     if !keep_headers.contains(&current) {
                         // Prune the actual headers
                         self.headers_store.delete_batch(&mut batch, current).unwrap();
+
+                        // We want to keep the pruning sample from POV for past pruning points
+                        // so that pruning point queries keep working for blocks right after the current
+                        // pruning point (keep_headers contains the past pruning points)
+                        self.pruning_samples_store.delete_batch(&mut batch, current).unwrap();
                     }
                 }
 

@@ -28,6 +28,7 @@ use kaspa_consensus_core::{
     },
     block::{BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     coinbase::MinerData,
+    config::params::ForkedParam,
     errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
 };
@@ -46,6 +47,7 @@ pub struct MiningManager {
 }
 
 impl MiningManager {
+    // [Crescendo]: used for tests only so we can pass a single value target_time_per_block
     pub fn new(
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
@@ -53,12 +55,12 @@ impl MiningManager {
         cache_lifetime: Option<u64>,
         counters: Arc<MiningCounters>,
     ) -> Self {
-        let config = Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass);
+        let config = Config::build_default(ForkedParam::new_const(target_time_per_block), relay_non_std_transactions, max_block_mass);
         Self::with_config(config, cache_lifetime, counters)
     }
 
     pub fn new_with_extended_config(
-        target_time_per_block: u64,
+        target_time_per_block: ForkedParam<u64>,
         relay_non_std_transactions: bool,
         max_block_mass: u64,
         ram_scale: f64,
@@ -203,8 +205,11 @@ impl MiningManager {
     }
 
     /// Returns realtime feerate estimations based on internal mempool state
-    pub(crate) fn get_realtime_feerate_estimations(&self) -> FeerateEstimations {
-        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
+    pub(crate) fn get_realtime_feerate_estimations(&self, virtual_daa_score: u64) -> FeerateEstimations {
+        let args = FeerateEstimatorArgs::new(
+            self.config.network_blocks_per_second.get(virtual_daa_score),
+            self.config.maximum_mass_per_block,
+        );
         let estimator = self.mempool.read().build_feerate_estimator(args);
         estimator.calc_estimations(self.config.minimum_feerate())
     }
@@ -215,7 +220,10 @@ impl MiningManager {
         consensus: &dyn ConsensusApi,
         prefix: kaspa_addresses::Prefix,
     ) -> MiningManagerResult<FeeEstimateVerbose> {
-        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
+        let args = FeerateEstimatorArgs::new(
+            self.config.network_blocks_per_second.get(consensus.get_virtual_daa_score()),
+            self.config.maximum_mass_per_block,
+        );
         let network_mass_per_second = args.network_mass_per_second();
         let mempool_read = self.mempool.read();
         let estimator = mempool_read.build_feerate_estimator(args);
@@ -516,7 +524,7 @@ impl MiningManager {
         transactions[lower_bound..]
             .iter()
             .position(|tx| {
-                mass += tx.calculated_compute_mass.unwrap();
+                mass += tx.calculated_non_contextual_masses.unwrap().max();
                 mass >= self.config.maximum_mass_per_block
             })
             // Make sure the upper bound is greater than the lower bound, allowing to handle a very unlikely,
@@ -854,8 +862,8 @@ impl MiningManagerProxy {
     }
 
     /// Returns realtime feerate estimations based on internal mempool state
-    pub async fn get_realtime_feerate_estimations(self) -> FeerateEstimations {
-        spawn_blocking(move || self.inner.get_realtime_feerate_estimations()).await.unwrap()
+    pub async fn get_realtime_feerate_estimations(self, virtual_daa_score: u64) -> FeerateEstimations {
+        spawn_blocking(move || self.inner.get_realtime_feerate_estimations(virtual_daa_score)).await.unwrap()
     }
 
     /// Returns realtime feerate estimations based on internal mempool state with additional verbose data

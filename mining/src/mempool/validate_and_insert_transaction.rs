@@ -25,7 +25,7 @@ impl Mempool {
     ) -> RuleResult<TransactionPreValidation> {
         self.validate_transaction_unacceptance(&transaction)?;
         // Populate mass and estimated_size in the beginning, it will be used in multiple places throughout the validation and insertion.
-        transaction.calculated_compute_mass = Some(consensus.calculate_transaction_compute_mass(&transaction.tx));
+        transaction.calculated_non_contextual_masses = Some(consensus.calculate_transaction_non_contextual_masses(&transaction.tx));
         self.validate_transaction_in_isolation(&transaction)?;
         let feerate_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy)?;
         self.populate_mempool_entries(&mut transaction);

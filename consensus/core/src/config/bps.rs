@@ -20,8 +20,8 @@ pub fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
     }
 }
 
-/// Bps-related constants generator for testnet 11
-pub type Testnet11Bps = Bps<10>;
+/// Bps-related constants generator for 10-bps networks
+pub type TenBps = Bps<10>;
 
 /// Struct representing network blocks-per-second. Provides a bunch of const functions
 /// computing various constants which are functions of the BPS value
@@ -93,29 +93,21 @@ impl<const BPS: u64> Bps<BPS> {
         BPS * NEW_FINALITY_DURATION
     }
 
-    /// Limit used to previously calculate the pruning depth.
-    const fn prev_mergeset_size_limit() -> u64 {
-        Self::ghostdag_k() as u64 * 10
-    }
-
     pub const fn pruning_depth() -> u64 {
         // Based on the analysis at https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf
         // and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
         // We add an additional merge depth unit as a safety margin for anticone finalization
-        Self::finality_depth()
+        let lower_bound = Self::finality_depth()
             + Self::merge_depth_bound() * 2
-            + 4 * Self::prev_mergeset_size_limit() * Self::ghostdag_k() as u64
+            + 4 * Self::mergeset_size_limit() * Self::ghostdag_k() as u64
             + 2 * Self::ghostdag_k() as u64
-            + 2
+            + 2;
 
-        // TODO (HF or restart of TN11):
-        // Return `Self::finality_depth() * 3` and assert that this value is equal or larger than the above expression.
-        // This will give us a round easy number to track which is not sensitive to minor changes in other related params.
-    }
-
-    pub const fn pruning_proof_m() -> u64 {
-        // No need to scale this constant with BPS since the important block levels (higher) remain logarithmically short
-        PRUNING_PROOF_M
+        if lower_bound > BPS * NEW_PRUNING_DURATION {
+            lower_bound
+        } else {
+            BPS * NEW_PRUNING_DURATION
+        }
     }
 
     /// Sample rate for sampling blocks to the median time window (in block units, hence dependent on BPS)

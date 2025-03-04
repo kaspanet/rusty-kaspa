@@ -173,6 +173,10 @@ impl PruningProofManager {
             return Err(PruningImportError::PruningProofNotEnoughHeaders);
         }
 
+        // [Crescendo]: decide on ghostdag K based on proof pruning point DAA score
+        let proof_pp_daa_score = proof[0].last().expect("checked if empty").daa_score;
+        let ghostdag_k = self.ghostdag_k.get(proof_pp_daa_score);
+
         let headers_estimate = self.estimate_proof_unique_size(proof);
 
         let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
@@ -199,7 +203,7 @@ impl PruningProofManager {
             .map(|(level, ghostdag_store)| {
                 GhostdagManager::with_level(
                     self.genesis_hash,
-                    self.ghostdag_k,
+                    ghostdag_k,
                     ghostdag_store,
                     relations_stores[level].clone(),
                     headers_store.clone(),

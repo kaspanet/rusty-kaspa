@@ -2,12 +2,12 @@ use crate::mempool::{
     errors::{NonStandardError, NonStandardResult},
     Mempool,
 };
-use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
     mass,
     tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
 };
+use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, mass::NonContextualMasses};
 use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class::ScriptClass};
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
@@ -61,12 +61,12 @@ impl Mempool {
         // almost as much to process as the sender fees, limit the maximum
         // size of a transaction. This also helps mitigate CPU exhaustion
         // attacks.
-        if transaction.calculated_compute_mass.unwrap() > MAXIMUM_STANDARD_TRANSACTION_MASS {
-            return Err(NonStandardError::RejectMass(
-                transaction_id,
-                transaction.calculated_compute_mass.unwrap(),
-                MAXIMUM_STANDARD_TRANSACTION_MASS,
-            ));
+        let NonContextualMasses { compute_mass, transient_mass } = transaction.calculated_non_contextual_masses.unwrap();
+        if compute_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
+            return Err(NonStandardError::RejectComputeMass(transaction_id, compute_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
+        }
+        if transient_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
+            return Err(NonStandardError::RejectTransientMass(transaction_id, transient_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
         }
 
         for (i, input) in transaction.tx.inputs.iter().enumerate() {
@@ -172,9 +172,8 @@ impl Mempool {
     pub(crate) fn check_transaction_standard_in_context(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
         let contextual_mass = transaction.tx.mass();
-        assert!(contextual_mass > 0, "expected to be set by consensus");
         if contextual_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
-            return Err(NonStandardError::RejectContextualMass(transaction_id, contextual_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
+            return Err(NonStandardError::RejectStorageMass(transaction_id, contextual_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
         }
         for (i, input) in transaction.tx.inputs.iter().enumerate() {
             // It is safe to elide existence and index checks here since
@@ -199,8 +198,10 @@ impl Mempool {
                 }
             }
 
-            // TODO: For now, until wallets adapt, we don't require fee as function of full contextual_mass (but the fee/mass ratio will affect tx selection to block template)
-            let minimum_fee = self.minimum_required_transaction_relay_fee(transaction.calculated_compute_mass.unwrap());
+            // TODO: For now, until wallets adapt, we only require minimum fee as function of compute mass (but the fee/mass ratio will
+            // use the max over all masses and will affect tx selection to block template)
+            let minimum_fee =
+                self.minimum_required_transaction_relay_fee(transaction.calculated_non_contextual_masses.unwrap().compute_mass);
             if transaction.calculated_fee.unwrap() < minimum_fee {
                 return Err(NonStandardError::RejectInsufficientFee(transaction_id, transaction.calculated_fee.unwrap(), minimum_fee));
             }
@@ -241,6 +242,7 @@ mod tests {
     use kaspa_consensus_core::{
         config::params::Params,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
+        mass::NonContextualMasses,
         network::NetworkType,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
@@ -292,7 +294,7 @@ mod tests {
         for test in tests.iter() {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let mut config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
+                let mut config = Config::build_default(params.target_time_per_block(), false, params.max_block_mass);
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
@@ -377,7 +379,7 @@ mod tests {
         for test in tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let mut config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
+                let mut config = Config::build_default(params.target_time_per_block(), false, params.max_block_mass);
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
@@ -412,7 +414,7 @@ mod tests {
 
         fn new_mtx(tx: Transaction, mass: u64) -> MutableTransaction {
             let mut mtx = MutableTransaction::from_tx(tx);
-            mtx.calculated_compute_mass = Some(mass);
+            mtx.calculated_non_contextual_masses = Some(NonContextualMasses::new(mass, mass));
             mtx
         }
 
@@ -557,7 +559,7 @@ mod tests {
         for test in tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
+                let config = Config::build_default(params.target_time_per_block(), false, params.max_block_mass);
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
 

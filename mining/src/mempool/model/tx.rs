@@ -22,10 +22,8 @@ impl MempoolTransaction {
         self.mtx.tx.id()
     }
 
-    pub(crate) fn fee_rate(&self) -> f64 {
-        let contextual_mass = self.mtx.tx.mass();
-        assert!(contextual_mass > 0, "expected to be called for validated txs only");
-        self.mtx.calculated_fee.unwrap() as f64 / contextual_mass as f64
+    pub(crate) fn feerate(&self) -> f64 {
+        self.mtx.calculated_feerate().unwrap()
     }
 }
 
