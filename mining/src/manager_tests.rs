@@ -20,9 +20,10 @@ mod tests {
         api::ConsensusApi,
         block::TemplateBuildMode,
         coinbase::MinerData,
+        config::params::ForkedParam,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         errors::tx::TxRuleError,
-        mass::transaction_estimated_serialized_size,
+        mass::{transaction_estimated_serialized_size, NonContextualMasses},
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{
             scriptvec, MutableTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
@@ -109,12 +110,12 @@ mod tests {
                         tx.calculated_fee.unwrap()
                     );
                     assert_eq!(
-                        tx_to_insert.calculated_compute_mass.unwrap(),
-                        tx.calculated_compute_mass.unwrap(),
+                        tx_to_insert.calculated_non_contextual_masses.unwrap(),
+                        tx.calculated_non_contextual_masses.unwrap(),
                         "({priority:?}, {orphan:?}, {rbf_policy:?}) wrong mass in transaction {}: expected: {}, got: {}",
                         tx.id(),
-                        tx_to_insert.calculated_compute_mass.unwrap(),
-                        tx.calculated_compute_mass.unwrap()
+                        tx_to_insert.calculated_non_contextual_masses.unwrap(),
+                        tx.calculated_non_contextual_masses.unwrap()
                     );
                 }
                 assert!(
@@ -901,7 +902,7 @@ mod tests {
         ];
 
         let consensus = Arc::new(ConsensusMock::new());
-        let mut config = Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS);
+        let mut config = Config::build_default(ForkedParam::new_const(TARGET_TIME_PER_BLOCK), false, MAX_BLOCK_MASS);
         // Limit the orphan pool to 2 transactions
         config.maximum_orphan_transaction_count = 2;
         let counters = Arc::new(MiningCounters::default());
@@ -1129,7 +1130,7 @@ mod tests {
 
         let consensus = Arc::new(ConsensusMock::new());
         let counters = Arc::new(MiningCounters::default());
-        let mut config = Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS);
+        let mut config = Config::build_default(ForkedParam::new_const(TARGET_TIME_PER_BLOCK), false, MAX_BLOCK_MASS);
         let tx_size = txs[0].mempool_estimated_bytes();
         let size_limit = TX_COUNT * tx_size;
         config.mempool_size_limit = size_limit;
@@ -1348,7 +1349,9 @@ mod tests {
         let mut mutable_tx = MutableTransaction::from_tx(transaction);
         mutable_tx.calculated_fee = Some(DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
         // Please note: this is the ConsensusMock version of the calculated_mass which differs from Consensus
-        mutable_tx.calculated_compute_mass = Some(transaction_estimated_serialized_size(&mutable_tx.tx));
+        let transaction_serialized_size = transaction_estimated_serialized_size(&mutable_tx.tx);
+        mutable_tx.calculated_non_contextual_masses =
+            Some(NonContextualMasses::new(transaction_serialized_size, transaction_serialized_size));
         mutable_tx.entries[0] = Some(entry);
 
         mutable_tx
