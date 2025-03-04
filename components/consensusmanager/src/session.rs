@@ -10,6 +10,7 @@ use kaspa_consensus_core::{
     daa_score_timestamp::DaaScoreTimestamp,
     errors::consensus::ConsensusResult,
     header::Header,
+    mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
@@ -191,14 +192,14 @@ impl ConsensusSessionOwned {
         self.consensus.validate_and_insert_trusted_block(tb)
     }
 
-    pub fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
+    pub fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
         // This method performs pure calculations so no need for an async wrapper
-        self.consensus.calculate_transaction_compute_mass(transaction)
+        self.consensus.calculate_transaction_non_contextual_masses(transaction)
     }
 
-    pub fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
+    pub fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
         // This method performs pure calculations so no need for an async wrapper
-        self.consensus.calculate_transaction_storage_mass(transaction)
+        self.consensus.calculate_transaction_contextual_masses(transaction)
     }
 
     pub fn get_virtual_daa_score(&self) -> u64 {
@@ -442,8 +443,8 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.estimate_network_hashes_per_second(start_hash, window_size)).await
     }
 
-    pub async fn async_validate_pruning_points(&self) -> ConsensusResult<()> {
-        self.clone().spawn_blocking(move |c| c.validate_pruning_points()).await
+    pub async fn async_validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
+        self.clone().spawn_blocking(move |c| c.validate_pruning_points(syncer_virtual_selected_parent)).await
     }
 
     pub async fn async_are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
