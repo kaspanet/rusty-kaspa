@@ -14,7 +14,7 @@ Kaspa is about to take a significant leap with the **Crescendo Hardfork**, as de
   - 8 CPU cores  
   - 16 GB RAM  
   - 256 GB SSD  
-  - 5 MB/s (or ~40 Mbps) network bandwidth
+  - 5 MB/s (or ~40 Mbit/s) network bandwidth
 
 - **Preferred for Higher Performance**:  
   - 12–16 CPU cores  
