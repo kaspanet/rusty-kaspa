@@ -379,18 +379,26 @@ mod tests {
             let cbm = create_manager(&params);
             let (baseline_epochs, baseline_total) = calculate_emission(cbm);
 
-            // Loop over a few random activation points
-            for activation in [10000, 33444444, 120727479] {
+            let mut activations = vec![10000, 33444444, 120727479];
+            for network_id in NetworkId::iter() {
+                let activation = Params::from(network_id).crescendo_activation;
+                if activation != ForkActivation::never() && activation != ForkActivation::always() {
+                    activations.push(activation.daa_score());
+                }
+            }
+
+            // Loop over a few random activation points + specified activation points for all nets
+            for activation in activations {
                 params.crescendo_activation = ForkActivation::new(activation);
                 let cbm = create_manager(&params);
                 let (new_epochs, new_total) = calculate_emission(cbm);
 
                 // Epochs only represents the number of times the subsidy changed (lower after activation due to rounding)
                 println!("BASELINE:\t{}\tepochs, total emission: {}", baseline_epochs, baseline_total);
-                println!("CRESCENDO:\t{}\tepochs, total emission: {}", new_epochs, new_total);
+                println!("CRESCENDO:\t{}\tepochs, total emission: {}, activation: {}", new_epochs, new_total, activation);
 
                 let diff = (new_total as i64 - baseline_total as i64) / SOMPI_PER_KASPA as i64;
-                assert!(diff.abs() <= 51);
+                assert!(diff.abs() <= 51, "activation: {}", activation);
                 println!("DIFF (KAS): {}", diff);
             }
         }
@@ -431,9 +439,13 @@ mod tests {
         const SECONDS_PER_HALVING: u64 = SECONDS_PER_MONTH * 12;
 
         for network_id in NetworkId::iter() {
-            let params = &network_id.into();
-            let cbm = create_manager(params);
-            let bps = params.bps().upper_bound();
+            let mut params: Params = network_id.into();
+            if params.crescendo_activation != ForkActivation::always() {
+                // We test activation scenarios in verify_crescendo_emission_schedule
+                params.crescendo_activation = ForkActivation::never();
+            }
+            let cbm = create_manager(&params);
+            let bps = params.bps().before();
 
             let pre_deflationary_phase_base_subsidy = PRE_DEFLATIONARY_PHASE_BASE_SUBSIDY / bps;
             let deflationary_phase_initial_subsidy = DEFLATIONARY_PHASE_INITIAL_SUBSIDY / bps;
@@ -475,7 +487,7 @@ mod tests {
                 Test {
                     name: "after 32 halvings",
                     daa_score: params.deflationary_phase_daa_score + 32 * blocks_per_halving,
-                    expected: (DEFLATIONARY_PHASE_INITIAL_SUBSIDY / 2_u64.pow(32)).div_ceil(cbm.bps().before()),
+                    expected: (DEFLATIONARY_PHASE_INITIAL_SUBSIDY / 2_u64.pow(32)).div_ceil(bps),
                 },
                 Test {
                     name: "just before subsidy depleted",
