@@ -11,11 +11,10 @@ use crate::v5::{
     request_pruning_point_utxo_set::RequestPruningPointUtxoSetFlow,
     txrelay::flow::{RelayTransactionsFlow, RequestTransactionsFlow},
 };
-pub(crate) mod ibd;
 pub(crate) mod request_ibd_blocks_body;
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 
-use ibd::IbdFlowV7;
+use crate::ibd::IbdFlow;
 use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
 use kaspa_utils::channel;
 use request_ibd_blocks_body::HandleIbdBlockBodyRequests;
@@ -27,9 +26,9 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // IBD flow <-> invs flow communication uses a job channel in order to always
     // maintain at most a single pending job which can be updated
     let (ibd_sender, relay_receiver) = channel::job();
-
+    let body_flow_permitted = true;
     let mut flows: Vec<Box<dyn Flow>> = vec![
-        Box::new(IbdFlowV7::new(
+        Box::new(IbdFlow::new(
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![
@@ -50,6 +49,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
                 KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
             ]),
             relay_receiver,
+            body_flow_permitted,
         )),
         Box::new(HandleRelayBlockRequests::new(
             ctx.clone(),
