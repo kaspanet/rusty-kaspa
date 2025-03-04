@@ -214,7 +214,7 @@ impl<
             let (v1, candidate) = self.next_pruning_points_v1(sink_ghostdag, current_candidate, current_pruning_point);
             // [Crescendo]: sanity check that v2 logic pre activation is equivalent to v1
             let v2 = self.next_pruning_points_v2(sink_ghostdag, selected_parent_daa_score, current_pruning_point);
-            assert_eq!(v1, v2);
+            assert_eq!(v1, v2, "v1 = v2 pre activation");
             (v1, candidate)
         }
     }
