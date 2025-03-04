@@ -156,11 +156,11 @@ impl<
             if current_blue_score + pruning_depth <= ghostdag_data.blue_score {
                 break current;
             }
-            // For samples: special clamp for the period right after the fork
+            // For samples: special clamp for the period right after the fork (where we reach ceiling(P/F) steps before reaching P' depth)
             if is_self_pruning_sample && steps == self.pruning_samples_steps {
                 break current;
             }
-            // For non samples: clamp to samples
+            // For non samples: clamp to selected parent pruning point to maintain monotonicity (needed because of the previous condition)
             if current == selected_parent_pruning_point {
                 break current;
             }

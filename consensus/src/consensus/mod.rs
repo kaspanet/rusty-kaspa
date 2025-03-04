@@ -307,6 +307,7 @@ impl Consensus {
             is_consensus_exiting,
         };
 
+        // TODO (post HF): remove the upgrade
         // Database upgrade to include pruning samples
         this.pruning_samples_database_upgrade();
 
@@ -330,7 +331,7 @@ impl Consensus {
             .map(|index| self.past_pruning_points_store.get(index).unwrap())
             .tuple_windows()
         {
-            // p[i] -> p[i-1]
+            // Set p[i] to point at p[i-1]
             self.pruning_samples_store.insert(p2, p1).unwrap_or_exists();
         }
 

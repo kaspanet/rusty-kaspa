@@ -479,7 +479,7 @@ impl PruningProcessor {
 
                         // We want to keep the pruning sample from POV for past pruning points
                         // so that pruning point queries keep working for blocks right after the current
-                        // pruning point (keep_headers mostly contains the past pruning points)
+                        // pruning point (keep_headers contains the past pruning points)
                         self.pruning_samples_store.delete_batch(&mut batch, current).unwrap();
                     }
                 }
