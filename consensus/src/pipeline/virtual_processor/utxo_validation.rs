@@ -10,7 +10,7 @@ use crate::{
     model::stores::{
         block_transactions::BlockTransactionsStoreReader,
         daa::DaaStoreReader,
-        ghostdag::{GhostdagData, GhostdagStoreReader},
+        ghostdag::{CompactGhostdagData, GhostdagData},
         headers::HeaderStoreReader,
     },
     processes::{
@@ -227,7 +227,7 @@ impl VirtualStateProcessor {
         )?;
 
         // Verify the header pruning point
-        let reply = self.verify_header_pruning_point(header)?;
+        let reply = self.verify_header_pruning_point(header, ctx.ghostdag_data.to_compact())?;
         ctx.pruning_sample_from_pov = Some(reply.pruning_sample);
 
         // Verify all transactions are valid in context
@@ -247,7 +247,11 @@ impl VirtualStateProcessor {
         Ok(())
     }
 
-    fn verify_header_pruning_point(&self, header: &Header) -> BlockProcessResult<PruningPointReply> {
+    fn verify_header_pruning_point(
+        &self,
+        header: &Header,
+        ghostdag_data: CompactGhostdagData,
+    ) -> BlockProcessResult<PruningPointReply> {
         // [Crescendo]: changing expected pruning point check from header validity to chain qualification.
         // Note that we activate here based on the selected parent DAA score thus complementing the deactivation
         // in header processor which is based on selected parent DAA score as well.
@@ -256,7 +260,6 @@ impl VirtualStateProcessor {
             self.crescendo_logger.report_activation();
         }
 
-        let ghostdag_data = self.ghostdag_store.get_compact_data(header.hash).unwrap();
         let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
         // [Crescendo]: we need to save reply.pruning_sample to the database also prior to activation
         let reply = self.pruning_point_manager.expected_header_pruning_point_v2(ghostdag_data);
