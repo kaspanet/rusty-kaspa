@@ -629,7 +629,8 @@ pub const TESTNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 
     crescendo: CRESCENDO,
-    crescendo_activation: ForkActivation::never(),
+    // 18:30 UTC, March 6, 2025
+    crescendo_activation: ForkActivation::new(88_657_000),
 };
 
 pub const SIMNET_PARAMS: Params = Params {
