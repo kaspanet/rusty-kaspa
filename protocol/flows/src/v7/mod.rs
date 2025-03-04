@@ -26,7 +26,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // IBD flow <-> invs flow communication uses a job channel in order to always
     // maintain at most a single pending job which can be updated
     let (ibd_sender, relay_receiver) = channel::job();
-    let body_flow_permitted = true;
+    let body_only_ibd_permitted = true;
     let mut flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
             ctx.clone(),
@@ -49,7 +49,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
                 KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
             ]),
             relay_receiver,
-            body_flow_permitted,
+            body_only_ibd_permitted,
         )),
         Box::new(HandleRelayBlockRequests::new(
             ctx.clone(),
