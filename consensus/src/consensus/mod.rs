@@ -854,11 +854,10 @@ impl ConsensusApi for Consensus {
         if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, syncer_virtual_selected_parent) {
             return Err(ConsensusError::General("pruning point does not coincide with the syncer's sink (virtual selected parent)"));
         }
-        if !self.services.pruning_point_manager.are_pruning_points_in_valid_chain(pp_info, syncer_virtual_selected_parent) {
-            return Err(ConsensusError::General("past pruning points do not form a valid chain"));
-        }
-
-        Ok(())
+        self.services
+            .pruning_point_manager
+            .are_pruning_points_in_valid_chain(pp_info, syncer_virtual_selected_parent)
+            .map_err(|e| ConsensusError::GeneralOwned(format!("past pruning points do not form a valid chain: {}", e)))
     }
 
     fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {

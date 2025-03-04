@@ -13,7 +13,11 @@ use crate::model::{
         reachability::ReachabilityStoreReader,
     },
 };
-use kaspa_consensus_core::{blockhash::BlockHashExtensions, config::params::ForkedParam};
+use kaspa_consensus_core::{
+    blockhash::BlockHashExtensions,
+    config::params::ForkedParam,
+    errors::pruning::{PruningImportError, PruningImportResult},
+};
 use kaspa_core::warn;
 use kaspa_database::prelude::StoreResultEmptyTuple;
 use kaspa_hashes::Hash;
@@ -481,7 +485,7 @@ impl<
         self.is_pruning_point_in_pruning_depth(tip_bs, pp_candidate, pruning_depth)
     }
 
-    pub fn are_pruning_points_in_valid_chain(&self, pruning_info: PruningPointInfo, syncer_sink: Hash) -> bool {
+    pub fn are_pruning_points_in_valid_chain(&self, pruning_info: PruningPointInfo, syncer_sink: Hash) -> PruningImportResult<()> {
         // We want to validate that the past pruning points form a chain to genesis. Since
         // each pruning point's header doesn't point to the previous pruning point, but to
         // the pruning point from its POV, we can't just traverse from one pruning point to
@@ -505,11 +509,21 @@ impl<
             // the UTXO set and resolving virtual. Hence we perform the check over this chain here.
             let reply = self.expected_header_pruning_point_v2(self.ghostdag_store.get_compact_data(current).unwrap());
             if reply.pruning_point != current_header.pruning_point {
-                return false;
+                return Err(PruningImportError::WrongHeaderPruningPoint(current_header.pruning_point, current));
             }
             // Save so that following blocks can recursively use this value
             self.pruning_samples_store.insert(current, reply.pruning_sample).unwrap_or_exists();
-            if expected_pps_queue.front().is_none_or(|&h| h != current_header.pruning_point) {
+            /*
+               Going up the chain from the pruning point to the sink. The goal is to exit this loop with a queue [P(0), P(-1), P(-2), ..., P(-n)]
+               where P(0) is the current pruning point, P(-1) is the point before it and P(-n) is the pruning point of P(0). That is,
+               ceiling(P/F) = n (where n is usually 3).
+
+               Let C be the current block's pruning point. Push to the front of the queue if:
+                   1. the queue is empty; OR
+                   2. the front of the queue is different than C; AND
+                   3. the front of the queue is different than P(0) (if it is P(0), we already filled the queue with what we need)
+            */
+            if expected_pps_queue.front().is_none_or(|&h| h != current_header.pruning_point && h != pruning_info.pruning_point) {
                 expected_pps_queue.push_front(current_header.pruning_point);
             }
         }
@@ -519,18 +533,18 @@ impl<
             let pp_header = self.headers_store.get_header(pp).unwrap();
             let Some(expected_pp) = expected_pps_queue.pop_front() else {
                 // If we have less than expected pruning points.
-                return false;
+                return Err(PruningImportError::MissingPointedPruningPoint);
             };
 
             if expected_pp != pp {
-                return false;
+                return Err(PruningImportError::WrongPointedPruningPoint);
             }
 
             if idx == 0 {
                 // The 0th pruning point should always be genesis, and no
                 // more pruning points should be expected below it.
                 if !expected_pps_queue.is_empty() || pp != self.genesis_hash {
-                    return false;
+                    return Err(PruningImportError::UnpointedPruningPoint);
                 }
                 break;
             }
@@ -546,12 +560,12 @@ impl<
                 None => {
                     // expected_pps_queue should always have one block in the queue
                     // until we reach genesis.
-                    return false;
+                    return Err(PruningImportError::MissingPointedPruningPoint);
                 }
             }
         }
 
-        true
+        Ok(())
     }
 }
 

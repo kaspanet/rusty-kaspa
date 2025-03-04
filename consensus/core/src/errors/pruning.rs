@@ -68,6 +68,18 @@ pub enum PruningImportError {
 
     #[error("past pruning points contains {0} duplications")]
     DuplicatedPastPruningPoints(usize),
+
+    #[error("pruning point {0} of header {1} is not consistent with past pruning points")]
+    WrongHeaderPruningPoint(Hash, Hash),
+
+    #[error("a past pruning point is pointing at a missing point")]
+    MissingPointedPruningPoint,
+
+    #[error("a past pruning point is pointing at the wrong point")]
+    WrongPointedPruningPoint,
+
+    #[error("a past pruning point has not been pointed at")]
+    UnpointedPruningPoint,
 }
 
 pub type PruningImportResult<T> = std::result::Result<T, PruningImportError>;
