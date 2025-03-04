@@ -45,7 +45,7 @@ use smallvec::{smallvec, SmallVec};
 use std::{iter::once, ops::Deref};
 
 pub(crate) mod crescendo {
-    use kaspa_core::warn;
+    use kaspa_core::info;
     use std::sync::{
         atomic::{AtomicU8, Ordering},
         Arc,
@@ -65,7 +65,7 @@ pub(crate) mod crescendo {
 
         pub fn report_activation(&self) -> bool {
             if self.steps.compare_exchange(Self::ACTIVATE, Self::ACTIVATE + 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-                warn!("[Crescendo] [--------- Crescendo activated for UTXO state processing rules ---------]");
+                info!(target: "crescendo", "[Crescendo] [--------- Crescendo activated for UTXO state processing rules ---------]");
                 true
             } else {
                 false

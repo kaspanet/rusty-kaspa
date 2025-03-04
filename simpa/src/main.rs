@@ -332,6 +332,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.crescendo_activation = ForkActivation::new(1250.min(args.target_blocks.map(|x| x / 2).unwrap_or(900)));
 
         params.pruning_proof_m = 16;
+        params.min_difficulty_window_size = 16;
         params.prior_difficulty_window_size = 64;
         params.timestamp_deviation_tolerance = 16;
         params.crescendo.sampled_difficulty_window_size = params.crescendo.sampled_difficulty_window_size.min(32);
