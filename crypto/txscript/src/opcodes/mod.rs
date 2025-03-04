@@ -845,7 +845,7 @@ opcode_list! {
                 // If more - return ErrNumberTooBig
                 // If less - pad with 0's
                 if sequence_bytes.len() > 8 {
-                    return Err(TxScriptError::NumberTooBig(format!("lockTime value represented as {sequence_bytes:x?} is longer then 8 bytes")))
+                    return Err(TxScriptError::NumberTooBig(format!("sequence value represented as {sequence_bytes:x?} is longer then 8 bytes")))
                 }
                 // Don't use makeScriptNum here, since sequence is not an actual number, minimal encoding rules don't apply to it,
                 // and is more convenient to be represented as an unsigned int.
