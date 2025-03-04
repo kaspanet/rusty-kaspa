@@ -6,6 +6,24 @@ Kaspa is about to take a significant leap with the **Crescendo Hardfork**, as de
 **Important Note:**  
 - Version 0.17.0 does **not** support TN11. Some participants should keep TN11 nodes running on the latest stable release or `stable` branch until TN10’s performance is proven stable.
 
+---
+
+## Recommended Hardware Specifications
+
+- **Minimum**:  
+  - 8 CPU cores  
+  - 16 GB RAM  
+  - 256 GB SSD  
+  - 5 MB/s (or ~40 Mbps) network bandwidth
+
+- **Preferred for Higher Performance**:  
+  - 12–16 CPU cores  
+  - 32 GB RAM  
+  - 512 GB SSD  
+  - Higher network bandwidth for robust peer support
+
+While the minimum specs suffice to sync and maintain a TN10 node with the accelerated 10 bps, increasing CPU cores, RAM, storage, and bandwidth allows your node to serve as a stronger focal point on the network. This leads to faster initial block download (IBD) for peers syncing from your node and provides more leeway for future storage growth and optimization.
+
 
 ---
 
@@ -44,7 +62,7 @@ Leave this process running. Closing it will stop your node.
   rothschild --private-key <your-private-key> -t=10
   ```
 
-   Replace <your-private-key> with the key from step 1. The “-t=10” flag sets your transaction rate to 10 TPS (feel free to try different rates, but keep it below 50 TPS).
+   Replace <your-private-key> with the key from step 1. The `-t=10` flag sets your transaction rate to 10 TPS (feel free to try different rates, but keep it below 50 TPS).
 
 ---
 
