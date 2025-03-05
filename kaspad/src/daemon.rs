@@ -579,6 +579,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         p2p_tower_counters.clone(),
         grpc_tower_counters.clone(),
         system_info,
+        args.rpc_namespaces.clone(),
     ));
     let grpc_service_broadcasters: usize = 3; // TODO: add a command line argument or derive from other arg/config/host-related fields
     let grpc_service = if !args.disable_grpc {

@@ -1,3 +1,4 @@
+use api::namespaces::Namespaces;
 use async_channel::{unbounded, Receiver};
 use async_trait::async_trait;
 use kaspa_notify::events::EVENT_TYPE_ARRAY;
@@ -73,6 +74,7 @@ impl RpcApi for RpcCoreMock {
             server_version: "mock".to_string(),
             is_utxo_indexed: false,
             is_synced: false,
+            namespaces: Namespaces::default().enabled_namespaces(),
             has_notify_command: true,
             has_message_id: true,
         })
