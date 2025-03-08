@@ -68,6 +68,8 @@ pub struct Config {
 
     /// A scale factor to apply to memory allocation bounds
     pub ram_scale: f64,
+
+    pub rocksdb_cache_size: Option<usize>,
 }
 
 impl Config {
@@ -95,6 +97,7 @@ impl Config {
             initial_utxo_set: Default::default(),
             disable_upnp: false,
             ram_scale: 1.0,
+            rocksdb_cache_size: None,
         }
     }
 
