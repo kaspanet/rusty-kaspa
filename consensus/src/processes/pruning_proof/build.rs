@@ -95,7 +95,7 @@ impl PruningProofManager {
                         .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
                         .unwrap();
 
-                    self.find_least_common_ancestor_in_store(
+                    self.find_latest_common_ancestor_in_store(
                         &*ghostdag_stores[level],
                         block_at_depth_m_at_next_level,
                         block_at_depth_2m,
@@ -203,14 +203,14 @@ impl PruningProofManager {
     }
 
     /// Given two hashes (both are assumed to exist in the passed ghostdag store),
-    /// find their least common ancestor. The least common ancestor is minimum block
+    /// find their latest common ancestor. The latest common ancestor is minimum block
     /// such that both 'a' and 'b' are either equal to it or in its future.
     /// This ancestor must also be in the selected parent chain of 'a'.
     ///
     /// Additional Notes:
     /// - 'a' and 'b' are expected to be hashes acquired via block_at_depth.
     ///   By virtue of this, they are both chain block hashes.
-    fn find_least_common_ancestor_in_store(
+    fn find_latest_common_ancestor_in_store(
         &self,
         ghostdag_store: &DbGhostdagStore,
         a: Hash,
@@ -324,7 +324,7 @@ impl PruningProofManager {
                         self.block_at_depth(&*ghostdag_store, selected_tip, required_level_depth + SAFETY_MARGIN).unwrap();
 
                     root = self
-                        .find_least_common_ancestor_in_store(
+                        .find_latest_common_ancestor_in_store(
                             &*ghostdag_store,
                             block_at_depth_m_at_next_level,
                             block_at_depth_2m_buffered,
