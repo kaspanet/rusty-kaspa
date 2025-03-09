@@ -255,8 +255,8 @@ impl ConsensusSessionOwned {
     }
 
     /// source refers to the earliest block from which the current node has full header & block data  
-    pub async fn async_get_source(&self) -> Hash {
-        self.clone().spawn_blocking(|c| c.get_source()).await
+    pub async fn async_get_retention_root(&self) -> Hash {
+        self.clone().spawn_blocking(|c| c.get_retention_root()).await
     }
 
     pub async fn async_estimate_block_count(&self) -> BlockCount {

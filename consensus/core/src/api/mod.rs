@@ -144,7 +144,7 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     /// source refers to the earliest block from which the current node has full header & block data  
-    fn get_source(&self) -> Hash {
+    fn get_retention_root(&self) -> Hash {
         unimplemented!()
     }
 
