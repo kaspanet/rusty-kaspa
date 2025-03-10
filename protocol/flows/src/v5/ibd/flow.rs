@@ -6,6 +6,7 @@ use crate::{
     },
 };
 use futures::future::{join_all, select, try_join_all, Either};
+use itertools::Itertools;
 use kaspa_consensus_core::{
     api::BlockValidationFuture,
     block::Block,
@@ -245,7 +246,11 @@ impl IbdFlow {
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPointProof, Duration::from_secs(600))?;
         let proof: PruningPointProof = msg.try_into()?;
-        debug!("received proof with overall {} headers", proof.iter().map(|l| l.len()).sum::<usize>());
+        info!(
+            "Received headers proof with overall {} headers ({} unique)",
+            proof.iter().map(|l| l.len()).sum::<usize>(),
+            proof.iter().flatten().unique_by(|h| h.hash).count()
+        );
 
         let proof_metadata = PruningProofMetadata::new(relay_block.header.blue_work);
 

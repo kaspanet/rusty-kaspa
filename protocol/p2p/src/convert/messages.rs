@@ -87,7 +87,7 @@ impl TryFrom<protowire::PruningPointProofMessage> for PruningPointProof {
     fn try_from(msg: protowire::PruningPointProofMessage) -> Result<Self, Self::Error> {
         // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
         // to make sure we hold a single Arc per header
-        let mut cache: HashMap<Hash, Arc<Header>> = HashMap::with_capacity(2000);
+        let mut cache: HashMap<Hash, Arc<Header>> = HashMap::with_capacity(4000);
         msg.headers
             .into_iter()
             .map(|level| {

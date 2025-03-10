@@ -73,7 +73,7 @@ impl PruningProofManager {
 
         // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
         // to make sure we hold a single Arc per header
-        let mut cache: BlockHashMap<Arc<Header>> = BlockHashMap::with_capacity(2 * self.pruning_proof_m as usize);
+        let mut cache: BlockHashMap<Arc<Header>> = BlockHashMap::with_capacity(4 * self.pruning_proof_m as usize);
         let mut get_header = |hash| cache.entry(hash).or_insert_with_key(|&hash| self.headers_store.get_header(hash).unwrap()).clone();
 
         (0..=self.max_block_level)
