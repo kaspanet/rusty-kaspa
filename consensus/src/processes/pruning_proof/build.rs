@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes},
     header::Header,
     pruning::PruningPointProof,
-    BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
+    BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::debug;
 use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions, DB};
@@ -71,6 +71,10 @@ impl PruningProofManager {
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
         let (ghostdag_stores, selected_tip_by_level, roots_by_level) = self.calc_gd_for_all_levels(&pp_header, temp_db);
 
+        // Pruning proof can contain many duplicate headers, so use a local cache in order to make sure we hold a single Arc per header
+        let mut cache: BlockHashMap<Arc<Header>> = BlockHashMap::with_capacity(2 * self.pruning_proof_m as usize);
+        let mut get_header = |hash| cache.entry(hash).or_insert_with_key(|&hash| self.headers_store.get_header(hash).unwrap()).clone();
+
         (0..=self.max_block_level)
             .map(|level| {
                 let level = level as usize;
@@ -114,7 +118,7 @@ impl PruningProofManager {
                 let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
                 let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
                 let mut visited = BlockHashSet::new();
-                queue.push(Reverse(SortableBlock::new(root, self.headers_store.get_header(root).unwrap().blue_work)));
+                queue.push(Reverse(SortableBlock::new(root, get_header(root).blue_work)));
                 while let Some(current) = queue.pop() {
                     let current = current.0.hash;
                     if !visited.insert(current) {
@@ -130,9 +134,9 @@ impl PruningProofManager {
                         continue;
                     }
 
-                    headers.push(self.headers_store.get_header(current).unwrap());
+                    headers.push(get_header(current));
                     for child in self.relations_stores.read()[level].get_children(current).unwrap().read().iter().copied() {
-                        queue.push(Reverse(SortableBlock::new(child, self.headers_store.get_header(child).unwrap().blue_work)));
+                        queue.push(Reverse(SortableBlock::new(child, get_header(child).blue_work)));
                     }
                 }
 
