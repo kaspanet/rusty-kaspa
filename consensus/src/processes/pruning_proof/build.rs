@@ -216,7 +216,7 @@ impl PruningProofManager {
         &self,
         pp_header: &HeaderWithBlockLevel,
         level: BlockLevel,
-        current_dag_level: BlockLevel,
+        _current_dag_level: BlockLevel,
         required_block: Option<Hash>,
         temp_db: Arc<DB>,
     ) -> PruningProofManagerInternalResult<(Arc<DbGhostdagStore>, Hash, Hash)> {
@@ -232,11 +232,17 @@ impl PruningProofManager {
 
         // We only have the headers store (which has level 0 blue_scores) to assemble the proof data from.
         // We need to look deeper at higher levels (2x deeper every level) to find 2M (plus margin) blocks at that level
-        let mut required_base_level_depth = self.estimated_blue_depth_at_level_0(
-            level,
-            required_level_depth + 100, // We take a safety margin
-            current_dag_level,
-        );
+        // TODO: uncomment when the full fix to minimize proof sizes come.
+        // let mut required_base_level_depth = self.estimated_blue_depth_at_level_0(
+        //     level,
+        //     required_level_depth + 100, // We take a safety margin
+        //     current_dag_level,
+        // );
+        // NOTE: Starting from required_level_depth (a much lower starting point than normal) will typically require N iterations
+        // for every N level higher than current dag level. This is fine since the steps per iteration are still exponential
+        // and so we will complete each level in not much more than N iterations per level.
+        // We start here anyway so we can try to minimize the proof size when the current dag level goes down significantly.
+        let mut required_base_level_depth = required_level_depth + 100;
 
         let mut is_last_level_header;
         let mut tries = 0;
