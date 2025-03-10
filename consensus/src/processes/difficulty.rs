@@ -4,19 +4,24 @@ use crate::model::stores::{
     headers::HeaderStoreReader,
 };
 use kaspa_consensus_core::{
-    config::params::MIN_DIFFICULTY_WINDOW_LEN,
+    config::params::{ForkActivation, MAX_DIFFICULTY_TARGET_AS_F64},
     errors::difficulty::{DifficultyError, DifficultyResult},
     BlockHashSet, BlueWorkType, MAX_WORK_LEVEL,
 };
+use kaspa_core::{info, log::CRESCENDO_KEYWORD};
+use kaspa_hashes::Hash;
 use kaspa_math::{Uint256, Uint320};
 use std::{
     cmp::{max, Ordering},
     iter::once_with,
     ops::Deref,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU8, Ordering as AtomicOrdering},
+        Arc,
+    },
 };
 
-use super::ghostdag::ordering::SortableBlock;
+use super::{ghostdag::ordering::SortableBlock, utils::CoinFlip};
 use itertools::Itertools;
 
 trait DifficultyManagerExtension {
@@ -63,12 +68,11 @@ trait DifficultyManagerExtension {
     }
 
     #[inline]
-    fn check_min_difficulty_window_len(difficulty_window_size: usize, min_difficulty_window_len: usize) {
+    fn check_min_difficulty_window_size(difficulty_window_size: usize, min_difficulty_window_size: usize) {
         assert!(
-            MIN_DIFFICULTY_WINDOW_LEN <= min_difficulty_window_len && min_difficulty_window_len <= difficulty_window_size,
-            "min_difficulty_window_len {} is expected to fit within {}..={}",
-            min_difficulty_window_len,
-            MIN_DIFFICULTY_WINDOW_LEN,
+            min_difficulty_window_size <= difficulty_window_size,
+            "min_difficulty_window_size {} is expected to be <= difficulty_window_size {}",
+            min_difficulty_window_size,
             difficulty_window_size
         );
     }
@@ -82,7 +86,7 @@ pub struct FullDifficultyManager<T: HeaderStoreReader> {
     genesis_bits: u32,
     max_difficulty_target: Uint320,
     difficulty_window_size: usize,
-    min_difficulty_window_len: usize,
+    min_difficulty_window_size: usize,
     target_time_per_block: u64,
 }
 
@@ -92,16 +96,16 @@ impl<T: HeaderStoreReader> FullDifficultyManager<T> {
         genesis_bits: u32,
         max_difficulty_target: Uint256,
         difficulty_window_size: usize,
-        min_difficulty_window_len: usize,
+        min_difficulty_window_size: usize,
         target_time_per_block: u64,
     ) -> Self {
-        Self::check_min_difficulty_window_len(difficulty_window_size, min_difficulty_window_len);
+        Self::check_min_difficulty_window_size(difficulty_window_size, min_difficulty_window_size);
         Self {
             headers_store,
             genesis_bits,
             max_difficulty_target: max_difficulty_target.into(),
             difficulty_window_size,
-            min_difficulty_window_len,
+            min_difficulty_window_size,
             target_time_per_block,
         }
     }
@@ -132,7 +136,7 @@ impl<T: HeaderStoreReader> FullDifficultyManager<T> {
         let mut difficulty_blocks = self.get_difficulty_blocks(window);
 
         // Until there are enough blocks for a valid calculation the difficulty should remain constant.
-        if difficulty_blocks.len() < self.min_difficulty_window_len {
+        if difficulty_blocks.len() < self.min_difficulty_window_size {
             return self.genesis_bits;
         }
 
@@ -164,38 +168,119 @@ impl<T: HeaderStoreReader> DifficultyManagerExtension for FullDifficultyManager<
     }
 }
 
+#[derive(Clone)]
+struct CrescendoLogger {
+    steps: Arc<AtomicU8>,
+}
+
+impl CrescendoLogger {
+    fn new() -> Self {
+        Self { steps: Arc::new(AtomicU8::new(Self::ACTIVATE)) }
+    }
+
+    const ACTIVATE: u8 = 0;
+    const DYNAMIC: u8 = 1;
+    const FULL: u8 = 2;
+
+    pub fn report_activation_progress(&self, step: u8) -> bool {
+        if self.steps.compare_exchange(step, step + 1, AtomicOrdering::SeqCst, AtomicOrdering::SeqCst).is_ok() {
+            match step {
+                Self::ACTIVATE => {
+                    // TODO (Crescendo): finalize mainnet ascii art
+                    info!(target: CRESCENDO_KEYWORD,
+                        r#"
+        ____                                  _             
+       / ___|_ __ ___  ___  ___ ___ _ __   __| | ___        
+      | |   | '__/ _ \/ __|/ __/ _ \ '_ \ / _` |/ _ \       
+      | |___| | |  __/\__ \ (_|  __/ | | | (_| | (_) |      
+       \____|_|  \___||___/\___\___|_| |_|\__,_|\___/       
+  _ _                       __      _  ___  _               
+ / | |__  _ __  ___         \ \    / |/ _ \| |__  _ __  ___ 
+ | | '_ \| '_ \/ __|    _____\ \   | | | | | '_ \| '_ \/ __|
+ | | |_) | |_) \__ \   |_____/ /   | | |_| | |_) | |_) \__ \
+ |_|_.__/| .__/|___/        /_/    |_|\___/|_.__/| .__/|___/
+         |_|                                     |_|    
+"#
+                    );
+                    info!(target: CRESCENDO_KEYWORD, "[Crescendo] Accelerating block rate 10 fold")
+                }
+                Self::DYNAMIC => {}
+                Self::FULL => {}
+                _ => {}
+            }
+            true
+        } else {
+            false
+        }
+    }
+}
+
+fn hash_suffix(n: f64) -> (f64, &'static str) {
+    match n {
+        n if n < 1_000.0 => (n, "hash/block"),
+        n if n < 1_000_000.0 => (n / 1_000.0, "Khash/block"),
+        n if n < 1_000_000_000.0 => (n / 1_000_000.0, "Mhash/block"),
+        n if n < 1_000_000_000_000.0 => (n / 1_000_000_000.0, "Ghash/block"),
+        n if n < 1_000_000_000_000_000.0 => (n / 1_000_000_000_000.0, "Thash/block"),
+        n if n < 1_000_000_000_000_000_000.0 => (n / 1_000_000_000_000_000.0, "Phash/block"),
+        n => (n / 1_000_000_000_000_000_000.0, "Ehash/block"),
+    }
+}
+
+fn difficulty_desc(target: Uint320) -> String {
+    let difficulty = MAX_DIFFICULTY_TARGET_AS_F64 / target.as_f64();
+    let hashrate = difficulty * 2.0;
+    let (rate, suffix) = hash_suffix(hashrate);
+    format!("{:.2} {}", rate, suffix)
+}
+
 /// A difficulty manager implementing [KIP-0004](https://github.com/kaspanet/kips/blob/master/kip-0004.md),
 /// so based on sampled windows
 #[derive(Clone)]
-pub struct SampledDifficultyManager<T: HeaderStoreReader> {
+pub struct SampledDifficultyManager<T: HeaderStoreReader, U: GhostdagStoreReader> {
     headers_store: Arc<T>,
+    ghostdag_store: Arc<U>,
+    genesis_hash: Hash,
     genesis_bits: u32,
     max_difficulty_target: Uint320,
     difficulty_window_size: usize,
-    min_difficulty_window_len: usize,
+    min_difficulty_window_size: usize,
     difficulty_sample_rate: u64,
+    prior_target_time_per_block: u64,
     target_time_per_block: u64,
+    crescendo_activation: ForkActivation,
+    crescendo_logger: CrescendoLogger,
 }
 
-impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
+impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         headers_store: Arc<T>,
+        ghostdag_store: Arc<U>,
+        genesis_hash: Hash,
         genesis_bits: u32,
         max_difficulty_target: Uint256,
         difficulty_window_size: usize,
-        min_difficulty_window_len: usize,
+        min_difficulty_window_size: usize,
         difficulty_sample_rate: u64,
+        prior_target_time_per_block: u64,
         target_time_per_block: u64,
+        crescendo_activation: ForkActivation,
     ) -> Self {
-        Self::check_min_difficulty_window_len(difficulty_window_size, min_difficulty_window_len);
+        Self::check_min_difficulty_window_size(difficulty_window_size, min_difficulty_window_size);
         Self {
             headers_store,
+            ghostdag_store,
+            genesis_hash,
             genesis_bits,
             max_difficulty_target: max_difficulty_target.into(),
             difficulty_window_size,
-            min_difficulty_window_len,
+            min_difficulty_window_size,
             difficulty_sample_rate,
+            prior_target_time_per_block,
             target_time_per_block,
+            crescendo_activation,
+            crescendo_logger: CrescendoLogger::new(),
         }
     }
 
@@ -230,14 +315,46 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
         (self.internal_calc_daa_score(ghostdag_data, &mergeset_non_daa), mergeset_non_daa)
     }
 
-    pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap) -> u32 {
-        // Note: this fn is duplicated (almost, see `* self.difficulty_sample_rate`) in Full and Sampled structs
-        // so some alternate calculation can be investigated here.
+    pub(crate) fn crescendo_activated(&self, selected_parent: Hash) -> bool {
+        let sp_daa_score = self.headers_store.get_daa_score(selected_parent).unwrap();
+        self.crescendo_activation.is_active(sp_daa_score)
+    }
+
+    pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap, ghostdag_data: &GhostdagData) -> u32 {
         let mut difficulty_blocks = self.get_difficulty_blocks(window);
 
         // Until there are enough blocks for a valid calculation the difficulty should remain constant.
-        if difficulty_blocks.len() < self.min_difficulty_window_len {
-            return self.genesis_bits;
+        //
+        // [Crescendo]: post activation special case -- first activated blocks which do not have
+        // enough activated samples in their past
+        if difficulty_blocks.len() < self.min_difficulty_window_size {
+            let selected_parent = ghostdag_data.selected_parent;
+            if selected_parent == self.genesis_hash {
+                return self.genesis_bits;
+            }
+
+            // We will use the selected parent as a source for the difficulty bits
+            let bits = self.headers_store.get_bits(selected_parent).unwrap();
+
+            // Check if the selected parent itself is already post crescendo activation (by checking the DAA score
+            // of its selected parent). We ruled out genesis, so we can safely assume the grandparent exists
+            if self.crescendo_activated(self.ghostdag_store.get_selected_parent(selected_parent).unwrap()) {
+                // In this case we simply take the selected parent bits as is
+                return bits;
+            } else {
+                // This indicates we are at the first blocks post activation (i.e., the selected parent was not activated).
+                // We use the selected parent target difficulty as baseline and scale it by the target_time_per_block ratio change
+                let target = Uint320::from(Uint256::from_compact_target_bits(bits));
+                let scaled_target = target * self.prior_target_time_per_block / self.target_time_per_block;
+                let scaled_bits = Uint256::try_from(scaled_target.min(self.max_difficulty_target)).unwrap().compact_target_bits();
+
+                if self.crescendo_logger.report_activation_progress(CrescendoLogger::ACTIVATE) {
+                    info!(target: CRESCENDO_KEYWORD, "[Crescendo] Block target time change: {} -> {} milliseconds", self.prior_target_time_per_block, self.target_time_per_block);
+                    info!(target: CRESCENDO_KEYWORD, "[Crescendo] Difficulty change: {} -> {} ", difficulty_desc(target), difficulty_desc(scaled_target));
+                }
+
+                return scaled_bits;
+            }
         }
 
         let (min_ts_index, max_ts_index) = difficulty_blocks.iter().position_minmax().into_option().unwrap();
@@ -256,6 +373,27 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
         let measured_duration = max(max_ts - min_ts, 1);
         let expected_duration = self.target_time_per_block * self.difficulty_sample_rate * difficulty_blocks_len; // This does differ from FullDifficultyManager version
         let new_target = average_target * measured_duration / expected_duration;
+
+        if difficulty_blocks_len + 1 < self.difficulty_window_size as u64 {
+            if self.crescendo_logger.report_activation_progress(CrescendoLogger::DYNAMIC) {
+                info!(target: CRESCENDO_KEYWORD,
+                    "[Crescendo] Dynamic DAA reactivated, scaling the difficulty by the measured/expected duration ratio: \n\t\t\t\t\t\t  {} -> {} (measured duration: {}, expected duration: {}, ratio {:.4})",
+                    difficulty_desc(average_target),
+                    difficulty_desc(new_target),
+                    measured_duration,
+                    expected_duration,
+                    measured_duration as f64 / expected_duration as f64
+                );
+            }
+            if CoinFlip::default().flip() {
+                info!(target: CRESCENDO_KEYWORD,
+                    "[Crescendo] DAA window increasing post activation: {} (target: {})",
+                    difficulty_blocks_len + 1,
+                    self.difficulty_window_size
+                );
+            }
+        }
+
         Uint256::try_from(new_target.min(self.max_difficulty_target)).expect("max target < Uint256::MAX").compact_target_bits()
     }
 
@@ -264,7 +402,7 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
     }
 }
 
-impl<T: HeaderStoreReader> DifficultyManagerExtension for SampledDifficultyManager<T> {
+impl<T: HeaderStoreReader, U: GhostdagStoreReader> DifficultyManagerExtension for SampledDifficultyManager<T, U> {
     fn headers_store(&self) -> &dyn HeaderStoreReader {
         self.headers_store.deref()
     }
