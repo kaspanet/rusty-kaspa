@@ -454,8 +454,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
     let add_peers = args.add_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect();
     let p2p_server_addr = args.listen.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
-    // connect_peers means no DNS seeding and no outbound peers
+    // connect_peers means no DNS seeding and no outbound/inbound peers
     let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
+    let inbound_limit = if connect_peers.is_empty() { args.inbound_limit } else { 0 };
     let dns_seeders = if connect_peers.is_empty() && !args.disable_dns_seeding { config.dns_seeders } else { &[] };
 
     let grpc_server_addr = args.rpclisten.unwrap_or(ContextualNetAddress::loopback()).normalize(config.default_rpc_port());
@@ -556,7 +557,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         add_peers,
         p2p_server_addr,
         outbound_target,
-        args.inbound_limit,
+        inbound_limit,
         dns_seeders,
         config.default_p2p_port(),
         p2p_tower_counters.clone(),
