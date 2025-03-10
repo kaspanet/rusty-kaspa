@@ -15,7 +15,7 @@ use kaspa_consensus_core::{
 use kaspa_hashes::Hash;
 use kaspa_utils::networking::{IpAddress, PeerId};
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
@@ -85,7 +85,19 @@ impl TryFrom<protowire::RequestIbdChainBlockLocatorMessage> for (Option<Hash>, O
 impl TryFrom<protowire::PruningPointProofMessage> for PruningPointProof {
     type Error = ConversionError;
     fn try_from(msg: protowire::PruningPointProofMessage) -> Result<Self, Self::Error> {
-        msg.headers.into_iter().map(|v| v.try_into()).collect()
+        // Pruning proof can contain many duplicate headers, so use a local cache in order to make sure we hold a single Arc per header
+        let mut cache: HashMap<Hash, Arc<Header>> = HashMap::with_capacity(2000);
+        let convert = |v: protowire::PruningPointProofHeaderArray| -> Result<Vec<Arc<Header>>, Self::Error> {
+            let mut res = Vec::with_capacity(v.headers.len());
+            for x in v.headers {
+                let header: Header = x.try_into()?;
+                // Use the existing Arc if found
+                let header = cache.entry(header.hash).or_insert_with(|| Arc::new(header)).clone();
+                res.push(header);
+            }
+            Ok(res)
+        };
+        msg.headers.into_iter().map(convert).collect()
     }
 }
 
