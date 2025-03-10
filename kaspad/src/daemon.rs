@@ -300,16 +300,16 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                 let headers_store = DbHeadersStore::new(consensus_db, CachePolicy::Empty, CachePolicy::Empty);
 
                 if headers_store.has(config.genesis.hash).unwrap() {
-                    info!("Genesis is found in active consensus DB. No action needed.");
+                    debug!("Genesis is found in active consensus DB. No action needed.");
                 } else {
-                    let msg = "Genesis not found in active consensus DB. This happens when Testnet 11 is restarted and your database needs to be fully deleted. Do you confirm the delete? (y/n)";
+                    let msg = "Genesis not found in active consensus DB. This happens when Testnets are restarted and your database needs to be fully deleted. Do you confirm the delete? (y/n)";
                     get_user_approval_or_exit(msg, args.yes);
 
                     is_db_reset_needed = true;
                 }
             }
             None => {
-                info!("Consensus not initialized yet. Skipping genesis check.");
+                debug!("Consensus not initialized yet. Skipping genesis check.");
             }
         }
     }
