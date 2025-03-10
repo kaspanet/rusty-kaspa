@@ -237,14 +237,14 @@ impl PruningProofManager {
 
         // We only have the headers store (which has level 0 blue_scores) to assemble the proof data from.
         // We need to look deeper at higher levels (2x deeper every level) to find 2M (plus margin) blocks at that level
-        // TODO: uncomment when the full fix to minimize proof sizes come.
+        // TODO: uncomment when the full fix to minimize proof sizes comes.
         // let mut required_base_level_depth = self.estimated_blue_depth_at_level_0(
         //     level,
         //     required_level_depth + 100, // We take a safety margin
         //     current_dag_level,
         // );
-        // NOTE: Starting from required_level_depth (a much lower starting point than normal) will typically require N iterations
-        // for every N level higher than current dag level. This is fine since the steps per iteration are still exponential
+        // NOTE: Starting from required_level_depth (a much lower starting point than normal) will typically require O(N) iterations
+        // for level L + N where L is the current dag level. This is fine since the steps per iteration are still exponential
         // and so we will complete each level in not much more than N iterations per level.
         // We start here anyway so we can try to minimize the proof size when the current dag level goes down significantly.
         let mut required_base_level_depth = required_level_depth + 100;
