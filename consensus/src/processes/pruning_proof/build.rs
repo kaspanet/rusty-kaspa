@@ -71,7 +71,8 @@ impl PruningProofManager {
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
         let (ghostdag_stores, selected_tip_by_level, roots_by_level) = self.calc_gd_for_all_levels(&pp_header, temp_db);
 
-        // Pruning proof can contain many duplicate headers, so use a local cache in order to make sure we hold a single Arc per header
+        // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
+        // to make sure we hold a single Arc per header
         let mut cache: BlockHashMap<Arc<Header>> = BlockHashMap::with_capacity(2 * self.pruning_proof_m as usize);
         let mut get_header = |hash| cache.entry(hash).or_insert_with_key(|&hash| self.headers_store.get_header(hash).unwrap()).clone();
 

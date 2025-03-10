@@ -85,19 +85,23 @@ impl TryFrom<protowire::RequestIbdChainBlockLocatorMessage> for (Option<Hash>, O
 impl TryFrom<protowire::PruningPointProofMessage> for PruningPointProof {
     type Error = ConversionError;
     fn try_from(msg: protowire::PruningPointProofMessage) -> Result<Self, Self::Error> {
-        // Pruning proof can contain many duplicate headers, so use a local cache in order to make sure we hold a single Arc per header
+        // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
+        // to make sure we hold a single Arc per header
         let mut cache: HashMap<Hash, Arc<Header>> = HashMap::with_capacity(2000);
-        let convert = |v: protowire::PruningPointProofHeaderArray| -> Result<Vec<Arc<Header>>, Self::Error> {
-            let mut res = Vec::with_capacity(v.headers.len());
-            for x in v.headers {
-                let header: Header = x.try_into()?;
-                // Use the existing Arc if found
-                let header = cache.entry(header.hash).or_insert_with(|| Arc::new(header)).clone();
-                res.push(header);
-            }
-            Ok(res)
-        };
-        msg.headers.into_iter().map(convert).collect()
+        msg.headers
+            .into_iter()
+            .map(|level| {
+                level
+                    .headers
+                    .into_iter()
+                    .map(|x| {
+                        let header: Header = x.try_into()?;
+                        // Clone the existing Arc if found
+                        Ok(cache.entry(header.hash).or_insert_with(|| Arc::new(header)).clone())
+                    })
+                    .collect()
+            })
+            .collect()
     }
 }
 
