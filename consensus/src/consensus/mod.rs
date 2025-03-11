@@ -634,7 +634,7 @@ impl ConsensusApi for Consensus {
     /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.  
     fn estimate_block_count(&self) -> BlockCount {
         // PRUNE SAFETY: node is either archival or source is the pruning point which its header is kept permanently
-        let source_score = self.headers_store.get_compact_header_data(self.get_retention_root()).unwrap().daa_score;
+        let retention_root_score = self.headers_store.get_compact_header_data(self.get_retention_root()).unwrap().daa_score;
         let virtual_score = self.get_virtual_daa_score();
         let header_count = self
             .headers_store
@@ -643,8 +643,8 @@ impl ConsensusApi for Consensus {
             .map(|h| h.daa_score)
             .unwrap_or(virtual_score)
             .max(virtual_score)
-            - source_score;
-        let block_count = virtual_score - source_score;
+            - retention_root_score;
+        let block_count = virtual_score - retention_root_score;
         BlockCount { header_count, block_count }
     }
 
@@ -667,7 +667,7 @@ impl ConsensusApi for Consensus {
         // Verify that the block exists
         self.validate_block_exists(low)?;
 
-        // Verify that source is on chain(block)
+        // Verify that retention root is on chain(block)
         self.services
             .reachability_service
             .is_chain_ancestor_of(self.get_retention_root(), low)
