@@ -12,6 +12,7 @@ use crate::{
             headers::HeaderStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::{PruningStore, PruningStoreReader},
+            pruning_samples::PruningSamplesStoreReader,
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::StagingRelationsStore,
             selected_chain::SelectedChainStore,
@@ -560,23 +561,32 @@ impl PruningProcessor {
         let retention_period_ms = (self.config.retention_period_days * 86400.0 * 1000.0).ceil() as u64;
 
         let retention_period_root_ts_target = unix_now().saturating_sub(retention_period_ms);
-        let mut new_retention_period_root = retention_period_root;
+        let mut new_retention_period_root = pruning_point;
 
         trace!(
             "Adjusting the retention period root to cover the required retention period. Target timestamp: {}",
             retention_period_root_ts_target,
         );
 
-        for block in self.reachability_service.forward_chain_iterator(retention_period_root, pruning_point, true) {
-            let timestamp = self.headers_store.get_compact_header_data(block).unwrap().timestamp;
-            trace!("block | timestamp = {} | {}", block, timestamp);
-            if timestamp >= retention_period_root_ts_target {
-                trace!("block {} timestamp {} >= {}", block, timestamp, retention_period_root_ts_target);
-                // We are now at a chain block that is at or above our retention period target
-                // Break here so we can return the hash from the previous iteration
+        while retention_period_root != new_retention_period_root {
+            let block = new_retention_period_root;
+
+            // We may be at a block that's already in the past of current retention_period_root. Clamp to retention_period_root here.
+            // Happens when the node is newly started and retention_period_root itself still doesn't cover the full retention period.
+            if self.reachability_service.is_dag_ancestor_of(block, retention_period_root) {
+                new_retention_period_root = retention_period_root;
                 break;
             }
-            new_retention_period_root = block;
+
+            let timestamp = self.headers_store.get_compact_header_data(block).unwrap().timestamp;
+            trace!("block | timestamp = {} | {}", block, timestamp);
+            if timestamp < retention_period_root_ts_target {
+                trace!("block {} timestamp {} >= {}", block, timestamp, retention_period_root_ts_target);
+                // We are now at a pruning point that is at or above our retention period target
+                break;
+            }
+
+            new_retention_period_root = self.pruning_samples_store.pruning_sample_from_pov(block).unwrap_or(retention_period_root);
         }
 
         new_retention_period_root
