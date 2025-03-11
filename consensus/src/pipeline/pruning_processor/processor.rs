@@ -182,14 +182,8 @@ impl PruningProcessor {
         );
 
         if !new_pruning_points.is_empty() {
-            let retention_period_root = if let Ok(retention_period_root) = pruning_point_read.retention_period_root() {
-                retention_period_root
-            } else if let Ok(history_root) = pruning_point_read.history_root() {
-                history_root
-            } else {
-                // pruning point always exist
-                pruning_point_read.pruning_point().unwrap()
-            };
+            let retention_period_root =
+                pruning_point_read.retention_period_root().unwrap_or(pruning_point_read.pruning_point().unwrap());
 
             // Update past pruning points and pruning point stores
             let mut batch = WriteBatch::default();

@@ -623,9 +623,7 @@ impl ConsensusApi for Consensus {
 
     fn get_retention_root(&self) -> Hash {
         let pruning_point_read = self.pruning_point_store.read();
-        pruning_point_read
-            .retention_period_root()
-            .unwrap_or(pruning_point_read.history_root().unwrap_or(pruning_point_read.pruning_point().unwrap()))
+        pruning_point_read.retention_period_root().unwrap_or(pruning_point_read.pruning_point().unwrap())
     }
 
     /// Estimates number of blocks and headers stored in the node
