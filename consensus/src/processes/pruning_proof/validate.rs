@@ -110,12 +110,15 @@ impl PruningProofManager {
             ) {
                 let proof_level_blue_work_diff = proof_selected_tip_gd.blue_work.saturating_sub(proof_common_ancestor_gd.blue_work);
                 for parent in self.parents_manager.parents_at_level(&current_pp_header, level).iter().copied() {
-                    let parent_blue_work = current_consensus_ghostdag_stores[level_idx].get_blue_work(parent).unwrap();
-                    let parent_blue_work_diff = parent_blue_work.saturating_sub(common_ancestor_gd.blue_work);
-                    if parent_blue_work_diff.saturating_add(pruning_period_work)
-                        >= proof_level_blue_work_diff.saturating_add(prover_claimed_pruning_period_work)
+                    // Not all parents by level are guaranteed to be GD populated, but at least one of them will (the proof level selected tip)
+                    if let Some(parent_blue_work) = current_consensus_ghostdag_stores[level_idx].get_blue_work(parent).unwrap_option()
                     {
-                        return Err(PruningImportError::PruningProofInsufficientBlueWork);
+                        let parent_blue_work_diff = parent_blue_work.saturating_sub(common_ancestor_gd.blue_work);
+                        if parent_blue_work_diff.saturating_add(pruning_period_work)
+                            >= proof_level_blue_work_diff.saturating_add(prover_claimed_pruning_period_work)
+                        {
+                            return Err(PruningImportError::PruningProofInsufficientBlueWork);
+                        }
                     }
                 }
 
