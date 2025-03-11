@@ -565,22 +565,23 @@ impl PruningProcessor {
         while retention_period_root != new_retention_period_root {
             let block = new_retention_period_root;
 
-            // We may be at a block that's already in the past of current retention_period_root. Clamp to retention_period_root here.
-            // Happens when the node is newly started and retention_period_root itself still doesn't cover the full retention period.
-            if self.reachability_service.is_dag_ancestor_of(block, retention_period_root) {
-                new_retention_period_root = retention_period_root;
-                break;
-            }
-
             let timestamp = self.headers_store.get_compact_header_data(block).unwrap().timestamp;
             trace!("block | timestamp = {} | {}", block, timestamp);
             if timestamp < retention_period_root_ts_target {
                 trace!("block {} timestamp {} >= {}", block, timestamp, retention_period_root_ts_target);
-                // We are now at a pruning point that is at or above our retention period target
+                // We are now at a pruning point that is at or below our retention period target
                 break;
             }
 
             new_retention_period_root = self.pruning_samples_store.pruning_sample_from_pov(block).unwrap_or(retention_period_root);
+        }
+
+        // We may be at a pruning sample that's in the past or anticone of current retention_period_root. Clamp to retention_period_root here.
+        // Happens when the node is newly started and retention_period_root itself still doesn't cover the full retention period.
+        let is_new_root_in_future_of_old =
+            self.reachability_service.is_dag_ancestor_of(retention_period_root, new_retention_period_root);
+        if !is_new_root_in_future_of_old {
+            new_retention_period_root = retention_period_root;
         }
 
         new_retention_period_root
