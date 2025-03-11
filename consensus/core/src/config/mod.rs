@@ -98,7 +98,7 @@ impl Config {
             initial_utxo_set: Default::default(),
             disable_upnp: false,
             ram_scale: 1.0,
-            retention_period_days: 3.0,
+            retention_period_days: 0.0,
         }
     }
 
