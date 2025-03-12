@@ -68,6 +68,9 @@ pub struct Config {
 
     /// A scale factor to apply to memory allocation bounds
     pub ram_scale: f64,
+
+    /// The number of days to keep data for
+    pub retention_period_days: Option<f64>,
 }
 
 impl Config {
@@ -95,6 +98,7 @@ impl Config {
             initial_utxo_set: Default::default(),
             disable_upnp: false,
             ram_scale: 1.0,
+            retention_period_days: None,
         }
     }
 

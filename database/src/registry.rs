@@ -21,7 +21,7 @@ pub enum DatabaseStorePrefixes {
     PruningUtxoset = 11,
     PruningUtxosetPosition = 12,
     PruningPoint = 13,
-    HistoryRoot = 14,
+    RetentionCheckpoint = 14,
     Reachability = 15,
     ReachabilityReindexRoot = 16,
     ReachabilityRelations = 17,
@@ -45,6 +45,9 @@ pub enum DatabaseStorePrefixes {
     // ---- Ghostdag Proof
     TempGhostdag = 40,
     TempGhostdagCompact = 41,
+
+    // ---- Retention Period Root ----
+    RetentionPeriodRoot = 50,
 
     // ---- Metadata ----
     MultiConsensusMetadata = 124,

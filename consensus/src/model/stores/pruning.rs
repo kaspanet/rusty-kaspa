@@ -39,9 +39,16 @@ pub trait PruningStoreReader {
     fn get(&self) -> StoreResult<PruningPointInfo>;
 
     /// Represent the point after which data is fully held (i.e., history is consecutive from this point and up to virtual).
-    /// This is usually the pruning point, though it might lag a bit behind until data prune completes (and for archival
-    /// nodes it will remain the initial syncing point or the last pruning point before turning to an archive)
-    fn history_root(&self) -> StoreResult<Hash>;
+    /// This is usually a pruning point that is at or below the retention period requirement (and for archival
+    /// nodes it will remain the initial syncing point or the last pruning point before turning to an archive).
+    /// At every pruning point movement, this is adjusted to the next pruning point sample that satisfies the required
+    /// retention period.
+    fn retention_period_root(&self) -> StoreResult<Hash>;
+
+    // During pruning, this is a reference to the retention root before the pruning point move.
+    // After pruning, this is updated to point to the retention period root.
+    // This checkpoint is used to determine if pruning has successfully completed.
+    fn retention_checkpoint(&self) -> StoreResult<Hash>;
 }
 
 pub trait PruningStore: PruningStoreReader {
@@ -53,7 +60,8 @@ pub trait PruningStore: PruningStoreReader {
 pub struct DbPruningStore {
     db: Arc<DB>,
     access: CachedDbItem<PruningPointInfo>,
-    history_root_access: CachedDbItem<Hash>,
+    retention_checkpoint_access: CachedDbItem<Hash>,
+    retention_period_root_access: CachedDbItem<Hash>,
 }
 
 impl DbPruningStore {
@@ -61,7 +69,8 @@ impl DbPruningStore {
         Self {
             db: Arc::clone(&db),
             access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::PruningPoint.into()),
-            history_root_access: CachedDbItem::new(db, DatabaseStorePrefixes::HistoryRoot.into()),
+            retention_checkpoint_access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::RetentionCheckpoint.into()),
+            retention_period_root_access: CachedDbItem::new(db, DatabaseStorePrefixes::RetentionPeriodRoot.into()),
         }
     }
 
@@ -73,8 +82,12 @@ impl DbPruningStore {
         self.access.write(BatchDbWriter::new(batch), &PruningPointInfo { pruning_point, candidate, index })
     }
 
-    pub fn set_history_root(&mut self, batch: &mut WriteBatch, history_root: Hash) -> StoreResult<()> {
-        self.history_root_access.write(BatchDbWriter::new(batch), &history_root)
+    pub fn set_retention_checkpoint(&mut self, batch: &mut WriteBatch, retention_checkpoint: Hash) -> StoreResult<()> {
+        self.retention_checkpoint_access.write(BatchDbWriter::new(batch), &retention_checkpoint)
+    }
+
+    pub fn set_retention_period_root(&mut self, batch: &mut WriteBatch, retention_period_root: Hash) -> StoreResult<()> {
+        self.retention_period_root_access.write(BatchDbWriter::new(batch), &retention_period_root)
     }
 }
 
@@ -95,8 +108,12 @@ impl PruningStoreReader for DbPruningStore {
         self.access.read()
     }
 
-    fn history_root(&self) -> StoreResult<Hash> {
-        self.history_root_access.read()
+    fn retention_checkpoint(&self) -> StoreResult<Hash> {
+        self.retention_checkpoint_access.read()
+    }
+
+    fn retention_period_root(&self) -> StoreResult<Hash> {
+        self.retention_period_root_access.read()
     }
 }
 
