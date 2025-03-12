@@ -186,10 +186,17 @@ impl PruningProcessor {
                 self.past_pruning_points_store.insert_batch(&mut batch, current_pruning_info.index + i as u64 + 1, past_pp).unwrap();
             }
             let new_pp_index = current_pruning_info.index + new_pruning_points.len() as u64;
-            
-            let adjusted_retention_period_root = self.advance_retention_period_root(retention_period_root, new_pruning_point);
             pruning_point_write.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
-            pruning_point_write.set_retention_period_root(&mut batch, adjusted_retention_period_root).unwrap();
+
+            // For archival nodes, keep the retention root in place
+            let adjusted_retention_period_root = if self.config.is_archival {
+                retention_period_root
+            } else {
+                let adjusted_retention_period_root = self.advance_retention_period_root(retention_period_root, new_pruning_point);
+                pruning_point_write.set_retention_period_root(&mut batch, adjusted_retention_period_root).unwrap();
+                adjusted_retention_period_root
+            };
+
             self.db.write(batch).unwrap();
             drop(pruning_point_write);
 
