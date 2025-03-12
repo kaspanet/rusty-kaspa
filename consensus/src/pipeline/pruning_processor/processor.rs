@@ -569,10 +569,10 @@ impl PruningProcessor {
                     retention_period_root_ts_target,
                 );
 
-                while retention_period_root != new_retention_period_root {
+                while self.reachability_service.is_dag_ancestor_of(retention_period_root, new_retention_period_root) {
                     let block = new_retention_period_root;
 
-                    let timestamp = self.headers_store.get_compact_header_data(block).unwrap().timestamp;
+                    let timestamp = self.headers_store.get_timestamp(block).unwrap();
                     trace!("block | timestamp = {} | {}", block, timestamp);
                     if timestamp < retention_period_root_ts_target {
                         trace!("block {} timestamp {} >= {}", block, timestamp, retention_period_root_ts_target);
