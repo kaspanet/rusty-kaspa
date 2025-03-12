@@ -384,6 +384,11 @@ impl PruningProofManager {
             }
         }
         let proof = Arc::new(self.build_pruning_point_proof(pp));
+        info!(
+            "Built headers proof with overall {} headers ({} unique)",
+            proof.iter().map(|l| l.len()).sum::<usize>(),
+            proof.iter().flatten().unique_by(|h| h.hash).count()
+        );
         cache_lock.replace(CachedPruningPointData { pruning_point: pp, data: proof.clone() });
         proof
     }
