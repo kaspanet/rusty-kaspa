@@ -542,8 +542,8 @@ impl PruningProcessor {
         }
     }
 
-    /// Adjusts the retention period root forward until the maximum chain block is reached that covers the retention period.
-    /// This is the last chain block B such that B.timestamp < retention_period_days_ago. This may return the old hash if
+    /// Adjusts the retention period root to latest pruning point sample that covers the retention period.
+    /// This is the pruning point sample B such that B.timestamp <= retention_period_days_ago. This may return the old hash if
     /// the retention period cannot be covered yet with the node's current history.
     ///
     /// This function is expected to be called only when a new pruning point is determined and right before
@@ -574,7 +574,7 @@ impl PruningProcessor {
 
                     let timestamp = self.headers_store.get_timestamp(block).unwrap();
                     trace!("block | timestamp = {} | {}", block, timestamp);
-                    if timestamp < retention_period_root_ts_target {
+                    if timestamp <= retention_period_root_ts_target {
                         trace!("block {} timestamp {} >= {}", block, timestamp, retention_period_root_ts_target);
                         // We are now at a pruning point that is at or below our retention period target
                         break;
