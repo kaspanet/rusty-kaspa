@@ -176,7 +176,7 @@ impl PruningProcessor {
             current_pruning_info.pruning_point,
         );
 
-        if !new_pruning_points.is_empty() {
+        if let Some(new_pruning_point) = new_pruning_points.last().copied() {
             let retention_period_root = pruning_point_read.retention_period_root().unwrap();
 
             // Update past pruning points and pruning point stores
@@ -186,7 +186,7 @@ impl PruningProcessor {
                 self.past_pruning_points_store.insert_batch(&mut batch, current_pruning_info.index + i as u64 + 1, past_pp).unwrap();
             }
             let new_pp_index = current_pruning_info.index + new_pruning_points.len() as u64;
-            let new_pruning_point = *new_pruning_points.last().unwrap();
+            
             let adjusted_retention_period_root = self.advance_retention_period_root(retention_period_root, new_pruning_point);
             pruning_point_write.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
             pruning_point_write.set_retention_period_root(&mut batch, adjusted_retention_period_root).unwrap();
