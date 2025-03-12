@@ -566,7 +566,7 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(hash).ok()?;
 
         // Verify that the block is in future(source), where Ghostdag data is complete
-        self.services.reachability_service.is_dag_ancestor_of(self.get_retention_root(), hash).then_some(())?;
+        self.services.reachability_service.is_dag_ancestor_of(self.get_retention_period_root(), hash).then_some(())?;
 
         let sink = self.get_sink();
 
@@ -621,7 +621,7 @@ impl ConsensusApi for Consensus {
         self.lkg_virtual_state.load().to_virtual_state_approx_id()
     }
 
-    fn get_retention_root(&self) -> Hash {
+    fn get_retention_period_root(&self) -> Hash {
         let pruning_point_read = self.pruning_point_store.read();
         pruning_point_read.retention_period_root().unwrap_or(pruning_point_read.pruning_point().unwrap())
     }
@@ -632,7 +632,8 @@ impl ConsensusApi for Consensus {
     /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.  
     fn estimate_block_count(&self) -> BlockCount {
         // PRUNE SAFETY: node is either archival or source is the pruning point which its header is kept permanently
-        let retention_root_score = self.headers_store.get_compact_header_data(self.get_retention_root()).unwrap().daa_score;
+        let retention_period_root_score =
+            self.headers_store.get_compact_header_data(self.get_retention_period_root()).unwrap().daa_score;
         let virtual_score = self.get_virtual_daa_score();
         let header_count = self
             .headers_store
@@ -641,8 +642,8 @@ impl ConsensusApi for Consensus {
             .map(|h| h.daa_score)
             .unwrap_or(virtual_score)
             .max(virtual_score)
-            - retention_root_score;
-        let block_count = virtual_score - retention_root_score;
+            - retention_period_root_score;
+        let block_count = virtual_score - retention_period_root_score;
         BlockCount { header_count, block_count }
     }
 
@@ -665,10 +666,10 @@ impl ConsensusApi for Consensus {
         // Verify that the block exists
         self.validate_block_exists(low)?;
 
-        // Verify that retention root is on chain(block)
+        // Verify that retention period root is on chain(block)
         self.services
             .reachability_service
-            .is_chain_ancestor_of(self.get_retention_root(), low)
+            .is_chain_ancestor_of(self.get_retention_period_root(), low)
             .then_some(())
             .ok_or(ConsensusError::General("the queried hash does not have source on its chain"))?;
 
@@ -745,7 +746,7 @@ impl ConsensusApi for Consensus {
     fn get_populated_transaction(&self, txid: Hash, accepting_block_daa_score: u64) -> Result<SignableTransaction, UtxoInquirerError> {
         // We need consistency between the pruning_point_store, utxo_diffs_store, block_transactions_store, selected chain and headers store reads
         let _guard = self.pruning_lock.blocking_read();
-        self.virtual_processor.get_populated_transaction(txid, accepting_block_daa_score, self.get_retention_root())
+        self.virtual_processor.get_populated_transaction(txid, accepting_block_daa_score, self.get_retention_period_root())
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
