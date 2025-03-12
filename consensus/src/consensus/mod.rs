@@ -307,11 +307,37 @@ impl Consensus {
             is_consensus_exiting,
         };
 
-        // TODO (post HF): remove the upgrade
-        // Database upgrade to include pruning samples
-        this.pruning_samples_database_upgrade();
+        // Run database upgrades if any
+        this.run_database_upgrades();
 
         this
+    }
+
+    /// A procedure for calling database upgrades which are self-contained (i.e., do not require knowing the DB version)
+    fn run_database_upgrades(&self) {
+        // Upgrade to initialize the new retention root field correctly
+        self.retention_root_database_upgrade();
+
+        // TODO (post HF): remove this upgrade
+        // Database upgrade to include pruning samples
+        self.pruning_samples_database_upgrade();
+    }
+
+    fn retention_root_database_upgrade(&self) {
+        let mut pruning_point_store = self.pruning_point_store.write();
+        if pruning_point_store.retention_period_root().unwrap_option().is_none() {
+            let mut batch = rocksdb::WriteBatch::default();
+            if self.config.is_archival {
+                // The retention checkpoint is what was previously known as history root
+                let retention_checkpoint = pruning_point_store.retention_checkpoint().unwrap();
+                pruning_point_store.set_retention_period_root(&mut batch, retention_checkpoint).unwrap();
+            } else {
+                // For non-archival nodes the retention root was the pruning point
+                let pruning_point = pruning_point_store.get().unwrap().pruning_point;
+                pruning_point_store.set_retention_period_root(&mut batch, pruning_point).unwrap();
+            }
+            self.db.write(batch).unwrap();
+        }
     }
 
     fn pruning_samples_database_upgrade(&self) {
@@ -622,8 +648,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_retention_period_root(&self) -> Hash {
-        let pruning_point_read = self.pruning_point_store.read();
-        pruning_point_read.retention_period_root().unwrap_or(pruning_point_read.pruning_point().unwrap())
+        self.pruning_point_store.read().retention_period_root().unwrap()
     }
 
     /// Estimates the number of blocks and headers stored in the node database.

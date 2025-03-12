@@ -134,9 +134,9 @@ impl PruningProcessor {
     fn recover_pruning_workflows_if_needed(&self) {
         let pruning_point_read = self.pruning_point_store.read();
         let pruning_point = pruning_point_read.pruning_point().unwrap();
-        let retention_checkpoint = pruning_point_read.retention_checkpoint().unwrap_option();
-        let retention_period_root = pruning_point_read.retention_period_root().unwrap_or(pruning_point);
-        let pruning_utxoset_position = self.pruning_utxoset_stores.read().utxoset_position().unwrap_option();
+        let retention_checkpoint = pruning_point_read.retention_checkpoint().unwrap();
+        let retention_period_root = pruning_point_read.retention_period_root().unwrap();
+        let pruning_utxoset_position = self.pruning_utxoset_stores.read().utxoset_position().unwrap();
         drop(pruning_point_read);
 
         debug!(
@@ -144,14 +144,12 @@ impl PruningProcessor {
             pruning_point, retention_checkpoint, pruning_utxoset_position
         );
 
-        if let Some(pruning_utxoset_position) = pruning_utxoset_position {
-            // This indicates the node crashed during a former pruning point move and we need to recover
-            if pruning_utxoset_position != pruning_point {
-                info!("Recovering pruning utxo-set from {} to the pruning point {}", pruning_utxoset_position, pruning_point);
-                if !self.advance_pruning_utxoset(pruning_utxoset_position, pruning_point) {
-                    info!("Interrupted while advancing the pruning point UTXO set: Process is exiting");
-                    return;
-                }
+        // This indicates the node crashed during a former pruning point move and we need to recover
+        if pruning_utxoset_position != pruning_point {
+            info!("Recovering pruning utxo-set from {} to the pruning point {}", pruning_utxoset_position, pruning_point);
+            if !self.advance_pruning_utxoset(pruning_utxoset_position, pruning_point) {
+                info!("Interrupted while advancing the pruning point UTXO set: Process is exiting");
+                return;
             }
         }
 
@@ -161,15 +159,12 @@ impl PruningProcessor {
             retention_period_root,
             pruning_point
         );
-        if let Some(retention_checkpoint) = retention_checkpoint {
-            // This indicates the node crashed or was forced to stop during a former data prune operation hence
-            // we need to complete it
-            if retention_checkpoint != retention_period_root {
-                self.prune(pruning_point, retention_period_root);
-            }
-        }
 
-        // TODO: both `pruning_utxoset_position` and `retention_checkpoint` are new DB keys so for now we assume correct state if the keys are missing
+        // This indicates the node crashed or was forced to stop during a former data prune operation hence
+        // we need to complete it
+        if retention_checkpoint != retention_period_root {
+            self.prune(pruning_point, retention_period_root);
+        }
     }
 
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
@@ -182,8 +177,7 @@ impl PruningProcessor {
         );
 
         if !new_pruning_points.is_empty() {
-            let retention_period_root =
-                pruning_point_read.retention_period_root().unwrap_or(pruning_point_read.pruning_point().unwrap());
+            let retention_period_root = pruning_point_read.retention_period_root().unwrap();
 
             // Update past pruning points and pruning point stores
             let mut batch = WriteBatch::default();
