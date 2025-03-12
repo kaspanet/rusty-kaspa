@@ -134,14 +134,14 @@ impl PruningProcessor {
     fn recover_pruning_workflows_if_needed(&self) {
         let pruning_point_read = self.pruning_point_store.read();
         let pruning_point = pruning_point_read.pruning_point().unwrap();
-        let history_root = pruning_point_read.history_root().unwrap_option();
+        let retention_checkpoint = pruning_point_read.retention_checkpoint().unwrap_option();
         let retention_period_root = pruning_point_read.retention_period_root().unwrap_or(pruning_point);
         let pruning_utxoset_position = self.pruning_utxoset_stores.read().utxoset_position().unwrap_option();
         drop(pruning_point_read);
 
         debug!(
-            "[PRUNING PROCESSOR] recovery check: current pruning point: {}, history root: {:?}, pruning utxoset position: {:?}",
-            pruning_point, history_root, pruning_utxoset_position
+            "[PRUNING PROCESSOR] recovery check: current pruning point: {}, retention checkpoint: {:?}, pruning utxoset position: {:?}",
+            pruning_point, retention_checkpoint, pruning_utxoset_position
         );
 
         if let Some(pruning_utxoset_position) = pruning_utxoset_position {
@@ -156,20 +156,20 @@ impl PruningProcessor {
         }
 
         trace!(
-            "history_root: {:?} | retention_period_root: {} | pruning_point: {}",
-            history_root,
+            "retention_checkpoint: {:?} | retention_period_root: {} | pruning_point: {}",
+            retention_checkpoint,
             retention_period_root,
             pruning_point
         );
-        if let Some(history_root) = history_root {
+        if let Some(retention_checkpoint) = retention_checkpoint {
             // This indicates the node crashed or was forced to stop during a former data prune operation hence
             // we need to complete it
-            if history_root != retention_period_root {
+            if retention_checkpoint != retention_period_root {
                 self.prune(pruning_point, retention_period_root);
             }
         }
 
-        // TODO: both `pruning_utxoset_position` and `history_root` are new DB keys so for now we assume correct state if the keys are missing
+        // TODO: both `pruning_utxoset_position` and `retention_checkpoint` are new DB keys so for now we assume correct state if the keys are missing
     }
 
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
@@ -536,7 +536,7 @@ impl PruningProcessor {
             // Set the history root to the new pruning point only after we successfully pruned its past
             let mut pruning_point_write = self.pruning_point_store.write();
             let mut batch = WriteBatch::default();
-            pruning_point_write.set_history_root(&mut batch, retention_period_root).unwrap();
+            pruning_point_write.set_retention_checkpoint(&mut batch, retention_period_root).unwrap();
             self.db.write(batch).unwrap();
             drop(pruning_point_write);
         }
