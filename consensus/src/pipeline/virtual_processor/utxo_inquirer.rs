@@ -24,21 +24,21 @@ impl VirtualStateProcessor {
         &self,
         txid: Hash,
         accepting_block_daa_score: u64,
-        source_hash: Hash,
+        retention_period_root_hash: Hash,
     ) -> Result<SignableTransaction, UtxoInquirerError> {
-        let source_daa_score = self
+        let retention_period_root_daa_score = self
             .headers_store
-            .get_compact_header_data(source_hash)
+            .get_compact_header_data(retention_period_root_hash)
             .map(|compact_header| compact_header.daa_score)
-            .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(source_hash))?;
+            .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(retention_period_root_hash))?;
 
-        if accepting_block_daa_score < source_daa_score {
+        if accepting_block_daa_score < retention_period_root_daa_score {
             // Early exit if target daa score is lower than that of pruning point's daa score:
             return Err(UtxoInquirerError::AlreadyPruned);
         }
 
         let (matching_chain_block_hash, acceptance_data) =
-            self.find_accepting_chain_block_hash_at_daa_score(accepting_block_daa_score, source_hash)?;
+            self.find_accepting_chain_block_hash_at_daa_score(accepting_block_daa_score, retention_period_root_hash)?;
 
         // Expected to never fail, since we found the acceptance data and therefore there must be matching diff
         let utxo_diff = self
@@ -86,11 +86,13 @@ impl VirtualStateProcessor {
     fn find_accepting_chain_block_hash_at_daa_score(
         &self,
         target_daa_score: u64,
-        source_hash: Hash,
+        retention_period_root_hash: Hash,
     ) -> Result<(Hash, Arc<AcceptanceData>), UtxoInquirerError> {
         let sc_read = self.selected_chain_store.read();
 
-        let source_index = sc_read.get_by_hash(source_hash).map_err(|_| UtxoInquirerError::MissingIndexForHash(source_hash))?;
+        let retention_period_root_index = sc_read
+            .get_by_hash(retention_period_root_hash)
+            .map_err(|_| UtxoInquirerError::MissingIndexForHash(retention_period_root_hash))?;
         let (tip_index, tip_hash) = sc_read.get_tip().map_err(|_| UtxoInquirerError::MissingTipData)?;
         let tip_daa_score = self
             .headers_store
@@ -101,7 +103,7 @@ impl VirtualStateProcessor {
         // For a chain segment it holds that len(segment) <= daa_score(segment end) - daa_score(segment start). This is true
         // because each chain block increases the daa score by at least one. Hence we can lower bound our search by high index
         // minus the daa score gap as done below
-        let mut low_index = tip_index.saturating_sub(tip_daa_score.saturating_sub(target_daa_score)).max(source_index);
+        let mut low_index = tip_index.saturating_sub(tip_daa_score.saturating_sub(target_daa_score)).max(retention_period_root_index);
         let mut high_index = tip_index;
 
         let matching_chain_block_hash = loop {
