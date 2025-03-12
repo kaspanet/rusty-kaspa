@@ -549,7 +549,7 @@ impl PruningProcessor {
     /// This function is expected to be called only when a new pruning point is determined and right before
     /// doing any pruning. Pruning point must be the new pruning point this node is advancing to.
     ///
-    /// retention_period_root is guaranteed to be in the past(pruning_point)
+    /// The returned retention_period_root is guaranteed to be in past(pruning_point) or the pruning point itself.
     fn advance_retention_period_root(&self, retention_period_root: Hash, pruning_point: Hash) -> Hash {
         match self.config.retention_period_days {
             // If the retention period wasn't set, immediately default to the pruning point.
@@ -561,7 +561,11 @@ impl PruningProcessor {
                 // to this function serves as a clamp.
                 let retention_period_ms = (retention_period_days * 86400.0 * 1000.0).ceil() as u64;
 
+                // The target timestamp we would like to find a point below
                 let retention_period_root_ts_target = unix_now().saturating_sub(retention_period_ms);
+
+                // Iterate from the new pruning point to the prev retention root and search for the first point with enough days above it.
+                // Note that prev retention root is always a past pruning point, so we can iterate via pruning samples until we reach it.
                 let mut new_retention_period_root = pruning_point;
 
                 trace!(
@@ -569,7 +573,7 @@ impl PruningProcessor {
                     retention_period_root_ts_target,
                 );
 
-                while self.reachability_service.is_dag_ancestor_of(retention_period_root, new_retention_period_root) {
+                while new_retention_period_root != retention_period_root {
                     let block = new_retention_period_root;
 
                     let timestamp = self.headers_store.get_timestamp(block).unwrap();
@@ -580,16 +584,7 @@ impl PruningProcessor {
                         break;
                     }
 
-                    new_retention_period_root =
-                        self.pruning_samples_store.pruning_sample_from_pov(block).unwrap_or(retention_period_root);
-                }
-
-                // We may be at a pruning sample that's in the past or anticone of current retention_period_root. Clamp to retention_period_root here.
-                // Happens when the node is newly started and retention_period_root itself still doesn't cover the full retention period.
-                let is_new_root_in_future_of_old =
-                    self.reachability_service.is_dag_ancestor_of(retention_period_root, new_retention_period_root);
-                if !is_new_root_in_future_of_old {
-                    new_retention_period_root = retention_period_root;
+                    new_retention_period_root = self.pruning_samples_store.pruning_sample_from_pov(block).unwrap();
                 }
 
                 new_retention_period_root
