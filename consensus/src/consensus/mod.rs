@@ -565,7 +565,7 @@ impl ConsensusApi for Consensus {
         // Verify the block exists and can be assumed to have relations and reachability data
         self.validate_block_exists(hash).ok()?;
 
-        // Verify that the block is in future(source), where Ghostdag data is complete
+        // Verify that the block is in future(retention root), where Ghostdag data is complete
         self.services.reachability_service.is_dag_ancestor_of(self.get_retention_period_root(), hash).then_some(())?;
 
         let sink = self.get_sink();
@@ -626,20 +626,18 @@ impl ConsensusApi for Consensus {
         pruning_point_read.retention_period_root().unwrap_or(pruning_point_read.pruning_point().unwrap())
     }
 
-    /// Estimates number of blocks and headers stored in the node
+    /// Estimates the number of blocks and headers stored in the node database.
     ///
-    /// This is an estimation based on the daa score difference between the node's `source` and `sink`'s daa score,
+    /// This is an estimation based on the DAA score difference between the node's `retention root` and `virtual`'s DAA score,
     /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.  
     fn estimate_block_count(&self) -> BlockCount {
-        // PRUNE SAFETY: node is either archival or source is the pruning point which its header is kept permanently
-        let retention_period_root_score =
-            self.headers_store.get_compact_header_data(self.get_retention_period_root()).unwrap().daa_score;
+        // PRUNE SAFETY: retention root is always a current or past pruning point which its header is kept permanently
+        let retention_period_root_score = self.headers_store.get_daa_score(self.get_retention_period_root()).unwrap();
         let virtual_score = self.get_virtual_daa_score();
         let header_count = self
             .headers_store
-            .get_compact_header_data(self.get_headers_selected_tip())
+            .get_daa_score(self.get_headers_selected_tip())
             .unwrap_option()
-            .map(|h| h.daa_score)
             .unwrap_or(virtual_score)
             .max(virtual_score)
             - retention_period_root_score;
@@ -666,12 +664,12 @@ impl ConsensusApi for Consensus {
         // Verify that the block exists
         self.validate_block_exists(low)?;
 
-        // Verify that retention period root is on chain(block)
+        // Verify that retention root is on chain(block)
         self.services
             .reachability_service
             .is_chain_ancestor_of(self.get_retention_period_root(), low)
             .then_some(())
-            .ok_or(ConsensusError::General("the queried hash does not have source on its chain"))?;
+            .ok_or(ConsensusError::General("the queried hash does not have retention root on its chain"))?;
 
         Ok(self.services.dag_traversal_manager.calculate_chain_path(low, self.get_sink(), chain_path_added_limit))
     }

@@ -533,7 +533,7 @@ impl PruningProcessor {
         }
 
         {
-            // Set the history root to the new pruning point only after we successfully pruned its past
+            // Set the retention checkpoint to the new retention root only after we successfully pruned its past
             let mut pruning_point_write = self.pruning_point_store.write();
             let mut batch = WriteBatch::default();
             pruning_point_write.set_retention_checkpoint(&mut batch, retention_period_root).unwrap();

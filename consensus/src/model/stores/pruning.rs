@@ -47,7 +47,7 @@ pub trait PruningStoreReader {
 
     // During pruning, this is a reference to the retention root before the pruning point move.
     // After pruning, this is updated to point to the retention period root.
-    // This checkpoint used to determine if pruning has successfully completed.
+    // This checkpoint is used to determine if pruning has successfully completed.
     fn retention_checkpoint(&self) -> StoreResult<Hash>;
 }
 

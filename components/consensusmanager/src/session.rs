@@ -254,7 +254,7 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_current_block_color(hash)).await
     }
 
-    /// retention root refers to the earliest block from which the current node has full header & block data  
+    /// retention period root refers to the earliest block from which the current node has full header & block data  
     pub async fn async_get_retention_period_root(&self) -> Hash {
         self.clone().spawn_blocking(|c| c.get_retention_period_root()).await
     }
