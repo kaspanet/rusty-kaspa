@@ -90,7 +90,7 @@ pub struct Args {
     #[serde(rename = "nogrpc")]
     pub disable_grpc: bool,
     pub ram_scale: f64,
-    pub retention_period_days: f64,
+    pub retention_period_days: Option<f64>,
 }
 
 impl Default for Args {
@@ -141,7 +141,7 @@ impl Default for Args {
             disable_dns_seeding: false,
             disable_grpc: false,
             ram_scale: 1.0,
-            retention_period_days: 3.0,
+            retention_period_days: None,
         }
     }
 }
@@ -458,7 +458,7 @@ impl Args {
             disable_dns_seeding: arg_match_unwrap_or::<bool>(&m, "nodnsseed", defaults.disable_dns_seeding),
             disable_grpc: arg_match_unwrap_or::<bool>(&m, "nogrpc", defaults.disable_grpc),
             ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),
-            retention_period_days: arg_match_unwrap_or::<f64>(&m, "retention-period-days", defaults.retention_period_days),
+            retention_period_days: m.get_one::<f64>("retention-period-days").cloned().or(defaults.retention_period_days),
 
             #[cfg(feature = "devnet-prealloc")]
             num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),
