@@ -1,5 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
+use crate::tx::generator::settings::PayloadDistribution;
 use crate::tx::{generator as native, Fees, PaymentDestination, PaymentOutputs};
 use crate::utxo::{TryIntoUtxoEntryReferences, UtxoEntryReference};
 use crate::wasm::tx::generator::*;
@@ -87,6 +88,14 @@ interface IGeneratorSettingsObject {
     payload?: Uint8Array | HexString;
 
     /**
+     * Specifies the method for distributing payload data across multiple transactions.
+     * This is applicable when a large transaction is divided into smaller ones:
+     * - "FinalOnly": Attach the payload only to the final transaction in the sequence (default).
+     * - "AllTxs": Attach the payload to every transaction in the sequence.
+     */
+    payloadDistribution?: "FinalOnly" | "AllTxs";
+
+    /**
      * Optional NetworkId or network id as string (i.e. `mainnet` or `testnet-11`). Required when {@link IGeneratorSettingsObject.entries} is array
      */
     networkId?: NetworkId | string
@@ -164,6 +173,7 @@ impl Generator {
             sig_op_count,
             minimum_signatures,
             payload,
+            payload_distribution,
         } = settings;
 
         let settings = match source {
@@ -184,6 +194,7 @@ impl Generator {
                     final_transaction_destination,
                     final_priority_fee,
                     payload,
+                    payload_distribution,
                     multiplexer,
                 )?
             }
@@ -200,6 +211,7 @@ impl Generator {
                     final_transaction_destination,
                     final_priority_fee,
                     payload,
+                    payload_distribution,
                     multiplexer,
                 )?
             } // GeneratorSource::Account(account) => {
@@ -264,6 +276,7 @@ struct GeneratorSettings {
     pub sig_op_count: u8,
     pub minimum_signatures: u16,
     pub payload: Option<Vec<u8>>,
+    pub payload_distribution: PayloadDistribution,
 }
 
 impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
@@ -302,6 +315,10 @@ impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
         };
 
         let payload = args.get_vec_u8("payload").ok();
+        let payload_distribution = match args.get_string("payloadDistribution").unwrap_or("FinalOnly".to_string()).as_str() {
+            "AllTxs" => PayloadDistribution::AllTxs,
+            _ => PayloadDistribution::FinalOnly,
+        };
 
         let settings = GeneratorSettings {
             network_id,
@@ -314,6 +331,7 @@ impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
             sig_op_count,
             minimum_signatures,
             payload,
+            payload_distribution,
         };
 
         Ok(settings)
