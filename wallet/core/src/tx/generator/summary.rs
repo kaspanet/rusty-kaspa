@@ -16,13 +16,28 @@ use std::fmt;
 pub struct GeneratorSummary {
     pub network_id: NetworkId,
     pub aggregated_utxos: usize,
-    pub aggregated_fees: u64,
+    pub aggregate_fees: u64,
+    pub aggregate_mass: u64,
     pub number_of_generated_transactions: usize,
+    pub number_of_generated_stages: usize,
     pub final_transaction_amount: Option<u64>,
     pub final_transaction_id: Option<TransactionId>,
 }
 
 impl GeneratorSummary {
+    pub fn new(network_id: NetworkId) -> Self {
+        Self {
+            network_id,
+            aggregated_utxos: 0,
+            aggregate_fees: 0,
+            aggregate_mass: 0,
+            number_of_generated_transactions: 0,
+            number_of_generated_stages: 0,
+            final_transaction_amount: None,
+            final_transaction_id: None,
+        }
+    }
+
     pub fn network_type(&self) -> NetworkType {
         self.network_id.into()
     }
@@ -35,12 +50,20 @@ impl GeneratorSummary {
         self.aggregated_utxos
     }
 
-    pub fn aggregated_fees(&self) -> u64 {
-        self.aggregated_fees
+    pub fn aggregate_mass(&self) -> u64 {
+        self.aggregate_mass
+    }
+
+    pub fn aggregate_fees(&self) -> u64 {
+        self.aggregate_fees
     }
 
     pub fn number_of_generated_transactions(&self) -> usize {
         self.number_of_generated_transactions
+    }
+
+    pub fn number_of_generated_stages(&self) -> usize {
+        self.number_of_generated_stages
     }
 
     pub fn final_transaction_amount(&self) -> Option<u64> {
@@ -61,12 +84,12 @@ impl fmt::Display for GeneratorSummary {
         };
 
         if let Some(final_transaction_amount) = self.final_transaction_amount {
-            let total = final_transaction_amount + self.aggregated_fees;
+            let total = final_transaction_amount + self.aggregate_fees;
             write!(
                 f,
                 "Amount: {}  Fees: {}  Total: {}  UTXOs: {}  {}",
                 sompi_to_kaspa_string_with_suffix(final_transaction_amount, &self.network_id),
-                sompi_to_kaspa_string_with_suffix(self.aggregated_fees, &self.network_id),
+                sompi_to_kaspa_string_with_suffix(self.aggregate_fees, &self.network_id),
                 sompi_to_kaspa_string_with_suffix(total, &self.network_id),
                 self.aggregated_utxos,
                 transactions
@@ -75,7 +98,7 @@ impl fmt::Display for GeneratorSummary {
             write!(
                 f,
                 "Fees: {}  UTXOs: {}  {}",
-                sompi_to_kaspa_string_with_suffix(self.aggregated_fees, &self.network_id),
+                sompi_to_kaspa_string_with_suffix(self.aggregate_fees, &self.network_id),
                 self.aggregated_utxos,
                 transactions
             )?;
