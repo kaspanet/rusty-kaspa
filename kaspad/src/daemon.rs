@@ -3,6 +3,7 @@ use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
 use async_channel::unbounded;
 use kaspa_consensus_core::{
     config::ConfigBuilder,
+    constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
     errors::config::{ConfigError, ConfigResult},
     mining_rules::MiningRules,
 };
@@ -52,6 +53,11 @@ pub const DESIRED_DAEMON_SOFT_FD_LIMIT: u64 = 8 * 1024;
 /// acceptable limit of `4096`, but a setting below
 /// this value may impact the database performance).
 pub const MINIMUM_DAEMON_SOFT_FD_LIMIT: u64 = 4 * 1024;
+
+/// If set, the retention period days must be at least this value
+/// (otherwise it is meaningless since pruning periods are typically at least 2 days long)
+const MINIMUM_RETENTION_PERIOD_DAYS: f64 = 2.0;
+const ONE_GIGABYTE: f64 = 1_000_000_000.0;
 
 use crate::args::Args;
 
@@ -236,8 +242,6 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
             .build(),
     );
 
-    // TODO: Validate `config` forms a valid set of properties
-
     let app_dir = get_app_dir_from_args(args);
     let db_dir = app_dir.join(network.to_prefixed()).join(DEFAULT_DATA_DIR);
 
@@ -276,6 +280,29 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     if args.utxoindex {
         info!("Utxoindex Data directory {}", utxoindex_db_dir.display());
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+    }
+
+    if !args.archival && args.retention_period_days.is_some() {
+        let retention_period_days = args.retention_period_days.unwrap();
+        // Look only at post-fork values (which are the worst-case)
+        let finality_depth = config.finality_depth().after();
+        let target_time_per_block = config.target_time_per_block().after(); // in ms
+
+        let retention_period_milliseconds = (retention_period_days * 24.0 * 60.0 * 60.0 * 1000.0).ceil() as u64;
+        if MINIMUM_RETENTION_PERIOD_DAYS <= retention_period_days {
+            let total_blocks = retention_period_milliseconds / target_time_per_block;
+            // This worst case usage only considers block space. It does not account for usage of
+            // other stores (reachability, block status, mempool, etc.)
+            let worst_case_usage =
+                ((total_blocks + finality_depth) * (config.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR)) as f64 / ONE_GIGABYTE;
+
+            info!(
+                "Retention period is set to {} days. Disk usage may be up to {:.2} GB for block space required for this period.",
+                retention_period_days, worst_case_usage
+            );
+        } else {
+            panic!("Retention period ({}) must be at least {} days", retention_period_days, MINIMUM_RETENTION_PERIOD_DAYS);
+        }
     }
 
     // DB used for addresses store and for multi-consensus management

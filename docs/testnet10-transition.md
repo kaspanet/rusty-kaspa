@@ -4,7 +4,7 @@ Kaspa is about to take a significant leap with the **Crescendo Hardfork**, as de
 
 
 **Important Note:**  
-- Version [0.17.0](https://github.com/kaspanet/rusty-kaspa/releases/tag/v0.17.0) does **not** support TN11. Some participants should keep TN11 nodes running on the latest stable release or `stable` branch until TN10’s performance is proven stable.
+- Version [0.17.1](https://github.com/kaspanet/rusty-kaspa/releases/tag/v0.17.1) does **not** support TN11. Some participants should keep TN11 nodes running on the latest stable release or `stable` branch until TN10’s performance is proven stable.
 
 ---
 
@@ -29,8 +29,8 @@ While the minimum specs suffice to sync and maintain a TN10 node with the accele
 
 ## 1. Install & Run Your TN10 Node
 
-1. **Obtain Kaspa 0.17.0 binaries**  
-   Download and extract the official [0.17.0 release](https://github.com/kaspanet/rusty-kaspa/releases/tag/v0.17.0), or build from the `master` branch by following the instructions in the project README.
+1. **Obtain Kaspa 0.17.1 binaries**  
+   Download and extract the official [0.17.1 release](https://github.com/kaspanet/rusty-kaspa/releases/tag/v0.17.1), or build from the `master` branch by following the instructions in the project README.
 
 2. **Launch the Node**  
    While TN10 is the default netsuffix, specifying it explicitly is recommended:
