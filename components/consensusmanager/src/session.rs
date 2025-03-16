@@ -463,7 +463,7 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_pruning_window_roots()).await
     }
 
-    pub async fn async_add_archival_block(&self, block: Block, child: Hash) -> ConsensusResult<()> {
+    pub async fn async_add_archival_block(&self, block: Block, child: Option<Hash>) -> ConsensusResult<()> {
         self.clone().spawn_blocking(move |c| c.add_archival_block(block, child)).await
     }
 }

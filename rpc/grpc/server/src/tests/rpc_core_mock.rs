@@ -378,6 +378,14 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn add_archival_blocks_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: AddArchivalBlocksRequest,
+    ) -> RpcResult<AddArchivalBlocksResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

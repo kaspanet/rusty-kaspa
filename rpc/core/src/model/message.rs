@@ -3580,14 +3580,14 @@ impl Deserializer for GetPruningWindowRootsResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchivalBlock {
-    pub child: RpcHash,
+    pub child: Option<RpcHash>,
     pub block: RpcRawBlock,
 }
 
 impl Serializer for ArchivalBlock {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(RpcHash, &self.child, writer)?;
+        store!(Option<RpcHash>, &self.child, writer)?;
         serialize!(RpcRawBlock, &self.block, writer)?;
 
         Ok(())

@@ -375,7 +375,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn add_archival_block(&self, block: Block, child: Hash) -> ConsensusResult<()> {
+    fn add_archival_block(&self, block: Block, child: Option<Hash>) -> ConsensusResult<()> {
         unimplemented!()
     }
 }

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use itertools::Itertools;
 use kaspa_consensus_core::{
     block::Block,
+    blockstatus::BlockStatus,
     config::params::ForkActivation,
     errors::{
         archival::{ArchivalError, ArchivalResult},
@@ -11,7 +12,7 @@ use kaspa_consensus_core::{
     merkle::calc_hash_merkle_root,
     BlockLevel,
 };
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 
@@ -23,6 +24,7 @@ use crate::{
         past_pruning_points::PastPruningPointsStoreReader,
         pruning::PruningStoreReader,
         pruning_window_root::{PruningWindowRootStore, PruningWindowRootStoreReader},
+        statuses::{StatusesStore, StatusesStoreReader},
     },
 };
 
@@ -50,28 +52,34 @@ impl ArchivalManager {
         Self { storage, max_block_level, genesis_hash, is_archival, crescendo_activation }
     }
 
-    pub fn add_archival_block(&self, block: Block, child: Hash) -> ArchivalResult<()> {
+    pub fn add_archival_block(&self, block: Block, child: Option<Hash>) -> ArchivalResult<()> {
         if !self.is_archival {
             return Err(ArchivalError::NotArchival);
         }
 
         let block_hash = block.hash();
-        if self.storage.block_transactions_store.has(block_hash).unwrap() {
-            return Ok(());
+        if let Some(status) = self.storage.statuses_store.read().get(block_hash).unwrap_option() {
+            if status.has_block_body() {
+                return Ok(());
+            }
         }
 
-        if !self
-            .storage
-            .headers_store
-            .get_header(child)
-            .unwrap_option()
-            .ok_or(ArchivalError::ChildNotFound(child))?
-            .direct_parents()
-            .iter()
-            .copied()
-            .contains(&block_hash)
-        {
-            return Err(ArchivalError::NotParentOf(block_hash, child));
+        if let Some(child) = child {
+            if !self
+                .storage
+                .headers_store
+                .get_header(child)
+                .unwrap_option()
+                .ok_or(ArchivalError::ChildNotFound(child))?
+                .direct_parents()
+                .iter()
+                .copied()
+                .contains(&block_hash)
+            {
+                return Err(ArchivalError::NotParentOf(block_hash, child));
+            }
+        } else if !self.storage.headers_store.has(block_hash).unwrap() {
+            return Err(ArchivalError::NoHeader(block_hash));
         }
 
         let block_level = calc_block_level(&block.header, self.max_block_level);
@@ -90,7 +98,8 @@ impl ArchivalManager {
                 return Err(RuleError::BadMerkleRoot(merkle_root, calculated).into());
             }
 
-            self.storage.block_transactions_store.insert(block_hash, block.transactions).unwrap();
+            self.storage.block_transactions_store.insert(block_hash, block.transactions).unwrap_or_exists();
+            self.storage.statuses_store.write().set(block_hash, BlockStatus::StatusUTXOPendingVerification).unwrap();
         }
 
         Ok(())

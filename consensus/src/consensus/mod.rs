@@ -1152,7 +1152,7 @@ impl ConsensusApi for Consensus {
         self.archival_manager.get_pruning_window_roots()
     }
 
-    fn add_archival_block(&self, block: Block, child: Hash) -> ConsensusResult<()> {
+    fn add_archival_block(&self, block: Block, child: Option<Hash>) -> ConsensusResult<()> {
         Ok(self.archival_manager.add_archival_block(block, child)?)
     }
 }

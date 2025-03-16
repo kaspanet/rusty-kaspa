@@ -16,6 +16,9 @@ pub enum ArchivalError {
 
     #[error("rule error: {0}")]
     DifficultyError(#[from] RuleError),
+
+    #[error("header of {0} was not found")]
+    NoHeader(Hash),
 }
 
 pub type ArchivalResult<T> = std::result::Result<T, ArchivalError>;

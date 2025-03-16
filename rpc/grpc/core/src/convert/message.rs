@@ -257,7 +257,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetPruningWindowRootsResponse>, protowire
 from!(item: &kaspa_rpc_core::ArchivalBlock, protowire::ArchivalBlock, {
     Self {
         block: Some((&item.block).into()),
-        child: item.child.to_string(),
+        child: item.child.unwrap_or_default().to_string(),
     }
 });
 from!(item: &kaspa_rpc_core::AddArchivalBlocksRequest, protowire::AddArchivalBlocksRequestMessage, {
@@ -758,7 +758,7 @@ try_from!(item: &protowire::ArchivalBlock, kaspa_rpc_core::ArchivalBlock, {
             .as_ref()
             .ok_or_else(|| RpcError::MissingRpcFieldError("ArchivalBlock".to_string(), "block".to_string()))?
             .try_into()?,
-        child: RpcHash::from_str(&item.child)?,
+        child: if item.child == ""{ None }else {Some(RpcHash::from_str(&item.child)?)},
     }
 });
 try_from!(item: &protowire::AddArchivalBlocksRequestMessage, kaspa_rpc_core::AddArchivalBlocksRequest,{

@@ -411,10 +411,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let session = self.consensus_manager.consensus().session().await;
         let block = session.async_get_block_even_if_header_only(request.hash).await?;
         Ok(GetBlockResponse {
-            block: self
-                .consensus_converter
-                .get_block(&session, &block, request.include_transactions, request.include_transactions)
-                .await?,
+            block: self.consensus_converter.get_block(&session, &block, request.include_transactions, false).await?, // TODO: Pass include_verbose_data to GetBlockRequest
         })
     }
 
