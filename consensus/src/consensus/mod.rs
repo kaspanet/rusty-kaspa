@@ -299,6 +299,11 @@ impl Consensus {
             config.is_archival,
             config.params.crescendo_activation,
             storage.clone(),
+            Arc::new(rayon::ThreadPoolBuilder::new()
+                    .num_threads(0) // TODO: set the number of threads
+                    .thread_name(|i| format!("archival-pool-{i}"))
+                    .build()
+                    .unwrap()),
         );
 
         let this = Self {

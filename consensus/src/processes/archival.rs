@@ -15,7 +15,10 @@ use kaspa_consensus_core::{
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::{
+    iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator},
+    ThreadPool,
+};
 
 use crate::{
     consensus::storage::ConsensusStorage,
@@ -37,6 +40,7 @@ pub struct ArchivalManager {
     crescendo_activation: ForkActivation,
 
     storage: Arc<ConsensusStorage>,
+    thread_pool: Arc<ThreadPool>,
 }
 
 // TODO: If a node switches back and fortch archival mode, some blocks might be deleted and the root might be incorrect.
@@ -49,8 +53,9 @@ impl ArchivalManager {
         is_archival: bool,
         crescendo_activation: ForkActivation,
         storage: Arc<ConsensusStorage>,
+        thread_pool: Arc<ThreadPool>,
     ) -> Self {
-        Self { storage, max_block_level, genesis_hash, is_archival, crescendo_activation }
+        Self { storage, max_block_level, genesis_hash, is_archival, crescendo_activation, thread_pool }
     }
 
     pub fn add_archival_blocks(&self, blocks: Vec<ArchivalBlock>) -> ArchivalResult<()> {
@@ -81,7 +86,7 @@ impl ArchivalManager {
             }
         }
 
-        blocks.clone().into_par_iter().try_for_each(|block| self.add_archival_block(block.block))?;
+        self.thread_pool.install(|| blocks.par_iter().try_for_each(|block| self.add_archival_block(block.block.clone())))?;
 
         let mut status_write = self.storage.statuses_store.write();
         for block in blocks {
