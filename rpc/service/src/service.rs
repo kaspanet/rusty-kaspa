@@ -6,6 +6,7 @@ use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, pro
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
+use kaspa_consensus_core::config::constants::consensus;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::utxo::utxo_inquirer::UtxoInquirerError;
 use kaspa_consensus_core::{
@@ -1181,14 +1182,17 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         request: AddArchivalBlocksRequest,
     ) -> RpcResult<AddArchivalBlocksResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
-        for archival_block in request.blocks {
-            let try_block: RpcResult<Block> = archival_block.block.try_into();
-            if let Err(err) = &try_block {
-                return Err(RpcError::General(format!("Failed to parse block: {err}")));
-            }
 
-            session.async_add_archival_block(try_block.unwrap(), archival_block.child).await?;
-        }
+        let archival_blocks = request
+            .blocks
+            .into_iter()
+            .map(|archival_block| match archival_block.block.try_into() {
+                Ok(block) => Ok(kaspa_consensus_core::ArchivalBlock { block, child: archival_block.child }),
+                Err(err) => Err(RpcError::General(format!("Failed to parse block: {err}"))),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        session.async_add_archival_blocks(archival_blocks).await?;
 
         Ok(AddArchivalBlocksResponse {})
     }

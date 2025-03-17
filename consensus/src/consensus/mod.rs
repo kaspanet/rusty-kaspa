@@ -72,7 +72,7 @@ use kaspa_consensus_core::{
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     utxo::utxo_inquirer::UtxoInquirerError,
-    BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
+    ArchivalBlock, BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 
@@ -1152,7 +1152,7 @@ impl ConsensusApi for Consensus {
         self.archival_manager.get_pruning_window_roots()
     }
 
-    fn add_archival_block(&self, block: Block, child: Option<Hash>) -> ConsensusResult<()> {
-        Ok(self.archival_manager.add_archival_block(block, child)?)
+    fn add_archival_blocks(&self, blocks: Vec<ArchivalBlock>) -> ConsensusResult<()> {
+        Ok(self.archival_manager.add_archival_blocks(blocks)?)
     }
 }

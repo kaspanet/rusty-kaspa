@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
@@ -10,11 +10,12 @@ use kaspa_consensus_core::{
         block::RuleError,
     },
     merkle::calc_hash_merkle_root,
-    BlockLevel,
+    ArchivalBlock, BlockHashMap, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
     consensus::storage::ConsensusStorage,
@@ -52,34 +53,50 @@ impl ArchivalManager {
         Self { storage, max_block_level, genesis_hash, is_archival, crescendo_activation }
     }
 
-    pub fn add_archival_block(&self, block: Block, child: Option<Hash>) -> ArchivalResult<()> {
+    pub fn add_archival_blocks(&self, blocks: Vec<ArchivalBlock>) -> ArchivalResult<()> {
         if !self.is_archival {
             return Err(ArchivalError::NotArchival);
         }
 
+        let mut validated: HashMap<_, Block, _> = BlockHashMap::new();
+        for ArchivalBlock { block, child } in blocks.iter().cloned() {
+            if let Some(child) = child {
+                let child_header = validated.get(&child).map(|b| Ok::<_, ArchivalError>(b.header.clone())).unwrap_or_else(|| {
+                    Ok(self
+                        .storage
+                        .headers_store
+                        .get_header(child)
+                        .unwrap_option()
+                        .ok_or(ArchivalError::ChildNotFound(child))?
+                        .clone())
+                })?;
+
+                if !child_header.direct_parents().iter().copied().contains(&block.hash()) {
+                    return Err(ArchivalError::NotParentOf(block.hash(), child));
+                }
+
+                validated.insert(block.hash(), block);
+            } else if !self.storage.headers_store.has(block.hash()).unwrap() {
+                return Err(ArchivalError::NoHeader(block.hash()));
+            }
+        }
+
+        blocks.clone().into_par_iter().try_for_each(|block| self.add_archival_block(block.block))?;
+
+        let mut status_write = self.storage.statuses_store.write();
+        for block in blocks {
+            status_write.set(block.block.hash(), BlockStatus::StatusUTXOPendingVerification).unwrap();
+        }
+
+        Ok(())
+    }
+
+    fn add_archival_block(&self, block: Block) -> ArchivalResult<()> {
         let block_hash = block.hash();
         if let Some(status) = self.storage.statuses_store.read().get(block_hash).unwrap_option() {
             if status.has_block_body() {
                 return Ok(());
             }
-        }
-
-        if let Some(child) = child {
-            if !self
-                .storage
-                .headers_store
-                .get_header(child)
-                .unwrap_option()
-                .ok_or(ArchivalError::ChildNotFound(child))?
-                .direct_parents()
-                .iter()
-                .copied()
-                .contains(&block_hash)
-            {
-                return Err(ArchivalError::NotParentOf(block_hash, child));
-            }
-        } else if !self.storage.headers_store.has(block_hash).unwrap() {
-            return Err(ArchivalError::NoHeader(block_hash));
         }
 
         let block_level = calc_block_level(&block.header, self.max_block_level);
@@ -99,7 +116,6 @@ impl ArchivalManager {
             }
 
             self.storage.block_transactions_store.insert(block_hash, block.transactions).unwrap_or_exists();
-            self.storage.statuses_store.write().set(block_hash, BlockStatus::StatusUTXOPendingVerification).unwrap();
         }
 
         Ok(())

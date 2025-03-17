@@ -10,6 +10,7 @@ use crate::{
     coinbase::MinerData,
     daa_score_timestamp::DaaScoreTimestamp,
     errors::{
+        archival::ArchivalResult,
         block::{BlockProcessResult, RuleError},
         coinbase::CoinbaseResult,
         consensus::ConsensusResult,
@@ -22,7 +23,7 @@ use crate::{
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     utxo::utxo_inquirer::UtxoInquirerError,
-    BlockHashSet, BlueWorkType, ChainPath,
+    ArchivalBlock, BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
 
@@ -375,7 +376,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn add_archival_block(&self, block: Block, child: Option<Hash>) -> ConsensusResult<()> {
+    fn add_archival_blocks(&self, blocks: Vec<ArchivalBlock>) -> ConsensusResult<()> {
         unimplemented!()
     }
 }
