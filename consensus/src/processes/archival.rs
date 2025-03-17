@@ -164,16 +164,17 @@ impl ArchivalManager {
     }
 
     pub fn get_pruning_window_roots(&self) -> Vec<(u64, Hash)> {
-        let mut pp_index = self.storage.pruning_point_store.read().get().unwrap().index;
-        let mut roots = Vec::with_capacity(pp_index as usize);
-        while pp_index > 0 {
-            let (root, is_full) = self.get_pruning_window_root(pp_index);
-            if !is_full {
-                roots.push((pp_index, root));
-            }
-            pp_index -= 1;
-        }
-
-        roots
+        let pp_index = self.storage.pruning_point_store.read().get().unwrap().index;
+        (1..=pp_index)
+            .rev()
+            .filter_map(|pp_index| {
+                let (root, is_full) = self.get_pruning_window_root(pp_index);
+                if !is_full {
+                    Some((pp_index, root))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
