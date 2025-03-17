@@ -3627,6 +3627,12 @@ impl AddArchivalBlocksRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddArchivalBlocksResponse {}
+impl Default for AddArchivalBlocksResponse {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AddArchivalBlocksResponse {
     pub fn new() -> Self {
         Self {}

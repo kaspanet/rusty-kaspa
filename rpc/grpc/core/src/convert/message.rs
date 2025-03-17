@@ -758,7 +758,7 @@ try_from!(item: &protowire::ArchivalBlock, kaspa_rpc_core::ArchivalBlock, {
             .as_ref()
             .ok_or_else(|| RpcError::MissingRpcFieldError("ArchivalBlock".to_string(), "block".to_string()))?
             .try_into()?,
-        child: if item.child == ""{ None }else {Some(RpcHash::from_str(&item.child)?)},
+        child: if item.child.is_empty(){ None }else {Some(RpcHash::from_str(&item.child)?)},
     }
 });
 try_from!(item: &protowire::AddArchivalBlocksRequestMessage, kaspa_rpc_core::AddArchivalBlocksRequest,{

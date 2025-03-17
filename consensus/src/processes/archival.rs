@@ -16,7 +16,7 @@ use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use rayon::{
-    iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator},
+    iter::{IntoParallelRefIterator, ParallelIterator},
     ThreadPool,
 };
 

@@ -10,7 +10,6 @@ use crate::{
     coinbase::MinerData,
     daa_score_timestamp::DaaScoreTimestamp,
     errors::{
-        archival::ArchivalResult,
         block::{BlockProcessResult, RuleError},
         coinbase::CoinbaseResult,
         consensus::ConsensusResult,
