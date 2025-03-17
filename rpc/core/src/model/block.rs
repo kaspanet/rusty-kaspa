@@ -5,7 +5,7 @@ use workflow_serializer::prelude::*;
 
 /// Raw Rpc block type - without a cached header hash and without verbose data.
 /// Used for mining APIs (get_block_template & submit_block)
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcRawBlock {
     pub header: RpcRawHeader,

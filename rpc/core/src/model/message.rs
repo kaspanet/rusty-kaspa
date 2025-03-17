@@ -3577,7 +3577,7 @@ impl Deserializer for GetPruningWindowRootsResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchivalBlock {
     pub child: Option<RpcHash>,
@@ -3606,23 +3606,23 @@ impl AddArchivalBlocksRequest {
     }
 }
 
-// impl Serializer for AddArchivalBlocksRequest {
-//     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-//         store!(u16, &1, writer)?;
-//         store!(Vec<ArchivalBlock>, &self.blocks, writer)?;
+impl Serializer for AddArchivalBlocksRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<ArchivalBlock>, &self.blocks, writer)?;
 
-//         Ok(())
-//     }
-// }
+        Ok(())
+    }
+}
 
-// impl Deserializer for AddArchivalBlocksRequest {
-//     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-//         let _version = load!(u16, reader)?;
-//         let blocks = load!(Vec<ArchivalBlock>, reader)?;
+impl Deserializer for AddArchivalBlocksRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let blocks = load!(Vec<ArchivalBlock>, reader)?;
 
-//         Ok(Self { blocks })
-//     }
-// }
+        Ok(Self { blocks })
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -3636,5 +3636,21 @@ impl Default for AddArchivalBlocksResponse {
 impl AddArchivalBlocksResponse {
     pub fn new() -> Self {
         Self {}
+    }
+}
+
+impl Serializer for AddArchivalBlocksResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for AddArchivalBlocksResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+
+        Ok(Self {})
     }
 }
