@@ -1,3 +1,4 @@
+pub mod archival;
 pub mod block;
 pub mod coinbase;
 pub mod config;
@@ -7,4 +8,3 @@ pub mod pruning;
 pub mod sync;
 pub mod traversal;
 pub mod tx;
-pub mod archival;

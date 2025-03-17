@@ -1,3 +1,4 @@
+pub mod archival;
 pub mod block_depth;
 pub mod coinbase;
 pub mod difficulty;
@@ -13,4 +14,3 @@ pub mod transaction_validator;
 pub mod traversal_manager;
 pub(crate) mod utils;
 pub mod window;
-pub mod archival;
