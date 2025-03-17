@@ -12,7 +12,7 @@ const VIRTUAL_PROCESSING_TRIGGER_THRESHOLD: f64 = 500.0; // 500 milliseconds
 const VIRTUAL_PROCESSING_RECOVERY_THRESHOLD: f64 = 100.0; // 100 milliseconds
 
 /// BlueParentsOnlyRule
-/// Attempt to recover from high virtual processing times possibly caused merging red blocks.
+/// Attempt to recover from high virtual processing times (possibly caused by merging red blocks)
 /// by only pointing to blue parents.
 ///
 /// Trigger: virtual processing average time is above threshold
