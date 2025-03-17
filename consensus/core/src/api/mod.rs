@@ -371,7 +371,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_pruning_window_roots(&self) -> Vec<(u64, Hash)> {
+    fn get_pruning_window_roots(&self) -> Vec<(u64, Vec<Hash>)> {
         unimplemented!()
     }
 

@@ -3533,14 +3533,14 @@ impl Deserializer for GetPruningWindowRootsRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PruningWindowRoot {
-    pub root: RpcHash,
+    pub pp_roots: Vec<RpcHash>,
     pub pp_index: u64,
 }
 
 impl Serializer for PruningWindowRoot {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(RpcHash, &self.root, writer)?;
+        store!(Vec<RpcHash>, &self.pp_roots, writer)?;
         store!(u64, &self.pp_index, writer)?;
 
         Ok(())

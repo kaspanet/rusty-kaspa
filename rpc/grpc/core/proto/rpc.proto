@@ -988,13 +988,13 @@ message GetUtxoReturnAddressResponseMessage {
 message GetPruningWindowRootsRequestMessage {
 }
 
-message PruningWindowRoot{
-  string root = 1;
+message PruningWindowRoots{
+  repeated string pp_roots = 1;
   uint64 pp_index = 2;
 }
 
 message GetPruningWindowRootsResponseMessage{
-  repeated PruningWindowRoot roots = 1;
+  repeated PruningWindowRoots roots = 1;
   RPCError error = 1000;
 }
 

@@ -459,7 +459,7 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.finality_point()).await
     }
 
-    pub async fn async_get_pruning_window_roots(&self) -> Vec<(u64, Hash)> {
+    pub async fn async_get_pruning_window_roots(&self) -> Vec<(u64, Vec<Hash>)> {
         self.clone().spawn_blocking(move |c| c.get_pruning_window_roots()).await
     }
 

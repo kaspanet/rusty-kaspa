@@ -306,6 +306,9 @@ impl Consensus {
                     .unwrap()),
         );
 
+        // TODO: Don't run this unless we pass some compile or runtime flag.
+        // archival_manager.check_pruning_window_roots_consistency();
+
         let this = Self {
             db,
             block_sender: sender,
@@ -1153,7 +1156,7 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
     }
 
-    fn get_pruning_window_roots(&self) -> Vec<(u64, Hash)> {
+    fn get_pruning_window_roots(&self) -> Vec<(u64, Vec<Hash>)> {
         self.archival_manager.get_pruning_window_roots()
     }
 

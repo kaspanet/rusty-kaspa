@@ -246,7 +246,7 @@ from!(RpcResult<&kaspa_rpc_core::AddPeerResponse>, protowire::AddPeerResponseMes
 from!(&kaspa_rpc_core::GetPruningWindowRootsRequest, protowire::GetPruningWindowRootsRequestMessage);
 from!(item: &kaspa_rpc_core::PruningWindowRoot, protowire::PruningWindowRoot, {
     Self {
-        root: item.root.to_string(),
+        pp_roots: item.pp_roots.iter().map(|x| x.to_string()).collect(),
         pp_index: item.pp_index,
     }
 });
@@ -739,7 +739,7 @@ try_from!(&protowire::AddPeerResponseMessage, RpcResult<kaspa_rpc_core::AddPeerR
 
 try_from!(&protowire::GetPruningWindowRootsRequestMessage, kaspa_rpc_core::GetPruningWindowRootsRequest);
 try_from!(item: &protowire::PruningWindowRoot, kaspa_rpc_core::PruningWindowRoot, {
-    Self { root: RpcHash::from_str(&item.root)?, pp_index: item.pp_index }
+    Self { pp_roots: item.pp_roots.iter().map(|x| Ok::<_, RpcError>(RpcHash::from_str(&x)?)).collect::<Result<Vec<_>, _>>()?, pp_index: item.pp_index }
 });
 try_from!(item: &protowire::GetPruningWindowRootsResponseMessage, RpcResult<kaspa_rpc_core::GetPruningWindowRootsResponse>, {
     Self {

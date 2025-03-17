@@ -1,3 +1,4 @@
+use kaspa_consensus_core::blockhash::BlockHashes;
 use kaspa_consensus_core::BlockHasher;
 use kaspa_database::registry::DatabaseStorePrefixes;
 use parking_lot::{RwLock, RwLockWriteGuard};
@@ -11,7 +12,7 @@ use kaspa_hashes::Hash;
 
 /// Reader API for `PruningWindowRootStore`.
 pub trait PruningWindowRootStoreReader {
-    fn get(&self, pruning_point: Hash) -> StoreResult<Hash>;
+    fn get(&self, pruning_point: Hash) -> StoreResult<Vec<Hash>>;
     fn has(&self, pruning_point: Hash) -> StoreResult<bool>;
 }
 
@@ -19,7 +20,7 @@ pub trait PruningWindowRootStoreReader {
 /// since pruning window root is not append-only and thus needs to be guarded.
 /// TODO: can be optimized to avoid the locking if needed.
 pub trait PruningWindowRootStore: PruningWindowRootStoreReader {
-    fn set(&mut self, pruning_point: Hash, root: Hash) -> StoreResult<()>;
+    fn set(&mut self, pruning_point: Hash, roots: Vec<Hash>) -> StoreResult<()>;
     fn delete(&self, pruning_point: Hash) -> Result<(), StoreError>;
 }
 
@@ -27,7 +28,7 @@ pub trait PruningWindowRootStore: PruningWindowRootStoreReader {
 #[derive(Clone)]
 pub struct DbPruningWindowRootStore {
     db: Arc<DB>,
-    access: CachedDbAccess<Hash, Hash, BlockHasher>,
+    access: CachedDbAccess<Hash, BlockHashes, BlockHasher>,
 }
 
 impl DbPruningWindowRootStore {
@@ -39,8 +40,8 @@ impl DbPruningWindowRootStore {
         Self::new(Arc::clone(&self.db), cache_policy)
     }
 
-    pub fn set_batch(&mut self, batch: &mut WriteBatch, pruning_point: Hash, root: Hash) -> StoreResult<()> {
-        self.access.write(BatchDbWriter::new(batch), pruning_point, root)
+    pub fn set_batch(&mut self, batch: &mut WriteBatch, pruning_point: Hash, roots: Vec<Hash>) -> StoreResult<()> {
+        self.access.write(BatchDbWriter::new(batch), pruning_point, roots.into())
     }
 
     pub fn delete_batch(&self, batch: &mut WriteBatch, pruning_point: Hash) -> Result<(), StoreError> {
@@ -53,7 +54,7 @@ pub trait PruningWindowRootStoreBatchExtensions {
         &self,
         batch: &mut WriteBatch,
         pruning_point: Hash,
-        root: Hash,
+        roots: Vec<Hash>,
     ) -> Result<RwLockWriteGuard<DbPruningWindowRootStore>, StoreError>;
 }
 
@@ -62,17 +63,17 @@ impl PruningWindowRootStoreBatchExtensions for Arc<RwLock<DbPruningWindowRootSto
         &self,
         batch: &mut WriteBatch,
         pruning_point: Hash,
-        root: Hash,
+        roots: Vec<Hash>,
     ) -> Result<RwLockWriteGuard<DbPruningWindowRootStore>, StoreError> {
         let write_guard = self.write();
-        write_guard.access.write(BatchDbWriter::new(batch), pruning_point, root)?;
+        write_guard.access.write(BatchDbWriter::new(batch), pruning_point, roots.into())?;
         Ok(write_guard)
     }
 }
 
 impl PruningWindowRootStoreReader for DbPruningWindowRootStore {
-    fn get(&self, pruning_point: Hash) -> StoreResult<Hash> {
-        self.access.read(pruning_point)
+    fn get(&self, pruning_point: Hash) -> StoreResult<Vec<Hash>> {
+        Ok((*self.access.read(pruning_point)?).clone())
     }
 
     fn has(&self, pruning_point: Hash) -> StoreResult<bool> {
@@ -81,8 +82,8 @@ impl PruningWindowRootStoreReader for DbPruningWindowRootStore {
 }
 
 impl PruningWindowRootStore for DbPruningWindowRootStore {
-    fn set(&mut self, pruning_point: Hash, root: Hash) -> StoreResult<()> {
-        self.access.write(DirectDbWriter::new(&self.db), pruning_point, root)
+    fn set(&mut self, pruning_point: Hash, roots: Vec<Hash>) -> StoreResult<()> {
+        self.access.write(DirectDbWriter::new(&self.db), pruning_point, roots.into())
     }
 
     fn delete(&self, pruning_point: Hash) -> Result<(), StoreError> {
