@@ -6,7 +6,6 @@ use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, pro
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
-use kaspa_consensus_core::config::constants::consensus;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::utxo::utxo_inquirer::UtxoInquirerError;
 use kaspa_consensus_core::{
