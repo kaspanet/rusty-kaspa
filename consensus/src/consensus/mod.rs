@@ -307,7 +307,9 @@ impl Consensus {
         );
 
         // TODO: Don't run this unless we pass some compile or runtime flag.
-        // archival_manager.check_pruning_window_roots_consistency();
+        if std::env::var("CHECK_PRUNING_WINDOW_ROOTS_CONSISTENCY").is_ok() {
+            archival_manager.check_pruning_window_roots_consistency();
+        }
 
         let this = Self {
             db,

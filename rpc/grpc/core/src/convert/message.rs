@@ -244,7 +244,7 @@ from!(item: &kaspa_rpc_core::AddPeerRequest, protowire::AddPeerRequestMessage, {
 from!(RpcResult<&kaspa_rpc_core::AddPeerResponse>, protowire::AddPeerResponseMessage);
 
 from!(&kaspa_rpc_core::GetPruningWindowRootsRequest, protowire::GetPruningWindowRootsRequestMessage);
-from!(item: &kaspa_rpc_core::PruningWindowRoot, protowire::PruningWindowRoot, {
+from!(item: &kaspa_rpc_core::PruningWindowRoots, protowire::PruningWindowRoots, {
     Self {
         pp_roots: item.pp_roots.iter().map(|x| x.to_string()).collect(),
         pp_index: item.pp_index,
@@ -738,7 +738,7 @@ try_from!(item: &protowire::AddPeerRequestMessage, kaspa_rpc_core::AddPeerReques
 try_from!(&protowire::AddPeerResponseMessage, RpcResult<kaspa_rpc_core::AddPeerResponse>);
 
 try_from!(&protowire::GetPruningWindowRootsRequestMessage, kaspa_rpc_core::GetPruningWindowRootsRequest);
-try_from!(item: &protowire::PruningWindowRoot, kaspa_rpc_core::PruningWindowRoot, {
+try_from!(item: &protowire::PruningWindowRoots, kaspa_rpc_core::PruningWindowRoots, {
     Self { pp_roots: item.pp_roots.iter().map(|x| Ok::<_, RpcError>(RpcHash::from_str(&x)?)).collect::<Result<Vec<_>, _>>()?, pp_index: item.pp_index }
 });
 try_from!(item: &protowire::GetPruningWindowRootsResponseMessage, RpcResult<kaspa_rpc_core::GetPruningWindowRootsResponse>, {
@@ -746,7 +746,7 @@ try_from!(item: &protowire::GetPruningWindowRootsResponseMessage, RpcResult<kasp
         roots: item
             .roots
             .iter()
-            .map(kaspa_rpc_core::PruningWindowRoot::try_from)
+            .map(kaspa_rpc_core::PruningWindowRoots::try_from)
             .collect::<Result<Vec<_>, _>>().map_err(|e| RpcError::General(e.to_string()))? // TODO: More specific error?
     }
 });

@@ -1,5 +1,4 @@
 use std::{
-    cmp::Reverse,
     collections::{BinaryHeap, HashMap},
     sync::Arc,
 };
@@ -16,6 +15,7 @@ use kaspa_consensus_core::{
     merkle::calc_hash_merkle_root,
     ArchivalBlock, BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
+use kaspa_core::info;
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
@@ -139,16 +139,14 @@ impl ArchivalManager {
 
         let mut topological_heap: BinaryHeap<_> = Default::default();
         for root in current_roots.iter().copied() {
-            topological_heap.push(Reverse(SortableBlock {
-                hash: root,
-                blue_work: self.storage.headers_store.get_header(root).unwrap().blue_work,
-            }));
+            topological_heap
+                .push(SortableBlock { hash: root, blue_work: self.storage.headers_store.get_header(root).unwrap().blue_work });
         }
         let mut visited = BlockHashSet::new();
 
         let mut new_roots = BlockHashSet::new();
         loop {
-            let Some(Reverse(SortableBlock { hash: current, .. })) = topological_heap.pop() else {
+            let Some(SortableBlock { hash: current, .. }) = topological_heap.pop() else {
                 break;
             };
 
@@ -166,10 +164,10 @@ impl ArchivalManager {
             }
 
             for parent in header.direct_parents() {
-                topological_heap.push(Reverse(SortableBlock {
+                topological_heap.push(SortableBlock {
                     hash: *parent,
                     blue_work: self.storage.headers_store.get_header(*parent).expect("checked above").blue_work,
-                }));
+                });
             }
         }
 
@@ -193,26 +191,26 @@ impl ArchivalManager {
     }
 
     pub fn check_pruning_window_roots_consistency(&self) {
-        if self.is_archival {
+        if !self.is_archival {
             return;
         }
 
         let current_pp_index = self.storage.pruning_point_store.read().get().unwrap().index;
         for pp_index in (1..=current_pp_index).rev() {
             let pp = self.storage.past_pruning_points_store.get(pp_index).unwrap();
+            info!("Checking consistency of pruning window root for pruning point {} ({})", pp_index, pp);
             let mut unvisited_roots = BlockHashSet::from_iter(self.get_pruning_window_root(pp_index).into_iter());
 
             let mut topological_heap: BinaryHeap<_> = Default::default();
             let mut visited = BlockHashSet::new();
 
-            topological_heap
-                .push(Reverse(SortableBlock { hash: pp, blue_work: self.storage.headers_store.get_header(pp).unwrap().blue_work }));
+            topological_heap.push(SortableBlock { hash: pp, blue_work: self.storage.headers_store.get_header(pp).unwrap().blue_work });
 
             loop {
                 let Some(sblock) = topological_heap.pop() else {
                     break;
                 };
-                let hash = sblock.0.hash;
+                let hash = sblock.hash;
                 if visited.contains(&hash) {
                     continue;
                 }
@@ -234,7 +232,7 @@ impl ArchivalManager {
                         // Note: when skipping a non existing parent we can't be sure that all the future of root is accessible. For now we only validate that the root is reachable.
                         continue;
                     };
-                    topological_heap.push(Reverse(SortableBlock { hash: *parent, blue_work: parent_header.blue_work }));
+                    topological_heap.push(SortableBlock { hash: *parent, blue_work: parent_header.blue_work });
                 }
             }
 

@@ -1171,7 +1171,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let session = self.consensus_manager.consensus().unguarded_session();
         let roots = session.async_get_pruning_window_roots().await;
         Ok(GetPruningWindowRootsResponse {
-            roots: roots.into_iter().map(|(pp_index, pp_roots)| PruningWindowRoot { pp_index, pp_roots }).collect(),
+            roots: roots.into_iter().map(|(pp_index, pp_roots)| PruningWindowRoots { pp_index, pp_roots }).collect(),
         })
     }
 
