@@ -1,5 +1,3 @@
-use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
-
 use async_channel::unbounded;
 use kaspa_consensus_core::{
     config::ConfigBuilder,
@@ -21,6 +19,8 @@ use kaspa_utils::git;
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
+use std::io::Write;
+use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
 
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::{consensus::factory::Factory as ConsensusFactory, pipeline::ProcessingCounters};
@@ -114,23 +114,19 @@ fn get_user_approval_or_exit(message: &str, approve: bool) {
     if approve {
         return;
     }
-    println!("{}", message);
+    println!("{}: ", message);
+    std::io::stdout().flush().expect("Failed to flush stdout");
+
     let mut input = String::new();
-    match std::io::stdin().read_line(&mut input) {
-        Ok(_) => {
-            let lower = input.to_lowercase();
-            let answer = lower.as_str().strip_suffix("\r\n").or(lower.as_str().strip_suffix('\n')).unwrap_or(lower.as_str());
-            if answer == "y" || answer == "yes" {
-                // return
-            } else {
-                println!("Operation was rejected ({}), exiting..", answer);
-                exit(1);
-            }
-        }
-        Err(error) => {
-            println!("Error reading from console: {error}, exiting..");
-            exit(1);
-        }
+    if let Err(error) = std::io::stdin().read_line(&mut input) {
+        eprintln!("Error reading from console: {}, exiting...", error);
+        exit(1);
+    }
+
+    let answer = input.trim().to_lowercase();
+    if !(answer == "y" || answer == "yes") {
+        eprintln!("Operation was rejected ({}), exiting...", answer);
+        exit(1);
     }
 }
 
@@ -215,7 +211,8 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
 ///
 /// The instance of the [`RpcCoreService`] needs to be released
 /// (dropped) before the `Core` is shut down.
-///
+
+/// Helper Functions for create_core_with_runtime
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
     let mut fd_remaining = fd_total_budget;
@@ -285,8 +282,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         let finality_depth = config.finality_depth().after();
         let target_time_per_block = config.target_time_per_block().after(); // in ms
 
-        let retention_period_milliseconds = (retention_period_days * 24.0 * 60.0 * 60.0 * 1000.0).ceil() as u64;
         if MINIMUM_RETENTION_PERIOD_DAYS <= retention_period_days {
+            let retention_period_milliseconds = (retention_period_days * 24.0 * 60.0 * 60.0 * 1000.0).ceil() as u64;
             let total_blocks = retention_period_milliseconds / target_time_per_block;
             // This worst case usage only considers block space. It does not account for usage of
             // other stores (reachability, block status, mempool, etc.)
@@ -319,7 +316,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         match active_consensus_dir_name {
             Some(dir_name) => {
                 let consensus_db = kaspa_database::prelude::ConnBuilder::default()
-                    .with_db_path(consensus_db_dir.clone().join(dir_name))
+                    .with_db_path(consensus_db_dir.join(dir_name))
                     .with_files_limit(1)
                     .build()
                     .unwrap();
@@ -361,7 +358,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                     // Apply soft upgrade logic: delete GD data from higher levels
                     // and then update DB version to 4
                     let consensus_db = kaspa_database::prelude::ConnBuilder::default()
-                        .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
+                        .with_db_path(consensus_db_dir.join(current_consensus_db))
                         .with_files_limit(1)
                         .build()
                         .unwrap();
@@ -420,8 +417,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                         DatabaseStorePrefixes::GhostdagCompact.into_iter().chain(end_level_bytes).collect_vec();
 
                     // Apply delete of range from level 1 to max (+1) for Ghostdag and GhostdagCompact:
-                    writer.delete_range(start_ghostdag_prefix_vec.clone(), end_ghostdag_prefix_vec.clone()).unwrap();
-                    writer.delete_range(start_compact_prefix_vec.clone(), end_compact_prefix_vec.clone()).unwrap();
+                    writer.delete_range(&start_ghostdag_prefix_vec, &end_ghostdag_prefix_vec).unwrap();
+                    writer.delete_range(&start_compact_prefix_vec, &end_compact_prefix_vec).unwrap();
 
                     // Compact the deleted rangeto apply the delete immediately
                     consensus_db.compact_range(Some(start_ghostdag_prefix_vec.as_slice()), Some(end_ghostdag_prefix_vec.as_slice()));
@@ -456,7 +453,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         drop(meta_db);
 
         // Delete
-        fs::remove_dir_all(db_dir.clone()).unwrap();
+        fs::remove_dir_all(db_dir).unwrap();
 
         // Recreate the empty folders
         fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
@@ -486,7 +483,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let inbound_limit = if connect_peers.is_empty() { args.inbound_limit } else { 0 };
     let dns_seeders = if connect_peers.is_empty() && !args.disable_dns_seeding { config.dns_seeders } else { &[] };
 
-    let grpc_server_addr = args.rpclisten.unwrap_or(ContextualNetAddress::loopback()).normalize(config.default_rpc_port());
+    let grpc_server_addr = args.rpclisten.as_ref().unwrap_or(&ContextualNetAddress::loopback()).normalize(config.default_rpc_port());
 
     let core = Arc::new(Core::new());
 
