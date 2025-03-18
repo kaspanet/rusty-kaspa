@@ -27,6 +27,7 @@ use crate::rules::{
 };
 
 const RULE_ENGINE: &str = "mining-rule-engine";
+pub const SNAPSHOT_INTERVAL: u64 = 10;
 
 #[derive(Clone)]
 pub struct MiningRuleEngine {
@@ -43,13 +44,11 @@ pub struct MiningRuleEngine {
 
 impl MiningRuleEngine {
     pub async fn worker(self: &Arc<MiningRuleEngine>) {
-        println!(module_path!());
-        let snapshot_interval = 10;
         let mut last_snapshot = self.processing_counters.snapshot();
         let mut last_log_time = Instant::now();
         loop {
             // START: Sync monitor
-            if let TickReason::Shutdown = self.tick_service.tick(Duration::from_secs(snapshot_interval)).await {
+            if let TickReason::Shutdown = self.tick_service.tick(Duration::from_secs(SNAPSHOT_INTERVAL)).await {
                 // Let the system print final logs before exiting
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 break;
