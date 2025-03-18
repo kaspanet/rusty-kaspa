@@ -27,41 +27,33 @@ impl NoTransactionsRule {
 
 impl MiningRule for NoTransactionsRule {
     fn check_rule(&self, delta: &ProcessingCountersSnapshot, _extra_data: &ExtraData) {
-        let cooldown_count = self.cooldown.load(Ordering::Relaxed);
+        let cooldown_count = self.cooldown.load(Ordering::SeqCst);
 
         if cooldown_count > 0 {
             // Recovering
-            // BadMerkleRoot cannot occur in blocks without transactions, so we have to recover from this state
-            // through some other way
-            if self.cooldown.fetch_sub(1, Ordering::Relaxed) == 1 {
-                // Recovered state
-                if let Ok(true) = self.is_enabled.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst) {
-                    warn!("NoTransactionsRule: recovered | Bad Merkle Root Count: {}", delta.bad_merkle_root_count);
-                } else {
-                    trace!(
-                        "NoTransactionsRule: recovering | Bad Merkle Root Count: {} | Valid Body Count: {} | Cooldown: {}",
-                        delta.bad_merkle_root_count,
-                        delta.body_counts,
-                        cooldown_count
-                    );
-                }
+            if delta.submit_block_success_count > 0 || self.cooldown.fetch_sub(1, Ordering::SeqCst) == 1 {
+                // Recovery condition #1: Any submit block RPC call succeeded in this interval
+                // Recovery condition #2: Cooldown period has passed (important for low hashrate miners whose successful blocks are few and far between)
+                self.cooldown.store(0, Ordering::SeqCst);
+                self.is_enabled.store(false, Ordering::SeqCst);
+                warn!("NoTransactionsRule: recovered | Bad Merkle Root Count: {}", delta.submit_block_bad_merkle_root_count);
             }
-        } else if delta.bad_merkle_root_count > delta.body_counts {
+        } else if delta.submit_block_bad_merkle_root_count > 0 && delta.submit_block_success_count == 0 {
             // Triggered state
-            // This occurs when during this interval there were more blocks that resulted in bad merkle root errors than successfully validated blocks
+            // When submit block BadMerkleRoot errors occurred and there were no successfully submitted blocks
             if let Ok(false) = self.is_enabled.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
                 warn!(
-                    "NoTransactionsRule: triggered | Bad Merkle Root Count: {} | Valid Body Count: {}",
-                    delta.bad_merkle_root_count, delta.body_counts
+                    "NoTransactionsRule: triggered | Bad Merkle Root Count: {} | Successfully submitted blocks: {}",
+                    delta.submit_block_bad_merkle_root_count, delta.submit_block_success_count
                 );
                 self.cooldown.store(2, Ordering::Relaxed);
             }
         } else {
             // Normal state
             trace!(
-                "NoTransactionsRule: normal | Bad Merkle Root Count: {} | Valid Body Count: {}",
-                delta.bad_merkle_root_count,
-                delta.body_counts
+                "NoTransactionsRule: normal | Bad Merkle Root Count: {} | Successfully submitted blocks: {}",
+                delta.submit_block_bad_merkle_root_count,
+                delta.submit_block_success_count,
             );
         }
     }

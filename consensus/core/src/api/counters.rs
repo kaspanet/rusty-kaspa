@@ -13,7 +13,8 @@ pub struct ProcessingCounters {
     pub mass_counts: AtomicU64,
     pub virtual_processing_time: AtomicU64,
     pub virtual_resolve_counts: AtomicU64,
-    pub bad_merkle_root_count: AtomicU64,
+    pub submit_block_bad_merkle_root_count: AtomicU64,
+    pub submit_block_success_count: AtomicU64,
 }
 
 impl ProcessingCounters {
@@ -30,7 +31,8 @@ impl ProcessingCounters {
             mass_counts: self.mass_counts.load(Ordering::Relaxed),
             virtual_processing_time: self.virtual_processing_time.load(Ordering::Relaxed),
             virtual_resolve_counts: self.virtual_resolve_counts.load(Ordering::Relaxed),
-            bad_merkle_root_count: self.bad_merkle_root_count.load(Ordering::Relaxed),
+            submit_block_bad_merkle_root_count: self.submit_block_bad_merkle_root_count.load(Ordering::Relaxed),
+            submit_block_success_count: self.submit_block_success_count.load(Ordering::Relaxed),
         }
     }
 }
@@ -48,7 +50,8 @@ pub struct ProcessingCountersSnapshot {
     pub mass_counts: u64,
     pub virtual_processing_time: u64,
     pub virtual_resolve_counts: u64,
-    pub bad_merkle_root_count: u64,
+    pub submit_block_bad_merkle_root_count: u64,
+    pub submit_block_success_count: u64,
 }
 
 impl core::ops::Sub for &ProcessingCountersSnapshot {
@@ -67,7 +70,10 @@ impl core::ops::Sub for &ProcessingCountersSnapshot {
             mass_counts: self.mass_counts.saturating_sub(rhs.mass_counts),
             virtual_processing_time: self.virtual_processing_time.saturating_sub(rhs.virtual_processing_time),
             virtual_resolve_counts: self.virtual_resolve_counts.saturating_sub(rhs.virtual_resolve_counts),
-            bad_merkle_root_count: self.bad_merkle_root_count.saturating_sub(rhs.bad_merkle_root_count),
+            submit_block_bad_merkle_root_count: self
+                .submit_block_bad_merkle_root_count
+                .saturating_sub(rhs.submit_block_bad_merkle_root_count),
+            submit_block_success_count: self.submit_block_success_count.saturating_sub(rhs.submit_block_success_count),
         }
     }
 }
