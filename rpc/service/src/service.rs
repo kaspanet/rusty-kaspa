@@ -411,10 +411,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let session = self.consensus_manager.consensus().session().await;
         let block = session.async_get_block_even_if_header_only(request.hash).await?;
         Ok(GetBlockResponse {
-            block: self
-                .consensus_converter
-                .get_block(&session, &block, request.include_transactions, request.include_transactions)
-                .await?,
+            block: self.consensus_converter.get_block(&session, &block, request.include_transactions, false).await?, // TODO: Pass include_verbose_data to GetBlockRequest
         })
     }
 
@@ -1164,6 +1161,39 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let session = self.consensus_manager.consensus().unguarded_session();
         let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
         Ok(GetSyncStatusResponse { is_synced })
+    }
+
+    async fn get_pruning_window_roots_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetPruningWindowRootsRequest,
+    ) -> RpcResult<GetPruningWindowRootsResponse> {
+        let session = self.consensus_manager.consensus().unguarded_session();
+        let roots = session.async_get_pruning_window_roots().await;
+        Ok(GetPruningWindowRootsResponse {
+            roots: roots.into_iter().map(|(pp_index, pp_roots)| PruningWindowRoots { pp_index, pp_roots }).collect(),
+        })
+    }
+
+    async fn add_archival_blocks_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: AddArchivalBlocksRequest,
+    ) -> RpcResult<AddArchivalBlocksResponse> {
+        let session = self.consensus_manager.consensus().unguarded_session();
+
+        let archival_blocks = request
+            .blocks
+            .into_iter()
+            .map(|archival_block| match archival_block.block.try_into() {
+                Ok(block) => Ok(kaspa_consensus_core::ArchivalBlock { block, child: archival_block.child }),
+                Err(err) => Err(RpcError::General(format!("Failed to parse block: {err}"))),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        session.async_add_archival_blocks(archival_blocks).await?;
+
+        Ok(AddArchivalBlocksResponse {})
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
