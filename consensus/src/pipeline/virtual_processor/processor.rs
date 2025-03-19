@@ -110,6 +110,10 @@ use std::{
     sync::{atomic::Ordering, Arc},
 };
 
+// 100ms - since at 10BPS, average block time is 100ms and so must expect
+// the block template to build faster than that
+pub const BUILD_BLOCK_TEMPLATE_SPEED_THRESHOLD: u128 = 100;
+
 pub struct VirtualStateProcessor {
     // Channels
     receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
@@ -285,7 +289,6 @@ impl VirtualStateProcessor {
     }
 
     fn resolve_virtual(self: &Arc<Self>) {
-        let swo = Stopwatch::new("virtual_processor.resolve_virtual");
         let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
         let virtual_read = self.virtual_stores.upgradable_read();
         let prev_state = virtual_read.state.get().unwrap();
@@ -335,11 +338,6 @@ impl VirtualStateProcessor {
                 &chain_path,
             )
             .expect("all possible rule errors are unexpected here");
-
-        let elapsed = swo.elapsed();
-        self.counters.virtual_processing_time.fetch_add(elapsed.as_millis() as u64, Ordering::Relaxed);
-        self.counters.virtual_resolve_counts.fetch_add(1, Ordering::Relaxed);
-        drop(swo);
 
         let compact_sink_ghostdag_data = if let Some(sink_ghostdag_data) = Lazy::get(&sink_ghostdag_data) {
             // If we had to retrieve the full data, we convert it to compact
@@ -1073,6 +1071,7 @@ impl VirtualStateProcessor {
         mut txs: Vec<Transaction>,
         calculated_fees: Vec<u64>,
     ) -> Result<BlockTemplate, RuleError> {
+        let swo = Stopwatch::new("virtual_processor.resolve_virtual");
         // [`calc_block_parents`] can use deep blocks below the pruning point for this calculation, so we
         // need to hold the pruning lock.
         let _prune_guard = self.pruning_lock.blocking_read();
@@ -1122,6 +1121,13 @@ impl VirtualStateProcessor {
         let selected_parent_hash = virtual_state.ghostdag_data.selected_parent;
         let selected_parent_timestamp = self.headers_store.get_timestamp(selected_parent_hash).unwrap();
         let selected_parent_daa_score = self.headers_store.get_daa_score(selected_parent_hash).unwrap();
+
+        if swo.elapsed().as_millis() <= BUILD_BLOCK_TEMPLATE_SPEED_THRESHOLD {
+            self.counters.build_block_template_within_threshold.fetch_add(1, Ordering::SeqCst);
+        } else {
+            self.counters.build_block_template_above_threshold.fetch_add(1, Ordering::SeqCst);
+        }
+
         Ok(BlockTemplate::new(
             MutableBlock::new(header, txs),
             miner_data,

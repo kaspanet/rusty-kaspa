@@ -11,8 +11,8 @@ pub struct ProcessingCounters {
     pub chain_block_counts: AtomicU64,
     pub chain_disqualified_counts: AtomicU64,
     pub mass_counts: AtomicU64,
-    pub virtual_processing_time: AtomicU64,
-    pub virtual_resolve_counts: AtomicU64,
+    pub build_block_template_above_threshold: AtomicU64,
+    pub build_block_template_within_threshold: AtomicU64,
     pub submit_block_bad_merkle_root_count: AtomicU64,
     pub submit_block_success_count: AtomicU64,
 }
@@ -29,8 +29,8 @@ impl ProcessingCounters {
             chain_block_counts: self.chain_block_counts.load(Ordering::Relaxed),
             chain_disqualified_counts: self.chain_disqualified_counts.load(Ordering::Relaxed),
             mass_counts: self.mass_counts.load(Ordering::Relaxed),
-            virtual_processing_time: self.virtual_processing_time.load(Ordering::Relaxed),
-            virtual_resolve_counts: self.virtual_resolve_counts.load(Ordering::Relaxed),
+            build_block_template_above_threshold: self.build_block_template_above_threshold.load(Ordering::Relaxed),
+            build_block_template_within_threshold: self.build_block_template_within_threshold.load(Ordering::Relaxed),
             submit_block_bad_merkle_root_count: self.submit_block_bad_merkle_root_count.load(Ordering::Relaxed),
             submit_block_success_count: self.submit_block_success_count.load(Ordering::Relaxed),
         }
@@ -48,8 +48,8 @@ pub struct ProcessingCountersSnapshot {
     pub chain_block_counts: u64,
     pub chain_disqualified_counts: u64,
     pub mass_counts: u64,
-    pub virtual_processing_time: u64,
-    pub virtual_resolve_counts: u64,
+    pub build_block_template_above_threshold: u64,
+    pub build_block_template_within_threshold: u64,
     pub submit_block_bad_merkle_root_count: u64,
     pub submit_block_success_count: u64,
 }
@@ -68,8 +68,12 @@ impl core::ops::Sub for &ProcessingCountersSnapshot {
             chain_block_counts: self.chain_block_counts.saturating_sub(rhs.chain_block_counts),
             chain_disqualified_counts: self.chain_disqualified_counts.saturating_sub(rhs.chain_disqualified_counts),
             mass_counts: self.mass_counts.saturating_sub(rhs.mass_counts),
-            virtual_processing_time: self.virtual_processing_time.saturating_sub(rhs.virtual_processing_time),
-            virtual_resolve_counts: self.virtual_resolve_counts.saturating_sub(rhs.virtual_resolve_counts),
+            build_block_template_above_threshold: self
+                .build_block_template_above_threshold
+                .saturating_sub(rhs.build_block_template_above_threshold),
+            build_block_template_within_threshold: self
+                .build_block_template_within_threshold
+                .saturating_sub(rhs.build_block_template_within_threshold),
             submit_block_bad_merkle_root_count: self
                 .submit_block_bad_merkle_root_count
                 .saturating_sub(rhs.submit_block_bad_merkle_root_count),
