@@ -119,6 +119,9 @@ mod tests {
     use tokio::{sync::oneshot, time::sleep, time::timeout};
 
     const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
+    //test is too performance dependent, should be changed in some manner
+    // for the time being is disabled 
+    // should be reinstated and tested if chnages are made at its vicinity 
     #[ignore = "Performance Dependent Test"]
     #[tokio::test]
     async fn test_writer_reentrance() {

@@ -60,7 +60,6 @@ use tokio::sync::{
 use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 use uuid::Uuid;
 
-/// The P2P protocol version. Currently the only one supported.
 const PROTOCOL_VERSION: u32 = 7;
 
 /// See `check_orphan_resolution_range`
