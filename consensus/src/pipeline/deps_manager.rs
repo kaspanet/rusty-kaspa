@@ -42,11 +42,18 @@ impl VirtualStateProcessingMessage {
 
 pub enum BlockTask {
     /// Ordinary block processing task, requiring full validation. The block might be header-only
-    Ordinary { block: Block },
+    Ordinary {
+        block: Block,
+    },
 
     /// Trusted block processing task, only requiring partial validation.
     /// Trusted blocks arrive as part of the pruning proof; the block might be header-only.
-    Trusted { block: Block },
+    Trusted {
+        block: Block,
+    },
+    BodyOnly {
+        block: Block,
+    },
 }
 
 impl BlockTask {
@@ -54,6 +61,7 @@ impl BlockTask {
         match self {
             BlockTask::Ordinary { block } => block,
             BlockTask::Trusted { block } => block,
+            BlockTask::BodyOnly { block } => block,
         }
     }
 
@@ -63,6 +71,9 @@ impl BlockTask {
 
     pub fn is_trusted(&self) -> bool {
         matches!(self, BlockTask::Trusted { .. })
+    }
+    pub fn is_body_only(&self) -> bool {
+        matches!(self, BlockTask::BodyOnly { .. })
     }
 
     pub fn requires_virtual_processing(&self) -> bool {
