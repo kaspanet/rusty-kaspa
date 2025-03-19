@@ -7,6 +7,7 @@ use crate::utxo::UtxoEntryReference;
 use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::config::params::Params;
+use kaspa_consensus_core::mass::UtxoCell;
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::Transaction;
 use rand::prelude::*;
@@ -786,8 +787,8 @@ fn test_generator_fan_out_1() -> Result<()> {
 
     let storage_mass = calc_storage_mass(
         false,
-        [100000000, 8723579967].into_iter(),
-        [20000000, 25000000, 31000000].into_iter(),
+        [UtxoCell::new(1, 100000000), UtxoCell::new(1, 8723579967)].into_iter(),
+        [UtxoCell::new(1, 20000000), UtxoCell::new(1, 25000000), UtxoCell::new(1, 31000000)].into_iter(),
         consensus_params.storage_mass_parameter,
     );
 

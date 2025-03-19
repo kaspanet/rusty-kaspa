@@ -434,11 +434,12 @@ impl PSKT<Extractor> {
             dest.signature_script = src.final_script_sig.ok_or(TxNotFinalized {})?;
             Ok(())
         })?;
-        let tx = MutableTransaction { tx, entries, calculated_fee: None, calculated_compute_mass: None };
-        let calculator = MassCalculator::new_with_consensus_params(params);
-        let mass = calculator.calc_tx_overall_mass(&tx.as_verifiable(), None).unwrap_or_default();
-        tx.tx.set_mass(mass);
-        Ok(tx)
+        todo!()
+        // let tx = MutableTransaction { tx, entries, calculated_fee: None, calculated_compute_mass: None };
+        // let calculator = MassCalculator::new_with_consensus_params(params);
+        // let mass = calculator.calc_tx_overall_mass(&tx.as_verifiable(), None).unwrap_or_default();
+        // tx.tx.set_mass(mass);
+        // Ok(tx)
     }
 
     pub fn extract_tx(self, params: &Params) -> Result<MutableTransaction<Transaction>, ExtractError> {
