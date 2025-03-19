@@ -201,6 +201,11 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
     create_core_with_runtime(&rt, &args, fd_total_budget)
 }
 
+// Helper Functions for create_core_with_runtime
+fn build_db_paths(db_dir: &Path) -> (PathBuf, PathBuf, PathBuf) {
+    (db_dir.join(CONSENSUS_DB), db_dir.join(UTXOINDEX_DB), db_dir.join(META_DB))
+}
+
 /// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
 ///
 /// Usage semantics:
@@ -211,8 +216,6 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
 ///
 /// The instance of the [`RpcCoreService`] needs to be released
 /// (dropped) before the `Core` is shut down.
-
-/// Helper Functions for create_core_with_runtime
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
     let mut fd_remaining = fd_total_budget;
@@ -254,9 +257,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
         }
     }
 
-    let consensus_db_dir = db_dir.join(CONSENSUS_DB);
-    let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
-    let meta_db_dir = db_dir.join(META_DB);
+    let (consensus_db_dir, utxoindex_db_dir, meta_db_dir) = build_db_paths(&db_dir);
 
     let mut is_db_reset_needed = args.reset_db;
 
@@ -477,11 +478,12 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
     let add_peers = args.add_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect();
-    let p2p_server_addr = args.listen.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
+    let p2p_server_addr = args.listen.as_ref().unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
     // connect_peers means no DNS seeding and no outbound/inbound peers
-    let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
-    let inbound_limit = if connect_peers.is_empty() { args.inbound_limit } else { 0 };
-    let dns_seeders = if connect_peers.is_empty() && !args.disable_dns_seeding { config.dns_seeders } else { &[] };
+    let no_connect_peers = connect_peers.is_empty();
+    let outbound_target = no_connect_peers.then_some(args.outbound_target).unwrap_or(0);
+    let inbound_limit = no_connect_peers.then_some(args.inbound_limit).unwrap_or(0);
+    let dns_seeders = if no_connect_peers && !args.disable_dns_seeding { config.dns_seeders } else { &[] };
 
     let grpc_server_addr = args.rpclisten.as_ref().unwrap_or(&ContextualNetAddress::loopback()).normalize(config.default_rpc_port());
 
