@@ -383,11 +383,17 @@ impl Display for UtxosChangedSubscription {
 
 impl Drop for UtxosChangedSubscription {
     fn drop(&mut self) {
-        trace!(
-            "UtxosChangedSubscription: {} in total (drop {})",
-            UTXOS_CHANGED_SUBSCRIPTIONS.fetch_sub(1, Ordering::SeqCst) - 1,
-            self
-        );
+        // Prevent underflow; [ERROR] thread 'tokio-runtime-worker' panicked at notify/src/subscription/single.rs:388:13: attempt to subtract with overflow
+        let _ = UTXOS_CHANGED_SUBSCRIPTIONS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+            if count > 0 {
+                Some(count - 1)
+            } else {
+                log::warn!("Tried subtracting UtxosChangedSubscription when it's already zero!");
+                None
+            }
+        });
+
+        trace!("UtxosChangedSubscription: {} in total (drop {})", UTXOS_CHANGED_SUBSCRIPTIONS.load(Ordering::SeqCst), self);
     }
 }
 
