@@ -392,10 +392,13 @@ impl RpcApi for RpcCoreService {
         trace!("incoming SubmitBlockRequest for block {}", hash);
         match self.flow_context.submit_rpc_block(&session, block.clone()).await {
             Ok(_) => {
+                self.processing_counters.submit_block_success_count.fetch_add(1, Ordering::Relaxed);
                 self.sanity_check_storage_mass(block);
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Success })
             }
             Err(ProtocolError::RuleError(RuleError::BadMerkleRoot(h1, h2))) => {
+                // Count the number of bad merkle root errors as this may trigger NoTransactions rule
+                self.processing_counters.submit_block_bad_merkle_root_count.fetch_add(1, Ordering::Relaxed);
                 warn!(
                     "The RPC submitted block {} triggered a {} error: {}. 
 NOTE: This error usually indicates an RPC conversion error between the node and the miner. This is likely to reflect using a NON-SUPPORTED miner.",
