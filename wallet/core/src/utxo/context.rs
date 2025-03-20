@@ -615,10 +615,8 @@ impl UtxoContext {
 
         #[allow(clippy::mutable_key_type)]
         let mut accepted_outgoing_transactions = HashSet::<OutgoingTransaction>::new();
-        let mut outgoing_transaction_utxo_entries_ids = vec![];
         for utxo in &utxos {
             for outgoing_transaction in outgoing_transactions.iter() {
-                outgoing_transaction_utxo_entries_ids.extend(outgoing_transaction.utxo_entries().keys().into_iter().cloned());
                 if outgoing_transaction.utxo_entries().contains_key(&utxo.id()) {
                     accepted_outgoing_transactions.insert((*outgoing_transaction).clone());
                 }

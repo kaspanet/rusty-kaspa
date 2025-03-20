@@ -14,7 +14,6 @@ pub use crate::input::{Input, InputBuilder};
 pub use crate::output::{Output, OutputBuilder};
 pub use crate::role::{Combiner, Constructor, Creator, Extractor, Finalizer, Signer, Updater};
 use kaspa_consensus_core::config::params::Params;
-use kaspa_consensus_core::mass::MassCalculator;
 use kaspa_consensus_core::{
     hashing::sighash_type::SigHashType,
     subnets::SUBNETWORK_ID_NATIVE,
@@ -426,9 +425,8 @@ impl PSKT<Finalizer> {
 }
 
 impl PSKT<Extractor> {
-    pub fn extract_tx_unchecked(self, params: &Params) -> Result<MutableTransaction<Transaction>, TxNotFinalized> {
+    pub fn extract_tx_unchecked(self, _params: &Params) -> Result<MutableTransaction<Transaction>, TxNotFinalized> {
         let tx = self.unsigned_tx();
-        let entries = tx.entries;
         let mut tx = tx.tx;
         tx.inputs.iter_mut().zip(self.inner_pskt.inputs).try_for_each(|(dest, src)| {
             dest.signature_script = src.final_script_sig.ok_or(TxNotFinalized {})?;
