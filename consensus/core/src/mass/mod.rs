@@ -1,3 +1,4 @@
+use borsh::{BorshDeserialize, BorshSerialize};
 use crate::{
     config::params::Params,
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
@@ -146,7 +147,7 @@ impl From<&TransactionOutput> for UtxoCell {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct NonContextualMasses {
     /// Compute mass
     pub compute_mass: u64,
