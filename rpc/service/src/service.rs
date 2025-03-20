@@ -332,13 +332,35 @@ impl RpcApi for RpcCoreService {
             }
         }
 
+        // [Crescendo]: warn non updated miners to upgrade their rpc flow before Crescendo activation
+        for tx in block.transactions.iter().skip(1) {
+            let mass = tx.mass();
+            if mass > 0 {
+                // It's sufficient to witness a single transaction with non default mass to conclude that miner rpc flow is correct
+                break;
+            }
+            // |O| > |I| AND some output value is small enough for storage mass => storage mass should be positive.
+            // This is true bcs we assume plurality is always 1 for std tx ins/outs (assuming the submitted block was
+            // built via the local std mempool), and bcs |O| > |I| means that the
+            // formula used is C·|O| / H(O) - C·|I| / A(I) which is always positive in this case.
+            if tx.outputs.len() > tx.inputs.len()
+                && tx.outputs.iter().any(|o| o.value <= self.config.storage_mass_parameter)
+                && !self.config.crescendo_activation.is_active(block.header.daa_score)
+            {
+                warn!("The RPC submitted block {} contains a transaction {} with mass = 0 while it should have been strictly positive.
+This indicates that the RPC conversion flow used by the miner drops the mass value at some point. It is highly recommended you upgrade your miner flow
+to propagate the mass field correctly prior to the Crescendo hardfork activation, after which such blocks will be invalid.", hash, tx.id())
+            }
+        }
+
         trace!("incoming SubmitBlockRequest for block {}", hash);
         match self.flow_context.submit_rpc_block(&session, block.clone()).await {
             Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
             Err(ProtocolError::RuleError(RuleError::BadMerkleRoot(h1, h2))) => {
                 warn!(
-                    "The RPC submitted block triggered a {} error: {}. 
-NOTE: This error usually indicates an RPC conversion error between the node and the miner. If you are on TN11 this is likely to reflect using a NON-SUPPORTED miner.",
+                    "The RPC submitted block {} triggered a {} error: {}. 
+NOTE: This error usually indicates an RPC conversion error between the node and the miner. This is likely to reflect using a NON-SUPPORTED miner.",
+                    hash,
                     stringify!(RuleError::BadMerkleRoot),
                     RuleError::BadMerkleRoot(h1, h2)
                 );
@@ -348,10 +370,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
             }
             Err(err) => {
-                warn!(
-                    "The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}",
-                    err, block
-                );
+                warn!("The RPC submitted block triggered an error: {}\nPrinting the full block for debug purposes:\n{:?}", err, block);
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
             }
         }
