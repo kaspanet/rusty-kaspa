@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use kaspa_consensus_core::daa_score_timestamp::DaaScoreTimestamp;
 
+pub mod blue_only_mergeset_rule;
 pub mod no_transactions_rule;
 pub mod sync_rate_rule;
 
