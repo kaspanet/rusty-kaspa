@@ -14,7 +14,6 @@ use crate::utxo::{
     Maturity, NetworkParams, OutgoingTransaction, PendingUtxoEntryReference, UtxoContextBinding, UtxoEntryId, UtxoEntryReference,
     UtxoEntryReferenceExtension, UtxoProcessor,
 };
-use itertools::Itertools;
 use kaspa_consensus_client::UtxoEntry;
 use kaspa_hashes::Hash;
 use sorted_insert::SortedInsertBinaryByKey;
@@ -520,6 +519,41 @@ impl UtxoContext {
         Balance::new(mature, pending, outgoing_without_batch_tx, context.mature.len(), context.pending.len(), context.stasis.len())
     }
 
+    pub(crate) async fn update_utxos(
+        &self,
+        added_utxos: Vec<UtxoEntryReference>,
+        removed_utxos: Vec<UtxoEntryReference>,
+        current_daa_score: u64,
+    ) -> Result<()> {
+        if removed_utxos.is_not_empty() {
+            self.remove(removed_utxos).await?;
+        }
+
+        if added_utxos.is_empty() {
+            return Ok(());
+        }
+
+        let added_utxos = HashMap::group_from(added_utxos.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
+        for (txid, utxos) in added_utxos.into_iter() {
+            // get outgoing transaction from the processor in case the transaction
+            // originates from a different [`Account`] represented by a different [`UtxoContext`].
+            let outgoing_transaction = self.processor().outgoing().get(&txid);
+            let force_maturity_if_outgoing = outgoing_transaction.is_some();
+            let is_batch = outgoing_transaction.as_ref().map_or_else(|| false, |tx| tx.is_batch());
+            if !is_batch {
+                for utxo in utxos.iter() {
+                    if let Err(err) = self.insert(utxo.clone(), current_daa_score, force_maturity_if_outgoing).await {
+                        // TODO - remove `Result<>` from insert at a later date once
+                        // we are confident that the insert will never result in an error.
+                        log_error!("{}", err);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub(crate) async fn handle_utxo_added(&self, utxos: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
         // add UTXOs to account set
 
@@ -532,11 +566,6 @@ impl UtxoContext {
             // get outgoing transaction from the processor in case the transaction
             // originates from a different [`Account`] represented by a different [`UtxoContext`].
             let outgoing_transaction = self.processor().outgoing().get(&txid);
-            let keys = self.processor().outgoing().iter().map(|a|a.key().clone()).collect_vec();
-            workflow_log::log_warn!("\n$$$$$$$$$$ handle_utxo_added::::: processor().outgoing() : keys: {:?}", keys);
-
-            workflow_log::log_warn!("\n$$$$$$$$$$ handle_utxo_added  {txid:?} ==>  {:?}", outgoing_transaction.is_some());
-
 
             let force_maturity_if_outgoing = outgoing_transaction.is_some();
             let is_coinbase_stasis =
@@ -554,26 +583,18 @@ impl UtxoContext {
 
             if let Some(outgoing_transaction) = outgoing_transaction {
                 accepted_outgoing_transactions.insert((*outgoing_transaction).clone());
-                let id = outgoing_transaction.id();
                 if outgoing_transaction.is_batch() {
-                    workflow_log::log_warn!("\n$$$$$$$$$$ handle_utxo_added  type ==>  new_batch : {id}");
                     let record = TransactionRecord::new_batch(self, &outgoing_transaction, Some(current_daa_score))?;
                     self.processor().notify(Events::Maturity { record }).await?;
                 } else if outgoing_transaction.originating_context() == self {
-                    workflow_log::log_warn!("\n$$$$$$$$$$ handle_utxo_added  type ==>  new_change  : {id}");
-                    
                     let record = TransactionRecord::new_change(self, &outgoing_transaction, Some(current_daa_score), &utxos)?;
                     self.processor().notify(Events::Maturity { record }).await?;
                 } else {
-                    workflow_log::log_warn!("\n$$$$$$$$$$ handle_utxo_added  type ==>  new_transfer_incoming  : {id}");
-                    
                     let record =
                         TransactionRecord::new_transfer_incoming(self, &outgoing_transaction, Some(current_daa_score), &utxos)?;
                     self.processor().notify(Events::Maturity { record }).await?;
                 }
             } else if !is_coinbase_stasis {
-                workflow_log::log_warn!("\n$$$$$$$$$$ handle_utxo_added  type ==>  new_incoming  : {txid}");
-                   
                 // do not notify if coinbase transaction is in stasis
                 let record = TransactionRecord::new_incoming(self, txid, &utxos);
                 self.processor().notify(Events::Pending { record }).await?;
@@ -590,18 +611,12 @@ impl UtxoContext {
     pub(crate) async fn handle_utxo_removed(&self, utxos: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
         // remove UTXOs from account set
 
-        workflow_log::log_warn!("\n$$$$$$$$$$ handle_utxo_removed: {:#?}", utxos);
-        
-
         let outgoing_transactions = self.processor().outgoing();
-        workflow_log::log_warn!("\n$$$$$$$$$$ outgoing_transactions: {:#?}", outgoing_transactions.iter().map(|a|a.key().clone()).collect_vec());
-        
+
         #[allow(clippy::mutable_key_type)]
         let mut accepted_outgoing_transactions = HashSet::<OutgoingTransaction>::new();
-        let mut utxo_ids = vec![];
         let mut outgoing_transaction_utxo_entries_ids = vec![];
         for utxo in &utxos {
-            utxo_ids.push(utxo.id());
             for outgoing_transaction in outgoing_transactions.iter() {
                 outgoing_transaction_utxo_entries_ids.extend(outgoing_transaction.utxo_entries().keys().into_iter().cloned());
                 if outgoing_transaction.utxo_entries().contains_key(&utxo.id()) {
@@ -610,26 +625,15 @@ impl UtxoContext {
             }
         }
 
-        workflow_log::log_warn!("\n$$$$$$$$$$ handle_utxo_removed: utxo_ids: {:#?}", utxo_ids);
-        workflow_log::log_warn!("\n$$$$$$$$$$ handle_utxo_removed: outgoing_transaction_utxo_entries_ids: {:#?}", outgoing_transaction_utxo_entries_ids);
-
-        
-        workflow_log::log_warn!("\n$$$$$$$$$$ accepted_outgoing_transactions: {:#?}", accepted_outgoing_transactions.iter().map(|a|a.id()).collect_vec());
-
         for accepted_outgoing_transaction in accepted_outgoing_transactions.into_iter() {
-            let id = accepted_outgoing_transaction.id();
             if accepted_outgoing_transaction.is_batch() {
-                workflow_log::log_warn!("\n$$$$$$$$$$  accepted_outgoing_transaction is_batch : {id}");
                 let record = TransactionRecord::new_batch(self, &accepted_outgoing_transaction, Some(current_daa_score))?;
                 self.processor().notify(Events::Maturity { record }).await?;
             } else if accepted_outgoing_transaction.destination_context().is_some() {
-                workflow_log::log_warn!("\n$$$$$$$$$$  accepted_outgoing_transaction new_transfer_outgoing : {id}");
                 let record =
                     TransactionRecord::new_transfer_outgoing(self, &accepted_outgoing_transaction, Some(current_daa_score), &utxos)?;
                 self.processor().notify(Events::Maturity { record }).await?;
             } else {
-                workflow_log::log_warn!("\n$$$$$$$$$$  accepted_outgoing_transaction new_outgoing : {id}");
-                
                 let record = TransactionRecord::new_outgoing(self, &accepted_outgoing_transaction, Some(current_daa_score))?;
                 self.processor().notify(Events::Maturity { record }).await?;
             }
@@ -662,10 +666,6 @@ impl UtxoContext {
         let stasis = HashMap::group_from(stasis.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
 
         for (txid, utxos) in mature.into_iter() {
-            workflow_log::log_warn!("\n$$$$$$$$$$  Transaction new_external : {txid}");
-            if outgoing_transactions.contains_key(&txid) {
-                continue;
-            }
             let record = TransactionRecord::new_external(self, txid, &utxos);
             self.processor().notify(Events::Maturity { record }).await?;
         }
