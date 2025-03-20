@@ -21,7 +21,10 @@ use kaspa_core::{
 };
 use kaspa_p2p_lib::Hub;
 
-use crate::rules::{mining_rule::MiningRule, no_transactions_rule::NoTransactionsRule, sync_rate_rule::SyncRateRule, ExtraData};
+use crate::rules::{
+    blue_only_mergeset_rule::BlueOnlyMergesetRule, mining_rule::MiningRule, no_transactions_rule::NoTransactionsRule,
+    sync_rate_rule::SyncRateRule, ExtraData,
+};
 
 const RULE_ENGINE: &str = "mining-rule-engine";
 pub const SNAPSHOT_INTERVAL: u64 = 10;
@@ -103,6 +106,7 @@ impl MiningRuleEngine {
         let use_sync_rate_rule = Arc::new(AtomicBool::new(false));
         let rules: Vec<Arc<(dyn MiningRule + 'static)>> = vec![
             Arc::new(SyncRateRule::new(use_sync_rate_rule.clone())),
+            Arc::new(BlueOnlyMergesetRule::new(mining_rules.blue_only_mergeset.clone())),
             Arc::new(NoTransactionsRule::new(mining_rules.no_transactions.clone())),
         ];
 
