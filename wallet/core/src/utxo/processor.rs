@@ -341,6 +341,8 @@ impl UtxoProcessor {
         self.inner.outgoing.retain(|_, outgoing| {
             if outgoing.acceptance_daa_score() != 0 && (outgoing.acceptance_daa_score() + longevity) < current_daa_score {
                 outgoing.originating_context().remove_outgoing_transaction(&outgoing.id());
+                
+                //workflow_log::log_warn!("\n$$$$$$$$$$ processor handle_outgoing removed: {:?}", outgoing.id());
                 false
             } else {
                 true
@@ -351,6 +353,7 @@ impl UtxoProcessor {
     }
 
     pub fn register_outgoing_transaction(&self, outgoing_transaction: OutgoingTransaction) {
+        //workflow_log::log_warn!("\n$$$$$$$$$$ processor register_outgoing_transaction: {:?}", outgoing_transaction.id());
         self.inner.outgoing.insert(outgoing_transaction.id(), outgoing_transaction);
     }
 
@@ -397,21 +400,27 @@ impl UtxoProcessor {
 
         #[allow(clippy::mutable_key_type)]
         let mut updated_contexts: HashSet<UtxoContext> = HashSet::default();
+        log_warn!("\n\n$$$$$$$$$$ handle_utxo_changed: {:#?}", utxos);
+
+        let added = (*utxos.added).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
+        let added = HashMap::group_from(added);
 
         let removed = (*utxos.removed).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
         let removed = HashMap::group_from(removed);
         for (address, entries) in removed.into_iter() {
+            let added_entries_outpoint = added.get(&address).unwrap_or(&vec![]).iter().map(|a| a.outpoint).collect::<Vec<_>>();
             if let Some(utxo_context) = self.address_to_utxo_context(&address) {
                 updated_contexts.insert(utxo_context.clone());
-                let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
-                utxo_context.handle_utxo_removed(entries, current_daa_score).await?;
+                let entries = entries.into_iter().filter(|a| !added_entries_outpoint.contains(&a.outpoint)).map(|entry| entry.into()).collect::<Vec<_>>();
+                if entries.is_not_empty(){
+                    utxo_context.handle_utxo_removed(entries, current_daa_score).await?;
+                }
             } else {
                 log_error!("receiving UTXO Changed 'removed' notification for an unknown address: {}", address);
             }
         }
 
-        let added = (*utxos.added).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
-        let added = HashMap::group_from(added);
+        
         for (address, entries) in added.into_iter() {
             if let Some(utxo_context) = self.address_to_utxo_context(&address) {
                 updated_contexts.insert(utxo_context.clone());

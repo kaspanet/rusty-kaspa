@@ -232,11 +232,14 @@ impl PendingTransaction {
 
         let rpc_transaction: RpcTransaction = self.rpc_transaction();
 
+        workflow_log::log_warn!("\n\n\n######\n\n\n$$$$$$$$$$ register_outgoing_transaction111: {:?}", self);
+
         // if we are running under UtxoProcessor
         if let Some(utxo_context) = self.inner.generator.source_utxo_context() {
             // lock UtxoProcessor notification ingest
             let _lock = utxo_context.processor().notification_lock().await;
 
+            workflow_log::log_warn!("\n$$$$$$$$$$ register_outgoing_transaction222");
             // register pending UTXOs with UtxoProcessor
             utxo_context.register_outgoing_transaction(self).await?;
 
