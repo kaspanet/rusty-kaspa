@@ -110,6 +110,7 @@ kaspa-muhash = { version = "0.17.1", path = "crypto/muhash" }
 kaspa-notify = { version = "0.17.1", path = "notify" }
 kaspa-p2p-flows = { version = "0.17.1", path = "protocol/flows" }
 kaspa-p2p-lib = { version = "0.17.1", path = "protocol/p2p" }
+kaspa-p2p-mining = { version = "0.17.1", path = "protocol/mining" }
 kaspa-perf-monitor = { version = "0.17.1", path = "metrics/perf_monitor" }
 kaspa-pow = { version = "0.17.1", path = "consensus/pow" }
 kaspa-rpc-core = { version = "0.17.1", path = "rpc/core" }

@@ -60,6 +60,7 @@ use kaspa_consensus_core::{
     },
     header::Header,
     merkle::calc_hash_merkle_root,
+    mining_rules::MiningRules,
     pruning::PruningPointsList,
     tx::{MutableTransaction, Transaction},
     utxo::{
@@ -175,6 +176,9 @@ pub struct VirtualStateProcessor {
 
     // Crescendo hardfork activation score (used here for activating KIPs 9,10)
     pub(crate) crescendo_activation: ForkActivation,
+
+    // Mining Rule
+    mining_rules: Arc<MiningRules>,
 }
 
 impl VirtualStateProcessor {
@@ -191,6 +195,7 @@ impl VirtualStateProcessor {
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
+        mining_rules: Arc<MiningRules>,
     ) -> Self {
         Self {
             receiver,
@@ -240,6 +245,7 @@ impl VirtualStateProcessor {
             counters,
             crescendo_logger: CrescendoLogger::new(),
             crescendo_activation: params.crescendo_activation,
+            mining_rules,
         }
     }
 
@@ -958,7 +964,9 @@ impl VirtualStateProcessor {
         // We call for the initial tx batch before acquiring the virtual read lock,
         // optimizing for the common case where all txs are valid. Following selection calls
         // are called within the lock in order to preserve validness of already validated txs
-        let mut txs = tx_selector.select_transactions();
+        let mut txs =
+            if self.mining_rules.no_transactions.load(Ordering::Relaxed) { vec![] } else { tx_selector.select_transactions() };
+
         let mut calculated_fees = Vec::with_capacity(txs.len());
         let virtual_read = self.virtual_stores.read();
         let virtual_state = virtual_read.state.get().unwrap();
