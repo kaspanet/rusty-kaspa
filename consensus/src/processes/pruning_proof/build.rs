@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes},
     header::Header,
     pruning::PruningPointProof,
-    BlockHashSet, BlockLevel, HashMapCustomHasher,
+    BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::debug;
 use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions, DB};
@@ -71,6 +71,11 @@ impl PruningProofManager {
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
         let (ghostdag_stores, selected_tip_by_level, roots_by_level) = self.calc_gd_for_all_levels(&pp_header, temp_db);
 
+        // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
+        // to make sure we hold a single Arc per header
+        let mut cache: BlockHashMap<Arc<Header>> = BlockHashMap::with_capacity(4 * self.pruning_proof_m as usize);
+        let mut get_header = |hash| cache.entry(hash).or_insert_with_key(|&hash| self.headers_store.get_header(hash).unwrap()).clone();
+
         (0..=self.max_block_level)
             .map(|level| {
                 let level = level as usize;
@@ -114,7 +119,7 @@ impl PruningProofManager {
                 let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
                 let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
                 let mut visited = BlockHashSet::new();
-                queue.push(Reverse(SortableBlock::new(root, self.headers_store.get_header(root).unwrap().blue_work)));
+                queue.push(Reverse(SortableBlock::new(root, get_header(root).blue_work)));
                 while let Some(current) = queue.pop() {
                     let current = current.0.hash;
                     if !visited.insert(current) {
@@ -130,9 +135,9 @@ impl PruningProofManager {
                         continue;
                     }
 
-                    headers.push(self.headers_store.get_header(current).unwrap());
+                    headers.push(get_header(current));
                     for child in self.relations_stores.read()[level].get_children(current).unwrap().read().iter().copied() {
-                        queue.push(Reverse(SortableBlock::new(child, self.headers_store.get_header(child).unwrap().blue_work)));
+                        queue.push(Reverse(SortableBlock::new(child, get_header(child).blue_work)));
                     }
                 }
 
@@ -216,7 +221,7 @@ impl PruningProofManager {
         &self,
         pp_header: &HeaderWithBlockLevel,
         level: BlockLevel,
-        current_dag_level: BlockLevel,
+        _current_dag_level: BlockLevel,
         required_block: Option<Hash>,
         temp_db: Arc<DB>,
     ) -> PruningProofManagerInternalResult<(Arc<DbGhostdagStore>, Hash, Hash)> {
@@ -232,11 +237,17 @@ impl PruningProofManager {
 
         // We only have the headers store (which has level 0 blue_scores) to assemble the proof data from.
         // We need to look deeper at higher levels (2x deeper every level) to find 2M (plus margin) blocks at that level
-        let mut required_base_level_depth = self.estimated_blue_depth_at_level_0(
-            level,
-            required_level_depth + 100, // We take a safety margin
-            current_dag_level,
-        );
+        // TODO: uncomment when the full fix to minimize proof sizes comes.
+        // let mut required_base_level_depth = self.estimated_blue_depth_at_level_0(
+        //     level,
+        //     required_level_depth + 100, // We take a safety margin
+        //     current_dag_level,
+        // );
+        // NOTE: Starting from required_level_depth (a much lower starting point than normal) will typically require O(N) iterations
+        // for level L + N where L is the current dag level. This is fine since the steps per iteration are still exponential
+        // and so we will complete each level in not much more than N iterations per level.
+        // We start here anyway so we can try to minimize the proof size when the current dag level goes down significantly.
+        let mut required_base_level_depth = required_level_depth + 100;
 
         let mut is_last_level_header;
         let mut tries = 0;
@@ -285,6 +296,7 @@ impl PruningProofManager {
                 &ghostdag_store,
                 Some(block_at_depth_m_at_next_level),
                 level,
+                self.ghostdag_k.get(pp_header.header.daa_score),
             );
 
             // Step 4 - Check if we actually have enough depth.
@@ -325,6 +337,7 @@ impl PruningProofManager {
         ghostdag_store: &Arc<DbGhostdagStore>,
         required_block: Option<Hash>,
         level: BlockLevel,
+        ghostdag_k: KType,
     ) -> bool {
         let relations_service = RelationsStoreInFutureOfRoot {
             relations_store: self.level_relations_services[level as usize].clone(),
@@ -333,7 +346,7 @@ impl PruningProofManager {
         };
         let gd_manager = GhostdagManager::with_level(
             root,
-            self.ghostdag_k,
+            ghostdag_k,
             ghostdag_store.clone(),
             relations_service.clone(),
             self.headers_store.clone(),

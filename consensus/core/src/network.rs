@@ -253,10 +253,9 @@ impl NetworkId {
     }
 
     pub fn iter() -> impl Iterator<Item = Self> {
-        static NETWORK_IDS: [NetworkId; 5] = [
+        static NETWORK_IDS: [NetworkId; 4] = [
             NetworkId::new(NetworkType::Mainnet),
             NetworkId::with_suffix(NetworkType::Testnet, 10),
-            NetworkId::with_suffix(NetworkType::Testnet, 11),
             NetworkId::new(NetworkType::Devnet),
             NetworkId::new(NetworkType::Simnet),
         ];
