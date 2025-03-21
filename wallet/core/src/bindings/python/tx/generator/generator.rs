@@ -156,6 +156,7 @@ impl Generator {
     }
 }
 
+#[allow(dead_code)]
 enum GeneratorSource {
     UtxoEntries(Vec<UtxoEntryReference>),
     UtxoContext(UtxoContext),
