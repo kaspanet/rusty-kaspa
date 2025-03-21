@@ -17,9 +17,11 @@ use crate::{
         tx::TxResult,
     },
     header::Header,
+    mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    utxo::utxo_inquirer::UtxoInquirerError,
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
@@ -89,11 +91,11 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
         unimplemented!()
     }
 
-    fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
+    fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
         unimplemented!()
     }
 
@@ -141,8 +143,8 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    /// source refers to the earliest block from which the current node has full header & block data  
-    fn get_source(&self) -> Hash {
+    /// retention period root refers to the earliest block from which the current node has full header & block data  
+    fn get_retention_period_root(&self) -> Hash {
         unimplemented!()
     }
 
@@ -167,6 +169,12 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
+        unimplemented!()
+    }
+
+    /// Returns the fully populated transaction with the given txid which was accepted at the provided accepting_block_daa_score.
+    /// The argument `accepting_block_daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
+    fn get_populated_transaction(&self, txid: Hash, accepting_block_daa_score: u64) -> Result<SignableTransaction, UtxoInquirerError> {
         unimplemented!()
     }
 
@@ -211,7 +219,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn import_pruning_points(&self, pruning_points: PruningPointsList) {
+    fn import_pruning_points(&self, pruning_points: PruningPointsList) -> PruningImportResult<()> {
         unimplemented!()
     }
 
@@ -347,7 +355,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn validate_pruning_points(&self) -> ConsensusResult<()> {
+    fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         unimplemented!()
     }
 

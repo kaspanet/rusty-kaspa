@@ -18,8 +18,8 @@ pub fn hash(tx: &Transaction, include_mass_field: bool) -> Hash {
 
 /// Not intended for direct use by clients. Instead use `tx.id()`
 pub(crate) fn id(tx: &Transaction) -> TransactionId {
-    // Encode the transaction, replace signature script with zeroes, cut off
-    // payload and hash the result.
+    // Encode the transaction, replace signature script with an empty array, skip
+    // sigop counts and mass and hash the result.
 
     let encoding_flags = if tx.is_coinbase() { TX_ENCODING_FULL } else { TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT };
     let mut hasher = kaspa_hashes::TransactionID::new();
@@ -43,8 +43,25 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
 
     hasher.update(tx.lock_time.to_le_bytes()).update(&tx.subnetwork_id).update(tx.gas.to_le_bytes()).write_var_bytes(&tx.payload);
 
-    // TODO:
-    //      1. Avoid passing a boolean and hash the mass only if > 0 (requires setting the mass to 0 on BBT).
+    /*
+       Design principles (mostly related to the new mass commitment field; see KIP-0009):
+           1. The new mass field should not modify tx::id (since it is essentially a commitment by the miner re block space usage
+              so there is no need to modify the id definition which will require wide-spread changes in ecosystem software).
+           2. Coinbase tx hash and id should ideally remain equal
+
+       Solution:
+           1. Hash the mass field only for tx::hash
+           2. Hash the mass field only if mass > 0
+           3. Require in consensus that coinbase mass == 0
+
+       This way we have:
+           - Unique commitment for tx::hash per any possible mass value (with only zero being a no-op)
+           - tx::id remains unmodified
+           - Coinbase tx hash and id remain the same and equal
+    */
+
+    // TODO (post HF):
+    //      1. Avoid passing a boolean
     //      2. Use TxEncodingFlags to avoid including the mass for tx ID
     if include_mass_field {
         let mass = tx.mass();

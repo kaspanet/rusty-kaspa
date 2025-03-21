@@ -16,7 +16,11 @@ use rocksdb::WriteBatch;
 
 use kaspa_consensus_core::{
     blockhash::{self, BlockHashExtensions},
-    errors::consensus::{ConsensusError, ConsensusResult},
+    config::params::ForkedParam,
+    errors::{
+        consensus::{ConsensusError, ConsensusResult},
+        pruning::{PruningImportError, PruningImportResult},
+    },
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::{TrustedGhostdagData, TrustedHeader},
@@ -42,6 +46,7 @@ use crate::{
             headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
             pruning::{DbPruningStore, PruningStoreReader},
+            pruning_samples::{DbPruningSamplesStore, PruningSamplesStore},
             reachability::DbReachabilityStore,
             relations::{DbRelationsStore, RelationsStoreReader},
             selected_chain::DbSelectedChainStore,
@@ -109,6 +114,7 @@ pub struct PruningProofManager {
     headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     depth_store: Arc<DbDepthStore>,
     selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
+    pruning_samples_store: Arc<DbPruningSamplesStore>,
 
     ghostdag_manager: DbGhostdagManager,
     traversal_manager: DbDagTraversalManager,
@@ -121,8 +127,8 @@ pub struct PruningProofManager {
     max_block_level: BlockLevel,
     genesis_hash: Hash,
     pruning_proof_m: u64,
-    anticone_finalization_depth: u64,
-    ghostdag_k: KType,
+    anticone_finalization_depth: ForkedParam<u64>,
+    ghostdag_k: ForkedParam<KType>,
 
     is_consensus_exiting: Arc<AtomicBool>,
 }
@@ -140,8 +146,8 @@ impl PruningProofManager {
         max_block_level: BlockLevel,
         genesis_hash: Hash,
         pruning_proof_m: u64,
-        anticone_finalization_depth: u64,
-        ghostdag_k: KType,
+        anticone_finalization_depth: ForkedParam<u64>,
+        ghostdag_k: ForkedParam<KType>,
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -159,6 +165,7 @@ impl PruningProofManager {
             headers_selected_tip_store: storage.headers_selected_tip_store.clone(),
             selected_chain_store: storage.selected_chain_store.clone(),
             depth_store: storage.depth_store.clone(),
+            pruning_samples_store: storage.pruning_samples_store.clone(),
 
             traversal_manager,
             window_manager,
@@ -182,9 +189,26 @@ impl PruningProofManager {
         }
     }
 
-    pub fn import_pruning_points(&self, pruning_points: &[Arc<Header>]) {
+    pub fn import_pruning_points(&self, pruning_points: &[Arc<Header>]) -> PruningImportResult<()> {
+        let unique_count = pruning_points.iter().map(|h| h.hash).unique().count();
+        if unique_count < pruning_points.len() {
+            return Err(PruningImportError::DuplicatedPastPruningPoints(pruning_points.len() - unique_count));
+        }
         for (i, header) in pruning_points.iter().enumerate() {
             self.past_pruning_points_store.set(i as u64, header.hash).unwrap();
+
+            if i > 0 {
+                let prev_blue_score = pruning_points[i - 1].blue_score;
+                // This is a sufficient condition for running expected pruning point algo (v2)
+                // over blocks B s.t. pruning point ∈ chain(B) w/o a risk of not converging
+                if prev_blue_score >= header.blue_score {
+                    return Err(PruningImportError::InconsistentPastPruningPoints(i - 1, i, prev_blue_score, header.blue_score));
+                }
+                // Store the i-1 pruning point as the last pruning sample from POV of the i'th pruning point.
+                // If this data is inconsistent, then blocks above the pruning point will fail the expected
+                // pruning point validation performed at are_pruning_points_in_valid_chain
+                self.pruning_samples_store.insert(header.hash, pruning_points[i - 1].hash).unwrap();
+            }
 
             if self.headers_store.has(header.hash).unwrap() {
                 continue;
@@ -200,9 +224,12 @@ impl PruningProofManager {
         let mut pruning_point_write = self.pruning_point_store.write();
         let mut batch = WriteBatch::default();
         pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pruning_point, (pruning_points.len() - 1) as u64).unwrap();
-        pruning_point_write.set_history_root(&mut batch, new_pruning_point).unwrap();
+        pruning_point_write.set_retention_checkpoint(&mut batch, new_pruning_point).unwrap();
+        pruning_point_write.set_retention_period_root(&mut batch, new_pruning_point).unwrap();
         self.db.write(batch).unwrap();
         drop(pruning_point_write);
+
+        Ok(())
     }
 
     // Used in apply and validate
@@ -244,10 +271,10 @@ impl PruningProofManager {
     /// the search is halted and a partial chain is returned.
     ///
     /// The returned hashes are guaranteed to have GHOSTDAG data
-    pub(crate) fn get_ghostdag_chain_k_depth(&self, hash: Hash) -> Vec<Hash> {
-        let mut hashes = Vec::with_capacity(self.ghostdag_k as usize + 1);
+    pub(crate) fn get_ghostdag_chain_k_depth(&self, hash: Hash, ghostdag_k: KType) -> Vec<Hash> {
+        let mut hashes = Vec::with_capacity(ghostdag_k as usize + 1);
         let mut current = hash;
-        for _ in 0..=self.ghostdag_k {
+        for _ in 0..=ghostdag_k {
             hashes.push(current);
             let Some(parent) = self.ghostdag_store.get_selected_parent(current).unwrap_option() else {
                 break;
@@ -275,6 +302,10 @@ impl PruningProofManager {
         let mut daa_window_blocks = BlockHashMap::new();
         let mut ghostdag_blocks = BlockHashMap::new();
 
+        // [Crescendo]: get ghostdag k based on the pruning point's DAA score. The off-by-one of not going by selected parent
+        // DAA score is not important here as we simply increase K one block earlier which is more conservative (saving/sending more data)
+        let ghostdag_k = self.ghostdag_k.get(self.headers_store.get_daa_score(pruning_point).unwrap());
+
         // PRUNE SAFETY: called either via consensus under the prune guard or by the pruning processor (hence no pruning in parallel)
 
         for anticone_block in anticone.iter().copied() {
@@ -291,7 +322,7 @@ impl PruningProofManager {
                 }
             }
 
-            let ghostdag_chain = self.get_ghostdag_chain_k_depth(anticone_block);
+            let ghostdag_chain = self.get_ghostdag_chain_k_depth(anticone_block, ghostdag_k);
             for hash in ghostdag_chain {
                 if let Entry::Vacant(e) = ghostdag_blocks.entry(hash) {
                     let ghostdag = self.ghostdag_store.get_data(hash).unwrap();
@@ -353,6 +384,11 @@ impl PruningProofManager {
             }
         }
         let proof = Arc::new(self.build_pruning_point_proof(pp));
+        info!(
+            "Built headers proof with overall {} headers ({} unique)",
+            proof.iter().map(|l| l.len()).sum::<usize>(),
+            proof.iter().flatten().unique_by(|h| h.hash).count()
+        );
         cache_lock.replace(CachedPruningPointData { pruning_point: pp, data: proof.clone() });
         proof
     }
@@ -369,8 +405,12 @@ impl PruningProofManager {
         let virtual_state = self.virtual_stores.read().state.get().unwrap();
         let pp_bs = self.headers_store.get_blue_score(pp).unwrap();
 
+        // [Crescendo]: use pruning point DAA score for activation. This means that only after sufficient time
+        // post activation we will require the increased finalization depth
+        let pruning_point_daa_score = self.headers_store.get_daa_score(pp).unwrap();
+
         // The anticone is considered final only if the pruning point is at sufficient depth from virtual
-        if virtual_state.ghostdag_data.blue_score >= pp_bs + self.anticone_finalization_depth {
+        if virtual_state.ghostdag_data.blue_score >= pp_bs + self.anticone_finalization_depth.get(pruning_point_daa_score) {
             let anticone = Arc::new(self.calculate_pruning_point_anticone_and_trusted_data(pp, virtual_state.parents.iter().copied()));
             cache_lock.replace(CachedPruningPointData { pruning_point: pp, data: anticone.clone() });
             Ok(anticone)

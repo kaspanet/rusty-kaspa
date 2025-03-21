@@ -699,11 +699,16 @@ mod tests {
         // cspell:enable
     }
 
+    #[cfg(target_arch = "wasm32")]
     use js_sys::Object;
+    #[cfg(target_arch = "wasm32")]
     use wasm_bindgen::{JsValue, __rt::IntoJsResult};
+    #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::wasm_bindgen_test;
+    #[cfg(target_arch = "wasm32")]
     use workflow_wasm::{extensions::ObjectExtension, serde::from_value, serde::to_value};
 
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_constructor() {
         let str = "kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j";
@@ -715,6 +720,7 @@ mod tests {
         assert_eq!(a, from_value(value).unwrap());
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     pub fn test_wasm_js_serde_object() {
         let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
@@ -739,6 +745,7 @@ mod tests {
         assert_eq!(expected, actual);
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_object() {
         use wasm_bindgen::convert::IntoWasmAbi;

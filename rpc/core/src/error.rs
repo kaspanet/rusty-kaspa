@@ -2,7 +2,7 @@
 //! [`RpcError`] enum used by RPC primitives.
 //!
 
-use kaspa_consensus_core::{subnets::SubnetworkConversionError, tx::TransactionId};
+use kaspa_consensus_core::{subnets::SubnetworkConversionError, tx::TransactionId, utxo::utxo_inquirer::UtxoInquirerError};
 use kaspa_utils::networking::IpAddress;
 #[cfg(feature = "py-sdk")]
 use pyo3::{exceptions::PyException, prelude::PyErr};
@@ -136,6 +136,9 @@ pub enum RpcError {
 
     #[error(transparent)]
     ConsensusClient(#[from] kaspa_consensus_client::error::Error),
+
+    #[error("utxo return address could not be found -> {0}")]
+    UtxoReturnAddressNotFound(UtxoInquirerError),
 }
 
 impl From<String> for RpcError {

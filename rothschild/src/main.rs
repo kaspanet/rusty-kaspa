@@ -4,7 +4,7 @@ use clap::{Arg, ArgAction, Command};
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
-    config::params::{TESTNET11_PARAMS, TESTNET_PARAMS},
+    config::params::TESTNET_PARAMS,
     constants::{SOMPI_PER_KASPA, TX_VERSION},
     sign::sign,
     subnets::SUBNETWORK_ID_NATIVE,
@@ -21,7 +21,7 @@ use secp256k1::{
     rand::{thread_rng, Rng},
     Keypair,
 };
-use tokio::time::{interval, MissedTickBehavior};
+use tokio::time::{interval, Instant, MissedTickBehavior};
 
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
 const FEE_RATE: u64 = 10;
@@ -161,14 +161,16 @@ async fn main() {
         Default::default(),
     )
     .await
-    .unwrap();
+    .expect("Critical error: failed to connect to the RPC server.");
+
     info!("Connected to RPC");
-    let mut pending = HashMap::new();
+
+    let mut pending: HashMap<TransactionOutpoint, Instant> = HashMap::new();
 
     let schnorr_key = if let Some(private_key_hex) = args.private_key {
         let mut private_key_bytes = [0u8; 32];
         faster_hex::hex_decode(private_key_hex.as_bytes(), &mut private_key_bytes).unwrap();
-        secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap()
+        Keypair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap()
     } else {
         let (sk, pk) = &secp256k1::generate_keypair(&mut thread_rng());
         let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &pk.x_only_public_key().0.serialize());
@@ -208,10 +210,11 @@ async fn main() {
     }
     info!("{}", log_message);
 
-    let info = rpc_client.get_block_dag_info().await.unwrap();
+    let info = rpc_client.get_block_dag_info().await.expect("Failed to get block dag info.");
+
     let coinbase_maturity = match info.network.suffix {
-        Some(11) => TESTNET11_PARAMS.coinbase_maturity,
-        None | Some(_) => TESTNET_PARAMS.coinbase_maturity,
+        Some(11) => panic!("TN11 is not supported on this version"),
+        None | Some(_) => TESTNET_PARAMS.coinbase_maturity().upper_bound(),
     };
     info!(
         "Node block-DAG info: \n\tNetwork: {}, \n\tBlock count: {}, \n\tHeader count: {}, \n\tDifficulty: {}, 
@@ -251,7 +254,7 @@ async fn main() {
                     info!(
                         "Tx rate: {:.1}/sec, avg UTXO amount: {}, avg UTXOs per tx: {}, avg outs per tx: {}, estimated available UTXOs: {}",
                         1000f64 * (stats.num_txs as f64) / (time_past as f64),
-                        (stats.utxos_amount / stats.num_utxos as u64),
+                        stats.utxos_amount / stats.num_utxos as u64,
                         stats.num_utxos / stats.num_txs,
                         stats.num_outs / stats.num_txs,
                         utxos_len.saturating_sub(pending_len),
@@ -332,7 +335,7 @@ async fn main() {
 fn should_maximize_inputs(
     old_value: bool,
     utxos: &[(TransactionOutpoint, UtxoEntry)],
-    pending: &HashMap<TransactionOutpoint, u64>,
+    pending: &HashMap<TransactionOutpoint, Instant>,
 ) -> bool {
     let estimated_utxos = if utxos.len() > pending.len() { utxos.len() - pending.len() } else { 0 };
     if !old_value && estimated_utxos > 1_000_000 {
@@ -362,7 +365,7 @@ async fn pause_if_mempool_is_full(rpc_client: &GrpcClient) {
 async fn refresh_utxos(
     rpc_client: &GrpcClient,
     kaspa_addr: Address,
-    pending: &mut HashMap<TransactionOutpoint, u64>,
+    pending: &mut HashMap<TransactionOutpoint, Instant>,
     coinbase_maturity: u64,
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
     populate_pending_outpoints_from_mempool(rpc_client, kaspa_addr.clone(), pending).await;
@@ -372,10 +375,11 @@ async fn refresh_utxos(
 async fn populate_pending_outpoints_from_mempool(
     rpc_client: &GrpcClient,
     kaspa_addr: Address,
-    pending_outpoints: &mut HashMap<TransactionOutpoint, u64>,
+    pending_outpoints: &mut HashMap<TransactionOutpoint, Instant>,
 ) {
     let entries = rpc_client.get_mempool_entries_by_addresses(vec![kaspa_addr], true, false).await.unwrap();
-    let now = unix_now();
+    let now = Instant::now();
+
     for entry in entries {
         for entry in entry.sending {
             for input in entry.transaction.inputs {
@@ -389,7 +393,7 @@ async fn fetch_spendable_utxos(
     rpc_client: &GrpcClient,
     kaspa_addr: Address,
     coinbase_maturity: u64,
-    pending: &mut HashMap<TransactionOutpoint, u64>,
+    pending: &mut HashMap<TransactionOutpoint, Instant>,
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
     let resp = rpc_client.get_utxos_by_addresses(vec![kaspa_addr]).await.unwrap();
     let dag_info = rpc_client.get_block_dag_info().await.unwrap();
@@ -420,7 +424,7 @@ async fn maybe_send_tx(
     tx_sender: &async_channel::Sender<ClientPoolArg>,
     kaspa_addr: Address,
     utxos: &mut [(TransactionOutpoint, UtxoEntry)],
-    pending: &mut HashMap<TransactionOutpoint, u64>,
+    pending: &mut HashMap<TransactionOutpoint, Instant>,
     schnorr_key: Keypair,
     stats: Arc<Mutex<Stats>>,
     maximize_inputs: bool,
@@ -443,7 +447,7 @@ async fn maybe_send_tx(
             // have funds in this tick
             has_fund = true;
 
-            let now = unix_now();
+            let now = Instant::now();
             for input in selected_utxos.iter() {
                 pending.insert(input.0, now);
             }
@@ -486,12 +490,9 @@ async fn maybe_send_tx(
     true
 }
 
-fn clean_old_pending_outpoints(pending: &mut HashMap<TransactionOutpoint, u64>) {
-    let now = unix_now();
-    let old_keys = pending.iter().filter(|(_, time)| now - *time > 3600 * 1000).map(|(op, _)| *op).collect_vec();
-    for key in old_keys {
-        pending.remove(&key).unwrap();
-    }
+fn clean_old_pending_outpoints(pending: &mut HashMap<TransactionOutpoint, Instant>) {
+    let now = Instant::now();
+    pending.retain(|_, &mut time| now.duration_since(time) <= Duration::from_secs(3600));
 }
 
 fn required_fee(num_utxos: usize, num_outs: u64) -> u64 {

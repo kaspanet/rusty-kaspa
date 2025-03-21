@@ -2854,7 +2854,7 @@ mod test {
         ] {
             let mut tx = base_tx.clone();
             tx.0.lock_time = tx_lock_time;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false);
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false, false);
             vm.dstack = vec![lock_time.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -2896,7 +2896,7 @@ mod test {
         ] {
             let mut input = base_input.clone();
             input.sequence = tx_sequence;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false);
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false, false);
             vm.dstack = vec![sequence.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -3090,6 +3090,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     group.kip10_enabled,
+                    false,
                 );
 
                 // Check input index opcode first
@@ -3348,51 +3349,54 @@ mod test {
                 let sig_cache = Cache::new(10_000);
                 let reused_values = SigHashReusedValuesUnsync::new();
 
-                // Test with KIP-10 enabled and disabled
-                for kip10_enabled in [true, false] {
-                    let mut vm = TxScriptEngine::from_transaction_input(
-                        &tx,
-                        &tx.inputs()[0], // Use first input
-                        0,
-                        tx.utxo(0).unwrap(),
-                        &reused_values,
-                        &sig_cache,
-                        kip10_enabled,
-                    );
+                for runtime_sig_op_counting in [true, false] {
+                    // Test with KIP-10 enabled and disabled
+                    for kip10_enabled in [true, false] {
+                        let mut vm = TxScriptEngine::from_transaction_input(
+                            &tx,
+                            &tx.inputs()[0], // Use first input
+                            0,
+                            tx.utxo(0).unwrap(),
+                            &reused_values,
+                            &sig_cache,
+                            kip10_enabled,
+                            runtime_sig_op_counting,
+                        );
 
-                    let op_input_count = opcodes::OpTxInputCount::empty().expect("Should accept empty");
-                    let op_output_count = opcodes::OpTxOutputCount::empty().expect("Should accept empty");
+                        let op_input_count = opcodes::OpTxInputCount::empty().expect("Should accept empty");
+                        let op_output_count = opcodes::OpTxOutputCount::empty().expect("Should accept empty");
 
-                    if kip10_enabled {
-                        // Test input count
-                        op_input_count.execute(&mut vm).unwrap();
-                        assert_eq!(
-                            vm.dstack,
-                            vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(input_count as i64)).unwrap()],
-                            "Input count mismatch for {} inputs",
-                            input_count
-                        );
-                        vm.dstack.clear();
+                        if kip10_enabled {
+                            // Test input count
+                            op_input_count.execute(&mut vm).unwrap();
+                            assert_eq!(
+                                vm.dstack,
+                                vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(input_count as i64)).unwrap()],
+                                "Input count mismatch for {} inputs",
+                                input_count
+                            );
+                            vm.dstack.clear();
 
-                        // Test output count
-                        op_output_count.execute(&mut vm).unwrap();
-                        assert_eq!(
-                            vm.dstack,
-                            vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(output_count as i64)).unwrap()],
-                            "Output count mismatch for {} outputs",
-                            output_count
-                        );
-                        vm.dstack.clear();
-                    } else {
-                        // Test that operations fail when KIP-10 is disabled
-                        assert!(
-                            matches!(op_input_count.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))),
-                            "OpInputCount should fail when KIP-10 is disabled"
-                        );
-                        assert!(
-                            matches!(op_output_count.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))),
-                            "OpOutputCount should fail when KIP-10 is disabled"
-                        );
+                            // Test output count
+                            op_output_count.execute(&mut vm).unwrap();
+                            assert_eq!(
+                                vm.dstack,
+                                vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(output_count as i64)).unwrap()],
+                                "Output count mismatch for {} outputs",
+                                output_count
+                            );
+                            vm.dstack.clear();
+                        } else {
+                            // Test that operations fail when KIP-10 is disabled
+                            assert!(
+                                matches!(op_input_count.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))),
+                                "OpInputCount should fail when KIP-10 is disabled"
+                            );
+                            assert!(
+                                matches!(op_output_count.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))),
+                                "OpOutputCount should fail when KIP-10 is disabled"
+                            );
+                        }
                     }
                 }
             }
@@ -3438,6 +3442,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Ok(()));
@@ -3462,6 +3467,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
@@ -3502,6 +3508,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Ok(()));
@@ -3528,6 +3535,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
@@ -3549,8 +3557,16 @@ mod test {
             tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
             let tx = tx.as_verifiable();
-            let mut vm =
-                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true);
+            let mut vm = TxScriptEngine::from_transaction_input(
+                &tx,
+                &tx.inputs()[0],
+                0,
+                tx.utxo(0).unwrap(),
+                &reused_values,
+                &sig_cache,
+                true,
+                false,
+            );
 
             // OpInputSpk should push input's SPK onto stack, making it non-empty
             assert_eq!(vm.execute(), Ok(()));
@@ -3573,8 +3589,16 @@ mod test {
             tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
             let tx = tx.as_verifiable();
-            let mut vm =
-                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true);
+            let mut vm = TxScriptEngine::from_transaction_input(
+                &tx,
+                &tx.inputs()[0],
+                0,
+                tx.utxo(0).unwrap(),
+                &reused_values,
+                &sig_cache,
+                true,
+                false,
+            );
 
             // Should succeed because the SPKs are different
             assert_eq!(vm.execute(), Ok(()));
@@ -3598,8 +3622,16 @@ mod test {
             tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
             let tx = tx.as_verifiable();
-            let mut vm =
-                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true);
+            let mut vm = TxScriptEngine::from_transaction_input(
+                &tx,
+                &tx.inputs()[0],
+                0,
+                tx.utxo(0).unwrap(),
+                &reused_values,
+                &sig_cache,
+                true,
+                false,
+            );
 
             // Should succeed because both SPKs are identical
             assert_eq!(vm.execute(), Ok(()));
@@ -3644,6 +3676,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Ok(()));
@@ -3670,6 +3703,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
@@ -3703,6 +3737,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Ok(()));
@@ -3727,6 +3762,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                 );
 
                 // Should fail because script expects index 0 but we're at index 1
@@ -3773,6 +3809,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Ok(()));
@@ -3792,6 +3829,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Ok(()));
@@ -3815,6 +3853,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
@@ -3837,6 +3876,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));

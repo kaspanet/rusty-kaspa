@@ -65,6 +65,7 @@ message KaspadRequest {
     GetFeeEstimateRequestMessage getFeeEstimateRequest = 1106;
     GetFeeEstimateExperimentalRequestMessage getFeeEstimateExperimentalRequest = 1108;
     GetCurrentBlockColorRequestMessage getCurrentBlockColorRequest = 1110;
+    GetUtxoReturnAddressRequestMessage GetUtxoReturnAddressRequest = 1112;
   }
 }
 
@@ -130,6 +131,7 @@ message KaspadResponse {
     GetFeeEstimateResponseMessage getFeeEstimateResponse = 1107;
     GetFeeEstimateExperimentalResponseMessage getFeeEstimateExperimentalResponse = 1109;
     GetCurrentBlockColorResponseMessage getCurrentBlockColorResponse = 1111;
+    GetUtxoReturnAddressResponseMessage GetUtxoReturnAddressResponse = 1113;
   }
 }
 
