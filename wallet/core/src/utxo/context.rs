@@ -325,6 +325,31 @@ impl UtxoContext {
         }
     }
 
+    pub async fn update(&self, utxo_entry: UtxoEntryReference, _current_daa_score: u64, _force_maturity: bool) -> Result<bool> {
+        let mut context = self.context();
+        if let Some(old_entry) = context.map.get(&utxo_entry.id()) {
+            if old_entry.block_daa_score() > utxo_entry.block_daa_score() {
+                return Ok(false);
+            }
+            let id = utxo_entry.id();
+            let entry = PendingUtxoEntryReference::new(utxo_entry.clone(), self.clone());
+
+            context.stasis.entry(id.clone()).and_modify(|e| *e = utxo_entry.clone());
+            self.processor().stasis().entry(id.clone()).and_modify(|e| *e = entry.clone());
+
+            context.pending.entry(id.clone()).and_modify(|e| *e = utxo_entry.clone());
+            self.processor().pending().entry(id.clone()).and_modify(|e| *e = entry.clone());
+
+            context.mature.iter_mut().find(|entry| entry.id() == id).map(|entry| *entry = utxo_entry.clone());
+
+            context.map.entry(id.clone()).and_modify(|e| *e = utxo_entry);
+
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
     pub async fn remove(&self, utxos: Vec<UtxoEntryReference>) -> Result<Vec<UtxoEntryVariant>> {
         let mut context = self.context();
         let mut removed = vec![];
@@ -542,7 +567,7 @@ impl UtxoContext {
             let is_batch = outgoing_transaction.as_ref().map_or_else(|| false, |tx| tx.is_batch());
             if !is_batch {
                 for utxo in utxos.iter() {
-                    if let Err(err) = self.insert(utxo.clone(), current_daa_score, force_maturity_if_outgoing).await {
+                    if let Err(err) = self.update(utxo.clone(), current_daa_score, force_maturity_if_outgoing).await {
                         // TODO - remove `Result<>` from insert at a later date once
                         // we are confident that the insert will never result in an error.
                         log_error!("{}", err);

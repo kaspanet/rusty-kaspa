@@ -449,7 +449,7 @@ impl UtxoProcessor {
         for (address, entries) in removed.into_iter() {
             if let Some(utxo_context) = self.address_to_utxo_context(&address) {
                 updated_contexts.insert(utxo_context.clone());
-                let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
+                let entries = entries.iter().map(|entry| entry.into()).collect::<Vec<_>>();
                 if entries.is_not_empty() {
                     utxo_context.handle_utxo_removed(entries, current_daa_score).await?;
                 }
@@ -462,7 +462,7 @@ impl UtxoProcessor {
         for (address, entries) in added.into_iter() {
             if let Some(utxo_context) = self.address_to_utxo_context(&address) {
                 updated_contexts.insert(utxo_context.clone());
-                let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
+                let entries = entries.iter().map(|entry| entry.into()).collect::<Vec<_>>();
                 if entries.is_not_empty() {
                     utxo_context.handle_utxo_added(entries, current_daa_score).await?;
                 }
@@ -476,8 +476,8 @@ impl UtxoProcessor {
                 updated_contexts.insert(utxo_context.clone());
                 let entries_removed = common_removed.get(&address).unwrap();
 
-                let added_utxos = entries_added.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
-                let removed_utxos = entries_removed.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
+                let added_utxos = entries_added.iter().map(|entry| entry.into()).collect::<Vec<_>>();
+                let removed_utxos = entries_removed.iter().map(|entry| entry.into()).collect::<Vec<_>>();
 
                 utxo_context.update_utxos(added_utxos, removed_utxos, current_daa_score).await?;
             } else {
