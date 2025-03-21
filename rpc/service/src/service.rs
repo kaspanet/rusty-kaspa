@@ -347,9 +347,14 @@ impl RpcApi for RpcCoreService {
                 && tx.outputs.iter().any(|o| o.value <= self.config.storage_mass_parameter)
                 && !self.config.crescendo_activation.is_active(block.header.daa_score)
             {
-                warn!("The RPC submitted block {} contains a transaction {} with mass = 0 while it should have been strictly positive.
-This indicates that the RPC conversion flow used by the miner drops the mass value at some point. It is highly recommended you upgrade your miner flow
-to propagate the mass field correctly prior to the Crescendo hardfork activation, after which such blocks will be invalid.", hash, tx.id())
+                warn!(
+                    "The RPC submitted block {} contains a transaction {} with mass = 0 while it should have been strictly positive.
+This indicates that the RPC conversion flow used by the miner does not preserve the mass values received from GetBlockTemplate.
+You must upgrade your miner flow to propagate the mass field correctly prior to the Crescendo hardfork activation. 
+Failure to do so will result in your blocks being considered invalid when Crescendo activates.",
+                    hash,
+                    tx.id()
+                )
             }
         }
 
