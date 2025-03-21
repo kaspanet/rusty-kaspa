@@ -205,6 +205,10 @@ try_from_args! ( dict : GetUtxosByAddressesRequest, {
     Ok(GetUtxosByAddressesRequest { addresses })
 });
 
+try_from_args! ( dict : GetUtxoReturnAddressRequest, {
+    Ok(from_pyobject(dict)?)
+});
+
 try_from_args! ( dict : GetVirtualChainFromBlockRequest, {
     Ok(from_pyobject(dict)?)
 });
