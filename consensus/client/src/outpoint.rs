@@ -83,6 +83,7 @@ impl TryFrom<&JsValue> for TransactionOutpointInner {
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct TransactionOutpoint {
     inner: Arc<TransactionOutpointInner>,
@@ -147,6 +148,32 @@ cfg_if! {
     }
 }
 
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl TransactionOutpoint {
+    #[new]
+    pub fn ctor_py(transaction_id: TransactionId, index: u32) -> TransactionOutpoint {
+        Self { inner: Arc::new(TransactionOutpointInner { transaction_id, index }) }
+    }
+
+    #[pyo3(name = "get_id")]
+    pub fn id_string_py(&self) -> String {
+        format!("{}-{}", self.get_transaction_id_as_string(), self.get_index())
+    }
+
+    #[getter]
+    #[pyo3(name = "transaction_id")]
+    pub fn get_transaction_id_as_string_py(&self) -> String {
+        self.inner().transaction_id.to_string()
+    }
+
+    #[getter]
+    #[pyo3(name = "index")]
+    pub fn get_index_py(&self) -> TransactionIndexType {
+        self.inner().index
+    }
+}
+
 impl std::fmt::Display for TransactionOutpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let inner = self.inner();
@@ -158,6 +185,15 @@ impl TryFrom<&JsValue> for TransactionOutpoint {
     type Error = Error;
     fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
         let inner: TransactionOutpointInner = js_value.as_ref().try_into()?;
+        Ok(TransactionOutpoint { inner: Arc::new(inner) })
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+impl TryFrom<&Bound<'_, PyDict>> for TransactionOutpoint {
+    type Error = PyErr;
+    fn try_from(dict: &Bound<PyDict>) -> PyResult<Self> {
+        let inner: TransactionOutpointInner = serde_pyobject::from_pyobject(dict.clone())?;
         Ok(TransactionOutpoint { inner: Arc::new(inner) })
     }
 }
