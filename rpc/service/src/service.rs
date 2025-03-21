@@ -333,28 +333,27 @@ impl RpcApi for RpcCoreService {
         }
 
         // [Crescendo]: warn non updated miners to upgrade their rpc flow before Crescendo activation
-        for tx in block.transactions.iter().skip(1) {
-            let mass = tx.mass();
-            if mass > 0 {
-                // It's sufficient to witness a single transaction with non default mass to conclude that miner rpc flow is correct
-                break;
-            }
-            // |O| > |I| AND some output value is small enough for storage mass => storage mass should be positive.
-            // This is true bcs we assume plurality is always 1 for std tx ins/outs (assuming the submitted block was
-            // built via the local std mempool), and bcs |O| > |I| means that the
-            // formula used is C·|O| / H(O) - C·|I| / A(I) which is always positive in this case.
-            if tx.outputs.len() > tx.inputs.len()
-                && tx.outputs.iter().any(|o| o.value <= self.config.storage_mass_parameter)
-                && !self.config.crescendo_activation.is_active(block.header.daa_score)
-            {
-                warn!(
-                    "The RPC submitted block {} contains a transaction {} with mass = 0 while it should have been strictly positive.
+        if !self.config.crescendo_activation.is_active(block.header.daa_score) {
+            // It is sufficient to witness a single transaction with non default mass to conclude that miner rpc flow is correct
+            if block.transactions.iter().all(|tx| tx.mass() == 0) {
+                // Iterate over non-coinbase transactions and search for a transaction which is proven to have positive storage mass
+                for tx in block.transactions.iter().skip(1) {
+                    // |O| > |I| AND some output value is small enough for storage mass => storage mass should be positive.
+                    // This is true bcs we assume plurality is always 1 for std tx ins/outs (assuming the submitted block was
+                    // built via the local std mempool), and bcs |O| > |I| means that the
+                    // formula used is C·|O| / H(O) - C·|I| / A(I) which is always positive in this case.
+                    if tx.outputs.len() > tx.inputs.len() && tx.outputs.iter().any(|o| o.value <= self.config.storage_mass_parameter) {
+                        warn!("The RPC submitted block {} contains a transaction {} with mass = 0 while it should have been strictly positive.
 This indicates that the RPC conversion flow used by the miner does not preserve the mass values received from GetBlockTemplate.
 You must upgrade your miner flow to propagate the mass field correctly prior to the Crescendo hardfork activation. 
 Failure to do so will result in your blocks being considered invalid when Crescendo activates.",
-                    hash,
-                    tx.id()
-                )
+                            hash,
+                            tx.id()
+                        );
+                        // A single warning is sufficient
+                        break;
+                    }
+                }
             }
         }
 
