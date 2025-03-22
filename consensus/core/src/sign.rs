@@ -8,6 +8,7 @@ use crate::{
 use itertools::Itertools;
 use std::collections::BTreeMap;
 use std::iter::once;
+use borsh::{BorshDeserialize, BorshSerialize};
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]
@@ -27,6 +28,7 @@ pub enum Error {
 
 /// A wrapper enum that represents the transaction signed state. A transaction
 /// contained by this enum can be either fully signed or partially signed.
+#[derive(Clone, Debug, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub enum Signed {
     Fully(SignableTransaction),
     Partially(SignableTransaction),
