@@ -383,7 +383,7 @@ impl PruningProcessor {
 
             // Prune the selected chain index below the pruning point
             let mut selected_chain_write = self.selected_chain_store.write();
-            selected_chain_write.prune_below_pruning_point(BatchDbWriter::new(&mut batch), new_pruning_point).unwrap();
+            selected_chain_write.prune_below_pruning_point(BatchDbWriter::new(&mut batch), retention_period_root).unwrap();
 
             // Flush the batch to the DB
             self.db.write(batch).unwrap();
