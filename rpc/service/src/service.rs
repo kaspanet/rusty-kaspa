@@ -480,7 +480,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
-            is_synced: self.mining_rule_engine.should_mine(sink_daa_score_timestamp),
+            is_synced: self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp),
             has_notify_command: true,
             has_message_id: true,
         })
@@ -1145,7 +1145,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetServerInfoResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
         let sink_daa_score_timestamp = session.async_get_sink_daa_score_timestamp().await;
-        let is_synced: bool = self.mining_rule_engine.should_mine(sink_daa_score_timestamp);
+        let is_synced: bool = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp);
         let virtual_daa_score = session.get_virtual_daa_score();
 
         Ok(GetServerInfoResponse {
@@ -1166,7 +1166,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetSyncStatusResponse> {
         let sink_daa_score_timestamp =
             self.consensus_manager.consensus().unguarded_session().async_get_sink_daa_score_timestamp().await;
-        let is_synced: bool = self.mining_rule_engine.should_mine(sink_daa_score_timestamp);
+        let is_synced: bool = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp);
         Ok(GetSyncStatusResponse { is_synced })
     }
 

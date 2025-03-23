@@ -114,6 +114,12 @@ impl MiningRuleEngine {
         is_nearly_synced || self.use_sync_rate_rule.load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    /// In non-mining contexts, we consider the node synced if the sink is recent and it is connected
+    /// to a peer
+    pub fn is_sink_recent_and_connected(&self, sink_daa_score_timestamp: DaaScoreTimestamp) -> bool {
+        self.has_sufficient_peer_connectivity() && self.is_nearly_synced(sink_daa_score_timestamp)
+    }
+
     /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
     ///
     /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
