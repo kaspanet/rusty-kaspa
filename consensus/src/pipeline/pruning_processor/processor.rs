@@ -556,6 +556,26 @@ impl PruningProcessor {
             // If the retention period wasn't set, immediately default to the pruning point.
             None => pruning_point,
             Some(retention_period_days) => {
+                if self.config.skip_proof_of_work {
+                    // Special condition: during simulations, pow is skipped. Timestamps in these simulations are unreliable and
+                    // are not representative of real time. However, this function depends on real time checks. So we need to do something
+                    // else during simulations.
+                    //
+                    // If skip_proof_of_work is true, assume we're doing a simulation and that the retention period days is
+                    // the number of pruning samples before current pruning point to use
+                    let mut new_retention_period_root = pruning_point;
+                    let periods_required = retention_period_days.ceil() as u64;
+
+                    for _ in 0..periods_required {
+                        if new_retention_period_root == retention_period_root {
+                            break;
+                        }
+                        new_retention_period_root =
+                            self.pruning_samples_store.pruning_sample_from_pov(new_retention_period_root).unwrap();
+                    }
+
+                    return new_retention_period_root;
+                }
                 // The retention period in milliseconds we need to cover
                 // Note: If retention period is set to an amount lower than what the new pruning point would cover
                 // this function will simply return the new pruning point. The new pruning point passed as an argument
