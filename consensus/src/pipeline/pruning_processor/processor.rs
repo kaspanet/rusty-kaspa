@@ -35,7 +35,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_core::{debug, info, time::unix_now, trace, warn};
+use kaspa_core::{debug, info, trace, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -383,7 +383,7 @@ impl PruningProcessor {
 
             // Prune the selected chain index below the pruning point
             let mut selected_chain_write = self.selected_chain_store.write();
-            selected_chain_write.prune_below_pruning_point(BatchDbWriter::new(&mut batch), new_pruning_point).unwrap();
+            selected_chain_write.prune_below_pruning_point(BatchDbWriter::new(&mut batch), retention_period_root).unwrap();
 
             // Flush the batch to the DB
             self.db.write(batch).unwrap();
@@ -563,7 +563,9 @@ impl PruningProcessor {
                 let retention_period_ms = (retention_period_days * 86400.0 * 1000.0).ceil() as u64;
 
                 // The target timestamp we would like to find a point below
-                let retention_period_root_ts_target = unix_now().saturating_sub(retention_period_ms);
+                let sink_timestamp_as_current_time =
+                    self.headers_store.get_timestamp(self.lkg_virtual_state.load().ghostdag_data.selected_parent).unwrap();
+                let retention_period_root_ts_target = sink_timestamp_as_current_time.saturating_sub(retention_period_ms);
 
                 // Iterate from the new pruning point to the prev retention root and search for the first point with enough days above it.
                 // Note that prev retention root is always a past pruning point, so we can iterate via pruning samples until we reach it.
