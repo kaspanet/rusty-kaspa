@@ -35,7 +35,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_core::{debug, info, time::unix_now, trace, warn};
+use kaspa_core::{debug, info, trace, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -556,26 +556,6 @@ impl PruningProcessor {
             // If the retention period wasn't set, immediately default to the pruning point.
             None => pruning_point,
             Some(retention_period_days) => {
-                if self.config.skip_proof_of_work {
-                    // Special condition: during simulations, pow is skipped. Timestamps in these simulations are unreliable and
-                    // are not representative of real time. However, this function depends on real time checks. So we need to do something
-                    // else during simulations.
-                    //
-                    // If skip_proof_of_work is true, assume we're doing a simulation and that the retention period days is
-                    // the number of pruning samples before current pruning point to use
-                    let mut new_retention_period_root = pruning_point;
-                    let periods_required = retention_period_days.ceil() as u64;
-
-                    for _ in 0..periods_required {
-                        if new_retention_period_root == retention_period_root {
-                            break;
-                        }
-                        new_retention_period_root =
-                            self.pruning_samples_store.pruning_sample_from_pov(new_retention_period_root).unwrap();
-                    }
-
-                    return new_retention_period_root;
-                }
                 // The retention period in milliseconds we need to cover
                 // Note: If retention period is set to an amount lower than what the new pruning point would cover
                 // this function will simply return the new pruning point. The new pruning point passed as an argument
@@ -583,7 +563,9 @@ impl PruningProcessor {
                 let retention_period_ms = (retention_period_days * 86400.0 * 1000.0).ceil() as u64;
 
                 // The target timestamp we would like to find a point below
-                let retention_period_root_ts_target = unix_now().saturating_sub(retention_period_ms);
+                let sink_timestamp_as_current_time =
+                    self.headers_store.get_timestamp(self.lkg_virtual_state.load().ghostdag_data.selected_parent).unwrap();
+                let retention_period_root_ts_target = sink_timestamp_as_current_time.saturating_sub(retention_period_ms);
 
                 // Iterate from the new pruning point to the prev retention root and search for the first point with enough days above it.
                 // Note that prev retention root is always a past pruning point, so we can iterate via pruning samples until we reach it.
