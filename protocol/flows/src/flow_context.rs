@@ -635,6 +635,11 @@ impl FlowContext {
         self.mining_rule_engine.is_nearly_synced(sink_daa_score_and_timestamp)
     }
 
+    pub async fn should_mine(&self, session: &ConsensusSessionOwned) -> bool {
+        let sink_daa_score_and_timestamp = session.async_get_sink_daa_score_timestamp().await;
+        self.mining_rule_engine.should_mine(sink_daa_score_and_timestamp)
+    }
+
     /// Notifies that the UTXO set was reset due to pruning point change via IBD.
     pub fn on_pruning_point_utxoset_override(&self) {
         // Notifications from the flow context might be ignored if the inner channel is already closing
