@@ -590,7 +590,7 @@ impl FlowContext {
             }
         }
 
-        // Transaction relay is disabled if the node is out of sync and thus not mining
+        // Transaction relay is disabled if the node is out of sync
         if !self.is_nearly_synced(consensus).await {
             return;
         }
