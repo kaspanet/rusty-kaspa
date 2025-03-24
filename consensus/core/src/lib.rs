@@ -27,6 +27,7 @@ pub mod hashing;
 pub mod header;
 pub mod mass;
 pub mod merkle;
+pub mod mining_rules;
 pub mod muhash;
 pub mod network;
 pub mod pruning;

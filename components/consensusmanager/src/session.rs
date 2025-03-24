@@ -250,6 +250,10 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_sink_timestamp()).await
     }
 
+    pub async fn async_get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
+        self.clone().spawn_blocking(|c| c.get_sink_daa_score_timestamp()).await
+    }
+
     pub async fn async_get_current_block_color(&self, hash: Hash) -> Option<bool> {
         self.clone().spawn_blocking(move |c| c.get_current_block_color(hash)).await
     }
@@ -261,13 +265,6 @@ impl ConsensusSessionOwned {
 
     pub async fn async_estimate_block_count(&self) -> BlockCount {
         self.clone().spawn_blocking(|c| c.estimate_block_count()).await
-    }
-
-    /// Returns whether this consensus is considered synced or close to being synced.
-    ///
-    /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
-    pub async fn async_is_nearly_synced(&self) -> bool {
-        self.clone().spawn_blocking(|c| c.is_nearly_synced()).await
     }
 
     pub async fn async_get_virtual_chain_from_block(
