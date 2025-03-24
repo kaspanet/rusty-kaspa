@@ -21,7 +21,10 @@ use kaspa_core::{
 };
 use kaspa_p2p_lib::Hub;
 
-use crate::rules::{mining_rule::MiningRule, sync_rate_rule::SyncRateRule, ExtraData};
+use crate::rules::{
+    blue_only_mergeset_rule::BlueOnlyMergesetRule, mining_rule::MiningRule, no_transactions_rule::NoTransactionsRule,
+    sync_rate_rule::SyncRateRule, ExtraData,
+};
 
 const RULE_ENGINE: &str = "mining-rule-engine";
 pub const SNAPSHOT_INTERVAL: u64 = 10;
@@ -75,6 +78,8 @@ impl MiningRuleEngine {
                     has_sufficient_peer_connectivity: self.has_sufficient_peer_connectivity(),
                     finality_duration: self.config.finality_duration_in_milliseconds().get(sink_daa_timestamp.daa_score),
                     elapsed_time,
+                    sink_daa_score_timestamp: session.async_get_sink_daa_score_timestamp().await,
+                    merge_depth: self.config.merge_depth().get(sink_daa_timestamp.daa_score),
                 };
 
                 trace!("Current Mining Rule: {:?}", self.mining_rules);
@@ -99,7 +104,11 @@ impl MiningRuleEngine {
         mining_rules: Arc<MiningRules>,
     ) -> Self {
         let use_sync_rate_rule = Arc::new(AtomicBool::new(false));
-        let rules: Vec<Arc<(dyn MiningRule + 'static)>> = vec![Arc::new(SyncRateRule::new(use_sync_rate_rule.clone()))];
+        let rules: Vec<Arc<(dyn MiningRule + 'static)>> = vec![
+            Arc::new(SyncRateRule::new(use_sync_rate_rule.clone())),
+            Arc::new(BlueOnlyMergesetRule::new(mining_rules.blue_only_mergeset.clone())),
+            Arc::new(NoTransactionsRule::new(mining_rules.no_transactions.clone())),
+        ];
 
         Self { consensus_manager, config, processing_counters, tick_service, hub, use_sync_rate_rule, mining_rules, rules }
     }

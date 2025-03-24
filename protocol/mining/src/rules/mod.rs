@@ -1,5 +1,9 @@
 use std::time::Duration;
 
+use kaspa_consensus_core::daa_score_timestamp::DaaScoreTimestamp;
+
+pub mod blue_only_mergeset_rule;
+pub mod no_transactions_rule;
 pub mod sync_rate_rule;
 
 pub mod mining_rule;
@@ -10,4 +14,6 @@ pub struct ExtraData {
     pub has_sufficient_peer_connectivity: bool,
     pub finality_duration: u64,
     pub elapsed_time: Duration,
+    pub sink_daa_score_timestamp: DaaScoreTimestamp,
+    pub merge_depth: u64,
 }

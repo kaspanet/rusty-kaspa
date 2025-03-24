@@ -77,7 +77,11 @@ use kaspa_consensus_notify::{
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_core::{debug, info, time::unix_now, trace, warn};
+use kaspa_core::{
+    debug, info,
+    time::{unix_now, Stopwatch},
+    trace, warn,
+};
 use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::MuHash;
@@ -105,6 +109,10 @@ use std::{
     ops::Deref,
     sync::{atomic::Ordering, Arc},
 };
+
+// 100ms - since at 10BPS, average block time is 100ms and so must expect
+// the block template to build faster than that
+pub const BUILD_BLOCK_TEMPLATE_SPEED_THRESHOLD: u128 = 100;
 
 pub struct VirtualStateProcessor {
     // Channels
@@ -715,7 +723,10 @@ impl VirtualStateProcessor {
         let max_candidates = self.max_virtual_parent_candidates(max_block_parents);
 
         // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
-        if candidates.len() > max_candidates {
+        if self.mining_rules.blue_only_mergeset.load(Ordering::Relaxed) {
+            // pick 100% of the top blue work blocks
+            candidates.truncate(max_candidates);
+        } else if candidates.len() > max_candidates {
             // make_contiguous should be a no op since the deque was just built
             let slice = candidates.make_contiguous();
 
@@ -804,25 +815,32 @@ impl VirtualStateProcessor {
         let mut ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
         let merge_depth_root = self.depth_manager.calc_merge_depth_root(&ghostdag_data, current_pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;
-        let mut bad_reds = Vec::new();
+        let bad_reds = if self.mining_rules.blue_only_mergeset.load(Ordering::Relaxed) {
+            // Treat all reds as bad reds when this rule is triggered
+            ghostdag_data.mergeset_reds.as_ref().to_vec()
+        } else {
+            let mut inner_bad_reds = Vec::new();
 
-        //
-        // Note that the code below optimizes for the usual case where there are no merge-bound-violating blocks.
-        //
+            //
+            // Note that the code below optimizes for the usual case where there are no merge-bound-violating blocks.
+            //
 
-        // Find red blocks violating the merge bound and which are not kosherized by any blue
-        for red in ghostdag_data.mergeset_reds.iter().copied() {
-            if self.reachability_service.is_dag_ancestor_of(merge_depth_root, red) {
-                continue;
+            // Find red blocks violating the merge bound and which are not kosherized by any blue
+            for red in ghostdag_data.mergeset_reds.iter().copied() {
+                if self.reachability_service.is_dag_ancestor_of(merge_depth_root, red) {
+                    continue;
+                }
+                // Lazy load the kosherizing blocks since this case is extremely rare
+                if kosherizing_blues.is_none() {
+                    kosherizing_blues = Some(self.depth_manager.kosherizing_blues(&ghostdag_data, merge_depth_root).collect());
+                }
+                if !self.reachability_service.is_dag_ancestor_of_any(red, &mut kosherizing_blues.as_ref().unwrap().iter().copied()) {
+                    inner_bad_reds.push(red);
+                }
             }
-            // Lazy load the kosherizing blocks since this case is extremely rare
-            if kosherizing_blues.is_none() {
-                kosherizing_blues = Some(self.depth_manager.kosherizing_blues(&ghostdag_data, merge_depth_root).collect());
-            }
-            if !self.reachability_service.is_dag_ancestor_of_any(red, &mut kosherizing_blues.as_ref().unwrap().iter().copied()) {
-                bad_reds.push(red);
-            }
-        }
+
+            inner_bad_reds
+        };
 
         if !bad_reds.is_empty() {
             // Remove all parents which lead to merging a bad red
@@ -964,7 +982,9 @@ impl VirtualStateProcessor {
         // We call for the initial tx batch before acquiring the virtual read lock,
         // optimizing for the common case where all txs are valid. Following selection calls
         // are called within the lock in order to preserve validness of already validated txs
-        let mut txs = tx_selector.select_transactions();
+        let mut txs =
+            if self.mining_rules.no_transactions.load(Ordering::Relaxed) { vec![] } else { tx_selector.select_transactions() };
+
         let mut calculated_fees = Vec::with_capacity(txs.len());
         let virtual_read = self.virtual_stores.read();
         let virtual_state = virtual_read.state.get().unwrap();
@@ -1051,6 +1071,7 @@ impl VirtualStateProcessor {
         mut txs: Vec<Transaction>,
         calculated_fees: Vec<u64>,
     ) -> Result<BlockTemplate, RuleError> {
+        let swo = Stopwatch::new("virtual_processor.resolve_virtual");
         // [`calc_block_parents`] can use deep blocks below the pruning point for this calculation, so we
         // need to hold the pruning lock.
         let _prune_guard = self.pruning_lock.blocking_read();
@@ -1100,6 +1121,13 @@ impl VirtualStateProcessor {
         let selected_parent_hash = virtual_state.ghostdag_data.selected_parent;
         let selected_parent_timestamp = self.headers_store.get_timestamp(selected_parent_hash).unwrap();
         let selected_parent_daa_score = self.headers_store.get_daa_score(selected_parent_hash).unwrap();
+
+        if swo.elapsed().as_millis() <= BUILD_BLOCK_TEMPLATE_SPEED_THRESHOLD {
+            self.counters.build_block_template_within_threshold.fetch_add(1, Ordering::SeqCst);
+        } else {
+            self.counters.build_block_template_above_threshold.fetch_add(1, Ordering::SeqCst);
+        }
+
         Ok(BlockTemplate::new(
             MutableBlock::new(header, txs),
             miner_data,
