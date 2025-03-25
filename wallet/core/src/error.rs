@@ -9,6 +9,8 @@ use kaspa_bip32::Error as BIP32Error;
 use kaspa_consensus_core::sign::Error as CoreSignError;
 use kaspa_rpc_core::RpcError as KaspaRpcError;
 use kaspa_wrpc_client::error::Error as KaspaWorkflowRpcError;
+#[cfg(feature = "py-sdk")]
+use pyo3::{exceptions::PyException, prelude::*};
 use std::sync::PoisonError;
 use thiserror::Error;
 use wasm_bindgen::JsValue;
@@ -439,5 +441,12 @@ impl From<RecvError> for Error {
 impl<T> From<TrySendError<T>> for Error {
     fn from(e: TrySendError<T>) -> Self {
         Error::Custom(e.to_string())
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+impl From<Error> for PyErr {
+    fn from(value: Error) -> Self {
+        PyException::new_err(value.to_string())
     }
 }

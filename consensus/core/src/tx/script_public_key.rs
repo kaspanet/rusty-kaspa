@@ -6,6 +6,8 @@ use kaspa_utils::{
     hex::{FromHex, ToHex},
     serde_bytes::FromHexVisitor,
 };
+#[cfg(feature = "py-sdk")]
+use pyo3::prelude::*;
 use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -50,6 +52,7 @@ export interface IScriptPublicKey {
 /// Represents a Kaspad ScriptPublicKey
 /// @category Consensus
 #[derive(Default, PartialEq, Eq, Clone, Hash, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct ScriptPublicKey {
     pub version: ScriptPublicKeyVersion,
@@ -346,6 +349,21 @@ impl ScriptPublicKey {
 
     #[wasm_bindgen(getter = script)]
     pub fn script_as_hex(&self) -> String {
+        self.script.to_hex()
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl ScriptPublicKey {
+    #[new]
+    pub fn constructor_py(version: u16, script: kaspa_python_core::types::PyBinary) -> PyResult<ScriptPublicKey> {
+        Ok(ScriptPublicKey::new(version, script.data.into()))
+    }
+
+    #[getter]
+    #[pyo3(name = "script")]
+    pub fn script_as_hex_py(&self) -> String {
         self.script.to_hex()
     }
 }

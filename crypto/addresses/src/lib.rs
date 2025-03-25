@@ -7,6 +7,8 @@
 //!
 
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(feature = "py-sdk")]
+use pyo3::{exceptions::PyException, prelude::*};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
@@ -203,6 +205,7 @@ pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 ///
 /// @category Address
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct Address {
     #[wasm_bindgen(skip)]
@@ -271,6 +274,57 @@ impl Address {
     }
 
     pub fn short(&self, n: usize) -> String {
+        let payload = self.encode_payload();
+        let n = std::cmp::min(n, payload.len() / 4);
+        format!("{}:{}....{}", self.prefix, &payload[0..n], &payload[payload.len() - n..])
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl Address {
+    #[new]
+    pub fn constructor_py(address: &str) -> PyResult<Address> {
+        Ok(address.try_into()?)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "validate")]
+    pub fn validate_py(address: &str) -> bool {
+        Self::try_from(address).is_ok()
+    }
+
+    #[pyo3(name = "to_string")]
+    pub fn address_to_string_py(&self) -> String {
+        self.into()
+    }
+
+    #[getter]
+    #[pyo3(name = "version")]
+    pub fn version_to_string_py(&self) -> String {
+        self.version.to_string()
+    }
+
+    #[getter]
+    #[pyo3(name = "prefix")]
+    pub fn prefix_to_string_py(&self) -> String {
+        self.prefix.to_string()
+    }
+
+    #[setter]
+    #[pyo3(name = "prefix")]
+    pub fn set_prefix_from_str_py(&mut self, prefix: &str) -> PyResult<()> {
+        self.prefix = Prefix::try_from(prefix)?;
+        Ok(())
+    }
+
+    #[pyo3(name = "payload")]
+    pub fn payload_to_string_py(&self) -> String {
+        self.encode_payload()
+    }
+
+    #[pyo3(name = "short")]
+    pub fn short_py(&self, n: usize) -> String {
         let payload = self.encode_payload();
         let n = std::cmp::min(n, payload.len() / 4);
         format!("{}:{}....{}", self.prefix, &payload[0..n], &payload[payload.len() - n..])
@@ -521,6 +575,13 @@ impl TryCastFromJs for Address {
                 Err(AddressError::InvalidAddress)
             }
         })
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+impl From<AddressError> for PyErr {
+    fn from(value: AddressError) -> PyErr {
+        PyException::new_err(value.to_string())
     }
 }
 
