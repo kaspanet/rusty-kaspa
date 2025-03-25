@@ -555,7 +555,7 @@ fn select_utxos(
     next_available_utxo_index: &mut usize,
     tx_config: &TxConfig,
 ) -> (Vec<(TransactionOutpoint, UtxoEntry)>, u64) {
-    const MAX_UTXOS: usize = 84;
+    const MAX_UTXOS: usize = 8;
     let mut selected_amount: u64 = 0;
     let mut selected = Vec::new();
     let mut rng = thread_rng();
