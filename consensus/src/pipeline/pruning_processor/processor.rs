@@ -15,7 +15,7 @@ use crate::{
             pruning_samples::PruningSamplesStoreReader,
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::StagingRelationsStore,
-            selected_chain::SelectedChainStore,
+            selected_chain::{SelectedChainStore, SelectedChainStoreReader},
             statuses::StatusesStoreReader,
             tips::{TipsStore, TipsStoreReader},
             utxo_diffs::UtxoDiffsStoreReader,
@@ -383,7 +383,14 @@ impl PruningProcessor {
 
             // Prune the selected chain index below the pruning point
             let mut selected_chain_write = self.selected_chain_store.write();
-            selected_chain_write.prune_below_pruning_point(BatchDbWriter::new(&mut batch), retention_period_root).unwrap();
+            // Temp — bug fix upgrade logic: the prev wrong logic might have pruned the new retention period root from the selected chain store,
+            //                               hence we verify its existence first and only then proceed.
+            // TODO (in upcoming versions): remove this temp condition
+            if retention_period_root == new_pruning_point
+                || selected_chain_write.get_by_hash(retention_period_root).unwrap_option().is_some()
+            {
+                selected_chain_write.prune_below_point(BatchDbWriter::new(&mut batch), retention_period_root).unwrap();
+            }
 
             // Flush the batch to the DB
             self.db.write(batch).unwrap();
