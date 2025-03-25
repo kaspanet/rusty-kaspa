@@ -113,9 +113,6 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run cargo tests non--release
-        run: cargo test --no-fail-fast
-
       - name: Run cargo build with devnet-prealloc feature
         run: cargo build --release --features devnet-prealloc --workspace --all --tests --benches
 
