@@ -341,6 +341,7 @@ pub fn pskt_to_pending_transaction(
         final_transaction_priority_fee: fee_u.into(),
         final_transaction_destination,
         final_transaction_payload: None,
+        payload_distribution: crate::tx::generator::settings::PayloadDistribution::default(),
     };
 
     // Create the Generator
