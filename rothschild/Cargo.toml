@@ -25,6 +25,7 @@ faster-hex.workspace = true
 itertools.workspace = true
 log.workspace = true
 parking_lot.workspace = true
+rand.workspace = true
 rayon.workspace = true
 secp256k1 = { workspace = true, features = ["global-context", "rand-std"] }
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }

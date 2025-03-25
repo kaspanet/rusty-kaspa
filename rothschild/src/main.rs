@@ -16,6 +16,7 @@ use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode, RpcUtxoEntry};
 use kaspa_txscript::pay_to_address_script;
 use parking_lot::Mutex;
+use rand::RngCore;
 use rayon::prelude::*;
 use secp256k1::{
     rand::{thread_rng, Rng},
@@ -46,6 +47,7 @@ pub struct Args {
     pub addr: Option<String>,
     pub priority_fee: u64,
     pub randomize_fee: bool,
+    pub payload_size: usize,
 }
 
 impl Args {
@@ -60,6 +62,7 @@ impl Args {
             addr: m.get_one::<String>("addr").cloned(),
             priority_fee: m.get_one::<u64>("priority-fee").cloned().unwrap_or(0),
             randomize_fee: m.get_one::<bool>("randomize-fee").cloned().unwrap_or(false),
+            payload_size: m.get_one::<usize>("payload-size").cloned().unwrap_or(0),
         }
     }
 }
@@ -113,6 +116,16 @@ pub fn cli() -> Command {
                 .default_value("false")
                 .help("Randomize transaction priority fee"),
         )
+        .arg(
+            Arg::new("payload-size")
+                .long("payload-size")
+                .short('p')
+                .value_name("payload-size")
+                .hide(true)
+                .default_value("0")
+                .value_parser(clap::value_parser!(usize))
+                .help("Randomized payload size"),
+        )
 }
 
 async fn new_rpc_client(subscription_context: &SubscriptionContext, address: &str) -> GrpcClient {
@@ -139,9 +152,10 @@ struct ClientPoolArg {
     utxos_len: usize,
 }
 
-struct TxsFeeConfig {
+struct TxConfig {
     priority_fee: u64,
     randomize_fee: bool,
+    payload_size: usize,
 }
 
 #[tokio::main]
@@ -187,7 +201,9 @@ async fn main() {
 
     let kaspa_to_addr = args.addr.as_ref().map_or_else(|| kaspa_addr.clone(), |addr_str| Address::try_from(addr_str.clone()).unwrap());
 
-    let fee_config = TxsFeeConfig { priority_fee: args.priority_fee, randomize_fee: args.randomize_fee };
+    (args.payload_size <= 20000).then_some(()).expect("payload-size can be max 20000");
+
+    let tx_config = TxConfig { priority_fee: args.priority_fee, randomize_fee: args.randomize_fee, payload_size: args.payload_size };
 
     rayon::ThreadPoolBuilder::new().num_threads(args.threads as usize).build_global().unwrap();
 
@@ -204,9 +220,12 @@ async fn main() {
     if args.priority_fee != 0 {
         log_message.push_str(&format!(
             "\n\tpriority fee: {} SOMPS {}",
-            fee_config.priority_fee,
-            if fee_config.randomize_fee { "[randomize]" } else { "" }
+            tx_config.priority_fee,
+            if tx_config.randomize_fee { "[randomize]" } else { "" }
         ));
+    }
+    if args.payload_size != 0 {
+        log_message.push_str(&format!("\n\tpayload size: {} random bytes", tx_config.payload_size,));
     }
     info!("{}", log_message);
 
@@ -314,7 +333,7 @@ async fn main() {
             stats.clone(),
             maximize_inputs,
             &mut next_available_utxo_index,
-            &fee_config,
+            &tx_config,
         )
         .await;
         if !has_funds {
@@ -429,7 +448,7 @@ async fn maybe_send_tx(
     stats: Arc<Mutex<Stats>>,
     maximize_inputs: bool,
     next_available_utxo_index: &mut usize,
-    fee_config: &TxsFeeConfig,
+    tx_config: &TxConfig,
 ) -> bool {
     let num_outs = if maximize_inputs { 1 } else { 2 };
 
@@ -438,7 +457,7 @@ async fn maybe_send_tx(
     let selected_utxos_groups = (0..txs_to_send)
         .map(|_| {
             let (selected_utxos, selected_amount) =
-                select_utxos(utxos, DEFAULT_SEND_AMOUNT, num_outs, maximize_inputs, next_available_utxo_index, fee_config);
+                select_utxos(utxos, DEFAULT_SEND_AMOUNT, num_outs, maximize_inputs, next_available_utxo_index, tx_config);
             if selected_amount == 0 {
                 return None;
             }
@@ -464,7 +483,7 @@ async fn maybe_send_tx(
         .into_par_iter()
         .map(|utxo_option| {
             if let Some((selected_utxos, selected_amount)) = utxo_option {
-                let tx = generate_tx(schnorr_key, &selected_utxos, selected_amount, num_outs, &kaspa_addr);
+                let tx = generate_tx(schnorr_key, &selected_utxos, selected_amount, num_outs, &kaspa_addr, tx_config.payload_size);
 
                 return Some((tx, selected_utxos.len(), selected_utxos.into_iter().map(|(_, entry)| entry.amount).sum::<u64>()));
             }
@@ -509,6 +528,7 @@ fn generate_tx(
     send_amount: u64,
     num_outs: u64,
     kaspa_addr: &Address,
+    payload_size: usize,
 ) -> Transaction {
     let script_public_key = pay_to_address_script(kaspa_addr);
     let inputs = utxos
@@ -519,7 +539,9 @@ fn generate_tx(
     let outputs = (0..num_outs)
         .map(|_| TransactionOutput { value: send_amount / num_outs, script_public_key: script_public_key.clone() })
         .collect_vec();
-    let unsigned_tx = Transaction::new_non_finalized(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+    let mut data = vec![0u8; payload_size];
+    rand::thread_rng().fill_bytes(&mut data);
+    let unsigned_tx = Transaction::new_non_finalized(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, data);
     let signed_tx =
         sign(MutableTransaction::with_entries(unsigned_tx, utxos.iter().map(|(_, entry)| entry.clone()).collect_vec()), schnorr_key);
     signed_tx.tx
@@ -531,9 +553,9 @@ fn select_utxos(
     num_outs: u64,
     maximize_utxos: bool,
     next_available_utxo_index: &mut usize,
-    fee_config: &TxsFeeConfig,
+    tx_config: &TxConfig,
 ) -> (Vec<(TransactionOutpoint, UtxoEntry)>, u64) {
-    const MAX_UTXOS: usize = 84;
+    const MAX_UTXOS: usize = 8;
     let mut selected_amount: u64 = 0;
     let mut selected = Vec::new();
     let mut rng = thread_rng();
@@ -544,10 +566,10 @@ fn select_utxos(
         selected.push((outpoint, entry));
 
         let fee = required_fee(selected.len(), num_outs);
-        let priority_fee = if fee_config.randomize_fee && fee_config.priority_fee > 0 {
-            rng.gen_range(0..fee_config.priority_fee)
+        let priority_fee = if tx_config.randomize_fee && tx_config.priority_fee > 0 {
+            rng.gen_range(0..tx_config.priority_fee)
         } else {
-            fee_config.priority_fee
+            tx_config.priority_fee
         };
 
         *next_available_utxo_index += 1;
