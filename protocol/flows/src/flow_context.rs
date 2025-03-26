@@ -782,7 +782,7 @@ impl ConnectionInitializer for FlowContext {
         const CONNECT_ONLY_NEW_VERSIONS_THRESHOLD_MILLIS: u64 = 24 * 3600 * 3600 * 1000;
         let threshold = CONNECT_ONLY_NEW_VERSIONS_THRESHOLD_MILLIS / self.config.target_time_per_block().before();
         let sink_daa_score = self.consensus().unguarded_session().async_get_sink_daa_score_timestamp().await.daa_score;
-        let connect_only_new_versions = self.config.crescendo_activation.is_active(sink_daa_score)
+        let connect_only_new_versions = self.config.net.is_mainnet() && self.config.crescendo_activation.is_active(sink_daa_score)
             || self.config.crescendo_activation.is_within_range_before_activation(sink_daa_score, threshold).is_some();
 
         let (flows, applied_protocol_version) = if connect_only_new_versions {
