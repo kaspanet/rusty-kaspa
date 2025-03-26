@@ -51,10 +51,11 @@ event_type_enum! {
         VirtualDaaScoreChanged,
         PruningPointUtxoSetOverride,
         NewBlockTemplate,
+        MempoolSizeChanged,
     }
 }
 
-pub const EVENT_COUNT: usize = 9;
+pub const EVENT_COUNT: usize = 10;
 
 impl FromStr for EventType {
     type Err = Error;
@@ -70,6 +71,7 @@ impl FromStr for EventType {
             "virtual-daa-score-changed" => Ok(EventType::VirtualDaaScoreChanged),
             "pruning-point-utxo-set-override" => Ok(EventType::PruningPointUtxoSetOverride),
             "new-block-template" => Ok(EventType::NewBlockTemplate),
+            "mempool-size-changed" => Ok(EventType::MempoolSizeChanged),
             _ => Err(Error::InvalidEventType(s.to_string())),
         }
     }

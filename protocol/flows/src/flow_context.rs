@@ -14,7 +14,7 @@ use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
 use kaspa_consensus_notify::{
-    notification::{Notification, PruningPointUtxoSetOverrideNotification},
+    notification::{MempoolSizeChangedNotification, Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusInstance, ConsensusManager, ConsensusProxy, ConsensusSessionOwned};
@@ -26,6 +26,7 @@ use kaspa_core::{
 use kaspa_core::{time::unix_now, warn};
 use kaspa_hashes::Hash;
 use kaspa_mining::mempool::tx::{Orphan, Priority};
+use kaspa_mining::model::tx_query::TransactionQuery;
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::RbfPolicy};
 use kaspa_notify::notifier::Notify;
 use kaspa_p2p_lib::{
@@ -624,6 +625,7 @@ impl FlowContext {
                             .await;
                     }
                 }
+                context.on_transaction_added_to_mempool().await;
                 context.mempool_scanning_is_done().await;
                 debug!("<> Mempool scanning task is done");
             });
@@ -649,7 +651,10 @@ impl FlowContext {
 
     /// Notifies that a transaction has been added to the mempool.
     pub async fn on_transaction_added_to_mempool(&self) {
-        // TODO: call a handler function or a predefined registered service
+        let network_mempool_size = self.mining_manager().clone().transaction_count(TransactionQuery::TransactionsOnly).await as u64;
+
+        let _ =
+            self.notification_root.notify(Notification::MempoolSizeChanged(MempoolSizeChangedNotification::new(network_mempool_size)));
     }
 
     /// Adds the rpc-submitted transaction to the mempool and propagates it to peers.
@@ -673,6 +678,9 @@ impl FlowContext {
             false, // RPC transactions are considered high priority, so we don't want to throttle them
         )
         .await;
+
+        self.on_transaction_added_to_mempool().await;
+
         Ok(())
     }
 
@@ -698,6 +706,9 @@ impl FlowContext {
             false, // RPC transactions are considered high priority, so we don't want to throttle them
         )
         .await;
+
+        self.on_transaction_added_to_mempool().await;
+
         // The combination of args above of Orphan::Forbidden and RbfPolicy::Mandatory should always result
         // in a removed transaction returned, however we prefer failing gracefully in case of future internal mempool changes
         transaction_insertion.removed.ok_or(ProtocolError::Other(

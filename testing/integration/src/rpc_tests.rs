@@ -11,8 +11,8 @@ use kaspa_hashes::Hash;
 use kaspa_notify::{
     connection::{ChannelConnection, ChannelType},
     scope::{
-        BlockAddedScope, FinalityConflictScope, NewBlockTemplateScope, PruningPointUtxoSetOverrideScope, Scope,
-        SinkBlueScoreChangedScope, UtxosChangedScope, VirtualChainChangedScope, VirtualDaaScoreChangedScope,
+        BlockAddedScope, FinalityConflictScope, MempoolSizeChangedScope, NewBlockTemplateScope, PruningPointUtxoSetOverrideScope,
+        Scope, SinkBlueScoreChangedScope, UtxosChangedScope, VirtualChainChangedScope, VirtualDaaScoreChangedScope,
     },
 };
 use kaspa_rpc_core::{api::rpc::RpcApi, model::*, Notification};
@@ -732,6 +732,13 @@ async fn sanity_test() {
                         .start_notify(id, VirtualChainChangedScope { include_accepted_transaction_ids: false }.into())
                         .await
                         .unwrap();
+                })
+            }
+            KaspadPayloadOps::NotifyMempoolSizeChanged => {
+                let rpc_client = client.clone();
+                let id = listener_id;
+                tst!(op, {
+                    rpc_client.start_notify(id, MempoolSizeChangedScope {}.into()).await.unwrap();
                 })
             }
             KaspadPayloadOps::StopNotifyingUtxosChanged => {

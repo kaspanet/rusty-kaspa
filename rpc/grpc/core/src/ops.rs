@@ -98,6 +98,7 @@ pub enum KaspadPayloadOps {
     NotifyPruningPointUtxoSetOverride,
     NotifyVirtualDaaScoreChanged,
     NotifyVirtualChainChanged,
+    NotifyMempoolSizeChanged,
 
     // Legacy stop subscription commands
     StopNotifyingUtxosChanged,
