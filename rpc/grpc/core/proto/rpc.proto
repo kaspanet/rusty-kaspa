@@ -984,3 +984,29 @@ message GetUtxoReturnAddressResponseMessage {
   string return_address = 1;
   RPCError error = 1000;
 }
+
+message GetPruningWindowRootsRequestMessage {
+}
+
+message PruningWindowRoots{
+  repeated string pp_roots = 1;
+  uint64 pp_index = 2;
+}
+
+message GetPruningWindowRootsResponseMessage{
+  repeated PruningWindowRoots roots = 1;
+  RPCError error = 1000;
+}
+
+message ArchivalBlock{
+  string child = 1;
+  RpcBlock block = 2;
+}
+
+message AddArchivalBlocksRequestMessage {
+  repeated ArchivalBlock blocks = 1;
+}
+
+message AddArchivalBlocksResponseMessage {
+  RPCError error = 1000;
+}
