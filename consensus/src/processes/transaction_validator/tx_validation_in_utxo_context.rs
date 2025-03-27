@@ -1,4 +1,4 @@
-use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
+use crate::constants::{MAX_DWORK, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
     tx::{TransactionInput, VerifiableTransaction},
@@ -107,7 +107,7 @@ impl TransactionValidator {
                 return Err(TxRuleError::InputAmountOverflow);
             }
 
-            if total > MAX_SOMPI {
+            if total > MAX_DWORK {
                 return Err(TxRuleError::InputAmountTooHigh);
             }
         }

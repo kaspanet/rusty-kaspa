@@ -29,7 +29,7 @@ use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::blockhash::new_unique;
 use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER, TRANSIENT_BYTE_TO_MASS_FACTOR};
+use kaspa_consensus_core::constants::{BLOCK_VERSION, DWORK_PER_KASPA, STORAGE_MASS_PARAMETER, TRANSIENT_BYTE_TO_MASS_FACTOR};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::mining_rules::MiningRules;
@@ -1802,7 +1802,7 @@ async fn run_kip10_activation_test() {
     // Set up initial UTXO with our test script
     let initial_utxo_collection = [(
         TransactionOutpoint::new(1.into(), 0),
-        UtxoEntry { amount: SOMPI_PER_KASPA, script_public_key: spk.clone(), block_daa_score: 0, is_coinbase: false },
+        UtxoEntry { amount: DWORK_PER_KASPA, script_public_key: spk.clone(), block_daa_score: 0, is_coinbase: false },
     )];
 
     // Initialize consensus with KIP-10 activation point
@@ -1953,7 +1953,7 @@ async fn payload_activation_test() {
     let initial_utxo_collection = [(
         TransactionOutpoint::new(1.into(), 0),
         UtxoEntry {
-            amount: SOMPI_PER_KASPA,
+            amount: DWORK_PER_KASPA,
             script_public_key: ScriptPublicKey::from_vec(0, vec![OpTrue]),
             block_daa_score: 0,
             is_coinbase: false,
@@ -2091,7 +2091,7 @@ async fn runtime_sig_op_counting_test() {
     // Set up initial UTXO with P2SH script
     let initial_utxo_collection = [(
         TransactionOutpoint::new(1.into(), 0),
-        UtxoEntry { amount: SOMPI_PER_KASPA, script_public_key: script_pub_key.clone(), block_daa_score: 0, is_coinbase: false },
+        UtxoEntry { amount: DWORK_PER_KASPA, script_public_key: script_pub_key.clone(), block_daa_score: 0, is_coinbase: false },
     )];
 
     let config = ConfigBuilder::new(DEVNET_PARAMS)
