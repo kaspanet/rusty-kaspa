@@ -3,7 +3,7 @@ use crate::mempool::{
     Mempool,
 };
 use kaspa_consensus_core::{
-    constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
+    constants::{MAX_DWORK, MAX_SCRIPT_PUBLIC_KEY_VERSION},
     mass,
     tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
 };
@@ -225,7 +225,7 @@ impl Mempool {
 
         // Set the minimum fee to the maximum possible value if the calculated
         // fee is not in the valid range for monetary amounts.
-        minimum_fee = minimum_fee.min(MAX_SOMPI);
+        minimum_fee = minimum_fee.min(MAX_DWORK);
 
         minimum_fee
     }
@@ -356,7 +356,7 @@ mod tests {
             // Maximum allowed value is never dust.
             Test {
                 name: "max sompi amount is never dust",
-                tx_out: TransactionOutput::new(MAX_SOMPI, script_public_key.clone()),
+                tx_out: TransactionOutput::new(MAX_DWORK, script_public_key.clone()),
                 minimum_relay_transaction_fee: 1000,
                 is_dust: false,
             },

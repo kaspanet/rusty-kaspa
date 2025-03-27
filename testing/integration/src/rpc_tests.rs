@@ -4,7 +4,7 @@ use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
 use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::params::SIMNET_GENESIS;
-use kaspa_consensus_core::{constants::MAX_SOMPI, header::Header, subnets::SubnetworkId, tx::Transaction};
+use kaspa_consensus_core::{constants::MAX_DWORK, header::Header, subnets::SubnetworkId, tx::Transaction};
 use kaspa_core::{assert_match, info};
 use kaspa_grpc_core::ops::KaspadPayloadOps;
 use kaspa_hashes::Hash;
@@ -489,7 +489,7 @@ async fn sanity_test() {
                 tst!(op, {
                     let response = rpc_client.get_coin_supply_call(None, GetCoinSupplyRequest {}).await.unwrap();
                     assert_eq!(response.circulating_sompi, 0);
-                    assert_eq!(response.max_sompi, MAX_SOMPI);
+                    assert_eq!(response.max_sompi, MAX_DWORK);
                 })
             }
 

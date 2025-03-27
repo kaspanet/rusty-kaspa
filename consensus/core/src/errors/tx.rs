@@ -1,4 +1,4 @@
-use crate::constants::MAX_SOMPI;
+use crate::constants::MAX_DWORK;
 use crate::subnets::SubnetworkId;
 use crate::tx::TransactionOutpoint;
 use kaspa_txscript_errors::TxScriptError;
@@ -54,19 +54,19 @@ pub enum TxRuleError {
     #[error("transaction total inputs spending amount overflowed u64")]
     InputAmountOverflow,
 
-    #[error("transaction total inputs spending amount is higher than the max allowed of {}", MAX_SOMPI)]
+    #[error("transaction total inputs spending amount is higher than the max allowed of {}", MAX_DWORK)]
     InputAmountTooHigh,
 
     #[error("transaction output {0} has zero value")]
     TxOutZero(usize),
 
-    #[error("transaction output {0} value is higher than the max allowed of {}", MAX_SOMPI)]
+    #[error("transaction output {0} value is higher than the max allowed of {}", MAX_DWORK)]
     TxOutTooHigh(usize),
 
     #[error("transaction total outputs value overflowed u64")]
     OutputsValueOverflow,
 
-    #[error("transaction total outputs value is higher than the max allowed of {}", MAX_SOMPI)]
+    #[error("transaction total outputs value is higher than the max allowed of {}", MAX_DWORK)]
     TotalTxOutTooHigh,
 
     #[error("transaction tries to spend {0} while its total inputs amount is {1}")]

@@ -1,4 +1,4 @@
-use crate::constants::{MAX_SOMPI, TX_VERSION};
+use crate::constants::{MAX_DWORK, TX_VERSION};
 use kaspa_consensus_core::tx::Transaction;
 use std::collections::HashSet;
 
@@ -142,7 +142,7 @@ fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
             return Err(TxRuleError::TxOutZero(i));
         }
 
-        if output.value > MAX_SOMPI {
+        if output.value > MAX_DWORK {
             return Err(TxRuleError::TxOutTooHigh(i));
         }
 
@@ -152,7 +152,7 @@ fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
             return Err(TxRuleError::OutputsValueOverflow);
         }
 
-        if total > MAX_SOMPI {
+        if total > MAX_DWORK {
             return Err(TxRuleError::TotalTxOutTooHigh);
         }
     }

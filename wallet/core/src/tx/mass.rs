@@ -38,7 +38,7 @@ pub fn calc_minimum_required_transaction_relay_fee(mass: u64) -> u64 {
 
     // Set the minimum fee to the maximum possible value if the calculated
     // fee is not in the valid range for monetary amounts.
-    minimum_fee = minimum_fee.min(MAX_SOMPI);
+    minimum_fee = minimum_fee.min(MAX_DWORK);
 
     minimum_fee
 }
