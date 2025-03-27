@@ -28,7 +28,7 @@ pub fn kaspa_to_sompi(kaspa: String) -> Option<BigInt> {
 #[wasm_bindgen(js_name = "sompiToKaspaString")]
 pub fn sompi_to_kaspa_string(sompi: ISompiToKaspa) -> Result<String> {
     let sompi = sompi.try_as_u64()?;
-    Ok(crate::utils::sompi_to_kaspa_string(sompi))
+    Ok(crate::utils::dwork_to_kaspa_string(sompi))
 }
 
 ///
@@ -42,5 +42,5 @@ pub fn sompi_to_kaspa_string(sompi: ISompiToKaspa) -> Result<String> {
 pub fn sompi_to_kaspa_string_with_suffix(sompi: ISompiToKaspa, network: &NetworkTypeT) -> Result<String> {
     let sompi = sompi.try_as_u64()?;
     let network_type = NetworkType::try_from(network)?;
-    Ok(crate::utils::sompi_to_kaspa_string_with_suffix(sompi, &network_type))
+    Ok(crate::utils::dwork_to_kaspa_string_with_suffix(sompi, &network_type))
 }

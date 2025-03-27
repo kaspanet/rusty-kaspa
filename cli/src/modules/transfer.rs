@@ -20,19 +20,19 @@ impl Transfer {
         if target_account.id() == account.id() {
             return Err("Cannot transfer to the same account".into());
         }
-        let amount_sompi = try_parse_required_nonzero_kaspa_as_sompi_u64(argv.get(1))?;
-        let priority_fee_sompi = try_parse_optional_kaspa_as_sompi_i64(argv.get(2))?.unwrap_or(0);
+        let amount_dwork = try_parse_required_nonzero_kaspa_as_dwork_u64(argv.get(1))?;
+        let priority_fee_dwork = try_parse_optional_kaspa_as_dwork_i64(argv.get(2))?.unwrap_or(0);
         let target_address = target_account.receive_address()?;
         let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
 
         let abortable = Abortable::default();
-        let outputs = PaymentOutputs::from((target_address.clone(), amount_sompi));
+        let outputs = PaymentOutputs::from((target_address.clone(), amount_dwork));
 
         // let ctx_ = ctx.clone();
         let (summary, _ids) = account
             .send(
                 outputs.into(),
-                priority_fee_sompi.into(),
+                priority_fee_dwork.into(),
                 None,
                 wallet_secret,
                 payment_secret,
