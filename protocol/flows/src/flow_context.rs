@@ -779,11 +779,11 @@ impl ConnectionInitializer for FlowContext {
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
         // Register all flows according to version
-        const CONNECT_ONLY_NEW_VERSIONS_THRESHOLD_MILLIS: u64 = 24 * 3600 * 3600 * 1000;
-        let threshold = CONNECT_ONLY_NEW_VERSIONS_THRESHOLD_MILLIS / self.config.target_time_per_block().before();
+        const CONNECT_ONLY_NEW_VERSIONS_THRESHOLD_MILLIS: u64 = 24 * 3600 * 1000; // one day in milliseconds
+        let daa_threshold = CONNECT_ONLY_NEW_VERSIONS_THRESHOLD_MILLIS / self.config.target_time_per_block().before();
         let sink_daa_score = self.consensus().unguarded_session().async_get_sink_daa_score_timestamp().await.daa_score;
-        let connect_only_new_versions = self.config.net.is_mainnet() && self.config.crescendo_activation.is_active(sink_daa_score)
-            || self.config.crescendo_activation.is_within_range_before_activation(sink_daa_score, threshold).is_some();
+        let connect_only_new_versions =
+            self.config.net.is_mainnet() && self.config.crescendo_activation.is_active(sink_daa_score + daa_threshold); // activate the protocol version constraint daa_threshold blocks ahead of time
 
         let (flows, applied_protocol_version) = if connect_only_new_versions {
             match peer_version.protocol_version {
@@ -793,7 +793,7 @@ impl ConnectionInitializer for FlowContext {
         } else {
             match peer_version.protocol_version {
                 v if v >= PROTOCOL_VERSION => (v7::register(self.clone(), router.clone()), PROTOCOL_VERSION),
-                6 => (v6::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+                6 => (v6::register(self.clone(), router.clone()), 6),
                 5 => (v5::register(self.clone(), router.clone()), 5),
                 v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
             }
