@@ -140,12 +140,12 @@ impl Mempool {
 
         // The output is considered dust if the cost to the network to spend the
         // coins is more than 1/3 of the minimum free transaction relay fee.
-        // mp.config.MinimumRelayTransactionFee is in sompi/KB, so multiply
+        // mp.config.MinimumRelayTransactionFee is in dwork/KB, so multiply
         // by 1000 to convert to bytes.
         //
         // Using the typical values for a pay-to-pubkey transaction from
         // the breakdown above and the default minimum free transaction relay
-        // fee of 1000, this equates to values less than 546 sompi being
+        // fee of 1000, this equates to values less than 546 dworks being
         // considered dust.
         //
         // The following is equivalent to (value/total_serialized_size) * (1/3) * 1000
@@ -215,8 +215,8 @@ impl Mempool {
     fn minimum_required_transaction_relay_fee(&self, mass: u64) -> u64 {
         // Calculate the minimum fee for a transaction to be allowed into the
         // mempool and relayed by scaling the base fee. MinimumRelayTransactionFee is in
-        // sompi/kg so multiply by mass (which is in grams) and divide by 1000 to get
-        // minimum sompis.
+        // dwork/kg so multiply by mass (which is in grams) and divide by 1000 to get
+        // minimum dworks.
         let mut minimum_fee = (mass * self.config.minimum_relay_transaction_fee) / 1000;
 
         if minimum_fee == 0 {
@@ -355,7 +355,7 @@ mod tests {
             },
             // Maximum allowed value is never dust.
             Test {
-                name: "max sompi amount is never dust",
+                name: "max dwork amount is never dust",
                 tx_out: TransactionOutput::new(MAX_DWORK, script_public_key.clone()),
                 minimum_relay_transaction_fee: 1000,
                 is_dust: false,

@@ -5,7 +5,7 @@ use crate::block_template::selector::ALPHA;
 use itertools::Itertools;
 use std::fmt::Display;
 
-/// A type representing fee/mass of a transaction in `sompi/gram` units.
+/// A type representing fee/mass of a transaction in `dwork/gram` units.
 /// Given a feerate value recommendation, calculate the required fee by
 /// taking the transaction mass and multiplying it by feerate: `fee = feerate * mass(tx)`
 pub type Feerate = f64;
@@ -26,7 +26,7 @@ impl Display for FeerateBucket {
 pub struct FeerateEstimations {
     /// *Top-priority* feerate bucket. Provides an estimation of the feerate required for sub-second DAG inclusion.
     ///
-    /// Note: for all buckets, feerate values represent fee/mass of a transaction in `sompi/gram` units.
+    /// Note: for all buckets, feerate values represent fee/mass of a transaction in `dwork/gram` units.
     /// Given a feerate value recommendation, calculate the required fee by
     /// taking the transaction mass and multiplying it by feerate: `fee = feerate * mass(tx)`
     pub priority_bucket: FeerateBucket,

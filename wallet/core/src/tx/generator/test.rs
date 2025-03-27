@@ -4,7 +4,7 @@ use crate::error::Error;
 use crate::result::Result;
 use crate::tx::{Fees, MassCalculator, PaymentDestination};
 use crate::utxo::UtxoEntryReference;
-use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
+use crate::{tx::PaymentOutputs, utils::kaspa_to_dwork};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::Transaction;
@@ -34,13 +34,13 @@ impl Debug for Kaspa {
 
 impl From<Kaspa> for Sompi {
     fn from(kaspa: Kaspa) -> Self {
-        Sompi(kaspa_to_sompi(kaspa.0))
+        Sompi(kaspa_to_dwork(kaspa.0))
     }
 }
 
 impl From<&Kaspa> for Sompi {
     fn from(kaspa: &Kaspa) -> Self {
-        Sompi(kaspa_to_sompi(kaspa.0))
+        Sompi(kaspa_to_dwork(kaspa.0))
     }
 }
 
@@ -405,7 +405,7 @@ where
     let mut values = head.to_vec();
     values.extend(tail);
 
-    let utxo_entries: Vec<UtxoEntryReference> = values.into_iter().map(kaspa_to_sompi).map(UtxoEntryReference::simulated).collect();
+    let utxo_entries: Vec<UtxoEntryReference> = values.into_iter().map(kaspa_to_dwork).map(UtxoEntryReference::simulated).collect();
     let multiplexer = None;
     let sig_op_count = 1;
     let minimum_signatures = 1;

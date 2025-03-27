@@ -17,7 +17,7 @@ extern "C" {
 /// @category Wallet SDK
 #[wasm_bindgen(js_name = "kaspaToSompi")]
 pub fn kaspa_to_sompi(kaspa: String) -> Option<BigInt> {
-    crate::utils::try_kaspa_str_to_sompi(kaspa).ok().flatten().map(Into::into)
+    crate::utils::try_kaspa_str_to_dwork(kaspa).ok().flatten().map(Into::into)
 }
 
 ///

@@ -14,8 +14,8 @@ pub use crate::settings::WalletSettings;
 pub use crate::storage::{IdT, Interface, PrvKeyDataId, PrvKeyDataInfo, TransactionId, TransactionRecord, WalletDescriptor};
 pub use crate::tx::{Fees, PaymentDestination, PaymentOutput, PaymentOutputs};
 pub use crate::utils::{
-    dwork_to_kaspa, dwork_to_kaspa_string, dwork_to_kaspa_string_with_suffix, kaspa_suffix, kaspa_to_sompi, try_kaspa_str_to_sompi,
-    try_kaspa_str_to_sompi_i64,
+    dwork_to_kaspa, dwork_to_kaspa_string, dwork_to_kaspa_string_with_suffix, kaspa_suffix, kaspa_to_dwork, try_kaspa_str_to_dwork,
+    try_kaspa_str_to_dwork_i64,
 };
 pub use crate::utxo::balance::{Balance, BalanceStrings};
 pub use crate::wallet::args::*;

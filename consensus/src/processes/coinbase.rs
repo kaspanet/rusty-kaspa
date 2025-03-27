@@ -333,9 +333,9 @@ mod tests {
 
         let delta = total_high_bps_rewards as i64 - total_rewards as i64;
 
-        println!("Total rewards: {} sompi => {} KAS", total_rewards, total_rewards / DWORK_PER_KASPA);
-        println!("Total high bps rewards: {} sompi => {} KAS", total_high_bps_rewards, total_high_bps_rewards / DWORK_PER_KASPA);
-        println!("Delta: {} sompi => {} KAS", delta, delta / DWORK_PER_KASPA as i64);
+        println!("Total rewards: {} dwork => {} KAS", total_rewards, total_rewards / DWORK_PER_KASPA);
+        println!("Total high bps rewards: {} dwork => {} KAS", total_high_bps_rewards, total_high_bps_rewards / DWORK_PER_KASPA);
+        println!("Delta: {} dwork => {} KAS", delta, delta / DWORK_PER_KASPA as i64);
     }
 
     #[test]
