@@ -15,7 +15,7 @@ impl ArgsBuilder {
             disable_upnp: true, // UPnP registration might take some time and is not needed for this test
             enable_unsynced_mining: true,
             num_prealloc_utxos: Some(num_prealloc_utxos),
-            prealloc_amount: prealloc_amount * kaspa_consensus_core::constants::SOMPI_PER_KASPA,
+            prealloc_amount: prealloc_amount * kaspa_consensus_core::constants::DWORK_PER_KASPA,
             block_template_cache_lifetime: Some(0),
             rpc_max_clients: 2500,
             unsafe_rpc: true,

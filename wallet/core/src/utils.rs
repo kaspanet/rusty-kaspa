@@ -26,18 +26,18 @@ pub fn try_kaspa_str_to_sompi_i64<S: Into<String>>(s: S) -> Result<Option<i64>> 
         return Ok(None);
     }
 
-    let amount = amount.parse::<f64>()? * SOMPI_PER_KASPA as f64;
+    let amount = amount.parse::<f64>()? * DWORK_PER_KASPA as f64;
     Ok(Some(amount as i64))
 }
 
 #[inline]
 pub fn sompi_to_kaspa(sompi: u64) -> f64 {
-    sompi as f64 / SOMPI_PER_KASPA as f64
+    sompi as f64 / DWORK_PER_KASPA as f64
 }
 
 #[inline]
 pub fn kaspa_to_sompi(kaspa: f64) -> u64 {
-    (kaspa * SOMPI_PER_KASPA as f64) as u64
+    (kaspa * DWORK_PER_KASPA as f64) as u64
 }
 
 #[inline]
@@ -92,9 +92,9 @@ pub fn format_address_colors(address: &Address, range: Option<usize>) -> String 
 
 fn str_to_sompi(amount: &str) -> Result<u64> {
     let Some(dot_idx) = amount.find('.') else {
-        return Ok(amount.parse::<u64>()? * SOMPI_PER_KASPA);
+        return Ok(amount.parse::<u64>()? * DWORK_PER_KASPA);
     };
-    let integer = amount[..dot_idx].parse::<u64>()? * SOMPI_PER_KASPA;
+    let integer = amount[..dot_idx].parse::<u64>()? * DWORK_PER_KASPA;
     let decimal = &amount[dot_idx + 1..];
     let decimal_len = decimal.len();
     let decimal = if decimal_len == 0 {

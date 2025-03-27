@@ -312,7 +312,7 @@ mod tests {
     use crate::params::MAINNET_PARAMS;
     use kaspa_consensus_core::{
         config::params::{ForkActivation, Params, SIMNET_PARAMS},
-        constants::SOMPI_PER_KASPA,
+        constants::DWORK_PER_KASPA,
         network::{NetworkId, NetworkType},
         tx::scriptvec,
     };
@@ -333,9 +333,9 @@ mod tests {
 
         let delta = total_high_bps_rewards as i64 - total_rewards as i64;
 
-        println!("Total rewards: {} sompi => {} KAS", total_rewards, total_rewards / SOMPI_PER_KASPA);
-        println!("Total high bps rewards: {} sompi => {} KAS", total_high_bps_rewards, total_high_bps_rewards / SOMPI_PER_KASPA);
-        println!("Delta: {} sompi => {} KAS", delta, delta / SOMPI_PER_KASPA as i64);
+        println!("Total rewards: {} sompi => {} KAS", total_rewards, total_rewards / DWORK_PER_KASPA);
+        println!("Total high bps rewards: {} sompi => {} KAS", total_high_bps_rewards, total_high_bps_rewards / DWORK_PER_KASPA);
+        println!("Delta: {} sompi => {} KAS", delta, delta / DWORK_PER_KASPA as i64);
     }
 
     #[test]
@@ -397,7 +397,7 @@ mod tests {
                 println!("BASELINE:\t{}\tepochs, total emission: {}", baseline_epochs, baseline_total);
                 println!("CRESCENDO:\t{}\tepochs, total emission: {}, activation: {}", new_epochs, new_total, activation);
 
-                let diff = (new_total as i64 - baseline_total as i64) / SOMPI_PER_KASPA as i64;
+                let diff = (new_total as i64 - baseline_total as i64) / DWORK_PER_KASPA as i64;
                 assert!(diff.abs() <= 51, "activation: {}", activation);
                 println!("DIFF (KAS): {}", diff);
             }

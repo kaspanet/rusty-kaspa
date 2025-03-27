@@ -5,7 +5,7 @@ use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
     config::params::TESTNET_PARAMS,
-    constants::{SOMPI_PER_KASPA, TX_VERSION},
+    constants::{DWORK_PER_KASPA, TX_VERSION},
     sign::sign,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
@@ -24,7 +24,7 @@ use secp256k1::{
 };
 use tokio::time::{interval, Instant, MissedTickBehavior};
 
-const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
+const DEFAULT_SEND_AMOUNT: u64 = 10 * DWORK_PER_KASPA;
 const FEE_RATE: u64 = 10;
 const MILLIS_PER_TICK: u64 = 10;
 const ADDRESS_PREFIX: Prefix = Prefix::Testnet;

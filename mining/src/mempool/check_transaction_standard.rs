@@ -241,7 +241,7 @@ mod tests {
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
         config::params::Params,
-        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
+        constants::{DWORK_PER_KASPA, MAX_TX_IN_SEQUENCE_NUM, TX_VERSION},
         mass::NonContextualMasses,
         network::NetworkType,
         subnets::SUBNETWORK_ID_NATIVE,
@@ -404,7 +404,7 @@ mod tests {
 
         let addr = Address::new(Prefix::Testnet, Version::PubKey, &addr_hash);
         let dummy_script_public_key = kaspa_txscript::pay_to_address_script(&addr);
-        let dummy_tx_out = TransactionOutput::new(SOMPI_PER_KASPA, dummy_script_public_key);
+        let dummy_tx_out = TransactionOutput::new(DWORK_PER_KASPA, dummy_script_public_key);
 
         struct Test {
             name: &'static str,
@@ -501,7 +501,7 @@ mod tests {
                         TX_VERSION,
                         vec![dummy_tx_input.clone()],
                         vec![TransactionOutput::new(
-                            SOMPI_PER_KASPA,
+                            DWORK_PER_KASPA,
                             ScriptPublicKey::new(
                                 MAX_SCRIPT_PUBLIC_KEY_VERSION,
                                 ScriptBuilder::new().add_op(OpTrue).unwrap().script().into(),
@@ -539,7 +539,7 @@ mod tests {
                         TX_VERSION,
                         vec![dummy_tx_input],
                         vec![TransactionOutput::new(
-                            SOMPI_PER_KASPA,
+                            DWORK_PER_KASPA,
                             ScriptPublicKey::new(
                                 MAX_SCRIPT_PUBLIC_KEY_VERSION,
                                 ScriptBuilder::new().add_op(OpReturn).unwrap().script().into(),
