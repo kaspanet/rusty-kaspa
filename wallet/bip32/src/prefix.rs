@@ -117,9 +117,11 @@ impl Prefix {
         str::from_utf8(&self.chars).expect("prefix encoding error")
     }
 
+
     /// Is this a public key?
     pub fn is_public(self) -> bool {
-        &self.chars[1..] == b"pub" || &self.chars[1..] == b"tub"
+        let last_3_chars = &self.chars[1..].try_into().expect("prefix with incorrect length");
+        [b"pub", b"tub", b"dub", b"sub"].contains(last_3_chars)
     }
 
     /// Is this a private key?
