@@ -13,8 +13,9 @@ use crate::rule_engine::SNAPSHOT_INTERVAL;
 
 use super::{mining_rule::MiningRule, ExtraData};
 
-// within a 5 minute period, we expect sync rate
-const SYNC_RATE_THRESHOLD: f64 = 0.90;
+// within a 5 minute period, we expect sync rate less sensitive to sudden changes
+// but we use a lower threshold anyway because we want the warns to be less frequent
+const SYNC_RATE_THRESHOLD: f64 = 0.50;
 // number of samples you expect in a 5 minute interval, sampled every 10s
 const SYNC_RATE_WINDOW_MAX_SIZE: usize = 5 * 60 / (SNAPSHOT_INTERVAL as usize);
 // number of samples required before considering this rule. This allows using the sync rate rule
