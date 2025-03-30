@@ -11,11 +11,14 @@ use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
-use kaspa_consensus_core::api::{BlockValidationFuture, BlockValidationFutures};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
+use kaspa_consensus_core::{
+    api::{BlockValidationFuture, BlockValidationFutures},
+    network::NetworkType,
+};
 use kaspa_consensus_notify::{
     notification::{Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
@@ -782,8 +785,8 @@ impl ConnectionInitializer for FlowContext {
         const CONNECT_ONLY_NEW_VERSIONS_THRESHOLD_MILLIS: u64 = 24 * 3600 * 1000; // one day in milliseconds
         let daa_threshold = CONNECT_ONLY_NEW_VERSIONS_THRESHOLD_MILLIS / self.config.target_time_per_block().before();
         let sink_daa_score = self.consensus().unguarded_session().async_get_sink_daa_score_timestamp().await.daa_score;
-        let connect_only_new_versions =
-            self.config.net.is_mainnet() && self.config.crescendo_activation.is_active(sink_daa_score + daa_threshold); // activate the protocol version constraint daa_threshold blocks ahead of time
+        let connect_only_new_versions = self.config.net.network_type() != NetworkType::Testnet
+            && self.config.crescendo_activation.is_active(sink_daa_score + daa_threshold); // activate the protocol version constraint daa_threshold blocks ahead of time
 
         let (flows, applied_protocol_version) = if connect_only_new_versions {
             match peer_version.protocol_version {
