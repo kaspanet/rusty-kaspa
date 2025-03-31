@@ -9,6 +9,10 @@ Your feedback, contributions, and issue reports will be integral to evolving thi
 
 The default branch of this repository is `master` and new contributions are constantly merged into it. For a stable branch corresponding to the latest stable release please pull and compile the `stable` branch. 
 
+## The Crescendo Hardfork
+
+The Crescendo Hardfork which will transition the network to 10BPS is scheduled to occur in mainnet on `2025-05-05 1500 UTC` at DAA Score `110,165,000`. You can participate in testing the hardfork on mainnet (prior to activation) or on the already activated testnet by following [this node specification and testing guide](docs/crescendo-guide.md).
+
 ## Installation
   <details>
   <summary>Building on Linux</summary>
