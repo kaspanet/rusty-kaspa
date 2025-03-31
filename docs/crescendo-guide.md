@@ -16,7 +16,7 @@ Kaspa is about to take a significant leap with the **Crescendo Hardfork**, as de
   - 512 GB SSD  
   - Higher network bandwidth for robust peer support
 
-While the minimum specs suffice to sync and maintain a TN10 node with the accelerated 10 bps, increasing CPU cores, RAM, storage, and bandwidth allows your node to serve as a stronger focal point on the network. This leads to faster initial block download (IBD) for peers syncing from your node and provides more leeway for future storage growth and optimization.
+While the minimum specs suffice to sync and maintain a 10 bps node, increasing CPU cores, RAM, storage, and bandwidth allows your node to serve as a stronger focal point on the network. This leads to faster initial block download (IBD) for peers syncing from your node and provides more leeway for future storage growth and optimization.
 
 If you are a pool operator, it is _strongly recommended_ that you pick specs that are closer to the preferred specifications above.
 
@@ -58,7 +58,7 @@ Crescendo introduces a new field in transactions, `mass`, which needs to be pres
 
 Ensure your pool/stratum is updated to preserve this field in the transactions by updating your GRPC proto files. Then, ensure that your pool software properly sends back the `mass` for each transaction in the block.
 
-### Updating your Pool/Stratum to work in Cresendo
+### Updating your Pool/Stratum to work in Crescendo
 
 #### Updating GRPC proto
 
