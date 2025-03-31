@@ -473,8 +473,6 @@ pub const MAINNET_PARAMS: Params = Params {
         "mainnet-dnsseed-1.kaspanet.org",
         // This DNS seeder is run by Denis Mashkevich
         "mainnet-dnsseed-2.kaspanet.org",
-        // This DNS seeder is run by Constantine Bytensky
-        "dnsseed.cbytensky.org",
         // This DNS seeder is run by Georges Künzli
         "seeder1.kaspad.net",
         // This DNS seeder is run by Georges Künzli
