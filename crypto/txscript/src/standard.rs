@@ -102,7 +102,7 @@ pub mod test_helpers {
 
     /// Creates a transaction that spends the first output of provided transaction.
     /// Assumes that the output being spent has opTrueScript as its scriptPublicKey.
-    /// Creates the value of the spent output minus provided `fee` (in sompi).
+    /// Creates the value of the spent output minus provided `fee` (in dworks).
     pub fn create_transaction(tx_to_spend: &Transaction, fee: u64) -> Transaction {
         let (script_public_key, redeem_script) = op_true_script();
         let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("the script is canonical");
@@ -116,9 +116,9 @@ pub mod test_helpers {
     /// Assumes that the outputs being spent have opTrueScript as their scriptPublicKey.
     ///
     /// If some change is provided, creates two outputs, first one with the value of the spent outputs minus `change`
-    /// and `fee` (in sompi) and second one of `change` amount.
+    /// and `fee` (in dworks) and second one of `change` amount.
     ///
-    /// If no change is provided, creates only one output with the value of the spent outputs minus and `fee` (in sompi)
+    /// If no change is provided, creates only one output with the value of the spent outputs minus and `fee` (in dworks)
     pub fn create_transaction_with_change<'a>(
         txs_to_spend: impl Iterator<Item = &'a Transaction>,
         output_indexes: Vec<usize>,
