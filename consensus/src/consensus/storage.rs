@@ -13,6 +13,7 @@ use crate::{
         pruning::DbPruningStore,
         pruning_samples::DbPruningSamplesStore,
         pruning_utxoset::PruningUtxosetStores,
+        pruning_window_root::DbPruningWindowRootStore,
         reachability::{DbReachabilityStore, ReachabilityData},
         relations::DbRelationsStore,
         selected_chain::DbSelectedChainStore,
@@ -67,6 +68,9 @@ pub struct ConsensusStorage {
     // Block window caches
     pub block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
     pub block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
+
+    // Archival
+    pub pruning_window_root_store: Arc<RwLock<DbPruningWindowRootStore>>,
 
     // "Last Known Good" caches
     /// The "last known good" virtual state. To be used by any logic which does not want to wait
@@ -167,6 +171,7 @@ impl ConsensusStorage {
         let transactions_builder = PolicyBuilder::new().bytes_budget(transactions_budget).tracked_bytes();
         let acceptance_data_builder = PolicyBuilder::new().bytes_budget(acceptance_data_budget).tracked_bytes();
         let past_pruning_points_builder = PolicyBuilder::new().max_items(1024).untracked();
+        let pruning_window_root_builder = PolicyBuilder::new().max_items(1024).untracked();
 
         // TODO: consider tracking UtxoDiff byte sizes more accurately including the exact size of ScriptPublicKey
 
@@ -233,6 +238,9 @@ impl ConsensusStorage {
         let virtual_stores =
             Arc::new(RwLock::new(VirtualStores::new(db.clone(), lkg_virtual_state.clone(), utxo_set_builder.build())));
 
+        let pruning_window_root_store =
+            Arc::new(RwLock::new(DbPruningWindowRootStore::new(db.clone(), pruning_window_root_builder.build())));
+
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
         relations::init(reachability_relations_store.write().deref_mut());
@@ -262,6 +270,7 @@ impl ConsensusStorage {
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             lkg_virtual_state,
+            pruning_window_root_store,
         })
     }
 }

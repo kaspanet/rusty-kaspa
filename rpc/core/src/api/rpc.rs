@@ -481,6 +481,26 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetCurrentBlockColorRequest,
     ) -> RpcResult<GetCurrentBlockColorResponse>;
 
+    async fn get_pruning_window_roots(&self) -> RpcResult<GetPruningWindowRootsResponse> {
+        Ok(self.get_pruning_window_roots_call(None, GetPruningWindowRootsRequest {}).await?)
+    }
+
+    async fn get_pruning_window_roots_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetPruningWindowRootsRequest,
+    ) -> RpcResult<GetPruningWindowRootsResponse>;
+
+    async fn add_archival_blocks(&self, blocks: Vec<ArchivalBlock>) -> RpcResult<AddArchivalBlocksResponse> {
+        Ok(self.add_archival_blocks_call(None, AddArchivalBlocksRequest { blocks }).await?)
+    }
+
+    async fn add_archival_blocks_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: AddArchivalBlocksRequest,
+    ) -> RpcResult<AddArchivalBlocksResponse>;
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
