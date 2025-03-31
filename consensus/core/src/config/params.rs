@@ -473,8 +473,6 @@ pub const MAINNET_PARAMS: Params = Params {
         "mainnet-dnsseed-1.kaspanet.org",
         // This DNS seeder is run by Denis Mashkevich
         "mainnet-dnsseed-2.kaspanet.org",
-        // This DNS seeder is run by Constantine Bytensky
-        "dnsseed.cbytensky.org",
         // This DNS seeder is run by Georges Künzli
         "seeder1.kaspad.net",
         // This DNS seeder is run by Georges Künzli
@@ -539,9 +537,8 @@ pub const MAINNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 
     crescendo: CRESCENDO,
-    // Temp: use a value which will trigger upper_bound/after calculations but is not actually scheduled.
-    // We want the pre-release to test the influence of this change on mainnet nodes as well
-    crescendo_activation: ForkActivation::new(u64::MAX - 1),
+    // Roughly 2025-05-05 1500 UTC
+    crescendo_activation: ForkActivation::new(110_165_000),
 };
 
 pub const TESTNET_PARAMS: Params = Params {
@@ -703,5 +700,6 @@ pub const DEVNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 
     crescendo: CRESCENDO,
+    // TODO: Set this to always after the fork
     crescendo_activation: ForkActivation::never(),
 };

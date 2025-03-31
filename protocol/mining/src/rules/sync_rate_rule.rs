@@ -13,8 +13,9 @@ use crate::rule_engine::SNAPSHOT_INTERVAL;
 
 use super::{mining_rule::MiningRule, ExtraData};
 
-// within a 5 minute period, we expect sync rate
-const SYNC_RATE_THRESHOLD: f64 = 0.90;
+// within a 5 minute period, we expect sync rate less sensitive to sudden changes
+// but we use a lower threshold anyway because we want the warns to be less frequent
+const SYNC_RATE_THRESHOLD: f64 = 0.50;
 // number of samples you expect in a 5 minute interval, sampled every 10s
 const SYNC_RATE_WINDOW_MAX_SIZE: usize = 5 * 60 / (SNAPSHOT_INTERVAL as usize);
 // number of samples required before considering this rule. This allows using the sync rate rule
@@ -110,5 +111,174 @@ impl MiningRule for SyncRateRule {
                 trace!("Finality period is old. Timestamp: {}. Sync rate: {:.2}", extra_data.finality_point_timestamp, rate);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{atomic::AtomicBool, Arc};
+
+    use crate::rules::{mining_rule::MiningRule, sync_rate_rule::SYNC_RATE_WINDOW_MAX_SIZE, ExtraData};
+    use kaspa_consensus_core::api::counters::ProcessingCountersSnapshot;
+    use kaspa_core::time::unix_now;
+    use std::sync::atomic::*;
+
+    use super::{SyncRateRule, SYNC_RATE_WINDOW_MIN_THRESHOLD};
+
+    fn create_rule() -> (Arc<AtomicBool>, SyncRateRule) {
+        let use_sync_rate_rule = Arc::new(AtomicBool::new(false));
+        let rule = SyncRateRule::new(use_sync_rate_rule.clone());
+        (use_sync_rate_rule, rule)
+    }
+
+    #[test]
+    fn test_rule_end_to_end_flow() {
+        let (use_sync_rate_rule, rule) = create_rule();
+
+        let good_snapshot =
+            ProcessingCountersSnapshot { blocks_submitted: 100, header_counts: 100, body_counts: 100, ..Default::default() };
+
+        let bad_snapshot = ProcessingCountersSnapshot::default();
+
+        let extra_data = &ExtraData {
+            elapsed_time: std::time::Duration::from_secs(10),
+            target_time_per_block: 100, // 10bps value
+            finality_point_timestamp: unix_now(),
+            finality_duration: 1000,
+            has_sufficient_peer_connectivity: true,
+        };
+
+        // Sync rate should be at 1.0
+        for _ in 0..10 {
+            rule.check_rule(&good_snapshot, extra_data);
+        }
+
+        assert!(
+            !use_sync_rate_rule.load(Ordering::SeqCst),
+            "Expected rule to not be triggered during normal operation. {} | {}",
+            rule.total_received_blocks.load(Ordering::SeqCst),
+            rule.total_expected_blocks.load(Ordering::SeqCst)
+        );
+
+        // Sync rate should be at 0.5
+        for _ in 0..11 {
+            rule.check_rule(&bad_snapshot, extra_data);
+        }
+
+        assert!(
+            use_sync_rate_rule.load(Ordering::SeqCst),
+            "Expected rule to trigger. {} | {}",
+            rule.total_received_blocks.load(Ordering::SeqCst),
+            rule.total_expected_blocks.load(Ordering::SeqCst)
+        );
+
+        for _ in 0..10 {
+            rule.check_rule(&good_snapshot, extra_data);
+        }
+
+        assert!(
+            !use_sync_rate_rule.load(Ordering::SeqCst),
+            "Expected rule to not be triggered during normal operation. {} | {}",
+            rule.total_received_blocks.load(Ordering::SeqCst),
+            rule.total_expected_blocks.load(Ordering::SeqCst)
+        );
+    }
+
+    #[test]
+    fn test_rule_with_old_finality() {
+        let (use_sync_rate_rule, rule) = create_rule();
+
+        let bad_snapshot = ProcessingCountersSnapshot::default();
+
+        let extra_data = &ExtraData {
+            elapsed_time: std::time::Duration::from_secs(10),
+            target_time_per_block: 100,                                        // 10bps value
+            finality_point_timestamp: unix_now().saturating_sub(1000 * 3) - 1, // the millisecond right before timestamp is "old enough"
+            finality_duration: 1000,
+            has_sufficient_peer_connectivity: true,
+        };
+
+        for _ in 0..10 {
+            rule.check_rule(&bad_snapshot, extra_data);
+        }
+
+        assert!(
+            !use_sync_rate_rule.load(Ordering::SeqCst),
+            "Expected rule to trigger even with low sync rate if finality is old. {} | {}",
+            rule.total_received_blocks.load(Ordering::SeqCst),
+            rule.total_expected_blocks.load(Ordering::SeqCst)
+        );
+    }
+
+    #[test]
+    fn test_sync_rate_window_updates() {
+        let (_, rule) = create_rule();
+
+        let received_blocks = 123;
+        let expected_blocks = 456;
+
+        let old_received_total = rule.total_received_blocks.load(Ordering::SeqCst);
+        let old_expected_total = rule.total_expected_blocks.load(Ordering::SeqCst);
+
+        rule.update_sync_rate_window(received_blocks, expected_blocks);
+
+        assert_eq!(rule.total_received_blocks.load(Ordering::SeqCst), old_received_total + received_blocks);
+        assert_eq!(rule.total_expected_blocks.load(Ordering::SeqCst), old_expected_total + expected_blocks);
+    }
+
+    #[test]
+    fn test_sync_rate_window_update_result_sample_sizes() {
+        let (_, rule) = create_rule();
+
+        for _ in 0..(SYNC_RATE_WINDOW_MIN_THRESHOLD - 1) {
+            assert!(!rule.update_sync_rate_window(1, 1), "Expected false when window min size threshold is not filled but got true");
+        }
+
+        // sample is greater than threshold now
+        assert!(rule.update_sync_rate_window(1, 1), "Expected true when window min size threshold is filled but got false");
+
+        for _ in 0..SYNC_RATE_WINDOW_MAX_SIZE {
+            // sample is greater than threshold now
+            assert!(rule.update_sync_rate_window(1, 1), "Expected true when window min size threshold is filled but got false");
+        }
+
+        assert_eq!(
+            rule.sync_rate_samples.read().unwrap().len(),
+            SYNC_RATE_WINDOW_MAX_SIZE,
+            "Expected window size to be at max after updating window it was already full"
+        );
+    }
+
+    #[test]
+    fn test_sync_rate_window_update_result_when_window_is_filled() {
+        let (_, rule) = create_rule();
+
+        let received_blocks = 10;
+        let expected_blocks = 10;
+
+        // Fill the window
+        for _ in 0..SYNC_RATE_WINDOW_MAX_SIZE {
+            rule.update_sync_rate_window(received_blocks, expected_blocks);
+        }
+
+        let total_received = rule.total_received_blocks.load(Ordering::SeqCst);
+        let total_expected = rule.total_expected_blocks.load(Ordering::SeqCst);
+
+        let new_received_block = received_blocks * 2;
+        let new_expected_block = expected_blocks * 2;
+        // Add one more sample
+        rule.update_sync_rate_window(new_received_block, new_expected_block);
+
+        assert_eq!(
+            rule.total_received_blocks.load(Ordering::SeqCst),
+            total_received + new_received_block - received_blocks,
+            "Expected total received blocks to be updated correctly"
+        );
+
+        assert_eq!(
+            rule.total_expected_blocks.load(Ordering::SeqCst),
+            total_expected + new_expected_block - expected_blocks,
+            "Expected total expected blocks to be updated correctly"
+        );
     }
 }
