@@ -40,14 +40,14 @@ fn bench_uint128(c: &mut Criterion) {
 
     let mut u128_c = c.benchmark_group("u128");
 
-    bench_op(&mut u128_c, &u128_one, &u128_two, |a, b| a + b, "add");
-    bench_op(&mut u128_c, &u128_one, &u64s, |a, b| a + (b as u128), "addition u64");
-    bench_op(&mut u128_c, &u128_one, &u128_two, |a, b| a * b, "multiplication");
-    bench_op(&mut u128_c, &u128_one, &u64s, |a, b| a * (b as u128), "multiplication u64");
-    bench_op(&mut u128_c, &u128_one, &u128_two, |a, b| a / b, "division");
-    bench_op(&mut u128_c, &u128_one, &u64s, |a, b| a / (b as u128), "u64 division");
-    bench_op(&mut u128_c, &u128_one, &shifts, |a, b| a << b, "left shift");
-    bench_op(&mut u128_c, &u128_one, &shifts, |a, b| a >> b, "right shift");
+    bench_op(&mut u128_c, &u128_one, &u128_two, |a, b| a.wrapping_add(b), "add");
+    bench_op(&mut u128_c, &u128_one, &u64s, |a, b| a.wrapping_add(b as u128), "addition u64");
+    bench_op(&mut u128_c, &u128_one, &u128_two, |a, b| a.wrapping_mul(b), "multiplication");
+    bench_op(&mut u128_c, &u128_one, &u64s, |a, b| a.wrapping_mul(b as u128), "multiplication u64");
+    bench_op(&mut u128_c, &u128_one, &u128_two, |a, b| a.wrapping_div(b), "division");
+    bench_op(&mut u128_c, &u128_one, &u64s, |a, b| a.wrapping_div(b as u128), "u64 division");
+    bench_op(&mut u128_c, &u128_one, &shifts, |a, b| a.wrapping_shl(b), "left shift");
+    bench_op(&mut u128_c, &u128_one, &shifts, |a, b| a.wrapping_shr(b), "right shift");
     u128_c.finish();
 
     let mut uint128_c = c.benchmark_group("Uint128");
