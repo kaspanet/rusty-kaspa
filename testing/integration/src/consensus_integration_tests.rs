@@ -128,7 +128,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
     map.get_mut(&blocks[0]).unwrap().parents.push(root);
 
     // Act
-    let (_temp_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let (_temp_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10)).unwrap();
     let mut store = DbReachabilityStore::new(db.clone(), CachePolicy::Count(50_000), CachePolicy::Count(50_000));
     let mut relations = DbRelationsStore::new(db, 0, CachePolicy::Count(100_000), CachePolicy::Count(100_000)); // TODO: remove level
     let mut builder = DagBuilder::new(&mut store, &mut relations);
@@ -955,9 +955,9 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv, subscription_context.clone()));
 
     // External storage for storing block bodies. This allows separating header and body processing phases
-    let (_external_db_lifetime, external_storage) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let (_external_db_lifetime, external_storage) = create_temp_db!(ConnBuilder::default().with_files_limit(10)).unwrap();
     let external_block_store = DbBlockTransactionsStore::new(external_storage, CachePolicy::Count(config.perf.block_data_cache_size));
-    let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10)).unwrap();
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(
@@ -1739,7 +1739,7 @@ async fn staging_consensus_test() {
     init_allocator_with_default_settings();
     let config = ConfigBuilder::new(MAINNET_PARAMS).build();
 
-    let db_tempdir = get_kaspa_tempdir();
+    let db_tempdir = get_kaspa_tempdir().unwrap();
     let db_path = db_tempdir.path().to_owned();
     let consensus_db_dir = db_path.join("consensus");
     let meta_db_dir = db_path.join("meta");
@@ -1773,6 +1773,7 @@ async fn staging_consensus_test() {
 
     core.shutdown();
     core.join(joins);
+    drop(consensus_manager);
 }
 
 /// Tests the KIP-10 transaction introspection opcode activation by verifying that:
@@ -1826,7 +1827,7 @@ async fn run_kip10_activation_test() {
     let mut genesis_multiset = MuHash::new();
     consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
     consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
-    consensus.init();
+    let wait_handles = consensus.init();
 
     // Build blockchain up to one block before activation
     let mut index = 0;
@@ -1885,6 +1886,8 @@ async fn run_kip10_activation_test() {
     let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
+    consensus.shutdown(wait_handles);
+    drop(consensus);
 }
 
 #[tokio::test]
@@ -1981,7 +1984,7 @@ async fn payload_activation_test() {
     let mut genesis_multiset = MuHash::new();
     consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
     consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
-    consensus.init();
+    let wait_handles = consensus.init();
 
     // Build blockchain up to one block before activation
     let mut index = 0;
@@ -2048,6 +2051,8 @@ async fn payload_activation_test() {
 
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
+    consensus.shutdown(wait_handles);
+    drop(consensus);
 }
 
 #[tokio::test]
@@ -2114,7 +2119,7 @@ async fn runtime_sig_op_counting_test() {
     let mut genesis_multiset = MuHash::new();
     consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
     consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
-    consensus.init();
+    let wait_handles = consensus.init();
 
     // Build blockchain up to one block before activation
     let mut index = 0;
@@ -2184,4 +2189,6 @@ async fn runtime_sig_op_counting_test() {
     // Test 2: After activation, tx should be accepted as runtime counting only sees 1 executed sig op
     let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+    consensus.shutdown(wait_handles);
+    drop(consensus);
 }
