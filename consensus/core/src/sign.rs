@@ -78,6 +78,15 @@ impl Signed {
             Signed::Partially(tx) => tx,
         }
     }
+
+
+    /// Returns the transaction regardless of whether it is fully or partially signed
+    pub fn unwrap_ref(&self) -> &SignableTransaction {
+        match self {
+            Signed::Fully(tx) => tx,
+            Signed::Partially(tx) => tx,
+        }
+    }
 }
 
 /// Sign a transaction using schnorr
