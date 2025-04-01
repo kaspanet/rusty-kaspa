@@ -10,10 +10,7 @@ use crate::{
 };
 use kaspa_addresses::Prefix;
 use kaspa_math::Uint256;
-use std::{
-    cmp::min,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::cmp::min;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ForkActivation(u64);
@@ -260,10 +257,6 @@ pub struct Params {
     pub crescendo_activation: ForkActivation,
 }
 
-fn unix_now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
-}
-
 impl Params {
     /// Returns the size of the full blocks window that is inspected to calculate the past median time (legacy)
     #[inline]
@@ -377,7 +370,7 @@ impl Params {
         )
     }
 
-    fn expected_difficulty_window_duration_in_milliseconds(&self) -> ForkedParam<u64> {
+    pub fn expected_difficulty_window_duration_in_milliseconds(&self) -> ForkedParam<u64> {
         ForkedParam::new(
             self.prior_target_time_per_block * self.prior_difficulty_window_size as u64,
             self.crescendo.target_time_per_block
@@ -431,29 +424,6 @@ impl Params {
         ForkedParam::new(self.prior_max_script_public_key_len, self.crescendo.max_script_public_key_len, self.crescendo_activation)
     }
 
-    /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
-    pub fn is_nearly_synced(&self, sink_timestamp: u64, sink_daa_score: u64) -> bool {
-        if self.net.is_mainnet() {
-            // We consider the node close to being synced if the sink (virtual selected parent) block
-            // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
-            // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
-            //
-            // [Crescendo]: both durations are nearly equal so this decision is negligible
-            unix_now() < sink_timestamp + self.expected_difficulty_window_duration_in_milliseconds().get(sink_daa_score)
-        } else {
-            // For testnets we consider the node to be synced if the sink timestamp is within a time range which
-            // is overwhelmingly unlikely to pass without mined blocks even if net hashrate decreased dramatically.
-            //
-            // This period is smaller than the above mainnet calculation in order to ensure that an IBDing miner
-            // with significant testnet hashrate does not overwhelm the network with deep side-DAGs.
-            //
-            // We use DAA duration as baseline and scale it down with BPS (and divide by 3 for mining only when very close to current time on TN11)
-            let max_expected_duration_without_blocks_in_milliseconds =
-                self.prior_target_time_per_block * NEW_DIFFICULTY_WINDOW_DURATION / 3; // = DAA duration in milliseconds / bps / 3
-            unix_now() < sink_timestamp + max_expected_duration_without_blocks_in_milliseconds
-        }
-    }
-
     pub fn network_name(&self) -> String {
         self.net.to_prefixed()
     }
@@ -503,8 +473,6 @@ pub const MAINNET_PARAMS: Params = Params {
         "mainnet-dnsseed-1.kaspanet.org",
         // This DNS seeder is run by Denis Mashkevich
         "mainnet-dnsseed-2.kaspanet.org",
-        // This DNS seeder is run by Constantine Bytensky
-        "dnsseed.cbytensky.org",
         // This DNS seeder is run by Georges Künzli
         "seeder1.kaspad.net",
         // This DNS seeder is run by Georges Künzli
@@ -569,7 +537,8 @@ pub const MAINNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 
     crescendo: CRESCENDO,
-    crescendo_activation: ForkActivation::never(),
+    // Roughly 2025-05-05 1500 UTC
+    crescendo_activation: ForkActivation::new(110_165_000),
 };
 
 pub const TESTNET_PARAMS: Params = Params {
@@ -731,5 +700,6 @@ pub const DEVNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 
     crescendo: CRESCENDO,
+    // TODO: Set this to always after the fork
     crescendo_activation: ForkActivation::never(),
 };
