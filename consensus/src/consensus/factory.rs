@@ -3,7 +3,7 @@ use super::utxo_set_override::{set_genesis_utxo_commitment_from_config, set_init
 use super::{ctl::Ctl, Consensus};
 use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
 use itertools::Itertools;
-use kaspa_consensus_core::config::Config;
+use kaspa_consensus_core::{config::Config, mining_rules::MiningRules};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
 use kaspa_core::{debug, time::unix_now, warn};
@@ -59,7 +59,7 @@ pub struct MultiConsensusMetadata {
     version: u32,
 }
 
-const LATEST_DB_VERSION: u32 = 3;
+const LATEST_DB_VERSION: u32 = 4;
 impl Default for MultiConsensusMetadata {
     fn default() -> Self {
         Self {
@@ -219,6 +219,23 @@ impl MultiConsensusManagementStore {
         }
     }
 
+    /// Returns the current version of this database
+    pub fn version(&self) -> StoreResult<u32> {
+        match self.metadata.read() {
+            Ok(data) => Ok(data.version),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Set the database version to a different one
+    pub fn set_version(&mut self, version: u32) -> StoreResult<()> {
+        self.metadata.update(DirectDbWriter::new(&self.db), |mut data| {
+            data.version = version;
+            data
+        })?;
+        Ok(())
+    }
+
     pub fn should_upgrade(&self) -> StoreResult<bool> {
         match self.metadata.read() {
             Ok(data) => Ok(data.version != LATEST_DB_VERSION),
@@ -237,6 +254,7 @@ pub struct Factory {
     counters: Arc<ProcessingCounters>,
     tx_script_cache_counters: Arc<TxScriptCacheCounters>,
     fd_budget: i32,
+    mining_rules: Arc<MiningRules>,
 }
 
 impl Factory {
@@ -249,6 +267,7 @@ impl Factory {
         counters: Arc<ProcessingCounters>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
         fd_budget: i32,
+        mining_rules: Arc<MiningRules>,
     ) -> Self {
         assert!(fd_budget > 0, "fd_budget has to be positive");
         let mut config = config.clone();
@@ -266,6 +285,7 @@ impl Factory {
             counters,
             tx_script_cache_counters,
             fd_budget,
+            mining_rules,
         };
         factory.delete_inactive_consensus_entries();
         factory
@@ -308,6 +328,7 @@ impl ConsensusFactory for Factory {
             self.counters.clone(),
             self.tx_script_cache_counters.clone(),
             entry.creation_timestamp,
+            self.mining_rules.clone(),
         ));
 
         // We write the new active entry only once the instance was created successfully.
@@ -342,6 +363,7 @@ impl ConsensusFactory for Factory {
             self.counters.clone(),
             self.tx_script_cache_counters.clone(),
             entry.creation_timestamp,
+            self.mining_rules.clone(),
         ));
 
         (ConsensusInstance::new(session_lock, consensus.clone()), Arc::new(Ctl::new(self.management_store.clone(), db, consensus)))

@@ -19,7 +19,8 @@
 //! The SubmitBlockResponse is a notable exception to this general rule.
 
 use crate::protowire::{self, submit_block_response_message::RejectReason};
-use kaspa_consensus_core::network::NetworkId;
+use kaspa_addresses::Address;
+use kaspa_consensus_core::{network::NetworkId, Hash};
 use kaspa_core::debug;
 use kaspa_notify::subscription::Command;
 use kaspa_rpc_core::{
@@ -428,6 +429,16 @@ from!(item: &kaspa_rpc_core::GetCurrentBlockColorRequest, protowire::GetCurrentB
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetCurrentBlockColorResponse>, protowire::GetCurrentBlockColorResponseMessage, {
     Self { blue: item.blue, error: None }
+});
+
+from!(item: &kaspa_rpc_core::GetUtxoReturnAddressRequest, protowire::GetUtxoReturnAddressRequestMessage, {
+    Self {
+        txid: item.txid.to_string(),
+        accepting_block_daa_score: item.accepting_block_daa_score
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetUtxoReturnAddressResponse>, protowire::GetUtxoReturnAddressResponseMessage, {
+    Self { return_address: item.return_address.address_to_string(), error: None }
 });
 
 from!(&kaspa_rpc_core::PingRequest, protowire::PingRequestMessage);
@@ -915,6 +926,15 @@ try_from!(item: &protowire::GetCurrentBlockColorResponseMessage, RpcResult<kaspa
     Self {
         blue: item.blue
     }
+});
+try_from!(item: &protowire::GetUtxoReturnAddressRequestMessage, kaspa_rpc_core::GetUtxoReturnAddressRequest , {
+    Self {
+        txid: Hash::from_str(&item.txid).unwrap_or_default(),
+        accepting_block_daa_score: item.accepting_block_daa_score
+    }
+});
+try_from!(item: &protowire::GetUtxoReturnAddressResponseMessage, RpcResult<kaspa_rpc_core::GetUtxoReturnAddressResponse>, {
+    Self { return_address: Address::try_from(item.return_address.clone())? }
 });
 
 try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);

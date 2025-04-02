@@ -200,7 +200,7 @@ impl AsRef<TransactionInput> for TransactionInput {
 
 impl TryCastFromJs for TransactionInput {
     type Error = Error;
-    fn try_cast_from<'a, R>(value: &'a R) -> std::result::Result<Cast<Self>, Self::Error>
+    fn try_cast_from<'a, R>(value: &'a R) -> std::result::Result<Cast<'a, Self>, Self::Error>
     where
         R: AsRef<JsValue> + 'a,
     {

@@ -1,4 +1,5 @@
 use async_channel::unbounded;
+use kaspa_consensus_core::mining_rules::MiningRules;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::time::unix_now;
 use std::sync::Arc;
@@ -50,6 +51,7 @@ impl KaspaNetworkSimulator {
         rocksdb_stats_period_sec: Option<u32>,
         rocksdb_files_limit: Option<i32>,
         rocksdb_mem_budget: Option<usize>,
+        long_payload: bool,
     ) -> &mut Self {
         let secp = secp256k1::Secp256k1::new();
         let mut rng = rand::thread_rng();
@@ -85,6 +87,7 @@ impl KaspaNetworkSimulator {
                 Default::default(),
                 Default::default(),
                 unix_now(),
+                Arc::new(MiningRules::default()),
             ));
             let handles = consensus.run_processors();
             let (sk, pk) = secp.generate_keypair(&mut rng);
@@ -98,6 +101,7 @@ impl KaspaNetworkSimulator {
                 &self.config,
                 target_txs_per_block,
                 self.target_blocks,
+                long_payload,
             ));
             self.simulation.register(i, miner_process);
             self.consensuses.push((consensus, handles, lifetime));

@@ -35,7 +35,7 @@ impl CryptoBoxPrivateKey {
 
 impl TryCastFromJs for CryptoBoxPrivateKey {
     type Error = Error;
-    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>>
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>>
     where
         R: AsRef<JsValue> + 'a,
     {
@@ -66,7 +66,7 @@ pub struct CryptoBoxPublicKey {
 
 impl TryCastFromJs for CryptoBoxPublicKey {
     type Error = Error;
-    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>>
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>>
     where
         R: AsRef<JsValue> + 'a,
     {

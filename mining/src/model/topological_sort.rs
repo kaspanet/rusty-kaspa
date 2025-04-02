@@ -166,8 +166,8 @@ impl<'a, T: AsRef<Transaction>> Iterator for TopologicalIter<'a, T> {
     }
 }
 
-impl<'a, T: AsRef<Transaction>> FusedIterator for TopologicalIter<'a, T> {}
-impl<'a, T: AsRef<Transaction>> ExactSizeIterator for TopologicalIter<'a, T> {
+impl<T: AsRef<Transaction>> FusedIterator for TopologicalIter<'_, T> {}
+impl<T: AsRef<Transaction>> ExactSizeIterator for TopologicalIter<'_, T> {
     fn len(&self) -> usize {
         self.transactions.len()
     }

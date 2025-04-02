@@ -94,7 +94,7 @@ impl Serialize for ScriptPublicKey {
     }
 }
 
-impl<'de: 'a, 'a> Deserialize<'de> for ScriptPublicKey {
+impl<'de> Deserialize<'de> for ScriptPublicKey {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -374,7 +374,7 @@ impl BorshDeserialize for ScriptPublicKey {
 type CastError = workflow_wasm::error::Error;
 impl TryCastFromJs for ScriptPublicKey {
     type Error = workflow_wasm::error::Error;
-    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
     where
         R: AsRef<JsValue> + 'a,
     {
@@ -405,7 +405,9 @@ impl TryCastFromJs for ScriptPublicKey {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_arch = "wasm32")]
     use js_sys::Object;
+    #[cfg(target_arch = "wasm32")]
     use wasm_bindgen::__rt::IntoJsResult;
 
     #[test]
@@ -438,10 +440,14 @@ mod tests {
         assert_eq!(spk, spk2);
     }
 
+    #[cfg(target_arch = "wasm32")]
     use wasm_bindgen::convert::IntoWasmAbi;
+    #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::wasm_bindgen_test;
+    #[cfg(target_arch = "wasm32")]
     use workflow_wasm::serde::{from_value, to_value};
 
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_constructor() {
         let version = 0xc0de;
@@ -459,6 +465,7 @@ mod tests {
         assert_eq!(JsValue::from_str("string"), spk_js.js_typeof());
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_js_spk_object() {
         let version = 0xc0de;
@@ -478,6 +485,7 @@ mod tests {
         assert_eq!(spk, actual);
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_spk_object() {
         let version = 0xc0de;

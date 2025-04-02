@@ -253,10 +253,9 @@ impl NetworkId {
     }
 
     pub fn iter() -> impl Iterator<Item = Self> {
-        static NETWORK_IDS: [NetworkId; 5] = [
+        static NETWORK_IDS: [NetworkId; 4] = [
             NetworkId::new(NetworkType::Mainnet),
             NetworkId::with_suffix(NetworkType::Testnet, 10),
-            NetworkId::with_suffix(NetworkType::Testnet, 11),
             NetworkId::new(NetworkType::Devnet),
             NetworkId::new(NetworkType::Simnet),
         ];
@@ -344,7 +343,7 @@ impl Serialize for NetworkId {
 
 struct NetworkIdVisitor;
 
-impl<'de> de::Visitor<'de> for NetworkIdVisitor {
+impl de::Visitor<'_> for NetworkIdVisitor {
     type Value = NetworkId;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -413,7 +412,7 @@ impl TryFrom<JsValue> for NetworkId {
 
 impl TryCastFromJs for NetworkId {
     type Error = NetworkIdError;
-    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
     where
         R: AsRef<JsValue> + 'a,
     {

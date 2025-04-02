@@ -44,7 +44,9 @@ jobs:
       # Clean unnecessary files to save disk space
       - name: clean unnecessary files to save space
         run: |
-          docker rmi `docker images -q`
+          if [ "$(docker images -q)" ]; then
+            docker rmi $(docker images -q)
+          fi
           sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/sudo apt/sources.list.d
           sudo apt -y autoremove --purge
           sudo apt -y autoclean
@@ -128,6 +130,9 @@ jobs:
 
       - name: Run cargo doc
         run: cargo doc --release --no-deps --workspace
+      - name: Run kip-10 example
+        run: cargo run --example kip-10
+
 
   # test-release:
   #   name: Test Suite Release
@@ -210,7 +215,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
-        run: cargo clippy --workspace --tests --benches -- -D warnings
+        run: cargo clippy --workspace --tests --benches --examples -- -D warnings
 
 
   check-wasm32:

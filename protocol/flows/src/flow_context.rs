@@ -1,23 +1,29 @@
-use crate::flowcontext::{
-    orphans::{OrphanBlocksPool, OrphanOutput},
-    process_queue::ProcessQueue,
-    transactions::TransactionsSpread,
+use crate::{
+    flowcontext::{
+        orphans::{OrphanBlocksPool, OrphanOutput},
+        process_queue::ProcessQueue,
+        transactions::TransactionsSpread,
+    },
+    v7,
 };
 use crate::{v5, v6};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
-use kaspa_consensus_core::api::{BlockValidationFuture, BlockValidationFutures};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
+use kaspa_consensus_core::{
+    api::{BlockValidationFuture, BlockValidationFutures},
+    network::NetworkType,
+};
 use kaspa_consensus_notify::{
     notification::{Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
 };
-use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusInstance, ConsensusManager, ConsensusProxy};
+use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusInstance, ConsensusManager, ConsensusProxy, ConsensusSessionOwned};
 use kaspa_core::{
     debug, info,
     kaspad_env::{name, version},
@@ -35,6 +41,7 @@ use kaspa_p2p_lib::{
     pb::{kaspad_message::Payload, InvRelayBlockMessage},
     ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
 };
+use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_utils::iter::IterExtensions;
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
@@ -57,8 +64,8 @@ use tokio::sync::{
 use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 use uuid::Uuid;
 
-/// The P2P protocol version. Currently the only one supported.
-const PROTOCOL_VERSION: u32 = 6;
+/// The P2P protocol version.
+const PROTOCOL_VERSION: u32 = 7;
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
@@ -228,9 +235,15 @@ pub struct FlowContextInner {
     // Special sampling logger used only for high-bps networks where logs must be throttled
     block_event_logger: Option<BlockEventLogger>,
 
+    // Bps upper bound
+    bps_upper_bound: usize,
+
     // Orphan parameters
     orphan_resolution_range: u32,
     max_orphans: usize,
+
+    // Mining rule engine
+    mining_rule_engine: Arc<MiningRuleEngine>,
 }
 
 #[derive(Clone)]
@@ -303,14 +316,16 @@ impl FlowContext {
         mining_manager: MiningManagerProxy,
         tick_service: Arc<TickService>,
         notification_root: Arc<ConsensusNotificationRoot>,
+        hub: Hub,
+        mining_rule_engine: Arc<MiningRuleEngine>,
     ) -> Self {
-        let hub = Hub::new();
-
-        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (config.bps() as f64).log2().ceil() as u32;
+        let bps_upper_bound = config.bps().upper_bound() as usize;
+        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps_upper_bound as f64).log2().ceil() as u32;
 
         // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
         // of how many orphans there can possibly be on average bounded by an upper bound.
-        let max_orphans = (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k as usize).min(MAX_ORPHANS_UPPER_BOUND);
+        let max_orphans =
+            (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k().upper_bound() as usize).min(MAX_ORPHANS_UPPER_BOUND);
         Self {
             inner: Arc::new(FlowContextInner {
                 node_id: Uuid::new_v4().into(),
@@ -327,16 +342,18 @@ impl FlowContext {
                 mining_manager,
                 tick_service,
                 notification_root,
-                block_event_logger: if config.bps() > 1 { Some(BlockEventLogger::new(config.bps() as usize)) } else { None },
+                block_event_logger: if bps_upper_bound > 1 { Some(BlockEventLogger::new(bps_upper_bound)) } else { None },
+                bps_upper_bound,
                 orphan_resolution_range,
                 max_orphans,
                 config,
+                mining_rule_engine,
             }),
         }
     }
 
     pub fn block_invs_channel_size(&self) -> usize {
-        self.config.bps() as usize * Router::incoming_flow_baseline_channel_size()
+        self.bps_upper_bound * Router::incoming_flow_baseline_channel_size()
     }
 
     pub fn orphan_resolution_range(&self) -> u32 {
@@ -495,10 +512,34 @@ impl FlowContext {
         // Broadcast as soon as the block has been validated and inserted into the DAG
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
 
+        let daa_score = block.header.daa_score;
         self.on_new_block(consensus, Default::default(), block, virtual_state_task).await;
-        self.log_block_event(BlockLogEvent::Submit(hash));
+        self.log_new_block_event(BlockLogEvent::Submit(hash), daa_score);
 
         Ok(())
+    }
+
+    /// [Crescendo] temp crescendo countdown logging
+    pub(super) fn log_new_block_event(&self, event: BlockLogEvent, daa_score: u64) {
+        if self.config.bps().before() == 1 && !self.config.crescendo_activation.is_active(daa_score) {
+            if let Some(dist) = self.config.crescendo_activation.is_within_range_before_activation(daa_score, 3600) {
+                match event {
+                    BlockLogEvent::Relay(hash) => info!("Accepted block {} via relay \t [Crescendo countdown: -{}]", hash, dist),
+                    BlockLogEvent::Submit(hash) => {
+                        info!("Accepted block {} via submit block \t [Crescendo countdown: -{}]", hash, dist)
+                    }
+                    _ => {}
+                }
+            } else {
+                match event {
+                    BlockLogEvent::Relay(hash) => info!("Accepted block {} via relay", hash),
+                    BlockLogEvent::Submit(hash) => info!("Accepted block {} via submit block", hash),
+                    _ => {}
+                }
+            }
+        } else {
+            self.log_block_event(event);
+        }
     }
 
     pub fn log_block_event(&self, event: BlockLogEvent) {
@@ -555,8 +596,8 @@ impl FlowContext {
             }
         }
 
-        // Transaction relay is disabled if the node is out of sync and thus not mining
-        if !consensus.async_is_nearly_synced().await {
+        // Transaction relay is disabled if the node is out of sync
+        if !self.is_nearly_synced(consensus).await {
             return;
         }
 
@@ -593,6 +634,16 @@ impl FlowContext {
                 debug!("<> Mempool scanning task is done");
             });
         }
+    }
+
+    pub async fn is_nearly_synced(&self, session: &ConsensusSessionOwned) -> bool {
+        let sink_daa_score_and_timestamp = session.async_get_sink_daa_score_timestamp().await;
+        self.mining_rule_engine.is_nearly_synced(sink_daa_score_and_timestamp)
+    }
+
+    pub async fn should_mine(&self, session: &ConsensusSessionOwned) -> bool {
+        let sink_daa_score_and_timestamp = session.async_get_sink_daa_score_timestamp().await;
+        self.mining_rule_engine.should_mine(sink_daa_score_and_timestamp)
     }
 
     /// Notifies that the UTXO set was reset due to pruning point change via IBD.
@@ -731,10 +782,24 @@ impl ConnectionInitializer for FlowContext {
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
         // Register all flows according to version
-        let (flows, applied_protocol_version) = match peer_version.protocol_version {
-            v if v >= PROTOCOL_VERSION => (v6::register(self.clone(), router.clone()), PROTOCOL_VERSION),
-            5 => (v5::register(self.clone(), router.clone()), 5),
-            v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+        const CONNECT_ONLY_NEW_VERSIONS_THRESHOLD_MILLIS: u64 = 24 * 3600 * 1000; // one day in milliseconds
+        let daa_threshold = CONNECT_ONLY_NEW_VERSIONS_THRESHOLD_MILLIS / self.config.target_time_per_block().before();
+        let sink_daa_score = self.consensus().unguarded_session().async_get_sink_daa_score_timestamp().await.daa_score;
+        let connect_only_new_versions = self.config.net.network_type() != NetworkType::Testnet
+            && self.config.crescendo_activation.is_active(sink_daa_score + daa_threshold); // activate the protocol version constraint daa_threshold blocks ahead of time
+
+        let (flows, applied_protocol_version) = if connect_only_new_versions {
+            match peer_version.protocol_version {
+                v if v >= PROTOCOL_VERSION => (v7::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+            }
+        } else {
+            match peer_version.protocol_version {
+                v if v >= PROTOCOL_VERSION => (v7::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+                6 => (v6::register(self.clone(), router.clone()), 6),
+                5 => (v5::register(self.clone(), router.clone()), 5),
+                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+            }
         };
 
         // Build and register the peer properties

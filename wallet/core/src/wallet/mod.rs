@@ -57,7 +57,7 @@ pub struct SingleWalletFileV1<'a, T: AsRef<[u8]>> {
     pub ecdsa: bool,
 }
 
-impl<'a, T: AsRef<[u8]>> SingleWalletFileV1<'a, T> {
+impl<T: AsRef<[u8]>> SingleWalletFileV1<'_, T> {
     const NUM_THREADS: u32 = 8;
 }
 
@@ -80,7 +80,7 @@ pub struct MultisigWalletFileV1<'a, T: AsRef<[u8]>> {
     pub ecdsa: bool,
 }
 
-impl<'a, T: AsRef<[u8]>> MultisigWalletFileV1<'a, T> {
+impl<T: AsRef<[u8]>> MultisigWalletFileV1<'_, T> {
     const NUM_THREADS: u32 = 8;
 }
 
@@ -1368,7 +1368,6 @@ impl Wallet {
             .into_iter()
             .map(|mnemonic| {
                 decrypt_mnemonic(file.num_threads, mnemonic, import_secret.as_ref())
-                    .map_err(Error::from)
                     .and_then(|decrypted| Mnemonic::new(decrypted.trim(), Language::English).map_err(Error::from))
             })
             .map(|r| r.map(|m| (m, <Option<Secret>>::None)))
@@ -1410,7 +1409,6 @@ impl Wallet {
             .into_iter()
             .map(|mnemonic| {
                 decrypt_mnemonic(MultisigWalletFileV1::<T>::NUM_THREADS, mnemonic, import_secret.as_ref())
-                    .map_err(Error::from)
                     .and_then(|decrypted| Mnemonic::new(decrypted.trim(), Language::English).map_err(Error::from))
             })
             .map(|r| r.map(|m| (m, <Option<Secret>>::None)))

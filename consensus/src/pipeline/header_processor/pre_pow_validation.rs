@@ -6,8 +6,23 @@ use kaspa_consensus_core::header::Header;
 
 impl HeaderProcessor {
     pub(super) fn pre_pow_validation(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
+        self.check_parents_limit(ctx, header)?;
         self.check_pruning_violation(ctx)?;
         self.check_difficulty_and_daa_score(ctx, header)?;
+        Ok(())
+    }
+
+    // TODO (post HF): move back to pre_ghostdag_validation (substitute for check_parents_limit_upper_bound)
+    fn check_parents_limit(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
+        if header.direct_parents().is_empty() {
+            return Err(RuleError::NoParents);
+        }
+
+        let max_block_parents = self.max_block_parents.get(ctx.selected_parent_daa_score()) as usize;
+        if header.direct_parents().len() > max_block_parents {
+            return Err(RuleError::TooManyParents(header.direct_parents().len(), max_block_parents));
+        }
+
         Ok(())
     }
 
@@ -35,7 +50,7 @@ impl HeaderProcessor {
         ctx.mergeset_non_daa = Some(daa_window.mergeset_non_daa);
 
         if header.bits != expected_bits {
-            return Err(RuleError::UnexpectedDifficulty(header.bits, expected_bits));
+            return Err(RuleError::UnexpectedDifficulty(header.hash, header.bits, expected_bits));
         }
 
         ctx.block_window_for_difficulty = Some(daa_window.window);

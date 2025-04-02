@@ -22,7 +22,7 @@ pub fn calc_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
     merkles.last().unwrap().unwrap()
 }
 
-fn merkle_hash(left: Hash, right: Hash) -> Hash {
+pub fn merkle_hash(left: Hash, right: Hash) -> Hash {
     let mut hasher = MerkleBranchHash::new();
     hasher.update(left).update(right);
     hasher.finalize()

@@ -156,21 +156,21 @@ pub fn hint_virtual_selected_parent(store: &mut (impl ReachabilityStore + ?Sized
     )
 }
 
-/// Checks if the `this` block is a strict chain ancestor of the `queried` block (aka `this ∈ chain(queried)`).
+/// Checks if the `this` block is a strict chain ancestor of the `queried` block (i.e., `this ∈ chain(queried)`).
 /// Note that this results in `false` if `this == queried`
 pub fn is_strict_chain_ancestor_of(store: &(impl ReachabilityStoreReader + ?Sized), this: Hash, queried: Hash) -> Result<bool> {
     Ok(store.get_interval(this)?.strictly_contains(store.get_interval(queried)?))
 }
 
-/// Checks if `this` block is a chain ancestor of `queried` block (aka `this ∈ chain(queried) ∪ {queried}`).
+/// Checks if `this` block is a chain ancestor of `queried` block (i.e., `this ∈ chain(queried) ∪ {queried}`).
 /// Note that we use the graph theory convention here which defines that a block is also an ancestor of itself.
 pub fn is_chain_ancestor_of(store: &(impl ReachabilityStoreReader + ?Sized), this: Hash, queried: Hash) -> Result<bool> {
     Ok(store.get_interval(this)?.contains(store.get_interval(queried)?))
 }
 
-/// Returns true if `this` is a DAG ancestor of `queried` (aka `queried ∈ future(this) ∪ {this}`).
+/// Returns true if `this` is a DAG ancestor of `queried` (i.e., `queried ∈ future(this) ∪ {this}`).
 /// Note: this method will return true if `this == queried`.
-/// The complexity of this method is O(log(|future_covering_set(this)|))
+/// The complexity of this method is `O(log(|future_covering_set(this)|))`
 pub fn is_dag_ancestor_of(store: &(impl ReachabilityStoreReader + ?Sized), this: Hash, queried: Hash) -> Result<bool> {
     // First, check if `this` is a chain ancestor of queried
     if is_chain_ancestor_of(store, this, queried)? {
@@ -184,7 +184,7 @@ pub fn is_dag_ancestor_of(store: &(impl ReachabilityStoreReader + ?Sized), this:
     }
 }
 
-/// Finds the child of `ancestor` which is also a chain ancestor of `descendant`.
+/// Finds the tree child of `ancestor` which is also a chain ancestor of `descendant`.
 pub fn get_next_chain_ancestor(store: &(impl ReachabilityStoreReader + ?Sized), descendant: Hash, ancestor: Hash) -> Result<Hash> {
     if descendant == ancestor {
         // The next ancestor does not exist
@@ -200,7 +200,7 @@ pub fn get_next_chain_ancestor(store: &(impl ReachabilityStoreReader + ?Sized), 
 }
 
 /// Note: it is important to keep the unchecked version for internal module use,
-/// since in some scenarios during reindexing `descendant` might have a modified
+/// since in some scenarios during reindexing `ancestor` might have a modified
 /// interval which was not propagated yet.
 pub(super) fn get_next_chain_ancestor_unchecked(
     store: &(impl ReachabilityStoreReader + ?Sized),

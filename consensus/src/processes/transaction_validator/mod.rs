@@ -1,59 +1,57 @@
 pub mod errors;
-pub mod transaction_validator_populated;
-mod tx_validation_in_isolation;
-pub mod tx_validation_not_utxo_related;
+pub mod tx_validation_in_header_context;
+pub mod tx_validation_in_isolation;
+pub mod tx_validation_in_utxo_context;
 use std::sync::Arc;
-
-use crate::model::stores::ghostdag;
 
 use kaspa_txscript::{
     caches::{Cache, TxScriptCacheCounters},
     SigCacheKey,
 };
 
-use kaspa_consensus_core::mass::MassCalculator;
+use kaspa_consensus_core::{
+    config::params::{ForkActivation, ForkedParam},
+    mass::MassCalculator,
+};
 
 #[derive(Clone)]
 pub struct TransactionValidator {
-    max_tx_inputs: usize,
-    max_tx_outputs: usize,
-    max_signature_script_len: usize,
-    max_script_public_key_len: usize,
-    ghostdag_k: ghostdag::KType,
+    max_tx_inputs: ForkedParam<usize>,
+    max_tx_outputs: ForkedParam<usize>,
+    max_signature_script_len: ForkedParam<usize>,
+    max_script_public_key_len: ForkedParam<usize>,
     coinbase_payload_script_public_key_max_len: u8,
-    coinbase_maturity: u64,
+    coinbase_maturity: ForkedParam<u64>,
     sig_cache: Cache<SigCacheKey, bool>,
 
     pub(crate) mass_calculator: MassCalculator,
 
-    /// Storage mass hardfork DAA score
-    storage_mass_activation_daa_score: u64,
+    /// Crescendo hardfork activation score. Activates KIPs 9, 10, 14
+    crescendo_activation: ForkActivation,
 }
 
 impl TransactionValidator {
     pub fn new(
-        max_tx_inputs: usize,
-        max_tx_outputs: usize,
-        max_signature_script_len: usize,
-        max_script_public_key_len: usize,
-        ghostdag_k: ghostdag::KType,
+        max_tx_inputs: ForkedParam<usize>,
+        max_tx_outputs: ForkedParam<usize>,
+        max_signature_script_len: ForkedParam<usize>,
+        max_script_public_key_len: ForkedParam<usize>,
         coinbase_payload_script_public_key_max_len: u8,
-        coinbase_maturity: u64,
+        coinbase_maturity: ForkedParam<u64>,
         counters: Arc<TxScriptCacheCounters>,
         mass_calculator: MassCalculator,
-        storage_mass_activation_daa_score: u64,
+        crescendo_activation: ForkActivation,
     ) -> Self {
         Self {
             max_tx_inputs,
             max_tx_outputs,
             max_signature_script_len,
             max_script_public_key_len,
-            ghostdag_k,
             coinbase_payload_script_public_key_max_len,
             coinbase_maturity,
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator,
-            storage_mass_activation_daa_score,
+            crescendo_activation,
         }
     }
 
@@ -62,22 +60,20 @@ impl TransactionValidator {
         max_tx_outputs: usize,
         max_signature_script_len: usize,
         max_script_public_key_len: usize,
-        ghostdag_k: ghostdag::KType,
         coinbase_payload_script_public_key_max_len: u8,
         coinbase_maturity: u64,
         counters: Arc<TxScriptCacheCounters>,
     ) -> Self {
         Self {
-            max_tx_inputs,
-            max_tx_outputs,
-            max_signature_script_len,
-            max_script_public_key_len,
-            ghostdag_k,
+            max_tx_inputs: ForkedParam::new_const(max_tx_inputs),
+            max_tx_outputs: ForkedParam::new_const(max_tx_outputs),
+            max_signature_script_len: ForkedParam::new_const(max_signature_script_len),
+            max_script_public_key_len: ForkedParam::new_const(max_script_public_key_len),
             coinbase_payload_script_public_key_max_len,
-            coinbase_maturity,
+            coinbase_maturity: ForkedParam::new_const(coinbase_maturity),
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator: MassCalculator::new(0, 0, 0, 0),
-            storage_mass_activation_daa_score: u64::MAX,
+            crescendo_activation: ForkActivation::never(),
         }
     }
 }

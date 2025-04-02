@@ -1,11 +1,9 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
-    mass::Kip9Version,
     tx::{TransactionInput, VerifiableTransaction},
 };
-use kaspa_core::warn;
-use kaspa_txscript::{caches::Cache, get_sig_op_count, SigCacheKey, TxScriptEngine};
+use kaspa_txscript::{caches::Cache, get_sig_op_count_upper_bound, SigCacheKey, TxScriptEngine};
 use kaspa_txscript_errors::TxScriptError;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon::ThreadPool;
@@ -37,20 +35,17 @@ impl TransactionValidator {
         &self,
         tx: &(impl VerifiableTransaction + Sync),
         pov_daa_score: u64,
+        block_daa_score: u64,
         flags: TxValidationFlags,
         mass_and_feerate_threshold: Option<(u64, f64)>,
     ) -> TxResult<u64> {
-        self.check_transaction_coinbase_maturity(tx, pov_daa_score)?;
+        self.check_transaction_coinbase_maturity(tx, pov_daa_score, block_daa_score)?;
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         let fee = total_in - total_out;
-        if flags != TxValidationFlags::SkipMassCheck && pov_daa_score > self.storage_mass_activation_daa_score {
+        if flags != TxValidationFlags::SkipMassCheck && self.crescendo_activation.is_active(block_daa_score) {
             // Storage mass hardfork was activated
             self.check_mass_commitment(tx)?;
-
-            if pov_daa_score < self.storage_mass_activation_daa_score + 10 && self.storage_mass_activation_daa_score > 0 {
-                warn!("--------- Storage mass hardfork was activated successfully!!! --------- (DAA score: {})", pov_daa_score);
-            }
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;
 
@@ -60,8 +55,10 @@ impl TransactionValidator {
 
         match flags {
             TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
-                Self::check_sig_op_counts(tx)?;
-                self.check_scripts(tx)?;
+                if !self.crescendo_activation.is_active(block_daa_score) {
+                    Self::check_sig_op_counts(tx)?;
+                }
+                self.check_scripts(tx, block_daa_score)?;
             }
             TxValidationFlags::SkipScriptChecks => {}
         }
@@ -80,18 +77,21 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_transaction_coinbase_maturity(&self, tx: &impl VerifiableTransaction, pov_daa_score: u64) -> TxResult<()> {
-        if let Some((index, (input, entry))) = tx
-            .populated_inputs()
-            .enumerate()
-            .find(|(_, (_, entry))| entry.is_coinbase && entry.block_daa_score + self.coinbase_maturity > pov_daa_score)
-        {
+    fn check_transaction_coinbase_maturity(
+        &self,
+        tx: &impl VerifiableTransaction,
+        pov_daa_score: u64,
+        block_daa_score: u64,
+    ) -> TxResult<()> {
+        if let Some((index, (input, entry))) = tx.populated_inputs().enumerate().find(|(_, (_, entry))| {
+            entry.is_coinbase && entry.block_daa_score + self.coinbase_maturity.get(block_daa_score) > pov_daa_score
+        }) {
             return Err(TxRuleError::ImmatureCoinbaseSpend(
                 index,
                 input.previous_outpoint,
                 entry.block_daa_score,
                 pov_daa_score,
-                self.coinbase_maturity,
+                self.coinbase_maturity.get(block_daa_score),
             ));
         }
 
@@ -127,7 +127,7 @@ impl TransactionValidator {
 
     fn check_mass_commitment(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
         let calculated_contextual_mass =
-            self.mass_calculator.calc_tx_overall_mass(tx, None, Kip9Version::Alpha).ok_or(TxRuleError::MassIncomputable)?;
+            self.mass_calculator.calc_contextual_masses(tx).ok_or(TxRuleError::MassIncomputable)?.storage_mass;
         let committed_contextual_mass = tx.tx().mass();
         if committed_contextual_mass != calculated_contextual_mass {
             return Err(TxRuleError::WrongMass(calculated_contextual_mass, committed_contextual_mass));
@@ -164,7 +164,8 @@ impl TransactionValidator {
 
     fn check_sig_op_counts<T: VerifiableTransaction>(tx: &T) -> TxResult<()> {
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            let calculated = get_sig_op_count::<T, SigHashReusedValuesUnsync>(&input.signature_script, &entry.script_public_key);
+            let calculated =
+                get_sig_op_count_upper_bound::<T, SigHashReusedValuesUnsync>(&input.signature_script, &entry.script_public_key);
             if calculated != input.sig_op_count as u64 {
                 return Err(TxRuleError::WrongSigOpCount(i, input.sig_op_count as u64, calculated));
             }
@@ -172,35 +173,55 @@ impl TransactionValidator {
         Ok(())
     }
 
-    pub fn check_scripts(&self, tx: &(impl VerifiableTransaction + Sync)) -> TxResult<()> {
-        check_scripts(&self.sig_cache, tx)
+    pub fn check_scripts(&self, tx: &(impl VerifiableTransaction + Sync), block_daa_score: u64) -> TxResult<()> {
+        check_scripts(
+            &self.sig_cache,
+            tx,
+            self.crescendo_activation.is_active(block_daa_score),
+            self.crescendo_activation.is_active(block_daa_score),
+        )
     }
 }
 
-pub fn check_scripts(sig_cache: &Cache<SigCacheKey, bool>, tx: &(impl VerifiableTransaction + Sync)) -> TxResult<()> {
+pub fn check_scripts(
+    sig_cache: &Cache<SigCacheKey, bool>,
+    tx: &(impl VerifiableTransaction + Sync),
+    kip10_enabled: bool,
+    runtime_sig_op_counting: bool,
+) -> TxResult<()> {
     if tx.inputs().len() > CHECK_SCRIPTS_PARALLELISM_THRESHOLD {
-        check_scripts_par_iter(sig_cache, tx)
+        check_scripts_par_iter(sig_cache, tx, kip10_enabled, runtime_sig_op_counting)
     } else {
-        check_scripts_sequential(sig_cache, tx)
+        check_scripts_sequential(sig_cache, tx, kip10_enabled, runtime_sig_op_counting)
     }
 }
 
-pub fn check_scripts_sequential(sig_cache: &Cache<SigCacheKey, bool>, tx: &impl VerifiableTransaction) -> TxResult<()> {
+pub fn check_scripts_sequential(
+    sig_cache: &Cache<SigCacheKey, bool>,
+    tx: &impl VerifiableTransaction,
+    kip10_enabled: bool,
+    runtime_sig_op_counting: bool,
+) -> TxResult<()> {
     let reused_values = SigHashReusedValuesUnsync::new();
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-        TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache)
-            .and_then(|mut e| e.execute())
+        TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache, kip10_enabled, runtime_sig_op_counting)
+            .execute()
             .map_err(|err| map_script_err(err, input))?;
     }
     Ok(())
 }
 
-pub fn check_scripts_par_iter(sig_cache: &Cache<SigCacheKey, bool>, tx: &(impl VerifiableTransaction + Sync)) -> TxResult<()> {
+pub fn check_scripts_par_iter(
+    sig_cache: &Cache<SigCacheKey, bool>,
+    tx: &(impl VerifiableTransaction + Sync),
+    kip10_enabled: bool,
+    runtime_sig_op_counting: bool,
+) -> TxResult<()> {
     let reused_values = SigHashReusedValuesSync::new();
     (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
         let (input, utxo) = tx.populated_input(idx);
-        TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)
-            .and_then(|mut e| e.execute())
+        TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache, kip10_enabled, runtime_sig_op_counting)
+            .execute()
             .map_err(|err| map_script_err(err, input))
     })
 }
@@ -209,8 +230,10 @@ pub fn check_scripts_par_iter_pool(
     sig_cache: &Cache<SigCacheKey, bool>,
     tx: &(impl VerifiableTransaction + Sync),
     pool: &ThreadPool,
+    kip10_enabled: bool,
+    runtime_sig_op_counting: bool,
 ) -> TxResult<()> {
-    pool.install(|| check_scripts_par_iter(sig_cache, tx))
+    pool.install(|| check_scripts_par_iter(sig_cache, tx, kip10_enabled, runtime_sig_op_counting))
 }
 
 fn map_script_err(script_err: TxScriptError, input: &TransactionInput) -> TxRuleError {
@@ -250,16 +273,15 @@ mod tests {
     #[test]
     fn check_signature_test() {
         let mut params = MAINNET_PARAMS.clone();
-        params.max_tx_inputs = 10;
-        params.max_tx_outputs = 15;
+        params.prior_max_tx_inputs = 10;
+        params.prior_max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.max_tx_inputs,
-            params.max_tx_outputs,
-            params.max_signature_script_len,
-            params.max_script_public_key_len,
-            params.ghostdag_k,
+            params.prior_max_tx_inputs,
+            params.prior_max_tx_outputs,
+            params.prior_max_signature_script_len,
+            params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -305,13 +327,13 @@ mod tests {
             }],
         );
 
-        tv.check_scripts(&populated_tx).expect("Signature check failed");
+        tv.check_scripts(&populated_tx, u64::MAX).expect("Signature check failed");
 
         // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
         let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
         // Duplicated sigs should fail due to wrong sighash
         assert_eq!(
-            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)),
+            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2), u64::MAX),
             Err(TxRuleError::SignatureInvalid(TxScriptError::EvalFalse))
         );
     }
@@ -319,16 +341,15 @@ mod tests {
     #[test]
     fn check_incorrect_signature_test() {
         let mut params = MAINNET_PARAMS.clone();
-        params.max_tx_inputs = 10;
-        params.max_tx_outputs = 15;
+        params.prior_max_tx_inputs = 10;
+        params.prior_max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.max_tx_inputs,
-            params.max_tx_outputs,
-            params.max_signature_script_len,
-            params.max_script_public_key_len,
-            params.ghostdag_k,
+            params.prior_max_tx_inputs,
+            params.prior_max_tx_outputs,
+            params.prior_max_signature_script_len,
+            params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -375,11 +396,11 @@ mod tests {
             }],
         );
 
-        assert!(tv.check_scripts(&populated_tx).is_err(), "Expecting signature check to fail");
+        assert!(tv.check_scripts(&populated_tx, u64::MAX).is_err(), "Expecting signature check to fail");
 
         // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
         let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
-        tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)).expect_err("Expecting signature check to fail");
+        tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2), u64::MAX).expect_err("Expecting signature check to fail");
 
         // Verify we are correctly testing the parallelism case (applied here as sanity for all tests)
         assert!(
@@ -392,16 +413,15 @@ mod tests {
     #[test]
     fn check_multi_signature_test() {
         let mut params = MAINNET_PARAMS.clone();
-        params.max_tx_inputs = 10;
-        params.max_tx_outputs = 15;
+        params.prior_max_tx_inputs = 10;
+        params.prior_max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.max_tx_inputs,
-            params.max_tx_outputs,
-            params.max_signature_script_len,
-            params.max_script_public_key_len,
-            params.ghostdag_k,
+            params.prior_max_tx_inputs,
+            params.prior_max_tx_outputs,
+            params.prior_max_signature_script_len,
+            params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -448,13 +468,13 @@ mod tests {
                 is_coinbase: false,
             }],
         );
-        tv.check_scripts(&populated_tx).expect("Signature check failed");
+        tv.check_scripts(&populated_tx, u64::MAX).expect("Signature check failed");
 
         // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
         let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
         // Duplicated sigs should fail due to wrong sighash
         assert_eq!(
-            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)),
+            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2), u64::MAX),
             Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail))
         );
     }
@@ -462,16 +482,15 @@ mod tests {
     #[test]
     fn check_last_sig_incorrect_multi_signature_test() {
         let mut params = MAINNET_PARAMS.clone();
-        params.max_tx_inputs = 10;
-        params.max_tx_outputs = 15;
+        params.prior_max_tx_inputs = 10;
+        params.prior_max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.max_tx_inputs,
-            params.max_tx_outputs,
-            params.max_signature_script_len,
-            params.max_script_public_key_len,
-            params.ghostdag_k,
+            params.prior_max_tx_inputs,
+            params.prior_max_tx_outputs,
+            params.prior_max_signature_script_len,
+            params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -519,12 +538,12 @@ mod tests {
             }],
         );
 
-        assert_eq!(tv.check_scripts(&populated_tx), Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
+        assert_eq!(tv.check_scripts(&populated_tx, u64::MAX), Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
 
         // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
         let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
         assert_eq!(
-            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)),
+            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2), u64::MAX),
             Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail))
         );
     }
@@ -532,16 +551,15 @@ mod tests {
     #[test]
     fn check_first_sig_incorrect_multi_signature_test() {
         let mut params = MAINNET_PARAMS.clone();
-        params.max_tx_inputs = 10;
-        params.max_tx_outputs = 15;
+        params.prior_max_tx_inputs = 10;
+        params.prior_max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.max_tx_inputs,
-            params.max_tx_outputs,
-            params.max_signature_script_len,
-            params.max_script_public_key_len,
-            params.ghostdag_k,
+            params.prior_max_tx_inputs,
+            params.prior_max_tx_outputs,
+            params.prior_max_signature_script_len,
+            params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -589,12 +607,12 @@ mod tests {
             }],
         );
 
-        assert_eq!(tv.check_scripts(&populated_tx), Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
+        assert_eq!(tv.check_scripts(&populated_tx, u64::MAX), Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
 
         // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
         let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
         assert_eq!(
-            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)),
+            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2), u64::MAX),
             Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail))
         );
     }
@@ -602,16 +620,15 @@ mod tests {
     #[test]
     fn check_empty_incorrect_multi_signature_test() {
         let mut params = MAINNET_PARAMS.clone();
-        params.max_tx_inputs = 10;
-        params.max_tx_outputs = 15;
+        params.prior_max_tx_inputs = 10;
+        params.prior_max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.max_tx_inputs,
-            params.max_tx_outputs,
-            params.max_signature_script_len,
-            params.max_script_public_key_len,
-            params.ghostdag_k,
+            params.prior_max_tx_inputs,
+            params.prior_max_tx_outputs,
+            params.prior_max_signature_script_len,
+            params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -659,12 +676,12 @@ mod tests {
             }],
         );
 
-        assert_eq!(tv.check_scripts(&populated_tx), Err(TxRuleError::SignatureInvalid(TxScriptError::EvalFalse)));
+        assert_eq!(tv.check_scripts(&populated_tx, u64::MAX), Err(TxRuleError::SignatureInvalid(TxScriptError::EvalFalse)));
 
         // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
         let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
         assert_eq!(
-            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)),
+            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2), u64::MAX),
             Err(TxRuleError::SignatureInvalid(TxScriptError::EvalFalse))
         );
     }
@@ -674,13 +691,12 @@ mod tests {
         // We test a situation where the script itself is valid, but the script signature is not push only
         let params = MAINNET_PARAMS.clone();
         let tv = TransactionValidator::new_for_tests(
-            params.max_tx_inputs,
-            params.max_tx_outputs,
-            params.max_signature_script_len,
-            params.max_script_public_key_len,
-            params.ghostdag_k,
+            params.prior_max_tx_inputs,
+            params.prior_max_tx_outputs,
+            params.prior_max_signature_script_len,
+            params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -720,12 +736,15 @@ mod tests {
             }],
         );
 
-        assert_eq!(tv.check_scripts(&populated_tx), Err(TxRuleError::SignatureInvalid(TxScriptError::SignatureScriptNotPushOnly)));
+        assert_eq!(
+            tv.check_scripts(&populated_tx, u64::MAX),
+            Err(TxRuleError::SignatureInvalid(TxScriptError::SignatureScriptNotPushOnly))
+        );
 
         // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
         let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
         assert_eq!(
-            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)),
+            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2), u64::MAX),
             Err(TxRuleError::SignatureInvalid(TxScriptError::SignatureScriptNotPushOnly))
         );
     }
@@ -734,13 +753,12 @@ mod tests {
     fn test_sign() {
         let params = MAINNET_PARAMS.clone();
         let tv = TransactionValidator::new_for_tests(
-            params.max_tx_inputs,
-            params.max_tx_outputs,
-            params.max_signature_script_len,
-            params.max_script_public_key_len,
-            params.ghostdag_k,
+            params.prior_max_tx_inputs,
+            params.prior_max_tx_outputs,
+            params.prior_max_signature_script_len,
+            params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -806,7 +824,7 @@ mod tests {
         let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
         let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), schnorr_key);
         let populated_tx = signed_tx.as_verifiable();
-        assert_eq!(tv.check_scripts(&populated_tx), Ok(()));
+        assert_eq!(tv.check_scripts(&populated_tx, u64::MAX), Ok(()));
         assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));
     }
 }

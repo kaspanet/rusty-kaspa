@@ -10,11 +10,11 @@ use crate::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
-            block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
+            block_window_cache::{BlockWindowCacheStore, BlockWindowCacheWriter, BlockWindowHeap},
             daa::DbDaaStore,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
-            headers::DbHeadersStore,
+            headers::{DbHeadersStore, HeaderStoreReader},
             headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
             pruning::{DbPruningStore, PruningPointInfo, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
@@ -32,7 +32,10 @@ use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::{BlockHashes, ORIGIN},
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-    config::genesis::GenesisBlock,
+    config::{
+        genesis::GenesisBlock,
+        params::{ForkActivation, ForkedParam},
+    },
     header::Header,
     BlockHashSet, BlockLevel,
 };
@@ -55,7 +58,8 @@ pub struct HeaderProcessingContext {
     pub known_parents: Vec<BlockHashes>,
 
     // Staging data
-    pub ghostdag_data: Option<Vec<Arc<GhostdagData>>>,
+    pub ghostdag_data: Option<Arc<GhostdagData>>,
+    pub selected_parent_daa_score: Option<u64>, // [Crescendo]
     pub block_window_for_difficulty: Option<Arc<BlockWindowHeap>>,
     pub block_window_for_past_median_time: Option<Arc<BlockWindowHeap>>,
     pub mergeset_non_daa: Option<BlockHashSet>,
@@ -78,6 +82,7 @@ impl HeaderProcessingContext {
             pruning_info,
             known_parents,
             ghostdag_data: None,
+            selected_parent_daa_score: None,
             block_window_for_difficulty: None,
             mergeset_non_daa: None,
             block_window_for_past_median_time: None,
@@ -99,7 +104,11 @@ impl HeaderProcessingContext {
     /// Returns the primary (level 0) GHOSTDAG data of this header.
     /// NOTE: is expected to be called only after GHOSTDAG computation was pushed into the context
     pub fn ghostdag_data(&self) -> &Arc<GhostdagData> {
-        &self.ghostdag_data.as_ref().unwrap()[0]
+        self.ghostdag_data.as_ref().unwrap()
+    }
+
+    pub fn selected_parent_daa_score(&self) -> u64 {
+        self.selected_parent_daa_score.unwrap()
     }
 }
 
@@ -114,11 +123,11 @@ pub struct HeaderProcessor {
     // Config
     pub(super) genesis: GenesisBlock,
     pub(super) timestamp_deviation_tolerance: u64,
-    pub(super) target_time_per_block: u64,
-    pub(super) max_block_parents: u8,
-    pub(super) mergeset_size_limit: u64,
+    pub(super) max_block_parents: ForkedParam<u8>,
+    pub(super) mergeset_size_limit: ForkedParam<u64>,
     pub(super) skip_proof_of_work: bool,
     pub(super) max_block_level: BlockLevel,
+    pub(super) crescendo_activation: ForkActivation,
 
     // DB
     db: Arc<DB>,
@@ -127,7 +136,7 @@ pub struct HeaderProcessor {
     pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     pub(super) reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub(super) reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
-    pub(super) ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
+    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
     pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
@@ -138,7 +147,7 @@ pub struct HeaderProcessor {
     pub(super) depth_store: Arc<DbDepthStore>,
 
     // Managers and services
-    pub(super) ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
+    pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) dag_traversal_manager: DbDagTraversalManager,
     pub(super) window_manager: DbWindowManager,
     pub(super) depth_manager: DbBlockDepthManager,
@@ -178,7 +187,7 @@ impl HeaderProcessor {
             relations_stores: storage.relations_stores.clone(),
             reachability_store: storage.reachability_store.clone(),
             reachability_relations_store: storage.reachability_relations_store.clone(),
-            ghostdag_stores: storage.ghostdag_stores.clone(),
+            ghostdag_store: storage.ghostdag_store.clone(),
             statuses_store: storage.statuses_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
             daa_excluded_store: storage.daa_excluded_store.clone(),
@@ -188,7 +197,7 @@ impl HeaderProcessor {
             block_window_cache_for_difficulty: storage.block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
 
-            ghostdag_managers: services.ghostdag_managers.clone(),
+            ghostdag_manager: services.ghostdag_manager.clone(),
             dag_traversal_manager: services.dag_traversal_manager.clone(),
             window_manager: services.window_manager.clone(),
             reachability_service: services.reachability_service.clone(),
@@ -199,13 +208,13 @@ impl HeaderProcessor {
             task_manager: BlockTaskDependencyManager::new(),
             pruning_lock,
             counters,
-            // TODO (HF): make sure to also pass `new_timestamp_deviation_tolerance` and use according to HF activation score
-            timestamp_deviation_tolerance: params.timestamp_deviation_tolerance(0),
-            target_time_per_block: params.target_time_per_block,
-            max_block_parents: params.max_block_parents,
-            mergeset_size_limit: params.mergeset_size_limit,
+
+            timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
+            max_block_parents: params.max_block_parents(),
+            mergeset_size_limit: params.mergeset_size_limit(),
             skip_proof_of_work: params.skip_proof_of_work,
             max_block_level: params.max_block_level,
+            crescendo_activation: params.crescendo_activation,
         }
     }
 
@@ -298,6 +307,8 @@ impl HeaderProcessor {
         self.validate_parent_relations(header)?;
         let mut ctx = self.build_processing_context(header, block_level);
         self.ghostdag(&mut ctx);
+        // [Crescendo]: persist the selected parent DAA score to be used for activation checks
+        ctx.selected_parent_daa_score = Some(self.headers_store.get_daa_score(ctx.ghostdag_data().selected_parent).unwrap());
         self.pre_pow_validation(&mut ctx, header)?;
         if let Err(e) = self.post_pow_validation(&mut ctx, header) {
             self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
@@ -344,18 +355,14 @@ impl HeaderProcessor {
             .collect_vec()
     }
 
-    /// Runs the GHOSTDAG algorithm for all block levels and writes the data into the context (if hasn't run already)
+    /// Runs the GHOSTDAG algorithm and writes the data into the context (if hasn't run already)
     fn ghostdag(&self, ctx: &mut HeaderProcessingContext) {
-        let ghostdag_data = (0..=ctx.block_level as usize)
-            .map(|level| {
-                self.ghostdag_stores[level]
-                    .get_data(ctx.hash)
-                    .unwrap_option()
-                    .unwrap_or_else(|| Arc::new(self.ghostdag_managers[level].ghostdag(&ctx.known_parents[level])))
-            })
-            .collect_vec();
-
-        self.counters.mergeset_counts.fetch_add(ghostdag_data[0].mergeset_size() as u64, Ordering::Relaxed);
+        let ghostdag_data = self
+            .ghostdag_store
+            .get_data(ctx.hash)
+            .unwrap_option()
+            .unwrap_or_else(|| Arc::new(self.ghostdag_manager.ghostdag(&ctx.known_parents[0])));
+        self.counters.mergeset_counts.fetch_add(ghostdag_data.mergeset_size() as u64, Ordering::Relaxed);
         ctx.ghostdag_data = Some(ghostdag_data);
     }
 
@@ -369,10 +376,8 @@ impl HeaderProcessor {
         //
         // Append-only stores: these require no lock and hence done first in order to reduce locking time
         //
+        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).unwrap();
 
-        for (level, datum) in ghostdag_data.iter().enumerate() {
-            self.ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap();
-        }
         if let Some(window) = ctx.block_window_for_difficulty {
             self.block_window_cache_for_difficulty.insert(ctx.hash, window);
         }
@@ -393,8 +398,8 @@ impl HeaderProcessor {
         // time, and thus serializing this part will do no harm. However this should be benchmarked. The
         // alternative is to create a separate ReachabilityProcessor and to manage things more tightly.
         let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
-        let selected_parent = ghostdag_data[0].selected_parent;
-        let mut reachability_mergeset = ghostdag_data[0].unordered_mergeset_without_selected_parent();
+        let selected_parent = ghostdag_data.selected_parent;
+        let mut reachability_mergeset = ghostdag_data.unordered_mergeset_without_selected_parent();
         reachability::add_block(&mut staging, ctx.hash, selected_parent, &mut reachability_mergeset).unwrap();
 
         // Non-append only stores need to use write locks.
@@ -448,10 +453,8 @@ impl HeaderProcessor {
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
 
-        for (level, datum) in ghostdag_data.iter().enumerate() {
-            // This data might have been already written when applying the pruning proof.
-            self.ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap_or_exists();
-        }
+        // This data might have been already written when applying the pruning proof.
+        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).unwrap_or_exists();
 
         let mut relations_write = self.relations_stores.write();
         ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
@@ -491,8 +494,7 @@ impl HeaderProcessor {
             PruningPointInfo::from_genesis(self.genesis.hash),
             (0..=self.max_block_level).map(|_| BlockHashes::new(vec![ORIGIN])).collect(),
         );
-        ctx.ghostdag_data =
-            Some(self.ghostdag_managers.iter().map(|manager_by_level| Arc::new(manager_by_level.genesis_ghostdag_data())).collect());
+        ctx.ghostdag_data = Some(Arc::new(self.ghostdag_manager.genesis_ghostdag_data()));
         ctx.mergeset_non_daa = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
