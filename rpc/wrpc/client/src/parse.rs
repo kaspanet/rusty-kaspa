@@ -139,7 +139,7 @@ pub fn parse_host(input: &str) -> Result<ParseHostOutput, ParseHostError> {
     let has_at_least_one_hyphen = host.contains('-');
     let hyphens_are_separated_by_valid_chars =
         has_at_least_one_hyphen.then(|| host.split('-').all(|part| part.chars().all(|c| c == '.' || c.is_ascii_alphanumeric())));
-    let tld = host.split('.').last();
+    let tld = host.split('.').next_back();
     // Prevents e.g. numbers being used as TLDs (which in turn prevents e.g. mistakes in IPv4 addresses as being detected as a domain).
     let tld_exists_and_is_not_number = tld.map(|tld| tld.parse::<i32>().is_err()).unwrap_or(false);
 
