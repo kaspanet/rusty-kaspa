@@ -250,24 +250,21 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_sink_timestamp()).await
     }
 
+    pub async fn async_get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
+        self.clone().spawn_blocking(|c| c.get_sink_daa_score_timestamp()).await
+    }
+
     pub async fn async_get_current_block_color(&self, hash: Hash) -> Option<bool> {
         self.clone().spawn_blocking(move |c| c.get_current_block_color(hash)).await
     }
 
-    /// source refers to the earliest block from which the current node has full header & block data  
-    pub async fn async_get_source(&self) -> Hash {
-        self.clone().spawn_blocking(|c| c.get_source()).await
+    /// retention period root refers to the earliest block from which the current node has full header & block data  
+    pub async fn async_get_retention_period_root(&self) -> Hash {
+        self.clone().spawn_blocking(|c| c.get_retention_period_root()).await
     }
 
     pub async fn async_estimate_block_count(&self) -> BlockCount {
         self.clone().spawn_blocking(|c| c.estimate_block_count()).await
-    }
-
-    /// Returns whether this consensus is considered synced or close to being synced.
-    ///
-    /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
-    pub async fn async_is_nearly_synced(&self) -> bool {
-        self.clone().spawn_blocking(|c| c.is_nearly_synced()).await
     }
 
     pub async fn async_get_virtual_chain_from_block(

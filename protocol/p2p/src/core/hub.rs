@@ -39,12 +39,12 @@ impl Hub {
                     HubEvent::NewPeer(new_router) => {
                         // If peer is outbound then connection initialization was already performed as part of the connect logic
                         if new_router.is_outbound() {
-                            info!("P2P Connected to outgoing peer {}", new_router);
+                            info!("P2P Connected to outgoing peer {} (outbound: {})", new_router, self.peers_query(true) + 1);
                             self.insert_new_router(new_router).await;
                         } else {
                             match initializer.initialize_connection(new_router.clone()).await {
                                 Ok(()) => {
-                                    info!("P2P Connected to incoming peer {}", new_router);
+                                    info!("P2P Connected to incoming peer {} (inbound: {})", new_router, self.peers_query(false) + 1);
                                     self.insert_new_router(new_router).await;
                                 }
                                 Err(err) => {
@@ -180,6 +180,11 @@ impl Hub {
     /// Returns the number of currently active peers
     pub fn active_peers_len(&self) -> usize {
         self.peers.read().len()
+    }
+
+    /// Returns the number of outbound/inbound active peers (depending on the `outbound` argument)
+    pub fn peers_query(&self, outbound: bool) -> usize {
+        self.peers.read().values().filter(|r| r.is_outbound() == outbound).count()
     }
 
     /// Returns whether there are currently active peers

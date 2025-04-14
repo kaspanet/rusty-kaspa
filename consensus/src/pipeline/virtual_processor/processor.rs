@@ -60,6 +60,7 @@ use kaspa_consensus_core::{
     },
     header::Header,
     merkle::calc_hash_merkle_root,
+    mining_rules::MiningRules,
     pruning::PruningPointsList,
     tx::{MutableTransaction, Transaction},
     utxo::{
@@ -175,6 +176,9 @@ pub struct VirtualStateProcessor {
 
     // Crescendo hardfork activation score (used here for activating KIPs 9,10)
     pub(crate) crescendo_activation: ForkActivation,
+
+    // Mining Rule
+    mining_rules: Arc<MiningRules>,
 }
 
 impl VirtualStateProcessor {
@@ -191,6 +195,7 @@ impl VirtualStateProcessor {
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
+        mining_rules: Arc<MiningRules>,
     ) -> Self {
         Self {
             receiver,
@@ -240,6 +245,7 @@ impl VirtualStateProcessor {
             counters,
             crescendo_logger: CrescendoLogger::new(),
             crescendo_activation: params.crescendo_activation,
+            mining_rules,
         }
     }
 
@@ -1114,7 +1120,8 @@ impl VirtualStateProcessor {
             let mut batch = WriteBatch::default();
             self.past_pruning_points_store.insert_batch(&mut batch, 0, self.genesis.hash).unwrap_or_exists();
             pruning_point_write.set_batch(&mut batch, self.genesis.hash, self.genesis.hash, 0).unwrap();
-            pruning_point_write.set_history_root(&mut batch, self.genesis.hash).unwrap();
+            pruning_point_write.set_retention_checkpoint(&mut batch, self.genesis.hash).unwrap();
+            pruning_point_write.set_retention_period_root(&mut batch, self.genesis.hash).unwrap();
             pruning_utxoset_write.set_utxoset_position(&mut batch, self.genesis.hash).unwrap();
             self.db.write(batch).unwrap();
             drop(pruning_point_write);
