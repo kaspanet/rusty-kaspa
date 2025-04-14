@@ -3,7 +3,7 @@ use crate::tx::{mass, MAXIMUM_STANDARD_TRANSACTION_MASS};
 use js_sys::Array;
 use kaspa_consensus_client::*;
 use kaspa_consensus_core::config::params::Params;
-use kaspa_consensus_core::mass::calc_storage_mass;
+use kaspa_consensus_core::mass::{calc_storage_mass, UtxoCell};
 use kaspa_consensus_core::network::{NetworkId, NetworkIdT};
 use kaspa_wasm_core::types::NumberArray;
 use wasm_bindgen::prelude::*;
@@ -112,8 +112,10 @@ pub fn calculate_storage_mass(network_id: NetworkIdT, input_values: &NumberArray
     let network_id = NetworkId::try_owned_from(network_id)?;
     let consensus_params = Params::from(network_id);
 
-    let input_values = Array::from(input_values).to_vec().iter().map(|v| v.as_f64().unwrap() as u64).collect::<Vec<u64>>();
-    let output_values = Array::from(output_values).to_vec().iter().map(|v| v.as_f64().unwrap() as u64).collect::<Vec<u64>>();
+    let input_values =
+        Array::from(input_values).to_vec().iter().map(|v| UtxoCell::new(1, v.as_f64().unwrap() as u64)).collect::<Vec<UtxoCell>>();
+    let output_values =
+        Array::from(output_values).to_vec().iter().map(|v| UtxoCell::new(1, v.as_f64().unwrap() as u64)).collect::<Vec<UtxoCell>>();
 
     let storage_mass =
         calc_storage_mass(false, input_values.into_iter(), output_values.into_iter(), consensus_params.storage_mass_parameter);
