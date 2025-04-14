@@ -227,7 +227,7 @@ impl AddressManager {
                     ExtendHelper { gateway, local_addr, external_port: desired_external_port },
                 )))
             }
-            Err(AddPortError::PortInUse {}) => {
+            Err(AddPortError::PortInUse) => {
                 let port = gateway.add_any_port(
                     igd::PortMappingProtocol::TCP,
                     local_addr,

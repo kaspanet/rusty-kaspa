@@ -78,11 +78,6 @@ impl ScriptBuilder {
         &mut self.script
     }
 
-    // #[cfg(any(test, target_arch = "wasm32"))]
-    // pub fn extend(&mut self, data: &[u8]) {
-    //     self.script.extend(data);
-    // }
-
     pub fn drain(&mut self) -> Vec<u8> {
         // Note that the internal script, when taken, is replaced by
         // vector with no predefined capacity because the script
