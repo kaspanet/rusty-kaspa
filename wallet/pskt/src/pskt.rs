@@ -14,6 +14,7 @@ pub use crate::input::{Input, InputBuilder};
 pub use crate::output::{Output, OutputBuilder};
 pub use crate::role::{Combiner, Constructor, Creator, Extractor, Finalizer, Signer, Updater};
 use kaspa_consensus_core::config::params::Params;
+use kaspa_consensus_core::mass::{MassCalculator, NonContextualMasses};
 use kaspa_consensus_core::{
     hashing::sighash_type::SigHashType,
     subnets::SUBNETWORK_ID_NATIVE,
@@ -432,12 +433,13 @@ impl PSKT<Extractor> {
             dest.signature_script = src.final_script_sig.ok_or(TxNotFinalized {})?;
             Ok(())
         })?;
-        todo!()
-        // let tx = MutableTransaction { tx, entries, calculated_fee: None, calculated_compute_mass: None };
-        // let calculator = MassCalculator::new_with_consensus_params(params);
-        // let mass = calculator.calc_tx_overall_mass(&tx.as_verifiable(), None).unwrap_or_default();
-        // tx.tx.set_mass(mass);
-        // Ok(tx)
+        let tx = MutableTransaction { tx, entries, calculated_fee: None, calculated_non_contextual_masses: None };
+        let calculator = MassCalculator::new_with_consensus_params(params);
+        let storage_mass = calculator.calc_contextual_masses(&tx.as_verifiable()).map(|mass| mass.storage_mass).unwrap_or_default();
+        let NonContextualMasses { compute_mass, transient_mass } = calculator.calc_non_contextual_masses(&tx.tx);
+        let mass = storage_mass.max(compute_mass).max(transient_mass);
+        tx.tx.set_mass(mass);
+        Ok(tx)
     }
 
     pub fn extract_tx(self, params: &Params) -> Result<MutableTransaction<Transaction>, ExtractError> {

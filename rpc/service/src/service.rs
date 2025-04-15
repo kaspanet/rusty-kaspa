@@ -3,10 +3,11 @@
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::feerate_estimate::{FeeEstimateConverter, FeeEstimateVerboseConverter};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
-use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
+use kaspa_consensus_core::daa_score_timestamp::DaaScoreTimestamp;
 use kaspa_consensus_core::errors::block::RuleError;
+use kaspa_consensus_core::mass::{calc_storage_mass, UtxoCell};
 use kaspa_consensus_core::utxo::utxo_inquirer::UtxoInquirerError;
 use kaspa_consensus_core::{
     block::Block,
@@ -53,6 +54,7 @@ use kaspa_notify::{
 };
 use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_p2p_lib::common::ProtocolError;
+use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
 use kaspa_rpc_core::{
     api::{
@@ -119,6 +121,7 @@ pub struct RpcCoreService {
     system_info: SystemInfo,
     fee_estimate_cache: ExpiringCache<RpcFeeEstimate>,
     fee_estimate_verbose_cache: ExpiringCache<kaspa_mining::errors::MiningManagerResult<GetFeeEstimateExperimentalResponse>>,
+    mining_rule_engine: Arc<MiningRuleEngine>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -144,6 +147,7 @@ impl RpcCoreService {
         p2p_tower_counters: Arc<TowerConnectionCounters>,
         grpc_tower_counters: Arc<TowerConnectionCounters>,
         system_info: SystemInfo,
+        mining_rule_engine: Arc<MiningRuleEngine>,
     ) -> Self {
         // This notifier UTXOs subscription granularity to index-processor or consensus notifier
         let policies = match index_notifier {
@@ -222,6 +226,7 @@ impl RpcCoreService {
             system_info,
             fee_estimate_cache: ExpiringCache::new(Duration::from_millis(500), Duration::from_millis(1000)),
             fee_estimate_verbose_cache: ExpiringCache::new(Duration::from_millis(500), Duration::from_millis(1000)),
+            mining_rule_engine,
         }
     }
 
@@ -270,11 +275,6 @@ impl RpcCoreService {
             .unwrap_or_default()
     }
 
-    fn has_sufficient_peer_connectivity(&self) -> bool {
-        // Other network types can be used in an isolated environment without peers
-        !matches!(self.flow_context.config.net.network_type, Mainnet | Testnet) || self.flow_context.hub().has_peers()
-    }
-
     fn extract_tx_query(&self, filter_transaction_pool: bool, include_orphan_pool: bool) -> RpcResult<TransactionQuery> {
         match (filter_transaction_pool, include_orphan_pool) {
             (true, true) => Ok(TransactionQuery::OrphansOnly),
@@ -283,6 +283,62 @@ impl RpcCoreService {
             (true, false) => Err(RpcError::InconsistentMempoolTxQuery),
             (false, true) => Ok(TransactionQuery::All),
             (false, false) => Ok(TransactionQuery::TransactionsOnly),
+        }
+    }
+
+    fn sanity_check_storage_mass(&self, block: Block) {
+        // [Crescendo]: warn non updated miners to upgrade their rpc flow before Crescendo activation
+        if self.config.crescendo_activation.is_active(block.header.daa_score) {
+            return;
+        }
+
+        // It is sufficient to witness a single transaction with non default mass to conclude that miner rpc flow is correct
+        if block.transactions.iter().any(|tx| tx.mass() > 0) {
+            return;
+        }
+
+        // Iterate over non-coinbase transactions and search for a transaction which is proven to have positive storage mass
+        for tx in block.transactions.iter().skip(1) {
+            /*
+                Below we apply a workaround to compute a lower bound to the storage mass even without having full UTXO context (thus lacking input amounts).
+                Notes:
+                    1. We know that plurality is always 1 for std tx ins/outs (assuming the submitted block was built via the local std mempool).
+                    2. The submitted block was accepted by consensus hence all transactions passed the basic in-isolation validity checks
+
+                |O| > |I| means that the formula used is C·|O| / H(O) - C·|I| / A(I). Additionally we know that sum(O) <= sum(I) (outs = ins minus fee).
+                Combined, we can use sum(O)/|I| as a lower bound for A(I). We simulate this by using sum(O)/|I| as the value of each (unknown) input.
+                Plugging in to the storage formula we obtain a lower bound for the real storage mass (intuitively, making inputs smaller only decreases the mass).
+            */
+            if tx.outputs.len() > tx.inputs.len() {
+                let num_ins = tx.inputs.len() as u64;
+                let sum_outs = tx.outputs.iter().map(|o| o.value).sum::<u64>();
+                if num_ins == 0 || sum_outs < num_ins {
+                    // Sanity checks
+                    continue;
+                }
+
+                let avg_ins_lower = sum_outs / num_ins; // >= 1
+                let storage_mass_lower = calc_storage_mass(
+                    tx.is_coinbase(),
+                    tx.inputs.iter().map(|_| UtxoCell { plurality: 1, amount: avg_ins_lower }),
+                    tx.outputs.iter().map(|o| o.into()),
+                    self.config.storage_mass_parameter,
+                )
+                .unwrap_or(u64::MAX);
+
+                // Despite being a lower bound, storage mass is still calculated to be positive, so we found our problem
+                if storage_mass_lower > 0 {
+                    warn!("The RPC submitted block {} contains a transaction {} with mass = 0 while it should have been strictly positive.
+This indicates that the RPC conversion flow used by the miner does not preserve the mass values received from GetBlockTemplate.
+You must upgrade your miner flow to propagate the mass field correctly prior to the Crescendo hardfork activation. 
+Failure to do so will result in your blocks being considered invalid when Crescendo activates.",
+                            block.hash(),
+                            tx.id()
+                        );
+                    // A single warning is sufficient
+                    break;
+                }
+            }
         }
     }
 }
@@ -295,9 +351,10 @@ impl RpcApi for RpcCoreService {
         request: SubmitBlockRequest,
     ) -> RpcResult<SubmitBlockResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
+        let sink_daa_score_timestamp = session.async_get_sink_daa_score_timestamp().await;
 
         // TODO: consider adding an error field to SubmitBlockReport to document both the report and error fields
-        let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
+        let is_synced: bool = self.mining_rule_engine.should_mine(sink_daa_score_timestamp);
 
         if !self.config.enable_unsynced_mining && !is_synced {
             // error = "Block not submitted - node is not synced"
@@ -334,11 +391,15 @@ impl RpcApi for RpcCoreService {
 
         trace!("incoming SubmitBlockRequest for block {}", hash);
         match self.flow_context.submit_rpc_block(&session, block.clone()).await {
-            Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
+            Ok(_) => {
+                self.sanity_check_storage_mass(block);
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Success })
+            }
             Err(ProtocolError::RuleError(RuleError::BadMerkleRoot(h1, h2))) => {
                 warn!(
-                    "The RPC submitted block triggered a {} error: {}. 
-NOTE: This error usually indicates an RPC conversion error between the node and the miner. If you are on TN11 this is likely to reflect using a NON-SUPPORTED miner.",
+                    "The RPC submitted block {} triggered a {} error: {}. 
+NOTE: This error usually indicates an RPC conversion error between the node and the miner. This is likely to reflect using a NON-SUPPORTED miner.",
+                    hash,
                     stringify!(RuleError::BadMerkleRoot),
                     RuleError::BadMerkleRoot(h1, h2)
                 );
@@ -348,10 +409,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
             }
             Err(err) => {
-                warn!(
-                    "The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}",
-                    err, block
-                );
+                warn!("The RPC submitted block triggered an error: {}\nPrinting the full block for debug purposes:\n{:?}", err, block);
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
             }
         }
@@ -385,11 +443,12 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             return Err(RpcError::CoinbasePayloadLengthAboveMax(self.config.max_coinbase_payload_len));
         }
 
-        let is_nearly_synced =
-            self.config.is_nearly_synced(block_template.selected_parent_timestamp, block_template.selected_parent_daa_score);
         Ok(GetBlockTemplateResponse {
             block: block_template.block.into(),
-            is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
+            is_synced: self.mining_rule_engine.should_mine(DaaScoreTimestamp {
+                timestamp: block_template.selected_parent_timestamp,
+                daa_score: block_template.selected_parent_daa_score,
+            }),
         })
     }
 
@@ -472,13 +531,14 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     }
 
     async fn get_info_call(&self, _connection: Option<&DynRpcConnection>, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
-        let is_nearly_synced = self.consensus_manager.consensus().unguarded_session().async_is_nearly_synced().await;
+        let sink_daa_score_timestamp =
+            self.consensus_manager.consensus().unguarded_session().async_get_sink_daa_score_timestamp().await;
         Ok(GetInfoResponse {
             p2p_id: self.flow_context.node_id.to_string(),
             mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
-            is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
+            is_synced: self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp),
             has_notify_command: true,
             has_message_id: true,
         })
@@ -1142,7 +1202,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _request: GetServerInfoRequest,
     ) -> RpcResult<GetServerInfoResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
-        let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
+        let sink_daa_score_timestamp = session.async_get_sink_daa_score_timestamp().await;
+        let is_synced: bool = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp);
         let virtual_daa_score = session.get_virtual_daa_score();
 
         Ok(GetServerInfoResponse {
@@ -1161,8 +1222,9 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         _request: GetSyncStatusRequest,
     ) -> RpcResult<GetSyncStatusResponse> {
-        let session = self.consensus_manager.consensus().unguarded_session();
-        let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
+        let sink_daa_score_timestamp =
+            self.consensus_manager.consensus().unguarded_session().async_get_sink_daa_score_timestamp().await;
+        let is_synced: bool = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp);
         Ok(GetSyncStatusResponse { is_synced })
     }
 

@@ -17,7 +17,7 @@ use kaspa_consensus::{
 };
 use kaspa_consensus_core::{
     api::ConsensusApi, block::Block, blockstatus::BlockStatus, config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult,
-    BlockHashSet, BlockLevel, HashMapCustomHasher,
+    mining_rules::MiningRules, BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::{
@@ -124,6 +124,8 @@ struct Args {
     rocksdb_mem_budget: Option<usize>,
     #[arg(long, default_value_t = false)]
     long_payload: bool,
+    #[arg(long)]
+    retention_period_days: Option<f64>,
 }
 
 #[cfg(feature = "heap")]
@@ -198,7 +200,10 @@ fn main_impl(mut args: Args) {
         .apply_args(|config| apply_args_to_consensus_params(&args, &mut config.params))
         .apply_args(|config| apply_args_to_perf_params(&args, &mut config.perf))
         .adjust_perf_params_to_consensus_params()
-        .apply_args(|config| config.ram_scale = args.ram_scale)
+        .apply_args(|config| {
+            config.ram_scale = args.ram_scale;
+            config.retention_period_days = args.retention_period_days;
+        })
         .skip_proof_of_work()
         .enable_sanity_checks();
     if !args.test_pruning {
@@ -235,6 +240,7 @@ fn main_impl(mut args: Args) {
             Default::default(),
             Default::default(),
             unix_now(),
+            Arc::new(MiningRules::default()),
         ));
         (consensus, lifetime)
     } else {
@@ -260,7 +266,36 @@ fn main_impl(mut args: Args) {
         let num_blocks = hashes.len();
         let num_txs = print_stats(&consensus, &hashes, args.delay, args.bps, config.ghostdag_k().before());
         info!("There are {num_blocks} blocks with {num_txs} transactions overall above the current pruning point");
+
+        if args.retention_period_days.is_some() {
+            let hashes_retention = topologically_ordered_hashes(&consensus, consensus.get_retention_period_root());
+            info!("There are {} blocks above the retention period root", hashes_retention.len());
+        }
+
         consensus.validate_pruning_points(consensus.get_sink()).unwrap();
+
+        // Test whether we can still retrieve a populated transaction given a txid and the accepting block daa score.
+        for hash in hashes.iter().cloned() {
+            if !consensus.is_chain_block(hash).unwrap() {
+                // only chain blocks are worth checking the acceptance data of
+                continue;
+            }
+
+            if let Ok(block_acceptance_data) = consensus.get_block_acceptance_data(hash) {
+                block_acceptance_data.iter().for_each(|cbad| {
+                    let block = consensus.get_block(hash).unwrap();
+                    cbad.accepted_transactions.iter().for_each(|ate| {
+                        assert!(
+                            consensus.get_populated_transaction(ate.transaction_id, block.header.daa_score).is_ok(),
+                            "Expected to find find tx {} at accepted daa {} via get_populated_transaction",
+                            ate.transaction_id,
+                            block.header.daa_score
+                        );
+                    });
+                });
+            }
+        }
+
         drop(consensus);
         return;
     }
@@ -277,6 +312,7 @@ fn main_impl(mut args: Args) {
         Default::default(),
         Default::default(),
         unix_now(),
+        Arc::new(MiningRules::default()),
     ));
     let handles2 = consensus2.run_processors();
     if args.headers_first {
