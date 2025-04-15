@@ -3,7 +3,7 @@ use crate::mempool::{
     Mempool,
 };
 use kaspa_consensus_core::{
-    constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
+    constants::{MAX_DWORK, MAX_SCRIPT_PUBLIC_KEY_VERSION},
     mass,
     tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
 };
@@ -140,12 +140,12 @@ impl Mempool {
 
         // The output is considered dust if the cost to the network to spend the
         // coins is more than 1/3 of the minimum free transaction relay fee.
-        // mp.config.MinimumRelayTransactionFee is in sompi/KB, so multiply
+        // mp.config.MinimumRelayTransactionFee is in dwork/KB, so multiply
         // by 1000 to convert to bytes.
         //
         // Using the typical values for a pay-to-pubkey transaction from
         // the breakdown above and the default minimum free transaction relay
-        // fee of 1000, this equates to values less than 546 sompi being
+        // fee of 1000, this equates to values less than 546 dworks being
         // considered dust.
         //
         // The following is equivalent to (value/total_serialized_size) * (1/3) * 1000
@@ -215,8 +215,8 @@ impl Mempool {
     fn minimum_required_transaction_relay_fee(&self, mass: u64) -> u64 {
         // Calculate the minimum fee for a transaction to be allowed into the
         // mempool and relayed by scaling the base fee. MinimumRelayTransactionFee is in
-        // sompi/kg so multiply by mass (which is in grams) and divide by 1000 to get
-        // minimum sompis.
+        // dwork/kg so multiply by mass (which is in grams) and divide by 1000 to get
+        // minimum dworks.
         let mut minimum_fee = (mass * self.config.minimum_relay_transaction_fee) / 1000;
 
         if minimum_fee == 0 {
@@ -225,7 +225,7 @@ impl Mempool {
 
         // Set the minimum fee to the maximum possible value if the calculated
         // fee is not in the valid range for monetary amounts.
-        minimum_fee = minimum_fee.min(MAX_SOMPI);
+        minimum_fee = minimum_fee.min(MAX_DWORK);
 
         minimum_fee
     }
@@ -241,7 +241,7 @@ mod tests {
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
         config::params::Params,
-        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
+        constants::{DWORK_PER_KASPA, MAX_TX_IN_SEQUENCE_NUM, TX_VERSION},
         mass::NonContextualMasses,
         network::NetworkType,
         subnets::SUBNETWORK_ID_NATIVE,
@@ -355,8 +355,8 @@ mod tests {
             },
             // Maximum allowed value is never dust.
             Test {
-                name: "max sompi amount is never dust",
-                tx_out: TransactionOutput::new(MAX_SOMPI, script_public_key.clone()),
+                name: "max dwork amount is never dust",
+                tx_out: TransactionOutput::new(MAX_DWORK, script_public_key.clone()),
                 minimum_relay_transaction_fee: 1000,
                 is_dust: false,
             },
@@ -404,7 +404,7 @@ mod tests {
 
         let addr = Address::new(Prefix::Testnet, Version::PubKey, &addr_hash);
         let dummy_script_public_key = kaspa_txscript::pay_to_address_script(&addr);
-        let dummy_tx_out = TransactionOutput::new(SOMPI_PER_KASPA, dummy_script_public_key);
+        let dummy_tx_out = TransactionOutput::new(DWORK_PER_KASPA, dummy_script_public_key);
 
         struct Test {
             name: &'static str,
@@ -501,7 +501,7 @@ mod tests {
                         TX_VERSION,
                         vec![dummy_tx_input.clone()],
                         vec![TransactionOutput::new(
-                            SOMPI_PER_KASPA,
+                            DWORK_PER_KASPA,
                             ScriptPublicKey::new(
                                 MAX_SCRIPT_PUBLIC_KEY_VERSION,
                                 ScriptBuilder::new().add_op(OpTrue).unwrap().script().into(),
@@ -539,7 +539,7 @@ mod tests {
                         TX_VERSION,
                         vec![dummy_tx_input],
                         vec![TransactionOutput::new(
-                            SOMPI_PER_KASPA,
+                            DWORK_PER_KASPA,
                             ScriptPublicKey::new(
                                 MAX_SCRIPT_PUBLIC_KEY_VERSION,
                                 ScriptBuilder::new().add_op(OpReturn).unwrap().script().into(),
