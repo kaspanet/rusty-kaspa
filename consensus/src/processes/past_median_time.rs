@@ -77,7 +77,7 @@ impl<T: HeaderStoreReader> SampledPastMedianTimeManager<T> {
         window_timestamps.sort_unstable(); // This is deterministic because we sort u64
         let avg_frame_size = window_timestamps.len().min(AVERAGE_FRAME_SIZE);
         // Define the slice so that the average is the highest among the 2 possible solutions in case of an even frame size
-        let ending_index = (window_timestamps.len() + avg_frame_size + 1) / 2;
+        let ending_index = (window_timestamps.len() + avg_frame_size).div_ceil(2);
         let timestamp = (window_timestamps[ending_index - avg_frame_size..ending_index].iter().sum::<u64>()
             + avg_frame_size as u64 / 2)
             / avg_frame_size as u64;

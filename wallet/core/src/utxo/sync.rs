@@ -98,8 +98,8 @@ impl SyncMonitor {
 
     async fn handle_event(&self, event: Box<Events>) -> Result<()> {
         match *event {
-            Events::UtxoProcStart { .. } => {}
-            Events::UtxoProcStop { .. } => {}
+            Events::UtxoProcStart => {}
+            Events::UtxoProcStop => {}
             _ => {}
         }
 

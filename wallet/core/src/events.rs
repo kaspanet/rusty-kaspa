@@ -290,7 +290,7 @@ pub enum EventKind {
 impl From<&Events> for EventKind {
     fn from(event: &Events) -> Self {
         match event {
-            Events::WalletPing { .. } => EventKind::WalletStart,
+            Events::WalletPing => EventKind::WalletStart,
 
             Events::Connect { .. } => EventKind::Connect,
             Events::Disconnect { .. } => EventKind::Disconnect,

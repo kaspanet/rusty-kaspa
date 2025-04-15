@@ -85,7 +85,7 @@ impl Uint256 {
     #[inline]
     /// Computes the target value in float format from BigInt format.
     pub fn compact_target_bits(self) -> u32 {
-        let mut size = (self.bits() + 7) / 8;
+        let mut size = self.bits().div_ceil(8);
         let mut compact = if size <= 3 {
             (self.as_u64() << (8 * (3 - size))) as u32
         } else {

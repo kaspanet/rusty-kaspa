@@ -281,7 +281,7 @@ impl Default for ScriptBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::iter::{once, repeat};
+    use std::iter::{once, repeat_n};
 
     // Tests that pushing opcodes to a script via the ScriptBuilder API works as expected.
     #[test]
@@ -433,39 +433,39 @@ mod tests {
             Test {
                 name: "push data len 17",
                 data: vec![0x49; 17],
-                expected: Ok(once(OpData17).chain(repeat(0x49).take(17)).collect()),
+                expected: Ok(once(OpData17).chain(repeat_n(0x49, 17)).collect()),
                 unchecked: false,
             },
             Test {
                 name: "push data len 75",
                 data: vec![0x49; 75],
-                expected: Ok(once(OpData75).chain(repeat(0x49).take(75)).collect()),
+                expected: Ok(once(OpData75).chain(repeat_n(0x49, 75)).collect()),
                 unchecked: false,
             },
             // BIP0062: Pushing 76 to 255 bytes must use OP_PUSHDATA1.
             Test {
                 name: "push data len 76",
                 data: vec![0x49; 76],
-                expected: Ok(once(OpPushData1).chain(once(76)).chain(repeat(0x49).take(76)).collect()),
+                expected: Ok(once(OpPushData1).chain(once(76)).chain(repeat_n(0x49, 76)).collect()),
                 unchecked: false,
             },
             Test {
                 name: "push data len 255",
                 data: vec![0x49; 255],
-                expected: Ok(once(OpPushData1).chain(once(255)).chain(repeat(0x49).take(255)).collect()),
+                expected: Ok(once(OpPushData1).chain(once(255)).chain(repeat_n(0x49, 255)).collect()),
                 unchecked: false,
             },
             // // BIP0062: Pushing 256 to 520 bytes must use OP_PUSHDATA2.
             Test {
                 name: "push data len 256",
                 data: vec![0x49; 256],
-                expected: Ok(once(OpPushData2).chain([0, 1]).chain(repeat(0x49).take(256)).collect()),
+                expected: Ok(once(OpPushData2).chain([0, 1]).chain(repeat_n(0x49, 256)).collect()),
                 unchecked: false,
             },
             Test {
                 name: "push data len 520",
                 data: vec![0x49; 520],
-                expected: Ok(once(OpPushData2).chain([8, 2]).chain(repeat(0x49).take(520)).collect()),
+                expected: Ok(once(OpPushData2).chain([8, 2]).chain(repeat_n(0x49, 520)).collect()),
                 unchecked: false,
             },
             // BIP0062: OP_PUSHDATA4 can never be used, as pushes over 520
@@ -497,14 +497,14 @@ mod tests {
             Test {
                 name: "push data len 32767 (non-canonical)",
                 data: vec![0x49; 32767],
-                expected: Ok(once(OpPushData2).chain([255, 127]).chain(repeat(0x49).take(32767)).collect()),
+                expected: Ok(once(OpPushData2).chain([255, 127]).chain(repeat_n(0x49, 32767)).collect()),
                 unchecked: true,
             },
             // 5-byte data push via OP_PUSHDATA_4.
             Test {
                 name: "push data len 65536 (non-canonical)",
                 data: vec![0x49; 65536],
-                expected: Ok(once(OpPushData4).chain([0, 0, 1, 0]).chain(repeat(0x49).take(65536)).collect()),
+                expected: Ok(once(OpPushData4).chain([0, 0, 1, 0]).chain(repeat_n(0x49, 65536)).collect()),
                 unchecked: true,
             },
         ];
@@ -549,7 +549,7 @@ mod tests {
                 value: 0xffeeddccbbaa9988,
                 expected: vec![OpData8, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff],
             },
-            Test { name: "0xffffffffffffffff", value: u64::MAX, expected: once(OpData8).chain(repeat(0xff).take(8)).collect() },
+            Test { name: "0xffffffffffffffff", value: u64::MAX, expected: once(OpData8).chain(repeat_n(0xff, 8)).collect() },
         ];
 
         for test in tests {

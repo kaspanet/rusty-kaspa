@@ -91,7 +91,7 @@ impl Hub {
         let total_outbound = peers.values().filter(|peer| peer.is_outbound()).count();
         let total_inbound = peers.len() - total_outbound;
 
-        let mut outbound_count = ((num_peers + 1) / 2).min(total_outbound);
+        let mut outbound_count = num_peers.div_ceil(2).min(total_outbound);
 
         // If there won't be enough inbound peers to meet the num_peers after we've selected only half for outbound,
         // try to require more outbound peers for the difference
