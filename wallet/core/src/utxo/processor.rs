@@ -404,29 +404,29 @@ impl UtxoProcessor {
 
         // Create separate lists for entries that appear in both added and removed
         let mut common_added = HashMap::new();
-        let mut common_removed = HashMap::new();
+        //let mut common_removed = HashMap::new();
 
         // Find common entries and separate them
         for (address, removed_entries) in removed.clone().into_iter() {
             if let Some(added_entries) = added.get(&address) {
-                let mut common_entries_removed = Vec::new();
+                //let mut common_entries_removed = Vec::new();
                 let mut common_entries_added = Vec::new();
 
                 for removed_entry in removed_entries.iter() {
                     if let Some(added_entry) = added_entries.iter().find(|added_entry| added_entry.outpoint == removed_entry.outpoint)
                     {
-                        common_entries_removed.push(removed_entry.clone());
+                        //common_entries_removed.push(removed_entry.clone());
                         common_entries_added.push(added_entry.clone());
                     }
                 }
 
-                if !common_entries_removed.is_empty() {
-                    common_removed.insert(address.clone(), common_entries_removed.clone());
+                if !common_entries_added.is_empty() {
+                    //common_removed.insert(address.clone(), common_entries_removed.clone());
                     common_added.insert(address.clone(), common_entries_added.clone());
 
                     // Remove common entries from original lists
                     if let Some(entries) = removed.get_mut(&address) {
-                        entries.retain(|entry| !common_entries_removed.iter().any(|common| common.outpoint == entry.outpoint));
+                        entries.retain(|entry| !common_entries_added.iter().any(|common| common.outpoint == entry.outpoint));
                     }
                     if let Some(entries) = added.get_mut(&address) {
                         entries.retain(|entry| !common_entries_added.iter().any(|common| common.outpoint == entry.outpoint));
@@ -438,12 +438,6 @@ impl UtxoProcessor {
         // Clean up empty entries
         removed.retain(|_, entries| !entries.is_empty());
         added.retain(|_, entries| !entries.is_empty());
-
-        // log_warn!("\n\n$$$$$$$$$$ Common UTXOs in both added and removed:");
-        // log_warn!("Common Added: {:#?}", common_added);
-        // log_warn!("Common Removed: {:#?}", common_removed);
-        // log_warn!("Remaining Added: {:#?}", added);
-        // log_warn!("Remaining Removed: {:#?}", removed);
 
         // Process remaining removed entries
         for (address, entries) in removed.into_iter() {
@@ -474,12 +468,12 @@ impl UtxoProcessor {
         for (address, entries_added) in common_added.into_iter() {
             if let Some(utxo_context) = self.address_to_utxo_context(&address) {
                 updated_contexts.insert(utxo_context.clone());
-                let entries_removed = common_removed.get(&address).unwrap();
+                //let entries_removed = common_removed.get(&address).unwrap();
 
                 let added_utxos = entries_added.iter().map(|entry| entry.into()).collect::<Vec<_>>();
-                let removed_utxos = entries_removed.iter().map(|entry| entry.into()).collect::<Vec<_>>();
+                //let removed_utxos = entries_removed.iter().map(|entry| entry.into()).collect::<Vec<_>>();
 
-                utxo_context.update_utxos(added_utxos, removed_utxos, current_daa_score).await?;
+                utxo_context.update_utxos(added_utxos, current_daa_score).await?;
             } else {
                 log_error!("receiving UTXO Changed 'added' notification for an unknown address: {}", address);
             }

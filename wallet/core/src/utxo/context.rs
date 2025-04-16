@@ -327,10 +327,10 @@ impl UtxoContext {
 
     pub async fn update(&self, utxo_entry: UtxoEntryReference, _current_daa_score: u64, _force_maturity: bool) -> Result<bool> {
         let mut context = self.context();
-        if let Some(old_entry) = context.map.get(&utxo_entry.id()) {
-            if old_entry.block_daa_score() > utxo_entry.block_daa_score() {
-                return Ok(false);
-            }
+        if context.map.get(&utxo_entry.id()).is_some() {
+            // if old_entry.block_daa_score() > utxo_entry.block_daa_score() {
+            //     return Ok(false);
+            // }
             let id = utxo_entry.id();
             let entry = PendingUtxoEntryReference::new(utxo_entry.clone(), self.clone());
 
@@ -544,22 +544,13 @@ impl UtxoContext {
         Balance::new(mature, pending, outgoing_without_batch_tx, context.mature.len(), context.pending.len(), context.stasis.len())
     }
 
-    pub(crate) async fn update_utxos(
-        &self,
-        added_utxos: Vec<UtxoEntryReference>,
-        removed_utxos: Vec<UtxoEntryReference>,
-        current_daa_score: u64,
-    ) -> Result<()> {
-        if removed_utxos.is_not_empty() {
-            self.remove(removed_utxos).await?;
-        }
-
-        if added_utxos.is_empty() {
+    pub(crate) async fn update_utxos(&self, utxos: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
+        if utxos.is_empty() {
             return Ok(());
         }
 
-        let added_utxos = HashMap::group_from(added_utxos.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
-        for (txid, utxos) in added_utxos.into_iter() {
+        let utxos = HashMap::group_from(utxos.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
+        for (txid, utxos) in utxos.into_iter() {
             // get outgoing transaction from the processor in case the transaction
             // originates from a different [`Account`] represented by a different [`UtxoContext`].
             let outgoing_transaction = self.processor().outgoing().get(&txid);
