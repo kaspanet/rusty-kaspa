@@ -426,8 +426,9 @@ impl PSKT<Finalizer> {
 }
 
 impl PSKT<Extractor> {
-    pub fn extract_tx_unchecked(self, _params: &Params) -> Result<MutableTransaction<Transaction>, TxNotFinalized> {
+    pub fn extract_tx_unchecked(self, params: &Params) -> Result<MutableTransaction<Transaction>, TxNotFinalized> {
         let tx = self.unsigned_tx();
+        let entries = tx.entries;
         let mut tx = tx.tx;
         tx.inputs.iter_mut().zip(self.inner_pskt.inputs).try_for_each(|(dest, src)| {
             dest.signature_script = src.final_script_sig.ok_or(TxNotFinalized {})?;
