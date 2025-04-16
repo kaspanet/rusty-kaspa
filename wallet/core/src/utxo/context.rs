@@ -340,7 +340,9 @@ impl UtxoContext {
             context.pending.entry(id.clone()).and_modify(|e| *e = utxo_entry.clone());
             self.processor().pending().entry(id.clone()).and_modify(|e| *e = entry.clone());
 
-            context.mature.iter_mut().find(|entry| entry.id() == id).map(|entry| *entry = utxo_entry.clone());
+            if let Some(entry) = context.mature.iter_mut().find(|entry| entry.id() == id) {
+                *entry = utxo_entry.clone();
+            }
 
             context.map.entry(id.clone()).and_modify(|e| *e = utxo_entry);
 
