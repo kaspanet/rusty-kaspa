@@ -3579,9 +3579,73 @@ impl Deserializer for GetPruningWindowRootsResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AcceptedTxEntry {
+    pub transaction_id: RpcTransactionId,
+    pub index_within_block: u32,
+}
+
+impl AcceptedTxEntry {
+    pub fn new(transaction_id: RpcTransactionId, index_within_block: u32) -> Self {
+        Self { transaction_id, index_within_block }
+    }
+}
+
+impl Serializer for AcceptedTxEntry {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcTransactionId, &self.transaction_id, writer)?;
+        store!(u32, &self.index_within_block, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for AcceptedTxEntry {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transaction_id = load!(RpcTransactionId, reader)?;
+        let index_within_block = load!(u32, reader)?;
+        Ok(Self { transaction_id, index_within_block })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergesetBlockAcceptanceData {
+    pub block_hash: RpcHash,
+    pub accepted_txs: Vec<AcceptedTxEntry>,
+}
+
+impl MergesetBlockAcceptanceData {
+    pub fn new(block_hash: RpcHash, accepted_txs: Vec<AcceptedTxEntry>) -> Self {
+        Self { block_hash, accepted_txs }
+    }
+}
+
+impl Serializer for MergesetBlockAcceptanceData {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.block_hash, writer)?;
+        serialize!(Vec<AcceptedTxEntry>, &self.accepted_txs, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for MergesetBlockAcceptanceData {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let block_hash = load!(RpcHash, reader)?;
+        let accepted_txs = deserialize!(Vec<AcceptedTxEntry>, reader)?;
+        Ok(Self { block_hash, accepted_txs })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ArchivalBlock {
     pub child: Option<RpcHash>,
     pub block: RpcRawBlock,
+    pub acceptance_data: Vec<MergesetBlockAcceptanceData>,
+    pub selected_parent: Option<RpcHash>,
 }
 
 impl Serializer for ArchivalBlock {
@@ -3589,6 +3653,8 @@ impl Serializer for ArchivalBlock {
         store!(u16, &1, writer)?;
         store!(Option<RpcHash>, &self.child, writer)?;
         serialize!(RpcRawBlock, &self.block, writer)?;
+        store!(Vec<MergesetBlockAcceptanceData>, &self.acceptance_data, writer)?;
+        store!(Option<RpcHash>, &self.selected_parent, writer)?;
 
         Ok(())
     }

@@ -13,7 +13,7 @@ use kaspa_consensus_core::{
         block::RuleError,
     },
     merkle::calc_hash_merkle_root,
-    ArchivalBlock, BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher,
+    ArchivalBlock, BlockHashMap, BlockHashSet, BlockLevel, BlueWorkType, HashMapCustomHasher,
 };
 use kaspa_core::info;
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
@@ -27,12 +27,13 @@ use rayon::{
 use crate::{
     consensus::storage::ConsensusStorage,
     model::stores::{
+        acceptance_data::{AcceptanceDataStore, AcceptanceDataStoreReader},
         block_transactions::BlockTransactionsStore,
         headers::{HeaderStore, HeaderStoreReader},
         past_pruning_points::PastPruningPointsStoreReader,
         pruning::PruningStoreReader,
         pruning_window_root::{PruningWindowRootStore, PruningWindowRootStoreReader},
-        statuses::{StatusesStore, StatusesStoreReader},
+        statuses::StatusesStore,
     },
 };
 
@@ -70,7 +71,7 @@ impl ArchivalManager {
         }
 
         let mut validated: HashMap<_, Block, _> = BlockHashMap::new();
-        for ArchivalBlock { block, child } in blocks.iter().cloned() {
+        for ArchivalBlock { block, child, acceptance_data: _acceptance_data } in blocks.iter().cloned() {
             if let Some(child) = child {
                 let child_header = validated.get(&child).map(|b| Ok::<_, ArchivalError>(b.header.clone())).unwrap_or_else(|| {
                     Ok(self
@@ -92,7 +93,7 @@ impl ArchivalManager {
             }
         }
 
-        self.thread_pool.install(|| blocks.par_iter().try_for_each(|block| self.add_archival_block(block.block.clone())))?;
+        self.thread_pool.install(|| blocks.par_iter().try_for_each(|block| self.add_archival_block(&block)))?;
 
         let mut status_write = self.storage.statuses_store.write();
         for block in blocks {
@@ -102,25 +103,59 @@ impl ArchivalManager {
         Ok(())
     }
 
-    fn add_archival_block(&self, block: Block) -> ArchivalResult<()> {
-        let block_hash = block.hash();
-        if let Some(status) = self.storage.statuses_store.read().get(block_hash).unwrap_option() {
-            if status.has_block_body() {
-                return Ok(());
-            }
+    /// Calculates the accepted_id_merkle_root based on the current DAA score and the accepted tx ids
+    /// refer KIP-15 for more details
+    ///
+    /// Note: since this function is used in archival nodes, we have to keep the daa_score argument
+    fn calc_accepted_id_merkle_root(&self, daa_score: u64, mut accepted_tx_ids: Vec<Hash>, selected_parent: Hash) -> Hash {
+        if self.crescendo_activation.is_active(daa_score) {
+            kaspa_merkle::merkle_hash(
+                self.storage.headers_store.get_header(selected_parent).unwrap().accepted_id_merkle_root,
+                kaspa_merkle::calc_merkle_root(accepted_tx_ids.iter().copied()),
+            )
+        } else {
+            accepted_tx_ids.sort();
+            kaspa_merkle::calc_merkle_root(accepted_tx_ids.iter().copied())
         }
+    }
+
+    fn add_archival_block(&self, ArchivalBlock { block, child: _child, acceptance_data }: &ArchivalBlock) -> ArchivalResult<()> {
+        let block = block.clone();
+        let block_hash = block.hash();
 
         let block_level = calc_block_level(&block.header, self.max_block_level);
         let crescendo_activated = self.crescendo_activation.is_active(block.header.daa_score);
         let merkle_root = block.header.hash_merkle_root;
 
-        // TODO: Check locks etc
-        if !self.storage.headers_store.has(block_hash).unwrap() {
-            self.storage.headers_store.insert(block_hash, block.header, block_level).unwrap();
+        if let Some((selected_parent, acceptance_data)) = acceptance_data {
+            if !self.storage.acceptance_data_store.has(block_hash).unwrap() {
+                let accepted_tx_ids = acceptance_data
+                    .iter()
+                    .flat_map(|block_data| block_data.accepted_transactions.iter().map(|tx| tx.transaction_id))
+                    .collect_vec();
+
+                let expected_accepted_id_merkle_root =
+                    self.calc_accepted_id_merkle_root(block.header.daa_score, accepted_tx_ids, *selected_parent);
+
+                if expected_accepted_id_merkle_root != block.header.accepted_id_merkle_root {
+                    return Err(RuleError::BadAcceptedIDMerkleRoot(
+                        block_hash,
+                        block.header.accepted_id_merkle_root,
+                        expected_accepted_id_merkle_root,
+                    )
+                    .into());
+                }
+
+                // Note: Some of the data here is not validated, like in which block the tx was accepted from, or what index, but since we only care about the order, it's ok
+                self.storage.acceptance_data_store.insert(block_hash, acceptance_data.clone().into()).unwrap_or_exists();
+            }
         }
 
+        // TODO: Check locks
+        self.storage.headers_store.insert(block_hash, block.header, block_level).unwrap_or_exists();
+
         // TODO: Check locks etc
-        if !block.transactions.is_empty() {
+        if !block.transactions.is_empty() && !self.storage.block_transactions_store.has(block_hash).unwrap() {
             let calculated = calc_hash_merkle_root(block.transactions.iter(), crescendo_activated);
             if calculated != merkle_root {
                 return Err(RuleError::BadMerkleRoot(merkle_root, calculated).into());
@@ -132,6 +167,7 @@ impl ArchivalManager {
         Ok(())
     }
 
+    // TODO: Don't go deeper in the chain for blocks that don't have acceptance data
     fn get_pruning_window_root(&self, pp_index: u64) -> Vec<Hash> {
         let pp = self.storage.past_pruning_points_store.get(pp_index).unwrap();
         let mut write_guard = self.storage.pruning_window_root_store.write();
@@ -145,6 +181,7 @@ impl ArchivalManager {
         let mut visited = BlockHashSet::new();
 
         let mut new_roots = BlockHashSet::new();
+        let mut new_roots_min_bw = BlueWorkType::MAX;
         loop {
             let Some(SortableBlock { hash: current, .. }) = topological_heap.pop() else {
                 break;
@@ -160,6 +197,7 @@ impl ArchivalManager {
             // TODO: Maybe it's better to check block status?
             if header.direct_parents().iter().any(|parent| !self.storage.block_transactions_store.has(*parent).unwrap()) {
                 new_roots.insert(header.hash);
+                new_roots_min_bw = new_roots_min_bw.min(header.blue_work);
                 continue;
             }
 
@@ -170,6 +208,81 @@ impl ArchivalManager {
                 });
             }
         }
+
+        // // We want the new_roots to only have chain blocks with acceptance data, so we find the earliest chain block that has acceptance data,
+        // // and remove all chain blocks below it that don't have acceptance data.
+        // let mut current = pp;
+        // let (chain_root, chain_root_sp) = loop {
+        //     if current == self.genesis_hash {
+        //         break (current, None);
+        //     }
+
+        //     let header = self.storage.headers_store.get_header(current).unwrap();
+        //     if header.direct_parents().iter().any(|parent| !self.storage.block_transactions_store.has(*parent).unwrap()) {
+        //         break (current, None);
+        //     }
+        //     let selected_parent = header
+        //         .direct_parents()
+        //         .iter()
+        //         .copied()
+        //         .map(|parent| {
+        //             let parent_header = self.storage.headers_store.get_header(parent).unwrap();
+        //             SortableBlock { hash: parent, blue_work: parent_header.blue_work }
+        //         })
+        //         .max()
+        //         .expect("we checked above if block transactions exist, so we also expect the header to exist")
+        //         .hash;
+        //     if !self.storage.acceptance_data_store.has(selected_parent).unwrap() {
+        //         break (current, Some(selected_parent));
+        //     }
+
+        //     current = selected_parent;
+        // };
+
+        // // We remove chain blocks without acceptance data from new_roots
+        // if let Some(chain_root_sp) = chain_root_sp {
+        //     if !new_roots.contains(&chain_root) {
+        //         let mut current = chain_root_sp;
+        //         loop {
+        //             let header = self.storage.headers_store.get_header(current).unwrap();
+        //             if header.blue_work < new_roots_min_bw {
+        //                 break;
+        //             }
+
+        //             new_roots.remove(&current);
+
+        //             let Some(selected_parent) = header
+        //                 .direct_parents()
+        //                 .iter()
+        //                 .copied()
+        //                 .map(|parent| {
+        //                     self.storage
+        //                         .headers_store
+        //                         .get_header(parent)
+        //                         .unwrap_option()
+        //                         .map(|h| SortableBlock { hash: parent, blue_work: h.blue_work })
+        //                 })
+        //                 .reduce(|a, b| {
+        //                     if a.is_none() || b.is_none() {
+        //                         return None;
+        //                     }
+        //                     let a = a.unwrap();
+        //                     let b = b.unwrap();
+        //                     if a.blue_work > b.blue_work {
+        //                         Some(a)
+        //                     } else {
+        //                         Some(b)
+        //                     }
+        //                 })
+        //                 .and_then(|s| s.map(|s| s.hash))
+        //             else {
+        //                 break;
+        //             };
+
+        //             current = selected_parent;
+        //         }
+        //     }
+        // }
 
         let new_roots_vec = new_roots.iter().copied().collect_vec();
         if BlockHashSet::from_iter(current_roots.into_iter()) != new_roots {
@@ -199,7 +312,8 @@ impl ArchivalManager {
         for pp_index in (1..=current_pp_index).rev() {
             let pp = self.storage.past_pruning_points_store.get(pp_index).unwrap();
             info!("Checking consistency of pruning window root for pruning point {} ({})", pp_index, pp);
-            let mut unvisited_roots = BlockHashSet::from_iter(self.get_pruning_window_root(pp_index).into_iter());
+            let pp_roots = BlockHashSet::from_iter(self.get_pruning_window_root(pp_index).into_iter());
+            let mut unvisited_roots = pp_roots.clone();
 
             let mut topological_heap: BinaryHeap<_> = Default::default();
             let mut visited = BlockHashSet::new();
@@ -237,6 +351,37 @@ impl ArchivalManager {
             }
 
             assert!(unvisited_roots.is_empty());
+
+            // Check that all pp_roots chain blocks contain acceptance data
+            let mut current = pp;
+            loop {
+                assert!(
+                    current == pp || !pp_roots.contains(&current) || self.storage.acceptance_data_store.has(current).unwrap(),
+                    "current == pp: {} || !pp_roots.contains(&current): {} || self.storage.acceptance_data_store.has(current).unwrap(): {}",
+                    current == pp,
+                    !pp_roots.contains(&current),
+                    self.storage.acceptance_data_store.has(current).unwrap()
+                );
+                let header = self.storage.headers_store.get_header(current).unwrap();
+                if header.direct_parents().iter().any(|parent| !self.storage.block_transactions_store.has(*parent).unwrap()) {
+                    break;
+                }
+                let Some(selected_parent) = header
+                    .direct_parents()
+                    .iter()
+                    .copied()
+                    .map(|parent| {
+                        let parent_header = self.storage.headers_store.get_header(parent).unwrap();
+                        SortableBlock { hash: parent, blue_work: parent_header.blue_work }
+                    })
+                    .max()
+                    .map(|s| s.hash)
+                else {
+                    break;
+                };
+
+                current = selected_parent;
+            }
         }
     }
 }

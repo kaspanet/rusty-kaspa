@@ -998,9 +998,22 @@ message GetPruningWindowRootsResponseMessage{
   RPCError error = 1000;
 }
 
+message AcceptedTxEntry{
+  string transactionId = 1;
+  uint32 index_within_block = 2;
+}
+
+
+message MergesetBlockAcceptanceData{
+  string blockHash = 1;
+  repeated AcceptedTxEntry acceptedTxs = 3;
+}
+
 message ArchivalBlock{
   string child = 1;
   RpcBlock block = 2;
+  repeated MergesetBlockAcceptanceData acceptanceData = 3;
+  string selectedParent = 4;
 }
 
 message AddArchivalBlocksRequestMessage {

@@ -1186,7 +1186,33 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             .blocks
             .into_iter()
             .map(|archival_block| match archival_block.block.try_into() {
-                Ok(block) => Ok(kaspa_consensus_core::ArchivalBlock { block, child: archival_block.child }),
+                Ok(block) => Ok(kaspa_consensus_core::ArchivalBlock {
+                    block,
+                    child: archival_block.child,
+
+                    acceptance_data: archival_block.selected_parent.map(|sp| {
+                        let acceptance_data = archival_block
+                            .acceptance_data
+                            .into_iter()
+                            .map(|block_data| kaspa_consensus_core::acceptance_data::MergesetBlockAcceptanceData {
+                                block_hash: block_data.block_hash,
+                                accepted_transactions: block_data
+                                    .accepted_txs
+                                    .into_iter()
+                                    .map(|entry| {
+                                        let tx_id = entry.transaction_id;
+                                        let index_within_block = entry.index_within_block;
+                                        kaspa_consensus_core::acceptance_data::AcceptedTxEntry {
+                                            transaction_id: tx_id,
+                                            index_within_block,
+                                        }
+                                    })
+                                    .collect(),
+                            })
+                            .collect();
+                        (sp, acceptance_data)
+                    }),
+                }),
                 Err(err) => Err(RpcError::General(format!("Failed to parse block: {err}"))),
             })
             .collect::<Result<Vec<_>, _>>()?;

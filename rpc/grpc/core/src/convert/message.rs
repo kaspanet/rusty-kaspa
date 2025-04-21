@@ -254,10 +254,34 @@ from!(item: RpcResult<&kaspa_rpc_core::GetPruningWindowRootsResponse>, protowire
     Self { roots: item.roots.iter().map(|x| x.into()).collect(), error: None }
 });
 
+from!(item: &kaspa_rpc_core::AcceptedTxEntry, protowire::AcceptedTxEntry, {
+    Self {
+        transaction_id: item.transaction_id.to_string(),
+        index_within_block: item.index_within_block,
+    }
+});
+
+from!(item: &kaspa_rpc_core::MergesetBlockAcceptanceData, protowire::MergesetBlockAcceptanceData, {
+    Self {
+        block_hash: item.block_hash.to_string(),
+        accepted_txs: item
+            .accepted_txs
+            .iter()
+            .map(|x|x.into())
+            .collect(),
+    }
+});
+
 from!(item: &kaspa_rpc_core::ArchivalBlock, protowire::ArchivalBlock, {
     Self {
         block: Some((&item.block).into()),
         child: item.child.unwrap_or_default().to_string(),
+        acceptance_data: item.acceptance_data
+        .iter()
+                .map(|x| x.into())
+                .collect(),
+                selected_parent: item.selected_parent.unwrap_or_default().to_string(),
+
     }
 });
 from!(item: &kaspa_rpc_core::AddArchivalBlocksRequest, protowire::AddArchivalBlocksRequestMessage, {
@@ -751,6 +775,24 @@ try_from!(item: &protowire::GetPruningWindowRootsResponseMessage, RpcResult<kasp
     }
 });
 
+try_from!(item: &protowire::AcceptedTxEntry, kaspa_rpc_core::AcceptedTxEntry, {
+    Self {
+        transaction_id: kaspa_rpc_core::RpcTransactionId::from_str(&item.transaction_id)?,
+        index_within_block: item.index_within_block,
+    }
+});
+
+try_from!(item: &protowire::MergesetBlockAcceptanceData, kaspa_rpc_core::MergesetBlockAcceptanceData, {
+    Self {
+        block_hash: RpcHash::from_str(&item.block_hash)?,
+        accepted_txs: item
+            .accepted_txs
+            .iter()
+            .map(kaspa_rpc_core::AcceptedTxEntry::try_from)
+            .collect::<Result<Vec<_>, _>>()?,
+    }
+});
+
 try_from!(item: &protowire::ArchivalBlock, kaspa_rpc_core::ArchivalBlock, {
     Self {
         block: item
@@ -758,9 +800,16 @@ try_from!(item: &protowire::ArchivalBlock, kaspa_rpc_core::ArchivalBlock, {
             .as_ref()
             .ok_or_else(|| RpcError::MissingRpcFieldError("ArchivalBlock".to_string(), "block".to_string()))?
             .try_into()?,
-        child: if item.child.is_empty(){ None }else {Some(RpcHash::from_str(&item.child)?)},
+        child: if item.child.is_empty() { None } else { Some(RpcHash::from_str(&item.child)?) },
+        acceptance_data: item
+            .acceptance_data
+            .iter()
+            .map(|x| x.try_into())
+            .collect::<Result<Vec<_>, _>>()?,
+        selected_parent: if item.selected_parent.is_empty() { None } else { Some(RpcHash::from_str(&item.selected_parent)?) },
     }
 });
+
 try_from!(item: &protowire::AddArchivalBlocksRequestMessage, kaspa_rpc_core::AddArchivalBlocksRequest,{
     Self {
         blocks: item
