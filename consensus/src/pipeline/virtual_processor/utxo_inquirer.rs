@@ -28,8 +28,7 @@ impl VirtualStateProcessor {
     ) -> Result<SignableTransaction, UtxoInquirerError> {
         let retention_period_root_daa_score = self
             .headers_store
-            .get_compact_header_data(retention_period_root_hash)
-            .map(|compact_header| compact_header.daa_score)
+            .get_daa_score(retention_period_root_hash)
             .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(retention_period_root_hash))?;
 
         if accepting_block_daa_score < retention_period_root_daa_score {
@@ -94,11 +93,8 @@ impl VirtualStateProcessor {
             .get_by_hash(retention_period_root_hash)
             .map_err(|_| UtxoInquirerError::MissingIndexForHash(retention_period_root_hash))?;
         let (tip_index, tip_hash) = sc_read.get_tip().map_err(|_| UtxoInquirerError::MissingTipData)?;
-        let tip_daa_score = self
-            .headers_store
-            .get_compact_header_data(tip_hash)
-            .map(|tip| tip.daa_score)
-            .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(tip_hash))?;
+        let tip_daa_score =
+            self.headers_store.get_daa_score(tip_hash).map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(tip_hash))?;
 
         // For a chain segment it holds that len(segment) <= daa_score(segment end) - daa_score(segment start). This is true
         // because each chain block increases the daa score by at least one. Hence we can lower bound our search by high index
@@ -117,14 +113,14 @@ impl VirtualStateProcessor {
                 UtxoInquirerError::MissingHashAtIndex(mid)
             })?;
 
-            // 2. Get the compact header so we have access to the daa_score. Error if we cannot find the header
-            let compact_header = self.headers_store.get_compact_header_data(hash).map_err(|_| {
-                trace!("Did not find a compact header with hash {}", hash);
+            // 2. Get the daa_score. Error if the header is not found
+            let daa_score = self.headers_store.get_daa_score(hash).map_err(|_| {
+                trace!("Did not find a header with hash {}", hash);
                 UtxoInquirerError::MissingCompactHeaderForBlockHash(hash)
             })?;
 
             // 3. Compare block daa score to our target
-            match compact_header.daa_score.cmp(&target_daa_score) {
+            match daa_score.cmp(&target_daa_score) {
                 cmp::Ordering::Equal => {
                     // We found the chain block we need
                     break hash;
