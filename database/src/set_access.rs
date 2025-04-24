@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn test_delete_bucket() {
-        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10)).expect("Failed to create temp db");
         let access = DbSetAccess::<Hash, u64>::new(db.clone(), vec![1, 2]);
 
         for i in 0..16 {

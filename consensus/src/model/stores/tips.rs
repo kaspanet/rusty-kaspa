@@ -103,7 +103,7 @@ mod tests {
 
     #[test]
     fn test_update_tips() {
-        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10)).unwrap();
         let mut store = DbTipsStore::new(db.clone());
         store.add_tip(1.into(), &[]).unwrap();
         store.add_tip(3.into(), &[]).unwrap();
