@@ -45,16 +45,16 @@ jobs:
         with:
           path: |
             ~/x-tools
-          key: ${{ runner.os }}-musl-${{ hashFiles('**/musl-toolchain/preset.sh') }}
+          key: ${{ runner.os }}-musl-${{ hashFiles('**/musl-toolchain/build-amd64.sh', '**/musl-toolchain/build-aarch64.sh') }}
           restore-keys: |
             ${{ runner.os }}-musl-
 
-      - name: Build on Linux
+      - name: Build on linux-musl/amd64
         if: runner.os == 'Linux'
         # We're using musl to make the binaries statically linked and portable
         run: |
           # Run build script for musl toolchain
-          source musl-toolchain/build.sh
+          source musl-toolchain/build-amd64.sh
           
           # Go back to the workspace
           cd $GITHUB_WORKSPACE
@@ -67,6 +67,28 @@ jobs:
           cp target/x86_64-unknown-linux-musl/release/kaspa-wallet bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-amd64.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux-amd64.zip"
+          zip -r "${archive}" ./bin/*
+          echo "archive=${archive}" >> $GITHUB_ENV
+          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+
+      - name: Build on linux-musl/aarch64
+        if: runner.os == 'Linux'
+        # We're using musl to make the binaries statically linked and portable
+        run: |
+          # Run build script for musl toolchain
+          source musl-toolchain/build-aarch64.sh
+          
+          # Go back to the workspace
+          cd $GITHUB_WORKSPACE
+          
+          # Build for musl
+          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target aarch64-unknown-linux-musl
+          mkdir bin || true
+          cp target/aarch64-unknown-linux-musl/release/kaspad bin/
+          cp target/aarch64-unknown-linux-musl/release/rothschild bin/
+          cp target/aarch64-unknown-linux-musl/release/kaspa-wallet bin/
+          archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-aarch64.zip"
+          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux-aarch64.zip"
           zip -r "${archive}" ./bin/*
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
