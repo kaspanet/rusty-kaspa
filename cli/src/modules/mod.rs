@@ -42,6 +42,7 @@ pub mod theme;
 pub mod track;
 pub mod transfer;
 pub mod wallet;
+pub mod serializable;
 
 // this module is registered manually within
 // applications that support metrics
