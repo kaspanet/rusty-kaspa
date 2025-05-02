@@ -17,7 +17,9 @@ jobs:
           - os: windows-latest
             TARGET: windows
           - os: macos-latest
-            TARGET: macos
+            TARGET: macos/amd64
+          - os: macos-latest
+            TARGET: macos/aarch64
     name: Building ${{ matrix.TARGET }}
     steps:
       - name: Fix CRLF on Windows
@@ -117,18 +119,36 @@ jobs:
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
-      - name: Build for macOS
-        if: matrix.TARGET == 'macos'
+      - name: Build for macos/amd64
+        if: matrix.TARGET == 'macos/amd64'
         run: |
-          cargo build --bin kaspad --release
-          cargo build --bin rothschild --release
-          cargo build --bin kaspa-wallet --release
+          rustup target add x86_64-apple-darwin
+          cargo build --target x86_64-apple-darwin --bin kaspad --release
+          cargo build --target x86_64-apple-darwin --bin rothschild --release
+          cargo build --target x86_64-apple-darwin --bin kaspa-wallet --release
           mkdir bin || true
-          cp target/release/kaspad bin/
-          cp target/release/rothschild bin/
-          cp target/release/kaspa-wallet bin/
-          archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
-          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
+          cp target/x86_64-apple-darwin/release/kaspad bin/
+          cp target/x86_64-apple-darwin/release/rothschild bin/
+          cp target/x86_64-apple-darwin/release/kaspa-wallet bin/
+          archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-macos-amd64.zip"
+          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-macos-amd64.zip"
+          zip -r "${archive}" ./bin/*
+          echo "archive=${archive}" >> $GITHUB_ENV
+          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+
+      - name: Build for macos/aarch64
+        if: matrix.TARGET == 'macos/aarch64'
+        run: |
+          rustup target add aarch64-apple-darwin
+          cargo build --target aarch64-apple-darwin --bin kaspad --release
+          cargo build --target aarch64-apple-darwin --bin rothschild --release
+          cargo build --target aarch64-apple-darwin --bin kaspa-wallet --release
+          mkdir bin || true
+          cp target/aarch64-apple-darwin/release/kaspad bin/
+          cp target/aarch64-apple-darwin/release/rothschild bin/
+          cp target/aarch64-apple-darwin/release/kaspa-wallet bin/
+          archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-macos-aarch64.zip"
+          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-macos-aarch64.zip"
           zip -r "${archive}" ./bin/*
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
