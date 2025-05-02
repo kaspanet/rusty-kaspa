@@ -9,17 +9,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Build gnu-linux on ubuntu-18.04 and musl on ubuntu latest
-        # os: [ ubuntu-18.04, ubuntu-latest, windows-latest, macos-latest ]
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
-    name: Building, ${{ matrix.os }}
+        include:
+          - os: ubuntu-latest
+            TARGET: linux-musl/amd64
+          - os: ubuntu-latest
+            TARGET: linux-musl/aarch64
+          - os: windows-latest
+            TARGET: windows
+          - os: macos-latest
+            TARGET: macos
+    name: Building ${{ matrix.TARGET }}
     steps:
       - name: Fix CRLF on Windows
-        if: runner.os == 'Windows'
+        if: matrix.os == 'windows-latest'
         run: git config --global core.autocrlf false
 
       - name: Checkout sources
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
@@ -30,7 +36,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo Build Outputs
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -38,19 +44,20 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.TARGET }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache Toolchain
+        if: contains(matrix.TARGET, 'linux-musl')
         uses: actions/cache@v4
         with:
           path: |
             ~/x-tools
           key: ${{ runner.os }}-musl-${{ hashFiles('**/musl-toolchain/build-amd64.sh', '**/musl-toolchain/build-aarch64.sh') }}
           restore-keys: |
-            ${{ runner.os }}-musl-
+            ${{ matrix.TARGET }}-musl-
 
-      - name: Build on linux-musl/amd64
-        if: runner.os == 'Linux'
+      - name: Build for linux-musl/amd64
+        if: matrix.TARGET == 'linux-musl/amd64'
         # We're using musl to make the binaries statically linked and portable
         run: |
           # Run build script for musl toolchain
@@ -71,8 +78,8 @@ jobs:
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
-      - name: Build on linux-musl/aarch64
-        if: runner.os == 'Linux'
+      - name: Build for linux-musl/aarch64
+        if: matrix.TARGET == 'linux-musl/aarch64'
         # We're using musl to make the binaries statically linked and portable
         run: |
           # Run build script for musl toolchain
@@ -93,8 +100,8 @@ jobs:
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
-      - name: Build on Windows
-        if: runner.os == 'Windows'
+      - name: Build for Windows
+        if: matrix.TARGET == 'windows'
         shell: bash
         run: |
           cargo build --bin kaspad --release
@@ -110,8 +117,8 @@ jobs:
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
-      - name: Build on MacOS
-        if: runner.os == 'macOS'
+      - name: Build for macOS
+        if: matrix.TARGET == 'macos'
         run: |
           cargo build --bin kaspad --release
           cargo build --bin rothschild --release
@@ -141,7 +148,7 @@ jobs:
     name: Building WASM32 SDK
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
@@ -190,7 +197,7 @@ jobs:
         run: npm install --global typedoc typescript
 
       - name: Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -198,7 +205,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: wasm-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build WASM32 SDK
         run: |
