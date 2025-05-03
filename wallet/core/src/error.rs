@@ -310,6 +310,9 @@ pub enum Error {
     #[error("Mass calculation error")]
     MassCalculationError,
 
+    #[error("Transaction fees are too high")]
+    TransactionFeesAreTooHigh,
+
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
 
