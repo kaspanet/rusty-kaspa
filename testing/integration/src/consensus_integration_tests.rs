@@ -458,7 +458,7 @@ async fn header_in_isolation_validation_test() {
         let mut block = block.clone();
         block.header.hash = 4.into();
         block.header.parents_by_level[0] =
-            std::iter::repeat(config.genesis.hash).take(config.prior_max_block_parents as usize + 1).collect();
+            std::iter::repeat_n(config.genesis.hash, config.prior_max_block_parents as usize + 1).collect();
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TooManyParents(num_parents, limit)) => {
                 assert_eq!((config.prior_max_block_parents + 1) as usize, num_parents);
