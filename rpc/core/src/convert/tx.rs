@@ -18,7 +18,6 @@ impl From<&Transaction> for RpcTransaction {
             gas: item.gas,
             payload: item.payload.clone(),
             mass: item.mass(),
-            // TODO: Implement a populating process inspired from kaspad\app\rpc\rpccontext\verbosedata.go
             verbose_data: None,
         }
     }
@@ -26,12 +25,7 @@ impl From<&Transaction> for RpcTransaction {
 
 impl From<&TransactionOutput> for RpcTransactionOutput {
     fn from(item: &TransactionOutput) -> Self {
-        Self {
-            value: item.value,
-            script_public_key: item.script_public_key.clone(),
-            // TODO: Implement a populating process inspired from kaspad\app\rpc\rpccontext\verbosedata.go
-            verbose_data: None,
-        }
+        Self { value: item.value, script_public_key: item.script_public_key.clone(), verbose_data: None }
     }
 }
 
@@ -42,7 +36,6 @@ impl From<&TransactionInput> for RpcTransactionInput {
             signature_script: item.signature_script.clone(),
             sequence: item.sequence,
             sig_op_count: item.sig_op_count,
-            // TODO: Implement a populating process inspired from kaspad\app\rpc\rpccontext\verbosedata.go
             verbose_data: None,
         }
     }

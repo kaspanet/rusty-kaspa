@@ -1,11 +1,13 @@
 use crate::pskt::{Input, PSKT as Native};
 use crate::role::*;
+use kaspa_consensus_core::network::NetworkType;
 use kaspa_consensus_core::tx::TransactionId;
 use wasm_bindgen::prelude::*;
 // use js_sys::Object;
 use crate::pskt::Inner;
 use kaspa_consensus_client::{Transaction, TransactionInput, TransactionInputT, TransactionOutput, TransactionOutputT};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::sync::MutexGuard;
 use std::sync::{Arc, Mutex};
 use workflow_wasm::{
@@ -343,5 +345,43 @@ impl PSKT {
             State::Signer(pskt) => Ok(pskt.calculate_id()),
             _ => Err(Error::expected_state("Signer"))?,
         }
+    }
+
+    #[wasm_bindgen(js_name = calculateMass)]
+    pub fn calculate_mass(&self, data: &JsValue) -> Result<u64> {
+        let obj = js_sys::Object::from(data.clone());
+        let network_id = js_sys::Reflect::get(&obj, &"networkId".into())
+            .map_err(|_| Error::custom("networkId is missing"))?
+            .as_string()
+            .ok_or_else(|| Error::custom("networkId must be a string"))?;
+
+        let network_id = NetworkType::from_str(&network_id).map_err(|e| Error::custom(format!("Invalid networkId: {}", e)))?;
+
+        let cloned_pskt = self.clone();
+
+        let extractor = {
+            let finalizer = cloned_pskt.finalizer()?;
+
+            let finalizer_state = finalizer.state().clone().unwrap();
+
+            match finalizer_state {
+                State::Finalizer(pskt) => {
+                    for input in pskt.inputs.iter() {
+                        if input.redeem_script.is_some() {
+                            return Err(Error::custom("Mass calculation is not supported for inputs with redeem scripts"));
+                        }
+                    }
+                    let pskt = pskt
+                        .finalize_sync(|inner: &Inner| -> Result<Vec<Vec<u8>>> { Ok(vec![vec![0u8, 65]; inner.inputs.len()]) })
+                        .map_err(|e| Error::custom(format!("Failed to finalize PSKT: {e}")))?;
+                    pskt.extractor()?
+                }
+                _ => panic!("Finalizer state is not valid"),
+            }
+        };
+        let tx = extractor
+            .extract_tx_unchecked(&network_id.into())
+            .map_err(|e| Error::custom(format!("Failed to extract transaction: {e}")))?;
+        Ok(tx.tx.mass())
     }
 }

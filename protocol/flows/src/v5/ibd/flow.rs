@@ -6,6 +6,7 @@ use crate::{
     },
 };
 use futures::future::{join_all, select, try_join_all, Either};
+use itertools::Itertools;
 use kaspa_consensus_core::{
     api::BlockValidationFuture,
     block::Block,
@@ -181,22 +182,35 @@ impl IbdFlow {
             // means it's in its antichain (because if `highest_known_syncer_chain_hash` was in
             // the pruning point's past the pruning point itself would be
             // `highest_known_syncer_chain_hash`). So it means there's a finality conflict.
-            // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
+            //
+            // TODO (relaxed): consider performing additional actions on finality conflicts in addition
+            // to disconnecting from the peer (e.g., banning, rpc notification)
             return Ok(IbdType::None);
         }
 
         let hst_header = consensus.async_get_header(consensus.async_get_headers_selected_tip().await).await.unwrap();
-        if relay_header.blue_score >= hst_header.blue_score + self.ctx.config.pruning_depth
-            && relay_header.blue_work > hst_header.blue_work
-        {
-            if unix_now() > consensus.async_creation_timestamp().await + self.ctx.config.finality_duration() {
+        // [Crescendo]: use the post crescendo pruning depth depending on hst's DAA score.
+        // Having a shorter depth for this condition for the fork transition period (if hst is shortly before activation)
+        // is negligible since there are other conditions required for activating an headers proof IBD. The important
+        // thing is that we eventually adjust to the longer period.
+        let pruning_depth = self.ctx.config.pruning_depth().get(hst_header.daa_score);
+        if relay_header.blue_score >= hst_header.blue_score + pruning_depth && relay_header.blue_work > hst_header.blue_work {
+            // [Crescendo]: switch to the new *shorter* finality duration only after sufficient time has passed
+            // since activation (measured via the new *larger* finality depth).
+            // Note: these are not critical execution paths so such estimation heuristics are completely ok in this context.
+            let finality_duration_in_milliseconds = self
+                .ctx
+                .config
+                .finality_duration_in_milliseconds()
+                .get(hst_header.daa_score.saturating_sub(self.ctx.config.finality_depth().upper_bound()));
+            if unix_now() > consensus.async_creation_timestamp().await + finality_duration_in_milliseconds {
                 let fp = consensus.async_finality_point().await;
                 let fp_ts = consensus.async_get_header(fp).await?.timestamp;
-                if unix_now() < fp_ts + self.ctx.config.finality_duration() * 3 / 2 {
+                if unix_now() < fp_ts + finality_duration_in_milliseconds * 3 / 2 {
                     // We reject the headers proof if the node has a relatively up-to-date finality point and current
                     // consensus has matured for long enough (and not recently synced). This is mostly a spam-protector
                     // since subsequent checks identify these violations as well
-                    // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
+                    // TODO (relaxed): consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
                     return Ok(IbdType::None);
                 }
             }
@@ -220,7 +234,7 @@ impl IbdFlow {
 
         let pruning_point = self.sync_and_validate_pruning_proof(&staging_session, relay_block).await?;
         self.sync_headers(&staging_session, syncer_virtual_selected_parent, pruning_point, relay_block).await?;
-        staging_session.async_validate_pruning_points().await?;
+        staging_session.async_validate_pruning_points(syncer_virtual_selected_parent).await?;
         self.validate_staging_timestamps(&self.ctx.consensus().session().await, &staging_session).await?;
         self.sync_pruning_point_utxoset(&staging_session, pruning_point).await?;
         Ok(())
@@ -232,7 +246,11 @@ impl IbdFlow {
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPointProof, Duration::from_secs(600))?;
         let proof: PruningPointProof = msg.try_into()?;
-        debug!("received proof with overall {} headers", proof.iter().map(|l| l.len()).sum::<usize>());
+        info!(
+            "Received headers proof with overall {} headers ({} unique)",
+            proof.iter().map(|l| l.len()).sum::<usize>(),
+            proof.iter().flatten().unique_by(|h| h.hash).count()
+        );
 
         let proof_metadata = PruningProofMetadata::new(relay_block.header.blue_work);
 
@@ -272,7 +290,7 @@ impl IbdFlow {
 
         // Check if past pruning points violate finality of current consensus
         if self.ctx.consensus().session().await.async_are_pruning_points_violating_finality(pruning_points.clone()).await {
-            // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
+            // TODO (relaxed): consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
             return Err(ProtocolError::Other("pruning points are violating finality"));
         }
 
@@ -303,7 +321,7 @@ impl IbdFlow {
                 .spawn_blocking(move |c| {
                     let ref_proof = proof.clone();
                     c.apply_pruning_proof(proof, &trusted_set)?;
-                    c.import_pruning_points(pruning_points);
+                    c.import_pruning_points(pruning_points)?;
 
                     info!("Building the proof which was just applied (sanity test)");
                     let built_proof = c.get_pruning_point_proof();
@@ -334,13 +352,13 @@ impl IbdFlow {
                 .clone()
                 .spawn_blocking(move |c| {
                     c.apply_pruning_proof(proof, &trusted_set)?;
-                    c.import_pruning_points(pruning_points);
+                    c.import_pruning_points(pruning_points)?;
                     Result::<_, ProtocolError>::Ok(trusted_set)
                 })
                 .await?;
         }
 
-        // TODO: add logs to staging commit process
+        // TODO (relaxed): add logs to staging commit process
 
         info!("Starting to process {} trusted blocks", trusted_set.len());
         let mut last_time = Instant::now();
@@ -353,7 +371,7 @@ impl IbdFlow {
                 last_time = now;
                 last_index = i;
             }
-            // TODO: queue and join in batches
+            // TODO (relaxed): queue and join in batches
             staging.validate_and_insert_trusted_block(tb).virtual_state_task.await?;
         }
         info!("Done processing trusted blocks");
@@ -413,6 +431,14 @@ impl IbdFlow {
             progress_reporter.report_completion(prev_chunk_len);
         }
 
+        if consensus.async_get_block_status(syncer_virtual_selected_parent).await.is_none() {
+            // If the syncer's claimed sink header has still not been received, the peer is misbehaving
+            return Err(ProtocolError::OtherOwned(format!(
+                "did not receive syncer's virtual selected parent {} from peer {} during header download",
+                syncer_virtual_selected_parent, self.router
+            )));
+        }
+
         self.sync_missing_relay_past_headers(consensus, syncer_virtual_selected_parent, relay_block.hash()).await?;
 
         Ok(())
@@ -453,7 +479,7 @@ impl IbdFlow {
         if consensus.async_get_block_status(relay_block_hash).await.is_none() {
             // If the relay block has still not been received, the peer is misbehaving
             Err(ProtocolError::OtherOwned(format!(
-                "did not receive relay block {} from peer {} during block download",
+                "did not receive relay block {} from peer {} during header download",
                 relay_block_hash, self.router
             )))
         } else {
@@ -503,7 +529,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
     }
 
     async fn sync_missing_block_bodies(&mut self, consensus: &ConsensusProxy, high: Hash) -> Result<(), ProtocolError> {
-        // TODO: query consensus in batches
+        // TODO (relaxed): query consensus in batches
         let sleep_task = sleep(Duration::from_secs(2));
         let hashes_task = consensus.async_get_missing_block_body_hashes(high);
         tokio::pin!(sleep_task);

@@ -329,8 +329,8 @@ impl MassCalculator {
     ) -> Option<u64> {
         consensus_calc_storage_mass(
             false,
-            inputs.iter().map(|entry| entry.amount()),
-            outputs.iter().map(|out| out.value),
+            inputs.iter().map(|entry| entry.into()),
+            outputs.iter().map(|out| out.into()),
             self.storage_mass_parameter,
         )
     }

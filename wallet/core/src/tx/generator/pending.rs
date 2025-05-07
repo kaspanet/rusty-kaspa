@@ -49,28 +49,6 @@ pub(crate) struct PendingTransactionInner {
     pub(crate) kind: DataKind,
 }
 
-// impl Clone for PendingTransactionInner {
-//     fn clone(&self) -> Self {
-//         Self {
-//             generator: self.generator.clone(),
-//             utxo_entries: self.utxo_entries.clone(),
-//             id: self.id,
-//             signable_tx: Mutex::new(self.signable_tx.lock().unwrap().clone()),
-//             addresses: self.addresses.clone(),
-//             is_submitted: AtomicBool::new(self.is_submitted.load(Ordering::SeqCst)),
-//             payment_value: self.payment_value,
-//             change_output_index: self.change_output_index,
-//             change_output_value: self.change_output_value,
-//             aggregate_input_value: self.aggregate_input_value,
-//             aggregate_output_value: self.aggregate_output_value,
-//             minimum_signatures: self.minimum_signatures,
-//             mass: self.mass,
-//             fees: self.fees,
-//             kind: self.kind,
-//         }
-//     }
-// }
-
 impl std::fmt::Debug for PendingTransaction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let transaction = self.transaction();
@@ -319,6 +297,10 @@ impl PendingTransaction {
         Ok(())
     }
 
+    /*
+
+    WIP: handling RBF within the Wallet infrastructure
+
     pub fn increase_fees_for_rbf(&self, additional_fees: u64) -> Result<PendingTransaction> {
         #![allow(unused_mut)]
         #![allow(unused_variables)]
@@ -456,4 +438,5 @@ impl PendingTransaction {
         // mutable_tx.tx.fee += fees;
         // *self.inner.signable_tx.lock().unwrap() = mutable_tx;
     }
+    */
 }

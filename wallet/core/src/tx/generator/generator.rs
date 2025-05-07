@@ -606,37 +606,11 @@ impl Generator {
             })
     }
 
-    // pub(crate) fn get_utxo_entry_for_rbf(&self) -> Result<Option<UtxoEntryReference>> {
-    //     let mut context = &mut self.context();
-    //     let utxo_entry = if let Some(mut stage) = context.stage.take() {
-    //         let utxo_entry = self.get_utxo_entry(&mut context, &mut stage);
-    //         context.stage.replace(stage);
-    //         utxo_entry
-    //     } else if let Some(mut stage) = context.final_stage.take() {
-    //         let utxo_entry = self.get_utxo_entry(&mut context, &mut stage);
-    //         context.final_stage.replace(stage);
-    //         utxo_entry
-    //     } else {
-    //         return Err(Error::GeneratorNoStage);
-    //     };
-
-    //     Ok(utxo_entry)
-    // }
-
     /// Adds a [`UtxoEntryReference`] to the UTXO stash. UTXO stash
     /// is the first source of UTXO entries.
     pub fn stash(&self, into_iter: impl IntoIterator<Item = UtxoEntryReference>) {
-        // let iter = iter.into_iterator();
-        // let mut context = self.context();
-        // context.utxo_stash.extend(iter);
         self.context().utxo_stash.extend(into_iter);
     }
-
-    // /// Adds multiple [`UtxoEntryReference`] structs to the UTXO stash. UTXO stash
-    // /// is the first source of UTXO entries.
-    // pub fn stash_multiple(&self, utxo_entries: Vec<UtxoEntryReference>) {
-    //     self.context().utxo_stash.extend(utxo_entries);
-    // }
 
     /// Calculate relay transaction mass for the current transaction `data`
     #[inline(always)]
@@ -760,7 +734,6 @@ impl Generator {
             data.transaction_fees = self.calc_relay_transaction_compute_fees(data);
             stage.aggregate_fees += data.transaction_fees;
             context.aggregate_fees += data.transaction_fees;
-            // context.aggregate_mass += data.aggregate_mass;
             Some(DataKind::Node)
         } else {
             context.aggregated_utxos += 1;

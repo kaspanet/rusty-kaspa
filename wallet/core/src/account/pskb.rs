@@ -315,51 +315,50 @@ pub fn pskt_to_pending_transaction(
     change_address: Address,
     source_utxo_context: Option<UtxoContext>,
 ) -> Result<PendingTransaction, Error> {
-    let mass = 10;
-    let (signed_tx, _) = match finalized_pskt.clone().extractor() {
-        Ok(extractor) => match extractor.extract_tx() {
-            Ok(once_mass) => once_mass(mass),
-            Err(e) => return Err(Error::PendingTransactionFromPSKTError(e.to_string())),
-        },
-        Err(e) => return Err(Error::PendingTransactionFromPSKTError(e.to_string())),
-    };
-
-    let inner_pskt = finalized_pskt.deref().clone();
-
+    let inner_pskt = finalized_pskt.deref();
     let (utxo_entries_ref, aggregate_input_value): (Vec<UtxoEntryReference>, u64) = inner_pskt
         .inputs
         .iter()
         .filter_map(|input| {
-            if let Some(ue) = input.clone().utxo_entry {
-                return Some((
+            input.utxo_entry.as_ref().map(|ue| {
+                (
                     UtxoEntryReference {
                         utxo: Arc::new(ClientUTXO {
                             address: Some(extract_script_pub_key_address(&ue.script_public_key, network_id.into()).unwrap()),
                             amount: ue.amount,
                             outpoint: input.previous_outpoint.into(),
-                            script_public_key: ue.script_public_key,
+                            script_public_key: ue.script_public_key.clone(),
                             block_daa_score: ue.block_daa_score,
                             is_coinbase: ue.is_coinbase,
                         }),
                     },
                     ue.amount,
-                ));
-            }
-            None
+                )
+            })
         })
         .fold((Vec::new(), 0), |(mut vec, sum), (entry, amount)| {
             vec.push(entry);
             (vec, sum + amount)
         });
-
-    let output: Vec<kaspa_consensus_core::tx::TransactionOutput> = signed_tx.outputs.clone();
+    let signed_tx = match finalized_pskt.extractor() {
+        Ok(extractor) => match extractor.extract_tx(&network_id.into()) {
+            Ok(tx) => tx.tx,
+            Err(e) => return Err(Error::PendingTransactionFromPSKTError(e.to_string())),
+        },
+        Err(e) => return Err(Error::PendingTransactionFromPSKTError(e.to_string())),
+    };
+    let output: &Vec<kaspa_consensus_core::tx::TransactionOutput> = &signed_tx.outputs;
+    if output.is_empty() {
+        return Err(Error::Custom("0 outputs pskt is not supported".to_string()));
+        // todo support 0 outputs
+    }
     let recipient = extract_script_pub_key_address(&output[0].script_public_key, network_id.into())?;
     let fee_u: u64 = 0;
 
     let utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static> =
         Box::new(utxo_entries_ref.clone().into_iter());
 
-    let final_transaction_destination = PaymentDestination::PaymentOutputs(PaymentOutputs::from((recipient.clone(), output[0].value)));
+    let final_transaction_destination = PaymentDestination::PaymentOutputs(PaymentOutputs::from((recipient, output[0].value)));
 
     let settings = GeneratorSettings {
         network_id,
@@ -380,7 +379,7 @@ pub fn pskt_to_pending_transaction(
     // Create the Generator
     let generator = Generator::try_new(settings, None, None)?;
 
-    let aggregate_output_value = output.clone().iter().map(|output| output.value).sum::<u64>();
+    let aggregate_output_value = output.iter().map(|output| output.value).sum::<u64>();
 
     let (change_output_index, change_output_value) = output
         .iter()
@@ -399,11 +398,13 @@ pub fn pskt_to_pending_transaction(
         .unwrap_or((None, 0));
 
     // Create PendingTransaction (WIP)
+    let addresses = utxo_entries_ref.iter().filter_map(|a| a.address()).collect();
+    // todo where the source of mass and fees. why does it equal to zero?
     let pending_tx = PendingTransaction::try_new(
         &generator,
-        signed_tx.clone(),
-        utxo_entries_ref.clone(),
-        utxo_entries_ref.iter().filter_map(|a| a.address()).collect(),
+        signed_tx,
+        utxo_entries_ref,
+        addresses,
         Some(aggregate_output_value),
         change_output_index,
         change_output_value,

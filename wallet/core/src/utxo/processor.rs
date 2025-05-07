@@ -25,9 +25,7 @@ use workflow_core::task::spawn;
 
 use crate::events::Events;
 use crate::result::Result;
-use crate::utxo::{
-    Maturity, OutgoingTransaction, PendingUtxoEntryReference, SyncMonitor, UtxoContext, UtxoEntryId, UtxoEntryReference,
-};
+use crate::utxo::{Maturity, OutgoingTransaction, PendingUtxoEntryReference, SyncMonitor, UtxoContext, UtxoEntryId};
 use crate::wallet::WalletBusMessage;
 use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
@@ -398,32 +396,90 @@ impl UtxoProcessor {
         #[allow(clippy::mutable_key_type)]
         let mut updated_contexts: HashSet<UtxoContext> = HashSet::default();
 
+        let added = (*utxos.added).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
+        let mut added = HashMap::group_from(added);
+
         let removed = (*utxos.removed).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
-        let removed = HashMap::group_from(removed);
+        let mut removed = HashMap::group_from(removed);
+
+        // Create separate lists for entries that appear in both added and removed
+        let mut common_added = HashMap::new();
+        //let mut common_removed = HashMap::new();
+
+        // Find common entries and separate them
+        for (address, removed_entries) in removed.clone().into_iter() {
+            if let Some(added_entries) = added.get(&address) {
+                //let mut common_entries_removed = Vec::new();
+                let mut common_entries_added = Vec::new();
+
+                for removed_entry in removed_entries.iter() {
+                    if let Some(added_entry) = added_entries.iter().find(|added_entry| added_entry.outpoint == removed_entry.outpoint)
+                    {
+                        //common_entries_removed.push(removed_entry.clone());
+                        common_entries_added.push(added_entry.clone());
+                    }
+                }
+
+                if !common_entries_added.is_empty() {
+                    //common_removed.insert(address.clone(), common_entries_removed.clone());
+                    common_added.insert(address.clone(), common_entries_added.clone());
+
+                    // Remove common entries from original lists
+                    if let Some(entries) = removed.get_mut(&address) {
+                        entries.retain(|entry| !common_entries_added.iter().any(|common| common.outpoint == entry.outpoint));
+                    }
+                    if let Some(entries) = added.get_mut(&address) {
+                        entries.retain(|entry| !common_entries_added.iter().any(|common| common.outpoint == entry.outpoint));
+                    }
+                }
+            }
+        }
+
+        // Clean up empty entries
+        removed.retain(|_, entries| !entries.is_empty());
+        added.retain(|_, entries| !entries.is_empty());
+
+        // Process remaining removed entries
         for (address, entries) in removed.into_iter() {
             if let Some(utxo_context) = self.address_to_utxo_context(&address) {
                 updated_contexts.insert(utxo_context.clone());
-                let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
-                utxo_context.handle_utxo_removed(entries, current_daa_score).await?;
+                let entries = entries.iter().map(|entry| entry.into()).collect::<Vec<_>>();
+                if entries.is_not_empty() {
+                    utxo_context.handle_utxo_removed(entries, current_daa_score).await?;
+                }
             } else {
                 log_error!("receiving UTXO Changed 'removed' notification for an unknown address: {}", address);
             }
         }
 
-        let added = (*utxos.added).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
-        let added = HashMap::group_from(added);
+        // Process remaining added entries
         for (address, entries) in added.into_iter() {
             if let Some(utxo_context) = self.address_to_utxo_context(&address) {
                 updated_contexts.insert(utxo_context.clone());
-                let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
-                utxo_context.handle_utxo_added(entries, current_daa_score).await?;
+                let entries = entries.iter().map(|entry| entry.into()).collect::<Vec<_>>();
+                if entries.is_not_empty() {
+                    utxo_context.handle_utxo_added(entries, current_daa_score).await?;
+                }
             } else {
                 log_error!("receiving UTXO Changed 'added' notification for an unknown address: {}", address);
             }
         }
 
-        // iterate over all affected utxo contexts and
-        // update as well as notify their balances.
+        for (address, entries_added) in common_added.into_iter() {
+            if let Some(utxo_context) = self.address_to_utxo_context(&address) {
+                updated_contexts.insert(utxo_context.clone());
+                //let entries_removed = common_removed.get(&address).unwrap();
+
+                let added_utxos = entries_added.iter().map(|entry| entry.into()).collect::<Vec<_>>();
+                //let removed_utxos = entries_removed.iter().map(|entry| entry.into()).collect::<Vec<_>>();
+
+                utxo_context.update_utxos(added_utxos, current_daa_score).await?;
+            } else {
+                log_error!("receiving UTXO Changed 'added' notification for an unknown address: {}", address);
+            }
+        }
+
+        // Update balances for affected contexts
         for context in updated_contexts.iter() {
             context.update_balance().await?;
         }
