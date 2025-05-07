@@ -9,11 +9,13 @@ edition.workspace = true
 include.workspace = true
 
 [dependencies]
-kaspa-wallet-grpc-core.workspace = true
-tonic.workspace = true
-kaspa-wallet-core.workspace = true
-tokio.workspace = true
 futures-util.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-wallet-core.workspace = true
+kaspa-wallet-grpc-core.workspace = true
+prost.workspace = true
+tokio.workspace = true
+tonic.workspace = true
 workflow-core.workspace = true
 
 [dev-dependencies]
