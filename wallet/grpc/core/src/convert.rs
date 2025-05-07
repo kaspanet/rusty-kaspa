@@ -1,5 +1,9 @@
 use crate::kaspawalletd::{Outpoint, ScriptPublicKey, UtxoEntry, UtxosByAddressesEntry};
+use crate::protoserialization;
+use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput, RpcTransactionOutpoint};
 use kaspa_wallet_core::api::{ScriptPublicKeyWrapper, TransactionOutpointWrapper, UtxoEntryWrapper};
+// use std::num::TryFromIntError;
+use tonic::Status;
 
 impl From<TransactionOutpointWrapper> for Outpoint {
     fn from(wrapper: kaspa_wallet_core::api::TransactionOutpointWrapper) -> Self {
@@ -25,5 +29,52 @@ impl From<UtxoEntryWrapper> for UtxosByAddressesEntry {
                 is_coinbase: wrapper.is_coinbase,
             }),
         }
+    }
+}
+
+impl TryFrom<protoserialization::TransactionMessage> for RpcTransaction {
+    type Error = Status;
+
+    fn try_from(
+        // protoserialization::TransactionMessage { version, inputs, outputs, lock_time, subnetwork_id, gas, payload }: protoserialization::TransactionMessage,
+        _: protoserialization::TransactionMessage,
+    ) -> Result<Self, Self::Error> {
+        todo!()
+        // Ok(RpcTransaction {
+        //     version: version.try_into().map_err(|err: TryFromIntError| Status::invalid_argument(err.to_string()))?,
+        //     inputs: vec![],
+        //     outputs: vec![],
+        //     lock_time: 0,
+        //     subnetwork_id: Default::default(),
+        //     gas: 0,
+        //     payload: vec![],
+        //     mass: 0,
+        //     verbose_data: None,
+        // })
+    }
+}
+
+impl TryFrom<protoserialization::TransactionInput> for RpcTransactionInput {
+    type Error = Status;
+
+    fn try_from(_value: protoserialization::TransactionInput) -> Result<Self, Self::Error> {
+        todo!()
+        // RpcTransactionInput{
+        //     previous_outpoint: RpcTransactionOutpoint {},
+        //     signature_script: vec![],
+        //     sequence: 0,
+        //     sig_op_count: 0,
+        //     verbose_data: None,
+        // }
+    }
+}
+
+
+impl TryFrom<protoserialization::Outpoint> for RpcTransactionOutpoint {
+    type Error = Status;
+
+    fn try_from(_ : protoserialization::Outpoint/*protoserialization::Outpoint{ transaction_id, index }: protoserialization::Outpoint*/) -> Result<Self, Self::Error> {
+        todo!()
+        // Ok(RpcTransactionOutpoint { transaction_id: Default::default(), index: 0 })
     }
 }

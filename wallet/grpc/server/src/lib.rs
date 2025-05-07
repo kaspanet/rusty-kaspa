@@ -1,7 +1,10 @@
 pub mod service;
 
+use kaspa_rpc_core::RpcTransaction;
 use kaspa_wallet_core::{
-    api::{AccountsGetUtxosRequest, AccountsSendRequest, NewAddressKind}, prelude::Address, tx::{Fees, PaymentDestination, PaymentOutputs}
+    api::{AccountsGetUtxosRequest, AccountsSendRequest, NewAddressKind},
+    prelude::Address,
+    tx::{Fees, PaymentDestination, PaymentOutputs},
 };
 use kaspa_wallet_grpc_core::kaspawalletd::{
     fee_policy::FeePolicy, kaspawalletd_server::Kaspawalletd, BroadcastRequest, BroadcastResponse, BumpFeeRequest, BumpFeeResponse,
@@ -10,8 +13,11 @@ use kaspa_wallet_grpc_core::kaspawalletd::{
     NewAddressResponse, SendRequest, SendResponse, ShowAddressesRequest, ShowAddressesResponse, ShutdownRequest, ShutdownResponse,
     SignRequest, SignResponse,
 };
+use kaspa_wallet_grpc_core::protoserialization::TransactionMessage;
+use prost::Message;
 use service::Service;
 use tonic::{Request, Response, Status};
+use kaspa_wallet_core::api::WalletApi;
 
 #[tonic::async_trait]
 impl Kaspawalletd for Service {
@@ -62,7 +68,19 @@ impl Kaspawalletd for Service {
         Ok(Response::new(ShutdownResponse {}))
     }
 
-    async fn broadcast(&self, _request: Request<BroadcastRequest>) -> Result<Response<BroadcastResponse>, Status> {
+    async fn broadcast(&self, request: Request<BroadcastRequest>) -> Result<Response<BroadcastResponse>, Status> {
+        let request = request.into_inner();
+        let _ = request.transactions.into_iter().map(|tx| -> Result<_, Status> {
+            if request.is_domain {
+                let tx = 
+                    TransactionMessage::decode(tx.as_slice()).map_err(|err| Status::invalid_argument(err.to_string()))?;
+                let tx = RpcTransaction::try_from(tx)?;
+                Ok(tx)
+            } else {
+                todo!()
+            }
+        });
+        // let a = self.wallet().rpc_api().submit_transaction();
         todo!();
     }
 

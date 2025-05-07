@@ -54,7 +54,7 @@ impl Service {
         manager.get_range_with_args(0..manager.index(), false).unwrap()
     }
 
-    pub fn wallet(&self) -> Arc<dyn WalletApi> {
+    pub fn wallet(&self) -> Arc<Wallet> {
         self.wallet.clone()
     }
 
@@ -62,7 +62,7 @@ impl Service {
         self.wallet.account().unwrap().descriptor().unwrap()
     }
 
-    pub fn initiate_shutdown(&self) -> () {
+    pub fn initiate_shutdown(&self) {
         let mut sender = self.shutdown_sender.lock().unwrap();
         if let Some(shutdown_sender) = sender.take() {
             let _ = shutdown_sender.send(());
