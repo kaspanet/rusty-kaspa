@@ -69,11 +69,12 @@ impl TryFrom<protoserialization::TransactionInput> for RpcTransactionInput {
     }
 }
 
-
 impl TryFrom<protoserialization::Outpoint> for RpcTransactionOutpoint {
     type Error = Status;
 
-    fn try_from(_ : protoserialization::Outpoint/*protoserialization::Outpoint{ transaction_id, index }: protoserialization::Outpoint*/) -> Result<Self, Self::Error> {
+    fn try_from(
+        _: protoserialization::Outpoint, /*protoserialization::Outpoint{ transaction_id, index }: protoserialization::Outpoint*/
+    ) -> Result<Self, Self::Error> {
         todo!()
         // Ok(RpcTransactionOutpoint { transaction_id: Default::default(), index: 0 })
     }

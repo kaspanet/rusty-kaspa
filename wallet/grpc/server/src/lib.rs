@@ -1,6 +1,7 @@
 pub mod service;
 
 use kaspa_rpc_core::RpcTransaction;
+use kaspa_wallet_core::api::WalletApi;
 use kaspa_wallet_core::{
     api::{AccountsGetUtxosRequest, AccountsSendRequest, NewAddressKind},
     prelude::Address,
@@ -17,7 +18,6 @@ use kaspa_wallet_grpc_core::protoserialization::TransactionMessage;
 use prost::Message;
 use service::Service;
 use tonic::{Request, Response, Status};
-use kaspa_wallet_core::api::WalletApi;
 
 #[tonic::async_trait]
 impl Kaspawalletd for Service {
@@ -72,8 +72,7 @@ impl Kaspawalletd for Service {
         let request = request.into_inner();
         let _ = request.transactions.into_iter().map(|tx| -> Result<_, Status> {
             if request.is_domain {
-                let tx = 
-                    TransactionMessage::decode(tx.as_slice()).map_err(|err| Status::invalid_argument(err.to_string()))?;
+                let tx = TransactionMessage::decode(tx.as_slice()).map_err(|err| Status::invalid_argument(err.to_string()))?;
                 let tx = RpcTransaction::try_from(tx)?;
                 Ok(tx)
             } else {
