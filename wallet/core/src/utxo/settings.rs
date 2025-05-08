@@ -44,16 +44,16 @@ impl NetworkParams {
 }
 
 static MAINNET_NETWORK_PARAMS: LazyLock<NetworkParams> = LazyLock::new(|| NetworkParams {
-    coinbase_transaction_maturity_period_daa: AtomicU64::new(100),
-    coinbase_transaction_stasis_period_daa: 50,
-    user_transaction_maturity_period_daa: AtomicU64::new(10),
+    coinbase_transaction_maturity_period_daa: AtomicU64::new(1_000),
+    coinbase_transaction_stasis_period_daa: 500,
+    user_transaction_maturity_period_daa: AtomicU64::new(100),
     additional_compound_transaction_mass: 100,
 });
 
 static TESTNET10_NETWORK_PARAMS: LazyLock<NetworkParams> = LazyLock::new(|| NetworkParams {
-    coinbase_transaction_maturity_period_daa: AtomicU64::new(100),
-    coinbase_transaction_stasis_period_daa: 50,
-    user_transaction_maturity_period_daa: AtomicU64::new(10),
+    coinbase_transaction_maturity_period_daa: AtomicU64::new(1_000),
+    coinbase_transaction_stasis_period_daa: 500,
+    user_transaction_maturity_period_daa: AtomicU64::new(100),
     additional_compound_transaction_mass: 100,
 });
 
@@ -65,9 +65,9 @@ static TESTNET11_NETWORK_PARAMS: LazyLock<NetworkParams> = LazyLock::new(|| Netw
 });
 
 static SIMNET_NETWORK_PARAMS: LazyLock<NetworkParams> = LazyLock::new(|| NetworkParams {
-    coinbase_transaction_maturity_period_daa: AtomicU64::new(100),
-    coinbase_transaction_stasis_period_daa: 50,
-    user_transaction_maturity_period_daa: AtomicU64::new(10),
+    coinbase_transaction_maturity_period_daa: AtomicU64::new(1_000),
+    coinbase_transaction_stasis_period_daa: 500,
+    user_transaction_maturity_period_daa: AtomicU64::new(100),
     additional_compound_transaction_mass: 0,
 });
 
