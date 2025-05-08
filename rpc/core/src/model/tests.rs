@@ -640,7 +640,11 @@ mod mockery {
 
     impl Mock for GetVirtualChainFromBlockRequest {
         fn mock() -> Self {
-            GetVirtualChainFromBlockRequest { start_hash: mock(), include_accepted_transaction_ids: mock() }
+            GetVirtualChainFromBlockRequest {
+                start_hash: mock(),
+                include_accepted_transaction_ids: mock(),
+                min_confirmation_count: mock(),
+            }
         }
     }
 
