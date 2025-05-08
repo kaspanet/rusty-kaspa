@@ -488,7 +488,7 @@ pub const MAINNET_PARAMS: Params = Params {
         // This DNS seeder is run by -gerri-
         "dnsseeder-kaspa-mainnet.x-con.at",
         // This DNS seeder is run by H@H
-        "ns-mainnet.kaspa-dnsseeder.net",
+        "ns-mainnet.kaspadns.net",
     ],
     net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
@@ -548,7 +548,7 @@ pub const TESTNET_PARAMS: Params = Params {
         // This DNS seeder is run by -gerri-
         "dnsseeder-kaspa-testnet.x-con.at",
         // This DNS seeder is run by H@H
-        "ns-testnet10.kaspa-dnsseeder.net",
+        "ns-testnet10.kaspadns.net",
         // This DNS seeder is run by supertypo
         "n-testnet-10.kaspa.ws",
     ],
