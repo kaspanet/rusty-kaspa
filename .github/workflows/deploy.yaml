@@ -9,17 +9,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Build gnu-linux on ubuntu-18.04 and musl on ubuntu latest
-        # os: [ ubuntu-18.04, ubuntu-latest, windows-latest, macos-latest ]
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
-    name: Building, ${{ matrix.os }}
+        include:
+          - os: ubuntu-latest
+            TARGET: linux-musl/amd64
+          - os: ubuntu-latest
+            TARGET: linux-musl/aarch64
+          - os: windows-latest
+            TARGET: windows
+          - os: macos-latest
+            TARGET: macos/amd64
+          - os: macos-latest
+            TARGET: macos/aarch64
+    name: Building ${{ matrix.TARGET }}
     steps:
       - name: Fix CRLF on Windows
-        if: runner.os == 'Windows'
+        if: matrix.os == 'windows-latest'
         run: git config --global core.autocrlf false
 
       - name: Checkout sources
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
@@ -30,7 +38,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo Build Outputs
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -38,23 +46,24 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.TARGET }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache Toolchain
+        if: contains(matrix.TARGET, 'linux-musl')
         uses: actions/cache@v4
         with:
           path: |
             ~/x-tools
-          key: ${{ runner.os }}-musl-${{ hashFiles('**/musl-toolchain/preset.sh') }}
+          key: ${{ runner.os }}-musl-${{ hashFiles('**/musl-toolchain/build-amd64.sh', '**/musl-toolchain/build-aarch64.sh') }}
           restore-keys: |
-            ${{ runner.os }}-musl-
+            ${{ matrix.TARGET }}-musl-
 
-      - name: Build on Linux
-        if: runner.os == 'Linux'
+      - name: Build for linux-musl/amd64
+        if: matrix.TARGET == 'linux-musl/amd64'
         # We're using musl to make the binaries statically linked and portable
         run: |
           # Run build script for musl toolchain
-          source musl-toolchain/build.sh
+          source musl-toolchain/build-amd64.sh
           
           # Go back to the workspace
           cd $GITHUB_WORKSPACE
@@ -71,8 +80,30 @@ jobs:
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
-      - name: Build on Windows
-        if: runner.os == 'Windows'
+      - name: Build for linux-musl/aarch64
+        if: matrix.TARGET == 'linux-musl/aarch64'
+        # We're using musl to make the binaries statically linked and portable
+        run: |
+          # Run build script for musl toolchain
+          source musl-toolchain/build-aarch64.sh
+          
+          # Go back to the workspace
+          cd $GITHUB_WORKSPACE
+          
+          # Build for musl
+          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target aarch64-unknown-linux-musl
+          mkdir bin || true
+          cp target/aarch64-unknown-linux-musl/release/kaspad bin/
+          cp target/aarch64-unknown-linux-musl/release/rothschild bin/
+          cp target/aarch64-unknown-linux-musl/release/kaspa-wallet bin/
+          archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-aarch64.zip"
+          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux-aarch64.zip"
+          zip -r "${archive}" ./bin/*
+          echo "archive=${archive}" >> $GITHUB_ENV
+          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+
+      - name: Build for Windows
+        if: matrix.TARGET == 'windows'
         shell: bash
         run: |
           cargo build --bin kaspad --release
@@ -88,18 +119,36 @@ jobs:
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
-      - name: Build on MacOS
-        if: runner.os == 'macOS'
+      - name: Build for macos/amd64
+        if: matrix.TARGET == 'macos/amd64'
         run: |
-          cargo build --bin kaspad --release
-          cargo build --bin rothschild --release
-          cargo build --bin kaspa-wallet --release
+          rustup target add x86_64-apple-darwin
+          cargo build --target x86_64-apple-darwin --bin kaspad --release
+          cargo build --target x86_64-apple-darwin --bin rothschild --release
+          cargo build --target x86_64-apple-darwin --bin kaspa-wallet --release
           mkdir bin || true
-          cp target/release/kaspad bin/
-          cp target/release/rothschild bin/
-          cp target/release/kaspa-wallet bin/
-          archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
-          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
+          cp target/x86_64-apple-darwin/release/kaspad bin/
+          cp target/x86_64-apple-darwin/release/rothschild bin/
+          cp target/x86_64-apple-darwin/release/kaspa-wallet bin/
+          archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-macos-amd64.zip"
+          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-macos-amd64.zip"
+          zip -r "${archive}" ./bin/*
+          echo "archive=${archive}" >> $GITHUB_ENV
+          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+
+      - name: Build for macos/aarch64
+        if: matrix.TARGET == 'macos/aarch64'
+        run: |
+          rustup target add aarch64-apple-darwin
+          cargo build --target aarch64-apple-darwin --bin kaspad --release
+          cargo build --target aarch64-apple-darwin --bin rothschild --release
+          cargo build --target aarch64-apple-darwin --bin kaspa-wallet --release
+          mkdir bin || true
+          cp target/aarch64-apple-darwin/release/kaspad bin/
+          cp target/aarch64-apple-darwin/release/rothschild bin/
+          cp target/aarch64-apple-darwin/release/kaspa-wallet bin/
+          archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-macos-aarch64.zip"
+          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-macos-aarch64.zip"
           zip -r "${archive}" ./bin/*
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
@@ -119,7 +168,7 @@ jobs:
     name: Building WASM32 SDK
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
@@ -168,7 +217,7 @@ jobs:
         run: npm install --global typedoc typescript
 
       - name: Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -176,7 +225,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: wasm-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build WASM32 SDK
         run: |
