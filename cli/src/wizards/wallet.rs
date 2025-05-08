@@ -2,6 +2,7 @@ use crate::cli::KaspaCli;
 use crate::imports::*;
 use crate::result::Result;
 use kaspa_bip32::{Language, Mnemonic, WordCount};
+use kaspa_wallet_core::storage::keydata::PrvKeyDataVariantKind;
 use kaspa_wallet_core::{
     storage::{make_filename, Hint},
     wallet::WalletGuard,
@@ -123,16 +124,17 @@ pub(crate) async fn create(
 
     let prv_key_data_args = if import_with_mnemonic {
         let words = crate::wizards::import::prompt_for_mnemonic(&term).await?;
-        PrvKeyDataCreateArgs::new(None, payment_secret.clone(), Secret::from(words.join(" ")))
+        PrvKeyDataCreateArgs::new(None, payment_secret.clone(), Secret::from(words.join(" ")), PrvKeyDataVariantKind::Mnemonic)
     } else {
         PrvKeyDataCreateArgs::new(
             None,
             payment_secret.clone(),
             Secret::from(Mnemonic::random(word_count, Language::default())?.phrase()),
+            PrvKeyDataVariantKind::Mnemonic,
         )
     };
 
-    let mnemonic_phrase = prv_key_data_args.mnemonic.clone();
+    let mnemonic_phrase = prv_key_data_args.secret.clone();
 
     let notifier = ctx.notifier().show(Notification::Processing).await;
 

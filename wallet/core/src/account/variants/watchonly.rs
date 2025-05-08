@@ -253,6 +253,7 @@ impl Account for WatchOnly {
             AssocPrvKeyDataIds::None,
             self.receive_address().ok(),
             self.change_address().ok(),
+            None,
         )
         .with_property(AccountDescriptorProperty::XpubKeys, self.xpub_keys.clone().into())
         .with_property(AccountDescriptorProperty::Ecdsa, self.ecdsa.into())

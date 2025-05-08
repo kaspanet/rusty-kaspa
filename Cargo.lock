@@ -3456,6 +3456,7 @@ dependencies = [
  "kaspa-txscript-errors",
  "kaspa-utils",
  "secp256k1",
+ "separator",
  "serde",
  "serde-value",
  "serde-wasm-bindgen",
@@ -3463,6 +3464,8 @@ dependencies = [
  "serde_repr",
  "thiserror",
  "wasm-bindgen",
+ "wasm-bindgen-test",
+ "web-sys",
  "workflow-wasm",
 ]
 
