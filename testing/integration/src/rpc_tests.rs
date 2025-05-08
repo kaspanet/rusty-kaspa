@@ -67,6 +67,8 @@ async fn sanity_test() {
     for op in KaspadPayloadOps::iter() {
         let network_id = daemon.network;
         let task: JoinHandle<()> = match op {
+            KaspadPayloadOps::GetPruningWindowRoots => todo!(),
+            KaspadPayloadOps::AddArchivalBlocks => todo!(),
             KaspadPayloadOps::SubmitBlock => {
                 let rpc_client = client.clone();
                 tst!(op, {
