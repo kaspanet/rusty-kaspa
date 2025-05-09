@@ -17,7 +17,7 @@ pub struct RpcFeerateBucket {
 pub struct RpcFeeEstimate {
     /// *Top-priority* feerate bucket. Provides an estimation of the feerate required for sub-second DAG inclusion.
     ///
-    /// Note: for all buckets, feerate values represent fee/mass of a transaction in `sompi/gram` units.
+    /// Note: for all buckets, feerate values represent fee/mass of a transaction in `dwork/gram` units.
     /// Given a feerate value recommendation, calculate the required fee by
     /// taking the transaction mass and multiplying it by feerate: `fee = feerate * mass(tx)`
     pub priority_bucket: RpcFeerateBucket,
