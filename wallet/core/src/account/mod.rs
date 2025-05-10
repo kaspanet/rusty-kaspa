@@ -305,13 +305,19 @@ pub trait Account: AnySync + Send + Sync + 'static {
         self: Arc<Self>,
         wallet_secret: Secret,
         payment_secret: Option<Secret>,
+        fee_rate: Option<f64>,
         abortable: &Abortable,
         notifier: Option<GenerationNotifier>,
     ) -> Result<(GeneratorSummary, Vec<kaspa_hashes::Hash>)> {
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
-        let settings =
-            GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), PaymentDestination::Change, Fees::None, None)?;
+        let settings = GeneratorSettings::try_new_with_account(
+            self.clone().as_dyn_arc(),
+            PaymentDestination::Change,
+            fee_rate,
+            Fees::None,
+            None,
+        )?;
         let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
 
         let mut stream = generator.stream();
@@ -334,6 +340,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
     async fn send(
         self: Arc<Self>,
         destination: PaymentDestination,
+        fee_rate: Option<f64>,
         priority_fee_sompi: Fees,
         payload: Option<Vec<u8>>,
         wallet_secret: Secret,
@@ -344,7 +351,8 @@ pub trait Account: AnySync + Send + Sync + 'static {
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
 
-        let settings = GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, priority_fee_sompi, payload)?;
+        let settings =
+            GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, fee_rate, priority_fee_sompi, payload)?;
 
         let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
 
@@ -366,13 +374,15 @@ pub trait Account: AnySync + Send + Sync + 'static {
     async fn pskb_from_send_generator(
         self: Arc<Self>,
         destination: PaymentDestination,
+        fee_rate: Option<f64>,
         priority_fee_sompi: Fees,
         payload: Option<Vec<u8>>,
         wallet_secret: Secret,
         payment_secret: Option<Secret>,
         abortable: &Abortable,
     ) -> Result<Bundle, Error> {
-        let settings = GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, priority_fee_sompi, payload)?;
+        let settings =
+            GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, fee_rate, priority_fee_sompi, payload)?;
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(PSKBSigner::new(self.clone().as_dyn_arc(), keydata, payment_secret));
         let generator = Generator::try_new(settings, None, Some(abortable))?;
@@ -428,6 +438,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         self: Arc<Self>,
         destination_account_id: AccountId,
         transfer_amount_sompi: u64,
+        fee_rate: Option<f64>,
         priority_fee_sompi: Fees,
         wallet_secret: Secret,
         payment_secret: Option<Secret>,
@@ -451,6 +462,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         let settings = GeneratorSettings::try_new_with_account(
             self.clone().as_dyn_arc(),
             final_transaction_destination,
+            fee_rate,
             priority_fee_sompi,
             final_transaction_payload,
         )?
@@ -476,11 +488,12 @@ pub trait Account: AnySync + Send + Sync + 'static {
     async fn estimate(
         self: Arc<Self>,
         destination: PaymentDestination,
+        fee_rate: Option<f64>,
         priority_fee_sompi: Fees,
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
     ) -> Result<GeneratorSummary> {
-        let settings = GeneratorSettings::try_new_with_account(self.as_dyn_arc(), destination, priority_fee_sompi, payload)?;
+        let settings = GeneratorSettings::try_new_with_account(self.as_dyn_arc(), destination, fee_rate, priority_fee_sompi, payload)?;
 
         let generator = Generator::try_new(settings, None, Some(abortable))?;
 
@@ -531,6 +544,7 @@ pub trait DerivationCapableAccount: Account {
         extent: usize,
         window: usize,
         sweep: bool,
+        fee_rate: Option<f64>,
         abortable: &Abortable,
         notifier: Option<ScanNotifier>,
     ) -> Result<()> {
@@ -605,6 +619,7 @@ pub trait DerivationCapableAccount: Account {
                         1,
                         1,
                         PaymentDestination::Change,
+                        fee_rate,
                         Fees::None,
                         None,
                         None,

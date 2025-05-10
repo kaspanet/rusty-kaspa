@@ -1373,6 +1373,10 @@ declare! {
          */
         paymentSecret? : string;
         /**
+         * Fee rate in sompi per 1 gram of mass.
+         */
+        feeRate? : number;
+        /**
          * Priority fee.
          */
         priorityFeeSompi? : IFees | bigint;
@@ -1392,6 +1396,7 @@ try_from! ( args: IAccountsSendRequest, AccountsSendRequest, {
     let account_id = args.get_account_id("accountId")?;
     let wallet_secret = args.get_secret("walletSecret")?;
     let payment_secret = args.try_get_secret("paymentSecret")?;
+    let fee_rate = args.get_f64("feeRate").ok();
     let priority_fee_sompi = args.get::<IFees>("priorityFeeSompi")?.try_into()?;
     let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
 
@@ -1399,7 +1404,7 @@ try_from! ( args: IAccountsSendRequest, AccountsSendRequest, {
     let destination: PaymentDestination =
         if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(outputs)?.into() };
 
-    Ok(AccountsSendRequest { account_id, wallet_secret, payment_secret, priority_fee_sompi, destination, payload })
+    Ok(AccountsSendRequest { account_id, wallet_secret, payment_secret, fee_rate, priority_fee_sompi, destination, payload })
 });
 
 declare! {
@@ -1446,6 +1451,7 @@ declare! {
         destinationAccountId : HexString;
         walletSecret : string;
         paymentSecret? : string;
+        feeRate? : number;
         priorityFeeSompi? : IFees | bigint;
         transferAmountSompi : bigint;
     }
@@ -1457,6 +1463,7 @@ try_from! ( args: IAccountsTransferRequest, AccountsTransferRequest, {
     let destination_account_id = args.get_account_id("destinationAccountId")?;
     let wallet_secret = args.get_secret("walletSecret")?;
     let payment_secret = args.try_get_secret("paymentSecret")?;
+    let fee_rate = args.get_f64("feeRate").ok();
     let priority_fee_sompi = args.try_get::<IFees>("priorityFeeSompi")?.map(Fees::try_from).transpose()?;
     let transfer_amount_sompi = args.get_u64("transferAmountSompi")?;
 
@@ -1465,6 +1472,7 @@ try_from! ( args: IAccountsTransferRequest, AccountsTransferRequest, {
         destination_account_id,
         wallet_secret,
         payment_secret,
+        fee_rate,
         priority_fee_sompi,
         transfer_amount_sompi,
     })
@@ -1505,6 +1513,7 @@ declare! {
     export interface IAccountsEstimateRequest {
         accountId : HexString;
         destination : IPaymentOutput[];
+        feeRate? : number;
         priorityFeeSompi : IFees | bigint;
         payload? : Uint8Array | string;
     }
@@ -1513,6 +1522,7 @@ declare! {
 
 try_from! ( args: IAccountsEstimateRequest, AccountsEstimateRequest, {
     let account_id = args.get_account_id("accountId")?;
+    let fee_rate = args.get_f64("feeRate").ok();
     let priority_fee_sompi = args.get::<IFees>("priorityFeeSompi")?.try_into()?;
     let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
 
@@ -1520,7 +1530,7 @@ try_from! ( args: IAccountsEstimateRequest, AccountsEstimateRequest, {
     let destination: PaymentDestination =
         if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(outputs)?.into() };
 
-    Ok(AccountsEstimateRequest { account_id, priority_fee_sompi, destination, payload })
+    Ok(AccountsEstimateRequest { account_id, fee_rate, priority_fee_sompi, destination, payload })
 });
 
 declare! {
