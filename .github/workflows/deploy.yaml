@@ -198,3 +198,85 @@ jobs:
           asset_path: "./${{ env.archive }}"
           asset_name: "${{ env.asset_name }}"
           asset_content_type: application/zip
+  
+  build-python-sdk:
+    name: Building Python SDK
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: ubuntu-latest
+            target: x86_64
+            manylinux: auto
+          - runner: ubuntu-latest
+            target: aarch64
+            # ring crate 0.17 fails to build for aarch64 using manylinux: auto, hence manylinux_2_28
+            manylinux: manylinux_2_28
+          - runner: macos-latest
+            target: x86_64-apple-darwin
+          - runner: macos-latest
+            target: aarch64-apple-darwin
+          - runner: windows-latest
+            target: x64
+          - runner: windows-latest
+            target: x86
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '>=3.10 <3.13'
+      
+      - name: Install cross-compilation tools (Linux only)
+        if: runner.os == 'Linux' && matrix.platform.target != 'x86_64'
+        run: |
+          sudo apt-get update
+          if [ "${{ matrix.platform.target }}" == "aarch64" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+            echo "CC=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          elif [ "${{ matrix.platform.target }}" == "armv7" ]; then
+            sudo apt-get install -y gcc-arm-linux-gnueabihf
+            echo "CC=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
+          fi
+      
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: python
+          target: ${{ matrix.platform.target }}
+          args: --release --strip --out target/dist --features py-sdk --interpreter python3.10 python3.11 python3.12
+          sccache: 'true'
+          manylinux: ${{ matrix.platform.manylinux || '' }}
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ runner.os }}-${{ matrix.platform.target }}
+          path: python/target/dist/
+
+  collect-python-sdk-artifacts:
+    name: Collect Python SDK Artifacts
+    needs: build-python-sdk
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Zip artifacts
+        run: |
+          cd artifacts
+          sudo zip -r ../kaspa-python-sdk.zip .
+      
+      - name: Upload consolidated release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./kaspa-python-sdk.zip
+          asset_name: "kaspa-python-sdk-${{ github.event.release.tag_name }}.zip"
+          asset_content_type: application/zip
+

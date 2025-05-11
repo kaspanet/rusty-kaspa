@@ -39,7 +39,8 @@ members = [
     "rpc/wrpc/server",
     "rpc/wrpc/client",
     "rpc/wrpc/proxy",
-    "rpc/wrpc/wasm",
+    "rpc/wrpc/bindings/python",
+    "rpc/wrpc/bindings/wasm",
     "rpc/wrpc/examples/subscriber",
     "rpc/wrpc/examples/simple_client",
     "mining",
@@ -59,6 +60,9 @@ members = [
     "metrics/core",
     "metrics/perf_monitor",
     "utils/alloc",
+    "python",
+    "python/macros",
+    "python/core",
 ]
 
 [workspace.package]
@@ -113,6 +117,9 @@ kaspa-p2p-lib = { version = "1.0.0", path = "protocol/p2p" }
 kaspa-p2p-mining = { version = "1.0.0", path = "protocol/mining" }
 kaspa-perf-monitor = { version = "1.0.0", path = "metrics/perf_monitor" }
 kaspa-pow = { version = "1.0.0", path = "consensus/pow" }
+kaspa-python = { version = "1.0.0", path = "python" }
+kaspa-python-core = { version = "1.0.0", path = "python/core" }
+kaspa-python-macros = { version = "1.0.0", path = "python/macros" }
 kaspa-rpc-core = { version = "1.0.0", path = "rpc/core" }
 kaspa-rpc-macros = { version = "1.0.0", path = "rpc/macros" }
 kaspa-rpc-service = { version = "1.0.0", path = "rpc/service" }
@@ -131,8 +138,9 @@ kaspa-wasm = { version = "1.0.0", path = "wasm" }
 kaspa-wasm-core = { version = "1.0.0", path = "wasm/core" }
 kaspa-wrpc-client = { version = "1.0.0", path = "rpc/wrpc/client" }
 kaspa-wrpc-proxy = { version = "1.0.0", path = "rpc/wrpc/proxy" }
+kaspa-wrpc-python = { version = "1.0.0", path = "rpc/wrpc/bindings/python" }
 kaspa-wrpc-server = { version = "1.0.0", path = "rpc/wrpc/server" }
-kaspa-wrpc-wasm = { version = "1.0.0", path = "rpc/wrpc/wasm" }
+kaspa-wrpc-wasm = { version = "1.0.0", path = "rpc/wrpc/bindings/wasm" }
 kaspa-wrpc-example-subscriber = { version = "1.0.0", path = "rpc/wrpc/examples/subscriber" }
 kaspad = { version = "1.0.0", path = "kaspad" }
 kaspa-alloc = { version = "1.0.0", path = "utils/alloc" }
@@ -216,6 +224,8 @@ paste = "1.0.14"
 pbkdf2 = "0.12.2"
 portable-atomic = { version = "1.5.1", features = ["float"] }
 prost = "0.13.2"
+pyo3 = { version = "0.22.5", features = ["multiple-pymethods"] }
+pyo3-async-runtimes = { version = "0.22", features = ["attributes", "tokio-runtime"] }
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 rand_core = { version = "0.6.4", features = ["std"] }
@@ -236,6 +246,7 @@ seqlock = "0.2.0"
 serde = { version = "1.0.190", features = ["derive", "rc"] }
 serde_bytes = "0.11.12"
 serde_json = "1.0.107"
+serde-pyobject = "0.4.0"
 serde_repr = "0.1.18"
 serde-value = "0.7.0"
 serde-wasm-bindgen = "0.6.1"

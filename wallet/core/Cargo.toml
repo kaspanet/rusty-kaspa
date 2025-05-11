@@ -26,6 +26,16 @@ wasm32-sdk = [
     "wasm32-core"
 ]
 default = ["wasm32-sdk"]
+py-sdk = [
+    "kaspa-consensus-core/py-sdk",
+    "kaspa-python-core/py-sdk",
+    "kaspa-python-macros",
+    "kaspa-wallet-keys/py-sdk",
+    "kaspa-wrpc-python/py-sdk",
+    "pyo3",
+    "pyo3-async-runtimes",
+    "serde-pyobject",
+]
 # default = []
 
 [lib]
@@ -65,6 +75,8 @@ kaspa-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-metrics-core.workspace = true
 kaspa-notify.workspace = true
+kaspa-python-core = { workspace = true, optional = true }
+kaspa-python-macros = { workspace = true, optional = true }
 kaspa-rpc-core.workspace = true
 kaspa-txscript-errors.workspace = true
 kaspa-txscript.workspace = true
@@ -74,16 +86,20 @@ kaspa-wallet-macros.workspace = true
 kaspa-wallet-pskt.workspace = true
 kaspa-wasm-core.workspace = true
 kaspa-wrpc-client.workspace = true
+kaspa-wrpc-python = { workspace = true, optional = true }
 kaspa-wrpc-wasm.workspace = true
 md-5.workspace = true
 pad.workspace = true
 pbkdf2.workspace = true
+pyo3 = { workspace = true, optional = true }
+pyo3-async-runtimes = { workspace = true, optional = true }
 rand.workspace = true
 regex.workspace = true
 ripemd.workspace = true
 secp256k1.workspace = true
 separator.workspace = true
 serde_json.workspace = true
+serde-pyobject = { workspace = true, optional = true }
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
 sha1.workspace = true
