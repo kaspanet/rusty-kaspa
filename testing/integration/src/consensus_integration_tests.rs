@@ -32,6 +32,7 @@ use kaspa_consensus_core::coinbase::MinerData;
 use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER, TRANSIENT_BYTE_TO_MASS_FACTOR};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::header::Header;
+use kaspa_consensus_core::mining_rules::MiningRules;
 use kaspa_consensus_core::network::{NetworkId, NetworkType::Mainnet};
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
@@ -405,7 +406,7 @@ async fn block_window_test() {
 #[tokio::test]
 async fn header_in_isolation_validation_test() {
     init_allocator_with_default_settings();
-    let config = Config::new(MAINNET_PARAMS);
+    let config = ConfigBuilder::new(MAINNET_PARAMS).edit_consensus_params(|p| p.skip_proof_of_work = true).build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
@@ -456,7 +457,8 @@ async fn header_in_isolation_validation_test() {
     {
         let mut block = block.clone();
         block.header.hash = 4.into();
-        block.header.parents_by_level[0] = (5..(config.prior_max_block_parents + 6)).map(|x| (x as u64).into()).collect();
+        block.header.parents_by_level[0] =
+            std::iter::repeat_n(config.genesis.hash, config.prior_max_block_parents as usize + 1).collect();
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TooManyParents(num_parents, limit)) => {
                 assert_eq!((config.prior_max_block_parents + 1) as usize, num_parents);
@@ -1758,6 +1760,7 @@ async fn staging_consensus_test() {
         counters,
         tx_script_cache_counters,
         200,
+        Arc::new(MiningRules::default()),
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
 

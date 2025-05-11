@@ -116,7 +116,7 @@ impl HandleRelayInvsFlow {
                 }
             }
 
-            if self.ctx.is_ibd_running() && !session.async_is_nearly_synced().await {
+            if self.ctx.is_ibd_running() && !self.ctx.should_mine(&session).await {
                 // Note: If the node is considered nearly synced we continue processing relay blocks even though an IBD is in progress.
                 // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks.
                 debug!("Got relay block {} while in IBD and the node is out of sync, continuing...", inv.hash);
