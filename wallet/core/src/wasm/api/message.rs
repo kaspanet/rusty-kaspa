@@ -5,13 +5,13 @@ use crate::account::descriptor::IAccountDescriptor;
 use crate::api::message::*;
 use crate::imports::*;
 use crate::tx::{Fees, PaymentDestination, PaymentOutputs};
+use crate::wasm::api::keydata::PrvKeyDataVariantKind;
 use crate::wasm::tx::fees::IFees;
 use crate::wasm::tx::GeneratorSummary;
 use js_sys::Array;
+use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use serde_wasm_bindgen::from_value;
 use workflow_wasm::serde::to_value;
-
-use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 
 macro_rules! try_from {
     ($name:ident : $from_type:ty, $to_type:ty, $body:block) => {
@@ -749,8 +749,12 @@ declare! {
          * to be provided.
          */
         paymentSecret? : string;
-        /** BIP39 mnemonic phrase (12 or 24 words)*/
-        mnemonic : string;
+        /** BIP39 mnemonic phrase (12 or 24 words) if kind is mnemonic */
+        mnemonic? : string;
+        /** Secret key if kind is secretKey */
+        secretKey? : string;
+        /** Kind of the private key data */
+        kind : "mnemonic" | "secretKey";
     }
     "#,
 }
@@ -759,12 +763,27 @@ try_from! ( args: IPrvKeyDataCreateRequest, PrvKeyDataCreateRequest, {
     let wallet_secret = args.get_secret("walletSecret")?;
     let name = args.try_get_string("name")?;
     let payment_secret = args.try_get_secret("paymentSecret")?;
-    let mnemonic = args.get_secret("mnemonic")?;
+    let kind = args.get_string("kind")?;
+    let (secret, kind) = match kind.as_str() {
+        "mnemonic" => (args.get_secret("mnemonic")?, PrvKeyDataVariantKind::Mnemonic),
+        "secretKey" => {
+            let mut hex_key = args.get_string("secretKey")?;
+            let mut secret = [0u8; 32];
+            faster_hex::hex_decode(hex_key.as_bytes(), &mut secret).map_err(|err|Error::custom(format!("secretKey: {err}")))?;
+            hex_key.zeroize();
+            let secret = Secret::new(secret.to_vec());
+            (secret, PrvKeyDataVariantKind::SecretKey)
+        },
+        _ => return Err(Error::custom("Invalid kind, supported: mnemonic, secretKey".to_string())),
+    };
+
+    //log_info!("secret: {:?}", secret);
 
     let prv_key_data_args = PrvKeyDataCreateArgs {
         name,
         payment_secret,
-        mnemonic,
+        kind,
+        secret,
     };
 
     Ok(PrvKeyDataCreateRequest { wallet_secret, prv_key_data_args })
@@ -1033,16 +1052,14 @@ declare! {
         accountIndex?:number;
         prvKeyDataId:string;
         paymentSecret?:string;
+    } | {
+        walletSecret: string;
+        type: "kaspa-keypair-standard";
+        accountName:string;
+        prvKeyDataId:string;
+        paymentSecret?:string;
+        ecdsa?:boolean;
     };
-    //   |{
-    //     walletSecret: string;
-    //     type: "multisig";
-    //     accountName:string;
-    //     accountIndex?:number;
-    //     prvKeyDataId:string;
-    //     pubkeys:HexString[];
-    //     paymentSecret?:string;
-    //   }
 
     //   |{
     //     walletSecret: string;
@@ -1060,21 +1077,32 @@ try_from! (args: IAccountsCreateRequest, AccountsCreateRequest, {
 
     let kind = AccountKind::try_from(args.try_get_value("type")?.ok_or(Error::custom("type is required"))?)?;
 
-    if kind != crate::account::BIP32_ACCOUNT_KIND {
-        return Err(Error::custom("only BIP32 accounts are currently supported"));
-    }
+    let account_create_args = match kind.as_str() {
+        crate::account::BIP32_ACCOUNT_KIND => {
+            let prv_key_data_args = PrvKeyDataArgs {
+                prv_key_data_id: args.try_get_prv_key_data_id("prvKeyDataId")?.ok_or(Error::custom("prvKeyDataId is required"))?,
+                payment_secret: args.try_get_secret("paymentSecret")?,
+            };
 
-    let prv_key_data_args = PrvKeyDataArgs {
-        prv_key_data_id: args.try_get_prv_key_data_id("prvKeyDataId")?.ok_or(Error::custom("prvKeyDataId is required"))?,
-        payment_secret: args.try_get_secret("paymentSecret")?,
+            let account_args = AccountCreateArgsBip32 {
+                account_name: args.try_get_string("accountName")?,
+                account_index: args.get_u64("accountIndex").ok(),
+            };
+
+            AccountCreateArgs::Bip32 { prv_key_data_args, account_args }
+
+        }
+        crate::account::KEYPAIR_ACCOUNT_KIND => {
+            AccountCreateArgs::Keypair {
+                prv_key_data_id: args.try_get_prv_key_data_id("prvKeyDataId")?.ok_or(Error::custom("prvKeyDataId is required"))?,
+                account_name: args.try_get_string("accountName")?,
+                ecdsa: args.get_bool("ecdsa").unwrap_or(false),
+            }
+        }
+        _ => {
+            return Err(Error::custom("only BIP32/kaspa-keypair-standard accounts are currently supported"));
+        }
     };
-
-    let account_args = AccountCreateArgsBip32 {
-        account_name: args.try_get_string("accountName")?,
-        account_index: args.get_u64("accountIndex").ok(),
-    };
-
-    let account_create_args = AccountCreateArgs::Bip32 { prv_key_data_args, account_args };
 
     Ok(AccountsCreateRequest { wallet_secret, account_create_args })
 });
@@ -1373,6 +1401,10 @@ declare! {
          */
         paymentSecret? : string;
         /**
+         * Fee rate in sompi per 1 gram of mass.
+         */
+        feeRate? : number;
+        /**
          * Priority fee.
          */
         priorityFeeSompi? : IFees | bigint;
@@ -1392,6 +1424,7 @@ try_from! ( args: IAccountsSendRequest, AccountsSendRequest, {
     let account_id = args.get_account_id("accountId")?;
     let wallet_secret = args.get_secret("walletSecret")?;
     let payment_secret = args.try_get_secret("paymentSecret")?;
+    let fee_rate = args.get_f64("feeRate").ok();
     let priority_fee_sompi = args.get::<IFees>("priorityFeeSompi")?.try_into()?;
     let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
 
@@ -1399,7 +1432,7 @@ try_from! ( args: IAccountsSendRequest, AccountsSendRequest, {
     let destination: PaymentDestination =
         if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(outputs)?.into() };
 
-    Ok(AccountsSendRequest { account_id, wallet_secret, payment_secret, priority_fee_sompi, destination, payload })
+    Ok(AccountsSendRequest { account_id, wallet_secret, payment_secret, fee_rate, priority_fee_sompi, destination, payload })
 });
 
 declare! {
@@ -1434,6 +1467,236 @@ try_from!(args: AccountsSendResponse, IAccountsSendResponse, {
 // ---
 
 declare! {
+    IAccountsPskbSignRequest,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsPskbSignRequest {
+        /**
+         * Hex identifier of the account.
+         */
+        accountId : HexString;
+        /**
+         * Wallet encryption secret.
+         */
+        walletSecret : string;
+        /**
+         * Optional key encryption secret or BIP39 passphrase.
+         */
+        paymentSecret? : string;
+
+        /**
+         * PSKB to sign.
+         */
+        pskb : string;
+
+        /**
+         * Address to sign for.
+         */
+        signForAddress? : Address | string;
+    }
+    "#,
+}
+
+try_from! ( args: IAccountsPskbSignRequest, AccountsPskbSignRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let wallet_secret = args.get_secret("walletSecret")?;
+    let payment_secret = args.try_get_secret("paymentSecret")?;
+    let pskb = args.get_string("pskb")?;
+    let sign_for_address = match args.try_get_value("signForAddress")? {
+        Some(v) => Some(Address::try_cast_from(&v)?.into_owned()),
+        None => None,
+    };
+    Ok(AccountsPskbSignRequest { account_id, wallet_secret, payment_secret, pskb, sign_for_address })
+});
+
+declare! {
+    IAccountsPskbSignResponse,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsPskbSignResponse {
+        /**
+         * signed PSKB.
+         */
+        pskb: string;
+    }
+    "#,
+}
+
+try_from!(args: AccountsPskbSignResponse, IAccountsPskbSignResponse, {
+
+    let response = IAccountsPskbSignResponse::default();
+    response.set("pskb", &args.pskb.into())?;
+    Ok(response)
+});
+
+// ---
+
+declare! {
+    IAccountsPskbBroadcastRequest,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsPskbBroadcastRequest {
+        accountId : HexString;
+        pskb : string;
+    }
+    "#,
+}
+
+try_from! ( args: IAccountsPskbBroadcastRequest, AccountsPskbBroadcastRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let pskb = args.get_string("pskb")?;
+    Ok(AccountsPskbBroadcastRequest { account_id, pskb })
+});
+
+declare! {
+    IAccountsPskbBroadcastResponse,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsPskbBroadcastResponse {
+        transactionIds : HexString[];
+    }
+    "#,
+}
+
+try_from! ( args: AccountsPskbBroadcastResponse, IAccountsPskbBroadcastResponse, {
+    Ok(to_value(&args)?.into())
+});
+
+declare! {
+    IAccountsPskbSendRequest,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsPskbSendRequest {
+        /**
+         * Hex identifier of the account.
+         */
+        accountId : HexString;
+        /**
+         * Wallet encryption secret.
+         */
+        walletSecret : string;
+        /**
+         * Optional key encryption secret or BIP39 passphrase.
+         */
+        paymentSecret? : string;
+
+        /**
+         * PSKB to sign.
+         */
+        pskb : string;
+
+        /**
+         * Address to sign for.
+         */
+        signForAddress? : Address | string;
+    }
+    "#,
+}
+
+try_from! ( args: IAccountsPskbSendRequest, AccountsPskbSendRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let wallet_secret = args.get_secret("walletSecret")?;
+    let payment_secret = args.try_get_secret("paymentSecret")?;
+    let pskb = args.get_string("pskb")?;
+    let sign_for_address = match args.try_get_value("signForAddress")? {
+        Some(v) => Some(Address::try_cast_from(&v)?.into_owned()),
+        None => None,
+    };
+    Ok(AccountsPskbSendRequest { account_id, wallet_secret, payment_secret, pskb, sign_for_address })
+});
+
+// ---
+
+declare! {
+    IAccountsPskbSendResponse,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsPskbSendResponse {
+        transactionIds : HexString[];
+    }
+    "#,
+}
+
+try_from! ( args: AccountsPskbSendResponse, IAccountsPskbSendResponse, {
+    Ok(to_value(&args)?.into())
+});
+
+// ---
+
+declare! {
+    IAccountsGetUtxosRequest,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsGetUtxosRequest {
+        accountId : HexString;
+        addresses : Address[] | string[];
+        minAmountSompi? : bigint;
+    }
+    "#,
+}
+
+try_from! ( args: IAccountsGetUtxosRequest, AccountsGetUtxosRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let addresses = args.try_get_addresses("addresses")?;
+    let min_amount_sompi = args.get_u64("minAmountSompi").ok();
+    Ok(AccountsGetUtxosRequest { account_id, addresses, min_amount_sompi })
+});
+
+declare! {
+    IAccountsGetUtxosResponse,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsGetUtxosResponse {
+        utxos : UtxoEntry[];
+    }
+    "#,
+}
+
+try_from! ( args: AccountsGetUtxosResponse, IAccountsGetUtxosResponse, {
+    let response = IAccountsGetUtxosResponse::default();
+
+
+    let utxos = args.utxos.into_iter().map(|entry| entry.to_js_object()).collect::<Result<Vec<js_sys::Object>>>()?;
+    let utxos = js_sys::Array::from_iter(utxos.into_iter());
+    response.set("utxos", &utxos)?;
+    Ok(response)
+});
+
+// ---
+
+declare! {
     IAccountsTransferRequest,
     r#"
     /**
@@ -1446,6 +1709,7 @@ declare! {
         destinationAccountId : HexString;
         walletSecret : string;
         paymentSecret? : string;
+        feeRate? : number;
         priorityFeeSompi? : IFees | bigint;
         transferAmountSompi : bigint;
     }
@@ -1457,6 +1721,7 @@ try_from! ( args: IAccountsTransferRequest, AccountsTransferRequest, {
     let destination_account_id = args.get_account_id("destinationAccountId")?;
     let wallet_secret = args.get_secret("walletSecret")?;
     let payment_secret = args.try_get_secret("paymentSecret")?;
+    let fee_rate = args.get_f64("feeRate").ok();
     let priority_fee_sompi = args.try_get::<IFees>("priorityFeeSompi")?.map(Fees::try_from).transpose()?;
     let transfer_amount_sompi = args.get_u64("transferAmountSompi")?;
 
@@ -1465,6 +1730,7 @@ try_from! ( args: IAccountsTransferRequest, AccountsTransferRequest, {
         destination_account_id,
         wallet_secret,
         payment_secret,
+        fee_rate,
         priority_fee_sompi,
         transfer_amount_sompi,
     })
@@ -1505,6 +1771,7 @@ declare! {
     export interface IAccountsEstimateRequest {
         accountId : HexString;
         destination : IPaymentOutput[];
+        feeRate? : number;
         priorityFeeSompi : IFees | bigint;
         payload? : Uint8Array | string;
     }
@@ -1513,6 +1780,7 @@ declare! {
 
 try_from! ( args: IAccountsEstimateRequest, AccountsEstimateRequest, {
     let account_id = args.get_account_id("accountId")?;
+    let fee_rate = args.get_f64("feeRate").ok();
     let priority_fee_sompi = args.get::<IFees>("priorityFeeSompi")?.try_into()?;
     let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
 
@@ -1520,7 +1788,7 @@ try_from! ( args: IAccountsEstimateRequest, AccountsEstimateRequest, {
     let destination: PaymentDestination =
         if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(outputs)?.into() };
 
-    Ok(AccountsEstimateRequest { account_id, priority_fee_sompi, destination, payload })
+    Ok(AccountsEstimateRequest { account_id, fee_rate, priority_fee_sompi, destination, payload })
 });
 
 declare! {
@@ -1541,6 +1809,91 @@ try_from! ( args: AccountsEstimateResponse, IAccountsEstimateResponse, {
     let response = IAccountsEstimateResponse::default();
     response.set("generatorSummary", &GeneratorSummary::from(args.generator_summary).into())?;
     Ok(response)
+});
+
+// ---
+
+declare! {
+    IFeeRateEstimateBucket,
+    r#"
+    export interface IFeeRateEstimateBucket {
+        feeRate : number;
+        seconds : number;
+    }
+    "#,
+}
+
+declare! {
+    IFeeRateEstimateRequest,
+    r#"
+    export interface IFeeRateEstimateRequest { }
+    "#,
+}
+
+try_from! ( _args: IFeeRateEstimateRequest, FeeRateEstimateRequest, {
+    Ok(FeeRateEstimateRequest { })
+});
+
+declare! {
+    IFeeRateEstimateResponse,
+    r#"
+    export interface IFeeRateEstimateResponse {
+        priority : IFeeRateEstimateBucket,
+        normal : IFeeRateEstimateBucket,
+        low : IFeeRateEstimateBucket,
+    }
+    "#,
+}
+
+try_from! ( args: FeeRateEstimateResponse, IFeeRateEstimateResponse, {
+    Ok(to_value(&args)?.into())
+});
+
+declare! {
+    IFeeRatePollerEnableRequest,
+    r#"
+    export interface IFeeRatePollerEnableRequest {
+        intervalSeconds : number;
+    }
+    "#,
+}
+
+try_from! ( args: IFeeRatePollerEnableRequest, FeeRatePollerEnableRequest, {
+    let interval_seconds = args.get_u64("intervalSeconds")?;
+    Ok(FeeRatePollerEnableRequest { interval_seconds })
+});
+
+declare! {
+    IFeeRatePollerEnableResponse,
+    r#"
+    export interface IFeeRatePollerEnableResponse { }
+    "#,
+}
+
+try_from! ( _args: FeeRatePollerEnableResponse, IFeeRatePollerEnableResponse, {
+    Ok(IFeeRatePollerEnableResponse::default())
+});
+
+declare! {
+    IFeeRatePollerDisableRequest,
+    r#"
+    export interface IFeeRatePollerDisableRequest { }
+    "#,
+}
+
+try_from! ( _args: IFeeRatePollerDisableRequest, FeeRatePollerDisableRequest, {
+    Ok(FeeRatePollerDisableRequest { })
+});
+
+declare! {
+    IFeeRatePollerDisableResponse,
+    r#"
+    export interface IFeeRatePollerDisableResponse { }
+    "#,
+}
+
+try_from! ( _args: FeeRatePollerDisableResponse, IFeeRatePollerDisableResponse, {
+    Ok(IFeeRatePollerDisableResponse::default())
 });
 
 // ---
@@ -1601,6 +1954,34 @@ declare! {
 
 try_from! ( args: TransactionsDataGetResponse, ITransactionsDataGetResponse, {
     Ok(to_value(&args)?.into())
+});
+
+// ---
+
+declare! {
+    INetworkParams,
+    r#"
+    /**
+     * 
+     * 
+     * @category Wallet API
+     */
+    export interface INetworkParams {
+        coinbaseTransactionMaturityPeriodDaa : number;
+        coinbaseTransactionStasisPeriodDaa : number;
+        userTransactionMaturityPeriodDaa : number;
+        additionalCompoundTransactionMass : number;
+    }
+    "#,
+}
+
+try_from! ( args: &NetworkParams, INetworkParams, {
+    let response = INetworkParams::default();
+    response.set("coinbaseTransactionMaturityPeriodDaa", &to_value(&args.coinbase_transaction_maturity_period_daa)?)?;
+    response.set("coinbaseTransactionStasisPeriodDaa", &to_value(&args.coinbase_transaction_stasis_period_daa)?)?;
+    response.set("userTransactionMaturityPeriodDaa", &to_value(&args.user_transaction_maturity_period_daa)?)?;
+    response.set("additionalCompoundTransactionMass", &to_value(&args.additional_compound_transaction_mass)?)?;
+    Ok(response)
 });
 
 // ---
@@ -1770,6 +2151,187 @@ declare! {
 
 try_from! ( _args: AddressBookEnumerateResponse, IAddressBookEnumerateResponse, {
     Err(Error::NotImplemented)
+});
+
+// ---
+// ---
+
+declare! {
+    IAccountsCommitRevealRequest,
+    r#"
+    /**
+     * 
+     * Atomic commit reveal operation using parameterized account address to
+     * dynamically generate the commit P2SH address.
+     * 
+     * The account address is selected through addressType and addressIndex
+     * and will be used to complete the script signature.
+     * 
+     * A placeholder of format {{pubkey}} is to be provided inside ScriptSig
+     * in order to be superseded by the selected address' payload.
+     * 
+     * The selected address will also be used to spend reveal transaction to.
+     * 
+     * The default revealFeeSompi is 100_000 sompi.
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsCommitRevealRequest {
+        accountId : HexString;
+        addressType : CommitRevealAddressKind;
+        addressIndex : number;
+        scriptSig : Uint8Array | HexString;
+        walletSecret : string;
+        commitAmountSompi : bigint;
+        paymentSecret? : string;
+        feeRate? : number;
+        revealFeeSompi : bigint;
+        payload? : Uint8Array | HexString;
+    }
+    "#,
+}
+
+try_from! ( args: IAccountsCommitRevealRequest, AccountsCommitRevealRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let address_type = args.get_value("addressType")?;
+
+    let address_type = if let Some(address_type) = address_type.as_string() {
+        address_type.parse()?
+    } else {
+        CommitRevealAddressKind::try_enum_from(&address_type)?
+    };
+
+    let address_index = args.get_u32("addressIndex")?;
+    let script_sig = args.get_vec_u8("scriptSig")?;
+    let wallet_secret = args.get_secret("walletSecret")?;
+    let payment_secret = args.try_get_secret("paymentSecret")?;
+    let commit_amount_sompi = args.get_u64("commitAmountSompi")?;
+    let fee_rate = args.get_f64("feeRate").ok();
+
+    let reveal_fee_sompi = args.get_u64("revealFeeSompi")?;
+
+    let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
+
+    Ok(AccountsCommitRevealRequest {
+        account_id,
+        address_type,
+        address_index,
+        script_sig,
+        wallet_secret,
+        payment_secret,
+        commit_amount_sompi,
+        fee_rate,
+        reveal_fee_sompi,
+        payload,
+    })
+});
+
+declare! {
+    IAccountsCommitRevealResponse,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsCommitRevealResponse {
+        transactionIds : HexString[];
+    }
+    "#,
+}
+
+try_from! ( args: AccountsCommitRevealResponse, IAccountsCommitRevealResponse, {
+    let response = IAccountsCommitRevealResponse::default();
+    response.set("transactionIds", &to_value(&args.transaction_ids)?)?;
+    Ok(response)
+});
+
+// ---
+
+declare! {
+    IAccountsCommitRevealManualRequest,
+    r#"
+    /**
+     * 
+     * Atomic commit reveal operation using given payment outputs.
+     * 
+     * The startDestination stands for the commit transaction and the endDestination
+     * for the reveal transaction.
+     * 
+     * The scriptSig will be used to spend the UTXO of the first transaction and
+     * must therefore match the startDestination output P2SH.
+     * 
+     * Set revealFeeSompi or reflect the reveal fee transaction on endDestination
+     * output amount. 
+     * 
+     * The default revealFeeSompi is 100_000 sompi.
+     * 
+     * @category Wallet API
+     */
+    export interface IAccountsCommitRevealManualRequest {
+        accountId : HexString;
+        scriptSig : Uint8Array | HexString;
+        startDestination: IPaymentOutput;
+        endDestination: IPaymentOutput;
+        walletSecret : string;
+        paymentSecret? : string;
+        feeRate? : number;
+        revealFeeSompi : bigint;
+        payload? : Uint8Array | HexString;
+    }
+    "#,
+}
+
+try_from! ( args: IAccountsCommitRevealManualRequest, AccountsCommitRevealManualRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let script_sig = args.get_vec_u8("scriptSig")?;
+    let wallet_secret = args.get_secret("walletSecret")?;
+    let payment_secret = args.try_get_secret("paymentSecret")?;
+
+    let commit_output = args.get_value("startDestination")?;
+    let start_destination: PaymentDestination =
+    if commit_output.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(commit_output)?.into() };
+
+    let reveal_output = args.get_value("endDestination")?;
+    let end_destination: PaymentDestination =
+    if reveal_output.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(reveal_output)?.into() };
+
+    let fee_rate = args.get_f64("feeRate").ok();
+    let reveal_fee_sompi = args.get_u64("revealFeeSompi")?;
+
+    let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
+
+    Ok(AccountsCommitRevealManualRequest {
+        account_id,
+        script_sig,
+        wallet_secret,
+        payment_secret,
+        start_destination,
+        end_destination,
+        fee_rate,
+        reveal_fee_sompi,
+        payload,
+    })
+});
+
+declare! {
+    IAccountsCommitRevealManualResponse,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsCommitRevealManualResponse {
+        transactionIds : HexString[];
+    }
+    "#,
+}
+
+try_from! ( args: AccountsCommitRevealManualResponse, IAccountsCommitRevealManualResponse, {
+    let response = IAccountsCommitRevealManualResponse::default();
+    response.set("transactionIds", &to_value(&args.transaction_ids)?)?;
+    Ok(response)
 });
 
 // ---

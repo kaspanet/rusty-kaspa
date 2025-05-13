@@ -2,10 +2,6 @@
 
 Kaspa is about to take a significant leap with the **Crescendo Hardfork**, as detailed in [KIP14](https://github.com/kaspanet/kips/blob/master/kip-0014.md), transitioning from 1 to 10 blocks per second. To ensure a stable rollout, **Testnet 10 (TN10)** will first undergo this shift on approximately **March 6, 2025, 18:30 UTC**. By running TN10 and providing feedback, you help prepare for a smooth mainnet upgrade, tentatively planned for the end of April or early May.
 
-
-**Important Note:**  
-- Version [0.17.1](https://github.com/kaspanet/rusty-kaspa/releases/tag/v0.17.1) does **not** support TN11. Some participants should keep TN11 nodes running on the latest stable release or `stable` branch until TN10’s performance is proven stable.
-
 ---
 
 ## Recommended Hardware Specifications
@@ -29,8 +25,8 @@ While the minimum specs suffice to sync and maintain a TN10 node with the accele
 
 ## 1. Install & Run Your TN10 Node
 
-1. **Obtain Kaspa 0.17.1 binaries**  
-   Download and extract the official [0.17.1 release](https://github.com/kaspanet/rusty-kaspa/releases/tag/v0.17.1), or build from the `master` branch by following the instructions in the project README.
+1. **Obtain the latest Kaspa binaries**  
+   Download and extract the latest [official release](https://github.com/kaspanet/rusty-kaspa/releases/), or build from the `master` branch by following the instructions in the project README.
 
 2. **Launch the Node**  
    While TN10 is the default netsuffix, specifying it explicitly is recommended:

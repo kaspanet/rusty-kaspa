@@ -81,6 +81,7 @@ impl Account for Resident {
             AssocPrvKeyDataIds::None,
             self.receive_address().ok(),
             self.change_address().ok(),
+            None,
         );
 
         Ok(descriptor)
