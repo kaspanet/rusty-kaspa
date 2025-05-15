@@ -41,12 +41,15 @@ impl Drop for DbLifetime {
     }
 }
 
-pub fn get_kaspa_tempdir() -> TempDir {
+pub fn get_kaspa_tempdir() -> Result<TempDir, std::io::Error> {
     let global_tempdir = std::env::temp_dir();
     let kaspa_tempdir = global_tempdir.join("rusty-kaspa");
-    std::fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
-    let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
-    db_tempdir
+    std::fs::create_dir_all(&kaspa_tempdir).map_err(|err| {
+        std::io::Error::new(err.kind(), format!("Failed to create kaspa directory '{}': {}", kaspa_tempdir.display(), err))
+    })?;
+    tempfile::tempdir_in(&kaspa_tempdir).map_err(|err| {
+        std::io::Error::new(err.kind(), format!("Failed to create db tempdir in '{}': {}", kaspa_tempdir.display(), err))
+    })
 }
 
 /// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/kaspa-rust`
@@ -54,10 +57,22 @@ pub fn get_kaspa_tempdir() -> TempDir {
 #[macro_export]
 macro_rules! create_temp_db {
     ($conn_builder: expr) => {{
-        let db_tempdir = $crate::utils::get_kaspa_tempdir();
-        let db_path = db_tempdir.path().to_owned();
-        let db = $conn_builder.with_db_path(db_path).build().unwrap();
-        ($crate::utils::DbLifetime::new(db_tempdir, std::sync::Arc::downgrade(&db)), db)
+        // Create the temporary directory.
+        let db_tempdir = $crate::utils::get_kaspa_tempdir().unwrap();
+        // Extract and clone the DB path for later use (for error messages).
+        let db_tempdir_path = db_tempdir.path().to_owned();
+        // Build the database.
+        $conn_builder
+            .with_db_path(db_tempdir_path.clone())
+            .build()
+            .map(|db| {
+                // On success, move `db_tempdir` into the DbLifetime.
+                ($crate::utils::DbLifetime::new(db_tempdir, std::sync::Arc::downgrade(&db)), db)
+            })
+            .map_err(|e| {
+                // Use the cloned path for the error message.
+                format!("Failed to create temp db at {}: {}", db_tempdir_path.display(), e)
+            })
     }};
 }
 

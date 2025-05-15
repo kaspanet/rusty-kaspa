@@ -721,7 +721,9 @@ fn test_generator_inputs_32k_outputs_2_fees_exclude() -> Result<()> {
 #[test]
 fn test_generator_inputs_250k_outputs_2_sweep() -> Result<()> {
     let f = 130.0;
-    let generator = make_generator(test_network_id(), &[f; 250_000], &[], Fees::None, change_address, PaymentDestination::Change);
+    let head: Vec<f64> = vec![f; 250_000]; // <-- NOTE: this is allocated in heap unlike before, to
+                                           // prevent stackoverflow
+    let generator = make_generator(test_network_id(), &head, &[], Fees::None, change_address, PaymentDestination::Change);
     generator.unwrap().harness().accumulate(2875).finalize();
     Ok(())
 }
