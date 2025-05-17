@@ -6,21 +6,24 @@ use crate::{
     },
     v8,
 };
-use crate::{v5, v6};
+use crate::{v5, v6,v7};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
-use kaspa_consensus_core::api::{BlockValidationFuture, BlockValidationFutures};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
+use kaspa_consensus_core::{
+    api::{BlockValidationFuture, BlockValidationFutures},
+    network::NetworkType,
+};
 use kaspa_consensus_notify::{
     notification::{Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
 };
-use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusInstance, ConsensusManager, ConsensusProxy};
+use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusInstance, ConsensusManager, ConsensusProxy, ConsensusSessionOwned};
 use kaspa_core::{
     debug, info,
     kaspad_env::{name, version},
@@ -38,6 +41,7 @@ use kaspa_p2p_lib::{
     pb::{kaspad_message::Payload, InvRelayBlockMessage},
     ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
 };
+use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_utils::iter::IterExtensions;
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
@@ -236,6 +240,9 @@ pub struct FlowContextInner {
     // Orphan parameters
     orphan_resolution_range: u32,
     max_orphans: usize,
+
+    // Mining rule engine
+    mining_rule_engine: Arc<MiningRuleEngine>,
 }
 
 #[derive(Clone)]
@@ -308,9 +315,9 @@ impl FlowContext {
         mining_manager: MiningManagerProxy,
         tick_service: Arc<TickService>,
         notification_root: Arc<ConsensusNotificationRoot>,
+        hub: Hub,
+        mining_rule_engine: Arc<MiningRuleEngine>,
     ) -> Self {
-        let hub = Hub::new();
-
         let bps_upper_bound = config.bps().upper_bound() as usize;
         let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps_upper_bound as f64).log2().ceil() as u32;
 
@@ -339,6 +346,7 @@ impl FlowContext {
                 orphan_resolution_range,
                 max_orphans,
                 config,
+                mining_rule_engine,
             }),
         }
     }
@@ -587,8 +595,8 @@ impl FlowContext {
             }
         }
 
-        // Transaction relay is disabled if the node is out of sync and thus not mining
-        if !consensus.async_is_nearly_synced().await {
+        // Transaction relay is disabled if the node is out of sync
+        if !self.is_nearly_synced(consensus).await {
             return;
         }
 
@@ -625,6 +633,16 @@ impl FlowContext {
                 debug!("<> Mempool scanning task is done");
             });
         }
+    }
+
+    pub async fn is_nearly_synced(&self, session: &ConsensusSessionOwned) -> bool {
+        let sink_daa_score_and_timestamp = session.async_get_sink_daa_score_timestamp().await;
+        self.mining_rule_engine.is_nearly_synced(sink_daa_score_and_timestamp)
+    }
+
+    pub async fn should_mine(&self, session: &ConsensusSessionOwned) -> bool {
+        let sink_daa_score_and_timestamp = session.async_get_sink_daa_score_timestamp().await;
+        self.mining_rule_engine.should_mine(sink_daa_score_and_timestamp)
     }
 
     /// Notifies that the UTXO set was reset due to pruning point change via IBD.
@@ -763,12 +781,22 @@ impl ConnectionInitializer for FlowContext {
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
         // Register all flows according to version
-        let (flows, applied_protocol_version) = match peer_version.protocol_version {
-            v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone()), PROTOCOL_VERSION),
-            6 => (v6::register(self.clone(), router.clone()), 6),
+        let connect_only_new_versions = self.config.net.network_type() != NetworkType::Testnet;
 
-            5 => (v5::register(self.clone(), router.clone()), 5),
-            v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+        let (flows, applied_protocol_version) = if connect_only_new_versions {
+            match peer_version.protocol_version {
+                v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+                7 => (v7::register(self.clone(), router.clone()), 7),
+                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+            }
+        } else {
+            match peer_version.protocol_version {
+                v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+                7 => (v7::register(self.clone(), router.clone()), 7),
+                6 => (v6::register(self.clone(), router.clone()), 6),
+                5 => (v5::register(self.clone(), router.clone()), 5),
+                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
+            }
         };
 
         // Build and register the peer properties
