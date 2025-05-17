@@ -6,7 +6,7 @@ use crate::{
     },
     v8,
 };
-use crate::{v5, v6,v7};
+use crate::{v5, v6, v7};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
