@@ -4,7 +4,7 @@ use crate::{
         process_queue::ProcessQueue,
         transactions::TransactionsSpread,
     },
-    v7,
+    v8,
 };
 use crate::{v5, v6};
 use async_trait::async_trait;
@@ -60,7 +60,7 @@ use tokio::sync::{
 use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 use uuid::Uuid;
 
-const PROTOCOL_VERSION: u32 = 7;
+const PROTOCOL_VERSION: u32 = 8;
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
@@ -764,7 +764,7 @@ impl ConnectionInitializer for FlowContext {
 
         // Register all flows according to version
         let (flows, applied_protocol_version) = match peer_version.protocol_version {
-            v if v >= PROTOCOL_VERSION => (v7::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+            v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone()), PROTOCOL_VERSION),
             6 => (v6::register(self.clone(), router.clone()), 6),
 
             5 => (v5::register(self.clone(), router.clone()), 5),
