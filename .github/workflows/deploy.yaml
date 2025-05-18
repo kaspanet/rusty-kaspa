@@ -60,11 +60,11 @@ jobs:
           cd $GITHUB_WORKSPACE
           
           # Build for musl
-          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-musl
+          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet-daemon --release --target x86_64-unknown-linux-musl
           mkdir bin || true
           cp target/x86_64-unknown-linux-musl/release/kaspad bin/
           cp target/x86_64-unknown-linux-musl/release/rothschild bin/
-          cp target/x86_64-unknown-linux-musl/release/kaspa-wallet bin/
+          cp target/x86_64-unknown-linux-musl/release/kaspa-wallet-daemon bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-amd64.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux-amd64.zip"
           zip -r "${archive}" ./bin/*
