@@ -1,7 +1,6 @@
-use std::net::SocketAddr;
-
 use clap::{Arg, Command};
 use kaspa_core::kaspad_env::version;
+use std::net::SocketAddr;
 
 pub struct Args {
     pub password: String,
@@ -9,6 +8,7 @@ pub struct Args {
     pub rpc_server: Option<String>,
     pub network_id: Option<String>,
     pub listen_address: SocketAddr,
+    pub ecdsa: bool,
 }
 
 impl Args {
@@ -24,6 +24,7 @@ impl Args {
                 .get_one::<SocketAddr>("listen-address")
                 .cloned()
                 .unwrap_or_else(|| "127.0.0.1:8082".parse().unwrap()),
+            ecdsa: matches.get_one::<bool>("ecdsa").cloned().unwrap_or(false),
         }
     }
 }
@@ -63,5 +64,12 @@ pub fn cli() -> Command {
                 .value_name("listen-address")
                 .value_parser(clap::value_parser!(String))
                 .help("gRPC listening address with port."),
+        )
+        .arg(
+            Arg::new("ecdsa")
+                .long("ecdsa")
+                .value_name("ecdsa")
+                .value_parser(clap::value_parser!(bool))
+                .help("Use ecdsa for transactions broadcast"),
         )
 }

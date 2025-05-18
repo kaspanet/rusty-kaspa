@@ -3406,9 +3406,12 @@ dependencies = [
 name = "kaspa-wallet-grpc-core"
 version = "1.0.1"
 dependencies = [
+ "kaspa-bip32",
  "kaspa-rpc-core",
+ "kaspa-txscript",
  "kaspa-wallet-core",
  "prost",
+ "thiserror",
  "tonic",
  "tonic-build",
 ]

@@ -11,10 +11,12 @@ use tokio::sync::oneshot;
 pub struct Service {
     wallet: Arc<Wallet>,
     shutdown_sender: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+    // TODO: Extend the partially serialized transaction or transaction structure with a boolean field 'ecdsa'
+    ecdsa: bool,
 }
 
 impl Service {
-    pub fn with_notification_pipe_task(wallet: Arc<Wallet>, shutdown_sender: oneshot::Sender<()>) -> Self {
+    pub fn with_notification_pipe_task(wallet: Arc<Wallet>, shutdown_sender: oneshot::Sender<()>, ecdsa: bool) -> Self {
         let channel = wallet.multiplexer().channel();
 
         tokio::spawn({
@@ -45,7 +47,7 @@ impl Service {
             }
         });
 
-        Service { wallet, shutdown_sender: Arc::new(Mutex::new(Some(shutdown_sender))) }
+        Service { wallet, shutdown_sender: Arc::new(Mutex::new(Some(shutdown_sender))), ecdsa }
     }
 
     pub fn receive_addresses(&self) -> Vec<Address> {
@@ -67,5 +69,14 @@ impl Service {
         if let Some(shutdown_sender) = sender.take() {
             let _ = shutdown_sender.send(());
         }
+    }
+
+    /// Returns whether the service should use ECDSA signatures instead of Schnorr signatures.
+    /// This flag is used when processing transactions to determine the appropriate signature scheme.
+    /// Currently set via command-line arguments, but this is temporary - the signature scheme
+    /// should be determined per transaction by extending the partially serialized transaction
+    /// or transaction structure with this field.
+    pub fn use_ecdsa(&self) -> bool {
+        self.ecdsa
     }
 }

@@ -1,12 +1,12 @@
 pub mod service;
 
-use kaspa_rpc_core::RpcTransaction;
 use kaspa_wallet_core::api::WalletApi;
 use kaspa_wallet_core::{
     api::{AccountsGetUtxosRequest, AccountsSendRequest, NewAddressKind},
     prelude::Address,
     tx::{Fees, PaymentDestination, PaymentOutputs},
 };
+use kaspa_wallet_grpc_core::convert::deserialize_txs;
 use kaspa_wallet_grpc_core::kaspawalletd::{
     fee_policy::FeePolicy, kaspawalletd_server::Kaspawalletd, BroadcastRequest, BroadcastResponse, BumpFeeRequest, BumpFeeResponse,
     CreateUnsignedTransactionsRequest, CreateUnsignedTransactionsResponse, GetBalanceRequest, GetBalanceResponse,
@@ -14,10 +14,8 @@ use kaspa_wallet_grpc_core::kaspawalletd::{
     NewAddressResponse, SendRequest, SendResponse, ShowAddressesRequest, ShowAddressesResponse, ShutdownRequest, ShutdownResponse,
     SignRequest, SignResponse,
 };
-use kaspa_wallet_grpc_core::protoserialization::TransactionMessage;
-use prost::Message;
 use service::Service;
-use tonic::{Request, Response, Status};
+use tonic::{Code, Request, Response, Status};
 
 #[tonic::async_trait]
 impl Kaspawalletd for Service {
@@ -68,19 +66,21 @@ impl Kaspawalletd for Service {
         Ok(Response::new(ShutdownResponse {}))
     }
 
+    // TODO: Consider implementing parallel transaction processing in the future:
+    // - Server-side configuration processes messages sequentially
+    // - It might be possible to start processing a new message before writing the response to the socket
+    // - New parameters like allow_parallel should be introduced
+    // - Client behavior should be considered as they may expect sequential processing until the first error when sending batches
     async fn broadcast(&self, request: Request<BroadcastRequest>) -> Result<Response<BroadcastResponse>, Status> {
         let request = request.into_inner();
-        let _ = request.transactions.into_iter().map(|tx| -> Result<_, Status> {
-            if request.is_domain {
-                let tx = TransactionMessage::decode(tx.as_slice()).map_err(|err| Status::invalid_argument(err.to_string()))?;
-                let tx = RpcTransaction::try_from(tx)?;
-                Ok(tx)
-            } else {
-                todo!()
-            }
-        });
-        // let a = self.wallet().rpc_api().submit_transaction();
-        todo!();
+        let txs = deserialize_txs(request.transactions, request.is_domain, self.use_ecdsa())?;
+        let mut tx_ids: Vec<String> = Vec::with_capacity(txs.len());
+        for tx in txs {
+            let tx_id =
+                self.wallet().rpc_api().submit_transaction(tx, false).await.map_err(|e| Status::new(Code::Internal, e.to_string()))?;
+            tx_ids.push(tx_id.to_string());
+        }
+        Ok(Response::new(BroadcastResponse { tx_ids }))
     }
 
     async fn broadcast_replacement(&self, _request: Request<BroadcastRequest>) -> Result<Response<BroadcastResponse>, Status> {

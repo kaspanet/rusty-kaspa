@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     wallet.start().await?;
 
     let (shutdown_sender, shutdown_receiver) = oneshot::channel();
-    let service = Service::with_notification_pipe_task(wallet.clone(), shutdown_sender);
+    let service = Service::with_notification_pipe_task(wallet.clone(), shutdown_sender, args.ecdsa);
     service.wallet().accounts_activate(None).await?;
     wallet.autoselect_default_account_if_single().await?;
     info!("Activated account {}, synchronizing...", wallet.account().unwrap().id().short());
