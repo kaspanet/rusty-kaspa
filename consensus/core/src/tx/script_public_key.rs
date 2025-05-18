@@ -238,7 +238,7 @@ impl<'de> Deserialize<'de> for ScriptPublicKey {
                 pub enum Value<'a> {
                     U16(u16),
                     #[serde(borrow)]
-                    String(Cow<'a, String>),
+                    String(Cow<'a, str>),
                 }
                 impl From<Value<'_>> for u16 {
                     fn from(value: Value<'_>) -> Self {

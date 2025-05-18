@@ -78,7 +78,7 @@ impl BorshDeserialize for Payload {
         let mut public_key_bytes: [u8; PUBLIC_KEY_SIZE] = [0; PUBLIC_KEY_SIZE];
         reader.read_exact(&mut public_key_bytes)?;
         let public_key = secp256k1::PublicKey::from_slice(&public_key_bytes)
-            .map_err(|_| IoError::new(IoErrorKind::Other, "Unable to deserialize keypair account (invalid public key)"))?;
+            .map_err(|_| IoError::other("Unable to deserialize keypair account (invalid public key)"))?;
         let ecdsa = BorshDeserialize::deserialize_reader(reader)?;
 
         Ok(Self { public_key, ecdsa })
