@@ -139,7 +139,7 @@ macro_rules! opcode_list {
                     }
                 }
                 else if let Some(Ok(value)) = token.strip_prefix("0x").and_then(|trimmed| Some(hex::decode(trimmed))) {
-                    builder.extend(&value);
+                    builder.script_mut().extend(&value);
                 }
                 else if token.len() >= 2 && token.chars().nth(0) == Some('\'') && token.chars().last() == Some('\'') {
                     builder.add_data(token[1..token.len()-1].as_bytes())?;

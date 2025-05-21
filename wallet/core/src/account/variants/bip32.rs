@@ -192,8 +192,27 @@ impl Account for Bip32 {
     fn receive_address(&self) -> Result<Address> {
         self.derivation.receive_address_manager().current_address()
     }
+
     fn change_address(&self) -> Result<Address> {
         self.derivation.change_address_manager().current_address()
+    }
+
+    // default account address (receive[0])
+    fn default_address(&self) -> Result<Address> {
+        // TODO @surinder
+        let addresses = self.derivation.receive_address_manager().get_range_with_args(0..1, false)?;
+        addresses.first().cloned().ok_or(Error::AddressNotFound)
+    }
+
+    // all addresses in the account (receive + change up to and including the last used index)
+    fn account_addresses(&self) -> Result<Vec<Address>> {
+        let meta = self.derivation.address_derivation_meta();
+        let receive = meta.receive();
+        let change = meta.change();
+        let mut addresses = self.derivation.receive_address_manager().get_range_with_args(0..receive, false)?;
+        let change_addresses = self.derivation.change_address_manager().get_range_with_args(0..change, false)?;
+        addresses.extend(change_addresses);
+        Ok(addresses)
     }
 
     fn to_storage(&self) -> Result<AccountStorage> {
@@ -225,6 +244,7 @@ impl Account for Bip32 {
             self.prv_key_data_id.into(),
             self.receive_address().ok(),
             self.change_address().ok(),
+            self.account_addresses().ok(),
         )
         .with_property(AccountDescriptorProperty::AccountIndex, self.account_index.into())
         .with_property(AccountDescriptorProperty::XpubKeys, self.xpub_keys.clone().into())

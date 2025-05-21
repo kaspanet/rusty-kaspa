@@ -5,9 +5,16 @@ rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-include.workspace = true
 license.workspace = true
 repository.workspace = true
+include = [
+    "src/**/*.rs",
+    "benches/**/*.rs",
+    "build.rs",
+    "Cargo.toml",
+    "Cargo.lock",
+    "Resolvers.toml",
+]
 
 [features]
 wasm32-sdk = ["kaspa-consensus-wasm/wasm32-sdk","kaspa-rpc-core/wasm32-sdk","workflow-rpc/wasm32-sdk"]

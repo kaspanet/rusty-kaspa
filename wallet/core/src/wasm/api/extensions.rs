@@ -11,6 +11,7 @@ pub trait WalletApiObjectExtension {
     fn get_account_id(&self, key: &str) -> Result<AccountId>;
     fn try_get_account_id_list(&self, key: &str) -> Result<Option<Vec<AccountId>>>;
     fn get_transaction_id(&self, key: &str) -> Result<Hash>;
+    fn try_get_addresses(&self, key: &str) -> Result<Option<Vec<Address>>>;
 }
 
 impl WalletApiObjectExtension for Object {
@@ -65,6 +66,18 @@ impl WalletApiObjectExtension for Object {
         if let Ok(array) = self.get_vec(key) {
             let account_ids = array.into_iter().map(|js_value| AccountId::try_from(&js_value)).collect::<Result<Vec<AccountId>>>()?;
             Ok(Some(account_ids))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn try_get_addresses(&self, key: &str) -> Result<Option<Vec<Address>>> {
+        if let Ok(array) = self.get_vec(key) {
+            let mut addresses = Vec::new();
+            for address in array.into_iter() {
+                addresses.push(Address::try_cast_from(&address)?.into_owned());
+            }
+            Ok(Some(addresses))
         } else {
             Ok(None)
         }
