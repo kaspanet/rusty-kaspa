@@ -2,16 +2,20 @@
 
 use crate::error::Error;
 use crate::result::Result;
+use crate::tx::generator::settings::PayloadDistribution;
 use crate::tx::{Fees, MassCalculator, PaymentDestination};
 use crate::utxo::UtxoEntryReference;
 use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
 use kaspa_addresses::Address;
+use kaspa_consensus_client::UtxoEntry;
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
-use kaspa_consensus_core::tx::Transaction;
+use kaspa_consensus_core::tx::{Transaction, TransactionId, TransactionOutpoint};
+use kaspa_txscript::pay_to_address_script;
 use rand::prelude::*;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
+use std::sync::Arc;
 use workflow_log::style;
 
 use super::*;
@@ -430,6 +434,7 @@ where
         final_transaction_priority_fee: final_priority_fee,
         final_transaction_destination,
         final_transaction_payload,
+        payload_distribution: PayloadDistribution::default(),
     };
 
     Generator::try_new(settings, None, None)
@@ -723,5 +728,86 @@ fn test_generator_inputs_250k_outputs_2_sweep() -> Result<()> {
     let f = 130.0;
     let generator = make_generator(test_network_id(), &[f; 250_000], &[], Fees::None, change_address, PaymentDestination::Change);
     generator.unwrap().harness().accumulate(2875).finalize();
+    Ok(())
+}
+
+#[test]
+fn test_generator_payload_distribution() -> Result<()> {
+    let network_id = NetworkId::new(NetworkType::Mainnet);
+    let change_address = output_address(NetworkType::Mainnet);
+    let destination = output_address(NetworkType::Mainnet);
+
+    // Create some test UTXO entries that will require multiple transactions
+    let utxo_entries: Vec<UtxoEntryReference> = (0..10)
+        .map(|i| {
+            let outpoint = TransactionOutpoint::new(TransactionId::from_bytes([i as u8; 32]), 0);
+            let utxo = UtxoEntry {
+                address: Some(change_address.clone()),
+                outpoint: outpoint.into(),
+                amount: 1_000_000_000, // 1 KAS each
+                script_public_key: pay_to_address_script(&change_address),
+                block_daa_score: 0,
+                is_coinbase: false,
+            };
+            UtxoEntryReference { utxo: Arc::new(utxo) }
+        })
+        .collect();
+
+    let test_payload = vec![1, 2, 3, 4, 5]; // Test payload
+
+    // Test case 1: FinalOnly behavior (default)
+    {
+        let settings = GeneratorSettings::try_new_with_iterator(
+            network_id,
+            Box::new(utxo_entries.clone().into_iter()),
+            None,
+            change_address.clone(),
+            1,
+            1,
+            PaymentDestination::PaymentOutputs(PaymentOutputs::from((destination.clone(), 5_000_000_000))),
+            Fees::SenderPays(1000),
+            Some(test_payload.clone()),
+            PayloadDistribution::FinalOnly,
+            None,
+        )?;
+
+        let generator = Generator::try_new(settings, None, None)?;
+        let transactions: Vec<_> = generator.iter().collect::<Result<Vec<_>>>()?;
+
+        // Verify only final transaction has payload
+        for (i, tx) in transactions.iter().enumerate() {
+            if i == transactions.len() - 1 {
+                assert_eq!(tx.transaction().payload, test_payload, "Final transaction should have payload");
+            } else {
+                assert!(tx.transaction().payload.is_empty(), "Intermediate transaction should not have payload");
+            }
+        }
+    }
+
+    // Test case 2: AllTxs behavior
+    {
+        let settings = GeneratorSettings::try_new_with_iterator(
+            network_id,
+            Box::new(utxo_entries.into_iter()),
+            None,
+            change_address,
+            1,
+            1,
+            PaymentDestination::PaymentOutputs(PaymentOutputs::from((destination, 5_000_000_000))),
+            Fees::SenderPays(1000),
+            Some(test_payload.clone()),
+            PayloadDistribution::AllTxs,
+            None,
+        )?;
+
+        let generator = Generator::try_new(settings, None, None)?;
+        let transactions: Vec<_> = generator.iter().collect::<Result<Vec<_>>>()?;
+
+        // Verify all transactions have payload
+        for tx in transactions.iter() {
+            assert_eq!(tx.transaction().payload, test_payload, "Every transaction should have payload");
+        }
+    }
+
     Ok(())
 }

@@ -59,6 +59,7 @@
 
 use crate::imports::*;
 use crate::result::Result;
+use crate::tx::generator::settings::PayloadDistribution;
 use crate::tx::{
     mass::*, Fees, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, PendingTransactionIterator,
     PendingTransactionStream,
@@ -301,6 +302,8 @@ struct Inner {
     final_transaction_payload_mass: u64,
     // execution context
     context: Mutex<Context>,
+    // payload distribution
+    payload_distribution: PayloadDistribution,
 }
 
 impl std::fmt::Debug for Inner {
@@ -324,6 +327,7 @@ impl std::fmt::Debug for Inner {
             .field("final_transaction_payload", &self.final_transaction_payload)
             .field("final_transaction_payload_mass", &self.final_transaction_payload_mass)
             // .field("context", &self.context)
+            .field("payload_distribution", &self.payload_distribution)
             .finish()
     }
 }
@@ -352,6 +356,7 @@ impl Generator {
             final_transaction_destination,
             final_transaction_payload,
             destination_utxo_context,
+            payload_distribution,
         } = settings;
 
         let network_type = NetworkType::from(network_id);
@@ -460,6 +465,7 @@ impl Generator {
             final_transaction_payload,
             final_transaction_payload_mass,
             destination_utxo_context,
+            payload_distribution,
         };
 
         Ok(Self { inner: Arc::new(inner) })
@@ -567,7 +573,12 @@ impl Generator {
 
     /// Calculate relay transaction mass for the current transaction `data`
     fn calc_relay_transaction_mass(&self, data: &Data) -> u64 {
-        data.aggregate_mass + self.inner.standard_change_output_compute_mass
+        let payload_mass = match self.inner.payload_distribution {
+            PayloadDistribution::AllTxs => self.inner.final_transaction_payload_mass,
+            PayloadDistribution::FinalOnly => 0,
+        };
+
+        data.aggregate_mass + self.inner.standard_change_output_compute_mass + payload_mass
     }
 
     /// Calculate relay transaction fees for the current transaction `data`
@@ -1063,14 +1074,24 @@ impl Generator {
                 let output_value = aggregate_input_value - transaction_fees;
                 let script_public_key = pay_to_address_script(&self.inner.change_address);
                 let output = TransactionOutput::new(output_value, script_public_key.clone());
-                let tx = Transaction::new(0, inputs, vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+
+                // Get payload based on payload distribution
+                let payload = match self.inner.payload_distribution {
+                    PayloadDistribution::AllTxs => self.inner.final_transaction_payload.clone(),
+                    PayloadDistribution::FinalOnly => vec![],
+                };
+
+                let tx = Transaction::new(0, inputs, vec![output], 0, SUBNETWORK_ID_NATIVE, 0, payload);
 
                 let mut transaction_mass = self.inner.mass_calculator.calc_overall_mass_for_unsigned_consensus_transaction(
                     &tx,
                     &utxo_entry_references,
                     self.inner.minimum_signatures,
                 )?;
+
+                // Add additional mass for compound transactions
                 transaction_mass = transaction_mass.saturating_add(self.inner.network_params.additional_compound_transaction_mass());
+
                 if transaction_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
                     // this should never occur as we should not produce transactions higher than the mass limit
                     return Err(Error::MassCalculationError);
