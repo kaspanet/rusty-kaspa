@@ -508,6 +508,11 @@ impl ConsensusApi for Consensus {
         BlockValidationFutures { block_task: Box::pin(block_task), virtual_state_task: Box::pin(virtual_state_task) }
     }
 
+    fn validate_and_insert_body(&self, block: Block) -> BlockValidationFutures {
+        let (block_task, virtual_state_task) = self.validate_and_insert_block_impl(BlockTask::BodyOnly { block });
+        BlockValidationFutures { block_task: Box::pin(block_task), virtual_state_task: Box::pin(virtual_state_task) }
+    }
+
     fn validate_mempool_transaction(&self, transaction: &mut MutableTransaction, args: &TransactionValidationArgs) -> TxResult<()> {
         self.virtual_processor.validate_mempool_transaction(transaction, args)?;
         Ok(())
