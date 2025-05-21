@@ -67,7 +67,7 @@ impl PruningProofManager {
             return vec![];
         }
 
-        let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10)).unwrap();
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
         let (ghostdag_stores, selected_tip_by_level, roots_by_level) = self.calc_gd_for_all_levels(&pp_header, temp_db);
 

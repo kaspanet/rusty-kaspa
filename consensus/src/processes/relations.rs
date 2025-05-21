@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_delete_level_relations_zero_cache() {
-        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10)).unwrap();
         let mut relations = DbRelationsStore::new(db.clone(), 0, CachePolicy::Empty, CachePolicy::Empty);
         relations.insert(ORIGIN, Default::default()).unwrap();
         relations.insert(1.into(), Arc::new(vec![ORIGIN])).unwrap();
