@@ -12,15 +12,44 @@ impl Send {
         let account = ctx.wallet().account()?;
 
         if argv.len() < 2 {
-            tprintln!(ctx, "usage: send <address> <amount> <priority fee>");
+            tprintln!(ctx, "usage: send <address> <amount|--send-all> <priority fee>");
             return Ok(());
         }
 
         let address = Address::try_from(argv.first().unwrap().as_str())?;
-        let amount_sompi = try_parse_required_nonzero_kaspa_as_sompi_u64(argv.get(1))?;
-        let priority_fee_sompi = try_parse_optional_kaspa_as_sompi_i64(argv.get(2))?.unwrap_or(0);
-        let outputs = PaymentOutputs::from((address.clone(), amount_sompi));
         let abortable = Abortable::default();
+
+        // get priority fee first.
+        let priority_fee_sompi = try_parse_optional_kaspa_as_sompi_i64(argv.get(2))?.unwrap_or(0);
+
+        // handle --send-all
+        let amount_sompi = if argv.get(1).unwrap() == "--send-all" {
+            // get mature balance from account
+            let balance = account.balance().ok_or_else(|| Error::Custom("Failed to retrieve account balance".into()))?;
+
+            // estimate fee
+            let fee_sompi = account
+                .clone()
+                .estimate(
+                    PaymentDestination::PaymentOutputs(PaymentOutputs::from((address.clone(), balance.mature))),
+                    Fees::ReceiverPays(0),
+                    None,
+                    &abortable,
+                )
+                .await?;
+
+            // subtract estimated and priority fee
+            balance
+                .mature
+                .checked_sub(fee_sompi.aggregated_fees)
+                .ok_or_else(|| Error::Custom("Insufficient funds to cover the transaction fee.".into()))?
+                .checked_sub(priority_fee_sompi.try_into().unwrap_or(0))
+                .ok_or_else(|| Error::Custom("Insufficient funds to cover the priority fee.".into()))?
+        } else {
+            // parse amount if not using --send-all
+            try_parse_required_nonzero_kaspa_as_sompi_u64(argv.get(1))?
+        };
+        let outputs = PaymentOutputs::from((address.clone(), amount_sompi));
         let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
 
         // let ctx_ = ctx.clone();
@@ -40,7 +69,7 @@ impl Send {
 
         tprintln!(ctx, "Send - {summary}");
         tprintln!(ctx, "\nSending {} KAS to {address}, tx ids:", sompi_to_kaspa_string(amount_sompi));
-        // tprintln!(ctx, "{}\n", ids.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\n"));
+        tprintln!(ctx, "\n{}\n", _ids.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\n"));
 
         Ok(())
     }
