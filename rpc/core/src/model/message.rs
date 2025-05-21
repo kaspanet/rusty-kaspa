@@ -3511,3 +3511,212 @@ impl Deserializer for UnsubscribeResponse {
         Ok(Self {})
     }
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetPruningWindowRootsRequest {}
+
+impl Serializer for GetPruningWindowRootsRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetPruningWindowRootsRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PruningWindowRoots {
+    pub pp_roots: Vec<RpcHash>,
+    pub pp_index: u64,
+}
+
+impl Serializer for PruningWindowRoots {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcHash>, &self.pp_roots, writer)?;
+        store!(u64, &self.pp_index, writer)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetPruningWindowRootsResponse {
+    pub roots: Vec<PruningWindowRoots>,
+}
+
+impl GetPruningWindowRootsResponse {
+    pub fn new(roots: Vec<PruningWindowRoots>) -> Self {
+        Self { roots }
+    }
+}
+
+impl Serializer for GetPruningWindowRootsResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<PruningWindowRoots>, &self.roots, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for GetPruningWindowRootsResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let roots = load!(Vec<PruningWindowRoots>, reader)?;
+
+        Ok(Self { roots })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcceptedTxEntry {
+    pub transaction_id: RpcTransactionId,
+    pub index_within_block: u32,
+}
+
+impl AcceptedTxEntry {
+    pub fn new(transaction_id: RpcTransactionId, index_within_block: u32) -> Self {
+        Self { transaction_id, index_within_block }
+    }
+}
+
+impl Serializer for AcceptedTxEntry {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcTransactionId, &self.transaction_id, writer)?;
+        store!(u32, &self.index_within_block, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for AcceptedTxEntry {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transaction_id = load!(RpcTransactionId, reader)?;
+        let index_within_block = load!(u32, reader)?;
+        Ok(Self { transaction_id, index_within_block })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergesetBlockAcceptanceData {
+    pub block_hash: RpcHash,
+    pub accepted_txs: Vec<AcceptedTxEntry>,
+}
+
+impl MergesetBlockAcceptanceData {
+    pub fn new(block_hash: RpcHash, accepted_txs: Vec<AcceptedTxEntry>) -> Self {
+        Self { block_hash, accepted_txs }
+    }
+}
+
+impl Serializer for MergesetBlockAcceptanceData {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.block_hash, writer)?;
+        serialize!(Vec<AcceptedTxEntry>, &self.accepted_txs, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for MergesetBlockAcceptanceData {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let block_hash = load!(RpcHash, reader)?;
+        let accepted_txs = deserialize!(Vec<AcceptedTxEntry>, reader)?;
+        Ok(Self { block_hash, accepted_txs })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchivalBlock {
+    pub child: Option<RpcHash>,
+    pub block: RpcRawBlock,
+    pub acceptance_data: Vec<MergesetBlockAcceptanceData>,
+    pub selected_parent: Option<RpcHash>,
+}
+
+impl Serializer for ArchivalBlock {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Option<RpcHash>, &self.child, writer)?;
+        serialize!(RpcRawBlock, &self.block, writer)?;
+        store!(Vec<MergesetBlockAcceptanceData>, &self.acceptance_data, writer)?;
+        store!(Option<RpcHash>, &self.selected_parent, writer)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddArchivalBlocksRequest {
+    pub blocks: Vec<ArchivalBlock>,
+}
+
+impl AddArchivalBlocksRequest {
+    pub fn new(blocks: Vec<ArchivalBlock>) -> Self {
+        Self { blocks }
+    }
+}
+
+impl Serializer for AddArchivalBlocksRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<ArchivalBlock>, &self.blocks, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for AddArchivalBlocksRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let blocks = load!(Vec<ArchivalBlock>, reader)?;
+
+        Ok(Self { blocks })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddArchivalBlocksResponse {}
+impl Default for AddArchivalBlocksResponse {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AddArchivalBlocksResponse {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Serializer for AddArchivalBlocksResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for AddArchivalBlocksResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+
+        Ok(Self {})
+    }
+}
