@@ -282,6 +282,9 @@ pub trait ConsensusApi: Send + Sync {
     fn get_block(&self, hash: Hash) -> ConsensusResult<Block> {
         unimplemented!()
     }
+    fn get_block_body(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
+        unimplemented!()
+    }
 
     fn get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
         unimplemented!()
