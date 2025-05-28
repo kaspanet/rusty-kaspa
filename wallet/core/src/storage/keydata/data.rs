@@ -223,12 +223,40 @@ impl PrvKeyData {
         Ok(payload.as_variant())
     }
 
-    pub fn try_from_mnemonic(mnemonic: Mnemonic, payment_secret: Option<&Secret>, encryption_kind: EncryptionKind) -> Result<Self> {
+    pub fn try_from_mnemonic(
+        mnemonic: Mnemonic,
+        payment_secret: Option<&Secret>,
+        encryption_kind: EncryptionKind,
+        name: Option<String>,
+    ) -> Result<Self> {
         let key_data_payload = PrvKeyDataPayload::try_new_with_mnemonic(mnemonic)?;
         let key_data_payload_id = key_data_payload.id();
         let key_data_payload = Encryptable::Plain(key_data_payload);
 
-        let mut prv_key_data = PrvKeyData::new(key_data_payload_id, None, key_data_payload);
+        let mut prv_key_data = PrvKeyData::new(key_data_payload_id, name, key_data_payload);
+        if let Some(payment_secret) = payment_secret {
+            prv_key_data.encrypt(payment_secret, encryption_kind)?;
+        }
+
+        Ok(prv_key_data)
+    }
+
+    pub fn as_secret_key(&self, payment_secret: Option<&Secret>) -> Result<Option<SecretKey>> {
+        let payload = self.payload.decrypt(payment_secret)?;
+        payload.as_secret_key()
+    }
+
+    pub fn try_from_secret_key(
+        secret_key: SecretKey,
+        payment_secret: Option<&Secret>,
+        encryption_kind: EncryptionKind,
+        name: Option<String>,
+    ) -> Result<Self> {
+        let key_data_payload = PrvKeyDataPayload::try_new_with_secret_key(secret_key)?;
+        let key_data_payload_id = key_data_payload.id();
+        let key_data_payload = Encryptable::Plain(key_data_payload);
+
+        let mut prv_key_data = PrvKeyData::new(key_data_payload_id, name, key_data_payload);
         if let Some(payment_secret) = payment_secret {
             prv_key_data.encrypt(payment_secret, encryption_kind)?;
         }

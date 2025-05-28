@@ -243,10 +243,6 @@ The framework is compatible with all major desktop and mobile browsers.
 cargo run --release --bin kaspad -- --testnet
   ```
 
-  **Testnet 11**
-
-  For participation in the 10BPS test network (TN11), see the following detailed [guide](docs/testnet11.md).
-
 <details>
 
   <summary>

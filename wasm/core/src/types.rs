@@ -52,6 +52,12 @@ extern "C" {
 
 #[wasm_bindgen]
 extern "C" {
+    #[wasm_bindgen(typescript_type = "Array<number>")]
+    pub type NumberArray;
+}
+
+#[wasm_bindgen]
+extern "C" {
     #[wasm_bindgen(typescript_type = "HexString | Uint8Array")]
     pub type BinaryT;
 }

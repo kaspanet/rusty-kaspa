@@ -53,7 +53,7 @@ impl ScriptBuilder {
     pub fn from_script(script: BinaryT) -> Result<ScriptBuilder> {
         let builder = ScriptBuilder::default();
         let script = script.try_as_vec_u8()?;
-        builder.inner_mut().extend(&script);
+        builder.inner_mut().script_mut().extend(&script);
 
         Ok(builder)
     }

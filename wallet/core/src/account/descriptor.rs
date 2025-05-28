@@ -26,6 +26,7 @@ pub struct AccountDescriptor {
     pub prv_key_data_ids: AssocPrvKeyDataIds,
     pub receive_address: Option<Address>,
     pub change_address: Option<Address>,
+    pub addresses: Option<Vec<Address>>,
 
     pub properties: BTreeMap<AccountDescriptorProperty, AccountDescriptorValue>,
 }
@@ -39,6 +40,7 @@ impl AccountDescriptor {
         prv_key_data_ids: AssocPrvKeyDataIds,
         receive_address: Option<Address>,
         change_address: Option<Address>,
+        addresses: Option<Vec<Address>>,
     ) -> Self {
         Self {
             kind,
@@ -48,6 +50,7 @@ impl AccountDescriptor {
             prv_key_data_ids,
             receive_address,
             change_address,
+            addresses,
             properties: BTreeMap::default(),
         }
     }
@@ -241,6 +244,7 @@ declare! {
         accountName? : string,
         receiveAddress? : Address,
         changeAddress? : Address,
+        addresses? : Address[],
         prvKeyDataIds : HexString[],
         // balance? : Balance,
         [key: string]: any
@@ -258,6 +262,9 @@ impl TryFrom<AccountDescriptor> for IAccountDescriptor {
         object.set("accountName", &descriptor.account_name.into())?;
         object.set("receiveAddress", &descriptor.receive_address.into())?;
         object.set("changeAddress", &descriptor.change_address.into())?;
+
+        let addresses = js_sys::Array::from_iter(descriptor.addresses.into_iter().map(JsValue::from));
+        object.set("addresses", &addresses)?;
 
         let prv_key_data_ids = js_sys::Array::from_iter(descriptor.prv_key_data_ids.into_iter().map(JsValue::from));
         object.set("prvKeyDataIds", &prv_key_data_ids)?;

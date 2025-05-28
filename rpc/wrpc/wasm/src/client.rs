@@ -351,8 +351,8 @@ impl RpcClient {
     /// Set the network id for the RPC client.
     /// This setting will take effect on the next connection.
     #[wasm_bindgen(js_name = setNetworkId)]
-    pub fn set_network_id(&self, network_id: &NetworkId) -> Result<()> {
-        self.inner.client.set_network_id(network_id)?;
+    pub fn set_network_id(&self, network_id: &NetworkIdT) -> Result<()> {
+        self.inner.client.set_network_id(&network_id.try_into_owned()?)?;
         Ok(())
     }
 

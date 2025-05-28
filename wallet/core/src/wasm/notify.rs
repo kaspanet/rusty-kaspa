@@ -131,6 +131,7 @@ cfg_if! {
             Discovery = "discovery",
             Balance = "balance",
             Error = "error",
+            FeeRate = "fee-rate",
         }
 
         /**
@@ -167,6 +168,7 @@ cfg_if! {
             "discovery": IDiscoveryEvent,
             "balance": IBalanceEvent,
             "error": IErrorEvent,
+            "fee-rate": IFeeRateEvent,
         }
         
         /**
@@ -300,6 +302,32 @@ declare! {
     export interface IWalletOpenEvent {
         walletDescriptor : IWalletDescriptor;
         accountDescriptors : IAccountDescriptor[];
+    }
+    "#,
+}
+
+#[cfg(feature = "wasm32-sdk")]
+declare! {
+    IFeeRateEvent,
+    r#"
+    /**
+     * Emitted by {@link Wallet} when the fee rate changes.
+     * 
+     * @category Wallet Events
+     */
+    export interface IFeeRateEvent {
+        priority: {
+            feerate: bigint,
+            seconds: bigint,
+        },
+        normal: {
+            feerate: bigint,
+            seconds: bigint,
+        },
+        low: {
+            feerate: bigint,
+            seconds: bigint,
+        },
     }
     "#,
 }
