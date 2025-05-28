@@ -455,6 +455,21 @@ impl ConsensusSessionOwned {
     pub async fn async_finality_point(&self) -> Hash {
         self.clone().spawn_blocking(move |c| c.finality_point()).await
     }
+    pub async fn async_clear_utxo_set(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_utxo_set()).await
+    }
+    pub async fn async_is_utxo_validated(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_utxo_validated()).await
+    }
+    pub async fn set_utxo_unvalidated(&self) {
+        self.clone().spawn_blocking(move |c| c.set_utxo_sync_flag(false)).await
+    }
+    pub async fn set_utxo_validated(&self) {
+        self.clone().spawn_blocking(move |c| c.set_utxo_sync_flag(true)).await
+    }
+    pub async fn async_is_pruning_sample(&self, candidate_hash: Hash) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_pruning_sample(candidate_hash)).await
+    }
 }
 
 pub type ConsensusProxy = ConsensusSessionOwned;

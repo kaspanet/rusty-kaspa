@@ -194,7 +194,7 @@ impl<
     ///
     /// To see why we can compare to any such block, observe that by definition all blocks in the range
     /// `[pruning sample, selected parent]` must have the same finality score.
-    fn is_pruning_sample(&self, self_blue_score: u64, epoch_chain_ancestor_blue_score: u64, finality_depth: u64) -> bool {
+    pub fn is_pruning_sample(&self, self_blue_score: u64, epoch_chain_ancestor_blue_score: u64, finality_depth: u64) -> bool {
         self.finality_score(epoch_chain_ancestor_blue_score, finality_depth) < self.finality_score(self_blue_score, finality_depth)
     }
 

@@ -367,6 +367,18 @@ pub trait ConsensusApi: Send + Sync {
     fn finality_point(&self) -> Hash {
         unimplemented!()
     }
+    fn clear_utxo_set(&self) {
+        unimplemented!()
+    }
+    fn set_utxo_sync_flag(&self, set_val: bool) {
+        unimplemented!()
+    }
+    fn is_utxo_validated(&self) -> bool {
+        unimplemented!()
+    }
+    fn is_pruning_sample(&self, candidate_hash: Hash) -> bool {
+        unimplemented!()
+    }
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

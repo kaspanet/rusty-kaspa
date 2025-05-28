@@ -1137,4 +1137,35 @@ impl ConsensusApi for Consensus {
     fn finality_point(&self) -> Hash {
         self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
     }
+    fn clear_utxo_set(&self) {
+        let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+
+        pruning_utxoset_write.set_sync_flag(&mut batch, false).unwrap();
+        self.db.write(batch).unwrap();
+        pruning_utxoset_write.utxo_set.clear().unwrap();
+    }
+    fn is_pruning_sample(&self, candidate_hash: Hash) -> bool {
+        if let Ok(candidate_hdr) = self.get_header(candidate_hash) {
+            let candidate_bscore = candidate_hdr.blue_score;
+            let parent_bscore = self.get_header(candidate_hdr.direct_parents()[0]).unwrap().blue_score;
+            return self.services.pruning_point_manager.is_pruning_sample(
+                candidate_bscore,
+                parent_bscore,
+                self.config.params.finality_depth().after(),
+            );
+        }
+        false
+    }
+    fn set_utxo_sync_flag(&self, set_val: bool) {
+        let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+
+        pruning_utxoset_write.set_sync_flag(&mut batch, set_val).unwrap();
+        self.db.write(batch).unwrap();
+    }
+    fn is_utxo_validated(&self) -> bool {
+        let pruning_utxoset_read = self.pruning_utxoset_stores.read();
+        pruning_utxoset_read.sync_flag().unwrap()
+    }
 }

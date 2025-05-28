@@ -60,8 +60,9 @@ impl Flow for IbdFlow {
 
 pub enum IbdType {
     None,
-    Sync(Hash),
+    Sync,
     DownloadHeadersProof,
+    PruningCatchUp,
 }
 
 struct QueueChunkOutput {
@@ -98,22 +99,50 @@ impl IbdFlow {
         let mut session = self.ctx.consensus().session().await;
 
         let negotiation_output = self.negotiate_missing_syncer_chain_segment(&session).await?;
-        let ibd_type =
-            self.determine_ibd_type(&session, &relay_block.header, negotiation_output.highest_known_syncer_chain_hash).await?;
+        let ibd_type = self
+            .determine_ibd_type(
+                &session,
+                &relay_block.header,
+                negotiation_output.highest_known_syncer_chain_hash,
+                negotiation_output.syncer_pruning_point,
+            )
+            .await?;
+        /* A pruning point can be "finalized" into consensus if
+        1) it satisfies that Min(P| P.B>Nf) for some integer N (i.e. it is a valid pruning point based on score)
+        2) it underwent through "trusted" validation of its body, perhaps including many other blocks from its anticone etc.
+        3)there are sufficient headers built on top of it, specifically, a header is validated whose blue_score is greater than P.B+p
+        4) The consensus knows a pruning proof for it
+        4) the consensus knows a utxo set that matches its utxo commitment.
+        5)
+        */
         match ibd_type {
             IbdType::None => {
                 return Err(ProtocolError::Other("peer has no known block and conditions for requesting headers proof are not met"))
             }
-            IbdType::Sync(highest_known_syncer_chain_hash) => {
+            IbdType::Sync => {
+                let pruning_point = session.async_pruning_point().await;
+
+                info!("syncing ahead from pruning point {} ", pruning_point);
+                if !session.async_is_utxo_validated().await
+                // utxo might not be available even if the pruning point block data is.
+                // utxo must be synced before all so the node could function
+                {
+                    info!("utxo set missing, downloading utxo set corresponding  to point ");
+
+                    self.sync_new_utxo_set(&session, pruning_point).await?;
+                }
+
+                // once utxo is valid, simply sync missing headers
                 self.sync_headers(
                     &session,
                     negotiation_output.syncer_virtual_selected_parent,
-                    highest_known_syncer_chain_hash,
+                    negotiation_output.highest_known_syncer_chain_hash.unwrap(),
                     &relay_block,
                 )
                 .await?;
             }
-            IbdType::DownloadHeadersProof => {
+            _ => {
+                //for the time being no distinction between catch up and a fresh proof
                 drop(session); // Avoid holding the previous consensus throughout the staging IBD
                 let staging = self.ctx.consensus_manager.new_staging_consensus();
                 match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_virtual_selected_parent, &relay_block).await {
@@ -121,11 +150,12 @@ impl IbdFlow {
                         spawn_blocking(|| staging.commit()).await.unwrap();
                         info!(
                             "Header download stage of IBD with headers proof completed successfully from {}. Committed staging consensus.",
-                            self.router
-                        );
-                        self.ctx.on_pruning_point_utxoset_override();
+                                    self.router
+                                );
+
                         // This will reobtain the freshly committed staging consensus
                         session = self.ctx.consensus().session().await;
+                        self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point.unwrap()).await?;
                     }
                     Err(e) => {
                         info!("IBD with headers proof from {} was unsuccessful ({})", self.router, e);
@@ -169,13 +199,51 @@ impl IbdFlow {
         consensus: &ConsensusProxy,
         relay_header: &Header,
         highest_known_syncer_chain_hash: Option<Hash>,
+        syncer_pruning_point: Option<Hash>,
     ) -> Result<IbdType, ProtocolError> {
         if let Some(highest_known_syncer_chain_hash) = highest_known_syncer_chain_hash {
             let pruning_point = consensus.async_pruning_point().await;
+            let sink = consensus.async_get_sink().await;
+            //debug prints
+            info!("current sink  is:{}", sink);
+            info!("current pruning point is:{}", pruning_point);
             if consensus.async_is_chain_ancestor_of(pruning_point, highest_known_syncer_chain_hash).await? {
-                // The node is only missing a segment in the future of its current pruning point, and the chains
-                // agree as well, so we perform a simple sync IBD and only download the missing data
-                return Ok(IbdType::Sync(highest_known_syncer_chain_hash));
+                let syncer_pruning_point = syncer_pruning_point.unwrap();
+                if syncer_pruning_point == pruning_point {
+                    // The node is only missing a segment in the future of its current pruning point, and the chains
+                    // agree as well, so we perform a simple sync IBD and only download the missing data
+                    return Ok(IbdType::Sync);
+                } else {
+                    if !consensus.async_is_pruning_sample(syncer_pruning_point).await {
+                        // this is not a pruning point, no point in continuing mallicious IBD
+                        return Ok(IbdType::None);
+                    }
+                    // The node is missing a segment in the near future of its current pruning point, but the syncer is ahead
+                    // and already pruned the current pruning point.
+                    if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body()) {
+                        // The data pruned by the syncer is already available from within the node (from past ibd attempts)
+                        //can carry on syncing as normal
+                        return Ok(IbdType::Sync);
+                    } else {
+                        //Two options:
+                        //1: syncer_pruning_point is in the future, and there is a need to partially resync from syncer_pruning_point
+                        //2: syncer_pruning_point is in the past of current pruning point, or is unknown on which case the syncing node is flawed,
+                        // and IBD should be stopped
+
+                        let current_pp_daa_score = consensus.async_get_header(pruning_point).await?.daa_score;
+                        // The syncer_pruning_point is in the past of highest known syncer_chain_hash, ergo we should know it
+                        let syncer_pp_daa_score = consensus
+                            .async_get_header(syncer_pruning_point)
+                            .await
+                            .map_err(|_| ProtocolError::Other("syncer pruning point is corrupted"))?
+                            .daa_score;
+                        if current_pp_daa_score < syncer_pp_daa_score {
+                            return Ok(IbdType::PruningCatchUp);
+                        } else {
+                            return Err(ProtocolError::Other("syncer pruning point is outdated"));
+                        }
+                    }
+                }
             }
 
             // If the pruning point is not in the chain of `highest_known_syncer_chain_hash`, it
@@ -288,7 +356,7 @@ impl IbdFlow {
             return Err(ProtocolError::Other("the first pruning point in the list is expected to be genesis"));
         }
 
-        // Check if past pruning points violate finality of current consensus
+        // Check if past pruning points violates finality of current consensus
         if self.ctx.consensus().session().await.async_are_pruning_points_violating_finality(pruning_points.clone()).await {
             // TODO (relaxed): consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
             return Err(ProtocolError::Other("pruning points are violating finality"));
@@ -443,6 +511,14 @@ impl IbdFlow {
 
         Ok(())
     }
+    async fn sync_new_utxo_set(&mut self, consensus: &ConsensusProxy, pruning_point: Hash) -> Result<(), ProtocolError> {
+        // A  better solution would be to create a copy of the old utxo state rather than delete it.
+        consensus.async_clear_utxo_set().await; // this deletes the old pruning utxoset and also sets the pruning utxo as invalidated
+        self.sync_pruning_point_utxoset(consensus, pruning_point).await?;
+        consensus.set_utxo_validated().await; //  only if the function has reached here, will the utxo be considered "final"
+        self.ctx.on_pruning_point_utxoset_override();
+        Ok(())
+    }
 
     async fn sync_missing_relay_past_headers(
         &mut self,
@@ -492,10 +568,13 @@ impl IbdFlow {
         consensus: &ConsensusProxy,
         staging_consensus: &ConsensusProxy,
     ) -> Result<(), ProtocolError> {
+        /*The purpose of this check is to prevent the abuse explained here:
+        https://github.com/kaspanet/research/issues/3#issuecomment-895243792
+         */
         let staging_hst = staging_consensus.async_get_header(staging_consensus.async_get_headers_selected_tip().await).await.unwrap();
         let current_hst = consensus.async_get_header(consensus.async_get_headers_selected_tip().await).await.unwrap();
         // If staging is behind current or within 10 minutes ahead of it, then something is wrong and we reject the IBD
-        if staging_hst.timestamp < current_hst.timestamp || staging_hst.timestamp - current_hst.timestamp < 600_000 {
+        if staging_hst.timestamp.saturating_sub(current_hst.timestamp) < 600_000 {
             Err(ProtocolError::OtherOwned(format!(
                 "The difference between the timestamp of the current selected tip ({}) and the 
 staging selected tip ({}) is too small or negative. Aborting IBD...",
