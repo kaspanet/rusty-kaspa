@@ -45,6 +45,8 @@ impl Pskb {
                 let signer = account
                     .pskb_from_send_generator(
                         outputs.into(),
+                        // fee_rate
+                        None,
                         priority_fee_sompi.into(),
                         None,
                         wallet_secret.clone(),
@@ -89,12 +91,15 @@ impl Pskb {
                     "lock" => {
                         let amount_sompi = try_parse_required_nonzero_kaspa_as_sompi_u64(argv.first())?;
                         let outputs = PaymentOutputs::from((script_p2sh, amount_sompi));
+                        // TODO fee_rate
+                        let fee_rate = None;
                         let priority_fee_sompi = try_parse_optional_kaspa_as_sompi_i64(argv.get(1))?.unwrap_or(0);
                         let abortable = Abortable::default();
 
                         let signer = account
                             .pskb_from_send_generator(
                                 outputs.into(),
+                                fee_rate,
                                 priority_fee_sompi.into(),
                                 None,
                                 wallet_secret.clone(),
@@ -209,13 +214,12 @@ impl Pskb {
                 for (pskt_index, bundle_inner) in pskb.0.iter().enumerate() {
                     tprintln!(ctx, "PSKT #{:03} finalized check:", pskt_index + 1);
                     let pskt: PSKT<Signer> = PSKT::<Signer>::from(bundle_inner.to_owned());
-
+                    let params = ctx.wallet().network_id()?.into();
                     let finalizer = pskt.finalizer();
-
                     if let Ok(pskt_finalizer) = finalize_pskt_one_or_more_sig_and_redeem_script(finalizer) {
                         // Verify if extraction is possible.
                         match pskt_finalizer.extractor() {
-                            Ok(ex) => match ex.extract_tx() {
+                            Ok(ex) => match ex.extract_tx(&params) {
                                 Ok(_) => tprintln!(
                                     ctx,
                                     "  Transaction extracted successfully: PSKT is finalized with a valid script signature."

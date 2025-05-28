@@ -9,6 +9,7 @@ use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 
 use hex;
+use kaspa_consensus_core::constants::UNACCEPTED_DAA_SCORE;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script, pay_to_script_hash_script};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
@@ -148,8 +149,14 @@ impl Default for Bundle {
     }
 }
 
+// Replaces pubkey placeholder in payload string when pubkey_bytes is given.
 pub fn lock_script_sig_templating(payload: String, pubkey_bytes: Option<&[u8]>) -> Result<Vec<u8>, Error> {
-    let mut payload_bytes: Vec<u8> = hex::decode(payload)?;
+    let payload_bytes: Vec<u8> = hex::decode(payload)?;
+    lock_script_sig_templating_bytes(payload_bytes.to_vec(), pubkey_bytes)
+}
+
+pub fn lock_script_sig_templating_bytes(payload: Vec<u8>, pubkey_bytes: Option<&[u8]>) -> Result<Vec<u8>, Error> {
+    let mut payload_bytes = payload;
 
     if let Some(pubkey) = pubkey_bytes {
         let placeholder = b"{{pubkey}}";
@@ -233,6 +240,33 @@ pub fn unlock_utxo(
         .build()?;
 
     let pskt: PSKT<Constructor> = PSKT::<Creator>::default().constructor().input(input).output(output);
+    Ok(pskt.into())
+}
+
+// Build UTXO spending PSKB with custom input and multiple outputs
+// to be used in atomic transaction batch.
+pub fn unlock_utxo_outputs_as_batch_transaction_pskb(
+    amount: u64,
+    start_address: &Address,
+    script_sig: &[u8],
+    destination_outputs: Vec<(Address, u64)>,
+) -> Result<Bundle, Error> {
+    let origin_spk = pay_to_address_script(start_address);
+
+    let utxo_entry = UtxoEntry { amount, script_public_key: origin_spk, block_daa_score: UNACCEPTED_DAA_SCORE, is_coinbase: false };
+
+    let input =
+        InputBuilder::default().utxo_entry(utxo_entry.to_owned()).sig_op_count(1).redeem_script(script_sig.to_vec()).build()?;
+
+    let outputs: Vec<Output> = destination_outputs
+        .iter()
+        .filter_map(|(address, amount)| {
+            OutputBuilder::default().amount(*amount).script_public_key(pay_to_address_script(address)).build().ok()
+        })
+        .collect();
+
+    let pskt: PSKT<Constructor> =
+        outputs.into_iter().fold(PSKT::<Creator>::default().constructor().input(input), |pskt, output| pskt.output(output));
     Ok(pskt.into())
 }
 

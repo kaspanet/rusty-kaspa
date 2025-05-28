@@ -33,7 +33,7 @@ export enum BindingType {
  */
 export interface IBinding {
     type : BindingType;
-    data : HexString;
+    id : HexString;
 }
 "#;
 
