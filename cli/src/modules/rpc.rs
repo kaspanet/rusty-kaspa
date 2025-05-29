@@ -65,10 +65,15 @@ impl Rpc {
             //     let result = rpc.submit_block_call(SubmitBlockRequest {  }).await?;
             //     self.println(&ctx, result);
             // }
-            // RpcApiOps::GetBlockTemplate => {
-            //     let result = rpc.get_block_template_call(GetBlockTemplateRequest {  }).await?;
-            //     self.println(&ctx, result);
-            // }
+            RpcApiOps::GetBlockTemplate => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Please specify a valid mining address (and optional extra data)"));
+                }
+                let pay_address: Address = argv.remove(0).try_into()?;
+                let extra_data = argv.first().cloned().unwrap_or_default().bytes().collect();
+                let result = rpc.get_block_template_call(None, GetBlockTemplateRequest::new(pay_address, extra_data)).await?;
+                self.println(&ctx, result);
+            }
             RpcApiOps::GetPeerAddresses => {
                 let result = rpc.get_peer_addresses_call(None, GetPeerAddressesRequest {}).await?;
                 self.println(&ctx, result);
