@@ -105,7 +105,7 @@ impl Rpc {
                     return Err(Error::custom("Usage: rpc addpeer <ip:port> [true|false for 'is_permanent']"));
                 }
                 let peer_address = argv.remove(0).parse::<RpcContextualPeerAddress>()?;
-                let is_permanent = argv.remove(0).parse::<bool>().unwrap_or(false);
+                let is_permanent = argv.first().and_then(|x| x.parse::<bool>().ok()).unwrap_or(false);
                 let result = rpc.add_peer_call(None, AddPeerRequest { peer_address, is_permanent }).await?;
                 self.println(&ctx, result);
             }
