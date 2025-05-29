@@ -87,12 +87,13 @@ impl Rpc {
             //     self.println(&ctx, result);
             // }
             RpcApiOps::GetMempoolEntries => {
-                // TODO
+                let (include_orphan_pool, filter_transaction_pool) = match argv.first().map(|s| s.as_str()) {
+                    Some("orphans") => (true, true), // Orphans only
+                    Some("txs") => (false, false),   // Non-orphans only
+                    _ => (true, false),              // Default to all
+                };
                 let result = rpc
-                    .get_mempool_entries_call(
-                        None,
-                        GetMempoolEntriesRequest { include_orphan_pool: true, filter_transaction_pool: true },
-                    )
+                    .get_mempool_entries_call(None, GetMempoolEntriesRequest { include_orphan_pool, filter_transaction_pool })
                     .await?;
                 self.println(&ctx, result);
             }
@@ -225,7 +226,7 @@ impl Rpc {
                 }
                 let addresses = argv.iter().map(|s| Address::try_from(s.as_str())).collect::<std::result::Result<Vec<_>, _>>()?;
                 let include_orphan_pool = true;
-                let filter_transaction_pool = true;
+                let filter_transaction_pool = false;
                 let result = rpc
                     .get_mempool_entries_by_addresses_call(
                         None,
