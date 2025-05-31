@@ -43,7 +43,7 @@ pub fn create_transaction_py(
 
 #[pyfunction]
 #[pyo3(name = "create_transactions")]
-#[pyo3(signature = (network_id, entries, change_address, outputs=None, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
+#[pyo3(signature = (network_id, entries, change_address, outputs=None, payload=None, fee_rate=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
 pub fn create_transactions_py<'a>(
     py: Python<'a>,
     network_id: &str,
@@ -51,6 +51,7 @@ pub fn create_transactions_py<'a>(
     change_address: Address,
     outputs: Option<PyOutputs>,
     payload: Option<PyBinary>,
+    fee_rate: Option<f64>,
     priority_fee: Option<u64>,
     priority_entries: Option<PyUtxoEntries>,
     sig_op_count: Option<u8>,
@@ -62,6 +63,7 @@ pub fn create_transactions_py<'a>(
         change_address,
         outputs,
         payload.map(Into::into),
+        fee_rate,
         priority_fee,
         priority_entries,
         sig_op_count,
@@ -79,13 +81,14 @@ pub fn create_transactions_py<'a>(
 
 #[pyfunction]
 #[pyo3(name = "estimate_transactions")]
-#[pyo3(signature = (network_id, entries, change_address, outputs=None, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
+#[pyo3(signature = (network_id, entries, change_address, outputs=None, payload=None, fee_rate=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
 pub fn estimate_transactions_py<'a>(
     network_id: &str,
     entries: PyUtxoEntries,
     change_address: Address,
     outputs: Option<PyOutputs>,
     payload: Option<PyBinary>,
+    fee_rate: Option<f64>,
     priority_fee: Option<u64>,
     priority_entries: Option<PyUtxoEntries>,
     sig_op_count: Option<u8>,
@@ -97,6 +100,7 @@ pub fn estimate_transactions_py<'a>(
         change_address,
         outputs,
         payload.map(Into::into),
+        fee_rate,
         priority_fee,
         priority_entries,
         sig_op_count,

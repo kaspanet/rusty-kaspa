@@ -30,8 +30,8 @@ impl GeneratorSummary {
 
     #[getter]
     #[pyo3(name = "fees")]
-    pub fn aggregated_fees(&self) -> u64 {
-        self.inner.aggregated_fees()
+    pub fn aggregate_fees(&self) -> u64 {
+        self.inner.aggregate_fees()
     }
 
     #[getter]

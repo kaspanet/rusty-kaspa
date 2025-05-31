@@ -63,13 +63,14 @@ pub struct Generator {
 #[pymethods]
 impl Generator {
     #[new]
-    #[pyo3(signature = (network_id, entries, change_address, outputs=None, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
+    #[pyo3(signature = (network_id, entries, change_address, outputs=None, payload=None, fee_rate=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
     pub fn ctor(
         network_id: &str,
         entries: PyUtxoEntries,
         change_address: Address,
         outputs: Option<PyOutputs>,
         payload: Option<PyBinary>,
+        fee_rate: Option<f64>,
         priority_fee: Option<u64>,
         priority_entries: Option<PyUtxoEntries>,
         sig_op_count: Option<u8>,
@@ -78,6 +79,7 @@ impl Generator {
         let settings = GeneratorSettings::new(
             outputs,
             change_address,
+            fee_rate,
             priority_fee,
             entries.entries,
             priority_entries.map(|p| p.entries),
@@ -105,6 +107,7 @@ impl Generator {
                     settings.sig_op_count,
                     settings.minimum_signatures,
                     settings.final_transaction_destination,
+                    None,
                     settings.final_priority_fee,
                     settings.payload,
                     settings.multiplexer,
@@ -170,6 +173,7 @@ struct GeneratorSettings {
     pub multiplexer: Option<Multiplexer<Box<Events>>>,
     pub final_transaction_destination: PaymentDestination,
     pub change_address: Option<Address>,
+    pub fee_rate: Option<f64>,
     pub final_priority_fee: Fees,
     pub sig_op_count: u8,
     pub minimum_signatures: u16,
@@ -180,6 +184,7 @@ impl GeneratorSettings {
     pub fn new(
         outputs: Option<PyOutputs>,
         change_address: Address,
+        fee_rate: Option<f64>,
         priority_fee: Option<u64>,
         entries: Vec<UtxoEntryReference>,
         priority_entries: Option<Vec<UtxoEntryReference>>,
@@ -194,6 +199,8 @@ impl GeneratorSettings {
             Some(py_outputs) => PaymentOutputs { outputs: py_outputs.outputs }.into(),
             None => PaymentDestination::Change,
         };
+
+        let fee_rate = fee_rate.and_then(|v| (v.is_finite() && !v.is_nan() && v >= 1e-8).then_some(v));
 
         let final_priority_fee = match priority_fee {
             Some(fee) => fee.try_into().unwrap(),
@@ -215,6 +222,7 @@ impl GeneratorSettings {
             multiplexer: None,
             final_transaction_destination,
             change_address: Some(change_address),
+            fee_rate,
             final_priority_fee,
             sig_op_count,
             minimum_signatures,

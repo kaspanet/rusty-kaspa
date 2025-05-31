@@ -35,7 +35,8 @@ impl ScriptBuilder {
     #[staticmethod]
     pub fn from_script(script: PyBinary) -> PyResult<ScriptBuilder> {
         let builder = ScriptBuilder::default();
-        builder.inner().extend(script.as_ref());
+        let script: Vec<u8> = script.into();
+        builder.inner().script_mut().extend(&script);
 
         Ok(builder)
     }
