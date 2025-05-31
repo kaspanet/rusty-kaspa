@@ -24,6 +24,7 @@ use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{OpenArgs, StorageDescriptor};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
+use crate::wallet::keydata::PrvKeyDataVariantKind;
 use crate::wallet::maps::ActiveAccountMap;
 use kaspa_bip32::{ExtendedKey, Language, Mnemonic, Prefix as KeyPrefix, WordCount};
 use kaspa_notify::{
@@ -442,7 +443,7 @@ impl Wallet {
                     .as_legacy_account()?;
                 legacy_account.clone().start().await?;
                 legacy_account.clear_private_context().await?;
-            } else {
+            } else if self.active_accounts().get(account_storage.id()).is_none() {
                 let account = try_load_account(self, account_storage, meta).await?;
                 account.clone().start().await?;
             }
@@ -689,6 +690,9 @@ impl Wallet {
                 self.create_account_multisig(wallet_secret, prv_key_data_args, additional_xpub_keys, name, minimum_signatures).await?
             }
             AccountCreateArgs::Bip32Watch { account_args } => self.create_account_bip32_watch(wallet_secret, account_args).await?,
+            AccountCreateArgs::Keypair { prv_key_data_id, account_name, ecdsa } => {
+                self.create_account_keypair(wallet_secret, None, prv_key_data_id, account_name, ecdsa).await?
+            }
         };
 
         if notify {
@@ -886,6 +890,45 @@ impl Wallet {
         Ok(account)
     }
 
+    pub async fn create_account_keypair(
+        self: &Arc<Wallet>,
+        wallet_secret: &Secret,
+        payment_secret: Option<&Secret>,
+        prv_key_data_id: PrvKeyDataId,
+        account_name: Option<String>,
+        ecdsa: bool,
+    ) -> Result<Arc<dyn Account>> {
+        let account_store = self.inner.store.clone().as_account_store()?;
+
+        let prv_key_data = self
+            .inner
+            .store
+            .as_prv_key_data_store()?
+            .load_key_data(wallet_secret, &prv_key_data_id)
+            .await?
+            .ok_or_else(|| Error::PrivateKeyNotFound(prv_key_data_id))?;
+
+        let secret_key = prv_key_data
+            .as_secret_key(payment_secret)
+            .map_err(|_| Error::custom("Invalid private key"))?
+            .ok_or(Error::custom("Sectet key is required"))?;
+
+        let secp = secp256k1::Secp256k1::new();
+        let public_key = secret_key.public_key(&secp);
+        let prv_key_data_id = prv_key_data.id;
+        let account: Arc<dyn Account> =
+            Arc::new(keypair::Keypair::try_new(self, account_name, public_key, prv_key_data_id, ecdsa).await?);
+
+        if account_store.load_single(account.id()).await?.is_some() {
+            return Err(Error::AccountAlreadyExists(*account.id()));
+        }
+
+        self.inner.store.clone().as_account_store()?.store_single(&account.to_storage()?, None).await?;
+        self.inner.store.commit(wallet_secret).await?;
+
+        Ok(account)
+    }
+
     pub async fn create_wallet(
         self: &Arc<Wallet>,
         wallet_secret: &Secret,
@@ -911,12 +954,24 @@ impl Wallet {
         wallet_secret: &Secret,
         prv_key_data_create_args: PrvKeyDataCreateArgs,
     ) -> Result<PrvKeyDataId> {
-        let mnemonic = Mnemonic::new(prv_key_data_create_args.mnemonic.as_str()?, Language::default())?;
-        let prv_key_data = PrvKeyData::try_from_mnemonic(
-            mnemonic.clone(),
-            prv_key_data_create_args.payment_secret.as_ref(),
-            self.store().encryption_kind()?,
-        )?;
+        let PrvKeyDataCreateArgs { secret, payment_secret, kind, name } = prv_key_data_create_args;
+        let prv_key_data = match kind {
+            PrvKeyDataVariantKind::Mnemonic => {
+                let mnemonic = Mnemonic::new(secret.as_str()?, Language::default())?;
+                PrvKeyData::try_from_mnemonic(mnemonic.clone(), payment_secret.as_ref(), self.store().encryption_kind()?, name)?
+            }
+            PrvKeyDataVariantKind::SecretKey => {
+                //let secp = secp256k1::Secp256k1::new();
+                let secret_key = secp256k1::SecretKey::from_slice(secret.as_ref())?;
+                //let public_key = secret_key.public_key(&secp);
+                //log_info!("public_key: {}", public_key.to_string());
+                PrvKeyData::try_from_secret_key(secret_key, payment_secret.as_ref(), self.store().encryption_kind()?, name)?
+            }
+            _ => {
+                return Err(Error::Custom("Invalid prv key data kind, supported types are Mnemonic and SecretKey".to_string()));
+            }
+        };
+
         let prv_key_data_info = PrvKeyDataInfo::from(prv_key_data.as_ref());
         let prv_key_data_id = prv_key_data.id;
         let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
@@ -944,7 +999,7 @@ impl Wallet {
         let storage_descriptor = self.inner.store.location()?;
         let mnemonic = Mnemonic::random(mnemonic_phrase_word_count, Default::default())?;
         let account_index = 0;
-        let prv_key_data = PrvKeyData::try_from_mnemonic(mnemonic.clone(), payment_secret.as_ref(), encryption_kind)?;
+        let prv_key_data = PrvKeyData::try_from_mnemonic(mnemonic.clone(), payment_secret.as_ref(), encryption_kind, None)?;
         let xpub_key = prv_key_data
             .create_xpub(payment_secret.as_ref(), account_kind.unwrap_or(BIP32_ACCOUNT_KIND.into()), account_index)
             .await?;
@@ -1472,7 +1527,6 @@ impl Wallet {
 
         let legacy_account = account.clone().as_legacy_account()?;
         legacy_account.create_private_context(wallet_secret, payment_secret, None).await?;
-        // account.clone().initialize_private_data(wallet_secret, payment_secret, None).await?;
 
         if self.is_connected() {
             if let Some(notifier) = notifier {
@@ -1480,13 +1534,6 @@ impl Wallet {
             }
             account.clone().scan(Some(100), Some(5000)).await?;
         }
-
-        // let derivation = account.clone().as_derivation_capable()?.derivation();
-        // let m = derivation.receive_address_manager();
-        // m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
-        // let m = derivation.change_address_manager();
-        // m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
-        // account.clone().clear_private_data().await?;
 
         legacy_account.clear_private_context().await?;
 
@@ -1699,7 +1746,8 @@ impl Wallet {
                 Secret::from(mnemonic.phrase_string())
             };
 
-            let prv_key_data_args = PrvKeyDataCreateArgs::new(None, payment_secret.cloned(), mnemonic_phrase_string);
+            let prv_key_data_args =
+                PrvKeyDataCreateArgs::new(None, payment_secret.cloned(), mnemonic_phrase_string, PrvKeyDataVariantKind::Mnemonic);
 
             self.store().batch().await?;
             let prv_key_data_id = self.clone().create_prv_key_data(wallet_secret, prv_key_data_args).await?;

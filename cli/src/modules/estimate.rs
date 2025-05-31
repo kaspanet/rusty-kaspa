@@ -17,13 +17,16 @@ impl Estimate {
         }
 
         let amount_sompi = try_parse_required_nonzero_kaspa_as_sompi_u64(argv.first())?;
+        // TODO fee_rate
+        let fee_rate = None;
         let priority_fee_sompi = try_parse_optional_kaspa_as_sompi_i64(argv.get(1))?.unwrap_or(0);
         let abortable = Abortable::default();
 
         // just use any address for an estimate (change address)
         let change_address = account.change_address()?;
         let destination = PaymentDestination::PaymentOutputs(PaymentOutputs::from((change_address.clone(), amount_sompi)));
-        let estimate = account.estimate(destination, priority_fee_sompi.into(), None, &abortable).await?;
+        // TODO fee_rate
+        let estimate = account.estimate(destination, fee_rate, priority_fee_sompi.into(), None, &abortable).await?;
 
         tprintln!(ctx, "Estimate - {estimate}");
 

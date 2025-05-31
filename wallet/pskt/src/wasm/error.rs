@@ -10,6 +10,9 @@ pub enum Error {
     #[error("Unexpected state: {0}")]
     State(String),
 
+    #[error("Expected state: {0}")]
+    ExpectedState(String),
+
     #[error("Constructor argument must be a valid payload, another PSKT instance, Transaction or undefined")]
     Ctor(String),
 
@@ -42,6 +45,9 @@ impl Error {
 
     pub fn state(state: impl AsRef<State>) -> Self {
         Error::State(state.as_ref().display().to_string())
+    }
+    pub fn expected_state(state: impl Into<String>) -> Self {
+        Error::ExpectedState(state.into())
     }
 }
 
