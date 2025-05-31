@@ -1,6 +1,5 @@
-use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
-
 use async_channel::unbounded;
+use kaspa_consensus::config::Config;
 use kaspa_consensus_core::{
     config::ConfigBuilder,
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
@@ -24,6 +23,14 @@ use kaspa_utils::git;
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
+use std::io::Write;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::exit,
+    sync::Arc,
+    time::Duration,
+};
 
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::{consensus::factory::Factory as ConsensusFactory, pipeline::ProcessingCounters};
@@ -45,6 +52,8 @@ use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::Count
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
 
+use crate::args::Args;
+
 /// Desired soft FD limit that needs to be configured
 /// for the kaspad process.
 pub const DESIRED_DAEMON_SOFT_FD_LIMIT: u64 = 8 * 1024;
@@ -54,17 +63,7 @@ pub const DESIRED_DAEMON_SOFT_FD_LIMIT: u64 = 8 * 1024;
 /// this value may impact the database performance).
 pub const MINIMUM_DAEMON_SOFT_FD_LIMIT: u64 = 4 * 1024;
 
-/// If set, the retention period days must be at least this value
-/// (otherwise it is meaningless since pruning periods are typically at least 2 days long)
-const MINIMUM_RETENTION_PERIOD_DAYS: f64 = 2.0;
-const ONE_GIGABYTE: f64 = 1_000_000_000.0;
-
-use crate::args::Args;
-
 const DEFAULT_DATA_DIR: &str = "datadir";
-const CONSENSUS_DB: &str = "consensus";
-const UTXOINDEX_DB: &str = "utxoindex";
-const META_DB: &str = "meta";
 const META_DB_FILE_LIMIT: i32 = 5;
 const DEFAULT_LOG_DIR: &str = "logs";
 
@@ -117,23 +116,19 @@ fn get_user_approval_or_exit(message: &str, approve: bool) {
     if approve {
         return;
     }
-    println!("{}", message);
+    println!("{}: ", message);
+    std::io::stdout().flush().expect("Failed to flush stdout");
+
     let mut input = String::new();
-    match std::io::stdin().read_line(&mut input) {
-        Ok(_) => {
-            let lower = input.to_lowercase();
-            let answer = lower.as_str().strip_suffix("\r\n").or(lower.as_str().strip_suffix('\n')).unwrap_or(lower.as_str());
-            if answer == "y" || answer == "yes" {
-                // return
-            } else {
-                println!("Operation was rejected ({}), exiting..", answer);
-                exit(1);
-            }
-        }
-        Err(error) => {
-            println!("Error reading from console: {error}, exiting..");
-            exit(1);
-        }
+    if let Err(error) = std::io::stdin().read_line(&mut input) {
+        eprintln!("Error reading from console: {}, exiting...", error);
+        exit(1);
+    }
+
+    let answer = input.trim().to_lowercase();
+    if !(answer == "y" || answer == "yes") {
+        eprintln!("Operation was rejected ({}), exiting...", answer);
+        exit(1);
     }
 }
 
@@ -208,6 +203,54 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
     create_core_with_runtime(&rt, &args, fd_total_budget)
 }
 
+/// Helper functions for create_core_with_runtime
+fn build_db_paths(db_dir: &Path) -> (PathBuf, PathBuf, PathBuf) {
+    const CONSENSUS_DB: &str = "consensus";
+    const UTXOINDEX_DB: &str = "utxoindex";
+    const META_DB: &str = "meta";
+    (db_dir.join(CONSENSUS_DB), db_dir.join(UTXOINDEX_DB), db_dir.join(META_DB))
+}
+fn check_retention_days(args: &Args, config: &Config) {
+    /// If set, the retention period days must be at least this value
+    /// (otherwise it is meaningless since pruning periods are typically at least 2 days long)
+    const MINIMUM_RETENTION_PERIOD_DAYS: f64 = 2.0;
+    const INV_ONE_GIGABYTE: f64 = 1.0 / 1_000_000_000.0;
+
+    if !args.archival && args.retention_period_days.is_some() {
+        let retention_period_days = args.retention_period_days.unwrap();
+        // Look only at post-fork values (which are the worst-case)
+        let finality_depth = config.finality_depth().after();
+        let target_time_per_block = config.target_time_per_block().after(); // in ms
+
+        if MINIMUM_RETENTION_PERIOD_DAYS <= retention_period_days {
+            // milliseconds in a day = 24.0 * 60.0 * 60.0 * 1000.0 = 86 400 000
+            let retention_period_milliseconds = (retention_period_days * 86_400_000.0).ceil() as u64;
+            let total_blocks = retention_period_milliseconds / target_time_per_block;
+            // This worst case usage only considers block space. It does not account for usage of
+            // other stores (reachability, block status, mempool, etc.)
+            let worst_case_usage =
+                ((total_blocks + finality_depth) * (config.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR)) as f64 * INV_ONE_GIGABYTE;
+            info!(
+                "Retention period is set to {} days. Disk usage may be up to {:.2} GB for block space required for this period.",
+                retention_period_days, worst_case_usage
+            );
+        } else {
+            panic!("Retention period ({}) must be at least {} days", retention_period_days, MINIMUM_RETENTION_PERIOD_DAYS);
+        }
+    }
+}
+fn remove_database_dirs(db_dir: &Path) {
+    info!("Deleting databases");
+    fs::remove_dir_all(db_dir).unwrap();
+}
+fn create_database_dirs(args: &Args, consensus_db_dir: &Path, utxoindex_db_dir: &Path, meta_db_dir: &Path) {
+    fs::create_dir_all(consensus_db_dir).unwrap();
+    fs::create_dir_all(meta_db_dir).unwrap();
+    if args.utxoindex {
+        info!("Utxoindex Data directory {}", utxoindex_db_dir.display());
+        fs::create_dir_all(utxoindex_db_dir).unwrap();
+    }
+}
 /// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
 ///
 /// Usage semantics:
@@ -218,7 +261,6 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
 ///
 /// The instance of the [`RpcCoreService`] needs to be released
 /// (dropped) before the `Core` is shut down.
-///
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
     let mut fd_remaining = fd_total_budget;
@@ -231,7 +273,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     };
     // Make sure args forms a valid set of properties
     if let Err(err) = validate_args(args) {
-        println!("{}", err);
+        eprintln!("{}", err);
         exit(1);
     }
 
@@ -260,10 +302,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
         }
     }
 
-    let consensus_db_dir = db_dir.join(CONSENSUS_DB);
-    let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
-    let meta_db_dir = db_dir.join(META_DB);
-
+    let (consensus_db_dir, utxoindex_db_dir, meta_db_dir) = build_db_paths(&db_dir);
     let mut is_db_reset_needed = args.reset_db;
 
     // Reset Condition: User explicitly requested a reset
@@ -271,39 +310,11 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
         let msg = "Reset DB was requested -- this means the current databases will be fully deleted,
 do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm all interactive questions)";
         get_user_approval_or_exit(msg, args.yes);
-        info!("Deleting databases");
-        fs::remove_dir_all(&db_dir).unwrap();
+        remove_database_dirs(&db_dir);
     }
 
-    fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
-    fs::create_dir_all(meta_db_dir.as_path()).unwrap();
-    if args.utxoindex {
-        info!("Utxoindex Data directory {}", utxoindex_db_dir.display());
-        fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
-    }
-
-    if !args.archival && args.retention_period_days.is_some() {
-        let retention_period_days = args.retention_period_days.unwrap();
-        // Look only at post-fork values (which are the worst-case)
-        let finality_depth = config.finality_depth().after();
-        let target_time_per_block = config.target_time_per_block().after(); // in ms
-
-        let retention_period_milliseconds = (retention_period_days * 24.0 * 60.0 * 60.0 * 1000.0).ceil() as u64;
-        if MINIMUM_RETENTION_PERIOD_DAYS <= retention_period_days {
-            let total_blocks = retention_period_milliseconds / target_time_per_block;
-            // This worst case usage only considers block space. It does not account for usage of
-            // other stores (reachability, block status, mempool, etc.)
-            let worst_case_usage =
-                ((total_blocks + finality_depth) * (config.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR)) as f64 / ONE_GIGABYTE;
-
-            info!(
-                "Retention period is set to {} days. Disk usage may be up to {:.2} GB for block space required for this period.",
-                retention_period_days, worst_case_usage
-            );
-        } else {
-            panic!("Retention period ({}) must be at least {} days", retention_period_days, MINIMUM_RETENTION_PERIOD_DAYS);
-        }
-    }
+    create_database_dirs(args, &consensus_db_dir, &utxoindex_db_dir, &meta_db_dir);
+    check_retention_days(args, &config); // info or panic
 
     // DB used for addresses store and for multi-consensus management
     let mut meta_db = kaspa_database::prelude::ConnBuilder::default()
@@ -322,7 +333,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         match active_consensus_dir_name {
             Some(dir_name) => {
                 let consensus_db = kaspa_database::prelude::ConnBuilder::default()
-                    .with_db_path(consensus_db_dir.clone().join(dir_name))
+                    .with_db_path(consensus_db_dir.join(dir_name))
                     .with_files_limit(1)
                     .build()
                     .unwrap();
@@ -364,7 +375,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                     // Apply soft upgrade logic: delete GD data from higher levels
                     // and then update DB version to 4
                     let consensus_db = kaspa_database::prelude::ConnBuilder::default()
-                        .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
+                        .with_db_path(consensus_db_dir.join(current_consensus_db))
                         .with_files_limit(1)
                         .build()
                         .unwrap();
@@ -423,8 +434,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                         DatabaseStorePrefixes::GhostdagCompact.into_iter().chain(end_level_bytes).collect_vec();
 
                     // Apply delete of range from level 1 to max (+1) for Ghostdag and GhostdagCompact:
-                    writer.delete_range(start_ghostdag_prefix_vec.clone(), end_ghostdag_prefix_vec.clone()).unwrap();
-                    writer.delete_range(start_compact_prefix_vec.clone(), end_compact_prefix_vec.clone()).unwrap();
+                    writer.delete_range(&start_ghostdag_prefix_vec, &end_ghostdag_prefix_vec).unwrap();
+                    writer.delete_range(&start_compact_prefix_vec, &end_compact_prefix_vec).unwrap();
 
                     // Compact the deleted rangeto apply the delete immediately
                     consensus_db.compact_range(Some(start_ghostdag_prefix_vec.as_slice()), Some(end_ghostdag_prefix_vec.as_slice()));
@@ -458,16 +469,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         // Drop so that deletion works
         drop(meta_db);
 
-        // Delete
-        fs::remove_dir_all(db_dir.clone()).unwrap();
-
-        // Recreate the empty folders
-        fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
-        fs::create_dir_all(meta_db_dir.as_path()).unwrap();
-
-        if args.utxoindex {
-            fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
-        }
+        remove_database_dirs(&db_dir);
+        create_database_dirs(args, &consensus_db_dir, &utxoindex_db_dir, &meta_db_dir);
 
         // Reopen the DB
         meta_db = kaspa_database::prelude::ConnBuilder::default()
@@ -483,13 +486,14 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
     let add_peers = args.add_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect();
-    let p2p_server_addr = args.listen.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
+    let p2p_server_addr = args.listen.as_ref().unwrap_or(&ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
     // connect_peers means no DNS seeding and no outbound/inbound peers
-    let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
-    let inbound_limit = if connect_peers.is_empty() { args.inbound_limit } else { 0 };
-    let dns_seeders = if connect_peers.is_empty() && !args.disable_dns_seeding { config.dns_seeders } else { &[] };
+    let no_connect_peers = connect_peers.is_empty();
+    let outbound_target = if no_connect_peers { args.outbound_target } else { 0 };
+    let inbound_limit = if no_connect_peers { args.inbound_limit } else { 0 };
+    let dns_seeders = if no_connect_peers && !args.disable_dns_seeding { config.dns_seeders } else { &[] };
 
-    let grpc_server_addr = args.rpclisten.unwrap_or(ContextualNetAddress::loopback()).normalize(config.default_rpc_port());
+    let grpc_server_addr = args.rpclisten.as_ref().unwrap_or(&ContextualNetAddress::loopback()).normalize(config.default_rpc_port());
 
     let core = Arc::new(Core::new());
 
