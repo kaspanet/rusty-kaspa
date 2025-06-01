@@ -38,7 +38,7 @@ The Python SDK module name is `kaspa`. The following example shows how to connec
 
 ```python
 import asyncio
-from kapsa import Resolver, RpcClient
+from kaspa import Resolver, RpcClient
 
 async def main():
     resolver = Resolver()
