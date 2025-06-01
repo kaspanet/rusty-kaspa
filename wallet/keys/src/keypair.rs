@@ -107,13 +107,13 @@ impl Keypair {
 impl Keypair {
     #[new]
     pub fn new_py(secret_key: &str, public_key: &str, xonly_public_key: &str) -> PyResult<Self> {
-        let secret_key = secp256k1::SecretKey::from_str(secret_key)
-            .map_err(|err| PyException::new_err(format!("{}", err.to_string())))?;
-        let public_key =  secp256k1::PublicKey::from_str(public_key)
-            .map_err(|err| PyException::new_err(format!("{}", err.to_string())))?;
-        let xonly_public_key = XOnlyPublicKey::from_str(xonly_public_key)
-            .map_err(|err| PyException::new_err(format!("{}", err.to_string())))?;
-        
+        let secret_key =
+            secp256k1::SecretKey::from_str(secret_key).map_err(|err| PyException::new_err(format!("{}", err.to_string())))?;
+        let public_key =
+            secp256k1::PublicKey::from_str(public_key).map_err(|err| PyException::new_err(format!("{}", err.to_string())))?;
+        let xonly_public_key =
+            XOnlyPublicKey::from_str(xonly_public_key).map_err(|err| PyException::new_err(format!("{}", err.to_string())))?;
+
         Ok(Self { secret_key, public_key, xonly_public_key })
     }
 

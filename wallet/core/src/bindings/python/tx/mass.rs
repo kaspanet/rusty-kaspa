@@ -62,7 +62,7 @@ pub fn calculate_storage_mass(network_id: &str, input_values: Vec<u64>, output_v
     let input_values = input_values.iter().map(|v| UtxoCell::new(1, *v)).collect::<Vec<UtxoCell>>();
     let output_values = output_values.iter().map(|v| UtxoCell::new(1, *v)).collect::<Vec<UtxoCell>>();
 
-    let storage_mass = 
+    let storage_mass =
         calc_storage_mass(false, input_values.into_iter(), output_values.into_iter(), consensus_params.storage_mass_parameter);
 
     Ok(storage_mass)

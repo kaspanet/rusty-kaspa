@@ -226,6 +226,7 @@ portable-atomic = { version = "1.5.1", features = ["float"] }
 prost = "0.13.2"
 pyo3 = { version = "0.22.5", features = ["multiple-pymethods"] }
 pyo3-async-runtimes = { version = "0.22", features = ["attributes", "tokio-runtime"] }
+pyo3-log = "0.12.4"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 rand_core = { version = "0.6.4", features = ["std"] }

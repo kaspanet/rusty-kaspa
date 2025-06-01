@@ -30,7 +30,7 @@ cfg_if::cfg_if! {
             m.add_class::<kaspa_bip32::Mnemonic>()?;
 
             m.add_class::<kaspa_txscript::bindings::python::ScriptBuilder>()?;
-            m.add_class::<kaspa_txscript::bindings::opcodes::Opcodes>()?; 
+            m.add_class::<kaspa_txscript::bindings::opcodes::Opcodes>()?;
 
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::message::py_sign_message, m)?)?;
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::message::py_verify_message, m)?)?;
