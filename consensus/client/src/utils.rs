@@ -64,7 +64,7 @@ pub fn pay_to_script_hash_signature_script(redeem_script: BinaryT, signature: Bi
 pub fn pay_to_script_hash_signature_script_py(redeem_script: PyBinary, signature: PyBinary) -> PyResult<String> {
     let script = standard::pay_to_script_hash_signature_script(redeem_script.data, signature.data)
         .map_err(|err| PyException::new_err(format!("{}", err.to_string())))?;
-    Ok(String::from_utf8(script)?)
+    Ok(script.to_hex())
 }
 
 /// Returns the address encoded in a script public key.
