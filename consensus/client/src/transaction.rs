@@ -427,6 +427,18 @@ impl Transaction {
     pub fn set_payload_from_py_value(&mut self, v: PyBinary) {
         self.inner.lock().unwrap().payload = v.into();
     }
+
+    #[getter]
+    #[pyo3(name = "mass")]
+    pub fn get_mass_py(&self) -> u64 {
+        self.inner().mass
+    }
+
+    #[setter]
+    #[pyo3(name = "mass")]
+    pub fn set_mass_py(&self, v: u64) {
+        self.inner().mass = v;
+    }
 }
 
 impl TryCastFromJs for Transaction {
