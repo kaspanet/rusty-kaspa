@@ -734,6 +734,8 @@ def calculate_transaction_mass(network_id: str, tx: Transaction, minimum_signatu
 
 def update_transaction_mass(network_id: str, tx: Transaction, minimum_signatures: Optional[int] = None) -> bool: ...
 
+def calculate_storage_mass(network_id: str, input_values: list[int], output_values: list[int]) -> int: ...
+
 def create_transaction(
     utxo_entry_source: list[dict],
     outputs: list[dict],

@@ -2,6 +2,7 @@ use crate::imports::*;
 use crate::tx::{mass, MAXIMUM_STANDARD_TRANSACTION_MASS};
 use kaspa_consensus_client::Transaction;
 use kaspa_consensus_core::config::params::Params;
+use kaspa_consensus_core::mass::{calc_storage_mass, UtxoCell};
 
 #[pyfunction]
 pub fn maximum_standard_transaction_mass() -> u64 {
@@ -51,4 +52,18 @@ pub fn calculate_unsigned_transaction_fee(
     } else {
         Ok(Some(mc.calc_fee_for_mass(mass)))
     }
+}
+
+#[pyfunction]
+pub fn calculate_storage_mass(network_id: &str, input_values: Vec<u64>, output_values: Vec<u64>) -> Result<Option<u64>> {
+    let network_id = NetworkId::from_str(network_id)?;
+    let consensus_params = Params::from(network_id);
+
+    let input_values = input_values.iter().map(|v| UtxoCell::new(1, *v)).collect::<Vec<UtxoCell>>();
+    let output_values = output_values.iter().map(|v| UtxoCell::new(1, *v)).collect::<Vec<UtxoCell>>();
+
+    let storage_mass = 
+        calc_storage_mass(false, input_values.into_iter(), output_values.into_iter(), consensus_params.storage_mass_parameter);
+
+    Ok(storage_mass)
 }

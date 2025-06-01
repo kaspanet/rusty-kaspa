@@ -43,6 +43,7 @@ cfg_if::cfg_if! {
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::tx::mass::maximum_standard_transaction_mass, m)?)?;
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::tx::mass::calculate_unsigned_transaction_fee, m)?)?;
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::tx::mass::calculate_unsigned_transaction_mass, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::tx::mass::calculate_storage_mass, m)?)?;
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::tx::mass::update_unsigned_transaction_mass, m)?)?;
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::tx::utils::create_transaction_py, m)?)?;
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::tx::utils::create_transactions_py, m)?)?;
