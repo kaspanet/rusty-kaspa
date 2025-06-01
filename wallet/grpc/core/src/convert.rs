@@ -64,8 +64,11 @@ fn extract_tx_deserialized(partially_signed_tx: PartiallySignedTransaction, ecds
     for (idx, (signed_input, tx_input)) in partially_signed_tx.partially_signed_inputs.iter().zip(&mut tx.inputs).enumerate() {
         let mut script_builder = ScriptBuilder::new();
         match signed_input.pub_key_signature_pairs.len() {
-            0 => return Err(Status::invalid_argument("missing signature")),
+            0 => { /* do nothing */ },
             1 => {
+                if signed_input.pub_key_signature_pairs[0].signature.is_empty() {
+                    return Err(Status::invalid_argument("missing signature"));
+                }
                 let sig_script = script_builder
                     .add_data(signed_input.pub_key_signature_pairs[0].signature.as_slice())
                     .map_err(|err| Status::invalid_argument(err.to_string()))?
