@@ -96,44 +96,41 @@ impl<'a, 'b> HeadersChunkStream<'a, 'b> {
     }
 
     pub async fn next(&mut self) -> Result<Option<HeadersChunk>, ProtocolError> {
-        let res = match timeout(DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
-            Ok(op) => {
-                if let Some(msg) = op {
-                    match msg.payload {
-                        Some(Payload::BlockHeaders(payload)) => {
-                            if payload.block_headers.is_empty() {
-                                // The syncer should have sent a done message if the search completed, and not an empty list
-                                Err(ProtocolError::Other("Received an empty headers message"))
-                            } else {
-                                Ok(Some(payload.try_into()?))
-                            }
-                        }
-                        Some(Payload::DoneHeaders(_)) => {
-                            debug!("headers chunk stream completed after {} chunks", self.i);
-                            Ok(None)
-                        }
-                        _ => Err(ProtocolError::UnexpectedMessage(
-                            stringify!(Payload::BlockHeaders | Payload::DoneHeaders),
-                            msg.payload.as_ref().map(|v| v.into()),
-                        )),
-                    }
-                } else {
-                    Err(ProtocolError::ConnectionClosed)
-                }
-            }
-            Err(_) => Err(ProtocolError::Timeout(DEFAULT_TIMEOUT)),
-        };
+        // Attempt to recieve message from peer via incoming_route
+        let msg = timeout(DEFAULT_TIMEOUT, self.incoming_route.recv())
+            .await
+            .map_err(|_| ProtocolError::Timeout(DEFAULT_TIMEOUT))?
+            .ok_or(ProtocolError::ConnectionClosed)?;
 
-        // Request the next batch only if the stream is still live
-        if let Ok(Some(_)) = res {
+        let headers_chunk = match msg.payload {
+            Some(Payload::BlockHeaders(payload)) => {
+                if payload.block_headers.is_empty() {
+                    // The syncer should have sent a done message if the search completed, and not an empty list
+                    return Err(ProtocolError::Other("Received an empty headers message"));
+                }
+                Some(payload.try_into()?)
+            }
+            Some(Payload::DoneHeaders(_)) => {
+                debug!("headers chunk stream completed after {} chunks", self.i);
+                None
+            }
+            _ => {
+                return Err(ProtocolError::UnexpectedMessage(
+                    stringify!(Payload::BlockHeaders | Payload::DoneHeaders),
+                    msg.payload.as_ref().map(|v| v.into()),
+                ))
+            }
+        };
+        // If we received a valid chunk, increment the counter and enqueue the next chunk
+        // if stream is still alive
+        if headers_chunk.is_some() {
             self.i += 1;
             self.router.enqueue(make_message!(Payload::RequestNextHeaders, RequestNextHeadersMessage {})).await?;
         }
 
-        res
+        Ok(headers_chunk)
     }
 }
-
 /// A chunk of UTXOs
 pub type UtxosetChunk = Vec<(TransactionOutpoint, UtxoEntry)>;
 
