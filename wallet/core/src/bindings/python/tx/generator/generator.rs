@@ -166,6 +166,7 @@ enum GeneratorSource {
     // Account(Account),
 }
 
+#[allow(dead_code)]
 struct GeneratorSettings {
     pub network_id: Option<NetworkId>,
     pub source: GeneratorSource,
