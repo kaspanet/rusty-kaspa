@@ -63,12 +63,12 @@ impl PyCallback {
             Some(existing_args) => {
                 let tuple_ref = existing_args.bind(py);
 
-                let mut new_args: Vec<PyObject> = tuple_ref.iter().map(|arg| arg.to_object(py)).collect();
+                let mut new_args: Vec<PyObject> = tuple_ref.iter().map(|arg| arg.unbind()).collect();
                 new_args.push(event.into());
 
-                Ok(Py::from(PyTuple::new_bound(py, new_args)))
+                Ok(Py::from(PyTuple::new(py, new_args)?))
             }
-            None => Ok(Py::from(PyTuple::new_bound(py, [event]))),
+            None => Ok(Py::from(PyTuple::new(py, [event])?)),
         }
     }
 
@@ -76,16 +76,12 @@ impl PyCallback {
         let args = self.add_event_to_args(py, event)?;
         let kwargs = self.kwargs.as_ref().map(|kw| kw.bind(py));
 
-        let result = self.callback.call_bound(py, args.bind(py), kwargs).map_err(|err| {
+        let result = self.callback.call(py, args.bind(py), kwargs).map_err(|err| {
             // let fn_name: String = self.callback.getattr(py, "__name__").unwrap().extract(py).unwrap();
 
-            let traceback = PyModule::import_bound(py, "traceback")
+            let traceback = PyModule::import(py, "traceback")
                 .and_then(|traceback| {
-                    traceback.call_method(
-                        "format_exception",
-                        (err.get_type_bound(py), err.value_bound(py), err.traceback_bound(py)),
-                        None,
-                    )
+                    traceback.call_method("format_exception", (err.get_type(py), err.value(py), err.traceback(py)), None)
                 })
                 .and_then(|formatted| {
                     let trace_lines: Vec<String> =
@@ -288,11 +284,11 @@ impl RpcClient {
     ) -> PyResult<()> {
         let event = NotificationEvent::from_str(event.as_str())?;
 
-        let args = args.to_object(py).extract::<Py<PyTuple>>(py)?;
+        let args = args.into_pyobject(py)?.extract::<Py<PyTuple>>()?;
 
         let kwargs = match kwargs {
-            Some(kw) => kw.to_object(py).extract::<Py<PyDict>>(py)?,
-            None => PyDict::new_bound(py).into(),
+            Some(kw) => kw.into_pyobject(py)?.extract::<Py<PyDict>>()?,
+            None => PyDict::new(py).into(),
         };
 
         let py_callback = PyCallback { callback: Arc::new(callback), args: Some(Arc::new(args)), kwargs: Some(Arc::new(kwargs)) };
@@ -417,7 +413,7 @@ impl RpcClient {
                             if let Some(handlers) = this.inner.notification_callbacks(event) {
                                 for handler in handlers.into_iter() {
                                     Python::with_gil(|py| {
-                                        let event = PyDict::new_bound(py);
+                                        let event = PyDict::new(py);
                                         event.set_item("type", ctl.to_string()).unwrap();
                                         event.set_item("rpc", this.url()).unwrap();
 
@@ -441,10 +437,10 @@ impl RpcClient {
                                                 let added = serde_pyobject::to_pyobject(py, added).unwrap();
                                                 let removed = serde_pyobject::to_pyobject(py, removed).unwrap();
 
-                                                let event = PyDict::new_bound(py);
+                                                let event = PyDict::new(py);
                                                 event.set_item("type", event_type.to_string()).unwrap();
-                                                event.set_item("added", &added.to_object(py)).unwrap();
-                                                event.set_item("removed", &removed.to_object(py)).unwrap();
+                                                event.set_item("added", &added).unwrap();
+                                                event.set_item("removed", &removed).unwrap();
 
                                                 handler.execute(py, event).unwrap_or_else(|err| panic!("{}", err));
                                             })
@@ -457,9 +453,9 @@ impl RpcClient {
                                     if let Some(handlers) = this.inner.notification_callbacks(notification_event) {
                                         for handler in handlers.into_iter() {
                                             Python::with_gil(|py| {
-                                                let event = PyDict::new_bound(py);
+                                                let event = PyDict::new(py);
                                                 event.set_item("type", event_type.to_string()).unwrap();
-                                                event.set_item("data", &notification.to_pyobject(py).unwrap()).unwrap();
+                                                event.set_item("data", notification.to_pyobject(py).unwrap()).unwrap();
 
                                                 handler.execute(py, event).unwrap_or_else(|err| panic!("{}", err));
                                             });

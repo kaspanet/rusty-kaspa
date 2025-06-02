@@ -70,12 +70,11 @@ pub fn create_transactions_py<'a>(
         minimum_signatures,
     )?;
 
-    let transactions =
-        generator.iter().map(|r| r.map(PendingTransaction::from).map(|tx| tx.into_py(py))).collect::<Result<Vec<_>>>()?;
-    let summary = generator.summary().into_py(py);
-    let dict = PyDict::new_bound(py);
-    dict.set_item("transactions", &transactions)?;
-    dict.set_item("summary", &summary)?;
+    let transactions = generator.iter().map(|r| r.map(PendingTransaction::from).map(|tx| tx)).collect::<Result<Vec<_>>>()?;
+    let summary = generator.summary();
+    let dict = PyDict::new(py);
+    dict.set_item("transactions", transactions)?;
+    dict.set_item("summary", summary)?;
     Ok(dict)
 }
 

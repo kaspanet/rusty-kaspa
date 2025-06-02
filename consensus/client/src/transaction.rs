@@ -682,6 +682,6 @@ impl Transaction {
     #[pyo3(name = "serialize_to_dict")]
     pub fn serialize_to_dict_py(&self, py: Python) -> PyResult<Py<PyAny>> {
         let tx = numeric::SerializableTransaction::from_client_transaction(self)?;
-        Ok(serde_pyobject::to_pyobject(py, &tx)?.to_object(py))
+        Ok(serde_pyobject::to_pyobject(py, &tx)?.unbind())
     }
 }

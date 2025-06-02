@@ -1,9 +1,13 @@
 cfg_if::cfg_if! {
     if #[cfg(feature = "py-sdk")] {
         use pyo3::prelude::*;
+        use log::info;
 
         #[pymodule]
         fn kaspa(m: &Bound<'_, PyModule>) -> PyResult<()> {
+            pyo3_log::init();
+            info!("Something!");
+
             m.add_class::<kaspa_addresses::Address>()?;
 
             m.add_class::<kaspa_consensus_core::hashing::wasm::SighashType>()?;

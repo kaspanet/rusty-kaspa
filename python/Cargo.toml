@@ -21,6 +21,7 @@ kaspa-txscript.workspace = true
 kaspa-wallet-core.workspace = true
 kaspa-wallet-keys.workspace = true
 kaspa-wrpc-python.workspace = true
+log.workspace = true
 pyo3.workspace = true
 pyo3-log.workspace = true
 
