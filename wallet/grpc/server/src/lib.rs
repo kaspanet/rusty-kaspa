@@ -83,8 +83,28 @@ impl Kaspawalletd for Service {
         Ok(Response::new(BroadcastResponse { tx_ids }))
     }
 
-    async fn broadcast_replacement(&self, _request: Request<BroadcastRequest>) -> Result<Response<BroadcastResponse>, Status> {
-        todo!();
+    async fn broadcast_replacement(&self, request: Request<BroadcastRequest>) -> Result<Response<BroadcastResponse>, Status> {
+        let request = request.into_inner();
+        let txs = deserialize_txs(request.transactions, request.is_domain, self.use_ecdsa())?;
+        let mut tx_ids: Vec<String> = Vec::with_capacity(txs.len());
+        for (i, tx) in txs.into_iter().enumerate() {
+            // Once the first transaction is added to the mempool, the transactions that depend
+            // on the replaced transaction will be removed, so there's no need to submit them
+            // as RBF transactions.
+            let tx_id = if i == 0 {
+                let submit_transaction_replacement_response = self
+                    .wallet()
+                    .rpc_api()
+                    .submit_transaction_replacement(tx)
+                    .await
+                    .map_err(|e| Status::new(Code::Internal, e.to_string()))?;
+                submit_transaction_replacement_response.transaction_id
+            } else {
+                self.wallet().rpc_api().submit_transaction(tx, false).await.map_err(|e| Status::new(Code::Internal, e.to_string()))?
+            };
+            tx_ids.push(tx_id.to_string());
+        }
+        Ok(Response::new(BroadcastResponse { tx_ids }))
     }
 
     async fn send(&self, _request: Request<SendRequest>) -> Result<Response<SendResponse>, Status> {
