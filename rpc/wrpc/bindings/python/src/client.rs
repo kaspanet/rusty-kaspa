@@ -246,7 +246,7 @@ impl RpcClient {
 
         let client = self.inner.client.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let _ = client.connect(Some(options)).await.map_err(|e| PyException::new_err(e.to_string()));
+            client.connect(Some(options)).await.map_err(|e| PyException::new_err(e.to_string()))?;
             Ok(())
         })
     }

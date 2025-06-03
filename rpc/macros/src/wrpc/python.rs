@@ -49,21 +49,20 @@ impl ToTokens for RpcHandlers {
                 #[pymethods]
                 impl RpcClient {
                     #[pyo3(signature = (request=None))]
-                    fn #fn_no_suffix(&self, py: Python, request: Option<Bound<'_, PyDict>>) -> PyResult<Py<PyAny>> {
+                    fn #fn_no_suffix<'py>(&self, py: Python<'py>, request: Option<Bound<'_, PyDict>>) -> PyResult<Bound<'py, PyAny>> {
                         let client = self.inner.client.clone();
 
                         let request: #request_type = request.unwrap_or_else(|| PyDict::new(py)).try_into()?;
 
-                        let py_fut = pyo3_async_runtimes::tokio::future_into_py(py, async move {
+                        pyo3_async_runtimes::tokio::future_into_py(py, async move {
                             let response : #response_type = client.#fn_call(None, request).await?;
+
                             Python::with_gil(|py| {
                                 Ok(serde_pyobject::to_pyobject(py, &response)?.unbind())
                             })
-                        })?
-                        .unbind();
+                        })
 
-                        // Python::with_gil(|py| Ok(py_fut.into_py(py)))
-                        Ok(py_fut)
+                        // Ok(py_fut)
                     }
                 }
             });
@@ -76,22 +75,20 @@ impl ToTokens for RpcHandlers {
 
                 #[pymethods]
                 impl RpcClient {
-                    fn #fn_no_suffix(&self, py: Python, request: Bound<'_, PyDict>) -> PyResult<Py<PyAny>> {
+                    fn #fn_no_suffix<'py>(&self, py: Python<'py>, request: Bound<'_, PyDict>) -> PyResult<Bound<'py, PyAny>> {
                         let client = self.inner.client.clone();
 
                         let request : #request_type = request.try_into()?;
 
-                        let py_fut = pyo3_async_runtimes::tokio::future_into_py(py, async move {
+                        pyo3_async_runtimes::tokio::future_into_py(py, async move {
                             let response : #response_type = client.#fn_call(None, request).await?;
 
                             Python::with_gil(|py| {
                                 Ok(serde_pyobject::to_pyobject(py, &response)?.unbind())
                             })
-                        })?
-                        .unbind();
+                        })
 
-                        // Python::with_gil(|py| Ok(py_fut.into_py(py)))
-                        Ok(py_fut)
+                        // Ok(py_fut)
                     }
                 }
             });
