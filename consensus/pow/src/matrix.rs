@@ -51,16 +51,15 @@ impl Matrix {
 
     #[inline(always)]
     fn convert_to_float(&self) -> [[f64; 64]; 64] {
-        // SAFETY: An uninitialized MaybeUninit is always safe.
-        let mut out: [[MaybeUninit<f64>; 64]; 64] = unsafe { MaybeUninit::uninit().assume_init() };
+        let mut out: [[f64; 64]; 64] = [[Default::default(); 64]; 64];
 
         out.iter_mut().zip(self.0.iter()).for_each(|(out_row, mat_row)| {
             out_row.iter_mut().zip(mat_row).for_each(|(out_element, &element)| {
-                out_element.write(f64::from(element));
+                *out_element = f64::from(element);
             })
         });
-        // SAFETY: The loop above wrote into all indexes.
-        unsafe { std::mem::transmute(out) }
+
+        out
     }
 
     pub fn compute_rank(&self) -> usize {
@@ -69,30 +68,25 @@ impl Matrix {
         let mut rank = 0;
         let mut row_selected = [false; 64];
         for i in 0..64 {
-            if i >= 64 {
-                // Required for optimization, See https://github.com/rust-lang/rust/issues/90794
-                unreachable!()
-            }
             let mut j = 0;
             while j < 64 {
                 if !row_selected[j] && mat_float[j][i].abs() > EPS {
+                    rank += 1;
+                    row_selected[j] = true;
+                    for p in (i + 1)..64 {
+                        mat_float[j][p] /= mat_float[j][i];
+                    }
+                    for k in 0..64 {
+                        if k != j && mat_float[k][i].abs() > EPS {
+                            for p in (i + 1)..64 {
+                                mat_float[k][p] -= mat_float[j][p] * mat_float[k][i];
+                            }
+                        }
+                    }
+
                     break;
                 }
                 j += 1;
-            }
-            if j != 64 {
-                rank += 1;
-                row_selected[j] = true;
-                for p in (i + 1)..64 {
-                    mat_float[j][p] /= mat_float[j][i];
-                }
-                for k in 0..64 {
-                    if k != j && mat_float[k][i].abs() > EPS {
-                        for p in (i + 1)..64 {
-                            mat_float[k][p] -= mat_float[j][p] * mat_float[k][i];
-                        }
-                    }
-                }
             }
         }
         rank
