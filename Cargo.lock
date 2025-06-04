@@ -3647,6 +3647,7 @@ dependencies = [
  "kaspa-rpc-core",
  "kaspa-rpc-macros",
  "kaspa-wrpc-client",
+ "log",
  "pyo3",
  "pyo3-async-runtimes",
  "serde-pyobject",
