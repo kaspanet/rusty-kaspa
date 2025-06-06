@@ -11,6 +11,7 @@ pub mod past_pruning_points;
 pub mod pruning;
 pub mod pruning_samples;
 pub mod pruning_utxoset;
+pub mod pruning_window_root;
 pub mod reachability;
 pub mod relations;
 pub mod selected_chain;
