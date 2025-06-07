@@ -65,8 +65,6 @@ impl ToTokens for RpcHandlers {
                                 Ok(serde_pyobject::to_pyobject(py, &response)?.unbind())
                             })
                         })
-
-                        // Ok(py_fut)
                     }
                 }
             });
@@ -85,14 +83,16 @@ impl ToTokens for RpcHandlers {
                         let request : #request_type = request.try_into()?;
 
                         pyo3_async_runtimes::tokio::future_into_py(py, async move {
+                            log::debug!("Sending RPC request...");
                             let response : #response_type = client.#fn_call(None, request).await?;
+                            log::debug!("Received RPC response");
 
+                            log::debug!("Acquiring GIL...");
                             Python::with_gil(|py| {
+                                log::debug!("GIL acquired, converting Rust response struct to Python object...");
                                 Ok(serde_pyobject::to_pyobject(py, &response)?.unbind())
                             })
                         })
-
-                        // Ok(py_fut)
                     }
                 }
             });
