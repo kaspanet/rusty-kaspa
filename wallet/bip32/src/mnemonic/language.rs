@@ -6,6 +6,8 @@
 //! Adapted from the `bip39` crate
 
 use super::bits::{Bits, Bits11};
+#[cfg(feature = "py-sdk")]
+use pyo3::prelude::*;
 use std::{collections::BTreeMap, vec::Vec};
 use wasm_bindgen::prelude::*;
 
@@ -17,7 +19,8 @@ use wasm_bindgen::prelude::*;
 /// @see {@link Mnemonic}
 ///
 /// @category Wallet SDK
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "py-sdk", pyclass(eq, eq_int))]
 #[wasm_bindgen]
 pub enum Language {
     /// English is presently the only supported language

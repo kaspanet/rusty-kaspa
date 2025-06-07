@@ -9,6 +9,7 @@ use js_sys::{Array, Uint8Array};
 /// Data structure that envelops a Private Key.
 /// @category Wallet SDK
 #[derive(Clone, Debug, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen]
 pub struct PrivateKey {
     inner: secp256k1::SecretKey,
@@ -90,6 +91,49 @@ impl PrivateKey {
         let payload = public_key.serialize();
         let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, &payload);
         Ok(address)
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl PrivateKey {
+    #[new]
+    pub fn try_new_py(key: &str) -> PyResult<PrivateKey> {
+        let secret_key = secp256k1::SecretKey::from_str(key).map_err(|err| PyException::new_err(format!("{}", err)))?;
+        Ok(Self { inner: secret_key })
+    }
+
+    #[pyo3(name = "to_string")]
+    pub fn to_hex_py(&self) -> String {
+        use kaspa_utils::hex::ToHex;
+        self.secret_bytes().to_vec().to_hex()
+    }
+
+    #[pyo3(name = "to_public_key")]
+    pub fn to_public_key_py(&self) -> PyResult<PublicKey> {
+        Ok(PublicKey::from(secp256k1::PublicKey::from_secret_key_global(&self.inner)))
+    }
+
+    #[pyo3(name = "to_address")]
+    pub fn to_address_py(&self, network: &str) -> PyResult<Address> {
+        let public_key = secp256k1::PublicKey::from_secret_key_global(&self.inner);
+        let (x_only_public_key, _) = public_key.x_only_public_key();
+        let payload = x_only_public_key.serialize();
+        let address = Address::new(NetworkType::from_str(network)?.try_into()?, AddressVersion::PubKey, &payload);
+        Ok(address)
+    }
+
+    #[pyo3(name = "to_address_ecdsa")]
+    pub fn to_address_ecdsa_py(&self, network: &str) -> PyResult<Address> {
+        let public_key = secp256k1::PublicKey::from_secret_key_global(&self.inner);
+        let payload = public_key.serialize();
+        let address = Address::new(NetworkType::from_str(network)?.try_into()?, AddressVersion::PubKeyECDSA, &payload);
+        Ok(address)
+    }
+
+    #[pyo3(name = "to_keypair")]
+    pub fn to_keypair_py(&self) -> PyResult<Keypair> {
+        Keypair::from_private_key_py(self)
     }
 }
 

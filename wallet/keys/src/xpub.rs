@@ -19,6 +19,7 @@ use crate::imports::*;
 /// @category Wallet SDK
 ///
 #[derive(Clone, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct XPub {
     inner: ExtendedPublicKey<secp256k1::PublicKey>,
@@ -99,6 +100,72 @@ impl XPub {
 
     pub fn chain_code(&self) -> ChainCode {
         self.inner.attrs().chain_code
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl XPub {
+    #[new]
+    pub fn try_new_py(xpub: &str) -> PyResult<XPub> {
+        let inner = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(xpub)?;
+        Ok(Self { inner })
+    }
+
+    #[pyo3(name = "derive_child")]
+    #[pyo3(signature = (child_number, hardened=None))]
+    pub fn derive_child_py(&self, child_number: u32, hardened: Option<bool>) -> PyResult<XPub> {
+        let child_number = ChildNumber::new(child_number, hardened.unwrap_or(false))?;
+        let inner = self.inner.derive_child(child_number)?;
+        Ok(Self { inner })
+    }
+
+    #[pyo3(name = "derive_path")]
+    pub fn derive_path_py(&self, path: &str) -> PyResult<XPub> {
+        let path = DerivationPath::new(path)?;
+        let inner = self.inner.clone().derive_path((&path).into())?;
+        Ok(Self { inner })
+    }
+
+    #[pyo3(name = "into_string")]
+    pub fn to_str_py(&self, prefix: &str) -> PyResult<String> {
+        Ok(self.inner.to_string(Some(prefix.try_into()?)))
+    }
+
+    #[pyo3(name = "to_public_key")]
+    pub fn public_key_py(&self) -> PublicKey {
+        self.inner.public_key().into()
+    }
+
+    #[getter]
+    #[pyo3(name = "xpub")]
+    pub fn xpub_py(&self) -> PyResult<String> {
+        let str = self.inner.to_extended_key("kpub".try_into()?).to_string();
+        Ok(str)
+    }
+
+    #[getter]
+    #[pyo3(name = "depth")]
+    pub fn depth_py(&self) -> u8 {
+        self.inner.attrs().depth
+    }
+
+    #[getter]
+    #[pyo3(name = "parent_fingerprint")]
+    pub fn parent_fingerprint_as_hex_string_py(&self) -> String {
+        self.inner.attrs().parent_fingerprint.to_vec().to_hex()
+    }
+
+    #[getter]
+    #[pyo3(name = "child_number")]
+    pub fn child_number_py(&self) -> u32 {
+        self.inner.attrs().child_number.into()
+    }
+
+    #[getter]
+    #[pyo3(name = "chain_code")]
+    pub fn chain_code_as_hex_string_py(&self) -> String {
+        self.inner.attrs().chain_code.to_vec().to_hex()
     }
 }
 

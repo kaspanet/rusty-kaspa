@@ -1,5 +1,7 @@
 //! The [`Error`](enum@Error) enum used by this crate
 
+#[cfg(feature = "py-sdk")]
+use pyo3::{exceptions::PyException, prelude::PyErr};
 use thiserror::Error;
 use wasm_bindgen::{JsError, JsValue};
 use workflow_wasm::jserror::JsErrorData;
@@ -104,5 +106,12 @@ impl From<serde_json::Error> for Error {
 impl From<serde_wasm_bindgen::Error> for Error {
     fn from(err: serde_wasm_bindgen::Error) -> Self {
         Self::SerdeWasmBindgen(JsValue::from(err).into())
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+impl From<Error> for PyErr {
+    fn from(value: Error) -> PyErr {
+        PyException::new_err(value.to_string())
     }
 }
