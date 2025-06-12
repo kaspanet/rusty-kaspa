@@ -469,10 +469,6 @@ impl From<NetworkId> for Params {
 
 pub const MAINNET_PARAMS: Params = Params {
     dns_seeders: &[
-        // This DNS seeder is run by Denis Mashkevich
-        "mainnet-dnsseed-1.kaspanet.org",
-        // This DNS seeder is run by Denis Mashkevich
-        "mainnet-dnsseed-2.kaspanet.org",
         // This DNS seeder is run by Georges Künzli
         "seeder1.kaspad.net",
         // This DNS seeder is run by Georges Künzli
@@ -489,6 +485,8 @@ pub const MAINNET_PARAMS: Params = Params {
         "dnsseeder-kaspa-mainnet.x-con.at",
         // This DNS seeder is run by H@H
         "ns-mainnet.kaspa-dnsseeder.net",
+        // This DNS seeder is run by p4bpj
+        "dnsseeder-mainnet.kaspa.host"
     ],
     net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
@@ -551,6 +549,8 @@ pub const TESTNET_PARAMS: Params = Params {
         "ns-testnet10.kaspa-dnsseeder.net",
         // This DNS seeder is run by supertypo
         "n-testnet-10.kaspa.ws",
+        // This DNS seeder is run by p4bpj
+        "dnsseeder-testnet10.kaspa.host"
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 10),
     genesis: TESTNET_GENESIS,
