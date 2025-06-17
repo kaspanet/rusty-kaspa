@@ -3421,13 +3421,13 @@ name = "kaspa-wallet-grpc-server"
 version = "1.0.1"
 dependencies = [
  "futures-util",
+ "kaspa-addresses",
+ "kaspa-consensus-core",
  "kaspa-rpc-core",
  "kaspa-wallet-core",
  "kaspa-wallet-grpc-core",
- "prost",
  "tokio",
  "tonic",
- "workflow-core",
 ]
 
 [[package]]

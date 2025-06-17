@@ -1,10 +1,9 @@
 use crate::kaspawalletd::{Outpoint, ScriptPublicKey, UtxoEntry, UtxosByAddressesEntry};
 use crate::protoserialization;
-use crate::protoserialization::{PartiallySignedInput, PartiallySignedTransaction, TransactionMessage, TransactionOutput};
 use kaspa_bip32::secp256k1::PublicKey;
 use kaspa_bip32::{DerivationPath, Error, ExtendedKey, ExtendedPublicKey};
 use kaspa_rpc_core::{
-    RpcScriptPublicKey, RpcScriptVec, RpcSubnetworkId, RpcTransaction, RpcTransactionInput, RpcTransactionOutpoint,
+    RpcScriptPublicKey, RpcScriptVec, RpcSubnetworkId, RpcTransaction, RpcTransactionId, RpcTransactionInput, RpcTransactionOutpoint,
     RpcTransactionOutput,
 };
 use kaspa_txscript::script_builder::ScriptBuilder;
@@ -37,7 +36,7 @@ pub fn deserialize_txs(txs: Vec<Vec<u8>>, is_domain: bool, ecdsa: bool) -> Resul
 /// # Returns
 /// * `Result<RpcTransaction, Status>` - Deserialized transaction or error status
 fn deserialize_domain_tx(tx: &[u8]) -> Result<RpcTransaction, Status> {
-    let tx = TransactionMessage::decode(tx).map_err(|err| Status::invalid_argument(err.to_string()))?;
+    let tx = protoserialization::TransactionMessage::decode(tx).map_err(|err| Status::invalid_argument(err.to_string()))?;
     RpcTransaction::try_from(tx)
 }
 
@@ -48,15 +47,18 @@ fn deserialize_domain_tx(tx: &[u8]) -> Result<RpcTransaction, Status> {
 ///
 /// # Returns
 /// * `Result<RpcTransaction, Status>` - Deserialized transaction or error status
-fn extract_tx(tx: &[u8], ecdsa: bool) -> Result<RpcTransaction, Status> {
-    let tx = PartiallySignedTransaction::decode(tx).map_err(|err| Status::invalid_argument(err.to_string()))?;
+pub fn extract_tx(tx: &[u8], ecdsa: bool) -> Result<RpcTransaction, Status> {
+    let tx = protoserialization::PartiallySignedTransaction::decode(tx).map_err(|err| Status::invalid_argument(err.to_string()))?;
     let tx_message = extract_tx_deserialized(tx, ecdsa).map_err(|err| Status::invalid_argument(err.to_string()))?;
     RpcTransaction::try_from(tx_message)
 }
 
 /// Extracts and processes a partially signed transaction into a regular transaction message.
 /// Handles both single-signature and multi-signature inputs, constructing appropriate signature scripts.
-fn extract_tx_deserialized(partially_signed_tx: PartiallySignedTransaction, ecdsa: bool) -> Result<TransactionMessage, Status> {
+fn extract_tx_deserialized(
+    partially_signed_tx: protoserialization::PartiallySignedTransaction,
+    ecdsa: bool,
+) -> Result<protoserialization::TransactionMessage, Status> {
     let Some(mut tx) = partially_signed_tx.tx else { return Err(Status::invalid_argument("missing transaction")) };
     if partially_signed_tx.partially_signed_inputs.len() > tx.inputs.len() {
         return Err(Status::invalid_argument("unbalanced inputs"));
@@ -93,7 +95,11 @@ fn extract_tx_deserialized(partially_signed_tx: PartiallySignedTransaction, ecds
 
 /// Generates a multi-signature redeem script for a partially signed input.
 /// Supports both ECDSA and Schnorr signature schemes based on the ecdsa parameter.
-fn partially_signed_input_multisig_redeem_script(input: &PartiallySignedInput, ecdsa: bool, path: &str) -> Result<Vec<u8>, Status> {
+fn partially_signed_input_multisig_redeem_script(
+    input: &protoserialization::PartiallySignedInput,
+    ecdsa: bool,
+    path: &str,
+) -> Result<Vec<u8>, Status> {
     let extended_pub_keys: &[ExtendedPublicKey<PublicKey>] = &input
         .pub_key_signature_pairs
         .iter()
@@ -163,12 +169,12 @@ impl From<UtxoEntryWrapper> for UtxosByAddressesEntry {
     }
 }
 
-impl TryFrom<TransactionMessage> for RpcTransaction {
+impl TryFrom<protoserialization::TransactionMessage> for RpcTransaction {
     type Error = Status;
 
     fn try_from(
         // protoserialization::TransactionMessage { version, inputs, outputs, lock_time, subnetwork_id, gas, payload }: protoserialization::TransactionMessage,
-        value: TransactionMessage,
+        value: protoserialization::TransactionMessage,
     ) -> Result<Self, Self::Error> {
         let version: u16 = value.version.try_into().map_err(|e: TryFromIntError| Status::invalid_argument(e.to_string()))?;
         let inputs: Result<Vec<RpcTransactionInput>, Status> = value
@@ -215,10 +221,10 @@ impl TryFrom<protoserialization::TransactionInput> for RpcTransactionInput {
     }
 }
 
-impl TryFrom<TransactionOutput> for RpcTransactionOutput {
+impl TryFrom<protoserialization::TransactionOutput> for RpcTransactionOutput {
     type Error = Status;
 
-    fn try_from(value: TransactionOutput) -> Result<Self, Self::Error> {
+    fn try_from(value: protoserialization::TransactionOutput) -> Result<Self, Self::Error> {
         Ok(RpcTransactionOutput {
             value: value.value,
             script_public_key: value.script_public_key.ok_or(Status::invalid_argument("missing script public key"))?.try_into()?,
@@ -239,10 +245,76 @@ impl TryFrom<protoserialization::ScriptPublicKey> for RpcScriptPublicKey {
 impl TryFrom<protoserialization::Outpoint> for RpcTransactionOutpoint {
     type Error = Status;
 
-    fn try_from(
-        _: protoserialization::Outpoint, /*protoserialization::Outpoint{ transaction_id, index }: protoserialization::Outpoint*/
-    ) -> Result<Self, Self::Error> {
-        todo!()
-        // Ok(RpcTransactionOutpoint { transaction_id: Default::default(), index: 0 })
+    fn try_from(protoserialization::Outpoint { transaction_id, index }: protoserialization::Outpoint) -> Result<Self, Self::Error> {
+        Ok(RpcTransactionOutpoint {
+            transaction_id: RpcTransactionId::try_from_slice(
+                transaction_id.ok_or(Status::invalid_argument("Outppoint is missing"))?.bytes.as_slice(),
+            )
+            .map_err(|err| Status::invalid_argument(err.to_string()))?,
+            index,
+        })
+    }
+}
+
+impl protoserialization::PartiallySignedTransaction {
+    pub fn from_unsigned(value: RpcTransaction) -> Self {
+        protoserialization::PartiallySignedTransaction {
+            partially_signed_inputs: vec![],
+            tx: Some(protoserialization::TransactionMessage::from(value)),
+        }
+    }
+}
+
+impl From<RpcTransaction> for protoserialization::TransactionMessage {
+    fn from(value: RpcTransaction) -> Self {
+        protoserialization::TransactionMessage {
+            version: value.version as u32,
+            inputs: value.inputs.into_iter().map(RpcTransactionInput::into).collect(),
+            lock_time: value.lock_time,
+            gas: value.gas,
+            payload: value.payload,
+
+            outputs: value.outputs.into_iter().map(RpcTransactionOutput::into).collect(),
+            subnetwork_id: Some(value.subnetwork_id.into()),
+        }
+    }
+}
+
+impl From<RpcTransactionInput> for protoserialization::TransactionInput {
+    fn from(value: RpcTransactionInput) -> Self {
+        Self {
+            signature_script: value.signature_script,
+            sequence: value.sequence,
+            sig_op_count: value.sig_op_count as u32,
+            previous_outpoint: Some(value.previous_outpoint.into()),
+        }
+    }
+}
+
+impl From<RpcTransactionOutpoint> for protoserialization::Outpoint {
+    fn from(value: RpcTransactionOutpoint) -> Self {
+        Self {
+            transaction_id: Some(protoserialization::TransactionId { bytes: value.transaction_id.as_bytes().to_vec() }),
+            index: value.index,
+        }
+    }
+}
+
+impl From<RpcTransactionOutput> for protoserialization::TransactionOutput {
+    fn from(value: RpcTransactionOutput) -> Self {
+        Self { value: value.value, script_public_key: Some(value.script_public_key.into()) }
+    }
+}
+
+impl From<RpcScriptPublicKey> for protoserialization::ScriptPublicKey {
+    fn from(value: RpcScriptPublicKey) -> Self {
+        Self { script: value.script().to_vec(), version: value.version as u32 }
+    }
+}
+
+impl From<RpcSubnetworkId> for protoserialization::SubnetworkId {
+    fn from(value: RpcSubnetworkId) -> Self {
+        let bts: &[u8] = value.as_ref();
+        Self { bytes: bts.to_vec() }
     }
 }
