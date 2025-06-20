@@ -41,7 +41,7 @@ use crate::{
 use super::PruningProofManager;
 
 impl PruningProofManager {
-    pub fn apply_proof(&self, mut proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
+    pub fn apply_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
         /* Following validation of a pruning proof, various consensus storages must be updated */
 
         let pruning_point_header = proof[0].last().unwrap().clone();
@@ -51,9 +51,9 @@ impl PruningProofManager {
         let proof_sets = (0..=self.max_block_level)
             .map(|level| BlockHashSet::from_iter(proof[level as usize].iter().map(|header| header.hash)))
             .collect_vec();
-
-        //calculate ghostdag data for each block in the trusted set
-        // expand the proof with the hashes of trusted set
+        let mut expanded_proof = proof; //rename for clarity
+                                        //calculate ghostdag data for each block in the trusted set
+                                        // expand the proof with the hashes of trusted set
         let mut trusted_gd_map: BlockHashMap<GhostdagData> = BlockHashMap::new();
         for tb in trusted_set.iter() {
             trusted_gd_map.insert(tb.block.hash(), tb.ghostdag.clone().into());
@@ -65,28 +65,28 @@ impl PruningProofManager {
                     return;
                 }
                 // otherwise, add this block to the proof data
-                proof[current_proof_level as usize].push(tb.block.header.clone());
+                expanded_proof[current_proof_level as usize].push(tb.block.header.clone());
             });
         }
         //topologically sort every level in the proof
-        proof.iter_mut().for_each(|level_proof| {
+        expanded_proof.iter_mut().for_each(|level_proof| {
             level_proof.sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
         });
 
-        self.populate_reachability_and_headers(&proof);
+        self.populate_reachability_and_headers(&expanded_proof);
 
         //sanity check
         {
             let reachability_read = self.reachability_store.read();
             for tb in trusted_set.iter() {
-                // Header-only trusted blocks are expected to be in pruning point past
-                if tb.block.is_header_only() && !reachability_read.is_dag_ancestor_of(tb.block.hash(), pruning_point) {
+                // A trusted block not in the past of the pruning point is in its anticone and thus must have a body
+                if !reachability_read.is_dag_ancestor_of(tb.block.hash(), pruning_point) && tb.block.is_header_only() {
                     return Err(PruningImportError::PruningPointPastMissingReachability(tb.block.hash()));
                 }
             }
         }
         //populate ghostdag_store and relation store (on a per level basis) for every block in the proof
-        for (level, headers) in proof.iter().enumerate() {
+        for (level, headers) in expanded_proof.iter().enumerate() {
             trace!("Applying level {} from the pruning point proof", level);
             /* we are only interested in those level ancestors that belong to the pruning proof at that level,
             so other level parents are filtered out
@@ -108,7 +108,6 @@ impl PruningProofManager {
                 );
 
                 self.relations_stores.write()[level].insert(header.hash, parents.clone()).unwrap();
-
                 if level == 0 {
                     let gd = if let Some(gd) = trusted_gd_map.get(&header.hash) {
                         gd.clone()

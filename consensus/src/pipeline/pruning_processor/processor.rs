@@ -19,6 +19,7 @@ use crate::{
             statuses::StatusesStoreReader,
             tips::{TipsStore, TipsStoreReader},
             utxo_diffs::UtxoDiffsStoreReader,
+            virtual_state::VirtualState,
         },
     },
     processes::{pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations},
@@ -39,7 +40,7 @@ use kaspa_core::{debug, info, trace, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
-use kaspa_utils::iter::IterExtensions;
+use kaspa_utils::{arc::ArcExtensions, iter::IterExtensions};
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
@@ -648,5 +649,75 @@ impl PruningProcessor {
             built_data.ghostdag_blocks.iter().map(|gd| gd.hash).collect::<BlockHashSet>()
         );
         info!("Trusted data was rebuilt successfully following pruning");
+    }
+    pub fn intrusive_pruning_point_update(&self, new_pruning_point: Hash) {
+        let finality_depth = self.config.finality_depth().after();
+        let mut batch = WriteBatch::default();
+        //populate past pruning points and samples:
+        // as there is a period in the dag which is header only
+        //pruning_samples have not been updated, we hence update them manually
+        let mut missing_pruning_points = vec![];
+        let pruning_point_read = self.pruning_point_store.upgradable_read();
+        let old_pruning_info = pruning_point_read.get().unwrap();
+
+        let old_pruning_point = old_pruning_info.pruning_point;
+        let old_pruning_point_bscore = self.headers_store.get_blue_score(old_pruning_point).unwrap();
+        let new_pruning_point_bscore = self.headers_store.get_blue_score(new_pruning_point).unwrap();
+        let target_bscore = (old_pruning_point_bscore / finality_depth + 1) * (finality_depth);
+        let mut sample = old_pruning_point;
+        let mut curr_bscore = new_pruning_point_bscore;
+        //TODO: inefficinet, try incorporating binary search type implementation
+        // Alternatively: could perhaps just request past pruning points from syncer and verify their validness instead of inferring them.
+        let mut iter = self.reachability_service.backward_chain_iterator(new_pruning_point, old_pruning_point, false);
+        while curr_bscore > target_bscore {
+            let old_sample = sample;
+            sample = iter
+                .find(|&hash| {
+                    self.pruning_point_manager.is_pruning_sample(
+                        self.headers_store.get_blue_score(hash).unwrap(),
+                        curr_bscore,
+                        finality_depth,
+                    )
+                })
+                .unwrap();
+            if self.past_pruning_points().contains(&sample) {
+                // We already know this point
+                break;
+            }
+            missing_pruning_points.insert(0, sample);
+            self.pruning_samples_store.insert_batch(&mut batch, old_sample, sample).unwrap();
+            curr_bscore = self.headers_store.get_blue_score(sample).unwrap();
+        }
+        let retention_period_root = pruning_point_read.retention_period_root().unwrap();
+
+        // Update past pruning points and pruning point stores
+        let mut batch = WriteBatch::default();
+        let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
+        for (i, past_pp) in missing_pruning_points.iter().copied().enumerate() {
+            self.past_pruning_points_store.insert_batch(&mut batch, old_pruning_info.index + i as u64 + 1, past_pp).unwrap();
+        }
+        let new_pp_index = old_pruning_info.index + missing_pruning_points.len() as u64;
+        pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pruning_point, new_pp_index).unwrap();
+
+        // For archival nodes, keep the retention root in place
+        if !self.config.is_archival {
+            let adjusted_retention_period_root = self.advance_retention_period_root(retention_period_root, new_pruning_point);
+            pruning_point_write.set_retention_period_root(&mut batch, adjusted_retention_period_root).unwrap();
+        }
+        //update virtual state based to the new pruning point
+        // updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
+        let virtual_parents = vec![new_pruning_point];
+        let virtual_state = Arc::new(VirtualState {
+            parents: virtual_parents.clone(),
+            ghostdag_data: self.ghostdag_store.get_data(new_pruning_point).unwrap().unwrap_or_clone(),
+            ..VirtualState::default()
+        });
+        self.virtual_stores.write().state.set_batch(&mut batch, virtual_state).unwrap();
+        // remove old body tips and insert pruning point as the current tip
+        self.body_tips_store.write().delete_all_tips(&mut batch).unwrap();
+        self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
+        // update selected_chain
+        self.selected_chain_store.write().init_with_pruning_point(&mut batch, new_pruning_point).unwrap();
+        self.db.write(batch).unwrap();
     }
 }

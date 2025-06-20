@@ -1057,7 +1057,17 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(high)?;
         Ok(self.services.sync_manager.get_missing_block_body_hashes(high)?)
     }
-
+    fn get_disembodied_trusted_headers(&self) -> ConsensusResult<Vec<Arc<Header>>> {
+        // since the pruning point anticone is  cached, this action can be assumed to either be fast or take place only once.
+        let trusted_data = self.get_pruning_point_anticone_and_trusted_data()?;
+        let mut disembodied_headers = vec![];
+        for &hash in trusted_data.anticone.iter() {
+            if !self.get_block_status(hash).unwrap().has_block_body() {
+                disembodied_headers.push(self.get_header(hash)?);
+            }
+        }
+        Ok(disembodied_headers)
+    }
     fn pruning_point(&self) -> Hash {
         self.pruning_point_store.read().pruning_point().unwrap()
     }
@@ -1156,6 +1166,14 @@ impl ConsensusApi for Consensus {
             );
         }
         false
+    }
+    fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, headers_tip: Hash) -> ConsensusResult<()> {
+        /*The new pruning point must be an ancestor of the header tip, if it is not return an error */
+        if !self.services.reachability_service.is_chain_ancestor_of(new_pruning_point, headers_tip) {
+            return Err(ConsensusError::General("pruning point is inconsistent with known headers"));
+        }
+        self.pruning_processor.intrusive_pruning_point_update(new_pruning_point);
+        Ok(())
     }
     fn set_utxo_sync_flag(&self, set_val: bool) {
         let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
