@@ -1226,6 +1226,9 @@ impl ConsensusApi for Consensus {
         self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
         // update selected_chain
         self.selected_chain_store.write().init_with_pruning_point(&mut batch, new_pruning_point).unwrap();
+        // it is important to set this flag to false before writing the batch, in case the node crashes suddenly before syncing of new utxo starts
+        // TODO: possibly  add batch functionality to function
+        self.set_utxo_sync_flag(false); 
         self.db.write(batch).unwrap();
         drop(pruning_point_write);
 

@@ -43,13 +43,10 @@ use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
-    collections::{hash_map::Entry::Vacant, VecDeque},
-    ops::Deref,
-    sync::{
+    collections::{hash_map::Entry::Vacant, VecDeque}, ops::Deref, sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
-    },
-    time::{Duration, Instant},
+    }, thread, time::{Duration, Instant}
 };
 
 pub enum PruningProcessingMessage {
@@ -138,7 +135,6 @@ impl PruningProcessor {
         let retention_period_root = pruning_point_read.retention_period_root().unwrap();
         let pruning_utxoset_position = self.pruning_utxoset_stores.read().utxoset_position().unwrap();
         drop(pruning_point_read);
-
         debug!(
             "[PRUNING PROCESSOR] recovery check: current pruning point: {}, retention checkpoint: {:?}, pruning utxoset position: {:?}",
             pruning_point, retention_checkpoint, pruning_utxoset_position
@@ -168,6 +164,15 @@ impl PruningProcessor {
     }
 
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
+        //TODO: this is probably a very wrong way to do things
+        while {
+            let read_guard = self.pruning_utxoset_stores.read();
+            let should_continue = !read_guard.sync_flag().unwrap_or(false);
+            drop(read_guard); // release the read lock before yielding
+            should_continue
+        } {
+            thread::yield_now(); // allow other threads to run
+        }
         let pruning_point_read = self.pruning_point_store.upgradable_read();
         let current_pruning_info = pruning_point_read.get().unwrap();
         let (new_pruning_points, new_candidate) = self.pruning_point_manager.next_pruning_points(

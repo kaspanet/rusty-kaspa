@@ -593,7 +593,6 @@ impl IbdFlow {
     ) -> Result<(), ProtocolError> {
         // A  better solution could be to create a copy of the old utxo state rather than delete it.
         consensus.async_clear_pruning_utxo_set().await; // this deletes the old pruning utxoset and also sets the pruning utxo as invalidated
-        self.ctx.on_pruning_point_utxoset_override();
         /* Following IBD catchup a new pruning point is designated and finalized in consensus. Blocks from its anticone (including itself)
         have undergone normal header verification, but contain no body yet. Processing of new blocks in the pruning point's future cannot proceed
         since these blocks' parents are missing block data.
