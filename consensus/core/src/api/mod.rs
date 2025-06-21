@@ -370,7 +370,7 @@ pub trait ConsensusApi: Send + Sync {
     fn finality_point(&self) -> Hash {
         unimplemented!()
     }
-    fn clear_utxo_set(&self) {
+    fn clear_pruning_utxo_set(&self) {
         unimplemented!()
     }
     fn set_utxo_sync_flag(&self, set_val: bool) {
@@ -382,7 +382,7 @@ pub trait ConsensusApi: Send + Sync {
     fn is_pruning_sample(&self, candidate_hash: Hash) -> bool {
         unimplemented!()
     }
-    fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, headers_tip: Hash) -> ConsensusResult<()> {
+    fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
         unimplemented!()
     }
 }

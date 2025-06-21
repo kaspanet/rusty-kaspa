@@ -307,42 +307,32 @@ impl IbdFlow {
         /* The syncer pruning point is "finalized" into consensus if
         1) it satisfies that Min(P| P.B>Nf) for some integer N (i.e. it is a valid pruning point based on score)
         2)there are sufficient headers built on top of it, specifically, a header is validated whose blue_score is greater than P.B+p
-        3) Additionally, the syncer pruning point must be on the selected chain from that header.
+        3) Additionally, the syncer pruning point must be on the selected chain from that header, and any pruning points declared
+        on headers on its path must be consistent with those already known
         */
 
         // .1 was already checked during determine_ibd
         let syncer_pp = negotiation_output.syncer_pruning_point.unwrap();
         let syncer_pp_bscore = consensus.async_get_header(syncer_pp).await?.blue_score;
-        let mut selected_header = consensus.async_get_headers_selected_tip().await;
-        let mut selected_header_bscore = consensus.async_get_header(selected_header).await?.blue_score;
 
-        //.2 verify  pruning_depth on top of syncer_pp
+        //.2 verify pruning_depth on top of syncer_pp
+        self.sync_headers(
+            consensus,
+            negotiation_output.syncer_virtual_selected_parent,
+            negotiation_output.highest_known_syncer_chain_hash.unwrap(),
+            relay_block,
+        )
+        .await?;
+        let syncer_virtual_bscore = consensus.async_get_header(negotiation_output.syncer_virtual_selected_parent).await?.blue_score;
+        //check following the sync.
         //[Crescendo]: Remove after()
-        if selected_header_bscore < syncer_pp_bscore + self.ctx.config.pruning_depth().after() {
-            // sync headers to confirm sufficient depth above the declared pruning point.
-            //TODO: Allow a type of sync headers which will only send over enough headers above the new pruning point
-            self.sync_headers(
-                consensus,
-                negotiation_output.syncer_virtual_selected_parent,
-                negotiation_output.highest_known_syncer_chain_hash.unwrap(),
-                relay_block,
-            )
-            .await?;
-            selected_header = consensus.async_get_headers_selected_tip().await;
-
-            selected_header_bscore = consensus.async_get_header(selected_header).await?.blue_score;
-
-            //check again following the sync.
-            //[Crescendo]: Remove after()
-            if selected_header_bscore < syncer_pp_bscore + self.ctx.config.pruning_depth().after() {
-                return Err(ProtocolError::Other("Declared pruning point is not of sufficient depth"));
-            }
+        if syncer_virtual_bscore < syncer_pp_bscore + self.ctx.config.pruning_depth().after() {
+            return Err(ProtocolError::Other("Declared pruning point is not of sufficient depth"));
         }
-        /* .3 This function's main effect is to update the pruning point and apply necessary changes to the various
-        stores accordingly. Before doing all that though, it confirms the selected header
-        is indeed a chain decendant of syncer_pp*/
 
-        consensus.async_intrusive_pruning_point_update(syncer_pp, selected_header).await?;
+        /* This function's main effect is to update the pruning point and apply necessary changes to the various
+        stores accordingly. Before doing all that though, it confirms .3*/
+        consensus.async_intrusive_pruning_point_update(syncer_pp, negotiation_output.syncer_virtual_selected_parent).await?;
         //Sanity checks
         if self.ctx.config.enable_sanity_checks {
             let proof_metadata = PruningProofMetadata::new(relay_block.header.blue_work);
@@ -602,15 +592,16 @@ impl IbdFlow {
         check_trusted_bodies: bool,
     ) -> Result<(), ProtocolError> {
         // A  better solution could be to create a copy of the old utxo state rather than delete it.
-        consensus.async_clear_utxo_set().await; // this deletes the old pruning utxoset and also sets the pruning utxo as invalidated
-                                                /* Following IBD catchup a new pruning point is designated and finalized in consensus. Blocks from its anticone (including itself)
-                                                have undergone normal header verification, but contain no body yet. Processing of new blocks in the pruning point's future cannot proceed
-                                                since these blocks' parents are missing block data.
-                                                Hence we explicitely process bodies of the yet disembodied anticone blocks as trusted blocks
-                                                Notice that this is degenerate following sync_with_headers_proof, and is hence skipped, but not necessarily after sync_headers -
-                                                as it might sync following a previous pruning_catch_up that crashed before this stage concluded
-                                                */
-        /*TODO (relaxed) Possible optimization: create a distinct sync flag just for the trusted bodies
+        consensus.async_clear_pruning_utxo_set().await; // this deletes the old pruning utxoset and also sets the pruning utxo as invalidated
+        self.ctx.on_pruning_point_utxoset_override();
+        /* Following IBD catchup a new pruning point is designated and finalized in consensus. Blocks from its anticone (including itself)
+        have undergone normal header verification, but contain no body yet. Processing of new blocks in the pruning point's future cannot proceed
+        since these blocks' parents are missing block data.
+        Hence we explicitely process bodies of the yet disembodied anticone blocks as trusted blocks
+        Notice that this is degenerate following sync_with_headers_proof, and is hence skipped, but not necessarily after sync_headers -
+        as it might sync following a previous pruning_catch_up that crashed before this stage concluded
+        */
+        /*TODO (relaxed) Possible optimization: create a distinct sync flag just for the trusted bodies.
         does not appear vital at the moment since the anticone is usually cached */
         if check_trusted_bodies {
             self.sync_missing_trusted_bodies(consensus).await?;

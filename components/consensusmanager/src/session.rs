@@ -458,8 +458,8 @@ impl ConsensusSessionOwned {
     pub async fn async_finality_point(&self) -> Hash {
         self.clone().spawn_blocking(move |c| c.finality_point()).await
     }
-    pub async fn async_clear_utxo_set(&self) {
-        self.clone().spawn_blocking(move |c| c.clear_utxo_set()).await
+    pub async fn async_clear_pruning_utxo_set(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_pruning_utxo_set()).await
     }
     pub async fn async_is_utxo_validated(&self) -> bool {
         self.clone().spawn_blocking(move |c| c.is_utxo_validated()).await
@@ -473,8 +473,8 @@ impl ConsensusSessionOwned {
     pub async fn async_is_pruning_sample(&self, candidate_hash: Hash) -> bool {
         self.clone().spawn_blocking(move |c| c.is_pruning_sample(candidate_hash)).await
     }
-    pub async fn async_intrusive_pruning_point_update(&self, new_pruning_point: Hash, headers_tip: Hash) -> ConsensusResult<()> {
-        self.clone().spawn_blocking(move |c| c.intrusive_pruning_point_update(new_pruning_point, headers_tip)).await
+    pub async fn async_intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
+        self.clone().spawn_blocking(move |c| c.intrusive_pruning_point_update(new_pruning_point, syncer_sink)).await
     }
 }
 

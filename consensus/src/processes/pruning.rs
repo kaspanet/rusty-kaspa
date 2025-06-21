@@ -485,23 +485,12 @@ impl<
         self.is_pruning_point_in_pruning_depth(tip_bs, pp_candidate, pruning_depth)
     }
 
-    pub fn are_pruning_points_in_valid_chain(&self, pruning_info: PruningPointInfo, syncer_sink: Hash) -> PruningImportResult<()> {
-        // We want to validate that the past pruning points form a chain to genesis. Since
-        // each pruning point's header doesn't point to the previous pruning point, but to
-        // the pruning point from its POV, we can't just traverse from one pruning point to
-        // the next one by merely relying on the current pruning point header, but instead
-        // we rely on the fact that each pruning point is pointed by another known block or
-        // pruning point.
-        // So in the first stage we go over the selected chain and add to the queue of expected
-        // pruning points all the pruning points from the POV of some chain block. In the second
-        // stage we go over the past pruning points from recent to older, check that it's the head
-        // of the queue (by popping the queue), and add its header pruning point to the queue since
-        // we expect to see it later on the list.
-        // The first stage is important because the most recent pruning point is pointing to a few
-        // pruning points before, so the first few pruning points on the list won't be pointed by
-        // any other pruning point in the list, so we are compelled to check if it's referenced by
-        // the selected chain.
-        let mut expected_pps_queue = VecDeque::new();
+    pub fn pruning_points_on_path_to_syncer_sink(
+        &self,
+        pruning_info: PruningPointInfo,
+        syncer_sink: Hash,
+    ) -> PruningImportResult<VecDeque<Hash>> {
+        let mut pps_on_path = VecDeque::new();
         for current in self.reachability_service.forward_chain_iterator(pruning_info.pruning_point, syncer_sink, true).skip(1) {
             let current_header = self.headers_store.get_header(current).unwrap();
             // Post-crescendo: expected header pruning point is no longer part of header validity, but we want to make sure
@@ -517,16 +506,37 @@ impl<
                Going up the chain from the pruning point to the sink. The goal is to exit this loop with a queue [P(0), P(-1), P(-2), ..., P(-n)]
                where P(0) is the current pruning point, P(-1) is the point before it and P(-n) is the pruning point of P(0). That is,
                ceiling(P/F) = n (where n is usually 3).
+               k denotes
 
                Let C be the current block's pruning point. Push to the front of the queue if:
                    1. the queue is empty; OR
                    2. the front of the queue is different than C; AND
                    3. the front of the queue is different than P(0) (if it is P(0), we already filled the queue with what we need)
             */
-            if expected_pps_queue.front().is_none_or(|&h| h != current_header.pruning_point && h != pruning_info.pruning_point) {
-                expected_pps_queue.push_front(current_header.pruning_point);
+            if pps_on_path.front().is_none_or(|&h| h != current_header.pruning_point && h != pruning_info.pruning_point) {
+                pps_on_path.push_front(current_header.pruning_point);
             }
         }
+        Ok(pps_on_path)
+    }
+
+    pub fn are_pruning_points_in_valid_chain(&self, pruning_info: PruningPointInfo, syncer_sink: Hash) -> PruningImportResult<()> {
+        // We want to validate that the past pruning points form a chain to genesis. Since
+        // each pruning point's header doesn't point to the previous pruning point, but to
+        // the pruning point from its POV, we can't just traverse from one pruning point to
+        // the next one by merely relying on the current pruning point header, but instead
+        // we rely on the fact that each pruning point is pointed by another known block or
+        // pruning point.
+        // So in the first stage we go over the selected chain and add to the queue of expected
+        // pruning points all the pruning points from the POV of some chain block, and update pruning smples.
+        // In the second stage we go over the past pruning points from recent to older, check that it's the head
+        // of the queue (by popping the queue), and add its header pruning point to the queue since
+        // we expect to see it later on the list.
+        // The first stage is important because the most recent pruning point is pointing to a few
+        // pruning points before, so the first few pruning points on the list won't be pointed by
+        // any other pruning point in the list, so we are compelled to check if it's referenced by
+        // the selected chain.
+        let mut expected_pps_queue = self.pruning_points_on_path_to_syncer_sink(pruning_info, syncer_sink)?;
 
         for idx in (0..=pruning_info.index).rev() {
             let pp = self.past_pruning_points_store.get(idx).unwrap();
