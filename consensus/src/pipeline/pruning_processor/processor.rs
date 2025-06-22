@@ -46,7 +46,7 @@ use std::{
     collections::{hash_map::Entry::Vacant, VecDeque}, ops::Deref, sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
-    }, thread, time::{Duration, Instant}
+    }, time::{Duration, Instant}
 };
 
 pub enum PruningProcessingMessage {
@@ -164,15 +164,6 @@ impl PruningProcessor {
     }
 
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
-        //TODO: this is probably a very wrong way to do things
-        while {
-            let read_guard = self.pruning_utxoset_stores.read();
-            let should_continue = !read_guard.sync_flag().unwrap_or(false);
-            drop(read_guard); // release the read lock before yielding
-            should_continue
-        } {
-            thread::yield_now(); // allow other threads to run
-        }
         let pruning_point_read = self.pruning_point_store.upgradable_read();
         let current_pruning_info = pruning_point_read.get().unwrap();
         let (new_pruning_points, new_candidate) = self.pruning_point_manager.next_pruning_points(
@@ -228,7 +219,8 @@ impl PruningProcessor {
     fn advance_pruning_utxoset(&self, utxoset_position: Hash, new_pruning_point: Hash) -> bool {
         let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
         for chain_block in self.reachability_service.forward_chain_iterator(utxoset_position, new_pruning_point, true).skip(1) {
-            if self.is_consensus_exiting.load(Ordering::Relaxed) {
+            // do not attempt to prune while in the middle of syncing
+            if self.is_consensus_exiting.load(Ordering::Relaxed) || ! pruning_utxoset_write.sync_flag().unwrap_or(false) {
                 return false;
             }
             let utxo_diff = self.utxo_diffs_store.get(chain_block).expect("chain blocks have utxo state");
