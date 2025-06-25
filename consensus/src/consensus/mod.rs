@@ -1064,6 +1064,14 @@ impl ConsensusApi for Consensus {
     }
     fn get_disembodied_trusted_headers(&self) -> ConsensusResult<Vec<Arc<Header>>> {
         let disembodied_hashes = self.pruning_meta_stores.read().get_disembodied_anticone().unwrap_or_default();
+        let pruning_point = self.pruning_point();
+        //sanity check
+        for &h in disembodied_hashes.iter() {
+            if h != pruning_point {
+                assert!(!self.services.reachability_service.is_dag_ancestor_of(h, pruning_point));
+                assert!(!self.services.reachability_service.is_dag_ancestor_of(pruning_point, h));
+            }
+        }
         let ret = disembodied_hashes.iter().map(|&h| self.headers_store.get_header(h).unwrap()).collect_vec();
         Ok(ret)
     }
@@ -1231,7 +1239,9 @@ impl ConsensusApi for Consensus {
         // it is important to set this flag to false together with writing the batch, in case the node crashes suddenly before syncing of new utxo starts
         self.pruning_meta_stores.write().set_utxo_sync_flag(&mut batch, false).unwrap();
         // store the currently bodyless anticone from the POV of the syncer, for trusted body validation at a later stage.
-        let anticone = self.services.dag_traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
+        let mut anticone = self.services.dag_traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
+        // add the pruning point itself which is also missing a body
+        anticone.push(new_pruning_point);
         self.pruning_meta_stores.write().set_disembodied_anticone(&mut batch, anticone).unwrap();
 
         self.db.write(batch).unwrap();

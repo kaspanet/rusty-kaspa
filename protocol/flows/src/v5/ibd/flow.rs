@@ -134,7 +134,6 @@ impl IbdFlow {
                 .await?;
             }
             IbdType::DownloadHeadersProof => {
-                //for the time being no distinction between catch up and a fresh proof
                 drop(session); // Avoid holding the previous consensus throughout the staging IBD
                 let staging = self.ctx.consensus_manager.new_staging_consensus();
                 match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_virtual_selected_parent, &relay_block).await {
@@ -182,7 +181,6 @@ impl IbdFlow {
         as it might sync following a previous pruning_catch_up that crashed before this stage concluded
         */
         if session.async_is_anticone_fully_synced().await {
-            info!("downloading pruning point anticone missing block data");
             self.sync_missing_trusted_bodies(&session).await?;
         }
 
@@ -686,6 +684,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         Ok(())
     }
     async fn sync_missing_trusted_bodies(&mut self, consensus: &ConsensusProxy) -> Result<(), ProtocolError> {
+        info!("downloading pruning point anticone missing block data");
         let diesembodied_headers = consensus.async_get_disembodied_trusted_headers().await?;
         let iter = diesembodied_headers.chunks(IBD_BATCH_SIZE);
         for chunk in iter {
