@@ -58,6 +58,8 @@ try_from_no_args!(GetFeeEstimateRequest, { Ok(GetFeeEstimateRequest {}) });
 
 try_from_no_args!(GetCurrentNetworkRequest, { Ok(GetCurrentNetworkRequest {}) });
 
+try_from_no_args!(GetSystemInfoRequest, { Ok(GetSystemInfoRequest {}) });
+
 try_from_args!(dict : AddPeerRequest, { Ok(from_pyobject(dict)?) });
 
 try_from_args!(dict : BanRequest, {

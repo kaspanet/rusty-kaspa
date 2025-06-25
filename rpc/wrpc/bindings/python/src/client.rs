@@ -587,6 +587,7 @@ build_wrpc_python_interface!(
         GetSyncStatus,
         GetFeeEstimate,
         GetCurrentNetwork,
+        GetSystemInfo,
     ],
     [
         AddPeer,
