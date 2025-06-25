@@ -43,10 +43,13 @@ use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
-    collections::{hash_map::Entry::Vacant, VecDeque}, ops::Deref, sync::{
+    collections::{hash_map::Entry::Vacant, VecDeque},
+    ops::Deref,
+    sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
-    }, time::{Duration, Instant}
+    },
+    time::{Duration, Instant},
 };
 
 pub enum PruningProcessingMessage {
@@ -133,7 +136,7 @@ impl PruningProcessor {
         let pruning_point = pruning_point_read.pruning_point().unwrap();
         let retention_checkpoint = pruning_point_read.retention_checkpoint().unwrap();
         let retention_period_root = pruning_point_read.retention_period_root().unwrap();
-        let pruning_utxoset_position = self.pruning_utxoset_stores.read().utxoset_position().unwrap();
+        let pruning_utxoset_position = self.pruning_meta_stores.read().utxoset_position().unwrap();
         drop(pruning_point_read);
         debug!(
             "[PRUNING PROCESSOR] recovery check: current pruning point: {}, retention checkpoint: {:?}, pruning utxoset position: {:?}",
@@ -217,19 +220,22 @@ impl PruningProcessor {
     }
 
     fn advance_pruning_utxoset(&self, utxoset_position: Hash, new_pruning_point: Hash) -> bool {
-        let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
         for chain_block in self.reachability_service.forward_chain_iterator(utxoset_position, new_pruning_point, true).skip(1) {
             // do not attempt to prune while in the middle of syncing
-            if self.is_consensus_exiting.load(Ordering::Relaxed) || ! pruning_utxoset_write.sync_flag().unwrap_or(false) {
+            if self.is_consensus_exiting.load(Ordering::Relaxed)
+                || !pruning_meta_write.utxo_sync_flag().unwrap_or(false)
+                || !pruning_meta_write.is_anticone_fully_synced()
+            {
                 return false;
             }
             let utxo_diff = self.utxo_diffs_store.get(chain_block).expect("chain blocks have utxo state");
             let mut batch = WriteBatch::default();
-            pruning_utxoset_write.utxo_set.write_diff_batch(&mut batch, utxo_diff.as_ref()).unwrap();
-            pruning_utxoset_write.set_utxoset_position(&mut batch, chain_block).unwrap();
+            pruning_meta_write.utxo_set.write_diff_batch(&mut batch, utxo_diff.as_ref()).unwrap();
+            pruning_meta_write.set_utxoset_position(&mut batch, chain_block).unwrap();
             self.db.write(batch).unwrap();
         }
-        drop(pruning_utxoset_write);
+        drop(pruning_meta_write);
 
         if self.config.enable_sanity_checks {
             info!("Performing a sanity check that the new UTXO set has the expected UTXO commitment");
@@ -242,8 +248,8 @@ impl PruningProcessor {
         info!("Verifying the new pruning point UTXO commitment (sanity test)");
         let commitment = self.headers_store.get_header(pruning_point).unwrap().utxo_commitment;
         let mut multiset = MuHash::new();
-        let pruning_utxoset_read = self.pruning_utxoset_stores.read();
-        for (outpoint, entry) in pruning_utxoset_read.utxo_set.iterator().map(|r| r.unwrap()) {
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        for (outpoint, entry) in pruning_meta_read.utxo_set.iterator().map(|r| r.unwrap()) {
             multiset.add_utxo(&outpoint, &entry);
         }
         assert_eq!(multiset.finalize(), commitment, "Updated pruning point utxo set does not match the header utxo commitment");
@@ -465,6 +471,12 @@ impl PruningProcessor {
                         if lower_level == 0 {
                             self.ghostdag_store.delete_batch(&mut batch, current).unwrap_option();
                         }
+                    }
+                    // while we keep headers for keep relation blocks regardless,
+                    // some of those relations blocks may accidentally have a pruning sample stored,
+                    // delete those samples unless the block is a pruning block itself
+                    if !keep_headers.contains(&current) {
+                        self.pruning_samples_store.delete_batch(&mut batch, current).unwrap();
                     }
                 } else {
                     // Count only blocks which get fully pruned including DAG relations

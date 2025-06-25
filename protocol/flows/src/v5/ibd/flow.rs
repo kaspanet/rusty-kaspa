@@ -122,9 +122,8 @@ impl IbdFlow {
                 {
                     info!("utxo set missing, downloading utxo set corresponding  to the pruning point ");
 
-                    self.sync_new_utxo_set(&session, pruning_point, true).await?;
+                    self.sync_new_utxo_set(&session, pruning_point).await?;
                 }
-
                 // once utxo is valid, simply sync missing headers
                 self.sync_headers(
                     &session,
@@ -149,7 +148,7 @@ impl IbdFlow {
                         // This will reobtain the freshly committed staging consensus
                         session = self.ctx.consensus().session().await;
                         // trusted bodies were just now downloaded and validated
-                        self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point.unwrap(), false).await?;
+                        self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point.unwrap()).await?;
                     }
                     Err(e) => {
                         info!("IBD with headers proof from {} was unsuccessful ({})", self.router, e);
@@ -163,7 +162,7 @@ impl IbdFlow {
                 match self.pruning_point_catchup(&session, &negotiation_output, &relay_block).await {
                     Ok(()) => {
                         info!("header stage of pruning catchup from peer {} completed", self.router);
-                        self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point.unwrap(), true).await?;
+                        self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point.unwrap()).await?;
                         //Note that pruning of old data will only occur once virtual has caught up sufficintly far
                     }
 
@@ -173,6 +172,18 @@ impl IbdFlow {
                     }
                 }
             }
+        }
+        /* Following IBD catchup a new pruning point is designated and finalized in consensus. Blocks from its anticone (including itself)
+        have undergone normal header verification, but contain no body yet. Processing of new blocks in the pruning point's future cannot proceed
+        since these blocks' parents are missing block data.
+        Hence we explicitely process bodies of the yet disembodied anticone blocks as trusted blocks
+        Notice that this is degenerate following sync_with_headers_proof
+        but not necessarily so after sync_headers -
+        as it might sync following a previous pruning_catch_up that crashed before this stage concluded
+        */
+        if session.async_is_anticone_fully_synced().await {
+            info!("downloading pruning point anticone missing block data");
+            self.sync_missing_trusted_bodies(&session).await?;
         }
 
         // Sync missing bodies in the past of syncer sink (virtual selected parent)
@@ -331,20 +342,13 @@ impl IbdFlow {
         }
 
         /* This function's main effect is to update the pruning point and apply necessary changes to the various
-        stores accordingly. Before doing all that though, it confirms .3*/
+        stores accordingly. Before doing all that though, it confirms .3 */
         consensus.async_intrusive_pruning_point_update(syncer_pp, negotiation_output.syncer_virtual_selected_parent).await?;
-        //Sanity checks
+        //Sanity check
         if self.ctx.config.enable_sanity_checks {
-            let proof_metadata = PruningProofMetadata::new(relay_block.header.blue_work);
             consensus
                 .clone()
                 .spawn_blocking(move |c| {
-                    let built_proof = c.get_pruning_point_proof();
-                    info!("Validating the locally built proof ");
-                    if let Err(err) = c.validate_pruning_proof(&built_proof, &proof_metadata) {
-                        panic!("Locally built proof failed validation: {}", err);
-                    }
-                    info!("Locally built proof was validated successfully");
                     info!("validating pruning points consistency");
 
                     if let Err(err) = c.validate_pruning_points(syncer_pp) {
@@ -516,6 +520,7 @@ impl IbdFlow {
             // TODO (relaxed): queue and join in batches
             staging.validate_and_insert_trusted_block(tb).virtual_state_task.await?;
         }
+        staging.async_clear_anticone_disembodied_blocks().await;
         info!("Done processing trusted blocks");
         Ok(proof_pruning_point)
     }
@@ -585,26 +590,9 @@ impl IbdFlow {
 
         Ok(())
     }
-    async fn sync_new_utxo_set(
-        &mut self,
-        consensus: &ConsensusProxy,
-        pruning_point: Hash,
-        check_trusted_bodies: bool,
-    ) -> Result<(), ProtocolError> {
-        // A  better solution could be to create a copy of the old utxo state rather than delete it.
+    async fn sync_new_utxo_set(&mut self, consensus: &ConsensusProxy, pruning_point: Hash) -> Result<(), ProtocolError> {
+        // A  better solution could be to create a copy of the old utxo state for some sort of fallback rather than delete it.
         consensus.async_clear_pruning_utxo_set().await; // this deletes the old pruning utxoset and also sets the pruning utxo as invalidated
-        /* Following IBD catchup a new pruning point is designated and finalized in consensus. Blocks from its anticone (including itself)
-        have undergone normal header verification, but contain no body yet. Processing of new blocks in the pruning point's future cannot proceed
-        since these blocks' parents are missing block data.
-        Hence we explicitely process bodies of the yet disembodied anticone blocks as trusted blocks
-        Notice that this is degenerate following sync_with_headers_proof, and is hence skipped, but not necessarily after sync_headers -
-        as it might sync following a previous pruning_catch_up that crashed before this stage concluded
-        */
-        /*TODO (relaxed) Possible optimization: create a distinct sync flag just for the trusted bodies.
-        does not appear vital at the moment since the anticone is usually cached */
-        if check_trusted_bodies {
-            self.sync_missing_trusted_bodies(consensus).await?;
-        }
         self.sync_pruning_point_utxoset(consensus, pruning_point).await?;
         consensus.set_utxo_validated().await; //  only if the function has reached here, will the utxo be considered "final"
         self.ctx.on_pruning_point_utxoset_override();
@@ -732,6 +720,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 );
             }
             try_join_all(jobs).await?; //TODO: be more efficient with batching as done below
+            consensus.async_clear_anticone_disembodied_blocks().await;
         }
         Ok(())
     }

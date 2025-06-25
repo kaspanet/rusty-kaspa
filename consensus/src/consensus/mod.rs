@@ -84,6 +84,7 @@ use crossbeam_channel::{
 use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
+use kaspa_core::info;
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -816,10 +817,10 @@ impl ConsensusApi for Consensus {
         if self.pruning_point_store.read().pruning_point().unwrap() != expected_pruning_point {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
-        let pruning_utxoset_read = self.pruning_utxoset_stores.read();
-        let iter = pruning_utxoset_read.utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        let iter = pruning_meta_read.utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
         let utxos = iter.map(|item| item.unwrap()).collect();
-        drop(pruning_utxoset_read);
+        drop(pruning_meta_read);
 
         // We recheck the expected pruning point in case it was switched just before the utxo set read.
         // NOTE: we rely on order of operations by pruning processor. See extended comment therein.
@@ -856,8 +857,8 @@ impl ConsensusApi for Consensus {
     }
 
     fn append_imported_pruning_point_utxos(&self, utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)], current_multiset: &mut MuHash) {
-        let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
-        pruning_utxoset_write.utxo_set.write_many(utxoset_chunk).unwrap();
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        pruning_meta_write.utxo_set.write_many(utxoset_chunk).unwrap();
 
         // Parallelize processing using the context of an existing thread pool.
         let inner_multiset = self.virtual_processor.install(|| {
@@ -876,14 +877,14 @@ impl ConsensusApi for Consensus {
 
     fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         let hst = self.storage.headers_selected_tip_store.read().get().unwrap().hash;
-        let pp_info = self.pruning_point_store.read().get().unwrap();
-        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, hst) {
+        let synced_pp_info = self.pruning_point_store.read().get().unwrap();
+        if !self.services.pruning_point_manager.is_valid_pruning_point(synced_pp_info.pruning_point, hst) {
             return Err(ConsensusError::General("pruning point does not coincide with the synced header selected tip"));
         }
-        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, syncer_virtual_selected_parent) {
+        if !self.services.pruning_point_manager.is_valid_pruning_point(synced_pp_info.pruning_point, syncer_virtual_selected_parent) {
             return Err(ConsensusError::General("pruning point does not coincide with the syncer's sink (virtual selected parent)"));
         }
-        self.services.pruning_point_manager.are_pruning_points_in_valid_chain(pp_info, syncer_virtual_selected_parent).map_err(
+        self.services.pruning_point_manager.are_pruning_points_in_valid_chain(synced_pp_info, syncer_virtual_selected_parent).map_err(
             |e: PruningImportError| ConsensusError::GeneralOwned(format!("past pruning points do not form a valid chain: {}", e)),
         )
     }
@@ -1062,15 +1063,14 @@ impl ConsensusApi for Consensus {
         Ok(self.services.sync_manager.get_missing_block_body_hashes(high)?)
     }
     fn get_disembodied_trusted_headers(&self) -> ConsensusResult<Vec<Arc<Header>>> {
-        // since the pruning point anticone is  cached, this action can be assumed to either be fast or take place only once.
-        let trusted_data = self.get_pruning_point_anticone_and_trusted_data()?;
-        let mut disembodied_headers = vec![];
-        for &hash in trusted_data.anticone.iter() {
-            if !self.get_block_status(hash).unwrap().has_block_body() {
-                disembodied_headers.push(self.get_header(hash)?);
-            }
-        }
-        Ok(disembodied_headers)
+        let disembodied_hashes = self.pruning_meta_stores.read().get_disembodied_anticone().unwrap_or_default();
+        let ret = disembodied_hashes.iter().map(|&h| self.headers_store.get_header(h).unwrap()).collect_vec();
+        Ok(ret)
+    }
+    fn async_clear_anticone_disembodied_blocks(&self) {
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+        pruning_meta_write.set_disembodied_anticone(&mut batch, vec![]).unwrap();
     }
     fn pruning_point(&self) -> Hash {
         self.pruning_point_store.read().pruning_point().unwrap()
@@ -1152,12 +1152,12 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
     }
     fn clear_pruning_utxo_set(&self) {
-        let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
         let mut batch = rocksdb::WriteBatch::default();
 
-        pruning_utxoset_write.set_sync_flag(&mut batch, false).unwrap();
+        pruning_meta_write.set_utxo_sync_flag(&mut batch, false).unwrap();
         self.db.write(batch).unwrap();
-        pruning_utxoset_write.utxo_set.clear().unwrap();
+        pruning_meta_write.utxo_set.clear().unwrap();
     }
     fn is_pruning_sample(&self, candidate_hash: Hash) -> bool {
         if let Ok(candidate_hdr) = self.get_header(candidate_hash) {
@@ -1176,6 +1176,8 @@ impl ConsensusApi for Consensus {
         if !self.services.reachability_service.is_chain_ancestor_of(new_pruning_point, syncer_sink) {
             return Err(ConsensusError::General(" new pruning point is not in the past of syncer sink"));
         }
+        info!("Setting {new_pruning_point} as the pruning point");
+
         let pruning_point_read = self.pruning_point_store.upgradable_read();
         let retention_period_root = pruning_point_read.retention_period_root().unwrap();
 
@@ -1196,8 +1198,8 @@ impl ConsensusApi for Consensus {
         let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
         for (i, &past_pp) in pruning_points_to_add.iter().enumerate() {
             self.past_pruning_points_store.insert_batch(&mut batch, old_pruning_info.index + i as u64 + 1, past_pp).unwrap();
+            // update pruning point, and ignore further excess pruning points on path
             if past_pp == new_pruning_point {
-                // usually this will be the last of the pruning points, but this is not strictly promised
                 let new_pp_index = old_pruning_info.index + i as u64 + 1;
                 pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pruning_point, new_pp_index).unwrap();
                 break;
@@ -1226,24 +1228,29 @@ impl ConsensusApi for Consensus {
         self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
         // update selected_chain
         self.selected_chain_store.write().init_with_pruning_point(&mut batch, new_pruning_point).unwrap();
-        // it is important to set this flag to false before writing the batch, in case the node crashes suddenly before syncing of new utxo starts
-        // TODO: possibly  add batch functionality to function
-        self.set_utxo_sync_flag(false); 
+        // it is important to set this flag to false together with writing the batch, in case the node crashes suddenly before syncing of new utxo starts
+        self.pruning_meta_stores.write().set_utxo_sync_flag(&mut batch, false).unwrap();
+        // store the currently bodyless anticone from the POV of the syncer, for trusted body validation at a later stage.
+        let anticone = self.services.dag_traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
+        self.pruning_meta_stores.write().set_disembodied_anticone(&mut batch, anticone).unwrap();
+
         self.db.write(batch).unwrap();
         drop(pruning_point_write);
-
-        // self.pruning_processor.intrusive_pruning_point_update(new_pruning_point,syncer_sink);
         Ok(())
     }
     fn set_utxo_sync_flag(&self, set_val: bool) {
-        let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
         let mut batch = rocksdb::WriteBatch::default();
 
-        pruning_utxoset_write.set_sync_flag(&mut batch, set_val).unwrap();
+        pruning_meta_write.set_utxo_sync_flag(&mut batch, set_val).unwrap();
         self.db.write(batch).unwrap();
     }
     fn is_utxo_validated(&self) -> bool {
-        let pruning_utxoset_read = self.pruning_utxoset_stores.read();
-        pruning_utxoset_read.sync_flag().unwrap()
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        pruning_meta_read.utxo_sync_flag().unwrap()
+    }
+    fn is_anticone_fully_synced(&self) -> bool {
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        pruning_meta_read.is_anticone_fully_synced()
     }
 }

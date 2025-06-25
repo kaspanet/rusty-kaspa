@@ -335,6 +335,9 @@ pub trait ConsensusApi: Send + Sync {
     fn get_disembodied_trusted_headers(&self) -> ConsensusResult<Vec<Arc<Header>>> {
         unimplemented!()
     }
+    fn async_clear_anticone_disembodied_blocks(&self) {
+        unimplemented!()
+    }
 
     fn pruning_point(&self) -> Hash {
         unimplemented!()
@@ -377,6 +380,9 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
     fn is_utxo_validated(&self) -> bool {
+        unimplemented!()
+    }
+    fn is_anticone_fully_synced(&self) -> bool {
         unimplemented!()
     }
     fn is_pruning_sample(&self, candidate_hash: Hash) -> bool {

@@ -503,24 +503,27 @@ impl<
             // Save so that following blocks can recursively use this value
             self.pruning_samples_store.insert(current, reply.pruning_sample).unwrap_or_exists();
             /*
-               Going up the chain from the pruning point to the sink. The goal is to exit this loop with a queue [P(0), P(-1), P(-2), ..., P(-n)]
-               where P(0) is the current pruning point, P(-1) is the point before it and P(-n) is the pruning point of P(0). That is,
+               Going up the chain from the pruning point to the sink. The goal is to exit this loop with a queue [P(k)...,P(0), P(-1), P(-2), ..., P(-n)]
+               where P(0) is the new pruning point, P(-1) is the point before it and P(-n) is the pruning point of P(0). That is,
                ceiling(P/F) = n (where n is usually 3).
-               k denotes
+               k the number of future pruning points on path to virtual beyond the new, currently synced pruning point
 
                Let C be the current block's pruning point. Push to the front of the queue if:
                    1. the queue is empty; OR
-                   2. the front of the queue is different than C; AND
-                   3. the front of the queue is different than P(0) (if it is P(0), we already filled the queue with what we need)
+                   2. the front of the queue is different than C
             */
-            if pps_on_path.front().is_none_or(|&h| h != current_header.pruning_point && h != pruning_info.pruning_point) {
+            if pps_on_path.front().is_none_or(|&h| h != current_header.pruning_point) {
                 pps_on_path.push_front(current_header.pruning_point);
             }
         }
         Ok(pps_on_path)
     }
 
-    pub fn are_pruning_points_in_valid_chain(&self, pruning_info: PruningPointInfo, syncer_sink: Hash) -> PruningImportResult<()> {
+    pub fn are_pruning_points_in_valid_chain(
+        &self,
+        synced_pruning_info: PruningPointInfo,
+        syncer_sink: Hash,
+    ) -> PruningImportResult<()> {
         // We want to validate that the past pruning points form a chain to genesis. Since
         // each pruning point's header doesn't point to the previous pruning point, but to
         // the pruning point from its POV, we can't just traverse from one pruning point to
@@ -536,9 +539,19 @@ impl<
         // pruning points before, so the first few pruning points on the list won't be pointed by
         // any other pruning point in the list, so we are compelled to check if it's referenced by
         // the selected chain.
-        let mut expected_pps_queue = self.pruning_points_on_path_to_syncer_sink(pruning_info, syncer_sink)?;
+        let mut expected_pps_queue = self.pruning_points_on_path_to_syncer_sink(synced_pruning_info, syncer_sink)?;
+        // remove excess pruning points beyond the pruning_point
+        while let Some(&future_pp) = expected_pps_queue.front() {
+            if future_pp == synced_pruning_info.pruning_point {
+                break;
+            }
+            expected_pps_queue.pop_front();
+        }
+        if expected_pps_queue.is_empty() {
+            return Err(PruningImportError::MissingPointedPruningPoint);
+        }
 
-        for idx in (0..=pruning_info.index).rev() {
+        for idx in (0..=synced_pruning_info.index).rev() {
             let pp = self.past_pruning_points_store.get(idx).unwrap();
             let pp_header = self.headers_store.get_header(pp).unwrap();
             let Some(expected_pp) = expected_pps_queue.pop_front() else {

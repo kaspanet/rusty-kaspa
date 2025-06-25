@@ -422,6 +422,9 @@ impl ConsensusSessionOwned {
     pub async fn async_get_disembodied_trusted_headers(&self) -> ConsensusResult<Vec<Arc<Header>>> {
         self.clone().spawn_blocking(move |c| c.get_disembodied_trusted_headers()).await
     }
+    pub async fn async_clear_anticone_disembodied_blocks(&self) {
+        self.clone().spawn_blocking(move |c| c.async_clear_anticone_disembodied_blocks()).await
+    }
 
     pub async fn async_pruning_point(&self) -> Hash {
         self.clone().spawn_blocking(|c| c.pruning_point()).await
@@ -463,6 +466,9 @@ impl ConsensusSessionOwned {
     }
     pub async fn async_is_utxo_validated(&self) -> bool {
         self.clone().spawn_blocking(move |c| c.is_utxo_validated()).await
+    }
+    pub async fn async_is_anticone_fully_synced(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_anticone_fully_synced()).await
     }
     pub async fn set_utxo_unvalidated(&self) {
         self.clone().spawn_blocking(move |c| c.set_utxo_sync_flag(false)).await
