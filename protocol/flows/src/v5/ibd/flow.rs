@@ -180,7 +180,7 @@ impl IbdFlow {
         but not necessarily so after sync_headers -
         as it might sync following a previous pruning_catch_up that crashed before this stage concluded
         */
-        if ! session.async_is_anticone_fully_synced().await {
+        if !session.async_is_anticone_fully_synced().await {
             self.sync_missing_trusted_bodies(&session).await?;
         }
 
