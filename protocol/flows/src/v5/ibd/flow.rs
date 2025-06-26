@@ -180,7 +180,7 @@ impl IbdFlow {
         but not necessarily so after sync_headers -
         as it might sync following a previous pruning_catch_up that crashed before this stage concluded
         */
-        if session.async_is_anticone_fully_synced().await {
+        if ! session.async_is_anticone_fully_synced().await {
             self.sync_missing_trusted_bodies(&session).await?;
         }
 
@@ -222,8 +222,7 @@ impl IbdFlow {
         if let Some(highest_known_syncer_chain_hash) = highest_known_syncer_chain_hash {
             let pruning_point = consensus.async_pruning_point().await;
             let sink = consensus.async_get_sink().await;
-            //debug prints
-            info!("current sink  is:{}", sink);
+            info!("current sink is:{}", sink);
             info!("current pruning point is:{}", pruning_point);
             if consensus.async_is_chain_ancestor_of(pruning_point, highest_known_syncer_chain_hash).await? {
                 let syncer_pruning_point = syncer_pruning_point.unwrap();
@@ -706,8 +705,8 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 if block.is_header_only() {
                     return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
                 }
-                // Note: it appears to me that sending ghostdag data may be redundant, especially when the headers was already verified
-                // Consider sending empty ghostdag data, simplifying a great deal. I believe the result would be the same
+                // Note: it appears to me that sending ghostdag data may be redundant, especially when the headers were already verified
+                // Consider sending empty ghostdag data, simplifying a great deal. I believe the result would be the same -
                 // a trusted task is sent, however the header is already verified, and hence only the block body will be verified
                 jobs.push(
                     consensus

@@ -50,6 +50,12 @@ impl HandleRelayBlockRequests {
     }
 
     async fn send_sink(&mut self) -> Result<(), ProtocolError> {
+        let session = self.ctx.consensus().unguarded_session();
+        let should_sync = session.async_is_utxo_validated().await || session.async_is_anticone_fully_synced().await;
+        drop(session);
+        if should_sync{
+            return Ok(());
+        }
         let sink = self.ctx.consensus().unguarded_session().async_get_sink().await;
         if sink == self.ctx.config.genesis.hash {
             return Ok(());
