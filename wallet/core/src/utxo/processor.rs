@@ -17,7 +17,7 @@ use kaspa_rpc_core::{
         ops::{RPC_API_REVISION, RPC_API_VERSION},
     },
     message::UtxosChangedNotification,
-    GetServerInfoResponse,
+    GetServerInfoResponse, RpcFeeEstimate,
 };
 use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::{Channel, DuplexChannel, Sender};
@@ -25,9 +25,7 @@ use workflow_core::task::spawn;
 
 use crate::events::Events;
 use crate::result::Result;
-use crate::utxo::{
-    Maturity, OutgoingTransaction, PendingUtxoEntryReference, SyncMonitor, UtxoContext, UtxoEntryId, UtxoEntryReference,
-};
+use crate::utxo::{Maturity, OutgoingTransaction, PendingUtxoEntryReference, SyncMonitor, UtxoContext, UtxoEntryId};
 use crate::wallet::WalletBusMessage;
 use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
@@ -61,6 +59,8 @@ pub struct Inner {
     metrics: Arc<Metrics>,
     metrics_kinds: Mutex<Vec<MetricsUpdateKind>>,
     connection_signaler: Mutex<Option<Sender<std::result::Result<(), String>>>>,
+    fee_rate_task_ctl: DuplexChannel,
+    fee_rate_task_is_running: AtomicBool,
 }
 
 impl Inner {
@@ -91,6 +91,8 @@ impl Inner {
             metrics: Arc::new(Metrics::default()),
             metrics_kinds: Mutex::new(vec![]),
             connection_signaler: Mutex::new(None),
+            fee_rate_task_ctl: DuplexChannel::oneshot(),
+            fee_rate_task_is_running: AtomicBool::new(false),
         }
     }
 }
@@ -394,32 +396,90 @@ impl UtxoProcessor {
         #[allow(clippy::mutable_key_type)]
         let mut updated_contexts: HashSet<UtxoContext> = HashSet::default();
 
+        let added = (*utxos.added).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
+        let mut added = HashMap::group_from(added);
+
         let removed = (*utxos.removed).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
-        let removed = HashMap::group_from(removed);
+        let mut removed = HashMap::group_from(removed);
+
+        // Create separate lists for entries that appear in both added and removed
+        let mut common_added = HashMap::new();
+        //let mut common_removed = HashMap::new();
+
+        // Find common entries and separate them
+        for (address, removed_entries) in removed.clone().into_iter() {
+            if let Some(added_entries) = added.get(&address) {
+                //let mut common_entries_removed = Vec::new();
+                let mut common_entries_added = Vec::new();
+
+                for removed_entry in removed_entries.iter() {
+                    if let Some(added_entry) = added_entries.iter().find(|added_entry| added_entry.outpoint == removed_entry.outpoint)
+                    {
+                        //common_entries_removed.push(removed_entry.clone());
+                        common_entries_added.push(added_entry.clone());
+                    }
+                }
+
+                if !common_entries_added.is_empty() {
+                    //common_removed.insert(address.clone(), common_entries_removed.clone());
+                    common_added.insert(address.clone(), common_entries_added.clone());
+
+                    // Remove common entries from original lists
+                    if let Some(entries) = removed.get_mut(&address) {
+                        entries.retain(|entry| !common_entries_added.iter().any(|common| common.outpoint == entry.outpoint));
+                    }
+                    if let Some(entries) = added.get_mut(&address) {
+                        entries.retain(|entry| !common_entries_added.iter().any(|common| common.outpoint == entry.outpoint));
+                    }
+                }
+            }
+        }
+
+        // Clean up empty entries
+        removed.retain(|_, entries| !entries.is_empty());
+        added.retain(|_, entries| !entries.is_empty());
+
+        // Process remaining removed entries
         for (address, entries) in removed.into_iter() {
             if let Some(utxo_context) = self.address_to_utxo_context(&address) {
                 updated_contexts.insert(utxo_context.clone());
-                let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
-                utxo_context.handle_utxo_removed(entries, current_daa_score).await?;
+                let entries = entries.iter().map(|entry| entry.into()).collect::<Vec<_>>();
+                if entries.is_not_empty() {
+                    utxo_context.handle_utxo_removed(entries, current_daa_score).await?;
+                }
             } else {
                 log_error!("receiving UTXO Changed 'removed' notification for an unknown address: {}", address);
             }
         }
 
-        let added = (*utxos.added).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
-        let added = HashMap::group_from(added);
+        // Process remaining added entries
         for (address, entries) in added.into_iter() {
             if let Some(utxo_context) = self.address_to_utxo_context(&address) {
                 updated_contexts.insert(utxo_context.clone());
-                let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
-                utxo_context.handle_utxo_added(entries, current_daa_score).await?;
+                let entries = entries.iter().map(|entry| entry.into()).collect::<Vec<_>>();
+                if entries.is_not_empty() {
+                    utxo_context.handle_utxo_added(entries, current_daa_score).await?;
+                }
             } else {
                 log_error!("receiving UTXO Changed 'added' notification for an unknown address: {}", address);
             }
         }
 
-        // iterate over all affected utxo contexts and
-        // update as well as notify their balances.
+        for (address, entries_added) in common_added.into_iter() {
+            if let Some(utxo_context) = self.address_to_utxo_context(&address) {
+                updated_contexts.insert(utxo_context.clone());
+                //let entries_removed = common_removed.get(&address).unwrap();
+
+                let added_utxos = entries_added.iter().map(|entry| entry.into()).collect::<Vec<_>>();
+                //let removed_utxos = entries_removed.iter().map(|entry| entry.into()).collect::<Vec<_>>();
+
+                utxo_context.update_utxos(added_utxos, current_daa_score).await?;
+            } else {
+                log_error!("receiving UTXO Changed 'added' notification for an unknown address: {}", address);
+            }
+        }
+
+        // Update balances for affected contexts
         for context in updated_contexts.iter() {
             context.update_balance().await?;
         }
@@ -727,6 +787,48 @@ impl UtxoProcessor {
 
     pub fn enable_metrics_kinds(&self, metrics_kinds: &[MetricsUpdateKind]) {
         *self.inner.metrics_kinds.lock().unwrap() = metrics_kinds.to_vec();
+    }
+
+    pub async fn start_fee_rate_poller(&self, poller_interval: Duration) -> Result<()> {
+        self.stop_fee_rate_poller().await.ok();
+
+        let this = self.clone();
+        this.inner.fee_rate_task_is_running.store(true, Ordering::SeqCst);
+        let fee_rate_task_ctl_receiver = self.inner.fee_rate_task_ctl.request.receiver.clone();
+        let fee_rate_task_ctl_sender = self.inner.fee_rate_task_ctl.response.sender.clone();
+
+        let mut interval = workflow_core::task::interval(poller_interval);
+
+        spawn(async move {
+            loop {
+                select_biased! {
+                    _ = interval.next().fuse() => {
+                        if let Ok(fee_rate) = this.rpc_api().get_fee_estimate().await {
+                            let RpcFeeEstimate { priority_bucket, normal_buckets, low_buckets } = fee_rate;
+                            this.notify(Events::FeeRate {
+                                priority : priority_bucket.into(),
+                                normal : normal_buckets.first().expect("missing normal feerate bucket").into(),
+                                low : low_buckets.first().expect("missing normal feerate bucket").into()
+                            }).await.ok();
+                        }
+                    },
+                    _ = fee_rate_task_ctl_receiver.recv().fuse() => {
+                        break;
+                    },
+                }
+            }
+
+            fee_rate_task_ctl_sender.send(()).await.unwrap();
+        });
+
+        Ok(())
+    }
+
+    pub async fn stop_fee_rate_poller(&self) -> Result<()> {
+        if self.inner.fee_rate_task_is_running.load(Ordering::SeqCst) {
+            self.inner.fee_rate_task_ctl.signal(()).await.expect("UtxoProcessor::stop_task() `signal` error");
+        }
+        Ok(())
     }
 }
 

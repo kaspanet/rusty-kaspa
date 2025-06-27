@@ -18,6 +18,8 @@ impl Send {
 
         let address = Address::try_from(argv.first().unwrap().as_str())?;
         let amount_sompi = try_parse_required_nonzero_kaspa_as_sompi_u64(argv.get(1))?;
+        // TODO fee_rate
+        let fee_rate = None;
         let priority_fee_sompi = try_parse_optional_kaspa_as_sompi_i64(argv.get(2))?.unwrap_or(0);
         let outputs = PaymentOutputs::from((address.clone(), amount_sompi));
         let abortable = Abortable::default();
@@ -27,6 +29,7 @@ impl Send {
         let (summary, _ids) = account
             .send(
                 outputs.into(),
+                fee_rate,
                 priority_fee_sompi.into(),
                 None,
                 wallet_secret,

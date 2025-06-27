@@ -28,6 +28,8 @@ pub struct GeneratorSettings {
     pub minimum_signatures: u16,
     // change address
     pub change_address: Address,
+    // fee rate
+    pub fee_rate: Option<f64>,
     // applies only to the final transaction
     pub final_transaction_priority_fee: Fees,
     // final transaction outputs
@@ -60,6 +62,7 @@ impl GeneratorSettings {
     pub fn try_new_with_account(
         account: Arc<dyn Account>,
         final_transaction_destination: PaymentDestination,
+        fee_rate: Option<f64>,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
     ) -> Result<Self> {
@@ -81,6 +84,7 @@ impl GeneratorSettings {
             source_utxo_context: Some(account.utxo_context().clone()),
             priority_utxo_entries: None,
 
+            fee_rate,
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
@@ -97,6 +101,7 @@ impl GeneratorSettings {
         sig_op_count: u8,
         minimum_signatures: u16,
         final_transaction_destination: PaymentDestination,
+        fee_rate: Option<f64>,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
         multiplexer: Option<Multiplexer<Box<Events>>>,
@@ -114,6 +119,7 @@ impl GeneratorSettings {
             source_utxo_context: Some(utxo_context),
             priority_utxo_entries,
 
+            fee_rate,
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
@@ -123,6 +129,7 @@ impl GeneratorSettings {
         Ok(settings)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new_with_iterator(
         network_id: NetworkId,
         utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
@@ -131,6 +138,7 @@ impl GeneratorSettings {
         sig_op_count: u8,
         minimum_signatures: u16,
         final_transaction_destination: PaymentDestination,
+        fee_rate: Option<f64>,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
         multiplexer: Option<Multiplexer<Box<Events>>>,
@@ -145,6 +153,7 @@ impl GeneratorSettings {
             source_utxo_context: None,
             priority_utxo_entries,
 
+            fee_rate,
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
