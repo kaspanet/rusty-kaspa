@@ -322,16 +322,16 @@ impl IbdFlow {
         // .1 was already checked during determine_ibd
         let syncer_pp = negotiation_output.syncer_pruning_point.unwrap();
         let syncer_pp_bscore = consensus.async_get_header(syncer_pp).await?.blue_score;
-
+        let syncer_sink=negotiation_output.syncer_virtual_selected_parent.clone();
         //.2 verify pruning_depth on top of syncer_pp
         self.sync_headers(
             consensus,
-            negotiation_output.syncer_virtual_selected_parent,
+            syncer_sink,
             negotiation_output.highest_known_syncer_chain_hash.unwrap(),
             relay_block,
         )
         .await?;
-        let syncer_virtual_bscore = consensus.async_get_header(negotiation_output.syncer_virtual_selected_parent).await?.blue_score;
+        let syncer_virtual_bscore = consensus.async_get_header(syncer_sink).await?.blue_score;
         //check following the sync.
         //[Crescendo]: Remove after()
         if syncer_virtual_bscore < syncer_pp_bscore + self.ctx.config.pruning_depth().after() {
@@ -340,7 +340,7 @@ impl IbdFlow {
 
         /* This function's main effect is to update the pruning point and apply necessary changes to the various
         stores accordingly. Before doing all that though, it confirms .3 */
-        consensus.async_intrusive_pruning_point_update(syncer_pp, negotiation_output.syncer_virtual_selected_parent).await?;
+        consensus.async_intrusive_pruning_point_update(syncer_pp, syncer_sink).await?;
         //Sanity check
         if self.ctx.config.enable_sanity_checks {
             consensus
@@ -348,8 +348,8 @@ impl IbdFlow {
                 .spawn_blocking(move |c| {
                     info!("validating pruning points consistency");
 
-                    if let Err(err) = c.validate_pruning_points(syncer_pp) {
-                        panic!("pruning points failed validation ({})", err);
+                    if let Err(err) = c.validate_pruning_points(syncer_sink) {
+                        panic!("pruning points failed validation ({err})");
                     }
                     info!("pruning points consistency validated");
                     Result::<_, ProtocolError>::Ok(())
