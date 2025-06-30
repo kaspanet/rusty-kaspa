@@ -27,3 +27,6 @@ thiserror.workspace = true
 [dev-dependencies]
 kaspa-consensus.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
+
+[lints]
+workspace = true
