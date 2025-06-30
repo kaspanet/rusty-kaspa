@@ -35,3 +35,6 @@ log.workspace = true
 tokio.workspace = true
 triggered.workspace = true
 workflow-rpc.workspace = true
+
+[lints]
+workspace = true
