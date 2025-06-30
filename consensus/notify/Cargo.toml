@@ -23,3 +23,6 @@ log.workspace = true
 paste.workspace = true
 thiserror.workspace = true
 triggered.workspace = true
+
+[lints]
+workspace = true
