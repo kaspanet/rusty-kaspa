@@ -76,9 +76,6 @@ pub enum RuleError {
     #[error("transaction {0} is invalid")]
     RejectInvalid(TransactionId),
 
-    #[error("Rejected spam tx {0} from mempool")]
-    RejectSpamTransaction(TransactionId),
-
     #[error("Rejected tx {0} from mempool due to incomputable storage mass")]
     RejectStorageMassIncomputable(TransactionId),
 }

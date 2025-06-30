@@ -24,3 +24,6 @@ wasm-bindgen.workspace = true
 workflow-log.workspace = true
 workflow-terminal.workspace = true
 workflow-wasm.workspace = true
+
+[lints]
+workspace = true

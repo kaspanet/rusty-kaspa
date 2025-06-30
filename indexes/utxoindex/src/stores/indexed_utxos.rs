@@ -213,7 +213,7 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         let mut writer = DirectDbWriter::new(&self.db);
 
         let mut to_remove = utxo_entries.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
-            compact_utxo_collection.iter().map(move |(transaction_outpoint, _)| {
+            compact_utxo_collection.keys().map(move |transaction_outpoint| {
                 UtxoEntryFullAccessKey::new(
                     ScriptPublicKeyBucket::from(script_public_key),
                     TransactionOutpointKey::from(transaction_outpoint),

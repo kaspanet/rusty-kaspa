@@ -26,3 +26,6 @@ workflow-log.workspace = true
 workflow-node.workspace = true
 workflow-nw.workspace = true
 workflow-store.workspace = true
+
+[lints]
+workspace = true

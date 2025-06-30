@@ -25,3 +25,6 @@ log4rs = { workspace = true, features = ["all_components", "gzip", "background_r
 num_cpus.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread", "time"] }
 anyhow = "1.0.97"
+
+[lints]
+workspace = true

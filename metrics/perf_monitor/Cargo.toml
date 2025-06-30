@@ -16,3 +16,6 @@ portable-atomic.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "time"] }
 workflow-perf-monitor.workspace = true
+
+[lints]
+workspace = true

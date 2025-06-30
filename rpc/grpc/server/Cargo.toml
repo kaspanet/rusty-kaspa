@@ -43,3 +43,6 @@ rustls.workspace = true
 
 [dev-dependencies]
 kaspa-grpc-client.workspace = true
+
+[lints]
+workspace = true

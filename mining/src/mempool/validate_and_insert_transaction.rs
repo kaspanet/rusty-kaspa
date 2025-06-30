@@ -152,17 +152,6 @@ impl Mempool {
     }
 
     fn validate_transaction_in_context(&self, transaction: &MutableTransaction) -> RuleResult<()> {
-        // TEMP: apply parts of go-kaspad mempool dust prevention patch
-        let has_coinbase_input = transaction.entries.iter().any(|e| e.as_ref().unwrap().is_coinbase);
-        let num_extra_outs = transaction.tx.outputs.len() as i64 - transaction.tx.inputs.len() as i64;
-        if !has_coinbase_input
-            && num_extra_outs > 2
-            && transaction.calculated_fee.unwrap() < num_extra_outs as u64 * kaspa_consensus_core::constants::SOMPI_PER_KASPA
-        {
-            kaspa_core::trace!("Rejected spam tx {} from mempool ({} outputs)", transaction.id(), transaction.tx.outputs.len());
-            return Err(RuleError::RejectSpamTransaction(transaction.id()));
-        }
-
         if !self.config.accept_non_standard {
             self.check_transaction_standard_in_context(transaction)?;
         }
