@@ -116,6 +116,17 @@ impl IbdFlow {
                 let pruning_point = session.async_pruning_point().await;
 
                 info!("syncing ahead from pruning point {} ", pruning_point);
+                /* Following IBD catchup a new pruning point is designated and finalized in consensus. Blocks from its anticone (including itself)
+                have undergone normal header verification, but contain no body yet. Processing of new blocks in the pruning point's future cannot proceed
+                since these blocks' parents are missing block data.
+                Hence we explicitely process bodies of the yet disembodied anticone blocks as trusted blocks
+                Notice that this is degenerate following sync_with_headers_proof
+                but not necessarily so after sync_headers -
+                as it might sync following a previous pruning_catch_up that crashed before this stage concluded
+                */
+                if !session.async_is_anticone_fully_synced().await {
+                    self.sync_missing_trusted_bodies(&session).await?;
+                }
                 if !session.async_is_utxo_validated().await
                 // utxo might not be available even if the pruning point block data is.
                 // utxo must be synced before all so the node could function
@@ -161,6 +172,7 @@ impl IbdFlow {
                 match self.pruning_point_catchup(&session, &negotiation_output, &relay_block).await {
                     Ok(()) => {
                         info!("header stage of pruning catchup from peer {} completed", self.router);
+                        self.sync_missing_trusted_bodies(&session).await?;
                         self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point.unwrap()).await?;
                         //Note that pruning of old data will only occur once virtual has caught up sufficintly far
                     }
@@ -171,17 +183,6 @@ impl IbdFlow {
                     }
                 }
             }
-        }
-        /* Following IBD catchup a new pruning point is designated and finalized in consensus. Blocks from its anticone (including itself)
-        have undergone normal header verification, but contain no body yet. Processing of new blocks in the pruning point's future cannot proceed
-        since these blocks' parents are missing block data.
-        Hence we explicitely process bodies of the yet disembodied anticone blocks as trusted blocks
-        Notice that this is degenerate following sync_with_headers_proof
-        but not necessarily so after sync_headers -
-        as it might sync following a previous pruning_catch_up that crashed before this stage concluded
-        */
-        if !session.async_is_anticone_fully_synced().await {
-            self.sync_missing_trusted_bodies(&session).await?;
         }
 
         // Sync missing bodies in the past of syncer sink (virtual selected parent)
@@ -322,15 +323,9 @@ impl IbdFlow {
         // .1 was already checked during determine_ibd
         let syncer_pp = negotiation_output.syncer_pruning_point.unwrap();
         let syncer_pp_bscore = consensus.async_get_header(syncer_pp).await?.blue_score;
-        let syncer_sink=negotiation_output.syncer_virtual_selected_parent.clone();
+        let syncer_sink = negotiation_output.syncer_virtual_selected_parent;
         //.2 verify pruning_depth on top of syncer_pp
-        self.sync_headers(
-            consensus,
-            syncer_sink,
-            negotiation_output.highest_known_syncer_chain_hash.unwrap(),
-            relay_block,
-        )
-        .await?;
+        self.sync_headers(consensus, syncer_sink, negotiation_output.highest_known_syncer_chain_hash.unwrap(), relay_block).await?;
         let syncer_virtual_bscore = consensus.async_get_header(syncer_sink).await?.blue_score;
         //check following the sync.
         //[Crescendo]: Remove after()
