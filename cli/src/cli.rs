@@ -285,12 +285,14 @@ impl KaspaCli {
 
                         if let Ok(msg) = msg {
                             match *msg {
+                                Events::WalletList { .. } => {},
                                 Events::WalletPing => {
                                     // log_info!("Kaspa NG - received wallet ping");
                                 },
                                 Events::Metrics { network_id : _, metrics : _ } => {
                                     // log_info!("Kaspa NG - received metrics event {metrics:?}")
                                 }
+                                Events::FeeRate { .. } => {},
                                 Events::Error { message } => { terrorln!(this,"{message}"); },
                                 Events::UtxoProcStart => {},
                                 Events::UtxoProcStop => {},
@@ -787,7 +789,7 @@ impl KaspaCli {
                 }
                 SyncState::UtxoResync => Some([style("SYNC").red().to_string(), style("UTXO").black().to_string()].join(" ")),
                 SyncState::NotSynced => Some([style("SYNC").red().to_string(), style("...").black().to_string()].join(" ")),
-                SyncState::Synced { .. } => None,
+                SyncState::Synced => None,
             }
         } else {
             Some(style("SYNC").red().to_string())

@@ -31,9 +31,14 @@ impl Signer {
         // skip address that are already present in the key map
         let addresses = addresses.iter().filter(|a| !keys.contains_key(a)).collect::<Vec<_>>();
         if !addresses.is_empty() {
-            let account = self.inner.account.clone().as_derivation_capable().expect("expecting derivation capable account");
-            let (receive, change) = account.derivation().addresses_indexes(&addresses)?;
-            let private_keys = account.create_private_keys(&self.inner.keydata, &self.inner.payment_secret, &receive, &change)?;
+            // let account = self.inner.account.clone().as_derivation_capable().expect("expecting derivation capable account");
+            // let (receive, change) = account.derivation().addresses_indexes(&addresses)?;
+            // let private_keys = account.create_private_keys(&self.inner.keydata, &self.inner.payment_secret, &receive, &change)?;
+            let private_keys = self.inner.account.clone().create_address_private_keys(
+                &self.inner.keydata,
+                &self.inner.payment_secret,
+                addresses.as_slice(),
+            )?;
             for (address, private_key) in private_keys {
                 keys.insert(address.clone(), private_key.to_bytes());
             }
