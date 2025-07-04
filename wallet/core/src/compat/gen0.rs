@@ -92,7 +92,7 @@ fn get_v0_parts(data: &str) -> Result<CipherData> {
     while !ptr.is_empty() {
         let len: usize = ptr[0..5].parse().unwrap();
         let mut data = vec![0; len / 2];
-        hex_decode(ptr[5..(5 + len)].as_bytes(), &mut data).unwrap();
+        hex_decode(&ptr.as_bytes()[5..(5 + len)], &mut data).unwrap();
         list.push(data);
         ptr = &ptr[(5 + len)..];
     }
