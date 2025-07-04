@@ -236,6 +236,11 @@ impl PSKT<Constructor> {
         self
     }
 
+    pub fn payload(mut self, payload: Vec<u8>) -> Self {
+        self.inner_pskt.global.payload = Some(payload);
+        self
+    }
+
     /// Returns a PSKT [`Updater`] once construction is completed.
     pub fn updater(self) -> PSKT<Updater> {
         let pskt = self.no_more_inputs().no_more_outputs();
