@@ -39,6 +39,7 @@ pub struct Global {
     /// Unknown key-value pairs for this output.
     #[serde(flatten)]
     pub unknowns: BTreeMap<String, serde_value::Value>,
+    pub payload: Option<Vec<u8>>,
 }
 
 impl Add for Global {
@@ -122,6 +123,7 @@ impl Default for Global {
             id: None,
             proprietaries: Default::default(),
             unknowns: Default::default(),
+            payload: None,
         }
     }
 }
