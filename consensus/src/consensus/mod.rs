@@ -1192,27 +1192,42 @@ impl ConsensusApi for Consensus {
         let old_pruning_info = pruning_point_read.get().unwrap();
         //note that the function below also updates the pruning samples,
         //and implicitely confirms any pruning point pointed at en route to virtual is a pruning sample
-        let pruning_points_to_add =
+        let mut pruning_points_to_add =
             self.services.pruning_point_manager.pruning_points_on_path_to_syncer_sink(old_pruning_info, syncer_sink).map_err(
                 |e: PruningImportError| {
                     ConsensusError::GeneralOwned(format!("pruning points en route to syncer sink do not form a valid chain{}", e))
                 },
             )?;
-        if !pruning_points_to_add.contains(&new_pruning_point) {
-            return Err(ConsensusError::General(" new pruning point is inconsistent with synced headers"));
-        }
-        // if all has gone well, we can finally update pruning point and other stores.
-        let mut batch = WriteBatch::default();
-        let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
-        for (i, &past_pp) in pruning_points_to_add.iter().enumerate() {
-            self.past_pruning_points_store.insert_batch(&mut batch, old_pruning_info.index + i as u64 + 1, past_pp).unwrap();
-            // update pruning point, and ignore further excess pruning points on path
-            if past_pp == new_pruning_point {
-                let new_pp_index = old_pruning_info.index + i as u64 + 1;
-                pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pruning_point, new_pp_index).unwrap();
+        //remove excess pruning points before the old pruning point
+        while let Some(past_pp) = pruning_points_to_add.pop_back() {
+            if past_pp == old_pruning_info.pruning_point {
                 break;
             }
         }
+        if pruning_points_to_add.is_empty() {
+            return Err(ConsensusError::General(" old pruning points is inconsistent with synced headers"));
+        }
+        // remove excess pruning points beyond the new pruning_point
+        while let Some(&future_pp) = pruning_points_to_add.front() {
+            if future_pp == new_pruning_point {
+                break;
+            }
+            // here we only pop_front after checking as we want the new pruning_point to stay is the list
+            pruning_points_to_add.pop_front();
+        }
+        if pruning_points_to_add.is_empty() {
+            return Err(ConsensusError::General(" new pruning point is inconsistent with synced headers"));
+        }
+
+        // if all has gone well, we can finally update pruning point and other stores.
+        let mut batch = WriteBatch::default();
+        let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
+        let new_pp_index = old_pruning_info.index + pruning_points_to_add.len() as u64;
+        pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pruning_point, new_pp_index).unwrap();
+        for (i, &past_pp) in pruning_points_to_add.iter().rev().enumerate() {
+            self.past_pruning_points_store.insert_batch(&mut batch, old_pruning_info.index + i as u64 + 1, past_pp).unwrap();
+        }
+
         // For archival nodes, keep the retention root in place
         if !self.config.is_archival {
             /* Possibly we should just advance to the pruning point and be done with. Currently this creates a weird hybrid where

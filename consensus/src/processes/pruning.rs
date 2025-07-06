@@ -506,9 +506,9 @@ impl<
                Going up the chain from the pruning point to the sink. The goal is to exit this loop with a queue [P(k)...,P(0), P(-1), P(-2), ..., P(-n)]
                where P(0) is the new pruning point, P(-1) is the point before it and P(-n) is the pruning point of P(0). That is,
                ceiling(P/F) = n (where n is usually 3).
-               k the number of future pruning points on path to virtual beyond the new, currently synced pruning point
+               k is the number of future pruning points on path to virtual beyond the new, currently synced pruning point /*
 
-               Let C be the current block's pruning point. Push to the front of the queue if:
+            */Let C be the current block's pruning point. Push to the front of the queue if:
                    1. the queue is empty; OR
                    2. the front of the queue is different than C
             */
@@ -531,7 +531,7 @@ impl<
         // we rely on the fact that each pruning point is pointed by another known block or
         // pruning point.
         // So in the first stage we go over the selected chain and add to the queue of expected
-        // pruning points all the pruning points from the POV of some chain block, and update pruning smples.
+        // pruning points all the pruning points from the POV of some chain block, and update pruning samples.
         // In the second stage we go over the past pruning points from recent to older, check that it's the head
         // of the queue (by popping the queue), and add its header pruning point to the queue since
         // we expect to see it later on the list.
