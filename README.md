@@ -12,9 +12,7 @@ The default branch of this repository is `master` and new contributions are cons
 
 ## The Crescendo Hardfork  
 
-The Crescendo Hardfork, which will transition the network to 10 BPS, is scheduled to activate on mainnet at DAA Score **110,165,000**, projected to occur on **May 5, 2025, at approximately 15:00 UTC**. Note that 24 hours before activation, nodes will connect only to upgraded peers which are using the new P2P protocol version 7.  
-
-You are encouraged to verify your client software against this mainnet version ahead of or after the hardfork. For a more controlled environment, consider using **Testnet 10**, where the Crescendo changes are already active. Refer to the [Crescendo guide](docs/crescendo-guide.md) for detailed instructions.
+The [Crescendo Hardfork](docs/crescendo-guide.md) took place on May 5, 2025, at approximately 15:00 UTC. The fork has transitioned the network from a blockrate of 1 BPS to that of 10 BPS, and incorporated several major KIPs.
 
 
 
