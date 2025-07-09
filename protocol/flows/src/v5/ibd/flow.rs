@@ -238,9 +238,14 @@ impl IbdFlow {
                     }
                     // The node is missing a segment in the near future of its current pruning point, but the syncer is ahead
                     // and already pruned the current pruning point.
-                    if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body()) {
-                        // The data pruned by the syncer is already available from within the node (from past ibd attempts)
+                    if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body())
+                        && consensus.async_is_anticone_fully_synced().await
+                        && consensus.async_is_utxo_validated().await
+                    {
+                        // The data pruned by the syncer is already available from within the node (from relay/ past ibd attempts)
+                        // and the consensus was fully synced and hence
                         //can carry on syncing as normal
+                        //
                         return Ok(IbdType::Sync);
                     } else {
                         //Two options:
@@ -713,8 +718,8 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 );
             }
             try_join_all(jobs).await?; //TODO: be more efficient with batching as done below
-            consensus.async_clear_anticone_disembodied_blocks().await;
         }
+        consensus.async_clear_anticone_disembodied_blocks().await;
         Ok(())
     }
     async fn sync_missing_block_bodies(&mut self, consensus: &ConsensusProxy, high: Hash) -> Result<(), ProtocolError> {

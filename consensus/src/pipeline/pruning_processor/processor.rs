@@ -19,6 +19,7 @@ use crate::{
             statuses::StatusesStoreReader,
             tips::{TipsStore, TipsStoreReader},
             utxo_diffs::UtxoDiffsStoreReader,
+            virtual_state::VirtualStateStoreReader,
         },
     },
     processes::{pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations},
@@ -221,12 +222,21 @@ impl PruningProcessor {
 
     fn advance_pruning_utxoset(&self, utxoset_position: Hash, new_pruning_point: Hash) -> bool {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let virtual_state = self.virtual_stores.read().state.get().unwrap();
+        let pp_bs = self.headers_store.get_blue_score(new_pruning_point).unwrap();
+        let pp_daa = self.headers_store.get_daa_score(new_pruning_point).unwrap();
+
+        // do not attempt to prune before virtual caught up sufficiently
+        if virtual_state.ghostdag_data.blue_score < pp_bs + self.config.params.pruning_depth().get(pp_daa) {
+            return false;
+        }
+        // do not attempt to prune while in the middle of syncing
+        // should be superceded by the above condition.
+        if !pruning_meta_write.utxo_sync_flag().unwrap_or(false) || !pruning_meta_write.is_anticone_fully_synced() {
+            return false;
+        }
         for chain_block in self.reachability_service.forward_chain_iterator(utxoset_position, new_pruning_point, true).skip(1) {
-            // do not attempt to prune while in the middle of syncing
-            if self.is_consensus_exiting.load(Ordering::Relaxed)
-                || !pruning_meta_write.utxo_sync_flag().unwrap_or(false)
-                || !pruning_meta_write.is_anticone_fully_synced()
-            {
+            if self.is_consensus_exiting.load(Ordering::Relaxed) {
                 return false;
             }
             let utxo_diff = self.utxo_diffs_store.get(chain_block).expect("chain blocks have utxo state");
