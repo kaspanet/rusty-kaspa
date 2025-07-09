@@ -21,3 +21,6 @@ log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
 tokio.workspace = true
+
+[lints]
+workspace = true

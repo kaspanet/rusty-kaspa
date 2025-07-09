@@ -24,3 +24,6 @@ mimalloc = { git = "https://github.com/purpleprotocol/mimalloc_rust", rev = "eff
 heap = []
 
 [dependencies]
+
+[lints]
+workspace = true
