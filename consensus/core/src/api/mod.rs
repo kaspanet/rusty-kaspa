@@ -335,7 +335,7 @@ pub trait ConsensusApi: Send + Sync {
     fn get_disembodied_trusted_headers(&self) -> ConsensusResult<Vec<Arc<Header>>> {
         unimplemented!()
     }
-    fn async_clear_anticone_disembodied_blocks(&self) {
+    fn clear_anticone_disembodied_blocks(&self) {
         unimplemented!()
     }
 

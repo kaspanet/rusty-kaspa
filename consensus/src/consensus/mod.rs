@@ -1064,6 +1064,7 @@ impl ConsensusApi for Consensus {
     }
     fn get_disembodied_trusted_headers(&self) -> ConsensusResult<Vec<Arc<Header>>> {
         let disembodied_hashes = self.pruning_meta_stores.read().get_disembodied_anticone().unwrap_or_default();
+        print!("{disembodied_hashes:?}");
         let pruning_point = self.pruning_point();
         //sanity check
         for &h in disembodied_hashes.iter() {
@@ -1075,10 +1076,12 @@ impl ConsensusApi for Consensus {
         let ret = disembodied_hashes.iter().map(|&h| self.headers_store.get_header(h).unwrap()).collect_vec();
         Ok(ret)
     }
-    fn async_clear_anticone_disembodied_blocks(&self) {
+    fn clear_anticone_disembodied_blocks(&self) {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
         let mut batch = rocksdb::WriteBatch::default();
         pruning_meta_write.set_disembodied_anticone(&mut batch, vec![]).unwrap();
+        self.db.write(batch).unwrap();
+
     }
     fn pruning_point(&self) -> Hash {
         self.pruning_point_store.read().pruning_point().unwrap()

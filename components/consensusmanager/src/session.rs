@@ -423,7 +423,7 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_disembodied_trusted_headers()).await
     }
     pub async fn async_clear_anticone_disembodied_blocks(&self) {
-        self.clone().spawn_blocking(move |c| c.async_clear_anticone_disembodied_blocks()).await
+        self.clone().spawn_blocking(move |c| c.clear_anticone_disembodied_blocks()).await
     }
 
     pub async fn async_pruning_point(&self) -> Hash {
