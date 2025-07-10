@@ -1081,7 +1081,6 @@ impl ConsensusApi for Consensus {
         let mut batch = rocksdb::WriteBatch::default();
         pruning_meta_write.set_disembodied_anticone(&mut batch, vec![]).unwrap();
         self.db.write(batch).unwrap();
-
     }
     fn pruning_point(&self) -> Hash {
         self.pruning_point_store.read().pruning_point().unwrap()
