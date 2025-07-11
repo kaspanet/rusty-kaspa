@@ -230,13 +230,13 @@ impl PruningProcessor {
         if virtual_state.ghostdag_data.blue_score < pp_bs + self.config.params.pruning_depth().get(pp_daa) {
             return false;
         }
-        // do not attempt to prune while in the middle of syncing
-        // should be superceded by the above condition.
-        if !pruning_meta_write.utxo_sync_flag().unwrap_or(false) || !pruning_meta_write.is_anticone_fully_synced() {
-            return false;
-        }
+
         for chain_block in self.reachability_service.forward_chain_iterator(utxoset_position, new_pruning_point, true).skip(1) {
             if self.is_consensus_exiting.load(Ordering::Relaxed) {
+                return false;
+            }
+            // halt pruning if syncing was initiated
+            if !pruning_meta_write.utxo_sync_flag().unwrap_or(false) || !pruning_meta_write.is_anticone_fully_synced() {
                 return false;
             }
             let utxo_diff = self.utxo_diffs_store.get(chain_block).expect("chain blocks have utxo state");
