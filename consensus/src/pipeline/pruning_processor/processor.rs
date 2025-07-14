@@ -118,26 +118,28 @@ impl PruningProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
-        let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() else {
-            return;
-        };
-
         // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
         // in order to make sure the node is already connected and receiving blocks before we start background recovery operations
-        self.recover_pruning_workflows_if_needed();
-        self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
-
+        let mut recovered = false;
         while let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() {
+            if !recovered {
+                if !self.recover_pruning_workflows_if_needed() {
+                    continue;
+                }
+                recovered = true;
+            }
             self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
         }
     }
 
-    fn recover_pruning_workflows_if_needed(&self) {
+    fn recover_pruning_workflows_if_needed(&self) -> bool {
+        /*returns true if recorvery was completed successfully or was not needed */
         let pruning_point_read = self.pruning_point_store.read();
         let pruning_point = pruning_point_read.pruning_point().unwrap();
         let retention_checkpoint = pruning_point_read.retention_checkpoint().unwrap();
         let retention_period_root = pruning_point_read.retention_period_root().unwrap();
-        let pruning_utxoset_position = self.pruning_meta_stores.read().utxoset_position().unwrap();
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        let pruning_utxoset_position = pruning_meta_read.utxoset_position().unwrap();
         drop(pruning_point_read);
         debug!(
             "[PRUNING PROCESSOR] recovery check: current pruning point: {}, retention checkpoint: {:?}, pruning utxoset position: {:?}",
@@ -149,7 +151,21 @@ impl PruningProcessor {
             info!("Recovering pruning utxo-set from {} to the pruning point {}", pruning_utxoset_position, pruning_point);
             if !self.advance_pruning_utxoset(pruning_utxoset_position, pruning_point) {
                 info!("Interrupted while advancing the pruning point UTXO set: Process is exiting");
-                return;
+                return false;
+            }
+        } else {
+            // these conditions are usually checked inside advance_pruning_utxoset, if skipped they should be checked here
+            let virtual_state = self.virtual_stores.read().state.get().unwrap();
+            let pp_bs = self.headers_store.get_blue_score(pruning_point).unwrap();
+            let pp_daa = self.headers_store.get_daa_score(pruning_point).unwrap();
+
+            if virtual_state.ghostdag_data.blue_score < pp_bs + self.config.params.pruning_depth().get(pp_daa) {
+                info!("sufficiently many blocks have not yet been synced");
+                return false;
+            }
+            // halt pruning if syncing is undergoing
+            if !pruning_meta_read.utxo_sync_flag().unwrap_or(false) || !pruning_meta_read.is_anticone_fully_synced() {
+                return false;
             }
         }
 
@@ -165,6 +181,7 @@ impl PruningProcessor {
         if retention_checkpoint != retention_period_root {
             self.prune(pruning_point, retention_period_root);
         }
+        true
     }
 
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
