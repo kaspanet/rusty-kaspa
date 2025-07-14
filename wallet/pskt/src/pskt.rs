@@ -237,8 +237,8 @@ impl PSKT<Constructor> {
         self
     }
 
-    pub fn payload(mut self, payload: Vec<u8>) -> Self {
-        self.inner_pskt.global.payload = Some(payload);
+    pub fn payload(mut self, payload: Option<Vec<u8>>) -> Self {
+        self.inner_pskt.global.payload = payload;
         self
     }
 
