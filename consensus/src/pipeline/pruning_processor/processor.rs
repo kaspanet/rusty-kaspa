@@ -160,7 +160,6 @@ impl PruningProcessor {
             let pp_daa = self.headers_store.get_daa_score(pruning_point).unwrap();
 
             if virtual_state.ghostdag_data.blue_score < pp_bs + self.config.params.pruning_depth().get(pp_daa) {
-                info!("sufficiently many blocks have not yet been synced");
                 return false;
             }
             // halt pruning if syncing is undergoing
