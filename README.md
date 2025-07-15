@@ -286,16 +286,16 @@ wRPC
 
   JSON protocol:
   ```bash
-  --rpclisten-json = <interface:port>
+  --rpclisten-json=<interface:port>
   # or use the defaults for current network
-  --rpclisten-json = default
+  --rpclisten-json=default
   ```
 
   Borsh protocol:
   ```bash
-  --rpclisten-borsh = <interface:port>
+  --rpclisten-borsh=<interface:port>
   # or use the defaults for current network
-  --rpclisten-borsh = default
+  --rpclisten-borsh=default
   ```
 
   **Sidenote:**
