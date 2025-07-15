@@ -2398,6 +2398,7 @@ dependencies = [
  "arc-swap",
  "async-channel 2.3.1",
  "bincode",
+ "blake2b_simd",
  "criterion",
  "crossbeam-channel",
  "faster-hex",

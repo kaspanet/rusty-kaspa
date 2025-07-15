@@ -350,6 +350,7 @@ opcode_list! {
     opcode OpData73<0x49, 74>(self, vm) push_data(self.data.clone(), vm)
     opcode OpData74<0x4a, 75>(self, vm) push_data(self.data.clone(), vm)
     opcode OpData75<0x4b, 76>(self, vm) push_data(self.data.clone(), vm)
+
     opcode OpPushData1<0x4c, u8>(self, vm) push_data(self.data.clone(), vm)
     opcode OpPushData2<0x4d, u16>(self, vm) push_data(self.data.clone(), vm)
     opcode OpPushData4<0x4e, u32>(self, vm) push_data(self.data.clone(), vm)
@@ -1046,6 +1047,7 @@ opcode_list! {
     opcode OpUnknown243<0xf3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown244<0xf4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown245<0xf5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+
     opcode OpUnknown246<0xf6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown247<0xf7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown248<0xf8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1103,7 +1105,7 @@ mod test {
         let reused_values = SigHashReusedValuesUnsync::new();
         for TestCase { init, code, dstack } in tests {
             [false, true].into_iter().for_each(|kip10_enabled| {
-                let mut vm = TxScriptEngine::new(&reused_values, &cache, kip10_enabled);
+                let mut vm = TxScriptEngine::new(&reused_values, &cache, kip10_enabled, false);
                 vm.dstack = init.clone();
                 code.execute(&mut vm).unwrap_or_else(|_| panic!("Opcode {} should not fail", code.value()));
                 assert_eq!(*vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
@@ -1116,7 +1118,7 @@ mod test {
         let reused_values = SigHashReusedValuesUnsync::new();
         for ErrorTestCase { init, code, error } in tests {
             [false, true].into_iter().for_each(|kip10_enabled| {
-                let mut vm = TxScriptEngine::new(&reused_values, &cache, kip10_enabled);
+                let mut vm = TxScriptEngine::new(&reused_values, &cache, kip10_enabled, false);
                 vm.dstack.clone_from(&init);
                 assert_eq!(
                     code.execute(&mut vm)
@@ -1152,7 +1154,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false, false);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1186,7 +1188,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false, false);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1259,7 +1261,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false, false);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -2854,7 +2856,7 @@ mod test {
         ] {
             let mut tx = base_tx.clone();
             tx.0.lock_time = tx_lock_time;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false, false);
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false, false, false);
             vm.dstack = vec![lock_time.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -2896,7 +2898,7 @@ mod test {
         ] {
             let mut input = base_input.clone();
             input.sequence = tx_sequence;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false, false);
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false, false, false);
             vm.dstack = vec![sequence.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -3090,6 +3092,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     group.kip10_enabled,
+                    false,
                     false,
                 );
 
@@ -3360,6 +3363,7 @@ mod test {
                             &reused_values,
                             &sig_cache,
                             kip10_enabled,
+                            false,
                             runtime_sig_op_counting,
                         );
 
@@ -3443,6 +3447,7 @@ mod test {
                     &sig_cache,
                     true,
                     false,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Ok(()));
@@ -3467,6 +3472,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                     false,
                 );
 
@@ -3509,6 +3515,7 @@ mod test {
                     &sig_cache,
                     true,
                     false,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Ok(()));
@@ -3535,6 +3542,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                     false,
                 );
 
@@ -3565,6 +3573,7 @@ mod test {
                 &reused_values,
                 &sig_cache,
                 true,
+                false,
                 false,
             );
 
@@ -3598,6 +3607,7 @@ mod test {
                 &sig_cache,
                 true,
                 false,
+                false,
             );
 
             // Should succeed because the SPKs are different
@@ -3630,6 +3640,7 @@ mod test {
                 &reused_values,
                 &sig_cache,
                 true,
+                false,
                 false,
             );
 
@@ -3677,6 +3688,7 @@ mod test {
                     &sig_cache,
                     true,
                     false,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Ok(()));
@@ -3703,6 +3715,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                     false,
                 );
 
@@ -3738,6 +3751,7 @@ mod test {
                     &sig_cache,
                     true,
                     false,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Ok(()));
@@ -3762,6 +3776,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                     false,
                 );
 
@@ -3810,6 +3825,7 @@ mod test {
                     &sig_cache,
                     true,
                     false,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Ok(()));
@@ -3829,6 +3845,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                     false,
                 );
 
@@ -3854,6 +3871,7 @@ mod test {
                     &sig_cache,
                     true,
                     false,
+                    false,
                 );
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
@@ -3876,6 +3894,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
+                    false,
                     false,
                 );
 

@@ -91,6 +91,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
 
     num_ops: i32,
     kip10_enabled: bool,
+    kip15_enabled: bool,
     runtime_sig_op_counter: Option<RuntimeSigOpCounter>,
 }
 
@@ -142,6 +143,7 @@ pub fn get_sig_op_count<T: VerifiableTransaction>(tx: &T, input_idx: usize, kip1
         &reused_values,
         &sig_cache,
         kip10_enabled,
+        false,
         true,
     );
     vm.execute()?;
@@ -225,7 +227,7 @@ pub fn is_unspendable<T: VerifiableTransaction, Reused: SigHashReusedValues>(scr
 }
 
 impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'a, T, Reused> {
-    pub fn new(reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>, kip10_enabled: bool) -> Self {
+    pub fn new(reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>, kip10_enabled: bool, kip15_enabled: bool) -> Self {
         Self {
             dstack: vec![],
             astack: vec![],
@@ -235,6 +237,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: vec![],
             num_ops: 0,
             kip10_enabled,
+            kip15_enabled,
             runtime_sig_op_counter: None,
         }
     }
@@ -270,6 +273,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         reused_values: &'a Reused,
         sig_cache: &'a Cache<SigCacheKey, bool>,
         kip10_enabled: bool,
+        kip15_enabled: bool,
         runtime_sig_op_counting: bool,
     ) -> Self {
         let script_public_key = utxo_entry.script_public_key.script();
@@ -286,6 +290,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             kip10_enabled,
+            kip15_enabled,
             runtime_sig_op_counter: runtime_sig_op_counting.then_some(RuntimeSigOpCounter::new(input.sig_op_count)),
         }
     }
@@ -295,6 +300,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         reused_values: &'a Reused,
         sig_cache: &'a Cache<SigCacheKey, bool>,
         kip10_enabled: bool,
+        kip15_enabled: bool,
     ) -> Self {
         Self {
             dstack: Default::default(),
@@ -305,6 +311,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             kip10_enabled,
+            kip15_enabled,
             // Runtime sig op counting is not needed for standalone scripts, only inputs have sig op count value
             runtime_sig_op_counter: None,
         }
@@ -709,6 +716,7 @@ mod tests {
                         &reused_values,
                         &sig_cache,
                         kip10_enabled,
+                        false,
                         runtime_sig_op_counting,
                     );
                     assert_eq!(vm.execute(), test.expected_result);
@@ -1272,7 +1280,7 @@ mod tests {
             // Execute script
             let tx = tx.as_verifiable();
             let mut vm =
-                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &reused_values, &sig_cache, false, true);
+                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &reused_values, &sig_cache, false, false, true);
 
             let result = vm.execute().map(|_| vm.used_sig_ops().unwrap());
 
@@ -1416,6 +1424,7 @@ mod bitcoind_tests {
                 &reused_values,
                 &sig_cache,
                 kip10_enabled,
+                false,
                 runtime_sig_op_counting,
             );
             vm.execute().map_err(UnifiedError::TxScriptError)

@@ -1,0 +1,22 @@
+[package]
+name = "kaspa-smart-contracts-examples"
+version = "0.1.0"
+edition = "2021"
+authors = ["Kaspa developers"]
+description = "Smart contract examples for Kaspa blockchain"
+license = "ISC"
+
+[dependencies]
+kaspa-consensus-core = { path = "../../consensus/core" }
+kaspa-hashes = { path = "../../crypto/hashes" }
+kaspa-txscript = { path = "../../crypto/txscript" }
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
+
+[[example]]
+name = "simple-token"
+path = "simple-token.rs"
+
+[lib]
+name = "kaspa_smart_contracts_examples"
+path = "lib.rs"

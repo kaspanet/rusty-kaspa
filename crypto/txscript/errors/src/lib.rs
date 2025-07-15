@@ -67,6 +67,8 @@ pub enum TxScriptError {
     ErrUnbalancedConditional,
     #[error("opcode requires at least {0} but stack has only {1}")]
     InvalidStackOperation(usize, usize),
+    #[error("Invalid contract code")]
+    InvalidContractCode,
     #[error("script of size {0} exceeded maximum allowed size of {1}")]
     ScriptSize(usize, usize),
     #[error("transaction output {0} is out of bounds, should be non-negative below {1}")]

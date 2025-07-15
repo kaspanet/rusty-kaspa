@@ -28,6 +28,8 @@ pub struct TransactionValidator {
 
     /// Crescendo hardfork activation score. Activates KIPs 9, 10, 14
     crescendo_activation: ForkActivation,
+    
+    kip15_activation: ForkActivation,
 }
 
 impl TransactionValidator {
@@ -41,6 +43,7 @@ impl TransactionValidator {
         counters: Arc<TxScriptCacheCounters>,
         mass_calculator: MassCalculator,
         crescendo_activation: ForkActivation,
+        kip15_activation: ForkActivation,
     ) -> Self {
         Self {
             max_tx_inputs,
@@ -52,6 +55,7 @@ impl TransactionValidator {
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator,
             crescendo_activation,
+            kip15_activation,
         }
     }
 
@@ -74,6 +78,7 @@ impl TransactionValidator {
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator: MassCalculator::new(0, 0, 0, 0),
             crescendo_activation: ForkActivation::never(),
+            kip15_activation: ForkActivation::never(),
         }
     }
 }

@@ -20,6 +20,7 @@ pub mod utxo_diffs;
 pub mod utxo_multisets;
 pub mod utxo_set;
 pub mod virtual_state;
+pub mod contract_state;
 
 pub use kaspa_database;
 pub use kaspa_database::prelude::DB;
