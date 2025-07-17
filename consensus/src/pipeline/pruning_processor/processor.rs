@@ -141,6 +141,8 @@ impl PruningProcessor {
         let pruning_meta_read = self.pruning_meta_stores.read();
         let pruning_utxoset_position = pruning_meta_read.utxoset_position().unwrap();
         drop(pruning_point_read);
+        drop(pruning_meta_read);
+
         debug!(
             "[PRUNING PROCESSOR] recovery check: current pruning point: {}, retention checkpoint: {:?}, pruning utxoset position: {:?}",
             pruning_point, retention_checkpoint, pruning_utxoset_position
@@ -154,6 +156,8 @@ impl PruningProcessor {
                 return false;
             }
         } else {
+            info!("else");
+
             // these conditions are usually checked inside advance_pruning_utxoset, if skipped they should be checked here
             let virtual_state = self.virtual_stores.read().state.get().unwrap();
             let pp_bs = self.headers_store.get_blue_score(pruning_point).unwrap();
@@ -162,10 +166,13 @@ impl PruningProcessor {
             if virtual_state.ghostdag_data.blue_score < pp_bs + self.config.params.pruning_depth().get(pp_daa) {
                 return false;
             }
+            let pruning_meta_read = self.pruning_meta_stores.read();
+
             // halt pruning if syncing is undergoing
             if !pruning_meta_read.utxo_sync_flag().unwrap_or(false) || !pruning_meta_read.is_anticone_fully_synced() {
                 return false;
             }
+            drop(pruning_meta_read);
         }
 
         trace!(
@@ -237,7 +244,6 @@ impl PruningProcessor {
     }
 
     fn advance_pruning_utxoset(&self, utxoset_position: Hash, new_pruning_point: Hash) -> bool {
-        let mut pruning_meta_write = self.pruning_meta_stores.write();
         let virtual_state = self.virtual_stores.read().state.get().unwrap();
         let pp_bs = self.headers_store.get_blue_score(new_pruning_point).unwrap();
         let pp_daa = self.headers_store.get_daa_score(new_pruning_point).unwrap();
@@ -252,16 +258,24 @@ impl PruningProcessor {
                 return false;
             }
             // halt pruning if syncing was initiated
-            if !pruning_meta_write.utxo_sync_flag().unwrap_or(false) || !pruning_meta_write.is_anticone_fully_synced() {
+            let pruning_meta_read = self.pruning_meta_stores.upgradable_read();
+
+            info!("pruning_meta_read");
+
+            if !pruning_meta_read.is_anticone_fully_synced() || !pruning_meta_read.utxo_sync_flag().unwrap_or(false) {
                 return false;
             }
+            info!("pruning_meta_write");
+            let mut pruning_meta_write = RwLockUpgradableReadGuard::upgrade(pruning_meta_read);
+            info!("pruning_meta_write_post");
+
             let utxo_diff = self.utxo_diffs_store.get(chain_block).expect("chain blocks have utxo state");
             let mut batch = WriteBatch::default();
             pruning_meta_write.utxo_set.write_diff_batch(&mut batch, utxo_diff.as_ref()).unwrap();
             pruning_meta_write.set_utxoset_position(&mut batch, chain_block).unwrap();
             self.db.write(batch).unwrap();
+            drop(pruning_meta_write);
         }
-        drop(pruning_meta_write);
 
         if self.config.enable_sanity_checks {
             info!("Performing a sanity check that the new UTXO set has the expected UTXO commitment");
