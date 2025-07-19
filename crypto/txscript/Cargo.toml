@@ -13,6 +13,10 @@ repository.workspace = true
 name = "kip-10"
 
 [features]
+py-sdk = [
+    "pyo3",
+    "kaspa-python-core/py-sdk",
+]
 wasm32-core = []
 wasm32-sdk = []
 
@@ -20,17 +24,20 @@ wasm32-sdk = []
 blake2b_simd.workspace = true
 borsh.workspace = true
 cfg-if.workspace = true
+faster-hex.workspace = true
 hexplay.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-hashes.workspace = true
+kaspa-python-core = { workspace = true, optional = true }
 kaspa-txscript-errors.workspace = true
 kaspa-utils.workspace = true
 kaspa-wasm-core.workspace = true
 log.workspace = true
 parking_lot.workspace = true
+pyo3 = { workspace = true, optional = true }
 rand.workspace = true
 secp256k1.workspace = true
 serde_json.workspace = true
