@@ -156,8 +156,6 @@ impl PruningProcessor {
                 return false;
             }
         } else {
-            info!("else");
-
             // these conditions are usually checked inside advance_pruning_utxoset, if skipped they should be checked here
             let virtual_state = self.virtual_stores.read().state.get().unwrap();
             let pp_bs = self.headers_store.get_blue_score(pruning_point).unwrap();
@@ -260,14 +258,10 @@ impl PruningProcessor {
             // halt pruning if syncing was initiated
             let pruning_meta_read = self.pruning_meta_stores.upgradable_read();
 
-            info!("pruning_meta_read");
-
             if !pruning_meta_read.is_anticone_fully_synced() || !pruning_meta_read.utxo_sync_flag().unwrap_or(false) {
                 return false;
             }
-            info!("pruning_meta_write");
             let mut pruning_meta_write = RwLockUpgradableReadGuard::upgrade(pruning_meta_read);
-            info!("pruning_meta_write_post");
 
             let utxo_diff = self.utxo_diffs_store.get(chain_block).expect("chain blocks have utxo state");
             let mut batch = WriteBatch::default();
