@@ -23,15 +23,15 @@ use kaspa_consensus_core::{
 async fn test_receipts_in_chain() {
     const PERIODS: usize = 5;
     const FINALITY_DEPTH: usize = 20;
-    const BPS: f64 = 20.0;
+    const BPS: f64 = 5.0;
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.max_block_parents = 4;
-            p.mergeset_size_limit = 10;
-            p.finality_depth = FINALITY_DEPTH as u64;
-            p.target_time_per_block = (1000.0 / BPS) as u64;
-            p.pruning_depth = (FINALITY_DEPTH * 3) as u64;
+            p.prior_max_block_parents = 4;
+            p.prior_mergeset_size_limit = 10;
+            p.prior_finality_depth = FINALITY_DEPTH as u64;
+            p.prior_target_time_per_block = (1000.0 / BPS) as u64;
+            p.prior_pruning_depth = (FINALITY_DEPTH * 3) as u64;
             p.kip6_activation = ForkActivation::new(20);
         })
         .build();
@@ -180,16 +180,18 @@ async fn test_receipts_in_random() {
     Perhaps this test needs just be replaced by a simulation on real data.
      */
     const FINALITY_DEPTH: usize = 10;
-    const DAG_SIZE: u64 = 500;
-    const BPS: f64 = 10.0;
+    const DAG_SIZE: u64 = 80;
+    const BPS: f64 = 1.0;
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.max_block_parents = 50; //  is probably enough to avoid errors
-            p.mergeset_size_limit = 30;
-            p.finality_depth = FINALITY_DEPTH as u64;
-            p.pruning_depth = (FINALITY_DEPTH * 3) as u64;
-            p.kip6_activation = ForkActivation::new(50);
+            p.prior_max_block_parents = 50; //  is probably enough to avoid errors
+            p.prior_mergeset_size_limit = 30;
+            p.prior_finality_depth = FINALITY_DEPTH as u64;
+            p.prior_pruning_depth = (FINALITY_DEPTH * 3) as u64;
+            p.kip6_activation = ForkActivation::new(20);
+            p.crescendo_activation = ForkActivation::never();
+            p.genesis.hash = 1.into();
         })
         .build();
     let mut receipts1 = std::collections::HashMap::<_, _>::new();
@@ -215,7 +217,7 @@ async fn test_receipts_in_random() {
        Mapper is the hash map coupling the abstract nodes on the dag object to the block hashes.
        Some of the vertices and nodes of the original node are changed so the blockdag behaves more realistically
     */
-    for (ind, parents_ind) in dag.1.into_iter() {
+    for (ind, parents_ind) in dag.1.into_iter().skip(1) {
         let mut parents = vec![];
         for par in parents_ind.clone().iter() {
             if let Some(&par_mapped) = mapper.get(par) {

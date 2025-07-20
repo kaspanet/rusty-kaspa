@@ -69,7 +69,7 @@ impl TestContext {
 
     pub fn build_block_template_row(&mut self, nonces: impl Iterator<Item = usize>) -> &mut Self {
         for nonce in nonces {
-            self.simulated_time += self.consensus.params().target_time_per_block;
+            self.simulated_time += self.consensus.params().prior_target_time_per_block;
             self.current_templates.push_back(self.build_block_template(nonce as u64, self.simulated_time));
         }
         self
@@ -98,7 +98,7 @@ impl TestContext {
     pub async fn build_and_insert_disqualified_chain(&mut self, mut parents: Vec<Hash>, len: usize) -> Hash {
         // The chain will be disqualified since build_block_with_parents builds utxo-invalid blocks
         for _ in 0..len {
-            self.simulated_time += self.consensus.params().target_time_per_block;
+            self.simulated_time += self.consensus.params().prior_target_time_per_block;
             let b = self.build_block_with_parents(parents, 0, self.simulated_time);
             parents = vec![b.header.hash];
             self.validate_and_insert_block(b.to_immutable()).await;

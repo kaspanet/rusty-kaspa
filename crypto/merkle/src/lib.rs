@@ -117,7 +117,7 @@ pub fn verify_merkle_witness(witness_vec: &MerkleWitness, leaf_value: Hash, merk
     current_hash == merkle_root_hash
 }
 
-fn merkle_hash(left_node: Hash, right_node: Hash) -> Hash {
+pub fn merkle_hash(left_node: Hash, right_node: Hash) -> Hash {
     let mut hasher = MerkleBranchHash::new();
     hasher.update(left_node).update(right_node);
     hasher.finalize()

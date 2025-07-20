@@ -13,7 +13,10 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
-    config::{genesis::GenesisBlock, params::ForkActivation},
+    config::{
+        genesis::GenesisBlock,
+        params::{ForkActivation, ForkedParam},
+    },
     hashing,
     header::Header,
     merkle::create_hash_merkle_witness,
@@ -39,7 +42,7 @@ pub struct TxReceiptsManager<
 > {
     pub genesis: GenesisBlock,
 
-    pub posterity_depth: u64,
+    pub posterity_depth: ForkedParam<u64>,
     pub reachability_service: MTReachabilityService<U>,
 
     pub headers_store: Arc<V>,
@@ -67,7 +70,7 @@ impl<
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         genesis: GenesisBlock,
-        posterity_depth: u64,
+        posterity_depth: ForkedParam<u64>,
         reachability_service: MTReachabilityService<U>,
         headers_store: Arc<V>,
         selected_chain_store: Arc<RwLock<T>>,
@@ -365,22 +368,23 @@ impl<
     pub fn get_post_posterity_block(&self, block_hash: Hash) -> Result<Hash, ReceiptsErrors> {
         /*try and reach the first proceeding selected chain block,
         in the majority of cases, a very short distance is covered before reaching a chain block.*/
-
+        let block_daa = self.headers_store.get_daa_score(block_hash)?;
         let candidate_block = *self
             .find_future_chain_block_path(block_hash)
             .map_err(|_| ReceiptsErrors::PosterityDoesNotExistYet(block_hash))?
             .last()
             .unwrap();
-        let candidate_bscore = self.headers_store.get_blue_score(candidate_block).unwrap();
+        let candidate_bscore = self.headers_store.get_blue_score(candidate_block)?;
 
         let head_hash = self.selected_chain_store.read().get_tip()?.1;
         let head_bscore = self.headers_store.get_blue_score(head_hash).unwrap();
-        let cutoff_bscore = candidate_bscore - candidate_bscore % self.posterity_depth + self.posterity_depth;
+        let cutoff_bscore =
+            candidate_bscore - candidate_bscore % self.posterity_depth.get(block_daa) + self.posterity_depth.get(block_daa);
         if cutoff_bscore > head_bscore {
             // Posterity block not yet available.
             Err(ReceiptsErrors::PosterityDoesNotExistYet(block_hash))
         } else {
-            Ok(self.get_chain_block_by_cutoff_bscore(candidate_block, cutoff_bscore, self.posterity_depth))
+            Ok(self.get_chain_block_by_cutoff_bscore(candidate_block, cutoff_bscore, self.posterity_depth.get(block_daa)))
         }
     }
     pub fn get_pre_posterity_block_by_hash(&self, block_hash: Hash) -> Hash {
@@ -400,7 +404,9 @@ impl<
     The posterity of genesis is defined to be genesis*/
     pub fn get_pre_posterity_block_by_parent(&self, block_parent_hash: Hash) -> Hash {
         let block_bscore = self.headers_store.get_blue_score(block_parent_hash).unwrap();
-        let tentative_cutoff_bscore = block_bscore - block_bscore % self.posterity_depth;
+        let block_daa = self.headers_store.get_daa_score(block_parent_hash).unwrap();
+
+        let tentative_cutoff_bscore = block_bscore - block_bscore % self.posterity_depth.get(block_daa);
         if tentative_cutoff_bscore == 0
         //genesis block edge case
         {
@@ -426,9 +432,10 @@ impl<
         }
         //othrewise, recalculate the cutoff score in accordance to the candiate
         let candidate_bscore = self.headers_store.get_blue_score(candidate_block).unwrap();
-        let cutoff_bscore = candidate_bscore - candidate_bscore % self.posterity_depth;
+        let block_daa = self.headers_store.get_daa_score(candidate_block).unwrap();
+        let cutoff_bscore = candidate_bscore - candidate_bscore % self.posterity_depth.get(block_daa);
 
-        self.get_chain_block_by_cutoff_bscore(candidate_block, cutoff_bscore, self.posterity_depth)
+        self.get_chain_block_by_cutoff_bscore(candidate_block, cutoff_bscore, self.posterity_depth.get(block_daa))
     }
 
     /*returns the first chain block with bscore larger or equal to the cutoff bscore;
@@ -486,7 +493,6 @@ impl<
             {
                 low = candidate_index; //rescale bound
                 next_candidate_index = candidate_index + index_step;
-                eprintln!("forward:{}", next_candidate_index);
             } else {
                 /*  if candidate slipped outside the already known bounds,
                 we risk making no progress and  getting stuck inside a back and forth loop,
@@ -506,7 +512,6 @@ impl<
                     // if not, update candidate indices and bounds
                     high = candidate_index; //  rescale bound
                     next_candidate_index = candidate_index.saturating_sub(index_step);
-                    eprintln!("backward:{}", next_candidate_index);
 
                     //shouldn't overflow in natural conditions but does in testing
                 }
@@ -575,10 +580,9 @@ impl<
     // will panic if not
     pub fn estimate_dag_width(&self, reference_wrapped: Option<Hash>) -> u64 {
         let (reference_index, reference);
-        let pruning_read = self.pruning_point_store.read(); //should I keep this lock till the end?
+        let pruning_read: parking_lot::lock_api::RwLockReadGuard<'_, parking_lot::RawRwLock, Y> = self.pruning_point_store.read(); //should I keep this lock till the end?
         let pruning_point_index = self.selected_chain_store.read().get_by_hash(pruning_read.pruning_point().unwrap()).unwrap();
         drop(pruning_read);
-        let past_dist_cover = std::cmp::min(100, self.posterity_depth); //edge case relevant for testing mostly
         if reference_wrapped.is_some() {
             reference = reference_wrapped.unwrap();
             reference_index = self.selected_chain_store.read().get_by_hash(reference).unwrap();
@@ -587,6 +591,9 @@ impl<
             (reference_index, reference) = self.selected_chain_store.read().get_tip().unwrap();
         }
         let reference_bscore = self.headers_store.get_blue_score(reference).unwrap();
+        let reference_daa = self.headers_store.get_daa_score(reference).unwrap();
+        let past_dist_cover = std::cmp::min(100, self.posterity_depth.get(reference_daa)); //edge case relevant for testing mostly
+
         let past_bscore = self
             .headers_store
             .get_blue_score(
@@ -628,7 +635,9 @@ impl<
             return false;
         }
         let bscore = self.headers_store.get_blue_score(block_hash).unwrap();
-        let cutoff_bscore = bscore - bscore % self.posterity_depth + self.posterity_depth;
+        let daa_score = self.headers_store.get_daa_score(block_hash).unwrap();
+
+        let cutoff_bscore = bscore - bscore % self.posterity_depth.get(daa_score) + self.posterity_depth.get(daa_score);
         let candidate_sel_parent_hash = self.reachability_service.get_chain_parent(post_posterity_candidate_hash);
         let candidate_sel_parent_bscore = self.headers_store.get_blue_score(candidate_sel_parent_hash).unwrap();
         candidate_sel_parent_bscore < cutoff_bscore

@@ -51,3 +51,6 @@ tonic-build = { workspace = true, features = ["prost"] }
 
 [dev-dependencies]
 hex.workspace = true
+
+[lints]
+workspace = true

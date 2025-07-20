@@ -25,7 +25,7 @@ impl Mempool {
     ) -> RuleResult<TransactionPreValidation> {
         self.validate_transaction_unacceptance(&transaction)?;
         // Populate mass and estimated_size in the beginning, it will be used in multiple places throughout the validation and insertion.
-        transaction.calculated_compute_mass = Some(consensus.calculate_transaction_compute_mass(&transaction.tx));
+        transaction.calculated_non_contextual_masses = Some(consensus.calculate_transaction_non_contextual_masses(&transaction.tx));
         self.validate_transaction_in_isolation(&transaction)?;
         let feerate_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy)?;
         self.populate_mempool_entries(&mut transaction);
@@ -152,17 +152,6 @@ impl Mempool {
     }
 
     fn validate_transaction_in_context(&self, transaction: &MutableTransaction) -> RuleResult<()> {
-        // TEMP: apply parts of go-kaspad mempool dust prevention patch
-        let has_coinbase_input = transaction.entries.iter().any(|e| e.as_ref().unwrap().is_coinbase);
-        let num_extra_outs = transaction.tx.outputs.len() as i64 - transaction.tx.inputs.len() as i64;
-        if !has_coinbase_input
-            && num_extra_outs > 2
-            && transaction.calculated_fee.unwrap() < num_extra_outs as u64 * kaspa_consensus_core::constants::SOMPI_PER_KASPA
-        {
-            kaspa_core::trace!("Rejected spam tx {} from mempool ({} outputs)", transaction.id(), transaction.tx.outputs.len());
-            return Err(RuleError::RejectSpamTransaction(transaction.id()));
-        }
-
         if !self.config.accept_non_standard {
             self.check_transaction_standard_in_context(transaction)?;
         }

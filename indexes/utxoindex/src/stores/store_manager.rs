@@ -53,6 +53,8 @@ impl Store {
         to_remove: &UtxoSetByScriptPublicKey,
         try_reset_on_err: bool,
     ) -> StoreResult<()> {
+        // A UTXO entry can appear both in removed and in added (if the DAA score of the entry changed). Thus
+        // we must first apply removals and then additions (so it will be re-added in the addition phase)
         let mut res = self.utxos_by_script_public_key_store.remove_utxo_entries(to_remove);
 
         if res.is_err() {
@@ -62,6 +64,7 @@ impl Store {
             return res;
         }
 
+        // Now apply additions
         res = self.utxos_by_script_public_key_store.add_utxo_entries(to_add);
 
         if try_reset_on_err && res.is_err() {
@@ -75,7 +78,7 @@ impl Store {
         self.circulating_supply_store.get()
     }
 
-    pub fn update_circulating_supply(&mut self, circulating_supply_diff: u64, try_reset_on_err: bool) -> StoreResult<u64> {
+    pub fn update_circulating_supply(&mut self, circulating_supply_diff: i64, try_reset_on_err: bool) -> StoreResult<u64> {
         let res = self.circulating_supply_store.update_circulating_supply(circulating_supply_diff);
         if try_reset_on_err && res.is_err() {
             self.delete_all()?;

@@ -10,6 +10,7 @@ pub mod headers_selected_tip;
 pub mod past_pruning_points;
 pub mod pchmr_store;
 pub mod pruning;
+pub mod pruning_samples;
 pub mod pruning_utxoset;
 pub mod reachability;
 pub mod relations;

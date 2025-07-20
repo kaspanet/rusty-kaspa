@@ -12,10 +12,10 @@ impl Guide {
 
         let mut paras = Vec::<String>::new();
         let mut para = String::new();
+        let regex = Regex::new(r"\s+").unwrap();
         for line in lines {
             if line.trim().is_empty() {
                 if !para.is_empty() {
-                    let regex = Regex::new(r"\s+").unwrap();
                     let text = regex.replace_all(para.trim(), " ");
                     paras.push(text.to_string());
                     para.clear();

@@ -904,7 +904,7 @@ message GetDaaScoreTimestampEstimateRequestMessage {
   repeated uint64 daaScores = 1;
 }
 
-message GetDaaScoreTimestampEstimateResponseMessage{
+message GetDaaScoreTimestampEstimateResponseMessage {
   repeated uint64 timestamps = 1;
   RPCError error = 1000;
 }
@@ -972,5 +972,15 @@ message GetCurrentBlockColorRequestMessage {
 message GetCurrentBlockColorResponseMessage {
   bool blue = 1;
 
+  RPCError error = 1000;
+}
+
+message GetUtxoReturnAddressRequestMessage {
+  string txid = 1;
+  uint64 accepting_block_daa_score = 2;
+}
+
+message GetUtxoReturnAddressResponseMessage {
+  string return_address = 1;
   RPCError error = 1000;
 }

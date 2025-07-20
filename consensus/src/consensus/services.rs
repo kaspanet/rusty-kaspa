@@ -7,8 +7,8 @@ use crate::{
             acceptance_data::DbAcceptanceDataStore, block_transactions::DbBlockTransactionsStore,
             block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
             headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore,
-            pruning::DbPruningStore, reachability::DbReachabilityStore, relations::DbRelationsStore,
-            selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
+            pruning::DbPruningStore, pruning_samples::DbPruningSamplesStore, reachability::DbReachabilityStore,
+            relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
         },
     },
     pipeline::tx_receipts_manager::TxReceiptsManager,
@@ -39,9 +39,15 @@ pub type DbSyncManager = SyncManager<
     DbStatusesStore,
 >;
 
-pub type DbPruningPointManager =
-    PruningPointManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore, DbHeadersSelectedTipStore>;
-pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>;
+pub type DbPruningPointManager = PruningPointManager<
+    DbGhostdagStore,
+    DbReachabilityStore,
+    DbHeadersStore,
+    DbPastPruningPointsStore,
+    DbHeadersSelectedTipStore,
+    DbPruningSamplesStore,
+>;
+pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore, DbHeadersStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 pub type DbTxReceiptsManager = TxReceiptsManager<
     DbSelectedChainStore,
@@ -103,27 +109,29 @@ impl ConsensusServices {
             storage.block_window_cache_for_difficulty.clone(),
             storage.block_window_cache_for_past_median_time.clone(),
             params.max_difficulty_target,
-            params.target_time_per_block,
-            params.sampling_activation,
-            params.legacy_difficulty_window_size,
-            params.sampled_difficulty_window_size,
-            params.min_difficulty_window_len,
-            params.difficulty_sample_rate,
-            params.legacy_past_median_time_window_size(),
+            params.prior_target_time_per_block,
+            params.crescendo.target_time_per_block,
+            params.crescendo_activation,
+            params.prior_difficulty_window_size,
+            params.crescendo.sampled_difficulty_window_size as usize,
+            params.min_difficulty_window_size,
+            params.crescendo.difficulty_sample_rate,
+            params.prior_past_median_time_window_size(),
             params.sampled_past_median_time_window_size(),
-            params.past_median_time_sample_rate,
+            params.crescendo.past_median_time_sample_rate,
         );
         let depth_manager = BlockDepthManager::new(
-            params.merge_depth,
-            params.finality_depth,
+            params.merge_depth(),
+            params.finality_depth(),
             params.genesis.hash,
             storage.depth_store.clone(),
             reachability_service.clone(),
             storage.ghostdag_store.clone(),
+            storage.headers_store.clone(),
         );
         let ghostdag_manager = GhostdagManager::new(
             params.genesis.hash,
-            params.ghostdag_k,
+            params.ghostdag_k(),
             storage.ghostdag_store.clone(),
             relations_services[0].clone(),
             storage.headers_store.clone(),
@@ -135,7 +143,7 @@ impl ConsensusServices {
             params.max_coinbase_payload_len,
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
-            params.target_time_per_block,
+            params.bps(),
         );
 
         let mass_calculator = MassCalculator::new(
@@ -146,29 +154,27 @@ impl ConsensusServices {
         );
 
         let transaction_validator = TransactionValidator::new(
-            params.max_tx_inputs,
-            params.max_tx_outputs,
-            params.max_signature_script_len,
-            params.max_script_public_key_len,
-            params.ghostdag_k,
+            params.max_tx_inputs(),
+            params.max_tx_outputs(),
+            params.max_signature_script_len(),
+            params.max_script_public_key_len(),
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.coinbase_maturity(),
             tx_script_cache_counters,
             mass_calculator.clone(),
-            params.storage_mass_activation,
-            params.kip10_activation,
-            params.payload_activation,
+            params.crescendo_activation,
         );
 
         let pruning_point_manager = PruningPointManager::new(
-            params.pruning_depth,
-            params.finality_depth,
+            params.pruning_depth(),
+            params.finality_depth(),
             params.genesis.hash,
             reachability_service.clone(),
             storage.ghostdag_store.clone(),
             storage.headers_store.clone(),
             storage.past_pruning_points_store.clone(),
             storage.headers_selected_tip_store.clone(),
+            storage.pruning_samples_store.clone(),
         );
 
         let parents_manager = ParentsManager::new(
@@ -191,12 +197,12 @@ impl ConsensusServices {
             params.genesis.hash,
             params.pruning_proof_m,
             params.anticone_finalization_depth(),
-            params.ghostdag_k,
+            params.ghostdag_k(),
             is_consensus_exiting,
         ));
 
         let sync_manager = SyncManager::new(
-            params.mergeset_size_limit as usize,
+            params.mergeset_size_limit(),
             reachability_service.clone(),
             dag_traversal_manager.clone(),
             storage.ghostdag_store.clone(),
@@ -207,7 +213,7 @@ impl ConsensusServices {
         );
         let tx_receipts_manager = TxReceiptsManager::new(
             params.genesis.clone(),
-            params.finality_depth,
+            params.finality_depth(),
             reachability_service.clone(),
             storage.headers_store.clone(),
             storage.selected_chain_store.clone(),
@@ -216,7 +222,7 @@ impl ConsensusServices {
             storage.pruning_point_store.clone(),
             dag_traversal_manager.clone(),
             storage.hash_to_pchmr_store.clone(),
-            params.storage_mass_activation,
+            params.crescendo_activation,
             params.kip6_activation,
         );
 

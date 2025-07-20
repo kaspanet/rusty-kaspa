@@ -21,6 +21,8 @@ use crate::{
             headers_selected_tip::HeadersSelectedTipStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::PruningStoreReader,
+            pruning_samples::{PruningSamplesStore, PruningSamplesStoreReader},
+            reachability::ReachabilityStoreReader,
             relations::RelationsStoreReader,
             statuses::StatusesStoreReader,
             tips::TipsStoreReader,
@@ -49,7 +51,7 @@ use kaspa_consensus_core::{
         BlockValidationFutures, ConsensusApi, ConsensusStats,
     },
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
-    blockhash::BlockHashExtensions,
+    blockhash::{BlockHashExtensions, ORIGIN},
     blockstatus::BlockStatus,
     coinbase::MinerData,
     daa_score_timestamp::DaaScoreTimestamp,
@@ -61,13 +63,16 @@ use kaspa_consensus_core::{
         tx::TxResult,
     },
     header::Header,
+    mass::{ContextualMasses, NonContextualMasses},
     merkle::calc_hash_merkle_root,
+    mining_rules::MiningRules,
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     receipts::{Pochm, ProofOfPublication, TxReceipt},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    utxo::utxo_inquirer::UtxoInquirerError,
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -78,7 +83,7 @@ use crossbeam_channel::{
 use itertools::{EitherOrBoth, Itertools};
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
@@ -86,7 +91,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use std::{
     cmp::Reverse,
-    collections::BinaryHeap,
+    collections::{BinaryHeap, VecDeque},
     future::Future,
     iter::once,
     ops::Deref,
@@ -159,6 +164,7 @@ impl Consensus {
         counters: Arc<ProcessingCounters>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
         creation_timestamp: u64,
+        mining_rules: Arc<MiningRules>,
     ) -> Self {
         let params = &config.params;
         let perf_params = &config.perf;
@@ -263,6 +269,7 @@ impl Consensus {
             pruning_lock.clone(),
             notification_root.clone(),
             counters.clone(),
+            mining_rules,
         ));
 
         let pruning_processor = Arc::new(PruningProcessor::new(
@@ -287,7 +294,7 @@ impl Consensus {
             virtual_processor.process_genesis();
         }
 
-        Self {
+        let this = Self {
             db,
             block_sender: sender,
             header_processor,
@@ -302,7 +309,88 @@ impl Consensus {
             config,
             creation_timestamp,
             is_consensus_exiting,
+        };
+
+        // Run database upgrades if any
+        this.run_database_upgrades();
+
+        this
+    }
+
+    /// A procedure for calling database upgrades which are self-contained (i.e., do not require knowing the DB version)
+    fn run_database_upgrades(&self) {
+        // Upgrade to initialize the new retention root field correctly
+        self.retention_root_database_upgrade();
+
+        // TODO (post HF): remove this upgrade
+        // Database upgrade to include pruning samples
+        self.pruning_samples_database_upgrade();
+    }
+
+    fn retention_root_database_upgrade(&self) {
+        let mut pruning_point_store = self.pruning_point_store.write();
+        if pruning_point_store.retention_period_root().unwrap_option().is_none() {
+            let mut batch = rocksdb::WriteBatch::default();
+            if self.config.is_archival {
+                // The retention checkpoint is what was previously known as history root
+                let retention_checkpoint = pruning_point_store.retention_checkpoint().unwrap();
+                pruning_point_store.set_retention_period_root(&mut batch, retention_checkpoint).unwrap();
+            } else {
+                // For non-archival nodes the retention root was the pruning point
+                let pruning_point = pruning_point_store.get().unwrap().pruning_point;
+                pruning_point_store.set_retention_period_root(&mut batch, pruning_point).unwrap();
+            }
+            self.db.write(batch).unwrap();
         }
+    }
+
+    fn pruning_samples_database_upgrade(&self) {
+        //
+        // For the first time this version runs, make sure we populate pruning samples
+        // from pov for all qualified chain blocks in the pruning point future
+        //
+
+        let sink = self.get_sink();
+        if self.storage.pruning_samples_store.pruning_sample_from_pov(sink).unwrap_option().is_some() {
+            // Sink is populated so we assume the database is upgraded
+            return;
+        }
+
+        // Populate past pruning points (including current one)
+        for (p1, p2) in (0..=self.pruning_point_store.read().get().unwrap().index)
+            .map(|index| self.past_pruning_points_store.get(index).unwrap())
+            .tuple_windows()
+        {
+            // Set p[i] to point at p[i-1]
+            self.pruning_samples_store.insert(p2, p1).unwrap_or_exists();
+        }
+
+        let pruning_point = self.pruning_point();
+        let reachability = self.reachability_store.read();
+
+        // We walk up via reachability tree children so that we only iterate blocks B s.t. pruning point ∈ chain(B)
+        let mut queue = VecDeque::<Hash>::from_iter(reachability.get_children(pruning_point).unwrap().iter().copied());
+        let mut processed = 0;
+        kaspa_core::info!("Upgrading database to include and populate the pruning samples store");
+        while let Some(current) = queue.pop_front() {
+            if !self.get_block_status(current).is_some_and(|s| s == BlockStatus::StatusUTXOValid) {
+                // Skip branches of the tree which are not chain qualified.
+                // This is sufficient since we will only assume this field exists
+                // for such chain qualified blocks
+                continue;
+            }
+            queue.extend(reachability.get_children(current).unwrap().iter());
+
+            processed += 1;
+
+            // Populate the data
+            let ghostdag_data = self.ghostdag_store.get_compact_data(current).unwrap();
+            let pruning_sample_from_pov =
+                self.services.pruning_point_manager.expected_header_pruning_point_v2(ghostdag_data).pruning_sample;
+            self.pruning_samples_store.insert(current, pruning_sample_from_pov).unwrap_or_exists();
+        }
+
+        kaspa_core::info!("Done upgrading database (populated {} entries)", processed);
     }
 
     pub fn run_processors(&self) -> Vec<JoinHandle<()>> {
@@ -439,14 +527,16 @@ impl Consensus {
         let (tip_index, tip) = self.selected_chain_store.read().get_tip().unwrap();
         let tip_timestamp = self.headers_store.get_timestamp(tip).unwrap();
         let tip_bscore = self.headers_store.get_blue_score(tip).unwrap();
+        let tip_daa = self.headers_store.get_daa_score(tip).unwrap();
+
         let dag_width_guess: u64 = self.services.tx_receipts_manager.estimate_dag_width(Some(tip)); // estimation may be off for old txs
-        let estimated_bscore = tip_bscore.saturating_sub(tip_timestamp.saturating_sub(tx_timestamp)) * bps / 1000;
+        let estimated_bscore = tip_bscore.saturating_sub(tip_timestamp.saturating_sub(tx_timestamp)) * bps.get(tip_daa) / 1000;
         let guess_index = tip_index.saturating_sub(tip_bscore.saturating_sub(estimated_bscore) / dag_width_guess);
-        let guess_block = self.selected_chain_store.read().get_by_index(guess_index).unwrap_or(self.get_source());
+        let guess_block = self.selected_chain_store.read().get_by_index(guess_index).unwrap_or(ORIGIN);
         //since guess_block is merely a guess, some margin of error needs be taken
         // we account for a deviation of "10 minutes" and derive the expected max distance in chain blocks
         const DEVIATION_IN_SECONDS: u64 = 600; //10 minutes deviation should be enough?
-        let deviation_in_chain_blocks = ((DEVIATION_IN_SECONDS * bps) / dag_width_guess) as usize;
+        let deviation_in_chain_blocks = ((DEVIATION_IN_SECONDS * bps.get(tip_daa)) / dag_width_guess) as usize;
 
         /* The next segment searches for a block accepting the transaction within
         deviation_in_chain_blocks distance, forward or backwards from guess_block.
@@ -466,7 +556,7 @@ impl Consensus {
             .map(someize_header_if_blk_accepts_tx);
         //backward derivation
         let backward_search_iter = self.services.reachability_service
-            .backward_chain_iterator(guess_block,self.pruning_point_store.read().history_root().unwrap(),true)
+            .backward_chain_iterator(guess_block,self.pruning_point_store.read().retention_period_root().unwrap(),true)
             .skip(1)// avoid checking guess block itself twice
             .take(deviation_in_chain_blocks)
             .map(someize_header_if_blk_accepts_tx);
@@ -516,14 +606,16 @@ impl Consensus {
         let (tip_index, tip) = self.selected_chain_store.read().get_tip().unwrap();
         let tip_timestamp = self.headers_store.get_timestamp(tip).unwrap();
         let tip_bscore = self.headers_store.get_blue_score(tip).unwrap();
+        let tip_daa = self.headers_store.get_daa_score(tip).unwrap();
+
         let dag_width_guess: u64 = self.services.tx_receipts_manager.estimate_dag_width(Some(tip)); // estimation may be off for old txs
-        let estimated_bscore = tip_bscore.saturating_sub(tip_timestamp.saturating_sub(tx_timestamp)) * bps / 1000;
+        let estimated_bscore = tip_bscore.saturating_sub(tip_timestamp.saturating_sub(tx_timestamp)) * bps.get(tip_daa) / 1000;
         let guess_index = tip_index.saturating_sub(tip_bscore.saturating_sub(estimated_bscore) / dag_width_guess);
-        let guess_block = self.selected_chain_store.read().get_by_index(guess_index).unwrap_or(self.get_source());
+        let guess_block = self.selected_chain_store.read().get_by_index(guess_index).unwrap_or(ORIGIN);
         //since guess_block is merely a guess, some margin of error needs be taken
         // we account for a deviation of "10 minutes" and derive the expected max distance in blocks
         const DEVIATION_IN_SECONDS: u64 = 600; //10 minutes deviation should be enough?
-        let deviation_in_dag_blocks = (DEVIATION_IN_SECONDS * bps) as usize;
+        let deviation_in_dag_blocks = (DEVIATION_IN_SECONDS * bps.get(tip_daa)) as usize;
 
         /* The next segment searches for a block publishing the transaction within
         deviation_in_chain_blocks distance, forward or backwards from guess_block.
@@ -544,7 +636,7 @@ impl Consensus {
             .map(someize_header_if_blk_publishes_tx);
         //backward derivation
         let backward_search_iter = self.services.dag_traversal_manager
-            .backward_bfs_paths_iterator(guess_block,self.pruning_point_store.read().history_root().unwrap())
+            .backward_bfs_paths_iterator(guess_block,self.pruning_point_store.read().retention_period_root().unwrap())
             .map_paths_to_tips()
             .skip(1)// avoid checking guess block itself twice
             .take(deviation_in_dag_blocks)
@@ -606,13 +698,12 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.populate_mempool_transactions_in_parallel(transactions)
     }
 
-    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
-        self.services.mass_calculator.calc_tx_compute_mass(transaction)
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
+        self.services.mass_calculator.calc_non_contextual_masses(transaction)
     }
 
-    fn calculate_transaction_storage_mass(&self, _transaction: &MutableTransaction) -> Option<u64> {
-        // self.services.mass_calculator.calc_tx_storage_mass(&transaction.as_verifiable())
-        unimplemented!("unsupported at the API level until KIP9 is finalized")
+    fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
+        self.services.mass_calculator.calc_contextual_masses(&transaction.as_verifiable())
     }
 
     fn get_stats(&self) -> ConsensusStats {
@@ -665,14 +756,20 @@ impl ConsensusApi for Consensus {
         self.headers_store.get_timestamp(self.get_sink()).unwrap()
     }
 
+    fn get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
+        let sink = self.get_sink();
+        let compact = self.headers_store.get_compact_header_data(sink).unwrap();
+        DaaScoreTimestamp { daa_score: compact.daa_score, timestamp: compact.timestamp }
+    }
+
     fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
         let _guard = self.pruning_lock.blocking_read();
 
         // Verify the block exists and can be assumed to have relations and reachability data
         self.validate_block_exists(hash).ok()?;
 
-        // Verify that the block is in future(source), where Ghostdag data is complete
-        self.services.reachability_service.is_dag_ancestor_of(self.get_source(), hash).then_some(())?;
+        // Verify that the block is in future(retention root), where Ghostdag data is complete
+        self.services.reachability_service.is_dag_ancestor_of(self.get_retention_period_root(), hash).then_some(())?;
 
         let sink = self.get_sink();
 
@@ -727,39 +824,27 @@ impl ConsensusApi for Consensus {
         self.lkg_virtual_state.load().to_virtual_state_approx_id()
     }
 
-    fn get_source(&self) -> Hash {
-        if self.config.is_archival {
-            // we use the history root in archival cases.
-            return self.pruning_point_store.read().history_root().unwrap();
-        }
-        self.pruning_point_store.read().pruning_point().unwrap()
+    fn get_retention_period_root(&self) -> Hash {
+        self.pruning_point_store.read().retention_period_root().unwrap()
     }
 
-    /// Estimates number of blocks and headers stored in the node
+    /// Estimates the number of blocks and headers stored in the node database.
     ///
-    /// This is an estimation based on the daa score difference between the node's `source` and `sink`'s daa score,
+    /// This is an estimation based on the DAA score difference between the node's `retention root` and `virtual`'s DAA score,
     /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.  
     fn estimate_block_count(&self) -> BlockCount {
-        // PRUNE SAFETY: node is either archival or source is the pruning point which its header is kept permanently
-        let source_score = self.headers_store.get_compact_header_data(self.get_source()).unwrap().daa_score;
+        // PRUNE SAFETY: retention root is always a current or past pruning point which its header is kept permanently
+        let retention_period_root_score = self.headers_store.get_daa_score(self.get_retention_period_root()).unwrap();
         let virtual_score = self.get_virtual_daa_score();
         let header_count = self
             .headers_store
-            .get_compact_header_data(self.get_headers_selected_tip())
+            .get_daa_score(self.get_headers_selected_tip())
             .unwrap_option()
-            .map(|h| h.daa_score)
             .unwrap_or(virtual_score)
             .max(virtual_score)
-            - source_score;
-        let block_count = virtual_score - source_score;
+            - retention_period_root_score;
+        let block_count = virtual_score - retention_period_root_score;
         BlockCount { header_count, block_count }
-    }
-
-    fn is_nearly_synced(&self) -> bool {
-        // See comment within `config.is_nearly_synced`
-        let sink = self.get_sink();
-        let compact = self.headers_store.get_compact_header_data(sink).unwrap();
-        self.config.is_nearly_synced(compact.timestamp, compact.daa_score)
     }
 
     fn get_virtual_chain_from_block(&self, low: Hash, chain_path_added_limit: Option<usize>) -> ConsensusResult<ChainPath> {
@@ -774,12 +859,12 @@ impl ConsensusApi for Consensus {
         // Verify that the block exists
         self.validate_block_exists(low)?;
 
-        // Verify that source is on chain(block)
+        // Verify that retention root is on chain(block)
         self.services
             .reachability_service
-            .is_chain_ancestor_of(self.get_source(), low)
+            .is_chain_ancestor_of(self.get_retention_period_root(), low)
             .then_some(())
-            .ok_or(ConsensusError::General("the queried hash does not have source on its chain"))?;
+            .ok_or(ConsensusError::General("the queried hash does not have retention root on its chain"))?;
 
         Ok(self.services.dag_traversal_manager.calculate_chain_path(low, self.get_sink(), chain_path_added_limit))
     }
@@ -851,6 +936,12 @@ impl ConsensusApi for Consensus {
         sample_headers
     }
 
+    fn get_populated_transaction(&self, txid: Hash, accepting_block_daa_score: u64) -> Result<SignableTransaction, UtxoInquirerError> {
+        // We need consistency between the pruning_point_store, utxo_diffs_store, block_transactions_store, selected chain and headers store reads
+        let _guard = self.pruning_lock.blocking_read();
+        self.virtual_processor.get_populated_transaction(txid, accepting_block_daa_score, self.get_retention_period_root())
+    }
+
     fn get_virtual_parents(&self) -> BlockHashSet {
         self.lkg_virtual_state.load().parents.iter().copied().collect()
     }
@@ -907,7 +998,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], pov_daa_score: u64) -> Hash {
-        let storage_mass_activated = self.config.storage_mass_activation.is_active(pov_daa_score);
+        let storage_mass_activated = self.config.crescendo_activation.is_active(pov_daa_score);
         calc_hash_merkle_root(txs.iter(), storage_mass_activated)
     }
 
@@ -923,7 +1014,7 @@ impl ConsensusApi for Consensus {
         self.services.pruning_proof_manager.apply_proof(proof, trusted_set)
     }
 
-    fn import_pruning_points(&self, pruning_points: PruningPointsList) {
+    fn import_pruning_points(&self, pruning_points: PruningPointsList) -> PruningImportResult<()> {
         self.services.pruning_proof_manager.import_pruning_points(&pruning_points)
     }
 
@@ -946,18 +1037,19 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 
-    fn validate_pruning_points(&self) -> ConsensusResult<()> {
+    fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         let hst = self.storage.headers_selected_tip_store.read().get().unwrap().hash;
         let pp_info = self.pruning_point_store.read().get().unwrap();
         if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, hst) {
-            return Err(ConsensusError::General("invalid pruning point candidate"));
+            return Err(ConsensusError::General("pruning point does not coincide with the synced header selected tip"));
         }
-
-        if !self.services.pruning_point_manager.are_pruning_points_in_valid_chain(pp_info, hst) {
-            return Err(ConsensusError::General("past pruning points do not form a valid chain"));
+        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, syncer_virtual_selected_parent) {
+            return Err(ConsensusError::General("pruning point does not coincide with the syncer's sink (virtual selected parent)"));
         }
-
-        Ok(())
+        self.services
+            .pruning_point_manager
+            .are_pruning_points_in_valid_chain(pp_info, syncer_virtual_selected_parent)
+            .map_err(|e| ConsensusError::GeneralOwned(format!("past pruning points do not form a valid chain: {}", e)))
     }
 
     fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
@@ -970,7 +1062,7 @@ impl ConsensusApi for Consensus {
     // max_blocks has to be greater than the merge set size limit
     fn get_hashes_between(&self, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
         let _guard = self.pruning_lock.blocking_read();
-        assert!(max_blocks as u64 > self.config.mergeset_size_limit);
+        assert!(max_blocks as u64 > self.config.mergeset_size_limit().upper_bound());
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
 
@@ -1157,16 +1249,21 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(hash)?;
 
         // In order to guarantee the chain height is at least k, we check that the pruning point is not genesis.
-        if self.pruning_point() == self.config.genesis.hash {
+        let pruning_point = self.pruning_point();
+        if pruning_point == self.config.genesis.hash {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
+
+        // [Crescendo]: get ghostdag k based on the pruning point's DAA score. The off-by-one of not going by selected parent
+        // DAA score is not important here as we simply increase K one block earlier which is more conservative (saving/sending more data)
+        let ghostdag_k = self.config.ghostdag_k().get(self.headers_store.get_daa_score(pruning_point).unwrap());
 
         // Note: the method `get_ghostdag_chain_k_depth` might return a partial chain if data is missing.
         // Ideally this node when synced would validate it got all of the associated data up to k blocks
         // back and then we would be able to assert we actually got `k + 1` blocks, however we choose to
         // simply ignore, since if the data was truly missing we wouldn't accept the staging consensus in
         // the first place
-        Ok(self.services.pruning_proof_manager.get_ghostdag_chain_k_depth(hash))
+        Ok(self.services.pruning_proof_manager.get_ghostdag_chain_k_depth(hash, ghostdag_k))
     }
 
     fn create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
@@ -1236,7 +1333,7 @@ impl ConsensusApi for Consensus {
         note: this is probably very computationally wasteful for archival nodes
         and should be avoided on usual terms */
 
-        for block in self.services.reachability_service.forward_chain_iterator(self.get_source(), self.get_sink(), true) {
+        for block in self.services.reachability_service.forward_chain_iterator(ORIGIN, self.get_sink(), true) {
             let accepted_txs = self.get_block_acceptance_data(block)?;
             if accepted_txs
                 .iter()
@@ -1275,9 +1372,7 @@ impl ConsensusApi for Consensus {
             /*  if no timestamp is given either, search the entire database
             note: this is probably very computationally wasteful for archival nodes
             and should be avoided on usual terms */
-            for block in
-                self.services.dag_traversal_manager.forward_bfs_paths_iterator(self.get_source(), self.get_sink()).map_paths_to_tips()
-            {
+            for block in self.services.dag_traversal_manager.forward_bfs_paths_iterator(ORIGIN, self.get_sink()).map_paths_to_tips() {
                 let published_txs = self
                     .storage
                     .block_transactions_store
@@ -1320,8 +1415,10 @@ impl ConsensusApi for Consensus {
         let (_, tip) = self.selected_chain_store.read().get_tip().unwrap();
         // a security margin of 100 seconds is taken to avoid the posterity reorgin, should be enough
         // the minimum with 2 times finality depth is taken for testing purposes. For true data this minimum is meaningless.
-        let security_margin = std::cmp::min(100 * self.config.bps(), self.config.finality_depth * 2);
         let tip_bscore = self.headers_store.get_blue_score(tip).unwrap();
+        let tip_daa = self.headers_store.get_daa_score(tip).unwrap();
+
+        let security_margin = std::cmp::min(100 * self.config.bps().get(tip_daa), self.config.finality_depth().get(tip_daa) * 2);
         tip_bscore >= cutoff_bscore + security_margin
     }
 }
