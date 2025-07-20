@@ -23,14 +23,11 @@ impl StorageHeader {
 
     pub fn try_magic(self, magic: u32) -> IoResult<Self> {
         if self.magic != magic {
-            Err(IoError::new(
-                IoErrorKind::Other,
-                format!(
-                    "Deserializer magic value error: expected '0x{}' received '0x{}'",
-                    magic.to_le_bytes().as_slice().to_hex(),
-                    self.magic.to_le_bytes().as_slice().to_hex()
-                ),
-            ))
+            Err(IoError::other(format!(
+                "Deserializer magic value error: expected '0x{}' received '0x{}'",
+                magic.to_le_bytes().as_slice().to_hex(),
+                self.magic.to_le_bytes().as_slice().to_hex()
+            )))
         } else {
             Ok(self)
         }
@@ -38,8 +35,7 @@ impl StorageHeader {
 
     pub fn try_version(self, version: u32) -> IoResult<Self> {
         if self.version > version {
-            Err(IoError::new(
-                IoErrorKind::Other,
+            Err(IoError::other(
                 format!(
                     "Deserializer data has a newer version than the current version: expected version at most '{}' received '{}' (your data may have been generated on a newer version of the software)",
                     version,
@@ -59,8 +55,8 @@ impl BorshSerialize for StorageHeader {
 }
 
 impl BorshDeserialize for StorageHeader {
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let (magic, version): (u32, u32) = BorshDeserialize::deserialize(buf)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let (magic, version): (u32, u32) = BorshDeserialize::deserialize_reader(reader)?;
         Ok(Self { magic, version })
     }
 }

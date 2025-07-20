@@ -1,4 +1,8 @@
-use kaspa_consensus_core::{subnets::SubnetworkConversionError, tx::TransactionId};
+//!
+//! [`RpcError`] enum used by RPC primitives.
+//!
+
+use kaspa_consensus_core::{subnets::SubnetworkConversionError, tx::TransactionId, utxo::utxo_inquirer::UtxoInquirerError};
 use kaspa_utils::networking::IpAddress;
 use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
@@ -86,6 +90,9 @@ pub enum RpcError {
     #[error("IP {0} is not registered as banned.")]
     IpIsNotBanned(IpAddress),
 
+    #[error("Block {0} doesn't have any merger block.")]
+    MergerNotFound(RpcHash),
+
     #[error("Block was not submitted: {0}")]
     SubmitBlockError(SubmitBlockRejectReason),
 
@@ -136,6 +143,9 @@ pub enum RpcError {
 
     #[error(transparent)]
     ConsensusClient(#[from] kaspa_consensus_client::error::Error),
+
+    #[error("utxo return address could not be found -> {0}")]
+    UtxoReturnAddressNotFound(UtxoInquirerError),
 }
 
 impl From<String> for RpcError {

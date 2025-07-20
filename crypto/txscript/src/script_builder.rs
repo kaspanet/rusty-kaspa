@@ -1,10 +1,12 @@
 use std::iter::once;
 
 use crate::{
-    data_stack::OpcodeData,
+    data_stack::{Kip10I64, OpcodeData},
     opcodes::{codes::*, OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL},
     MAX_SCRIPTS_SIZE, MAX_SCRIPT_ELEMENT_SIZE,
 };
+use hexplay::{HexView, HexViewBuilder};
+use kaspa_txscript_errors::SerializationError;
 use thiserror::Error;
 
 /// DEFAULT_SCRIPT_ALLOC is the default size used for the backing array
@@ -30,6 +32,9 @@ pub enum ScriptBuilderError {
 
     #[error("adding integer {0} would exceed the maximum allowed canonical script length of {MAX_SCRIPTS_SIZE}")]
     IntegerRejected(i64),
+
+    #[error(transparent)]
+    Serialization(#[from] SerializationError),
 }
 pub type ScriptBuilderResult<T> = std::result::Result<T, ScriptBuilderError>;
 
@@ -69,9 +74,8 @@ impl ScriptBuilder {
         &self.script
     }
 
-    #[cfg(test)]
-    pub fn extend(&mut self, data: &[u8]) {
-        self.script.extend(data);
+    pub fn script_mut(&mut self) -> &mut Vec<u8> {
+        &mut self.script
     }
 
     pub fn drain(&mut self) -> Vec<u8> {
@@ -227,7 +231,14 @@ impl ScriptBuilder {
             return Ok(self);
         }
 
-        let bytes: Vec<_> = OpcodeData::serialize(&val);
+        let bytes: Vec<_> = OpcodeData::<Kip10I64>::serialize(&val.into())?;
+        self.add_data(&bytes)
+    }
+
+    // Bitcoind tests utilizes this function
+    #[cfg(test)]
+    pub fn add_i64_min(&mut self) -> ScriptBuilderResult<&mut Self> {
+        let bytes: Vec<_> = OpcodeData::serialize(&crate::data_stack::SizedEncodeInt::<9>(i64::MIN)).expect("infallible");
         self.add_data(&bytes)
     }
 
@@ -248,6 +259,16 @@ impl ScriptBuilder {
         let trimmed = &buffer[0..trimmed_size];
         self.add_data(trimmed)
     }
+
+    /// Return [`HexViewBuilder`] for the script
+    pub fn hex_view_builder(&self) -> HexViewBuilder<'_> {
+        HexViewBuilder::new(&self.script)
+    }
+
+    /// Return ready to use [`HexView`] for the script
+    pub fn hex_view(&self, offset: usize, width: usize) -> HexView<'_> {
+        HexViewBuilder::new(&self.script).address_offset(offset).row_width(width).finish()
+    }
 }
 
 impl Default for ScriptBuilder {
@@ -259,7 +280,7 @@ impl Default for ScriptBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::iter::{once, repeat};
+    use std::iter::{once, repeat_n};
 
     // Tests that pushing opcodes to a script via the ScriptBuilder API works as expected.
     #[test]
@@ -344,6 +365,11 @@ mod tests {
             Test { name: "push -256", val: -256, expected: vec![OpData2, 0x00, 0x81] },
             Test { name: "push -32767", val: -32767, expected: vec![OpData2, 0xff, 0xff] },
             Test { name: "push -32768", val: -32768, expected: vec![OpData3, 0x00, 0x80, 0x80] },
+            Test {
+                name: "push 9223372036854775807",
+                val: 9223372036854775807,
+                expected: vec![OpData8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F],
+            },
         ];
 
         for test in tests {
@@ -351,6 +377,15 @@ mod tests {
             let result = builder.add_i64(test.val).expect("the script is canonical").script();
             assert_eq!(result, test.expected, "{} wrong result", test.name);
         }
+
+        // special case that used in bitcoind test
+        let mut builder = ScriptBuilder::new();
+        let result = builder.add_i64_min().expect("the script is canonical").script();
+        assert_eq!(
+            result,
+            vec![OpData9, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x80],
+            "push -9223372036854775808 wrong result"
+        );
     }
 
     /// Tests that pushing data to a script via the ScriptBuilder API works as expected and conforms to BIP0062.
@@ -397,39 +432,39 @@ mod tests {
             Test {
                 name: "push data len 17",
                 data: vec![0x49; 17],
-                expected: Ok(once(OpData17).chain(repeat(0x49).take(17)).collect()),
+                expected: Ok(once(OpData17).chain(repeat_n(0x49, 17)).collect()),
                 unchecked: false,
             },
             Test {
                 name: "push data len 75",
                 data: vec![0x49; 75],
-                expected: Ok(once(OpData75).chain(repeat(0x49).take(75)).collect()),
+                expected: Ok(once(OpData75).chain(repeat_n(0x49, 75)).collect()),
                 unchecked: false,
             },
             // BIP0062: Pushing 76 to 255 bytes must use OP_PUSHDATA1.
             Test {
                 name: "push data len 76",
                 data: vec![0x49; 76],
-                expected: Ok(once(OpPushData1).chain(once(76)).chain(repeat(0x49).take(76)).collect()),
+                expected: Ok(once(OpPushData1).chain(once(76)).chain(repeat_n(0x49, 76)).collect()),
                 unchecked: false,
             },
             Test {
                 name: "push data len 255",
                 data: vec![0x49; 255],
-                expected: Ok(once(OpPushData1).chain(once(255)).chain(repeat(0x49).take(255)).collect()),
+                expected: Ok(once(OpPushData1).chain(once(255)).chain(repeat_n(0x49, 255)).collect()),
                 unchecked: false,
             },
             // // BIP0062: Pushing 256 to 520 bytes must use OP_PUSHDATA2.
             Test {
                 name: "push data len 256",
                 data: vec![0x49; 256],
-                expected: Ok(once(OpPushData2).chain([0, 1]).chain(repeat(0x49).take(256)).collect()),
+                expected: Ok(once(OpPushData2).chain([0, 1]).chain(repeat_n(0x49, 256)).collect()),
                 unchecked: false,
             },
             Test {
                 name: "push data len 520",
                 data: vec![0x49; 520],
-                expected: Ok(once(OpPushData2).chain([8, 2]).chain(repeat(0x49).take(520)).collect()),
+                expected: Ok(once(OpPushData2).chain([8, 2]).chain(repeat_n(0x49, 520)).collect()),
                 unchecked: false,
             },
             // BIP0062: OP_PUSHDATA4 can never be used, as pushes over 520
@@ -461,14 +496,14 @@ mod tests {
             Test {
                 name: "push data len 32767 (non-canonical)",
                 data: vec![0x49; 32767],
-                expected: Ok(once(OpPushData2).chain([255, 127]).chain(repeat(0x49).take(32767)).collect()),
+                expected: Ok(once(OpPushData2).chain([255, 127]).chain(repeat_n(0x49, 32767)).collect()),
                 unchecked: true,
             },
             // 5-byte data push via OP_PUSHDATA_4.
             Test {
                 name: "push data len 65536 (non-canonical)",
                 data: vec![0x49; 65536],
-                expected: Ok(once(OpPushData4).chain([0, 0, 1, 0]).chain(repeat(0x49).take(65536)).collect()),
+                expected: Ok(once(OpPushData4).chain([0, 0, 1, 0]).chain(repeat_n(0x49, 65536)).collect()),
                 unchecked: true,
             },
         ];
@@ -513,7 +548,7 @@ mod tests {
                 value: 0xffeeddccbbaa9988,
                 expected: vec![OpData8, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff],
             },
-            Test { name: "0xffffffffffffffff", value: u64::MAX, expected: once(OpData8).chain(repeat(0xff).take(8)).collect() },
+            Test { name: "0xffffffffffffffff", value: u64::MAX, expected: once(OpData8).chain(repeat_n(0xff, 8)).collect() },
         ];
 
         for test in tests {

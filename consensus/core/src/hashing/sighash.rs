@@ -1,9 +1,9 @@
+use arc_swap::ArcSwapOption;
 use kaspa_hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, TransactionSigningHashECDSA, ZERO_HASH};
+use std::cell::Cell;
+use std::sync::Arc;
 
-use crate::{
-    subnets::SUBNETWORK_ID_NATIVE,
-    tx::{ScriptPublicKey, Transaction, TransactionOutpoint, TransactionOutput, VerifiableTransaction},
-};
+use crate::tx::{ScriptPublicKey, Transaction, TransactionOutpoint, TransactionOutput, VerifiableTransaction};
 
 use super::{sighash_type::SigHashType, HasherExtensions};
 
@@ -11,88 +11,190 @@ use super::{sighash_type::SigHashType, HasherExtensions};
 /// the same for all transaction inputs.
 /// Reuse of such values prevents the quadratic hashing problem.
 #[derive(Default)]
-pub struct SigHashReusedValues {
-    previous_outputs_hash: Option<Hash>,
-    sequences_hash: Option<Hash>,
-    sig_op_counts_hash: Option<Hash>,
-    outputs_hash: Option<Hash>,
+pub struct SigHashReusedValuesUnsync {
+    previous_outputs_hash: Cell<Option<Hash>>,
+    sequences_hash: Cell<Option<Hash>>,
+    sig_op_counts_hash: Cell<Option<Hash>>,
+    outputs_hash: Cell<Option<Hash>>,
+    payload_hash: Cell<Option<Hash>>,
 }
 
-impl SigHashReusedValues {
+impl SigHashReusedValuesUnsync {
     pub fn new() -> Self {
-        Self { previous_outputs_hash: None, sequences_hash: None, sig_op_counts_hash: None, outputs_hash: None }
+        Self::default()
     }
 }
 
-pub fn previous_outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
+#[derive(Default)]
+pub struct SigHashReusedValuesSync {
+    previous_outputs_hash: ArcSwapOption<Hash>,
+    sequences_hash: ArcSwapOption<Hash>,
+    sig_op_counts_hash: ArcSwapOption<Hash>,
+    outputs_hash: ArcSwapOption<Hash>,
+    payload_hash: ArcSwapOption<Hash>,
+}
+
+impl SigHashReusedValuesSync {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+pub trait SigHashReusedValues {
+    fn previous_outputs_hash(&self, set: impl Fn() -> Hash) -> Hash;
+    fn sequences_hash(&self, set: impl Fn() -> Hash) -> Hash;
+    fn sig_op_counts_hash(&self, set: impl Fn() -> Hash) -> Hash;
+    fn outputs_hash(&self, set: impl Fn() -> Hash) -> Hash;
+    fn payload_hash(&self, set: impl Fn() -> Hash) -> Hash;
+}
+
+impl SigHashReusedValues for SigHashReusedValuesUnsync {
+    fn previous_outputs_hash(&self, set: impl Fn() -> Hash) -> Hash {
+        self.previous_outputs_hash.get().unwrap_or_else(|| {
+            let hash = set();
+            self.previous_outputs_hash.set(Some(hash));
+            hash
+        })
+    }
+
+    fn sequences_hash(&self, set: impl Fn() -> Hash) -> Hash {
+        self.sequences_hash.get().unwrap_or_else(|| {
+            let hash = set();
+            self.sequences_hash.set(Some(hash));
+            hash
+        })
+    }
+
+    fn sig_op_counts_hash(&self, set: impl Fn() -> Hash) -> Hash {
+        self.sig_op_counts_hash.get().unwrap_or_else(|| {
+            let hash = set();
+            self.sig_op_counts_hash.set(Some(hash));
+            hash
+        })
+    }
+
+    fn outputs_hash(&self, set: impl Fn() -> Hash) -> Hash {
+        self.outputs_hash.get().unwrap_or_else(|| {
+            let hash = set();
+            self.outputs_hash.set(Some(hash));
+            hash
+        })
+    }
+
+    fn payload_hash(&self, set: impl Fn() -> Hash) -> Hash {
+        self.payload_hash.get().unwrap_or_else(|| {
+            let hash = set();
+            self.payload_hash.set(Some(hash));
+            hash
+        })
+    }
+}
+
+impl SigHashReusedValues for SigHashReusedValuesSync {
+    fn previous_outputs_hash(&self, set: impl Fn() -> Hash) -> Hash {
+        if let Some(value) = self.previous_outputs_hash.load().as_ref() {
+            return **value;
+        }
+        let hash = set();
+        self.previous_outputs_hash.rcu(|_| Arc::new(hash));
+        hash
+    }
+
+    fn sequences_hash(&self, set: impl Fn() -> Hash) -> Hash {
+        if let Some(value) = self.sequences_hash.load().as_ref() {
+            return **value;
+        }
+        let hash = set();
+        self.sequences_hash.rcu(|_| Arc::new(hash));
+        hash
+    }
+
+    fn sig_op_counts_hash(&self, set: impl Fn() -> Hash) -> Hash {
+        if let Some(value) = self.sig_op_counts_hash.load().as_ref() {
+            return **value;
+        }
+        let hash = set();
+        self.sig_op_counts_hash.rcu(|_| Arc::new(hash));
+        hash
+    }
+
+    fn outputs_hash(&self, set: impl Fn() -> Hash) -> Hash {
+        if let Some(value) = self.outputs_hash.load().as_ref() {
+            return **value;
+        }
+        let hash = set();
+        self.outputs_hash.rcu(|_| Arc::new(hash));
+        hash
+    }
+
+    fn payload_hash(&self, set: impl Fn() -> Hash) -> Hash {
+        if let Some(value) = self.payload_hash.load().as_ref() {
+            return **value;
+        }
+        let hash = set();
+        self.payload_hash.rcu(|_| Arc::new(hash));
+        hash
+    }
+}
+
+pub fn previous_outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &impl SigHashReusedValues) -> Hash {
     if hash_type.is_sighash_anyone_can_pay() {
         return ZERO_HASH;
     }
-
-    if let Some(previous_outputs_hash) = reused_values.previous_outputs_hash {
-        previous_outputs_hash
-    } else {
+    let hash = || {
         let mut hasher = TransactionSigningHash::new();
         for input in tx.inputs.iter() {
             hasher.update(input.previous_outpoint.transaction_id.as_bytes());
             hasher.write_u32(input.previous_outpoint.index);
         }
-        let previous_outputs_hash = hasher.finalize();
-        reused_values.previous_outputs_hash = Some(previous_outputs_hash);
-        previous_outputs_hash
-    }
+        hasher.finalize()
+    };
+    reused_values.previous_outputs_hash(hash)
 }
 
-pub fn sequences_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
+pub fn sequences_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &impl SigHashReusedValues) -> Hash {
     if hash_type.is_sighash_single() || hash_type.is_sighash_anyone_can_pay() || hash_type.is_sighash_none() {
         return ZERO_HASH;
     }
-
-    if let Some(sequences_hash) = reused_values.sequences_hash {
-        sequences_hash
-    } else {
+    let hash = || {
         let mut hasher = TransactionSigningHash::new();
         for input in tx.inputs.iter() {
             hasher.write_u64(input.sequence);
         }
-        let sequence_hash = hasher.finalize();
-        reused_values.sequences_hash = Some(sequence_hash);
-        sequence_hash
-    }
+        hasher.finalize()
+    };
+    reused_values.sequences_hash(hash)
 }
 
-pub fn sig_op_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
+pub fn sig_op_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &impl SigHashReusedValues) -> Hash {
     if hash_type.is_sighash_anyone_can_pay() {
         return ZERO_HASH;
     }
 
-    if let Some(sig_op_counts_hash) = reused_values.sig_op_counts_hash {
-        sig_op_counts_hash
-    } else {
+    let hash = || {
         let mut hasher = TransactionSigningHash::new();
         for input in tx.inputs.iter() {
             hasher.write_u8(input.sig_op_count);
         }
-        let sig_op_counts_hash = hasher.finalize();
-        reused_values.sig_op_counts_hash = Some(sig_op_counts_hash);
-        sig_op_counts_hash
-    }
+        hasher.finalize()
+    };
+    reused_values.sig_op_counts_hash(hash)
 }
 
-pub fn payload_hash(tx: &Transaction) -> Hash {
-    if tx.subnetwork_id == SUBNETWORK_ID_NATIVE {
+pub fn payload_hash(tx: &Transaction, reused_values: &impl SigHashReusedValues) -> Hash {
+    if tx.subnetwork_id.is_native() && tx.payload.is_empty() {
         return ZERO_HASH;
     }
 
-    // TODO: Right now this branch will never be executed, since payload is disabled
-    // for all non coinbase transactions. Once payload is enabled, the payload hash
-    // should be cached to make it cost O(1) instead of O(tx.inputs.len()).
-    let mut hasher = TransactionSigningHash::new();
-    hasher.write_var_bytes(&tx.payload);
-    hasher.finalize()
+    let hash = || {
+        let mut hasher = TransactionSigningHash::new();
+        hasher.write_var_bytes(&tx.payload);
+        hasher.finalize()
+    };
+    reused_values.payload_hash(hash)
 }
 
-pub fn outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues, input_index: usize) -> Hash {
+pub fn outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &impl SigHashReusedValues, input_index: usize) -> Hash {
     if hash_type.is_sighash_none() {
         return ZERO_HASH;
     }
@@ -107,19 +209,15 @@ pub fn outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mu
         hash_output(&mut hasher, &tx.outputs[input_index]);
         return hasher.finalize();
     }
-
-    // Otherwise, return hash of all outputs. Re-use hash if available.
-    if let Some(outputs_hash) = reused_values.outputs_hash {
-        outputs_hash
-    } else {
+    let hash = || {
         let mut hasher = TransactionSigningHash::new();
         for output in tx.outputs.iter() {
             hash_output(&mut hasher, output);
         }
-        let outputs_hash = hasher.finalize();
-        reused_values.outputs_hash = Some(outputs_hash);
-        outputs_hash
-    }
+        hasher.finalize()
+    };
+    // Otherwise, return hash of all outputs. Re-use hash if available.
+    reused_values.outputs_hash(hash)
 }
 
 pub fn hash_outpoint(hasher: &mut impl Hasher, outpoint: TransactionOutpoint) {
@@ -141,7 +239,7 @@ pub fn calc_schnorr_signature_hash(
     verifiable_tx: &impl VerifiableTransaction,
     input_index: usize,
     hash_type: SigHashType,
-    reused_values: &mut SigHashReusedValues,
+    reused_values: &impl SigHashReusedValues,
 ) -> Hash {
     let input = verifiable_tx.populated_input(input_index);
     let tx = verifiable_tx.tx();
@@ -161,7 +259,7 @@ pub fn calc_schnorr_signature_hash(
         .write_u64(tx.lock_time)
         .update(&tx.subnetwork_id)
         .write_u64(tx.gas)
-        .update(payload_hash(tx))
+        .update(payload_hash(tx, reused_values))
         .write_u8(hash_type.to_u8());
     hasher.finalize()
 }
@@ -170,7 +268,7 @@ pub fn calc_ecdsa_signature_hash(
     tx: &impl VerifiableTransaction,
     input_index: usize,
     hash_type: SigHashType,
-    reused_values: &mut SigHashReusedValues,
+    reused_values: &impl SigHashReusedValues,
 ) -> Hash {
     let hash = calc_schnorr_signature_hash(tx, input_index, hash_type, reused_values);
     let mut hasher = TransactionSigningHashECDSA::new();
@@ -186,7 +284,7 @@ mod tests {
 
     use crate::{
         hashing::sighash_type::{SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE},
-        subnets::SubnetworkId,
+        subnets::{SubnetworkId, SUBNETWORK_ID_NATIVE},
         tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, UtxoEntry},
     };
 
@@ -509,6 +607,14 @@ mod tests {
                 action: ModifyAction::NoAction,
                 expected_hash: "846689131fb08b77f83af1d3901076732ef09d3f8fdff945be89aa4300562e5f", // should change the hash
             },
+            TestVector {
+                name: "native-all-0-modify-payload",
+                populated_tx: &native_populated_tx,
+                hash_type: SIG_HASH_ALL,
+                input_index: 0,
+                action: ModifyAction::Payload,
+                expected_hash: "72ea6c2871e0f44499f1c2b556f265d9424bfea67cca9cb343b4b040ead65525", // should change the hash
+            },
             // subnetwork transaction
             TestVector {
                 name: "subnetwork-all-0",
@@ -573,9 +679,9 @@ mod tests {
                 }
             }
             let populated_tx = PopulatedTransaction::new(&tx, entries);
-            let mut reused_values = SigHashReusedValues::new();
+            let reused_values = SigHashReusedValuesUnsync::new();
             assert_eq!(
-                calc_schnorr_signature_hash(&populated_tx, test.input_index, test.hash_type, &mut reused_values).to_string(),
+                calc_schnorr_signature_hash(&populated_tx, test.input_index, test.hash_type, &reused_values).to_string(),
                 test.expected_hash,
                 "test {} failed",
                 test.name

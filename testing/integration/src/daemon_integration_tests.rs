@@ -7,6 +7,7 @@ use crate::common::{
 use kaspa_addresses::Address;
 use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_consensus::params::SIMNET_PARAMS;
+use kaspa_consensus_core::header::Header;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
 use kaspa_grpc_client::GrpcClient;
@@ -77,7 +78,8 @@ async fn daemon_mining_test() {
             .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
             .await
             .unwrap();
-        last_block_hash = Some(template.block.header.hash);
+        let header: Header = (&template.block.header).into();
+        last_block_hash = Some(header.hash);
         rpc_client1.submit_block(template.block, false).await.unwrap();
 
         while let Ok(notification) = match tokio::time::timeout(Duration::from_secs(1), event_receiver.recv()).await {
@@ -104,7 +106,13 @@ async fn daemon_mining_test() {
     assert_eq!(dag_info.sink, last_block_hash.unwrap());
 
     // Check that acceptance data contains the expected coinbase tx ids
-    let vc = rpc_client2.get_virtual_chain_from_block(kaspa_consensus::params::SIMNET_GENESIS.hash, true).await.unwrap();
+    let vc = rpc_client2
+        .get_virtual_chain_from_block(
+            kaspa_consensus::params::SIMNET_GENESIS.hash, //
+            true,
+        )
+        .await
+        .unwrap();
     assert_eq!(vc.removed_chain_block_hashes.len(), 0);
     assert_eq!(vc.added_chain_block_hashes.len(), 10);
     assert_eq!(vc.accepted_transaction_ids.len(), 10);
@@ -133,7 +141,7 @@ async fn daemon_utxos_propagation_test() {
     };
     let total_fd_limit = 10;
 
-    let coinbase_maturity = SIMNET_PARAMS.coinbase_maturity;
+    let coinbase_maturity = SIMNET_PARAMS.coinbase_maturity().before();
     let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
     let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
     let rpc_client1 = kaspad1.start().await;
@@ -180,7 +188,8 @@ async fn daemon_utxos_propagation_test() {
     let mut last_block_hash = None;
     for i in 0..initial_blocks {
         let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
-        last_block_hash = Some(template.block.header.hash);
+        let header: Header = (&template.block.header).into();
+        last_block_hash = Some(header.hash);
         rpc_client1.submit_block(template.block, false).await.unwrap();
 
         while let Ok(notification) = match tokio::time::timeout(Duration::from_secs(1), event_receiver1.recv()).await {
@@ -208,7 +217,7 @@ async fn daemon_utxos_propagation_test() {
             async fn daa_score_reached(client: GrpcClient) -> bool {
                 let virtual_daa_score = client.get_server_info().await.unwrap().virtual_daa_score;
                 trace!("Virtual DAA score: {}", virtual_daa_score);
-                virtual_daa_score == SIMNET_PARAMS.coinbase_maturity
+                virtual_daa_score == SIMNET_PARAMS.coinbase_maturity().before()
             }
             Box::pin(daa_score_reached(check_client.clone()))
         },
@@ -265,7 +274,8 @@ async fn daemon_utxos_propagation_test() {
     clients.iter().for_each(|x| x.utxos_changed_listener().unwrap().drain());
     clients.iter().for_each(|x| x.virtual_daa_score_changed_listener().unwrap().drain());
 
-    // Spend some coins
+    // Spend some coins - sending funds from miner address to user address
+    // The transaction here is later used to verify utxo return address RPC
     const NUMBER_INPUTS: u64 = 2;
     const NUMBER_OUTPUTS: u64 = 2;
     const TX_AMOUNT: u64 = SIMNET_PARAMS.pre_deflationary_phase_base_subsidy * (NUMBER_INPUTS * 5 - 1) / 5;
@@ -314,6 +324,23 @@ async fn daemon_utxos_propagation_test() {
         let user_balance = x.get_balance_by_address(user_address.clone()).await.unwrap();
         assert_eq!(user_balance, TX_AMOUNT);
     }
+
+    // UTXO Return Address Test
+    // Mine another block to accept the transactions from the previous block
+    // The tx above is sending from miner address to user address
+    mine_block(blank_address.clone(), &rpc_client1, &clients).await;
+    let new_utxos = rpc_client1.get_utxos_by_addresses(vec![user_address]).await.unwrap();
+    let new_utxo = new_utxos
+        .iter()
+        .find(|utxo| utxo.outpoint.transaction_id == transaction.id())
+        .expect("Did not find a utxo for the tx we just created but expected to");
+
+    let utxo_return_address = rpc_client1
+        .get_utxo_return_address(new_utxo.outpoint.transaction_id, new_utxo.utxo_entry.block_daa_score)
+        .await
+        .expect("We just created the tx and utxo here");
+
+    assert_eq!(miner_address, utxo_return_address);
 
     // Terminate multi-listener clients
     for x in clients.iter() {

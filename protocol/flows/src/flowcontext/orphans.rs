@@ -6,7 +6,6 @@ use kaspa_consensus_core::{
 use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
-use kaspa_utils::option::OptionExtensions;
 use rand::Rng;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -78,7 +77,7 @@ impl OrphanBlocksPool {
         if self.orphans.contains_key(&orphan_hash) {
             return None;
         }
-
+        orphan_block.asses_for_cache()?;
         let (roots, orphan_ancestors) =
             match self.get_orphan_roots(consensus, orphan_block.header.direct_parents().iter().copied().collect()).await {
                 FindRootsOutput::Roots(roots, orphan_ancestors) => (roots, orphan_ancestors),

@@ -2,12 +2,26 @@ use crate::cli::KaspaCli;
 use crate::imports::*;
 use crate::result::Result;
 use kaspa_bip32::{Language, Mnemonic, WordCount};
-use kaspa_wallet_core::storage::{make_filename, Hint};
+use kaspa_wallet_core::storage::keydata::PrvKeyDataVariantKind;
+use kaspa_wallet_core::{
+    storage::{make_filename, Hint},
+    wallet::WalletGuard,
+};
 
-pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_mnemonic: bool) -> Result<()> {
+pub(crate) async fn create(
+    ctx: &Arc<KaspaCli>,
+    wallet_guard: Option<WalletGuard<'_>>,
+    name: Option<&str>,
+    import_with_mnemonic: bool,
+) -> Result<()> {
     let term = ctx.term();
     let wallet = ctx.wallet();
+    let local_guard = ctx.wallet().guard();
 
+    let guard = match wallet_guard {
+        Some(locked_guard) => locked_guard,
+        None => local_guard.lock().await,
+    };
     // TODO @aspect
     let word_count = WordCount::Words12;
 
@@ -86,7 +100,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
             "\
             PLEASE NOTE: The optional bip39 mnemonic passphrase, if provided, will be required to \
             issue transactions. This passphrase will also be required when recovering your wallet \
-            in addition to your private key or mnemonic. If you loose this passphrase, you will not \
+            in addition to your private key or mnemonic. If you lose this passphrase, you will not \
             be able to use or recover your wallet! \
             \
             If you do not want to use bip39 recovery passphrase, press ENTER.\
@@ -110,16 +124,17 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
 
     let prv_key_data_args = if import_with_mnemonic {
         let words = crate::wizards::import::prompt_for_mnemonic(&term).await?;
-        PrvKeyDataCreateArgs::new(None, payment_secret.clone(), Secret::from(words.join(" ")))
+        PrvKeyDataCreateArgs::new(None, payment_secret.clone(), Secret::from(words.join(" ")), PrvKeyDataVariantKind::Mnemonic)
     } else {
         PrvKeyDataCreateArgs::new(
             None,
             payment_secret.clone(),
             Secret::from(Mnemonic::random(word_count, Language::default())?.phrase()),
+            PrvKeyDataVariantKind::Mnemonic,
         )
     };
 
-    let mnemonic_phrase = prv_key_data_args.mnemonic.clone();
+    let mnemonic_phrase = prv_key_data_args.secret.clone();
 
     let notifier = ctx.notifier().show(Notification::Processing).await;
 
@@ -173,8 +188,8 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
     term.writeln(style(receive_address).blue().to_string());
     term.writeln("");
 
-    wallet.open(&wallet_secret, name.map(String::from), WalletOpenArgs::default_with_legacy_accounts()).await?;
-    wallet.activate_accounts(None).await?;
+    wallet.open(&wallet_secret, name.map(String::from), WalletOpenArgs::default_with_legacy_accounts(), &guard).await?;
+    wallet.activate_accounts(None, &guard).await?;
 
     Ok(())
 }

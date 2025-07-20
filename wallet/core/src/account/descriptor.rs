@@ -11,15 +11,22 @@ use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+///
+/// Structure that represents a wallet account. This structure contains
+/// properties that are common to all wallet accounts as well as
+/// account-specific properties stored in a BTreeMap by each account.
+///
 /// @category Wallet API
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AccountDescriptor {
     pub kind: AccountKind,
     pub account_id: AccountId,
     pub account_name: Option<String>,
+    pub balance: Option<Balance>,
     pub prv_key_data_ids: AssocPrvKeyDataIds,
     pub receive_address: Option<Address>,
     pub change_address: Option<Address>,
+    pub addresses: Option<Vec<Address>>,
 
     pub properties: BTreeMap<AccountDescriptorProperty, AccountDescriptorValue>,
 }
@@ -29,11 +36,23 @@ impl AccountDescriptor {
         kind: AccountKind,
         account_id: AccountId,
         account_name: Option<String>,
+        balance: Option<Balance>,
         prv_key_data_ids: AssocPrvKeyDataIds,
         receive_address: Option<Address>,
         change_address: Option<Address>,
+        addresses: Option<Vec<Address>>,
     ) -> Self {
-        Self { kind, account_id, account_name, prv_key_data_ids, receive_address, change_address, properties: BTreeMap::default() }
+        Self {
+            kind,
+            account_id,
+            account_name,
+            balance,
+            prv_key_data_ids,
+            receive_address,
+            change_address,
+            addresses,
+            properties: BTreeMap::default(),
+        }
     }
 
     pub fn with_property(mut self, property: AccountDescriptorProperty, value: AccountDescriptorValue) -> Self {
@@ -111,11 +130,12 @@ impl std::fmt::Display for AccountDescriptorValue {
             AccountDescriptorValue::Bool(value) => write!(f, "{}", value),
             AccountDescriptorValue::AddressDerivationMeta(value) => write!(f, "{}", value),
             AccountDescriptorValue::XPubKeys(value) => {
-                let mut s = String::new();
+                let mut s = vec![];
                 for xpub in value.iter() {
-                    s.push_str(&format!("{}\n", xpub));
+                    //s.push(xpub.to_string(None));
+                    s.push(format!("{}", xpub));
                 }
-                write!(f, "{}", s)
+                write!(f, "{}", s.join("\n"))
             }
             AccountDescriptorValue::Json(value) => write!(f, "{}", value),
         }
@@ -224,7 +244,9 @@ declare! {
         accountName? : string,
         receiveAddress? : Address,
         changeAddress? : Address,
+        addresses? : Address[],
         prvKeyDataIds : HexString[],
+        // balance? : Balance,
         [key: string]: any
     }
     "#,
@@ -240,6 +262,9 @@ impl TryFrom<AccountDescriptor> for IAccountDescriptor {
         object.set("accountName", &descriptor.account_name.into())?;
         object.set("receiveAddress", &descriptor.receive_address.into())?;
         object.set("changeAddress", &descriptor.change_address.into())?;
+
+        let addresses = js_sys::Array::from_iter(descriptor.addresses.into_iter().map(JsValue::from));
+        object.set("addresses", &addresses)?;
 
         let prv_key_data_ids = js_sys::Array::from_iter(descriptor.prv_key_data_ids.into_iter().map(JsValue::from));
         object.set("prvKeyDataIds", &prv_key_data_ids)?;

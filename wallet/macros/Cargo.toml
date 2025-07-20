@@ -24,3 +24,6 @@ syn = {version="1.0.99",features=["full","fold","extra-traits","parsing","proc-m
 convert_case = "0.5.0"
 regex.workspace = true
 xxhash-rust = { workspace = true, features = ["xxh32"] }
+
+[lints]
+workspace = true

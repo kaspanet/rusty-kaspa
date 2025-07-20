@@ -59,7 +59,7 @@ impl ToTokens for RpcHandlers {
                 pub async fn #fn_no_suffix(&self, request : Option<#ts_request_type>) -> Result<#ts_response_type> {
                     let request: #request_type = request.unwrap_or_default().try_into()?;
                     // log_info!("request: {:#?}",request);
-                    let result: RpcResult<#response_type> = self.inner.client.#fn_call(request).await;
+                    let result: RpcResult<#response_type> = self.inner.client.#fn_call(None, request).await;
                     // log_info!("result: {:#?}",result);
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
                     //log_info!("response: {:#?}",response);
@@ -83,7 +83,7 @@ impl ToTokens for RpcHandlers {
                 #[wasm_bindgen(js_name = #fn_camel)]
                 pub async fn #fn_no_suffix(&self, request: #ts_request_type) -> Result<#ts_response_type> {
                     let request: #request_type = request.try_into()?;
-                    let result: RpcResult<#response_type> = self.inner.client.#fn_call(request).await;
+                    let result: RpcResult<#response_type> = self.inner.client.#fn_call(None, request).await;
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
                     Ok(response.try_into()?)
                 }
@@ -136,6 +136,7 @@ impl Parse for RpcSubscriptions {
 impl ToTokens for RpcSubscriptions {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let mut targets = Vec::new();
+        let regex = Regex::new(r"^Notify").unwrap();
 
         for handler in self.handlers.elems.iter() {
             let (name, docs) = match handler {
@@ -146,7 +147,6 @@ impl ToTokens for RpcSubscriptions {
             };
 
             let name = format!("Notify{}", name.as_str());
-            let regex = Regex::new(r"^Notify").unwrap();
             let blank = regex.replace(&name, "");
             let subscribe = regex.replace(&name, "Subscribe");
             let unsubscribe = regex.replace(&name, "Unsubscribe");

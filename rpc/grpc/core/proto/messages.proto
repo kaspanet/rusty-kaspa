@@ -58,8 +58,15 @@ message KaspadRequest {
     GetMetricsRequestMessage getMetricsRequest = 1090;
     GetServerInfoRequestMessage getServerInfoRequest = 1092;
     GetSyncStatusRequestMessage getSyncStatusRequest = 1094;
-    GetDaaScoreTimestampEstimateRequestMessage GetDaaScoreTimestampEstimateRequest = 1096;
+    GetDaaScoreTimestampEstimateRequestMessage getDaaScoreTimestampEstimateRequest = 1096;
     GetTransactionDataRequestMessage getTransactionDataRequest = 1098; // This requires the the node to be run with -- txindex
+    SubmitTransactionReplacementRequestMessage submitTransactionReplacementRequest = 1100;
+    GetConnectionsRequestMessage getConnectionsRequest = 1102;
+    GetSystemInfoRequestMessage getSystemInfoRequest = 1104;
+    GetFeeEstimateRequestMessage getFeeEstimateRequest = 1106;
+    GetFeeEstimateExperimentalRequestMessage getFeeEstimateExperimentalRequest = 1108;
+    GetCurrentBlockColorRequestMessage getCurrentBlockColorRequest = 1110;
+    GetUtxoReturnAddressRequestMessage GetUtxoReturnAddressRequest = 1112;
   }
 }
 
@@ -118,8 +125,15 @@ message KaspadResponse {
     GetMetricsResponseMessage getMetricsResponse= 1091;
     GetServerInfoResponseMessage getServerInfoResponse = 1093;
     GetSyncStatusResponseMessage getSyncStatusResponse = 1095;
-    GetDaaScoreTimestampEstimateResponseMessage GetDaaScoreTimestampEstimateResponse = 1097;
+    GetDaaScoreTimestampEstimateResponseMessage getDaaScoreTimestampEstimateResponse = 1097;
     GetTransactionDataResponseMessage getTransactionDataResponse = 1099; // This requires the the node to be run with -- txindex
+    SubmitTransactionReplacementResponseMessage submitTransactionReplacementResponse = 1101;
+    GetConnectionsResponseMessage getConnectionsResponse= 1103;
+    GetSystemInfoResponseMessage getSystemInfoResponse= 1105;
+    GetFeeEstimateResponseMessage getFeeEstimateResponse = 1107;
+    GetFeeEstimateExperimentalResponseMessage getFeeEstimateExperimentalResponse = 1109;
+    GetCurrentBlockColorResponseMessage getCurrentBlockColorResponse = 1111;
+    GetUtxoReturnAddressResponseMessage GetUtxoReturnAddressResponse = 1113;
   }
 }
 

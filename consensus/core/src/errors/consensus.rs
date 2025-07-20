@@ -37,6 +37,9 @@ pub enum ConsensusError {
 
     #[error("{0}")]
     General(&'static str),
+
+    #[error("{0}")]
+    GeneralOwned(String),
 }
 
 pub type ConsensusResult<T> = std::result::Result<T, ConsensusError>;

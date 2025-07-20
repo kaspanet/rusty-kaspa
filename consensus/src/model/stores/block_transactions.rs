@@ -9,7 +9,6 @@ use kaspa_hashes::Hash;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
-use std::mem::size_of;
 use std::sync::Arc;
 
 pub trait BlockTransactionsStoreReader {

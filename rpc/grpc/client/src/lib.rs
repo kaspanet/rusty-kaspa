@@ -38,7 +38,7 @@ use kaspa_rpc_core::{
 use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
 use kaspa_utils_tower::{
     counters::TowerConnectionCounters,
-    middleware::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer, ServiceBuilder},
+    middleware::{BodyExt, CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
 };
 use regex::Regex;
 use std::{
@@ -50,7 +50,6 @@ use std::{
 };
 use tokio::sync::Mutex;
 use tonic::codec::CompressionEncoding;
-use tonic::codegen::Body;
 use tonic::Streaming;
 
 mod connection_event;
@@ -94,15 +93,15 @@ impl GrpcClient {
     /// `notification_mode` determines how notifications are handled:
     ///
     /// - `MultiListeners` => Multiple listeners are supported via the [`RpcApi`] implementation.
-    ///                       Registering listeners is needed before subscribing to notifications.
+    ///   Registering listeners is needed before subscribing to notifications.
     /// - `Direct` => A single listener receives the notification via a channel (see  `self.notification_channel_receiver()`).
-    ///               Registering a listener is pointless and ignored.
-    ///               Subscribing to notifications ignores the listener ID.
+    ///   Registering a listener is pointless and ignored.
+    ///   Subscribing to notifications ignores the listener ID.
     ///
     /// `url`: the server to connect to
     ///
     /// `subscription_context`: it is advised to provide a clone of the same instance if multiple clients dealing with
-    /// [`UtxosChangedNotifications`] are connected concurrently in order to optimize the memory footprint.
+    /// `UtxosChangedNotifications` are connected concurrently in order to optimize the memory footprint.
     ///
     /// `reconnect`: features an automatic reconnection to the server, reactivating all subscriptions on success.
     ///
@@ -241,6 +240,8 @@ impl RpcApi for GrpcClient {
     route!(get_sync_status_call, GetSyncStatus);
     route!(get_server_info_call, GetServerInfo);
     route!(get_metrics_call, GetMetrics);
+    route!(get_connections_call, GetConnections);
+    route!(get_system_info_call, GetSystemInfo);
     route!(submit_block_call, SubmitBlock);
     route!(get_block_template_call, GetBlockTemplate);
     route!(get_block_call, GetBlock);
@@ -253,6 +254,7 @@ impl RpcApi for GrpcClient {
     route!(get_connected_peer_info_call, GetConnectedPeerInfo);
     route!(add_peer_call, AddPeer);
     route!(submit_transaction_call, SubmitTransaction);
+    route!(submit_transaction_replacement_call, SubmitTransactionReplacement);
     route!(get_subnetwork_call, GetSubnetwork);
     route!(get_virtual_chain_from_block_call, GetVirtualChainFromBlock);
     route!(get_blocks_call, GetBlocks);
@@ -271,6 +273,10 @@ impl RpcApi for GrpcClient {
     route!(get_mempool_entries_by_addresses_call, GetMempoolEntriesByAddresses);
     route!(get_coin_supply_call, GetCoinSupply);
     route!(get_daa_score_timestamp_estimate_call, GetDaaScoreTimestampEstimate);
+    route!(get_fee_estimate_call, GetFeeEstimate);
+    route!(get_fee_estimate_experimental_call, GetFeeEstimateExperimental);
+    route!(get_current_block_color_call, GetCurrentBlockColor);
+    route!(get_utxo_return_address_call, GetUtxoReturnAddress);
     route!(get_transaction_data_call, GetTransactionData);
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -539,9 +545,7 @@ impl Inner {
         let bytes_tx = &counters.bytes_tx;
         let channel = ServiceBuilder::new()
             .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, bytes_rx.clone())))
-            .layer(measure_request_body_size_layer(bytes_tx.clone(), |body| {
-                body.map_err(|e| tonic::Status::from_error(Box::new(e))).boxed_unsync()
-            }))
+            .layer(MapRequestBodyLayer::new(move |body| CountBytesBody::new(body, bytes_tx.clone()).boxed_unsync()))
             .service(channel);
 
         // Build the gRPC client with an interceptor setting the request timeout

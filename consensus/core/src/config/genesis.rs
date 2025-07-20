@@ -225,20 +225,20 @@ pub const DEVNET_GENESIS: GenesisBlock = GenesisBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{config::bps::Testnet11Bps, merkle::calc_hash_merkle_root};
+    use crate::{config::bps::TenBps, merkle::calc_hash_merkle_root};
 
     #[test]
     fn test_genesis_hashes() {
         [GENESIS, TESTNET_GENESIS, TESTNET11_GENESIS, SIMNET_GENESIS, DEVNET_GENESIS].into_iter().for_each(|genesis| {
             let block: Block = (&genesis).into();
-            assert_hashes_eq(calc_hash_merkle_root(block.transactions.iter()), block.header.hash_merkle_root);
+            assert_hashes_eq(calc_hash_merkle_root(block.transactions.iter(), false), block.header.hash_merkle_root);
             assert_hashes_eq(block.hash(), genesis.hash);
         });
     }
 
     #[test]
     fn gen_testnet11_genesis() {
-        let bps = Testnet11Bps::bps();
+        let bps = TenBps::bps();
         let mut genesis = TESTNET_GENESIS;
         let target = kaspa_math::Uint256::from_compact_target_bits(genesis.bits);
         let scaled_target = target * bps / 100;

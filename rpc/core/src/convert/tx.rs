@@ -1,3 +1,5 @@
+//! Conversion of Transaction related types
+
 use crate::{
     RpcError, RpcResult, RpcTransaction, RpcTransactionAcceptanceData, RpcTransactionInclusionData, RpcTransactionInput,
     RpcTransactionOutput,
@@ -46,7 +48,6 @@ impl From<&Transaction> for RpcTransaction {
             gas: item.gas,
             payload: item.payload.clone(),
             mass: item.mass(),
-            // TODO: Implement a populating process inspired from kaspad\app\rpc\rpccontext\verbosedata.go
             verbose_data: None,
         }
     }
@@ -54,23 +55,17 @@ impl From<&Transaction> for RpcTransaction {
 
 impl From<&TransactionOutput> for RpcTransactionOutput {
     fn from(item: &TransactionOutput) -> Self {
-        Self {
-            value: item.value,
-            script_public_key: item.script_public_key.clone(),
-            // TODO: Implement a populating process inspired from kaspad\app\rpc\rpccontext\verbosedata.go
-            verbose_data: None,
-        }
+        Self { value: item.value, script_public_key: item.script_public_key.clone(), verbose_data: None }
     }
 }
 
 impl From<&TransactionInput> for RpcTransactionInput {
     fn from(item: &TransactionInput) -> Self {
         Self {
-            previous_outpoint: item.previous_outpoint,
+            previous_outpoint: item.previous_outpoint.into(),
             signature_script: item.signature_script.clone(),
             sequence: item.sequence,
             sig_op_count: item.sig_op_count,
-            // TODO: Implement a populating process inspired from kaspad\app\rpc\rpccontext\verbosedata.go
             verbose_data: None,
         }
     }
@@ -80,17 +75,17 @@ impl From<&TransactionInput> for RpcTransactionInput {
 // rpc_core to consensus_core
 // ----------------------------------------------------------------------------
 
-impl TryFrom<&RpcTransaction> for Transaction {
+impl TryFrom<RpcTransaction> for Transaction {
     type Error = RpcError;
-    fn try_from(item: &RpcTransaction) -> RpcResult<Self> {
+    fn try_from(item: RpcTransaction) -> RpcResult<Self> {
         let transaction = Transaction::new(
             item.version,
             item.inputs
-                .iter()
+                .into_iter()
                 .map(kaspa_consensus_core::tx::TransactionInput::try_from)
                 .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionInput>>>()?,
             item.outputs
-                .iter()
+                .into_iter()
                 .map(kaspa_consensus_core::tx::TransactionOutput::try_from)
                 .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionOutput>>>()?,
             item.lock_time,
@@ -103,16 +98,16 @@ impl TryFrom<&RpcTransaction> for Transaction {
     }
 }
 
-impl TryFrom<&RpcTransactionOutput> for TransactionOutput {
+impl TryFrom<RpcTransactionOutput> for TransactionOutput {
     type Error = RpcError;
-    fn try_from(item: &RpcTransactionOutput) -> RpcResult<Self> {
-        Ok(Self::new(item.value, item.script_public_key.clone()))
+    fn try_from(item: RpcTransactionOutput) -> RpcResult<Self> {
+        Ok(Self::new(item.value, item.script_public_key))
     }
 }
 
-impl TryFrom<&RpcTransactionInput> for TransactionInput {
+impl TryFrom<RpcTransactionInput> for TransactionInput {
     type Error = RpcError;
-    fn try_from(item: &RpcTransactionInput) -> RpcResult<Self> {
-        Ok(Self::new(item.previous_outpoint, item.signature_script.clone(), item.sequence, item.sig_op_count))
+    fn try_from(item: RpcTransactionInput) -> RpcResult<Self> {
+        Ok(Self::new(item.previous_outpoint.into(), item.signature_script, item.sequence, item.sig_op_count))
     }
 }

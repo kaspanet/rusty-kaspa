@@ -177,7 +177,44 @@ impl Account {
                     }
                     _ => {
                         tprintln!(ctx, "unknown account import type: '{import_kind}'");
-                        tprintln!(ctx, "supported import types are: 'mnemonic' or 'legacy-data'\r\n");
+                        tprintln!(ctx, "supported import types are: 'mnemonic', 'legacy-data' or 'multisig-watch'\r\n");
+                        return Ok(());
+                    }
+                }
+            }
+            "watch" => {
+                if argv.is_empty() {
+                    tprintln!(ctx, "usage: 'account watch <watch-type> [account name]'");
+                    tprintln!(ctx, "");
+                    tprintln!(ctx, "examples:");
+                    tprintln!(ctx, "");
+                    ctx.term().help(
+                        &[
+                            ("account watch bip32", "Import a extended public key for a watch-only bip32 account"),
+                            ("account watch multisig", "Import extended public keys for a watch-only multisig account"),
+                        ],
+                        None,
+                    )?;
+
+                    return Ok(());
+                }
+
+                let watch_kind = argv.remove(0);
+
+                let account_name = argv.first().map(|name| name.trim()).filter(|name| !name.is_empty()).map(|name| name.to_string());
+
+                let account_name = account_name.as_deref();
+
+                match watch_kind.as_ref() {
+                    "bip32" => {
+                        wizards::account::bip32_watch(&ctx, account_name).await?;
+                    }
+                    "multisig" => {
+                        wizards::account::multisig_watch(&ctx, account_name).await?;
+                    }
+                    _ => {
+                        tprintln!(ctx, "unknown account watch type: '{watch_kind}'");
+                        tprintln!(ctx, "supported watch types are: 'bip32' or 'multisig'\r\n");
                         return Ok(());
                     }
                 }
@@ -197,8 +234,9 @@ impl Account {
                 count = count.max(1);
 
                 let sweep = action.eq("sweep");
-
-                self.derivation_scan(&ctx, start, count, window, sweep).await?;
+                // TODO fee_rate
+                let fee_rate = None;
+                self.derivation_scan(&ctx, start, count, window, sweep, fee_rate).await?;
             }
             v => {
                 tprintln!(ctx, "unknown command: '{v}'\r\n");
@@ -239,6 +277,7 @@ impl Account {
         count: usize,
         window: usize,
         sweep: bool,
+        fee_rate: Option<f64>,
     ) -> Result<()> {
         let account = ctx.account().await?;
         let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
@@ -256,7 +295,9 @@ impl Account {
                 start + count,
                 window,
                 sweep,
+                fee_rate,
                 &abortable,
+                true,
                 Some(Arc::new(move |processed: usize, _, balance, txid| {
                     if let Some(txid) = txid {
                         tprintln!(

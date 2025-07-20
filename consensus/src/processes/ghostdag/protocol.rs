@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use kaspa_consensus_core::{
     blockhash::{self, BlockHashExtensions, BlockHashes},
-    BlockHashMap, BlueWorkType, HashMapCustomHasher,
+    config::params::ForkedParam,
+    BlockHashMap, BlockLevel, BlueWorkType, HashMapCustomHasher,
 };
 use kaspa_hashes::Hash;
 use kaspa_utils::refs::Refs;
@@ -16,7 +17,7 @@ use crate::{
             relations::RelationsStoreReader,
         },
     },
-    processes::difficulty::calc_work,
+    processes::difficulty::{calc_work, level_work},
 };
 
 use super::ordering::*;
@@ -24,23 +25,54 @@ use super::ordering::*;
 #[derive(Clone)]
 pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> {
     genesis_hash: Hash,
-    pub(super) k: KType,
+    pub(super) k: ForkedParam<KType>,
     pub(super) ghostdag_store: Arc<T>,
     pub(super) relations_store: S,
     pub(super) headers_store: Arc<V>,
     pub(super) reachability_service: U,
+
+    /// Level work is a lower-bound for the amount of work represented by each block.
+    /// When running GD for higher-level sub-DAGs, this value should be set accordingly
+    /// to the work represented by that level, and then used as a lower bound
+    /// for the work calculated from header bits (which depends on current difficulty).
+    /// For instance, assuming level 80 (i.e., pow hash has at least 80 zeros) is always
+    /// above the difficulty target, all blocks in it should represent the same amount of
+    /// work regardless of whether current difficulty requires 20 zeros or 25 zeros.  
+    level_work: BlueWorkType,
 }
 
 impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
     pub fn new(
+        genesis_hash: Hash,
+        k: ForkedParam<KType>,
+        ghostdag_store: Arc<T>,
+        relations_store: S,
+        headers_store: Arc<V>,
+        reachability_service: U,
+    ) -> Self {
+        // For ordinary GD, always keep level_work=0 so the lower bound is ineffective
+        Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store, level_work: 0.into() }
+    }
+
+    pub fn with_level(
         genesis_hash: Hash,
         k: KType,
         ghostdag_store: Arc<T>,
         relations_store: S,
         headers_store: Arc<V>,
         reachability_service: U,
+        level: BlockLevel,
+        max_block_level: BlockLevel,
     ) -> Self {
-        Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store }
+        Self {
+            genesis_hash,
+            k: ForkedParam::new_const(k),
+            ghostdag_store,
+            relations_store,
+            reachability_service,
+            headers_store,
+            level_work: level_work(level, max_block_level),
+        }
     }
 
     pub fn genesis_ghostdag_data(&self) -> GhostdagData {
@@ -91,19 +123,26 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
     ///    the selected parent chain of the new block until we find an existing entry in
     ///    blues_anticone_sizes.
     ///
-    /// For further details see the article https://eprint.iacr.org/2018/104.pdf
+    /// For further details see the article <https://eprint.iacr.org/2018/104.pdf>
     pub fn ghostdag(&self, parents: &[Hash]) -> GhostdagData {
         assert!(!parents.is_empty(), "genesis must be added via a call to init");
 
         // Run the GHOSTDAG parent selection algorithm
         let selected_parent = self.find_selected_parent(parents.iter().copied());
+        // Handle the special case of origin children first
+        if selected_parent.is_origin() {
+            // ORIGIN is always a single parent so both blue score and work should remain zero
+            return GhostdagData::new_with_selected_parent(selected_parent, 1); // k is only a capacity hint here
+        }
+        // [Crescendo]: get k as function of the selected parent DAA score
+        let k = self.k.get(self.headers_store.get_daa_score(selected_parent).unwrap());
         // Initialize new GHOSTDAG block data with the selected parent
-        let mut new_block_data = GhostdagData::new_with_selected_parent(selected_parent, self.k);
+        let mut new_block_data = GhostdagData::new_with_selected_parent(selected_parent, k);
         // Get the mergeset in consensus-agreed topological order (topological here means forward in time from blocks to children)
         let ordered_mergeset = self.ordered_mergeset_without_selected_parent(selected_parent, parents);
 
         for blue_candidate in ordered_mergeset.iter().cloned() {
-            let coloring = self.check_blue_candidate(&new_block_data, blue_candidate);
+            let coloring = self.check_blue_candidate(&new_block_data, blue_candidate, k);
 
             if let ColoringOutput::Blue(blue_anticone_size, blues_anticone_sizes) = coloring {
                 // No k-cluster violation found, we can now set the candidate block as blue
@@ -119,10 +158,10 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             .mergeset_blues
             .iter()
             .cloned()
-            .map(|hash| if hash.is_origin() { 0.into() } else { calc_work(self.headers_store.get_bits(hash).unwrap()) })
+            .map(|hash| calc_work(self.headers_store.get_bits(hash).unwrap()).max(self.level_work))
             .sum();
+        let blue_work: BlueWorkType = self.ghostdag_store.get_blue_work(selected_parent).unwrap() + added_blue_work;
 
-        let blue_work = self.ghostdag_store.get_blue_work(selected_parent).unwrap() + added_blue_work;
         new_block_data.finalize_score_and_work(blue_score, blue_work);
 
         new_block_data
@@ -135,6 +174,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         blue_candidate: Hash,
         candidate_blues_anticone_sizes: &mut BlockHashMap<KType>,
         candidate_blue_anticone_size: &mut KType,
+        k: KType,
     ) -> ColoringState {
         // If blue_candidate is in the future of chain_block, it means
         // that all remaining blues are in the past of chain_block and thus
@@ -152,21 +192,28 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             }
         }
 
-        for &block in chain_block.data.mergeset_blues.iter() {
-            // Skip blocks that exist in the past of blue_candidate.
-            if self.reachability_service.is_dag_ancestor_of(block, blue_candidate) {
+        // Iterate over blue peers and check for k-cluster violations
+        for &peer in chain_block.data.mergeset_blues.iter() {
+            // Skip blocks that are in the past of blue_candidate (since they are not in its anticone)
+            if self.reachability_service.is_dag_ancestor_of(peer, blue_candidate) {
                 continue;
             }
 
-            candidate_blues_anticone_sizes.insert(block, self.blue_anticone_size(block, new_block_data));
+            // Otherwise, peer must be in the anticone of blue_candidate, so we check for k limits.
+            // Note that peer cannot be in the future of blue_candidate because we process the mergeset
+            // in past-to-future topological order, so even if chain_block == new_block, an existing blue
+            // cannot be in the future of a candidate blue
+
+            let peer_blue_anticone_size = self.blue_anticone_size(peer, new_block_data);
+            candidate_blues_anticone_sizes.insert(peer, peer_blue_anticone_size);
 
             *candidate_blue_anticone_size += 1;
-            if *candidate_blue_anticone_size > self.k {
+            if *candidate_blue_anticone_size > k {
                 // k-cluster violation: The candidate's blue anticone exceeded k
                 return ColoringState::Red;
             }
 
-            if *candidate_blues_anticone_sizes.get(&block).unwrap() == self.k {
+            if peer_blue_anticone_size == k {
                 // k-cluster violation: A block in candidate's blue anticone already
                 // has k blue blocks in its own anticone
                 return ColoringState::Red;
@@ -174,7 +221,9 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
             // This is a sanity check that validates that a blue
             // block's blue anticone is not already larger than K.
-            assert!(*candidate_blues_anticone_sizes.get(&block).unwrap() <= self.k, "found blue anticone larger than K");
+            assert!(peer_blue_anticone_size <= k, "found blue anticone larger than K");
+            // [Crescendo]: this ^ is a valid assert since we are increasing k. Had we decreased k, this line would
+            //              need to be removed and the condition above would need to be changed to >= k
         }
 
         ColoringState::Pending
@@ -199,14 +248,14 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         }
     }
 
-    fn check_blue_candidate(&self, new_block_data: &GhostdagData, blue_candidate: Hash) -> ColoringOutput {
+    fn check_blue_candidate(&self, new_block_data: &GhostdagData, blue_candidate: Hash, k: KType) -> ColoringOutput {
         // The maximum length of new_block_data.mergeset_blues can be K+1 because
         // it contains the selected parent.
-        if new_block_data.mergeset_blues.len() as KType == self.k + 1 {
+        if new_block_data.mergeset_blues.len() as KType == k + 1 {
             return ColoringOutput::Red;
         }
 
-        let mut candidate_blues_anticone_sizes: BlockHashMap<KType> = BlockHashMap::with_capacity(self.k as usize);
+        let mut candidate_blues_anticone_sizes: BlockHashMap<KType> = BlockHashMap::with_capacity(k as usize);
         // Iterate over all blocks in the blue past of the new block that are not in the past
         // of blue_candidate, and check for each one of them if blue_candidate potentially
         // enlarges their blue anticone to be over K, or that they enlarge the blue anticone
@@ -221,6 +270,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
                 blue_candidate,
                 &mut candidate_blues_anticone_sizes,
                 &mut candidate_blue_anticone_size,
+                k,
             );
 
             match state {

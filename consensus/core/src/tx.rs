@@ -1,11 +1,22 @@
+//!
+//! # Transaction
+//!
+//! This module implements consensus [`Transaction`] structure and related types.
+//!
+
+#![allow(non_snake_case)]
+
 mod script_public_key;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_utils::hex::ToHex;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
-pub use script_public_key::{scriptvec, ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, SCRIPT_VECTOR_SIZE};
+pub use script_public_key::{
+    scriptvec, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, SCRIPT_VECTOR_SIZE,
+};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
 use std::{
@@ -15,6 +26,7 @@ use std::{
 };
 use wasm_bindgen::prelude::*;
 
+use crate::mass::{ContextualMasses, NonContextualMasses};
 use crate::{
     hashing,
     subnets::{self, SubnetworkId},
@@ -22,6 +34,7 @@ use crate::{
 
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
 pub const COINBASE_TRANSACTION_INDEX: usize = 0;
+/// A 32-byte Kaspa transaction identifier.
 pub type TransactionId = kaspa_hashes::Hash;
 
 /// Holds details about an individual transaction output in a utxo
@@ -137,8 +150,8 @@ impl Clone for TransactionMass {
 }
 
 impl BorshDeserialize for TransactionMass {
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let mass: u64 = borsh::BorshDeserialize::deserialize(buf)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let mass: u64 = borsh::BorshDeserialize::deserialize_reader(reader)?;
         Ok(Self(AtomicU64::new(mass)))
     }
 }
@@ -162,8 +175,9 @@ pub struct Transaction {
     #[serde(with = "serde_bytes")]
     pub payload: Vec<u8>,
 
+    /// Holds a commitment to the storage mass (KIP-0009)
+    /// TODO: rename field and related methods to storage_mass
     #[serde(default)]
-    #[borsh_skip] // TODO: skipped for now as it is only required for consensus storage and miner grpc
     mass: TransactionMass,
 
     // A field that is used to cache the transaction ID.
@@ -219,14 +233,38 @@ impl Transaction {
         self.id
     }
 
-    /// Set the mass field of this transaction. The mass field is expected depending on hard-forks which are currently
-    /// activated only on some testnets. The field has no effect on tx ID so no need to finalize following this call.
+    /// Set the storage mass commitment field of this transaction. This field is expected to be activated on mainnet
+    /// as part of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
     pub fn set_mass(&self, mass: u64) {
         self.mass.0.store(mass, SeqCst)
     }
 
+    /// Read the storage mass commitment
     pub fn mass(&self) -> u64 {
         self.mass.0.load(SeqCst)
+    }
+
+    /// Set the storage mass commitment of the passed transaction
+    pub fn with_mass(self, mass: u64) -> Self {
+        self.set_mass(mass);
+        self
+    }
+}
+
+impl MemSizeEstimator for Transaction {
+    fn estimate_mem_bytes(&self) -> usize {
+        // Calculates mem bytes of the transaction (for cache tracking purposes)
+        size_of::<Self>()
+            + self.payload.len()
+            + self
+                .inputs
+                .iter()
+                .map(|i| i.signature_script.len() + size_of::<TransactionInput>())
+                .chain(self.outputs.iter().map(|o| {
+                    // size_of::<TransactionOutput>() already counts SCRIPT_VECTOR_SIZE bytes within, so we only add the delta
+                    o.script_public_key.script().len().saturating_sub(SCRIPT_VECTOR_SIZE) + size_of::<TransactionOutput>()
+                }))
+                .sum::<usize>()
     }
 }
 
@@ -260,12 +298,20 @@ pub trait VerifiableTransaction {
     fn id(&self) -> TransactionId {
         self.tx().id()
     }
+
+    fn utxo(&self, index: usize) -> Option<&UtxoEntry>;
 }
 
 /// A custom iterator written only so that `populated_inputs` has a known return type and can de defined on the trait level
 pub struct PopulatedInputIterator<'a, T: VerifiableTransaction> {
     tx: &'a T,
     r: Range<usize>,
+}
+
+impl<T: VerifiableTransaction> Clone for PopulatedInputIterator<'_, T> {
+    fn clone(&self) -> Self {
+        Self { tx: self.tx, r: self.r.clone() }
+    }
 }
 
 impl<'a, T: VerifiableTransaction> PopulatedInputIterator<'a, T> {
@@ -286,7 +332,7 @@ impl<'a, T: VerifiableTransaction> Iterator for PopulatedInputIterator<'a, T> {
     }
 }
 
-impl<'a, T: VerifiableTransaction> ExactSizeIterator for PopulatedInputIterator<'a, T> {}
+impl<T: VerifiableTransaction> ExactSizeIterator for PopulatedInputIterator<'_, T> {}
 
 /// Represents a read-only referenced transaction along with fully populated UTXO entry data
 pub struct PopulatedTransaction<'a> {
@@ -301,13 +347,17 @@ impl<'a> PopulatedTransaction<'a> {
     }
 }
 
-impl<'a> VerifiableTransaction for PopulatedTransaction<'a> {
+impl VerifiableTransaction for PopulatedTransaction<'_> {
     fn tx(&self) -> &Transaction {
         self.tx
     }
 
     fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
         (&self.tx.inputs[index], &self.entries[index])
+    }
+
+    fn utxo(&self, index: usize) -> Option<&UtxoEntry> {
+        self.entries.get(index)
     }
 }
 
@@ -329,13 +379,17 @@ impl<'a> ValidatedTransaction<'a> {
     }
 }
 
-impl<'a> VerifiableTransaction for ValidatedTransaction<'a> {
+impl VerifiableTransaction for ValidatedTransaction<'_> {
     fn tx(&self) -> &Transaction {
         self.tx
     }
 
     fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
         (&self.tx.inputs[index], &self.entries[index])
+    }
+
+    fn utxo(&self, index: usize) -> Option<&UtxoEntry> {
+        self.entries.get(index)
     }
 }
 
@@ -355,14 +409,14 @@ pub struct MutableTransaction<T: AsRef<Transaction> = std::sync::Arc<Transaction
     pub entries: Vec<Option<UtxoEntry>>,
     /// Populated fee
     pub calculated_fee: Option<u64>,
-    /// Populated compute mass (does not include the storage mass)
-    pub calculated_compute_mass: Option<u64>,
+    /// Populated non-contextual masses (does not include the storage mass)
+    pub calculated_non_contextual_masses: Option<NonContextualMasses>,
 }
 
 impl<T: AsRef<Transaction>> MutableTransaction<T> {
     pub fn new(tx: T) -> Self {
         let num_inputs = tx.as_ref().inputs.len();
-        Self { tx, entries: vec![None; num_inputs], calculated_fee: None, calculated_compute_mass: None }
+        Self { tx, entries: vec![None; num_inputs], calculated_fee: None, calculated_non_contextual_masses: None }
     }
 
     pub fn id(&self) -> TransactionId {
@@ -371,7 +425,7 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
 
     pub fn with_entries(tx: T, entries: Vec<UtxoEntry>) -> Self {
         assert_eq!(tx.as_ref().inputs.len(), entries.len());
-        Self { tx, entries: entries.into_iter().map(Some).collect(), calculated_fee: None, calculated_compute_mass: None }
+        Self { tx, entries: entries.into_iter().map(Some).collect(), calculated_fee: None, calculated_non_contextual_masses: None }
     }
 
     /// Returns the tx wrapped as a [`VerifiableTransaction`]. Note that this function
@@ -387,7 +441,7 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
     }
 
     pub fn is_fully_populated(&self) -> bool {
-        self.is_verifiable() && self.calculated_fee.is_some() && self.calculated_compute_mass.is_some()
+        self.is_verifiable() && self.calculated_fee.is_some() && self.calculated_non_contextual_masses.is_some()
     }
 
     pub fn missing_outpoints(&self) -> impl Iterator<Item = TransactionOutpoint> + '_ {
@@ -405,6 +459,47 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
         for entry in self.entries.iter_mut() {
             *entry = None;
         }
+    }
+
+    /// Returns the calculated feerate. The feerate is calculated as the amount of fee this
+    /// transactions pays per gram of the aggregated contextual mass (max over compute, transient
+    /// and storage masses). The function returns a value when calculated fee and calculated masses
+    /// exist, otherwise `None` is returned.
+    pub fn calculated_feerate(&self) -> Option<f64> {
+        self.calculated_non_contextual_masses
+            .map(|non_contextual_masses| ContextualMasses::new(self.tx.as_ref().mass()).max(non_contextual_masses))
+            .and_then(|max_mass| self.calculated_fee.map(|fee| fee as f64 / max_mass as f64))
+    }
+
+    /// A function for estimating the amount of memory bytes used by this transaction (dedicated to mempool usage).
+    /// We need consistency between estimation calls so only this function should be used for this purpose since
+    /// `estimate_mem_bytes` is sensitive to pointer wrappers such as Arc
+    pub fn mempool_estimated_bytes(&self) -> usize {
+        self.estimate_mem_bytes()
+    }
+
+    pub fn has_parent(&self, possible_parent: TransactionId) -> bool {
+        self.tx.as_ref().inputs.iter().any(|x| x.previous_outpoint.transaction_id == possible_parent)
+    }
+
+    pub fn has_parent_in_set(&self, possible_parents: &HashSet<TransactionId>) -> bool {
+        self.tx.as_ref().inputs.iter().any(|x| possible_parents.contains(&x.previous_outpoint.transaction_id))
+    }
+}
+
+impl<T: AsRef<Transaction>> MemSizeEstimator for MutableTransaction<T> {
+    fn estimate_mem_bytes(&self) -> usize {
+        size_of::<Self>()
+            + self
+                .entries
+                .iter()
+                .map(|op| {
+                    // size_of::<Option<UtxoEntry>>() already counts SCRIPT_VECTOR_SIZE bytes within, so we only add the delta
+                    size_of::<Option<UtxoEntry>>()
+                        + op.as_ref().map_or(0, |e| e.script_public_key.script().len().saturating_sub(SCRIPT_VECTOR_SIZE))
+                })
+                .sum::<usize>()
+            + self.tx.as_ref().estimate_mem_bytes()
     }
 }
 
@@ -429,6 +524,10 @@ impl<T: AsRef<Transaction>> VerifiableTransaction for MutableTransactionVerifiab
             &self.inner.tx.as_ref().inputs[index],
             self.inner.entries[index].as_ref().expect("expected to be called only following full UTXO population"),
         )
+    }
+
+    fn utxo(&self, index: usize) -> Option<&UtxoEntry> {
+        self.inner.entries.get(index).and_then(Option::as_ref)
     }
 }
 
@@ -604,12 +703,12 @@ mod tests {
     fn test_spk_borsh() {
         // Tests for ScriptPublicKey Borsh ser/deser since we manually implemented them
         let spk = ScriptPublicKey::from_vec(12, vec![32; 20]);
-        let bin = spk.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&spk).unwrap();
         let spk2: ScriptPublicKey = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(spk, spk2);
 
         let spk = ScriptPublicKey::from_vec(55455, vec![11; 200]);
-        let bin = spk.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&spk).unwrap();
         let spk2: ScriptPublicKey = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(spk, spk2);
     }

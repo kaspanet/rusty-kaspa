@@ -31,10 +31,13 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Syn
         }
     }
 
+    pub fn clear(&self) {
+        self.map.write().clear();
+    }
+
     pub(crate) fn get(&self, key: &TKey) -> Option<TData> {
-        self.map.read().get(key).cloned().map(|data| {
+        self.map.read().get(key).cloned().inspect(|_data| {
             self.counters.get_counts.fetch_add(1, Ordering::Relaxed);
-            data
         })
     }
 
@@ -87,8 +90,8 @@ impl core::ops::Sub for &TxScriptCacheCountersSnapshot {
 
     fn sub(self, rhs: Self) -> Self::Output {
         Self::Output {
-            insert_counts: self.insert_counts.checked_sub(rhs.insert_counts).unwrap_or_default(),
-            get_counts: self.get_counts.checked_sub(rhs.get_counts).unwrap_or_default(),
+            insert_counts: self.insert_counts.saturating_sub(rhs.insert_counts),
+            get_counts: self.get_counts.saturating_sub(rhs.get_counts),
         }
     }
 }

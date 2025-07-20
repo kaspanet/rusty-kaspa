@@ -11,7 +11,6 @@ use kaspa_index_core::models::utxoindex::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::Display;
-use std::mem::size_of;
 use std::sync::Arc;
 
 pub const VERSION_TYPE_SIZE: usize = size_of::<ScriptPublicKeyVersion>(); // Const since we need to re-use this a few times.
@@ -67,8 +66,7 @@ impl From<TransactionOutpointKey> for TransactionOutpoint {
     fn from(key: TransactionOutpointKey) -> Self {
         let transaction_id = Hash::from_slice(&key.0[..kaspa_hashes::HASH_SIZE]);
         let index = TransactionIndexType::from_le_bytes(
-            <[u8; std::mem::size_of::<TransactionIndexType>()]>::try_from(&key.0[kaspa_hashes::HASH_SIZE..])
-                .expect("expected index size"),
+            <[u8; size_of::<TransactionIndexType>()]>::try_from(&key.0[kaspa_hashes::HASH_SIZE..]).expect("expected index size"),
         );
         Self::new(transaction_id, index)
     }
@@ -215,7 +213,7 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         let mut writer = DirectDbWriter::new(&self.db);
 
         let mut to_remove = utxo_entries.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
-            compact_utxo_collection.iter().map(move |(transaction_outpoint, _)| {
+            compact_utxo_collection.keys().map(move |transaction_outpoint| {
                 UtxoEntryFullAccessKey::new(
                     ScriptPublicKeyBucket::from(script_public_key),
                     TransactionOutpointKey::from(transaction_outpoint),

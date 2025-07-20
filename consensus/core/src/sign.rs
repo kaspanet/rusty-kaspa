@@ -1,9 +1,9 @@
 use crate::{
     hashing::{
-        sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
-        sighash_type::SIG_HASH_ALL,
+        sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync},
+        sighash_type::{SigHashType, SIG_HASH_ALL},
     },
-    tx::SignableTransaction,
+    tx::{SignableTransaction, VerifiableTransaction},
 };
 use itertools::Itertools;
 use std::collections::BTreeMap;
@@ -84,9 +84,9 @@ pub fn sign(mut signable_tx: SignableTransaction, schnorr_key: secp256k1::Keypai
         signable_tx.tx.inputs[i].sig_op_count = 1;
     }
 
-    let mut reused_values = SigHashReusedValues::new();
+    let reused_values = SigHashReusedValuesUnsync::new();
     for i in 0..signable_tx.tx.inputs.len() {
-        let sig_hash = calc_schnorr_signature_hash(&signable_tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values);
+        let sig_hash = calc_schnorr_signature_hash(&signable_tx.as_verifiable(), i, SIG_HASH_ALL, &reused_values);
         let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
         let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
         // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
@@ -106,11 +106,11 @@ pub fn sign_with_multiple(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8
         mutable_tx.tx.inputs[i].sig_op_count = 1;
     }
 
-    let mut reused_values = SigHashReusedValues::new();
+    let reused_values = SigHashReusedValuesUnsync::new();
     for i in 0..mutable_tx.tx.inputs.len() {
         let script = mutable_tx.entries[i].as_ref().unwrap().script_public_key.script();
         if let Some(schnorr_key) = map.get(script) {
-            let sig_hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values);
+            let sig_hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), i, SIG_HASH_ALL, &reused_values);
             let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
             let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
             // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
@@ -132,12 +132,12 @@ pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: &[[u
         map.insert(script_pub_key_script, schnorr_key);
     }
 
-    let mut reused_values = SigHashReusedValues::new();
+    let reused_values = SigHashReusedValuesUnsync::new();
     let mut additional_signatures_required = false;
     for i in 0..mutable_tx.tx.inputs.len() {
         let script = mutable_tx.entries[i].as_ref().unwrap().script_public_key.script();
         if let Some(schnorr_key) = map.get(script) {
-            let sig_hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values);
+            let sig_hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), i, SIG_HASH_ALL, &reused_values);
             let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
             let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
             // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
@@ -153,8 +153,21 @@ pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: &[[u
     }
 }
 
-pub fn verify(tx: &impl crate::tx::VerifiableTransaction) -> Result<(), Error> {
-    let mut reused_values = SigHashReusedValues::new();
+/// Sign a transaction input with a sighash_type using schnorr
+pub fn sign_input(tx: &impl VerifiableTransaction, input_index: usize, private_key: &[u8; 32], hash_type: SigHashType) -> Vec<u8> {
+    let reused_values = SigHashReusedValuesUnsync::new();
+
+    let hash = calc_schnorr_signature_hash(tx, input_index, hash_type, &reused_values);
+    let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).unwrap();
+    let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, private_key).unwrap();
+    let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
+
+    // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
+    std::iter::once(65u8).chain(sig).chain([hash_type.to_u8()]).collect()
+}
+
+pub fn verify(tx: &impl VerifiableTransaction) -> Result<(), Error> {
+    let reused_values = SigHashReusedValuesUnsync::new();
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
         if input.signature_script.is_empty() {
             return Err(Error::Message(format!("Signature is empty for input: {i}")));
@@ -162,7 +175,7 @@ pub fn verify(tx: &impl crate::tx::VerifiableTransaction) -> Result<(), Error> {
         let pk = &entry.script_public_key.script()[1..33];
         let pk = secp256k1::XOnlyPublicKey::from_slice(pk)?;
         let sig = secp256k1::schnorr::Signature::from_slice(&input.signature_script[1..65])?;
-        let sig_hash = calc_schnorr_signature_hash(tx, i, SIG_HASH_ALL, &mut reused_values);
+        let sig_hash = calc_schnorr_signature_hash(tx, i, SIG_HASH_ALL, &reused_values);
         let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice())?;
         sig.verify(&msg, &pk)?;
     }

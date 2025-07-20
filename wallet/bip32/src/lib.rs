@@ -19,6 +19,11 @@ mod prefix;
 mod result;
 pub mod types;
 
+pub mod wasm {
+    //! WASM bindings for the `bip32` module.
+    pub use crate::mnemonic::{Language, Mnemonic, WordCount};
+}
+
 pub use address_type::AddressType;
 pub use attrs::ExtendedKeyAttrs;
 pub use child_number::ChildNumber;
@@ -32,6 +37,8 @@ pub use xkey::ExtendedKey;
 pub use xprivate_key::ExtendedPrivateKey;
 pub use xpublic_key::ExtendedPublicKey;
 
+/// Extension for [`secp256k1::SecretKey`] that provides access
+/// to [`secp256k1::PublicKey`] and the public key string representation.
 pub trait SecretKeyExt {
     fn get_public_key(&self) -> secp256k1::PublicKey;
     fn as_str(&self, attrs: ExtendedKeyAttrs, prefix: Prefix) -> Zeroizing<String>;

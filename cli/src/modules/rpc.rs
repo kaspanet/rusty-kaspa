@@ -1,6 +1,6 @@
 use crate::imports::*;
 use convert_case::{Case, Casing};
-use kaspa_rpc_core::{api::ops::RpcApiOps, *};
+use kaspa_rpc_core::api::ops::RpcApiOps;
 
 #[derive(Default, Handler)]
 #[help("Execute RPC commands against the connected Kaspa node")]
@@ -38,19 +38,27 @@ impl Rpc {
                 tprintln!(ctx, "ok");
             }
             RpcApiOps::GetMetrics => {
-                let result = rpc.get_metrics(true, true, true, true).await?;
+                let result = rpc.get_metrics(true, true, true, true, true, true).await?;
+                self.println(&ctx, result);
+            }
+            RpcApiOps::GetSystemInfo => {
+                let result = rpc.get_system_info().await?;
+                self.println(&ctx, result);
+            }
+            RpcApiOps::GetConnections => {
+                let result = rpc.get_connections(true).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetServerInfo => {
-                let result = rpc.get_server_info_call(GetServerInfoRequest {}).await?;
+                let result = rpc.get_server_info_call(None, GetServerInfoRequest {}).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetSyncStatus => {
-                let result = rpc.get_sync_status_call(GetSyncStatusRequest {}).await?;
+                let result = rpc.get_sync_status_call(None, GetSyncStatusRequest {}).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetCurrentNetwork => {
-                let result = rpc.get_current_network_call(GetCurrentNetworkRequest {}).await?;
+                let result = rpc.get_current_network_call(None, GetCurrentNetworkRequest {}).await?;
                 self.println(&ctx, result);
             }
             // RpcApiOps::SubmitBlock => {
@@ -62,11 +70,11 @@ impl Rpc {
             //     self.println(&ctx, result);
             // }
             RpcApiOps::GetPeerAddresses => {
-                let result = rpc.get_peer_addresses_call(GetPeerAddressesRequest {}).await?;
+                let result = rpc.get_peer_addresses_call(None, GetPeerAddressesRequest {}).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetSink => {
-                let result = rpc.get_sink_call(GetSinkRequest {}).await?;
+                let result = rpc.get_sink_call(None, GetSinkRequest {}).await?;
                 self.println(&ctx, result);
             }
             // RpcApiOps::GetMempoolEntry => {
@@ -76,12 +84,15 @@ impl Rpc {
             RpcApiOps::GetMempoolEntries => {
                 // TODO
                 let result = rpc
-                    .get_mempool_entries_call(GetMempoolEntriesRequest { include_orphan_pool: true, filter_transaction_pool: true })
+                    .get_mempool_entries_call(
+                        None,
+                        GetMempoolEntriesRequest { include_orphan_pool: true, filter_transaction_pool: true },
+                    )
                     .await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetConnectedPeerInfo => {
-                let result = rpc.get_connected_peer_info_call(GetConnectedPeerInfoRequest {}).await?;
+                let result = rpc.get_connected_peer_info_call(None, GetConnectedPeerInfoRequest {}).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::AddPeer => {
@@ -90,7 +101,7 @@ impl Rpc {
                 }
                 let peer_address = argv.remove(0).parse::<RpcContextualPeerAddress>()?;
                 let is_permanent = argv.remove(0).parse::<bool>().unwrap_or(false);
-                let result = rpc.add_peer_call(AddPeerRequest { peer_address, is_permanent }).await?;
+                let result = rpc.add_peer_call(None, AddPeerRequest { peer_address, is_permanent }).await?;
                 self.println(&ctx, result);
             }
             // RpcApiOps::SubmitTransaction => {
@@ -103,27 +114,38 @@ impl Rpc {
                 }
                 let hash = argv.remove(0);
                 let hash = RpcHash::from_hex(hash.as_str())?;
-                let result = rpc.get_block_call(GetBlockRequest { hash, include_transactions: true }).await?;
+                let include_transactions = argv.first().and_then(|x| x.parse::<bool>().ok()).unwrap_or(true);
+                let result = rpc.get_block_call(None, GetBlockRequest { hash, include_transactions }).await?;
                 self.println(&ctx, result);
             }
             // RpcApiOps::GetSubnetwork => {
             //     let result = rpc.get_subnetwork_call(GetSubnetworkRequest {  }).await?;
             //     self.println(&ctx, result);
             // }
-            // RpcApiOps::GetVirtualChainFromBlock => {
-            //     let result = rpc.get_virtual_chain_from_block_call(GetVirtualChainFromBlockRequest {  }).await?;
-            //     self.println(&ctx, result);
-            // }
+            RpcApiOps::GetVirtualChainFromBlock => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Missing startHash argument"));
+                };
+                let start_hash = RpcHash::from_hex(argv.remove(0).as_str())?;
+                let include_accepted_transaction_ids = argv.first().and_then(|x| x.parse::<bool>().ok()).unwrap_or_default();
+                let result = rpc
+                    .get_virtual_chain_from_block_call(
+                        None,
+                        GetVirtualChainFromBlockRequest { start_hash, include_accepted_transaction_ids },
+                    )
+                    .await?;
+                self.println(&ctx, result);
+            }
             // RpcApiOps::GetBlocks => {
             //     let result = rpc.get_blocks_call(GetBlocksRequest {  }).await?;
             //     self.println(&ctx, result);
             // }
             RpcApiOps::GetBlockCount => {
-                let result = rpc.get_block_count_call(GetBlockCountRequest {}).await?;
+                let result = rpc.get_block_count_call(None, GetBlockCountRequest {}).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetBlockDagInfo => {
-                let result = rpc.get_block_dag_info_call(GetBlockDagInfoRequest {}).await?;
+                let result = rpc.get_block_dag_info_call(None, GetBlockDagInfoRequest {}).await?;
                 self.println(&ctx, result);
             }
             // RpcApiOps::ResolveFinalityConflict => {
@@ -131,7 +153,7 @@ impl Rpc {
             //     self.println(&ctx, result);
             // }
             RpcApiOps::Shutdown => {
-                let result = rpc.shutdown_call(ShutdownRequest {}).await?;
+                let result = rpc.shutdown_call(None, ShutdownRequest {}).await?;
                 self.println(&ctx, result);
             }
             // RpcApiOps::GetHeaders => {
@@ -143,7 +165,7 @@ impl Rpc {
                     return Err(Error::custom("Please specify at least one address"));
                 }
                 let addresses = argv.iter().map(|s| Address::try_from(s.as_str())).collect::<std::result::Result<Vec<_>, _>>()?;
-                let result = rpc.get_utxos_by_addresses_call(GetUtxosByAddressesRequest { addresses }).await?;
+                let result = rpc.get_utxos_by_addresses_call(None, GetUtxosByAddressesRequest { addresses }).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetBalanceByAddress => {
@@ -152,7 +174,7 @@ impl Rpc {
                 }
                 let addresses = argv.iter().map(|s| Address::try_from(s.as_str())).collect::<std::result::Result<Vec<_>, _>>()?;
                 for address in addresses {
-                    let result = rpc.get_balance_by_address_call(GetBalanceByAddressRequest { address }).await?;
+                    let result = rpc.get_balance_by_address_call(None, GetBalanceByAddressRequest { address }).await?;
                     self.println(&ctx, sompi_to_kaspa(result.balance));
                 }
             }
@@ -161,11 +183,11 @@ impl Rpc {
                     return Err(Error::custom("Please specify at least one address"));
                 }
                 let addresses = argv.iter().map(|s| Address::try_from(s.as_str())).collect::<std::result::Result<Vec<_>, _>>()?;
-                let result = rpc.get_balances_by_addresses_call(GetBalancesByAddressesRequest { addresses }).await?;
+                let result = rpc.get_balances_by_addresses_call(None, GetBalancesByAddressesRequest { addresses }).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetSinkBlueScore => {
-                let result = rpc.get_sink_blue_score_call(GetSinkBlueScoreRequest {}).await?;
+                let result = rpc.get_sink_blue_score_call(None, GetSinkBlueScoreRequest {}).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::Ban => {
@@ -173,7 +195,7 @@ impl Rpc {
                     return Err(Error::custom("Please specify peer IP address"));
                 }
                 let ip: RpcIpAddress = argv.remove(0).parse()?;
-                let result = rpc.ban_call(BanRequest { ip }).await?;
+                let result = rpc.ban_call(None, BanRequest { ip }).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::Unban => {
@@ -181,11 +203,11 @@ impl Rpc {
                     return Err(Error::custom("Please specify peer IP address"));
                 }
                 let ip: RpcIpAddress = argv.remove(0).parse()?;
-                let result = rpc.unban_call(UnbanRequest { ip }).await?;
+                let result = rpc.unban_call(None, UnbanRequest { ip }).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetInfo => {
-                let result = rpc.get_info_call(GetInfoRequest {}).await?;
+                let result = rpc.get_info_call(None, GetInfoRequest {}).await?;
                 self.println(&ctx, result);
             }
             // RpcApiOps::EstimateNetworkHashesPerSecond => {
@@ -200,16 +222,15 @@ impl Rpc {
                 let include_orphan_pool = true;
                 let filter_transaction_pool = true;
                 let result = rpc
-                    .get_mempool_entries_by_addresses_call(GetMempoolEntriesByAddressesRequest {
-                        addresses,
-                        include_orphan_pool,
-                        filter_transaction_pool,
-                    })
+                    .get_mempool_entries_by_addresses_call(
+                        None,
+                        GetMempoolEntriesByAddressesRequest { addresses, include_orphan_pool, filter_transaction_pool },
+                    )
                     .await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetCoinSupply => {
-                let result = rpc.get_coin_supply_call(GetCoinSupplyRequest {}).await?;
+                let result = rpc.get_coin_supply_call(None, GetCoinSupplyRequest {}).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetDaaScoreTimestampEstimate => {
@@ -220,8 +241,9 @@ impl Rpc {
 
                 match daa_score_result {
                     Ok(daa_scores) => {
-                        let result =
-                            rpc.get_daa_score_timestamp_estimate_call(GetDaaScoreTimestampEstimateRequest { daa_scores }).await?;
+                        let result = rpc
+                            .get_daa_score_timestamp_estimate_call(None, GetDaaScoreTimestampEstimateRequest { daa_scores })
+                            .await?;
                         self.println(&ctx, result);
                     }
                     Err(_err) => {
@@ -254,6 +276,39 @@ impl Rpc {
                     .await?;
                 self.println(&ctx, result);
             }
+            RpcApiOps::GetFeeEstimate => {
+                let result = rpc.get_fee_estimate_call(None, GetFeeEstimateRequest {}).await?;
+                self.println(&ctx, result);
+            }
+            RpcApiOps::GetFeeEstimateExperimental => {
+                let verbose = if argv.is_empty() { false } else { argv.remove(0).parse().unwrap_or(false) };
+                let result = rpc.get_fee_estimate_experimental_call(None, GetFeeEstimateExperimentalRequest { verbose }).await?;
+                self.println(&ctx, result);
+            }
+            RpcApiOps::GetCurrentBlockColor => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Missing block hash argument"));
+                }
+                let hash = argv.remove(0);
+                let hash = RpcHash::from_hex(hash.as_str())?;
+                let result = rpc.get_current_block_color_call(None, GetCurrentBlockColorRequest { hash }).await?;
+                self.println(&ctx, result);
+            }
+            RpcApiOps::GetUtxoReturnAddress => {
+                if argv.is_empty() || argv.len() != 2 {
+                    return Err(Error::custom("Please specify a txid and a accepting_block_daa_score"));
+                }
+
+                let txid = argv.remove(0);
+                let txid = RpcHash::from_hex(txid.as_str())?;
+
+                let accepting_block_daa_score = argv.remove(0).parse::<u64>()?;
+
+                let result =
+                    rpc.get_utxo_return_address_call(None, GetUtxoReturnAddressRequest { txid, accepting_block_daa_score }).await?;
+
+                self.println(&ctx, result);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());
@@ -268,9 +323,8 @@ impl Rpc {
 
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
         // RpcApiOps that do not contain docs are not displayed
-        let help = RpcApiOps::list()
-            .iter()
-            .filter_map(|op| op.doc().is_not_empty().then_some((op.as_str().to_case(Case::Kebab).to_string(), op.doc())))
+        let help = RpcApiOps::into_iter()
+            .filter_map(|op| op.rustdoc().is_not_empty().then_some((op.as_str().to_case(Case::Kebab).to_string(), op.rustdoc())))
             .collect::<Vec<(_, _)>>();
 
         ctx.term().help(&help, None)?;

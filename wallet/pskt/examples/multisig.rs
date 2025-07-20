@@ -1,9 +1,12 @@
+use kaspa_consensus_core::config::params::TESTNET_PARAMS;
 use kaspa_consensus_core::{
-    hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
+    hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync},
     tx::{TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_txscript::{multisig_redeem_script, opcodes::codes::OpData65, pay_to_script_hash_script, script_builder::ScriptBuilder};
-use kaspa_wallet_pskt::{Combiner, Creator, Extractor, Finalizer, Inner, InputBuilder, SignInputOk, Signature, Signer, Updater, PSKT};
+use kaspa_wallet_pskt::prelude::{
+    Combiner, Creator, Extractor, Finalizer, Inner, InputBuilder, SignInputOk, Signature, Signer, Updater, PSKT,
+};
 use secp256k1::{rand::thread_rng, Keypair};
 use std::{iter, str::FromStr};
 
@@ -49,8 +52,8 @@ fn main() {
     println!("Serialized after setting sequence: {}", ser_updated);
 
     let signer_pskt: PSKT<Signer> = serde_json::from_str(&ser_updated).expect("Failed to deserialize");
-    let mut reused_values = SigHashReusedValues::new();
-    let mut sign = |signer_pskt: PSKT<Signer>, kp: &Keypair| {
+    let reused_values = SigHashReusedValuesUnsync::new();
+    let sign = |signer_pskt: PSKT<Signer>, kp: &Keypair| {
         signer_pskt
             .pass_signature_sync(|tx, sighash| -> Result<Vec<SignInputOk>, String> {
                 let tx = dbg!(tx);
@@ -59,7 +62,7 @@ fn main() {
                     .iter()
                     .enumerate()
                     .map(|(idx, _input)| {
-                        let hash = calc_schnorr_signature_hash(&tx.as_verifiable(), idx, sighash[idx], &mut reused_values);
+                        let hash = calc_schnorr_signature_hash(&tx.as_verifiable(), idx, sighash[idx], &reused_values);
                         let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).unwrap();
                         Ok(SignInputOk {
                             signature: Signature::Schnorr(kp.sign_schnorr(msg)),
@@ -113,7 +116,8 @@ fn main() {
     println!("Finalized: {}", ser_finalized);
 
     let extractor_pskt: PSKT<Extractor> = serde_json::from_str(&ser_finalized).expect("Failed to deserialize");
-    let tx = extractor_pskt.extract_tx().unwrap()(10).0;
+    let params = TESTNET_PARAMS;
+    let tx = extractor_pskt.extract_tx(&params).unwrap().tx;
     let ser_tx = serde_json::to_string_pretty(&tx).unwrap();
     println!("Tx: {}", ser_tx);
 }

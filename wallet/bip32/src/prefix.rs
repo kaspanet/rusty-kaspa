@@ -6,6 +6,7 @@ use core::{
     fmt::{self, Debug, Display},
     str,
 };
+use kaspa_consensus_core::network::{NetworkId, NetworkType};
 
 /// BIP32 extended key prefixes a.k.a. "versions" (e.g. `xpub`, `xprv`)
 ///
@@ -134,7 +135,7 @@ impl Prefix {
     /// Validate that the given prefix string is well-formed.
     // TODO(tarcieri): validate the string ends with `prv` or `pub`?
     pub(crate) const fn validate_str(s: &str) -> crate::error::ResultConst<&str> {
-        if s.as_bytes().len() != Self::LENGTH {
+        if s.len() != Self::LENGTH {
             return Err(crate::error::ErrorImpl::DecodeInvalidLength);
         }
 
@@ -230,6 +231,18 @@ impl TryFrom<&str> for Prefix {
             "zprv" => Ok(Prefix::ZPRV),
             "zpub" => Ok(Prefix::ZPUB),
             _ => Err(Error::String(format!("Invalid prefix: {value}"))),
+        }
+    }
+}
+
+impl From<NetworkId> for Prefix {
+    fn from(value: NetworkId) -> Self {
+        let network_type = value.network_type();
+        match network_type {
+            NetworkType::Mainnet => Prefix::KPUB,
+            NetworkType::Devnet => Prefix::KTUB,
+            NetworkType::Simnet => Prefix::KTUB,
+            NetworkType::Testnet => Prefix::KTUB,
         }
     }
 }

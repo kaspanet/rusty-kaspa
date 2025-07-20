@@ -9,7 +9,8 @@ mod session;
 
 pub use batch::BlockProcessingBatch;
 pub use session::{
-    spawn_blocking, ConsensusInstance, ConsensusProxy, ConsensusSessionBlocking, SessionLock, SessionReadGuard, SessionWriteGuard,
+    spawn_blocking, ConsensusInstance, ConsensusProxy, ConsensusSessionBlocking, ConsensusSessionOwned, SessionLock, SessionReadGuard,
+    SessionWriteGuard,
 };
 
 /// Consensus controller trait. Includes methods required to start/stop/control consensus, but which should not
@@ -212,7 +213,7 @@ impl StagingConsensus {
         // Drop `prev` so that deletion below succeeds
         drop(prev);
         // Staging was committed and is now the active consensus so we can delete
-        // any pervious, now inactive, consensus entries
+        // any previous, now inactive, consensus entries
         self.manager.delete_inactive_consensus_entries();
     }
 

@@ -1,3 +1,11 @@
+//!
+//! Implementation of the client-side [`TransactionOutpoint`] used by the [`TransactionInput`] struct.
+//!
+
+#![allow(non_snake_case)]
+
+use cfg_if::cfg_if;
+
 use crate::imports::*;
 use crate::result::Result;
 
@@ -14,6 +22,7 @@ export interface ITransactionOutpoint {
 }
 "#;
 
+/// Inner type used by [`TransactionOutpoint`]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpointInner {
@@ -110,26 +119,31 @@ impl TransactionOutpoint {
     }
 }
 
-#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen)]
-impl TransactionOutpoint {
-    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(constructor))]
-    pub fn ctor(transaction_id: TransactionId, index: u32) -> TransactionOutpoint {
-        Self { inner: Arc::new(TransactionOutpointInner { transaction_id, index }) }
-    }
+cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
 
-    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(js_name = "getId"))]
-    pub fn id_string(&self) -> String {
-        format!("{}-{}", self.get_transaction_id_as_string(), self.get_index())
-    }
+        #[wasm_bindgen]
+        impl TransactionOutpoint {
+            #[wasm_bindgen(constructor)]
+            pub fn ctor(transaction_id: TransactionId, index: u32) -> TransactionOutpoint {
+                Self { inner: Arc::new(TransactionOutpointInner { transaction_id, index }) }
+            }
 
-    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(getter, js_name = transactionId))]
-    pub fn get_transaction_id_as_string(&self) -> String {
-        self.inner().transaction_id.to_string()
-    }
+            #[wasm_bindgen(js_name = "getId")]
+            pub fn id_string(&self) -> String {
+                format!("{}-{}", self.get_transaction_id_as_string(), self.get_index())
+            }
 
-    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(getter, js_name = index))]
-    pub fn get_index(&self) -> TransactionIndexType {
-        self.inner().index
+            #[wasm_bindgen(getter, js_name = transactionId)]
+            pub fn get_transaction_id_as_string(&self) -> String {
+                self.inner().transaction_id.to_string()
+            }
+
+            #[wasm_bindgen(getter, js_name = index)]
+            pub fn get_index(&self) -> TransactionIndexType {
+                self.inner().index
+            }
+        }
     }
 }
 
@@ -158,6 +172,15 @@ impl From<cctx::TransactionOutpoint> for TransactionOutpoint {
 
 impl From<TransactionOutpoint> for cctx::TransactionOutpoint {
     fn from(outpoint: TransactionOutpoint) -> Self {
+        let inner = outpoint.inner();
+        let transaction_id = inner.transaction_id;
+        let index = inner.index;
+        cctx::TransactionOutpoint::new(transaction_id, index)
+    }
+}
+
+impl From<&TransactionOutpoint> for cctx::TransactionOutpoint {
+    fn from(outpoint: &TransactionOutpoint) -> Self {
         let inner = outpoint.inner();
         let transaction_id = inner.transaction_id;
         let index = inner.index;

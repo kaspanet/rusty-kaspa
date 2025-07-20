@@ -1,4 +1,6 @@
 use super::MiningCounters;
+use crate::manager::MiningManagerProxy;
+use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{
     debug, info,
     task::{
@@ -13,6 +15,10 @@ use std::{sync::Arc, time::Duration};
 const MONITOR: &str = "mempool-monitor";
 
 pub struct MiningMonitor {
+    mining_manager: MiningManagerProxy,
+
+    consensus_manager: Arc<ConsensusManager>,
+
     // Counters
     counters: Arc<MiningCounters>,
 
@@ -24,11 +30,13 @@ pub struct MiningMonitor {
 
 impl MiningMonitor {
     pub fn new(
+        mining_manager: MiningManagerProxy,
+        consensus_manager: Arc<ConsensusManager>,
         counters: Arc<MiningCounters>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
         tick_service: Arc<TickService>,
     ) -> MiningMonitor {
-        MiningMonitor { counters, tx_script_cache_counters, tick_service }
+        MiningMonitor { mining_manager, consensus_manager, counters, tx_script_cache_counters, tick_service }
     }
 
     pub async fn worker(self: &Arc<MiningMonitor>) {
@@ -61,6 +69,18 @@ impl MiningMonitor {
                     delta.high_priority_tx_counts,
                     delta.low_priority_tx_counts,
                     delta.tx_accepted_counts,
+                );
+                let feerate_estimations = self
+                    .mining_manager
+                    .clone()
+                    .get_realtime_feerate_estimations(self.consensus_manager.consensus().unguarded_session().get_virtual_daa_score())
+                    .await;
+                debug!("Realtime feerate estimations: {}", feerate_estimations);
+            }
+            if delta.tx_evicted_counts > 0 {
+                info!(
+                    "Mempool stats: {} transactions were evicted from the mempool in favor of incoming higher feerate transactions",
+                    delta.tx_evicted_counts
                 );
             }
             if tx_script_cache_snapshot != last_tx_script_cache_snapshot {

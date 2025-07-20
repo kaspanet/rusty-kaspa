@@ -30,12 +30,19 @@ export interface IPaymentOutput {
 
 #[wasm_bindgen]
 extern "C" {
+    /// WASM (TypeScript) type representing a single payment output (`IPaymentOutput`).
+    /// @category Wallet SDK
     #[wasm_bindgen(typescript_type = "IPaymentOutput")]
     pub type IPaymentOutput;
+    /// WASM (TypeScript) type representing multiple payment outputs (`IPaymentOutput[]`).
+    /// @category Wallet SDK
     #[wasm_bindgen(typescript_type = "IPaymentOutput[]")]
     pub type IPaymentOutputArray;
 }
 
+/// A Rust data structure representing a payment destination.
+/// A payment destination is used to signal Generator where to send the funds.
+/// The destination can be a change address or a set of [`PaymentOutput`].
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum PaymentDestination {
     Change,
@@ -51,6 +58,9 @@ impl PaymentDestination {
     }
 }
 
+/// A Rust data structure representing a single payment
+/// output containing a destination address and amount.
+///
 /// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
 #[wasm_bindgen(inspectable)]
@@ -62,8 +72,11 @@ pub struct PaymentOutput {
 
 impl TryCastFromJs for PaymentOutput {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(array) = value.as_ref().dyn_ref::<Array>() {
                 let length = array.length();
                 if length != 2 {
@@ -74,7 +87,7 @@ impl TryCastFromJs for PaymentOutput {
                     Ok(Self { address, amount })
                 }
             } else if let Some(object) = Object::try_from(value.as_ref()) {
-                let address = object.get_cast::<Address>("address")?.into_owned();
+                let address = object.cast_into::<Address>("address")?;
                 let amount = object.get_u64("amount")?;
                 Ok(Self { address, amount })
             } else {
@@ -145,8 +158,11 @@ impl PaymentOutputs {
 
 impl TryCastFromJs for PaymentOutputs {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             let outputs = if let Some(output_array) = value.as_ref().dyn_ref::<js_sys::Array>() {
                 let vec = output_array.to_vec();
                 vec.into_iter().map(PaymentOutput::try_owned_from).collect::<Result<Vec<_>, _>>()?

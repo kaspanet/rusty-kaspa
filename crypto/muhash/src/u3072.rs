@@ -15,8 +15,8 @@ pub(crate) type DoubleLimb = u128;
 //#[cfg(target_pointer_width = "32")]
 //pub(crate) type DoubleLimb = u64;
 
-const LIMB_SIZE_BYTES: usize = std::mem::size_of::<Limb>();
-const LIMB_SIZE: usize = std::mem::size_of::<Limb>() * 8;
+const LIMB_SIZE_BYTES: usize = size_of::<Limb>();
+const LIMB_SIZE: usize = Limb::BITS as usize;
 pub const LIMBS: usize = crate::ELEMENT_BYTE_SIZE / LIMB_SIZE_BYTES;
 
 pub const PRIME_DIFF: Limb = 1103717;
@@ -88,6 +88,16 @@ impl U3072 {
     }
 
     fn mul(&mut self, other: &U3072) {
+        /*
+           Optimization: short-circuit when LHS is one
+               - This case is especially frequent during parallel reduce operation where the identity (one) is used for each sub-computation (at the LHS)
+               - If self ≠ one, the comparison should exit early, otherwise if they are equal -- we gain much more than we lose
+               - Benchmarks show that general performance remains the same while parallel reduction gains ~35%
+        */
+        if *self == Self::one() {
+            *self = *other;
+            return;
+        }
         let (mut carry_low, mut carry_high, mut carry_highest) = (0, 0, 0);
         let mut tmp = Self::one();
 

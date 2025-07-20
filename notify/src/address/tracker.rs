@@ -384,11 +384,11 @@ impl Inner {
     }
 }
 
-/// Tracker of a set of [`Address`](kaspa_addresses::Address), indexing and counting registrations
+/// Tracker of a set of [`Address`], indexing and counting registrations
 ///
 /// #### Implementation design
 ///
-/// Each [`Address`](kaspa_addresses::Address) is stored internally as a [`ScriptPubKey`](kaspa_consensus_core::tx::ScriptPublicKey).
+/// Each [`Address`] is stored internally as a [`ScriptPubKey`](kaspa_consensus_core::tx::ScriptPublicKey).
 /// This prevents inter-network duplication and optimizes UTXOs filtering efficiency.
 ///
 /// But consequently the address network prefix gets lost and must be globally provided when querying for addresses by indexes.

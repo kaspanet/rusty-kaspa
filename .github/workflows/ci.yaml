@@ -44,7 +44,9 @@ jobs:
       # Clean unnecessary files to save disk space
       - name: clean unnecessary files to save space
         run: |
-          docker rmi `docker images -q`
+          if [ "$(docker images -q)" ]; then
+            docker rmi $(docker images -q)
+          fi
           sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/sudo apt/sources.list.d
           sudo apt -y autoremove --purge
           sudo apt -y autoclean
@@ -125,6 +127,12 @@ jobs:
 
       - name: Run cargo doc tests with features=no-asm on kaspa-hashes
         run: cargo test --doc --release -p kaspa-hashes --features=no-asm
+
+      - name: Run cargo doc
+        run: cargo doc --release --no-deps --workspace
+      - name: Run kip-10 example
+        run: cargo run --example kip-10
+
 
   # test-release:
   #   name: Test Suite Release
@@ -207,11 +215,11 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
-        run: cargo clippy --workspace --tests --benches -- -D warnings
+        run: cargo clippy --workspace --tests --benches --examples -- -D warnings
 
 
   check-wasm32:
-    name: Check Wasm32
+    name: Check WASM32
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -274,11 +282,15 @@ jobs:
         run: cargo clippy -p kaspa-wasm --target wasm32-unknown-unknown
 
   build-wasm32:
-    name: Build Wasm32
+    name: Build WASM32 SDK
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+
+      - name: Setup Environment
+        shell: bash
+        run: echo "SHORT_SHA=`git rev-parse --short HEAD`" >> $GITHUB_ENV
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
@@ -337,10 +349,20 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build wasm release
-        run: cd wasm && bash build-release
+        run: |
+          pushd .
+          cd wasm
+          bash build-release
+          popd
+          mv wasm/release/kaspa-wasm32-sdk.zip wasm/release/kaspa-wasm32-sdk-${{ env.SHORT_SHA }}.zip
 
+      - name: Upload WASM build to GitHub 
+        uses: actions/upload-artifact@v4
+        with: 
+          name: kaspa-wasm32-sdk-${{ env.SHORT_SHA }}.zip
+          path: wasm/release/kaspa-wasm32-sdk-${{ env.SHORT_SHA }}.zip
   build-release:
-    name: Build Ubuntu Release
+    name: Build Linux Release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -354,7 +376,7 @@ jobs:
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache
+      - name: Cache Cargo Build Outputs
         uses: actions/cache@v4
         with:
           path: |
@@ -364,14 +386,23 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+        
+      - name: Cache Toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/x-tools
+          key: ${{ runner.os }}-musl-${{ hashFiles('**/musl-toolchain/preset.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-musl-
 
-      - name: Install zig
+      
+      - name: Build RK with musl toolchain
         if: runner.os == 'Linux'
-        uses: goto-bus-stop/setup-zig@v2 # needed for cargo-zigbuild
-
-      - name: Build on Linux
-        if: runner.os == 'Linux'
-        # We're using musl to make the binaries statically linked and portable
         run: |
-          cargo install cargo-zigbuild
-          cargo --verbose zigbuild --bin kaspad --bin simpa --bin rothschild --release --target x86_64-unknown-linux-gnu.2.27 # Use an older glibc version
+          # Run build script for musl toolchain
+          source musl-toolchain/build.sh
+          # Build for musl
+          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-musl

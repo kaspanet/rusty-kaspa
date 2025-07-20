@@ -21,7 +21,7 @@ pub enum DatabaseStorePrefixes {
     PruningUtxoset = 11,
     PruningUtxosetPosition = 12,
     PruningPoint = 13,
-    HistoryRoot = 14,
+    RetentionCheckpoint = 14,
     Reachability = 15,
     ReachabilityReindexRoot = 16,
     ReachabilityRelations = 17,
@@ -36,10 +36,18 @@ pub enum DatabaseStorePrefixes {
     UtxoMultisets = 26,
     VirtualUtxoset = 27,
     VirtualState = 28,
+    PruningSamples = 29,
 
     // ---- Decomposed reachability stores ----
     ReachabilityTreeChildren = 30,
     ReachabilityFutureCoveringSet = 31,
+
+    // ---- Ghostdag Proof
+    TempGhostdag = 40,
+    TempGhostdagCompact = 41,
+
+    // ---- Retention Period Root ----
+    RetentionPeriodRoot = 50,
 
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
@@ -104,8 +112,8 @@ mod tests {
         let prefix = DatabaseStorePrefixes::AcceptanceData;
         assert_eq!(&[prefix as u8], prefix.as_ref());
         assert_eq!(
-            std::mem::size_of::<u8>(),
-            std::mem::size_of::<DatabaseStorePrefixes>(),
+            size_of::<u8>(),
+            size_of::<DatabaseStorePrefixes>(),
             "DatabaseStorePrefixes is expected to have the same memory layout of u8"
         );
     }
