@@ -39,3 +39,6 @@ secp256k1.workspace = true
 [[bench]]
 name = "bench"
 harness = false
+
+[lints]
+workspace = true

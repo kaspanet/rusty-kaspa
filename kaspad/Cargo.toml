@@ -67,3 +67,6 @@ serde_with = "3.7.0"
 heap = ["dhat", "kaspa-alloc/heap"]
 devnet-prealloc = ["kaspa-consensus/devnet-prealloc"]
 semaphore-trace = ["kaspa-utils/semaphore-trace"]
+
+[lints]
+workspace = true
