@@ -1333,7 +1333,7 @@ impl ConsensusApi for Consensus {
         note: this is probably very computationally wasteful for archival nodes
         and should be avoided on usual terms */
 
-        for block in self.services.reachability_service.forward_chain_iterator(ORIGIN, self.get_sink(), true) {
+        for block in self.services.reachability_service.forward_chain_iterator(ORIGIN, self.get_sink(), true).skip(2) {
             let accepted_txs = self.get_block_acceptance_data(block)?;
             if accepted_txs
                 .iter()
