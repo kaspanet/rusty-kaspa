@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Workaround for Rust 1.87.0
+# https://github.com/rust-lang/rust/issues/141048
+export RUSTFLAGS=-Ctarget-cpu=mvp
+
 if [ "$1" == "--keygen" ]; then
     echo "building wasm32-keygen"
     wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-keygen --features wasm32-keygen
