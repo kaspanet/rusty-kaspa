@@ -14,6 +14,33 @@ use crate::model::{
     },
 };
 
+/*
+    Task 0:
+        Hierarchic conflict resolution
+        
+        input: set of parents P (|P| >= 1)
+        output:  a selected parent p \in P
+        pseudo:
+        
+        while |P| > 1:
+            g = find the latest common chain ancestor of P // the genesis of the conflict
+            split P into subgroups {P_1, ..., P_n} such that blocks within each subgroup agree about the chain ancestor above g // each such subgroup is "united" re the conflict zone induced by g
+            run some deterministic black box protocol F to choose a winner group P_i // to start with, xor all hashes in each subgroup and rank the results by lexicographic hash order
+            P = P_i
+        p = P[0]
+        return p
+
+    Task 1:
+        Goal: a more sophisticated F
+        Possible idea: fix k, run GD over subdag = future(g) \cup past(P), select P_i which contains the GD selected parent from P
+        Main challenge: adapt the GD protocol to run on such a subdag (defined by future and past constrains). We did something like this in the pruning proof by abstracting the relations store 
+        
+    Task 2:
+        Vanilla DK
+        Implement F with basic DK logic, i.e., searching the k space
+        TBD
+*/
+
 pub struct DagknightConflictEntry {
     // TODO: incremental colouring data for relevant k values
 }
