@@ -382,19 +382,19 @@ wRPC subsystem is disabled by default in `kaspad` and can be enabled via:
 
 JSON protocol:
 
-```bash
---rpclisten-json = <interface:port>
-# or use the defaults for current network
---rpclisten-json = default
-```
+  JSON protocol:
+  ```bash
+  --rpclisten-json=<interface:port>
+  # or use the defaults for current network
+  --rpclisten-json=default
+  ```
 
-Borsh protocol:
-
-```bash
---rpclisten-borsh = <interface:port>
-# or use the defaults for current network
---rpclisten-borsh = default
-```
+  Borsh protocol:
+  ```bash
+  --rpclisten-borsh=<interface:port>
+  # or use the defaults for current network
+  --rpclisten-borsh=default
+  ```
 
 **Sidenote:**
 
