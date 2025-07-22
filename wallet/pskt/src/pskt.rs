@@ -151,7 +151,7 @@ impl<R> PSKT<R> {
             self.determine_lock_time(),
             SUBNETWORK_ID_NATIVE,
             0,
-            vec![],
+            self.global.payload.clone().unwrap_or_default(),
         );
         let entries = self.inputs.iter().filter_map(|Input { utxo_entry, .. }| utxo_entry.clone()).collect();
         SignableTransaction::with_entries(tx, entries)
@@ -234,6 +234,11 @@ impl PSKT<Constructor> {
     pub fn output(mut self, output: Output) -> Self {
         self.inner_pskt.outputs.push(output);
         self.inner_pskt.global.output_count += 1;
+        self
+    }
+
+    pub fn payload(mut self, payload: Option<Vec<u8>>) -> Self {
+        self.inner_pskt.global.payload = payload;
         self
     }
 
