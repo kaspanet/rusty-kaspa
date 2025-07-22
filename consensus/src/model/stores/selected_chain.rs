@@ -116,6 +116,10 @@ impl SelectedChainStore for DbSelectedChainStore {
     }
 
     fn init_with_pruning_point(&mut self, batch: &mut WriteBatch, block: Hash) -> StoreResult<()> {
+        // remove potential leftover chain
+        let _ = self.access_index_by_hash.delete_all(BatchDbWriter::new(batch));
+        let _ = self.access_hash_by_index.delete_all(BatchDbWriter::new(batch));
+
         self.access_index_by_hash.write(BatchDbWriter::new(batch), block, 0)?;
         self.access_hash_by_index.write(BatchDbWriter::new(batch), 0.into(), block)?;
         self.access_highest_index.write(BatchDbWriter::new(batch), &0).unwrap();
