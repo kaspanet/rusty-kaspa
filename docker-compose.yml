@@ -1,0 +1,292 @@
+---
+services:
+  # Mainnet Node
+  kaspad-mainnet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kaspad-mainnet
+    restart: unless-stopped
+    profiles:
+      - mainnet
+    user: root
+    environment:
+      - NETWORK=mainnet
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENABLE_UTXO_INDEX=${ENABLE_UTXO_INDEX:-true}
+      - ENABLE_PERF_METRICS=${ENABLE_PERF_METRICS}
+      - ASYNC_THREADS=${ASYNC_THREADS:-}
+      - OUTBOUND_TARGET=${OUTBOUND_TARGET:-8}
+      - INBOUND_LIMIT=${INBOUND_LIMIT:-128}
+      - RPC_MAX_CLIENTS=${RPC_MAX_CLIENTS:-128}
+    volumes:
+      - kaspad_mainnet_data:/app/data
+      - kaspad_mainnet_logs:/app/logs
+      - kaspad_mainnet_config:/app/config
+    ports:
+      - "16110:16110" # gRPC
+      - "16111:16111" # P2P
+    command: >
+      kaspad
+      --utxoindex
+      --rpclisten=0.0.0.0:16110
+      --rpclisten-borsh=0.0.0.0:17110
+      --rpclisten-json=0.0.0.0:18110
+      --listen=0.0.0.0:16111
+      --loglevel=${LOG_LEVEL:-INFO}
+      --outpeers=${OUTBOUND_TARGET:-8}
+      --maxinpeers=${INBOUND_LIMIT:-128}
+      --rpcmaxclients=${RPC_MAX_CLIENTS:-128}
+      ${ENABLE_PERF_METRICS:+--perf-metrics}
+      ${ASYNC_THREADS:+--async-threads=${ASYNC_THREADS}}
+    networks:
+      - kaspa-network
+    healthcheck:
+      test: ["CMD", "kaspa-cli", "--server", "localhost:16110", "ping"]
+      interval: 90s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # Testnet Node
+  kaspad-testnet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kaspad-testnet
+    restart: unless-stopped
+    profiles:
+      - testnet
+    environment:
+      - NETWORK=testnet
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENABLE_UTXO_INDEX=${ENABLE_UTXO_INDEX:-true}
+      - ENABLE_PERF_METRICS=${ENABLE_PERF_METRICS}
+      - ASYNC_THREADS=${ASYNC_THREADS:-}
+      - OUTBOUND_TARGET=${OUTBOUND_TARGET:-8}
+      - INBOUND_LIMIT=${INBOUND_LIMIT:-128}
+      - RPC_MAX_CLIENTS=${RPC_MAX_CLIENTS:-128}
+    volumes:
+      - kaspad_testnet_data:/app/data
+      - kaspad_testnet_logs:/app/logs
+      - kaspad_testnet_config:/app/config
+    ports:
+      - "16210:16210" # gRPC
+      - "16211:16211" # P2P
+    command: >
+      kaspad
+      --testnet
+      --utxoindex
+      --rpclisten=0.0.0.0:16210
+      --rpclisten-borsh=0.0.0.0:17210
+      --rpclisten-json=0.0.0.0:18210
+      --listen=0.0.0.0:16211
+      --loglevel=${LOG_LEVEL:-INFO}
+      --outpeers=${OUTBOUND_TARGET:-8}
+      --maxinpeers=${INBOUND_LIMIT:-128}
+      --rpcmaxclients=${RPC_MAX_CLIENTS:-128}
+      ${ENABLE_PERF_METRICS:+--perf-metrics}
+      ${ASYNC_THREADS:+--async-threads=${ASYNC_THREADS}}
+    networks:
+      - kaspa-network
+    healthcheck:
+      test: ["CMD", "kaspa-cli", "--server", "localhost:16210", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # Devnet Node
+  kaspad-devnet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kaspad-devnet
+    restart: unless-stopped
+    profiles:
+      - devnet
+    environment:
+      - NETWORK=devnet
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENABLE_UTXO_INDEX=${ENABLE_UTXO_INDEX:-true}
+      - ENABLE_PERF_METRICS=${ENABLE_PERF_METRICS}
+      - ASYNC_THREADS=${ASYNC_THREADS:-}
+      - OUTBOUND_TARGET=${OUTBOUND_TARGET:-8}
+      - INBOUND_LIMIT=${INBOUND_LIMIT:-128}
+      - RPC_MAX_CLIENTS=${RPC_MAX_CLIENTS:-128}
+    volumes:
+      - kaspad_devnet_data:/app/data
+      - kaspad_devnet_logs:/app/logs
+      - kaspad_devnet_config:/app/config
+    ports:
+      - "16610:16610" # gRPC
+      - "16611:16611" # P2P
+    command: >
+      kaspad
+      --devnet
+      --utxoindex
+      --rpclisten=0.0.0.0:16610
+      --rpclisten-borsh=0.0.0.0:17610
+      --rpclisten-json=0.0.0.0:18610
+      --listen=0.0.0.0:16611
+      --loglevel=${LOG_LEVEL:-INFO}
+      --outpeers=${OUTBOUND_TARGET:-8}
+      --maxinpeers=${INBOUND_LIMIT:-128}
+      --rpcmaxclients=${RPC_MAX_CLIENTS:-128}
+      ${ENABLE_PERF_METRICS:+--perf-metrics}
+      ${ASYNC_THREADS:+--async-threads=${ASYNC_THREADS}}
+    networks:
+      - kaspa-network
+    healthcheck:
+      test: ["CMD", "kaspa-cli", "--server", "localhost:16610", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # wRPC Proxy for Mainnet (Borsh)
+  wrpc-proxy-mainnet-borsh:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wrpc-proxy-mainnet-borsh
+    restart: unless-stopped
+    profiles:
+      - mainnet
+    environment:
+      - NETWORK=mainnet
+      - ENCODING=borsh
+      - THREADS=${WRPC_THREADS:-}
+    volumes:
+      - wrpc_mainnet_borsh_logs:/app/logs
+    ports:
+      - "17110:17110" # wRPC Borsh
+    command: >
+      kaspa-wrpc-proxy
+      grpc://kaspad-mainnet:16110
+      --interface=0.0.0.0:17110
+      --encoding=borsh
+      ${THREADS:+--threads=${THREADS}}
+    networks:
+      - kaspa-network
+    depends_on:
+      kaspad-mainnet:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 90s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # wRPC Proxy for Testnet
+  wrpc-proxy-testnet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wrpc-proxy-testnet
+    restart: unless-stopped
+    profiles:
+      - testnet
+    environment:
+      - NETWORK=testnet
+      - ENCODING=${WRPC_ENCODING:-borsh}
+      - THREADS=${WRPC_THREADS:-}
+    volumes:
+      - wrpc_testnet_logs:/app/logs
+    ports:
+      - "17210:17210" # wRPC Borsh
+      - "18210:18210" # wRPC JSON
+    command: >
+      kaspa-wrpc-proxy
+      --testnet
+      grpc://kaspad-testnet:16210
+      --interface=0.0.0.0:17210
+      --encoding=${ENCODING:-borsh}
+      ${THREADS:+--threads=${THREADS}}
+    networks:
+      - kaspa-network
+    depends_on:
+      kaspad-testnet:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 90s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # Monitoring with Prometheus (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: kaspa-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker-config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--storage.tsdb.retention.time=200h"
+      - "--web.enable-lifecycle"
+    networks:
+      - kaspa-network
+    profiles:
+      - monitoring
+
+  # Grafana Dashboard (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: kaspa-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker-config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker-config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - kaspa-network
+    profiles:
+      - monitoring
+
+volumes:
+  kaspad_mainnet_data:
+    driver: local
+  kaspad_mainnet_logs:
+    driver: local
+  kaspad_mainnet_config:
+    driver: local
+  kaspad_testnet_data:
+    driver: local
+  kaspad_testnet_logs:
+    driver: local
+  kaspad_testnet_config:
+    driver: local
+  kaspad_devnet_data:
+    driver: local
+  kaspad_devnet_logs:
+    driver: local
+  kaspad_devnet_config:
+    driver: local
+  wrpc_mainnet_borsh_logs:
+    driver: local
+  wrpc_testnet_logs:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  kaspa-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
