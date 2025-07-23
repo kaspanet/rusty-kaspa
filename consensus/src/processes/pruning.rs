@@ -158,13 +158,10 @@ impl<
             }
             // For samples: special clamp for the period right after the fork (where we reach ceiling(P/F) steps before reaching P' depth)
             if is_self_pruning_sample && steps == self.pruning_samples_steps {
-                eprintln!("clamp sample");
                 break current;
             }
             // For non samples: clamp to selected parent pruning point to maintain monotonicity (needed because of the previous condition)
             if current == selected_parent_pruning_point {
-                eprintln!("clamp non sample");
-
                 break current;
             }
             current = self.pruning_samples_store.pruning_sample_from_pov(current).unwrap();

@@ -264,7 +264,6 @@ impl VirtualStateProcessor {
         // [Crescendo]: we need to save reply.pruning_sample to the database also prior to activation
         let reply = self.pruning_point_manager.expected_header_pruning_point_v2(ghostdag_data);
         if self.crescendo_activation.is_active(selected_parent_daa_score) {
-            eprintln!("here virtual");
             if reply.pruning_point != header.pruning_point {
                 return Err(WrongHeaderPruningPoint(header.hash, reply.pruning_point, header.pruning_point));
             }

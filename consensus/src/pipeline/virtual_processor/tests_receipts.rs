@@ -4,7 +4,7 @@ use crate::{
     consensus::test_consensus::TestConsensus,
     model::stores::{
         acceptance_data::AcceptanceDataStoreReader, block_transactions::BlockTransactionsStoreReader, headers::HeaderStoreReader,
-        selected_chain::SelectedChainStoreReader,
+        pruning::PruningStoreReader, selected_chain::SelectedChainStoreReader,
     },
     pipeline::virtual_processor::tests_util::TestContext,
     processes::reachability::tests::gen::generate_complex_dag,
@@ -23,7 +23,7 @@ use kaspa_consensus_core::{
 async fn test_receipts_in_chain() {
     const PERIODS: usize = 5;
     const FINALITY_DEPTH: usize = 20;
-    const BPS: f64 = 5.0;
+    const BPS: f64 = 10.0;
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
@@ -182,26 +182,26 @@ async fn test_receipts_in_random() {
      */
     const FINALITY_DEPTH: usize = 10;
     const DAG_SIZE: u64 = 500;
-    const BPS: f64 = 10.0;
+    const BPS: f64 = 6.0;
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.prior_max_block_parents = 50; //  is probably enough to avoid errors
+            p.prior_max_block_parents = 10; //  is probably enough to avoid errors
             p.prior_mergeset_size_limit = 30;
             p.prior_ghostdag_k = 4;
             p.prior_finality_depth = FINALITY_DEPTH as u64;
             p.prior_pruning_depth = (FINALITY_DEPTH * 3 - 5) as u64;
-            p.kip6_activation = ForkActivation::never();
+            p.kip6_activation = ForkActivation::new(20);
             p.crescendo_activation = ForkActivation::never();
         })
         .build();
     let mut receipts1 = std::collections::HashMap::<_, _>::new();
-    // let mut receipts2 = std::collections::HashMap::<_, _>::new();
+    let mut receipts2 = std::collections::HashMap::<_, _>::new();
     let mut receipts3 = std::collections::HashMap::<_, _>::new();
 
     let mut pops1 = std::collections::HashMap::<_, _>::new();
-    // let mut pops2 = std::collections::HashMap::<_, _>::new();
-    // let mut pops3 = std::collections::HashMap::<_, _>::new();
+    let mut pops2 = std::collections::HashMap::<_, _>::new();
+    let mut pops3 = std::collections::HashMap::<_, _>::new();
 
     let ctx = TestContext::new(TestConsensus::new(&config));
     let genesis_hash = ctx.consensus.params().genesis.hash;
@@ -245,7 +245,13 @@ async fn test_receipts_in_random() {
         if so, attempt to create and store receipts and POPs for a batch of blocks past the current pruning point.
         */
         if ctx.consensus.is_posterity_reached(next_posterity_score) {
-            sleep(Duration::from_millis(300)); //delay to prevent pruning races
+            sleep(Duration::from_millis(300));
+
+            while ctx.consensus.pruning_point_store.read().retention_checkpoint().unwrap()
+                != ctx.consensus.pruning_point_store.read().retention_period_root().unwrap()
+            {
+                sleep(Duration::from_millis(100));
+            } //delay to prevent pruning races
             next_posterity_score += FINALITY_DEPTH as u64;
             posterity_list.push(ctx.consensus.services.tx_receipts_manager.get_pre_posterity_block_by_hash(ctx.consensus.get_sink()));
             if posterity_list.len() >= 3 {
@@ -261,9 +267,9 @@ async fn test_receipts_in_random() {
                     let proof = ctx.consensus.generate_proof_of_pub(pub_tx, Some(blk_header.hash), None);
                     if let Ok(proof) = proof {
                         pops1.insert(old_block, proof);
-                        //     pops2
-                        //         .insert(old_block, ctx.consensus.generate_proof_of_pub(pub_tx, None, Some(blk_header.timestamp)).unwrap());
-                        // pops3.insert(old_block, ctx.consensus.generate_proof_of_pub(pub_tx, None, None).unwrap());
+                        pops2
+                            .insert(old_block, ctx.consensus.generate_proof_of_pub(pub_tx, None, Some(blk_header.timestamp)).unwrap());
+                        pops3.insert(old_block, ctx.consensus.generate_proof_of_pub(pub_tx, None, None).unwrap());
                     }
                     if old_block != genesis_hash && ctx.consensus.selected_chain_store.read().get_by_hash(old_block).is_ok() {
                         //genesis is an annoying edge case as it has no accepted txs
@@ -271,8 +277,9 @@ async fn test_receipts_in_random() {
                         let acc_tx =
                             ctx.consensus.acceptance_data_store.get(old_block).unwrap()[0].accepted_transactions[0].transaction_id;
                         receipts1.insert(old_block, ctx.consensus.generate_tx_receipt(acc_tx, Some(blk_header.hash), None).unwrap());
-                        // receipts2
-                        //     .insert(old_block, ctx.consensus.generate_tx_receipt(acc_tx, None, Some(blk_header.timestamp)).unwrap());
+                        receipts2
+                            .insert(old_block, ctx.consensus.generate_tx_receipt(acc_tx, None, Some(blk_header.timestamp)).unwrap());
+
                         receipts3.insert(old_block, ctx.consensus.generate_tx_receipt(acc_tx, None, None).unwrap());
                     }
                 }
@@ -300,20 +307,20 @@ async fn test_receipts_in_random() {
     for rec in receipts1.values() {
         assert!(ctx.consensus.verify_tx_receipt(rec));
     }
-    // for rec in receipts2.values() {
-    //     assert!(ctx.consensus.verify_tx_receipt(rec));
-    // }
-    // for rec in receipts3.values() {
-    //     assert!(ctx.consensus.verify_tx_receipt(rec));
-    // }
+    for rec in receipts2.values() {
+        assert!(ctx.consensus.verify_tx_receipt(rec));
+    }
+    for rec in receipts3.values() {
+        assert!(ctx.consensus.verify_tx_receipt(rec));
+    }
 
     for proof in pops1.values() {
         assert!(ctx.consensus.verify_proof_of_pub(proof));
     }
-    // for proof in pops2.values() {
-    //     assert!(ctx.consensus.verify_proof_of_pub(proof));
-    // }
-    // for proof in pops3.values() {
-    //     assert!(ctx.consensus.verify_proof_of_pub(proof));
-    // }
+    for proof in pops2.values() {
+        assert!(ctx.consensus.verify_proof_of_pub(proof));
+    }
+    for proof in pops3.values() {
+        assert!(ctx.consensus.verify_proof_of_pub(proof));
+    }
 }

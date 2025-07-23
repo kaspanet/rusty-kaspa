@@ -87,7 +87,6 @@ impl HeaderProcessor {
         if !self.crescendo_activation.is_active(ctx.selected_parent_daa_score()) {
             let expected =
                 self.pruning_point_manager.expected_header_pruning_point_v1(ctx.ghostdag_data().to_compact(), ctx.pruning_info);
-            eprintln!("expected: {expected}");
             if expected != header.pruning_point {
                 return Err(RuleError::WrongHeaderPruningPoint(header.hash, expected, header.pruning_point));
             }

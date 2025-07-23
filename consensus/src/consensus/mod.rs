@@ -51,7 +51,7 @@ use kaspa_consensus_core::{
         BlockValidationFutures, ConsensusApi, ConsensusStats,
     },
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
-    blockhash::{BlockHashExtensions, ORIGIN},
+    blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
     coinbase::MinerData,
     daa_score_timestamp::DaaScoreTimestamp,
@@ -532,7 +532,10 @@ impl Consensus {
         let dag_width_guess: u64 = self.services.tx_receipts_manager.estimate_dag_width(Some(tip)); // estimation may be off for old txs
         let estimated_bscore = tip_bscore.saturating_sub(tip_timestamp.saturating_sub(tx_timestamp)) * bps.get(tip_daa) / 1000;
         let guess_index = tip_index.saturating_sub(tip_bscore.saturating_sub(estimated_bscore) / dag_width_guess);
-        let guess_block = self.selected_chain_store.read().get_by_index(guess_index).unwrap_or(ORIGIN);
+        let mut guess_block = self.selected_chain_store.read().get_by_index(guess_index).unwrap_or(self.config.genesis.hash);
+        if !self.is_chain_ancestor_of(self.pruning_point_store.read().retention_period_root().unwrap(), guess_block).unwrap_or(false) {
+            guess_block = self.pruning_point_store.read().retention_period_root().unwrap();
+        }
         //since guess_block is merely a guess, some margin of error needs be taken
         // we account for a deviation of "10 minutes" and derive the expected max distance in chain blocks
         const DEVIATION_IN_SECONDS: u64 = 600; //10 minutes deviation should be enough?
@@ -560,7 +563,6 @@ impl Consensus {
             .skip(1)// avoid checking guess block itself twice
             .take(deviation_in_chain_blocks)
             .map(someize_header_if_blk_accepts_tx);
-
         let double_sided_iterator = backward_search_iter.zip_longest(forward_search_iter).map(first_some_out_of_either_pair);
         // we iterate backwards and forwards at the same time to locate the accepting block of the transaction
         let acc_blocks = double_sided_iterator.filter(|blk| blk.is_some());
@@ -611,7 +613,10 @@ impl Consensus {
         let dag_width_guess: u64 = self.services.tx_receipts_manager.estimate_dag_width(Some(tip)); // estimation may be off for old txs
         let estimated_bscore = tip_bscore.saturating_sub(tip_timestamp.saturating_sub(tx_timestamp)) * bps.get(tip_daa) / 1000;
         let guess_index = tip_index.saturating_sub(tip_bscore.saturating_sub(estimated_bscore) / dag_width_guess);
-        let guess_block = self.selected_chain_store.read().get_by_index(guess_index).unwrap_or(ORIGIN);
+        let mut guess_block = self.selected_chain_store.read().get_by_index(guess_index).unwrap_or(self.config.genesis.hash);
+        if !self.is_chain_ancestor_of(self.pruning_point_store.read().retention_period_root().unwrap(), guess_block).unwrap_or(false) {
+            guess_block = self.pruning_point_store.read().retention_period_root().unwrap();
+        }
         //since guess_block is merely a guess, some margin of error needs be taken
         // we account for a deviation of "10 minutes" and derive the expected max distance in blocks
         const DEVIATION_IN_SECONDS: u64 = 600; //10 minutes deviation should be enough?
@@ -1333,8 +1338,12 @@ impl ConsensusApi for Consensus {
         note: this is probably very computationally wasteful for archival nodes
         and should be avoided on usual terms */
 
-        for block in self.services.reachability_service.forward_chain_iterator(ORIGIN, self.get_sink(), true).skip(2) {
-            let accepted_txs = self.get_block_acceptance_data(block)?;
+        for block in self.services.reachability_service.forward_chain_iterator(self.config.genesis.hash, self.get_sink(), true) {
+            let accepted_txs = self.get_block_acceptance_data(block);
+            if accepted_txs.is_err() {
+                continue;
+            }
+            let accepted_txs = accepted_txs.unwrap();
             if accepted_txs
                 .iter()
                 .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
@@ -1372,12 +1381,14 @@ impl ConsensusApi for Consensus {
             /*  if no timestamp is given either, search the entire database
             note: this is probably very computationally wasteful for archival nodes
             and should be avoided on usual terms */
-            for block in self.services.dag_traversal_manager.forward_bfs_paths_iterator(ORIGIN, self.get_sink()).map_paths_to_tips() {
-                let published_txs = self
-                    .storage
-                    .block_transactions_store
-                    .get(block)
-                    .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))?;
+            for block in
+                self.services.dag_traversal_manager.default_forward_bfs_paths_iterator(self.config.genesis.hash).map_paths_to_tips()
+            {
+                let published_txs = self.storage.block_transactions_store.get(block);
+                if published_txs.is_err() {
+                    continue;
+                }
+                let published_txs = published_txs.unwrap();
                 if published_txs.iter().map(|t| t.id()).contains(&tx_id) {
                     let publishing_block_header = self.headers_store.get_header(block).unwrap();
                     if let Ok(ret) = self.services.tx_receipts_manager.generate_proof_of_pub(publishing_block_header, tx_id) {
@@ -1414,11 +1425,11 @@ impl ConsensusApi for Consensus {
          */
         let (_, tip) = self.selected_chain_store.read().get_tip().unwrap();
         // a security margin of 100 seconds is taken to avoid the posterity reorgin, should be enough
-        // the minimum with 2 times finality depth is taken for testing purposes. For true data this minimum is meaningless.
+        // the minimum with 1/2 times finality depth is taken for testing purposes. For true data this minimum is meaningless.
         let tip_bscore = self.headers_store.get_blue_score(tip).unwrap();
         let tip_daa = self.headers_store.get_daa_score(tip).unwrap();
 
-        let security_margin = std::cmp::min(100 * self.config.bps().get(tip_daa), self.config.finality_depth().get(tip_daa) * 2);
+        let security_margin = std::cmp::min(100 * self.config.bps().get(tip_daa), self.config.finality_depth().get(tip_daa)) / 2;
         tip_bscore >= cutoff_bscore + security_margin
     }
 }
