@@ -1125,13 +1125,3 @@ message GetCurrentBlockColorResponseMessage {
 
   RPCError error = 1000;
 }
-
-message GetUtxoReturnAddressRequestMessage {
-  string txid = 1;
-  uint64 accepting_block_daa_score = 2;
-}
-
-message GetUtxoReturnAddressResponseMessage {
-  string return_address = 1;
-  RPCError error = 1000;
-}
