@@ -119,7 +119,6 @@ mod tests {
     use tokio::{sync::oneshot, time::sleep, time::timeout};
 
     const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
-
     #[tokio::test]
     async fn test_writer_reentrance() {
         for i in 0..16 {
