@@ -2729,6 +2729,71 @@ impl Deserializer for GetUtxoReturnAddressResponse {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetVirtualChainFromBlockV2Request {
+    pub start_hash: RpcHash,
+    pub acceptance_data_verbosity: Option<RpcAcceptanceDataVerbosity>,
+}
+
+impl GetVirtualChainFromBlockV2Request {
+    pub fn new(start_hash: RpcHash, acceptance_data_verbosity: Option<RpcAcceptanceDataVerbosity>) -> Self {
+        Self { start_hash, acceptance_data_verbosity }
+    }
+}
+
+impl Serializer for GetVirtualChainFromBlockV2Request {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.start_hash, writer)?;
+        serialize!(Option<RpcAcceptanceDataVerbosity>, &self.acceptance_data_verbosity, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for GetVirtualChainFromBlockV2Request {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let start_hash = load!(RpcHash, reader)?;
+        let acceptance_data_verbosity = deserialize!(Option<RpcAcceptanceDataVerbosity>, reader)?;
+
+        Ok(Self { start_hash, acceptance_data_verbosity })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetVirtualChainFromBlockV2Response {
+    pub removed_chain_block_hashes: Arc<Vec<RpcHash>>,
+    pub added_chain_block_hashes: Arc<Vec<RpcHash>>,
+    pub added_acceptance_data: Arc<Vec<RpcAcceptanceData>>,
+}
+
+impl Serializer for GetVirtualChainFromBlockV2Response {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcHash>, &self.removed_chain_block_hashes, writer)?;
+        store!(Vec<RpcHash>, &self.added_chain_block_hashes, writer)?;
+        serialize!(Vec<RpcAcceptanceData>, &self.added_acceptance_data, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetVirtualChainFromBlockV2Response {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let removed_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
+        let added_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
+        let added_acceptance_data = deserialize!(Vec<RpcAcceptanceData>, reader)?;
+        Ok(Self {
+            removed_chain_block_hashes: removed_chain_block_hashes.into(),
+            added_chain_block_hashes: added_chain_block_hashes.into(),
+            added_acceptance_data: added_acceptance_data.into(),
+        })
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Subscriptions & notifications
 // ----------------------------------------------------------------------------
@@ -3141,7 +3206,14 @@ impl UtxosChangedNotification {
         context: &SubscriptionContext,
     ) -> Vec<RpcUtxosByAddressesEntry> {
         let subscription_data = subscription.data();
-        utxo_set.iter().filter(|x| subscription_data.contains(&x.utxo_entry.script_public_key, context)).cloned().collect()
+        utxo_set
+            .iter()
+            .filter(|x| {
+                subscription_data
+                    .contains(x.utxo_entry.script_public_key.as_ref().expect("expected script public key to be `Some`"), context)
+            })
+            .cloned()
+            .collect()
     }
 }
 

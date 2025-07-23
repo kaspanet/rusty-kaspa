@@ -310,10 +310,13 @@ async fn daemon_utxos_propagation_test() {
         assert_eq!(uc.removed.len() as u64, NUMBER_INPUTS);
         assert_eq!(uc.added.len() as u64, NUMBER_OUTPUTS);
         assert_eq!(
-            uc.removed.iter().map(|x| x.utxo_entry.amount).sum::<u64>(),
+            uc.removed.iter().map(|x| x.utxo_entry.amount.expect("expected RpcUtxoEntry amount field to be set")).sum::<u64>(),
             SIMNET_PARAMS.pre_deflationary_phase_base_subsidy * NUMBER_INPUTS
         );
-        assert_eq!(uc.added.iter().map(|x| x.utxo_entry.amount).sum::<u64>(), TX_AMOUNT);
+        assert_eq!(
+            uc.added.iter().map(|x| x.utxo_entry.amount.expect("expected RpcUtxoEntry amount field to be set")).sum::<u64>(),
+            TX_AMOUNT
+        );
     }
 
     // Check the balance of both miner and user addresses
@@ -332,11 +335,16 @@ async fn daemon_utxos_propagation_test() {
     let new_utxos = rpc_client1.get_utxos_by_addresses(vec![user_address]).await.unwrap();
     let new_utxo = new_utxos
         .iter()
-        .find(|utxo| utxo.outpoint.transaction_id == transaction.id())
+        .find(|utxo| {
+            utxo.outpoint.transaction_id.expect("expected RpcTransactionOutpoint transaction_id field to be set") == transaction.id()
+        })
         .expect("Did not find a utxo for the tx we just created but expected to");
 
     let utxo_return_address = rpc_client1
-        .get_utxo_return_address(new_utxo.outpoint.transaction_id, new_utxo.utxo_entry.block_daa_score)
+        .get_utxo_return_address(
+            new_utxo.outpoint.transaction_id.expect("expected RpcTransactionOutpoint transaction_id ount field to be set"),
+            new_utxo.utxo_entry.block_daa_score.expect("expected RpcUtxoEntry block_daa_score field to be set"),
+        )
         .await
         .expect("We just created the tx and utxo here");
 

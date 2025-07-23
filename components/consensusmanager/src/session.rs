@@ -11,7 +11,6 @@ use kaspa_consensus_core::{
     errors::consensus::ConsensusResult,
     header::Header,
     mass::{ContextualMasses, NonContextualMasses},
-    mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, TransactionQueryResult, TransactionType, UtxoEntry},
@@ -193,16 +192,12 @@ impl ConsensusSessionOwned {
     }
 
     pub fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
-    pub fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> NonContextualMasses {
         // This method performs pure calculations so no need for an async wrapper
-        self.consensus.calculate_transaction_non_contextual_masses(transaction)
         self.consensus.calculate_transaction_non_contextual_masses(transaction)
     }
 
     pub fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
-    pub fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
         // This method performs pure calculations so no need for an async wrapper
-        self.consensus.calculate_transaction_contextual_masses(transaction)
         self.consensus.calculate_transaction_contextual_masses(transaction)
     }
 
@@ -258,17 +253,10 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_sink_daa_score_timestamp()).await
     }
 
-    pub async fn async_get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
-        self.clone().spawn_blocking(|c| c.get_sink_daa_score_timestamp()).await
-    }
-
     pub async fn async_get_current_block_color(&self, hash: Hash) -> Option<bool> {
         self.clone().spawn_blocking(move |c| c.get_current_block_color(hash)).await
     }
 
-    /// retention period root refers to the earliest block from which the current node has full header & block data  
-    pub async fn async_get_retention_period_root(&self) -> Hash {
-        self.clone().spawn_blocking(|c| c.get_retention_period_root()).await
     /// retention period root refers to the earliest block from which the current node has full header & block data  
     pub async fn async_get_retention_period_root(&self) -> Hash {
         self.clone().spawn_blocking(|c| c.get_retention_period_root()).await
@@ -461,8 +449,6 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.estimate_network_hashes_per_second(start_hash, window_size)).await
     }
 
-    pub async fn async_validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
-        self.clone().spawn_blocking(move |c| c.validate_pruning_points(syncer_virtual_selected_parent)).await
     pub async fn async_validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         self.clone().spawn_blocking(move |c| c.validate_pruning_points(syncer_virtual_selected_parent)).await
     }

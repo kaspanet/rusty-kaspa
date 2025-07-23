@@ -138,6 +138,9 @@ pub enum RpcApiOps {
     GetCurrentBlockColor = 149,
     /// Get UTXO Return Addresses
     GetUtxoReturnAddress = 150,
+
+    /// Get Virtual Chain from Block V2
+    GetVirtualChainFromBlockV2 = 151,
 }
 
 impl RpcApiOps {

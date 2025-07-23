@@ -8,6 +8,7 @@ use kaspa_consensus_core::api::counters::ProcessingCounters;
 use kaspa_consensus_core::daa_score_timestamp::DaaScoreTimestamp;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::mass::{calc_storage_mass, UtxoCell};
+use kaspa_consensus_core::tx::{TransactionQueryResult, TransactionType};
 use kaspa_consensus_core::utxo::utxo_inquirer::UtxoInquirerError;
 use kaspa_consensus_core::{
     block::Block,
@@ -884,23 +885,34 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetUtxoReturnAddressResponse> {
         let session = self.consensus_manager.consensus().session().await;
 
-        match session.async_get_populated_transaction(request.txid, request.accepting_block_daa_score).await {
-            Ok(tx) => {
-                if tx.tx.inputs.is_empty() || tx.entries.is_empty() {
-                    return Err(RpcError::UtxoReturnAddressNotFound(UtxoInquirerError::TxFromCoinbase));
+        match session
+            .async_get_transactions_by_accepting_daa_score(
+                request.accepting_block_daa_score,
+                Some(vec![request.txid]),
+                TransactionType::SignableTransaction,
+            )
+            .await?
+        {
+            TransactionQueryResult::SignableTransaction(txs) => {
+                if txs.is_empty() {
+                    return Err(RpcError::ConsensusError(UtxoInquirerError::TransactionNotFound.into()));
+                };
+
+                if txs[0].tx.inputs.is_empty() || txs[0].entries.is_empty() {
+                    return Err(RpcError::ConsensusError(UtxoInquirerError::TxFromCoinbase.into()));
                 }
 
-                if let Some(utxo_entry) = &tx.entries[0] {
+                if let Some(utxo_entry) = &txs[0].entries[0] {
                     if let Ok(address) = extract_script_pub_key_address(&utxo_entry.script_public_key, self.config.prefix()) {
                         Ok(GetUtxoReturnAddressResponse { return_address: address })
                     } else {
-                        Err(RpcError::UtxoReturnAddressNotFound(UtxoInquirerError::NonStandard))
+                        Err(RpcError::ConsensusError(UtxoInquirerError::NonStandard.into()))
                     }
                 } else {
-                    Err(RpcError::UtxoReturnAddressNotFound(UtxoInquirerError::UnfilledUtxoEntry))
+                    Err(RpcError::ConsensusError(UtxoInquirerError::UnfilledUtxoEntry.into()))
                 }
             }
-            Err(error) => return Err(RpcError::UtxoReturnAddressNotFound(error)),
+            TransactionQueryResult::Transaction(_) => Err(RpcError::ConsensusError(UtxoInquirerError::TransactionNotFound.into())),
         }
     }
 
@@ -1226,6 +1238,29 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             self.consensus_manager.consensus().unguarded_session().async_get_sink_daa_score_timestamp().await;
         let is_synced: bool = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp);
         Ok(GetSyncStatusResponse { is_synced })
+    }
+
+    async fn get_virtual_chain_from_block_v_2_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetVirtualChainFromBlockV2Request,
+    ) -> RpcResult<GetVirtualChainFromBlockV2Response> {
+        let session = self.consensus_manager.consensus().session().await;
+        let verbosity = request.acceptance_data_verbosity;
+        let batch_size = (self.config.mergeset_size_limit().upper_bound() * 10) as usize;
+        let mut chain_path = session.async_get_virtual_chain_from_block(request.start_hash, Some(batch_size)).await?;
+        let added_acceptance_data = if let Some(verbosity) = verbosity.as_ref() {
+            self.consensus_converter.get_acceptance_data_with_verbosity(&session, verbosity, &chain_path, Some(batch_size)).await?
+        } else {
+            Vec::new()
+        };
+        chain_path.added.truncate(added_acceptance_data.len());
+
+        Ok(GetVirtualChainFromBlockV2Response {
+            removed_chain_block_hashes: chain_path.removed.into(),
+            added_chain_block_hashes: chain_path.added.into(),
+            added_acceptance_data: added_acceptance_data.into(),
+        })
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
