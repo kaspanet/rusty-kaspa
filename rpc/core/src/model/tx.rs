@@ -117,7 +117,7 @@ impl Deserializer for RpcUtxoEntry {
 
                 Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data })
             }
-            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
+            _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
         }
     }
 }
@@ -259,7 +259,7 @@ impl Deserializer for RpcTransactionOutpoint {
                 let index = load!(Option<TransactionIndexType>, reader)?;
                 Ok(Self { transaction_id, index })
             }
-            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
+            _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
         }
     }
 }

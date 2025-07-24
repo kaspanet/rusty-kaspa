@@ -47,7 +47,7 @@ impl Deserializer for RpcBlock {
                 let verbose_data = deserialize!(Option<RpcBlockVerboseData>, reader)?;
                 Ok(Self { header, transactions, verbose_data })
             }
-            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
+            _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
         }
     }
 }

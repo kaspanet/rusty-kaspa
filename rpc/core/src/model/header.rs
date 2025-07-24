@@ -266,7 +266,7 @@ impl Deserializer for RpcHeader {
                     pruning_point,
                 })
             }
-            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
+            _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
         }
     }
 }
