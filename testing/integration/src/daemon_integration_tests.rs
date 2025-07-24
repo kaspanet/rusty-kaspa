@@ -342,7 +342,7 @@ async fn daemon_utxos_propagation_test() {
 
     let utxo_return_address = rpc_client1
         .get_utxo_return_address(
-            new_utxo.outpoint.transaction_id.expect("expected RpcTransactionOutpoint transaction_id ount field to be set"),
+            new_utxo.outpoint.transaction_id.expect("expected RpcTransactionOutpoint transaction_id field to be set"),
             new_utxo.utxo_entry.block_daa_score.expect("expected RpcUtxoEntry block_daa_score field to be set"),
         )
         .await

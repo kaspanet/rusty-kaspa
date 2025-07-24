@@ -117,7 +117,7 @@ impl Deserializer for RpcUtxoEntry {
 
                 Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data })
             }
-            _ => panic!("Invalid version for RpcUtxoEntry"),
+            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
         }
     }
 }
@@ -259,7 +259,7 @@ impl Deserializer for RpcTransactionOutpoint {
                 let index = load!(Option<TransactionIndexType>, reader)?;
                 Ok(Self { transaction_id, index })
             }
-            _ => panic!("Invalid version for RpcTransactionOutpoint"),
+            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
         }
     }
 }
@@ -352,7 +352,7 @@ impl Deserializer for RpcTransactionInput {
 
                 Self { previous_outpoint, signature_script, sequence, sig_op_count, verbose_data }
             }
-            _ => panic!("Invalid version for RpcTransactionInput"),
+            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
         })
     }
 }
@@ -442,7 +442,7 @@ impl Deserializer for RpcTransactionOutput {
 
                 Self { value, script_public_key, verbose_data }
             }
-            _ => panic!("Invalid version for RpcTransactionOutput"),
+            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
         })
     }
 }
@@ -485,7 +485,7 @@ impl Deserializer for RpcTransactionOutputVerboseData {
                 let script_public_key_address = load!(Option<Address>, reader)?;
                 Self { script_public_key_type, script_public_key_address }
             }
-            _ => panic!("Invalid version for RpcTransactionOutputVerboseData"),
+            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
         })
     }
 }
@@ -584,7 +584,7 @@ impl Deserializer for RpcTransaction {
 
                 Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, verbose_data }
             }
-            _ => panic!("Invalid version for RpcTransaction"),
+            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _struct_version))),
         })
     }
 }
@@ -649,7 +649,7 @@ impl Deserializer for RpcTransactionVerboseData {
 
                 Self { transaction_id, hash, compute_mass, block_hash, block_time }
             }
-            _ => panic!("Invalid version for RpcTransactionVerboseData"),
+            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
         })
     }
 }
