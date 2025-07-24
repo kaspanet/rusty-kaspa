@@ -20,12 +20,12 @@ use kaspa_consensus_core::{
     hashing,
     header::Header,
     merkle::create_hash_merkle_witness,
-    receipts::{LegacyPochm, LogPathPochm, Pochm, ProofOfPublication, TxReceipt},
+    receipts::{LegacyPochm, LogPathPochm, Pochm, ProofOfPublication, TxReceipt, TxReceipt2},
 };
 use kaspa_hashes::Hash;
 use kaspa_hashes::ZERO_HASH;
 use kaspa_merkle::{
-    calc_merkle_root, create_merkle_witness_from_sorted, create_merkle_witness_from_unsorted, verify_merkle_witness, MerkleWitness,
+    calc_merkle_root, create_merkle_witness, create_merkle_witness_from_unsorted, merkle_hash, verify_merkle_witness, MerkleWitness,
 };
 
 use parking_lot::RwLock;
@@ -52,7 +52,7 @@ pub struct TxReceiptsManager<
     pub hash_to_pchmr_store: Arc<DbPchmrStore>,
     pub pruning_point_store: Arc<RwLock<Y>>,
 
-    pub storage_mass_activation: ForkActivation,
+    pub crescendo_activation: ForkActivation,
     pub kip6_activation: ForkActivation,
 
     pub traversal_manager: DbDagTraversalManager,
@@ -78,9 +78,8 @@ impl<
         block_transactions_store: Arc<W>,
         pruning_point_store: Arc<RwLock<Y>>,
         traversal_manager: DbDagTraversalManager,
-
         hash_to_pchmr_store: Arc<DbPchmrStore>,
-        storage_mass_activation: ForkActivation,
+        crescendo_activation: ForkActivation,
         kip6_activation: ForkActivation,
     ) -> Self {
         Self {
@@ -90,7 +89,7 @@ impl<
             selected_chain_store: selected_chain_store.clone(),
             acceptance_data_store: acceptance_data_store.clone(),
             reachability_service,
-            storage_mass_activation,
+            crescendo_activation,
             kip6_activation,
             hash_to_pchmr_store: hash_to_pchmr_store.clone(),
             block_transactions_store: block_transactions_store.clone(),
@@ -98,17 +97,51 @@ impl<
             traversal_manager: traversal_manager.clone(),
         }
     }
+
+    pub fn generate_tx_receipt2(
+        &self,
+        accepting_block_header: Arc<Header>,
+        tracked_tx_id: Hash,
+    ) -> Result<TxReceipt2, ReceiptsErrors> {
+        //Crescendo assumed activated
+        //find the accepted tx in accepting_block_hash and create a merkle witness for it
+        let mergeset_txs_data = self.acceptance_data_store.get(accepting_block_header.hash)?;
+        let post_posterity_block = self.get_post_posterity_block(accepting_block_header.hash)?;
+        let accepted_txs = mergeset_txs_data
+            .iter()
+            .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
+            .collect::<Vec<_>>();
+        let tx_acc_proof = create_merkle_witness(accepted_txs.into_iter(), tracked_tx_id, false)?;
+
+        let mut atmr_witnesses = vec![];
+        for block in self.reachability_service.forward_chain_iterator(accepting_block_header.hash, post_posterity_block, true) {
+            let block_header = self.headers_store.get_header(block)?;
+            let block_mergeset_txs_data = self.acceptance_data_store.get(block_header.hash)?;
+            let block_accepted_txs = block_mergeset_txs_data
+                .iter()
+                .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
+                .collect::<Vec<_>>();
+            atmr_witnesses.push(calc_merkle_root(block_accepted_txs.into_iter()))
+        }
+        Ok(TxReceipt2 { tracked_tx_id, post_posterity_block, atmr_chain: atmr_witnesses, tx_acc_proof })
+    }
+
     pub fn generate_tx_receipt(&self, accepting_block_header: Arc<Header>, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
         let pochm = self.create_pochm_proof(accepting_block_header.clone())?;
         //find the accepted tx in accepting_block_hash and create a merkle witness for it
-        let mergeset_txs_manager = self.acceptance_data_store.get(accepting_block_header.hash)?;
-        let mut accepted_txs = mergeset_txs_manager
+        let crescendo_activated = self.crescendo_activation.is_active(accepting_block_header.daa_score);
+
+        let mergeset_txs_data = self.acceptance_data_store.get(accepting_block_header.hash)?;
+        let mut accepted_txs = mergeset_txs_data
             .iter()
             .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
             .collect::<Vec<Hash>>();
-        accepted_txs.sort();
-
-        let tx_acc_proof = create_merkle_witness_from_sorted(accepted_txs.into_iter(), tracked_tx_id)?;
+        if !crescendo_activated
+        //since crescendo accepted transactions are no longer sorted
+        {
+            accepted_txs.sort();
+        }
+        let tx_acc_proof = create_merkle_witness(accepted_txs.into_iter(), tracked_tx_id, !crescendo_activated)?;
         Ok(TxReceipt { tracked_tx_id, accepting_block_header, pochm, tx_acc_proof })
     }
     pub fn generate_proof_of_pub(
@@ -127,7 +160,7 @@ impl<
         //next, find the relevant transaction in pub_block_hash's published transactions and create a merkle witness for it
         let published_txs = self.block_transactions_store.get(pub_block_header.hash)?;
         let tracked_tx = published_txs.iter().find(|tx| tx.id() == tracked_tx_id).unwrap();
-        let include_mass_field = self.storage_mass_activation.is_active(pub_block_header.daa_score);
+        let include_mass_field = self.crescendo_activation.is_active(pub_block_header.daa_score);
         let tx_pub_proof = create_hash_merkle_witness(published_txs.iter(), tracked_tx, include_mass_field)?;
 
         let tracked_tx_hash = hashing::tx::hash(tracked_tx, include_mass_field); //leaf value in merkle tree
@@ -137,6 +170,22 @@ impl<
         let acc_atmr = tx_receipt.accepting_block_header.accepted_id_merkle_root;
         verify_merkle_witness(&tx_receipt.tx_acc_proof, tx_receipt.tracked_tx_id, acc_atmr)
             && self.verify_pochm_proof(tx_receipt.accepting_block_header.hash, &tx_receipt.pochm)
+    }
+    pub fn verify_tx_receipt2(&self, tx_receipt: &TxReceipt2) -> bool {
+        let tx_atmr = tx_receipt.atmr_chain[0];
+        if !verify_merkle_witness(&tx_receipt.tx_acc_proof, tx_receipt.tracked_tx_id, tx_atmr) {
+            return false;
+        }
+        let mut acc = tx_atmr;
+        for &curr_atmr in tx_receipt.atmr_chain.iter().skip(1) {
+            acc = merkle_hash(curr_atmr, acc);
+        }
+        let post_posterity_header = self.headers_store.get_header(tx_receipt.post_posterity_block);
+        if post_posterity_header.is_err() {
+            return false;
+        }
+        let post_posterity_header = post_posterity_header.unwrap();
+        acc == post_posterity_header.hash_merkle_root
     }
     pub fn verify_proof_of_pub(&self, proof_of_pub: &ProofOfPublication) -> bool {
         let valid_path = proof_of_pub

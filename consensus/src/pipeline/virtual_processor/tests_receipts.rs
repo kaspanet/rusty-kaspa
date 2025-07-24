@@ -75,8 +75,7 @@ async fn test_receipts_in_chain() {
             let block_header = ctx.consensus.headers_store.get_header(block).unwrap();
             pochms_list.push((ctx.consensus.generate_pochm(block).unwrap(), block));
             let acc_tx = ctx.consensus.acceptance_data_store.get(block).unwrap()[0].accepted_transactions[0].transaction_id;
-            receipts
-                .push((ctx.consensus.services.tx_receipts_manager.generate_tx_receipt(block_header.clone(), acc_tx).unwrap(), acc_tx)); //add later: test if works via timestamp
+            receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, None, None).unwrap(), acc_tx)); //add later: test if works via timestamp
             let pub_tx = ctx.consensus.block_transactions_store.get(block).unwrap()[0].id();
             pops.push((ctx.consensus.services.tx_receipts_manager.generate_proof_of_pub(block_header, pub_tx).unwrap(), pub_tx));
             let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(block);
@@ -96,10 +95,7 @@ async fn test_receipts_in_chain() {
         pochms_list.push((ctx.consensus.generate_pochm(past_posterity_block).unwrap(), past_posterity_block));
 
         let acc_tx = ctx.consensus.acceptance_data_store.get(past_posterity_block).unwrap()[0].accepted_transactions[0].transaction_id;
-        receipts.push((
-            ctx.consensus.services.tx_receipts_manager.generate_tx_receipt(past_posterity_header.clone(), acc_tx).unwrap(),
-            acc_tx,
-        )); //add later: test if works via timestamp
+        receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, None, None).unwrap(), acc_tx)); //add later: test if works via timestamp
         let pub_tx = ctx.consensus.block_transactions_store.get(past_posterity_block).unwrap()[0].id();
         pops.push((ctx.consensus.services.tx_receipts_manager.generate_proof_of_pub(past_posterity_header, pub_tx).unwrap(), pub_tx));
         let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(past_posterity_block);
@@ -198,7 +194,6 @@ async fn test_receipts_in_random() {
     let mut receipts1 = std::collections::HashMap::<_, _>::new();
     let mut receipts2 = std::collections::HashMap::<_, _>::new();
     let mut receipts3 = std::collections::HashMap::<_, _>::new();
-
     let mut pops1 = std::collections::HashMap::<_, _>::new();
     let mut pops2 = std::collections::HashMap::<_, _>::new();
     let mut pops3 = std::collections::HashMap::<_, _>::new();

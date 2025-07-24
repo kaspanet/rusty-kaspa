@@ -95,3 +95,9 @@ pub struct ProofOfPublication {
     pub tx_pub_proof: MerkleWitness,
     pub headers_path_to_selected: Vec<Arc<Header>>,
 }
+pub struct TxReceipt2 {
+    pub tracked_tx_id: Hash,
+    pub post_posterity_block: Hash,
+    pub atmr_chain: Vec<Hash>,
+    pub tx_acc_proof: MerkleWitness,
+}
