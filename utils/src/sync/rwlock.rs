@@ -139,7 +139,7 @@ mod tests {
             // in order to make sure it passes also in slow CI environments where the OS thread-scheduler might take its time
             let read = timeout(Duration::from_millis(18), l.read()).await.unwrap_or_else(|_| panic!("failed at iteration {i}"));
             drop(read);
-            timeout(Duration::from_millis(100), tokio::task::spawn_blocking(move || h.join())).await.unwrap().unwrap().unwrap();
+            timeout(Duration::from_millis(500), tokio::task::spawn_blocking(move || h.join())).await.unwrap().unwrap().unwrap();
         }
     }
 

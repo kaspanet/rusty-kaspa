@@ -10,7 +10,7 @@ use hmac::Mac;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
-/// Extended public secp256k1 ECDSA verification key.
+///// Extended public secp256k1 ECDSA verification key.
 //#[cfg(feature = "secp256k1")]
 //#[cfg_attr(docsrs, doc(cfg(feature = "secp256k1")))]
 //pub type XPub = ExtendedPublicKey<k256::ecdsa::VerifyingKey>;
@@ -177,16 +177,15 @@ where
     fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let Header { version, magic } = Header::deserialize_reader(reader)?;
         if magic != Self::STORAGE_MAGIC {
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid extended public key magic value"));
+            return Err(std::io::Error::other("Invalid extended public key magic value"));
         }
         if version != Self::STORAGE_VERSION {
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid extended public key version"));
+            return Err(std::io::Error::other("Invalid extended public key version"));
         }
 
         let mut public_key_bytes: [u8; KEY_SIZE + 1] = [0; KEY_SIZE + 1];
         reader.read_exact(&mut public_key_bytes)?;
-        let public_key = K::from_bytes(public_key_bytes)
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Invalid extended public key"))?;
+        let public_key = K::from_bytes(public_key_bytes).map_err(|_| std::io::Error::other("Invalid extended public key"))?;
         let attrs = ExtendedKeyAttrs::deserialize_reader(reader)?;
         Ok(Self { public_key, attrs })
     }

@@ -70,15 +70,12 @@ impl BorshSerialize for Payload {
 
 impl BorshDeserialize for Payload {
     fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> IoResult<Self> {
-        use secp256k1::constants::PUBLIC_KEY_SIZE;
-
         let StorageHeader { version: _, .. } =
             StorageHeader::deserialize_reader(reader)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
-        let mut public_key_bytes: [u8; PUBLIC_KEY_SIZE] = [0; PUBLIC_KEY_SIZE];
-        reader.read_exact(&mut public_key_bytes)?;
-        let public_key = secp256k1::PublicKey::from_slice(&public_key_bytes)
-            .map_err(|_| IoError::new(IoErrorKind::Other, "Unable to deserialize keypair account (invalid public key)"))?;
+        let public_key_bytes: Vec<u8> = BorshDeserialize::deserialize_reader(reader)?;
+        let public_key = secp256k1::PublicKey::from_slice(public_key_bytes.as_slice())
+            .map_err(|_| IoError::other("Unable to deserialize keypair account (invalid public key)"))?;
         let ecdsa = BorshDeserialize::deserialize_reader(reader)?;
 
         Ok(Self { public_key, ecdsa })
@@ -175,6 +172,8 @@ impl Account for Keypair {
     }
 
     fn descriptor(&self) -> Result<AccountDescriptor> {
+        let addresses = self.receive_address().ok().map(|address| vec![address]);
+
         let descriptor = AccountDescriptor::new(
             KEYPAIR_ACCOUNT_KIND.into(),
             *self.id(),
@@ -183,9 +182,28 @@ impl Account for Keypair {
             self.prv_key_data_id.into(),
             self.receive_address().ok(),
             self.change_address().ok(),
+            addresses,
         )
         .with_property(AccountDescriptorProperty::Ecdsa, self.ecdsa.into());
 
         Ok(descriptor)
+    }
+
+    fn create_address_private_keys<'l>(
+        self: Arc<Self>,
+        key_data: &PrvKeyData,
+        payment_secret: &Option<Secret>,
+        addresses: &[&'l Address],
+    ) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
+        let private_key =
+            key_data.as_secret_key(payment_secret.as_ref())?.ok_or(Error::Custom("Unable to derive private key".to_string()))?;
+        let mut private_keys = vec![];
+        let wallet_address = self.receive_address()?;
+        for address in addresses.iter() {
+            if **address == wallet_address {
+                private_keys.push((*address, private_key));
+            }
+        }
+        Ok(private_keys)
     }
 }

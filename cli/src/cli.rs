@@ -285,12 +285,14 @@ impl KaspaCli {
 
                         if let Ok(msg) = msg {
                             match *msg {
+                                Events::WalletList { .. } => {},
                                 Events::WalletPing => {
                                     // log_info!("Kaspa NG - received wallet ping");
                                 },
                                 Events::Metrics { network_id : _, metrics : _ } => {
                                     // log_info!("Kaspa NG - received metrics event {metrics:?}")
                                 }
+                                Events::FeeRate { .. } => {},
                                 Events::Error { message } => { terrorln!(this,"{message}"); },
                                 Events::UtxoProcStart => {},
                                 Events::UtxoProcStop => {},
@@ -787,7 +789,7 @@ impl KaspaCli {
                 }
                 SyncState::UtxoResync => Some([style("SYNC").red().to_string(), style("UTXO").black().to_string()].join(" ")),
                 SyncState::NotSynced => Some([style("SYNC").red().to_string(), style("...").black().to_string()].join(" ")),
-                SyncState::Synced { .. } => None,
+                SyncState::Synced => None,
             }
         } else {
             Some(style("SYNC").red().to_string())
@@ -1016,7 +1018,7 @@ mod panic_handler {
         fn stack(error: &Error) -> String;
     }
 
-    pub fn process(info: &std::panic::PanicInfo) -> String {
+    pub fn process(info: &std::panic::PanicHookInfo) -> String {
         let mut msg = info.to_string();
 
         // Add the error stack to our message.
@@ -1053,7 +1055,7 @@ mod panic_handler {
 impl KaspaCli {
     pub fn init_panic_hook(self: &Arc<Self>) {
         let this = self.clone();
-        let handler = move |info: &std::panic::PanicInfo| {
+        let handler = move |info: &std::panic::PanicHookInfo| {
             let msg = panic_handler::process(info);
             this.term().writeln(msg.crlf());
             panic_handler::console_error(msg);

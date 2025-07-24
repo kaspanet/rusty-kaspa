@@ -8,6 +8,11 @@ use super::{
 };
 
 impl TransactionValidator {
+    /// Performs a variety of transaction validation checks which are independent of any
+    /// context -- header or utxo. **Note** that any check performed here should be moved to
+    /// header contextual validation if it becomes HF activation dependent. This is bcs we rely
+    /// on checks here to be truly independent and avoid calling it multiple times wherever possible
+    /// (e.g., BBT relies on mempool in isolation checks even though virtual daa score might have changed)   
     pub fn validate_tx_in_isolation(&self, tx: &Transaction) -> TxResult<()> {
         self.check_transaction_inputs_in_isolation(tx)?;
         self.check_transaction_outputs_in_isolation(tx)?;
@@ -16,7 +21,6 @@ impl TransactionValidator {
         check_transaction_output_value_ranges(tx)?;
         check_duplicate_transaction_inputs(tx)?;
         check_gas(tx)?;
-        check_transaction_payload(tx)?;
         check_transaction_subnetwork(tx)?;
         check_transaction_version(tx)
     }
@@ -31,17 +35,23 @@ impl TransactionValidator {
         self.check_transaction_script_public_keys(tx)
     }
 
-    fn check_coinbase_in_isolation(&self, tx: &kaspa_consensus_core::tx::Transaction) -> TxResult<()> {
+    fn check_coinbase_in_isolation(&self, tx: &Transaction) -> TxResult<()> {
         if !tx.is_coinbase() {
             return Ok(());
         }
         if !tx.inputs.is_empty() {
             return Err(TxRuleError::CoinbaseHasInputs(tx.inputs.len()));
         }
+
+        /*
+        [Crescendo]: moved this specific check to body_validation_in_context since it depends on fork activation
+                     TODO (post HF): move back here
+
         let outputs_limit = self.ghostdag_k as u64 + 2;
         if tx.outputs.len() as u64 > outputs_limit {
             return Err(TxRuleError::CoinbaseTooManyOutputs(tx.outputs.len(), outputs_limit));
         }
+        */
         for (i, output) in tx.outputs.iter().enumerate() {
             if output.script_public_key.script().len() > self.coinbase_payload_script_public_key_max_len as usize {
                 return Err(TxRuleError::CoinbaseScriptPublicKeyTooLong(i));
@@ -51,8 +61,13 @@ impl TransactionValidator {
     }
 
     fn check_transaction_outputs_count(&self, tx: &Transaction) -> TxResult<()> {
-        if tx.outputs.len() > self.max_tx_outputs {
-            return Err(TxRuleError::TooManyOutputs(tx.inputs.len(), self.max_tx_inputs));
+        if tx.is_coinbase() {
+            // We already check coinbase outputs count vs. Ghostdag K + 2
+            return Ok(());
+        }
+        // [Crescendo]: keep the check here over the upper limit. Add a tight check to in_header_context validation
+        if tx.outputs.len() > self.max_tx_outputs.upper_bound() {
+            return Err(TxRuleError::TooManyOutputs(tx.outputs.len(), self.max_tx_inputs.upper_bound()));
         }
 
         Ok(())
@@ -63,8 +78,9 @@ impl TransactionValidator {
             return Err(TxRuleError::NoTxInputs);
         }
 
-        if tx.inputs.len() > self.max_tx_inputs {
-            return Err(TxRuleError::TooManyInputs(tx.inputs.len(), self.max_tx_inputs));
+        // [Crescendo]: keep the check here over the upper limit. Add a tight check to in_header_context validation
+        if tx.inputs.len() > self.max_tx_inputs.upper_bound() {
+            return Err(TxRuleError::TooManyInputs(tx.inputs.len(), self.max_tx_inputs.upper_bound()));
         }
 
         Ok(())
@@ -72,8 +88,10 @@ impl TransactionValidator {
 
     // The main purpose of this check is to avoid overflows when calculating transaction mass later.
     fn check_transaction_signature_scripts(&self, tx: &Transaction) -> TxResult<()> {
-        if let Some(i) = tx.inputs.iter().position(|input| input.signature_script.len() > self.max_signature_script_len) {
-            return Err(TxRuleError::TooBigSignatureScript(i, self.max_signature_script_len));
+        // [Crescendo]: keep the check here over the upper limit. Add a tight check to in_header_context validation
+        if let Some(i) = tx.inputs.iter().position(|input| input.signature_script.len() > self.max_signature_script_len.upper_bound())
+        {
+            return Err(TxRuleError::TooBigSignatureScript(i, self.max_signature_script_len.upper_bound()));
         }
 
         Ok(())
@@ -81,8 +99,11 @@ impl TransactionValidator {
 
     // The main purpose of this check is to avoid overflows when calculating transaction mass later.
     fn check_transaction_script_public_keys(&self, tx: &Transaction) -> TxResult<()> {
-        if let Some(i) = tx.outputs.iter().position(|input| input.script_public_key.script().len() > self.max_script_public_key_len) {
-            return Err(TxRuleError::TooBigScriptPublicKey(i, self.max_script_public_key_len));
+        // [Crescendo]: keep the check here over the upper limit. Add a tight check to in_header_context validation
+        if let Some(i) =
+            tx.outputs.iter().position(|out| out.script_public_key.script().len() > self.max_script_public_key_len.upper_bound())
+        {
+            return Err(TxRuleError::TooBigScriptPublicKey(i, self.max_script_public_key_len.upper_bound()));
         }
 
         Ok(())
@@ -103,14 +124,6 @@ fn check_gas(tx: &Transaction) -> TxResult<()> {
     // This should be revised if subnetworks are activated (along with other validations that weren't copied from kaspad)
     if tx.gas > 0 {
         return Err(TxRuleError::TxHasGas);
-    }
-    Ok(())
-}
-
-fn check_transaction_payload(tx: &Transaction) -> TxResult<()> {
-    // This should be revised if subnetworks are activated (along with other validations that weren't copied from kaspad)
-    if !tx.is_coinbase() && !tx.payload.is_empty() {
-        return Err(TxRuleError::NonCoinbaseTxHasPayload);
     }
     Ok(())
 }
@@ -172,16 +185,15 @@ mod tests {
     #[test]
     fn validate_tx_in_isolation_test() {
         let mut params = MAINNET_PARAMS.clone();
-        params.max_tx_inputs = 10;
-        params.max_tx_outputs = 15;
+        params.prior_max_tx_inputs = 10;
+        params.prior_max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.max_tx_inputs,
-            params.max_tx_outputs,
-            params.max_signature_script_len,
-            params.max_script_public_key_len,
-            params.ghostdag_k,
+            params.prior_max_tx_inputs,
+            params.prior_max_tx_outputs,
+            params.prior_max_signature_script_len,
+            params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
+            params.prior_coinbase_maturity,
             Default::default(),
         );
 
@@ -279,19 +291,19 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NoTxInputs));
 
         let mut tx = valid_tx.clone();
-        tx.inputs = (0..params.max_tx_inputs + 1).map(|_| valid_tx.inputs[0].clone()).collect();
+        tx.inputs = (0..params.prior_max_tx_inputs + 1).map(|_| valid_tx.inputs[0].clone()).collect();
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyInputs(_, _)));
 
         let mut tx = valid_tx.clone();
-        tx.inputs[0].signature_script = vec![0; params.max_signature_script_len + 1];
+        tx.inputs[0].signature_script = vec![0; params.prior_max_signature_script_len + 1];
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigSignatureScript(_, _)));
 
         let mut tx = valid_tx.clone();
-        tx.outputs = (0..params.max_tx_outputs + 1).map(|_| valid_tx.outputs[0].clone()).collect();
+        tx.outputs = (0..params.prior_max_tx_outputs + 1).map(|_| valid_tx.outputs[0].clone()).collect();
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyOutputs(_, _)));
 
         let mut tx = valid_tx.clone();
-        tx.outputs[0].script_public_key = ScriptPublicKey::new(0, scriptvec![0u8; params.max_script_public_key_len + 1]);
+        tx.outputs[0].script_public_key = ScriptPublicKey::new(0, scriptvec![0u8; params.prior_max_script_public_key_len + 1]);
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigScriptPublicKey(_, _)));
 
         let mut tx = valid_tx.clone();
@@ -304,7 +316,7 @@ mod tests {
 
         let mut tx = valid_tx.clone();
         tx.payload = vec![0];
-        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NonCoinbaseTxHasPayload));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Ok(()));
 
         let mut tx = valid_tx;
         tx.version = TX_VERSION + 1;

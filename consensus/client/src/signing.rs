@@ -75,7 +75,7 @@ impl SigHashCache {
         }
     }
 
-    pub fn sig_op_counts_hash(&mut self, tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
+    pub fn sig_op_counts_hash(&mut self, tx: &Transaction, hash_type: SigHashType, reused_values: &SigHashReusedValues) -> Hash {
         if hash_type.is_sighash_anyone_can_pay() {
             return ZERO_HASH;
         }
@@ -178,23 +178,23 @@ pub fn calc_schnorr_signature_hash(
     let utxo = cctx::UtxoEntry::from(utxo.as_ref());
 
     let hash_type = SIG_HASH_ALL;
-    let mut reused_values = SigHashReusedValues::new();
+    let reused_values = SigHashReusedValuesUnsync::new();
 
     // let input = verifiable_tx.populated_input(input_index);
     // let tx = verifiable_tx.tx();
     let mut hasher = TransactionSigningHash::new();
     hasher
         .write_u16(tx.version)
-        .update(previous_outputs_hash(&tx, hash_type, &mut reused_values))
-        .update(sequences_hash(&tx, hash_type, &mut reused_values))
-        .update(sig_op_counts_hash(&tx, hash_type, &mut reused_values));
+        .update(previous_outputs_hash(&tx, hash_type, &reused_values))
+        .update(sequences_hash(&tx, hash_type, &reused_values))
+        .update(sig_op_counts_hash(&tx, hash_type, &reused_values));
     hash_outpoint(&mut hasher, input.previous_outpoint);
     hash_script_public_key(&mut hasher, &utxo.script_public_key);
     hasher
         .write_u64(utxo.amount)
         .write_u64(input.sequence)
         .write_u8(input.sig_op_count)
-        .update(outputs_hash(&tx, hash_type, &mut reused_values, input_index))
+        .update(outputs_hash(&tx, hash_type, &reused_values, input_index))
         .write_u64(tx.lock_time)
         .update(&tx.subnetwork_id)
         .write_u64(tx.gas)

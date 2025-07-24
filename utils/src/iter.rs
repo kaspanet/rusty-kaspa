@@ -25,7 +25,7 @@ impl<'a, I> ReusableIterFormat<'a, I> {
     }
 }
 
-impl<'a, I> std::fmt::Display for ReusableIterFormat<'a, I>
+impl<I> std::fmt::Display for ReusableIterFormat<'_, I>
 where
     I: std::clone::Clone,
     I: Iterator,
@@ -37,7 +37,7 @@ where
     }
 }
 
-impl<'a, I> std::fmt::Debug for ReusableIterFormat<'a, I>
+impl<I> std::fmt::Debug for ReusableIterFormat<'_, I>
 where
     I: std::clone::Clone,
     I: Iterator,
@@ -47,4 +47,10 @@ where
         // Clone the inner format to workaround the `Format: was already formatted once` internal error
         self.inner.clone().fmt(f)
     }
+}
+
+/// Returns an iterator over powers of two up to (the rounded up) available parallelism: `2, 4, 8, ..., 2^(available_parallelism.log2().ceil())`,
+/// i.e., for `std::thread::available_parallelism = 15` the function will return `2, 4, 8, 16`
+pub fn parallelism_in_power_steps() -> impl Iterator<Item = usize> {
+    (1..=(std::thread::available_parallelism().unwrap().get() as f64).log2().ceil() as u32).map(|x| 2usize.pow(x))
 }

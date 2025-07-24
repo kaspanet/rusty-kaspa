@@ -115,8 +115,8 @@ impl RelayTransactionsFlow {
 
             let session = self.ctx.consensus().unguarded_session();
 
-            // Transaction relay is disabled if the node is out of sync and thus not mining
-            if !session.async_is_nearly_synced().await {
+            // Transaction relay is disabled if the node is out of sync
+            if !self.ctx.is_nearly_synced(&session).await {
                 continue;
             }
 
@@ -230,8 +230,7 @@ impl RelayTransactionsFlow {
                     // TODO: discuss a banning process
                     return Err(ProtocolError::MisbehavingPeer(format!("rejected invalid transaction {}", transaction_id)));
                 }
-                Err(MiningManagerError::MempoolError(RuleError::RejectSpamTransaction(_)))
-                | Err(MiningManagerError::MempoolError(RuleError::RejectNonStandard(..))) => {
+                Err(MiningManagerError::MempoolError(RuleError::RejectNonStandard(..))) => {
                     self.spam_counter += 1;
                     if self.spam_counter % 100 == 0 {
                         kaspa_core::warn!("Peer {} has shared {} spam/non-standard txs ({:?})", self.router, self.spam_counter, res);

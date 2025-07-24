@@ -11,6 +11,7 @@ use crate::{
         headers_selected_tip::DbHeadersSelectedTipStore,
         past_pruning_points::DbPastPruningPointsStore,
         pruning::DbPruningStore,
+        pruning_samples::DbPruningSamplesStore,
         pruning_utxoset::PruningUtxosetStores,
         reachability::{DbReachabilityStore, ReachabilityData},
         relations::DbRelationsStore,
@@ -50,13 +51,13 @@ pub struct ConsensusStorage {
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
     // Append-only stores
-    pub ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
-    pub ghostdag_primary_store: Arc<DbGhostdagStore>,
+    pub ghostdag_store: Arc<DbGhostdagStore>,
     pub headers_store: Arc<DbHeadersStore>,
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     pub daa_excluded_store: Arc<DbDaaStore>,
     pub depth_store: Arc<DbDepthStore>,
+    pub pruning_samples_store: Arc<DbPruningSamplesStore>,
 
     // Utxo-related stores
     pub utxo_diffs_store: Arc<DbUtxoDiffsStore>,
@@ -82,19 +83,20 @@ impl ConsensusStorage {
         let perf_params = &config.perf;
 
         // Lower and upper bounds
-        let pruning_depth = params.pruning_depth as usize;
-        let pruning_size_for_caches = (params.pruning_depth + params.finality_depth) as usize; // Upper bound for any block/header related data
+        // [Crescendo]: all usages of pruning upper bounds also bound by actual memory bytes, so we can safely use the larger values
+        let pruning_depth = params.pruning_depth().upper_bound() as usize;
+        let pruning_size_for_caches = pruning_depth + params.finality_depth().upper_bound() as usize; // Upper bound for any block/header related data
         let level_lower_bound = 2 * params.pruning_proof_m as usize; // Number of items lower bound for level-related caches
 
         // Budgets in bytes. All byte budgets overall sum up to ~1GB of memory (which obviously takes more low level alloc space)
         let daa_excluded_budget = scaled(30_000_000);
         let statuses_budget = scaled(30_000_000);
-        let reachability_data_budget = scaled(20_000_000);
-        let reachability_sets_budget = scaled(20_000_000); // x 2 for tree children and future covering set
+        let reachability_data_budget = scaled(100_000_000);
+        let reachability_sets_budget = scaled(100_000_000); // x 2 for tree children and future covering set
         let ghostdag_compact_budget = scaled(15_000_000);
         let headers_compact_budget = scaled(5_000_000);
-        let parents_budget = scaled(40_000_000); // x 3 for reachability and levels
-        let children_budget = scaled(5_000_000); // x 3 for reachability and levels
+        let parents_budget = scaled(80_000_000); // x 3 for reachability and levels
+        let children_budget = scaled(20_000_000); // x 3 for reachability and levels
         let ghostdag_budget = scaled(80_000_000); // x 2 for levels
         let headers_budget = scaled(80_000_000);
         let transactions_budget = scaled(40_000_000);
@@ -108,8 +110,10 @@ impl ConsensusStorage {
         let reachability_data_bytes = size_of::<Hash>() + size_of::<ReachabilityData>();
         let ghostdag_compact_bytes = size_of::<Hash>() + size_of::<CompactGhostdagData>();
         let headers_compact_bytes = size_of::<Hash>() + size_of::<CompactHeaderData>();
-        let difficulty_window_bytes = params.difficulty_window_size(0) * size_of::<SortableBlock>();
-        let median_window_bytes = params.past_median_time_window_size(0) * size_of::<SortableBlock>();
+
+        // If the fork is already scheduled, prefer the long-term, permanent values
+        let difficulty_window_bytes = params.difficulty_window_size().after() * size_of::<SortableBlock>();
+        let median_window_bytes = params.past_median_time_window_size().after() * size_of::<SortableBlock>();
 
         // Cache policy builders
         let daa_excluded_builder =
@@ -193,19 +197,12 @@ impl ConsensusStorage {
             children_builder.build(),
         )));
 
-        let ghostdag_stores = Arc::new(
-            (0..=params.max_block_level)
-                .map(|level| {
-                    Arc::new(DbGhostdagStore::new(
-                        db.clone(),
-                        level,
-                        ghostdag_builder.downscale(level).build(),
-                        ghostdag_compact_builder.downscale(level).build(),
-                    ))
-                })
-                .collect_vec(),
-        );
-        let ghostdag_primary_store = ghostdag_stores[0].clone();
+        let ghostdag_store = Arc::new(DbGhostdagStore::new(
+            db.clone(),
+            0,
+            ghostdag_builder.downscale(0).build(),
+            ghostdag_compact_builder.downscale(0).build(),
+        ));
         let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), daa_excluded_builder.build()));
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), headers_builder.build(), headers_compact_builder.build()));
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), header_data_builder.build()));
@@ -215,6 +212,7 @@ impl ConsensusStorage {
         let pruning_point_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), past_pruning_points_builder.build()));
         let pruning_utxoset_stores = Arc::new(RwLock::new(PruningUtxosetStores::new(db.clone(), utxo_set_builder.build())));
+        let pruning_samples_store = Arc::new(DbPruningSamplesStore::new(db.clone(), header_data_builder.build()));
 
         // Txs
         let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), transactions_builder.build()));
@@ -245,8 +243,7 @@ impl ConsensusStorage {
             relations_stores,
             reachability_relations_store,
             reachability_store,
-            ghostdag_stores,
-            ghostdag_primary_store,
+            ghostdag_store,
             pruning_point_store,
             headers_selected_tip_store,
             body_tips_store,
@@ -259,6 +256,7 @@ impl ConsensusStorage {
             past_pruning_points_store,
             daa_excluded_store,
             depth_store,
+            pruning_samples_store,
             utxo_diffs_store,
             utxo_multisets_store,
             block_window_cache_for_difficulty,

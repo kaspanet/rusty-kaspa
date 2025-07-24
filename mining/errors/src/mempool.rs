@@ -76,9 +76,6 @@ pub enum RuleError {
     #[error("transaction {0} is invalid")]
     RejectInvalid(TransactionId),
 
-    #[error("Rejected spam tx {0} from mempool")]
-    RejectSpamTransaction(TransactionId),
-
     #[error("Rejected tx {0} from mempool due to incomputable storage mass")]
     RejectStorageMassIncomputable(TransactionId),
 }
@@ -106,11 +103,14 @@ pub enum NonStandardError {
     #[error("transaction version {1} is not in the valid range of {2}-{3}")]
     RejectVersion(TransactionId, u16, u16, u16),
 
-    #[error("transaction mass of {1} is larger than max allowed size of {2}")]
-    RejectMass(TransactionId, u64, u64),
+    #[error("transaction compute mass of {1} is larger than max allowed size of {2}")]
+    RejectComputeMass(TransactionId, u64, u64),
 
-    #[error("transaction mass in context (including storage mass) of {1} is larger than max allowed size of {2}")]
-    RejectContextualMass(TransactionId, u64, u64),
+    #[error("transaction transient (storage) mass of {1} is larger than max allowed size of {2}")]
+    RejectTransientMass(TransactionId, u64, u64),
+
+    #[error("transaction storage mass of {1} is larger than max allowed size of {2}")]
+    RejectStorageMass(TransactionId, u64, u64),
 
     #[error("transaction input #{1}: signature script size of {2} bytes is larger than the maximum allowed size of {3} bytes")]
     RejectSignatureScriptSize(TransactionId, usize, u64, u64),
@@ -131,15 +131,16 @@ pub enum NonStandardError {
     RejectInsufficientFee(TransactionId, u64, u64),
 
     #[error("transaction input #{1} has {2} signature operations which is more than the allowed max amount of {3}")]
-    RejectSignatureCount(TransactionId, usize, u8, u8),
+    RejectSignatureCount(TransactionId, usize, u64, u8),
 }
 
 impl NonStandardError {
     pub fn transaction_id(&self) -> &TransactionId {
         match self {
             NonStandardError::RejectVersion(id, _, _, _) => id,
-            NonStandardError::RejectMass(id, _, _) => id,
-            NonStandardError::RejectContextualMass(id, _, _) => id,
+            NonStandardError::RejectComputeMass(id, _, _) => id,
+            NonStandardError::RejectTransientMass(id, _, _) => id,
+            NonStandardError::RejectStorageMass(id, _, _) => id,
             NonStandardError::RejectSignatureScriptSize(id, _, _, _) => id,
             NonStandardError::RejectScriptPublicKeyVersion(id, _) => id,
             NonStandardError::RejectOutputScriptClass(id, _) => id,

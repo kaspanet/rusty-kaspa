@@ -9,6 +9,7 @@ use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 
 use hex;
+use kaspa_consensus_core::constants::UNACCEPTED_DAA_SCORE;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script, pay_to_script_hash_script};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
@@ -148,8 +149,14 @@ impl Default for Bundle {
     }
 }
 
+// Replaces pubkey placeholder in payload string when pubkey_bytes is given.
 pub fn lock_script_sig_templating(payload: String, pubkey_bytes: Option<&[u8]>) -> Result<Vec<u8>, Error> {
-    let mut payload_bytes: Vec<u8> = hex::decode(payload)?;
+    let payload_bytes: Vec<u8> = hex::decode(payload)?;
+    lock_script_sig_templating_bytes(payload_bytes.to_vec(), pubkey_bytes)
+}
+
+pub fn lock_script_sig_templating_bytes(payload: Vec<u8>, pubkey_bytes: Option<&[u8]>) -> Result<Vec<u8>, Error> {
+    let mut payload_bytes = payload;
 
     if let Some(pubkey) = pubkey_bytes {
         let placeholder = b"{{pubkey}}";
@@ -236,6 +243,33 @@ pub fn unlock_utxo(
     Ok(pskt.into())
 }
 
+// Build UTXO spending PSKB with custom input and multiple outputs
+// to be used in atomic transaction batch.
+pub fn unlock_utxo_outputs_as_batch_transaction_pskb(
+    amount: u64,
+    start_address: &Address,
+    script_sig: &[u8],
+    destination_outputs: Vec<(Address, u64)>,
+) -> Result<Bundle, Error> {
+    let origin_spk = pay_to_address_script(start_address);
+
+    let utxo_entry = UtxoEntry { amount, script_public_key: origin_spk, block_daa_score: UNACCEPTED_DAA_SCORE, is_coinbase: false };
+
+    let input =
+        InputBuilder::default().utxo_entry(utxo_entry.to_owned()).sig_op_count(1).redeem_script(script_sig.to_vec()).build()?;
+
+    let outputs: Vec<Output> = destination_outputs
+        .iter()
+        .filter_map(|(address, amount)| {
+            OutputBuilder::default().amount(*amount).script_public_key(pay_to_address_script(address)).build().ok()
+        })
+        .collect();
+
+    let pskt: PSKT<Constructor> =
+        outputs.into_iter().fold(PSKT::<Creator>::default().constructor().input(input), |pskt, output| pskt.output(output));
+    Ok(pskt.into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,23 +281,18 @@ mod tests {
     use secp256k1::Secp256k1;
     use secp256k1::{rand::thread_rng, Keypair};
     use std::str::FromStr;
-    use std::sync::Once;
+    use std::sync::LazyLock;
 
-    static INIT: Once = Once::new();
-    static mut CONTEXT: Option<Box<([Keypair; 2], Vec<u8>)>> = None;
+    static CONTEXT: LazyLock<Box<([Keypair; 2], Vec<u8>)>> = LazyLock::new(|| {
+        let kps = [Keypair::new(&Secp256k1::new(), &mut thread_rng()), Keypair::new(&Secp256k1::new(), &mut thread_rng())];
+        let redeem_script: Vec<u8> =
+            multisig_redeem_script(kps.iter().map(|pk| pk.x_only_public_key().0.serialize()), 2).expect("Test multisig redeem script");
+
+        Box::new((kps, redeem_script))
+    });
 
     fn mock_context() -> &'static ([Keypair; 2], Vec<u8>) {
-        unsafe {
-            INIT.call_once(|| {
-                let kps = [Keypair::new(&Secp256k1::new(), &mut thread_rng()), Keypair::new(&Secp256k1::new(), &mut thread_rng())];
-                let redeem_script: Vec<u8> = multisig_redeem_script(kps.iter().map(|pk| pk.x_only_public_key().0.serialize()), 2)
-                    .expect("Test multisig redeem script");
-
-                CONTEXT = Some(Box::new((kps, redeem_script)));
-            });
-
-            CONTEXT.as_ref().unwrap()
-        }
+        CONTEXT.as_ref()
     }
 
     // Mock multisig PSKT from example

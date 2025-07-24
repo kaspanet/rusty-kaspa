@@ -16,12 +16,14 @@ use crate::{
         stores::{
             acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
+            block_window_cache::{BlockWindowCacheStore, BlockWindowCacheWriter},
             daa::DbDaaStore,
             depth::{DbDepthStore, DepthStoreReader},
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningStoreReader},
+            pruning_samples::DbPruningSamplesStore,
             pruning_utxoset::PruningUtxosetStores,
             reachability::DbReachabilityStore,
             relations::{DbRelationsStore, RelationsStoreReader},
@@ -42,7 +44,7 @@ use crate::{
     processes::{
         coinbase::CoinbaseManager,
         ghostdag::ordering::SortableBlock,
-        transaction_validator::{errors::TxResult, transaction_validator_populated::TxValidationFlags, TransactionValidator},
+        transaction_validator::{errors::TxResult, tx_validation_in_utxo_context::TxValidationFlags, TransactionValidator},
         window::WindowManager,
     },
 };
@@ -52,9 +54,13 @@ use kaspa_consensus_core::{
     block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     blockstatus::BlockStatus::{StatusDisqualifiedFromChain, StatusUTXOValid},
     coinbase::MinerData,
-    config::genesis::GenesisBlock,
+    config::{
+        genesis::GenesisBlock,
+        params::{ForkActivation, ForkedParam},
+    },
     header::Header,
     merkle::calc_hash_merkle_root,
+    mining_rules::MiningRules,
     pruning::PruningPointsList,
     tx::{MutableTransaction, Transaction},
     utxo::{
@@ -73,11 +79,15 @@ use kaspa_consensus_notify::{
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, time::unix_now, trace, warn};
 use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
-use kaspa_hashes::Hash;
+use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::MuHash;
 use kaspa_notify::{events::EventType, notifier::Notify};
+use once_cell::unsync::Lazy;
 
-use super::errors::{PruningImportError, PruningImportResult};
+use super::{
+    errors::{PruningImportError, PruningImportResult},
+    utxo_validation::crescendo::CrescendoLogger,
+};
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
 use kaspa_consensus_core::tx::ValidatedTransaction;
@@ -110,13 +120,12 @@ pub struct VirtualStateProcessor {
 
     // Config
     pub(super) genesis: GenesisBlock,
-    pub(super) max_block_parents: u8,
-    pub(super) mergeset_size_limit: u64,
-    pub(super) pruning_depth: u64,
+    pub(super) max_block_parents: ForkedParam<u8>,
+    pub(super) mergeset_size_limit: ForkedParam<u64>,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub(super) ghostdag_primary_store: Arc<DbGhostdagStore>,
+    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) daa_excluded_store: Arc<DbDaaStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
@@ -125,6 +134,7 @@ pub struct VirtualStateProcessor {
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
     pub(super) depth_store: Arc<DbDepthStore>,
     pub(super) selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
+    pub(super) pruning_samples_store: Arc<DbPruningSamplesStore>,
 
     // Utxo-related stores
     pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
@@ -149,8 +159,12 @@ pub struct VirtualStateProcessor {
     pub(super) parents_manager: DbParentsManager,
     pub(super) depth_manager: DbBlockDepthManager,
 
+    // block window caches
+    pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
+    pub(super) block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
+
     // Pruning lock
-    pruning_lock: SessionLock,
+    pub(super) pruning_lock: SessionLock,
 
     // Notifier
     notification_root: Arc<ConsensusNotificationRoot>,
@@ -158,8 +172,13 @@ pub struct VirtualStateProcessor {
     // Counters
     counters: Arc<ProcessingCounters>,
 
-    // Storage mass hardfork DAA score
-    pub(crate) storage_mass_activation_daa_score: u64,
+    pub(super) crescendo_logger: CrescendoLogger,
+
+    // Crescendo hardfork activation score (used here for activating KIPs 9,10)
+    pub(crate) crescendo_activation: ForkActivation,
+
+    // Mining Rule
+    mining_rules: Arc<MiningRules>,
 }
 
 impl VirtualStateProcessor {
@@ -176,6 +195,7 @@ impl VirtualStateProcessor {
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
+        mining_rules: Arc<MiningRules>,
     ) -> Self {
         Self {
             receiver,
@@ -184,14 +204,13 @@ impl VirtualStateProcessor {
             thread_pool,
 
             genesis: params.genesis.clone(),
-            max_block_parents: params.max_block_parents,
-            mergeset_size_limit: params.mergeset_size_limit,
-            pruning_depth: params.pruning_depth,
+            max_block_parents: params.max_block_parents(),
+            mergeset_size_limit: params.mergeset_size_limit(),
 
             db,
             statuses_store: storage.statuses_store.clone(),
             headers_store: storage.headers_store.clone(),
-            ghostdag_primary_store: storage.ghostdag_primary_store.clone(),
+            ghostdag_store: storage.ghostdag_store.clone(),
             daa_excluded_store: storage.daa_excluded_store.clone(),
             block_transactions_store: storage.block_transactions_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
@@ -199,6 +218,7 @@ impl VirtualStateProcessor {
             body_tips_store: storage.body_tips_store.clone(),
             depth_store: storage.depth_store.clone(),
             selected_chain_store: storage.selected_chain_store.clone(),
+            pruning_samples_store: storage.pruning_samples_store.clone(),
             utxo_diffs_store: storage.utxo_diffs_store.clone(),
             utxo_multisets_store: storage.utxo_multisets_store.clone(),
             acceptance_data_store: storage.acceptance_data_store.clone(),
@@ -206,7 +226,10 @@ impl VirtualStateProcessor {
             pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
             lkg_virtual_state: storage.lkg_virtual_state.clone(),
 
-            ghostdag_manager: services.ghostdag_primary_manager.clone(),
+            block_window_cache_for_difficulty: storage.block_window_cache_for_difficulty.clone(),
+            block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
+
+            ghostdag_manager: services.ghostdag_manager.clone(),
             reachability_service: services.reachability_service.clone(),
             relations_service: services.relations_service.clone(),
             dag_traversal_manager: services.dag_traversal_manager.clone(),
@@ -220,7 +243,9 @@ impl VirtualStateProcessor {
             pruning_lock,
             notification_root,
             counters,
-            storage_mass_activation_daa_score: params.storage_mass_activation_daa_score,
+            crescendo_logger: CrescendoLogger::new(),
+            crescendo_activation: params.crescendo_activation,
+            mining_rules,
         }
     }
 
@@ -291,6 +316,10 @@ impl VirtualStateProcessor {
 
         let sink_multiset = self.utxo_multisets_store.get(new_sink).unwrap();
         let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink, None);
+        let sink_ghostdag_data = Lazy::new(|| self.ghostdag_store.get_data(new_sink).unwrap());
+        // Cache the DAA and Median time windows of the sink for future use, as well as prepare for virtual's window calculations
+        self.cache_sink_windows(new_sink, prev_sink, &sink_ghostdag_data);
+
         let new_virtual_state = self
             .calculate_and_commit_virtual_state(
                 virtual_read,
@@ -302,12 +331,19 @@ impl VirtualStateProcessor {
             )
             .expect("all possible rule errors are unexpected here");
 
+        let compact_sink_ghostdag_data = if let Some(sink_ghostdag_data) = Lazy::get(&sink_ghostdag_data) {
+            // If we had to retrieve the full data, we convert it to compact
+            sink_ghostdag_data.to_compact()
+        } else {
+            // Else we query the compact data directly.
+            self.ghostdag_store.get_compact_data(new_sink).unwrap()
+        };
+
         // Update the pruning processor about the virtual state change
-        let sink_ghostdag_data = self.ghostdag_primary_store.get_compact_data(new_sink).unwrap();
         // Empty the channel before sending the new message. If pruning processor is busy, this step makes sure
         // the internal channel does not grow with no need (since we only care about the most recent message)
         let _consume = self.pruning_receiver.try_iter().count();
-        self.pruning_sender.send(PruningProcessingMessage::Process { sink_ghostdag_data }).unwrap();
+        self.pruning_sender.send(PruningProcessingMessage::Process { sink_ghostdag_data: compact_sink_ghostdag_data }).unwrap();
 
         // Emit notifications
         let accumulated_diff = Arc::new(accumulated_diff);
@@ -319,7 +355,7 @@ impl VirtualStateProcessor {
             .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)))
             .expect("expecting an open unbounded channel");
         self.notification_root
-            .notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(sink_ghostdag_data.blue_score)))
+            .notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(compact_sink_ghostdag_data.blue_score)))
             .expect("expecting an open unbounded channel");
         self.notification_root
             .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)))
@@ -387,8 +423,11 @@ impl VirtualStateProcessor {
         for (selected_parent, current) in self.reachability_service.forward_chain_iterator(split_point, to, true).tuple_windows() {
             if selected_parent != diff_point {
                 // This indicates that the selected parent is disqualified, propagate up and continue
-                self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
-                chain_disqualified_counter += 1;
+                let statuses_guard = self.statuses_store.upgradable_read();
+                if statuses_guard.get(current).unwrap() != StatusDisqualifiedFromChain {
+                    RwLockUpgradableReadGuard::upgrade(statuses_guard).set(current, StatusDisqualifiedFromChain).unwrap();
+                    chain_disqualified_counter += 1;
+                }
                 continue;
             }
 
@@ -404,7 +443,7 @@ impl VirtualStateProcessor {
                     }
 
                     let header = self.headers_store.get_header(current).unwrap();
-                    let mergeset_data = self.ghostdag_primary_store.get_data(current).unwrap();
+                    let mergeset_data = self.ghostdag_store.get_data(current).unwrap();
                     let pov_daa_score = header.daa_score;
 
                     let selected_parent_multiset_hash = self.utxo_multisets_store.get(selected_parent).unwrap();
@@ -427,7 +466,13 @@ impl VirtualStateProcessor {
                         // Update the diff point
                         diff_point = current;
                         // Commit UTXO data for current chain block
-                        self.commit_utxo_state(current, ctx.mergeset_diff, ctx.multiset_hash, ctx.mergeset_acceptance_data);
+                        self.commit_utxo_state(
+                            current,
+                            ctx.mergeset_diff,
+                            ctx.multiset_hash,
+                            ctx.mergeset_acceptance_data,
+                            ctx.pruning_sample_from_pov.expect("verified"),
+                        );
                         // Count the number of UTXO-processed chain blocks
                         chain_block_counter += 1;
                     }
@@ -444,11 +489,20 @@ impl VirtualStateProcessor {
         diff_point
     }
 
-    fn commit_utxo_state(&self, current: Hash, mergeset_diff: UtxoDiff, multiset: MuHash, acceptance_data: AcceptanceData) {
+    fn commit_utxo_state(
+        &self,
+        current: Hash,
+        mergeset_diff: UtxoDiff,
+        multiset: MuHash,
+        acceptance_data: AcceptanceData,
+        pruning_sample_from_pov: Hash,
+    ) {
         let mut batch = WriteBatch::default();
         self.utxo_diffs_store.insert_batch(&mut batch, current, Arc::new(mergeset_diff)).unwrap();
         self.utxo_multisets_store.insert_batch(&mut batch, current, multiset).unwrap();
         self.acceptance_data_store.insert_batch(&mut batch, current, Arc::new(acceptance_data)).unwrap();
+        // Note we call unwrap_or_exists since this field can be populated during IBD with headers proof
+        self.pruning_samples_store.insert_batch(&mut batch, current, pruning_sample_from_pov).unwrap_or_exists();
         let write_guard = self.statuses_store.set_batch(&mut batch, current, StatusUTXOValid).unwrap();
         self.db.write(batch).unwrap();
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
@@ -540,14 +594,34 @@ impl VirtualStateProcessor {
         drop(selected_chain_write);
     }
 
+    /// Caches the DAA and Median time windows of the sink block (if needed). Following, virtual's window calculations will
+    /// naturally hit the cache finding the sink's windows and building upon them.
+    fn cache_sink_windows(&self, new_sink: Hash, prev_sink: Hash, sink_ghostdag_data: &impl Deref<Target = Arc<GhostdagData>>) {
+        // We expect that the `new_sink` is cached (or some close-enough ancestor thereof) if it is equal to the `prev_sink`,
+        // Hence we short-circuit the check of the keys in such cases, thereby reducing the access of the read-lock
+        if new_sink != prev_sink {
+            // this is only important for ibd performance, as we incur expensive cache misses otherwise.
+            // this occurs because we cannot rely on header processing to pre-cache in this scenario.
+            if !self.block_window_cache_for_difficulty.contains_key(&new_sink) {
+                self.block_window_cache_for_difficulty
+                    .insert(new_sink, self.window_manager.block_daa_window(sink_ghostdag_data.deref()).unwrap().window);
+            };
+
+            if !self.block_window_cache_for_past_median_time.contains_key(&new_sink) {
+                self.block_window_cache_for_past_median_time
+                    .insert(new_sink, self.window_manager.calc_past_median_time(sink_ghostdag_data.deref()).unwrap().1);
+            };
+        }
+    }
+
     /// Returns the max number of tips to consider as virtual parents in a single virtual resolve operation.
     ///
     /// Guaranteed to be `>= self.max_block_parents`
-    fn max_virtual_parent_candidates(&self) -> usize {
+    fn max_virtual_parent_candidates(&self, max_block_parents: usize) -> usize {
         // Limit to max_block_parents x 3 candidates. This way we avoid going over thousands of tips when the network isn't healthy.
         // There's no specific reason for a factor of 3, and its not a consensus rule, just an estimation for reducing the amount
         // of candidates considered.
-        self.max_block_parents as usize * 3
+        max_block_parents * 3
     }
 
     /// Searches for the next valid sink block (SINK = Virtual selected parent). The search is performed
@@ -569,7 +643,7 @@ impl VirtualStateProcessor {
 
         let mut heap = tips
             .into_iter()
-            .map(|block| SortableBlock { hash: block, blue_work: self.ghostdag_primary_store.get_blue_work(block).unwrap() })
+            .map(|block| SortableBlock { hash: block, blue_work: self.ghostdag_store.get_blue_work(block).unwrap() })
             .collect::<BinaryHeap<_>>();
 
         // The initial diff point is the previous sink
@@ -591,7 +665,7 @@ impl VirtualStateProcessor {
                     // 2. will be removed eventually by the bounded merge check.
                     // Hence as an optimization we prefer removing such blocks in advance to allow valid tips to be considered.
                     let filtering_root = self.depth_store.merge_depth_root(candidate).unwrap();
-                    let filtering_blue_work = self.ghostdag_primary_store.get_blue_work(filtering_root).unwrap_or_default();
+                    let filtering_blue_work = self.ghostdag_store.get_blue_work(filtering_root).unwrap_or_default();
                     return (
                         candidate,
                         heap.into_sorted_iter().take_while(|s| s.blue_work >= filtering_blue_work).map(|s| s.hash).collect(),
@@ -609,7 +683,7 @@ impl VirtualStateProcessor {
                 if self.reachability_service.is_dag_ancestor_of(finality_point, parent)
                     && !self.reachability_service.is_dag_ancestor_of_any(parent, &mut heap.iter().map(|sb| sb.hash))
                 {
-                    heap.push(SortableBlock { hash: parent, blue_work: self.ghostdag_primary_store.get_blue_work(parent).unwrap() });
+                    heap.push(SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() });
                 }
             }
             drop(prune_guard);
@@ -635,8 +709,10 @@ impl VirtualStateProcessor {
         // we might touch such data prior to validating the bounded merge rule. All in all, this function is short
         // enough so we avoid making further optimizations
         let _prune_guard = self.pruning_lock.blocking_read();
-        let max_block_parents = self.max_block_parents as usize;
-        let max_candidates = self.max_virtual_parent_candidates();
+        let selected_parent_daa_score = self.headers_store.get_daa_score(selected_parent).unwrap();
+        let max_block_parents = self.max_block_parents.get(selected_parent_daa_score) as usize;
+        let mergeset_size_limit = self.mergeset_size_limit.get(selected_parent_daa_score);
+        let max_candidates = self.max_virtual_parent_candidates(max_block_parents);
 
         // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
         if candidates.len() > max_candidates {
@@ -665,10 +741,10 @@ impl VirtualStateProcessor {
 
         // Try adding parents as long as mergeset size and number of parents limits are not reached
         while let Some(candidate) = candidates.pop_front() {
-            if mergeset_size >= self.mergeset_size_limit || virtual_parents.len() >= max_block_parents {
+            if mergeset_size >= mergeset_size_limit || virtual_parents.len() >= max_block_parents {
                 break;
             }
-            match self.mergeset_increase(&virtual_parents, candidate, self.mergeset_size_limit - mergeset_size) {
+            match self.mergeset_increase(&virtual_parents, candidate, mergeset_size_limit - mergeset_size) {
                 MergesetIncreaseResult::Accepted { increase_size } => {
                     mergeset_size += increase_size;
                     virtual_parents.push(candidate);
@@ -684,7 +760,7 @@ impl VirtualStateProcessor {
                 }
             }
         }
-        assert!(mergeset_size <= self.mergeset_size_limit);
+        assert!(mergeset_size <= mergeset_size_limit);
         assert!(virtual_parents.len() <= max_block_parents);
         self.remove_bounded_merge_breaking_parents(virtual_parents, pruning_point)
     }
@@ -767,7 +843,11 @@ impl VirtualStateProcessor {
         args: &TransactionValidationArgs,
     ) -> TxResult<()> {
         self.transaction_validator.validate_tx_in_isolation(&mutable_tx.tx)?;
-        self.transaction_validator.utxo_free_tx_validation(&mutable_tx.tx, virtual_daa_score, virtual_past_median_time)?;
+        self.transaction_validator.validate_tx_in_header_context_with_args(
+            &mutable_tx.tx,
+            virtual_daa_score,
+            virtual_past_median_time,
+        )?;
         self.validate_mempool_transaction_in_utxo_context(mutable_tx, virtual_utxo_view, virtual_daa_score, args)?;
         Ok(())
     }
@@ -778,7 +858,10 @@ impl VirtualStateProcessor {
         let virtual_utxo_view = &virtual_read.utxo_set;
         let virtual_daa_score = virtual_state.daa_score;
         let virtual_past_median_time = virtual_state.past_median_time;
-        self.validate_mempool_transaction_impl(mutable_tx, virtual_utxo_view, virtual_daa_score, virtual_past_median_time, args)
+        // Run within the thread pool since par_iter might be internally applied to inputs
+        self.thread_pool.install(|| {
+            self.validate_mempool_transaction_impl(mutable_tx, virtual_utxo_view, virtual_daa_score, virtual_past_median_time, args)
+        })
     }
 
     pub fn validate_mempool_transactions_in_parallel(
@@ -853,9 +936,18 @@ impl VirtualStateProcessor {
         // No need to validate the transaction in isolation since we rely on the mining manager to submit transactions
         // which were previously validated through `validate_mempool_transaction_and_populate`, hence we only perform
         // in-context validations
-        self.transaction_validator.utxo_free_tx_validation(tx, virtual_state.daa_score, virtual_state.past_median_time)?;
-        let ValidatedTransaction { calculated_fee, .. } =
-            self.validate_transaction_in_utxo_context(tx, utxo_view, virtual_state.daa_score, TxValidationFlags::Full)?;
+        self.transaction_validator.validate_tx_in_header_context_with_args(
+            tx,
+            virtual_state.daa_score,
+            virtual_state.past_median_time,
+        )?;
+        let ValidatedTransaction { calculated_fee, .. } = self.validate_transaction_in_utxo_context(
+            tx,
+            utxo_view,
+            virtual_state.daa_score,
+            virtual_state.daa_score,
+            TxValidationFlags::Full,
+        )?;
         Ok(calculated_fee)
     }
 
@@ -964,7 +1056,7 @@ impl VirtualStateProcessor {
         let _prune_guard = self.pruning_lock.blocking_read();
         let pruning_info = self.pruning_point_store.read().get().unwrap();
         let header_pruning_point =
-            self.pruning_point_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info);
+            self.pruning_point_manager.expected_header_pruning_point_v2(virtual_state.ghostdag_data.to_compact()).pruning_point;
         let coinbase = self
             .coinbase_manager
             .expected_coinbase_transaction(
@@ -980,10 +1072,14 @@ impl VirtualStateProcessor {
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_info.pruning_point, &virtual_state.parents);
 
         // Hash according to hardfork activation
-        let storage_mass_activated = virtual_state.daa_score > self.storage_mass_activation_daa_score;
+        let storage_mass_activated = self.crescendo_activation.is_active(virtual_state.daa_score);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter(), storage_mass_activated);
 
-        let accepted_id_merkle_root = kaspa_merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
+        let accepted_id_merkle_root = self.calc_accepted_id_merkle_root(
+            virtual_state.daa_score,
+            virtual_state.accepted_tx_ids.iter().copied(),
+            virtual_state.ghostdag_data.selected_parent,
+        );
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;
@@ -1024,7 +1120,8 @@ impl VirtualStateProcessor {
             let mut batch = WriteBatch::default();
             self.past_pruning_points_store.insert_batch(&mut batch, 0, self.genesis.hash).unwrap_or_exists();
             pruning_point_write.set_batch(&mut batch, self.genesis.hash, self.genesis.hash, 0).unwrap();
-            pruning_point_write.set_history_root(&mut batch, self.genesis.hash).unwrap();
+            pruning_point_write.set_retention_checkpoint(&mut batch, self.genesis.hash).unwrap();
+            pruning_point_write.set_retention_period_root(&mut batch, self.genesis.hash).unwrap();
             pruning_utxoset_write.set_utxoset_position(&mut batch, self.genesis.hash).unwrap();
             self.db.write(batch).unwrap();
             drop(pruning_point_write);
@@ -1036,7 +1133,7 @@ impl VirtualStateProcessor {
     /// Note that pruning point-related stores are initialized by `init`
     pub fn process_genesis(self: &Arc<Self>) {
         // Write the UTXO state of genesis
-        self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default());
+        self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default(), ZERO_HASH);
 
         // Init the virtual selected chain store
         let mut batch = WriteBatch::default();
@@ -1098,6 +1195,7 @@ impl VirtualStateProcessor {
             &new_pruning_point_transactions,
             &virtual_read.utxo_set,
             new_pruning_point_header.daa_score,
+            new_pruning_point_header.daa_score,
             TxValidationFlags::Full,
         );
         if validated_transactions.len() < new_pruning_point_transactions.len() - 1 {
@@ -1144,7 +1242,7 @@ impl VirtualStateProcessor {
         // in depth of 2*finality_depth, and can give false negatives for smaller finality violations.
         let current_pp = self.pruning_point_store.read().pruning_point().unwrap();
         let vf = self.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, current_pp);
-        let vff = self.depth_manager.calc_finality_point(&self.ghostdag_primary_store.get_data(vf).unwrap(), current_pp);
+        let vff = self.depth_manager.calc_finality_point(&self.ghostdag_store.get_data(vf).unwrap(), current_pp);
 
         let last_known_pp = pp_list.iter().rev().find(|pp| match self.statuses_store.read().get(pp.hash).unwrap_option() {
             Some(status) => status.is_valid(),
@@ -1158,6 +1256,15 @@ impl VirtualStateProcessor {
             // (normally at least genesis should be known).
             true
         }
+    }
+
+    /// Executes `op` within the thread pool associated with this processor.
+    pub fn install<OP, R>(&self, op: OP) -> R
+    where
+        OP: FnOnce() -> R + Send,
+        R: Send,
+    {
+        self.thread_pool.install(op)
     }
 }
 

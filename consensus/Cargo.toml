@@ -18,6 +18,7 @@ faster-hex.workspace = true
 futures-util.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
+kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensusmanager.workspace = true
@@ -54,11 +55,19 @@ serde_json.workspace = true
 flate2.workspace = true
 rand_distr.workspace = true
 kaspa-txscript-errors.workspace = true
+kaspa-addresses.workspace = true
 
 [[bench]]
-name = "hash_benchmarks"
+name = "parallel_muhash"
+harness = false
+
+[[bench]]
+name = "check_scripts"
 harness = false
 
 [features]
 html_reports = []
 devnet-prealloc = ["kaspa-consensus-core/devnet-prealloc"]
+
+[lints]
+workspace = true

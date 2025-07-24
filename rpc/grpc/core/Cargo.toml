@@ -10,6 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-core.workspace = true
 kaspa-notify.workspace = true
@@ -36,3 +37,6 @@ workflow-core.workspace = true
 
 [build-dependencies]
 tonic-build = { workspace = true, features = ["prost"] }
+
+[lints]
+workspace = true

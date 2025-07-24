@@ -12,6 +12,7 @@ use crate::imports::*;
 use crate::outpoint::{TransactionOutpoint, TransactionOutpointInner};
 use crate::result::Result;
 use kaspa_addresses::Address;
+use kaspa_consensus_core::mass::{UtxoCell, UtxoPlurality};
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_UTXO_ENTRY: &'static str = r#"
@@ -249,6 +250,12 @@ impl From<UtxoEntry> for UtxoEntryReference {
     }
 }
 
+impl From<&UtxoEntryReference> for UtxoCell {
+    fn from(entry: &UtxoEntryReference) -> Self {
+        Self::new(entry.utxo.script_public_key.plurality(), entry.amount())
+    }
+}
+
 impl Eq for UtxoEntryReference {}
 
 impl PartialEq for UtxoEntryReference {
@@ -282,7 +289,7 @@ impl TryIntoUtxoEntryReferences for JsValue {
 
 impl TryCastFromJs for UtxoEntry {
     type Error = Error;
-    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
     where
         R: AsRef<JsValue> + 'a,
     {
@@ -405,7 +412,7 @@ impl TryFrom<JsValue> for UtxoEntries {
 
 impl TryCastFromJs for UtxoEntryReference {
     type Error = Error;
-    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
     where
         R: AsRef<JsValue> + 'a,
     {
