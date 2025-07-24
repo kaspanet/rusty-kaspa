@@ -1,12 +1,12 @@
 mod eviction;
-use crate::eviction::{cmp_strats, constants::RETAIN_RATIO, eviction_iter_from_peers, weight_strats, EvictionIterExt};
+use crate::eviction::{constants::RETAIN_RATIO, eviction_iter_from_peers, EvictionIterExt};
 
 use std::{
     cmp::min,
     collections::{HashMap, HashSet},
     net::{IpAddr, SocketAddr, ToSocketAddrs},
     sync::Arc,
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, SystemTime},
 };
 
 use duration_string::DurationString;
@@ -259,29 +259,20 @@ impl ConnectionManager {
         // the following peer selection strategy is designed to ensure that an eclipse attacker must outperform
         // the best performing peers in any independent metric in order to perform a total eclipse.
         // while keeping a bias to disconnect from newer peers, and those with concentrated prefix buckets.
-        let instant = Instant::now(); //TODO: Remove this instant, it's only for in-the-wild testing.
-        debug!("Connection manager: has {} incoming P2P connections, disconnecting {}...", active_inbound_len, peer_overflow_amount);
         for peer in eviction_iter_from_peers(&active_inbound)
-            .filter_peers(
+            .retain_lowest_rank_peers(
                 // We retain a number of peers proportional to the inbound limit.
                 (self.inbound_limit as f64 * RETAIN_RATIO).floor() as usize,
-                // Based on their lowest (i.e. best performing) independent rank.
-                cmp_strats::by_lowest_rank,
             )
-            .select_peers_weighted(
+            .evict_by_highest_none_latency_rank_weighted(
                 // then we select the overflowing amount from the remaining peers,
                 peer_overflow_amount,
-                // weighted by their highest (i.e. worst performing) none-latency rank.
-                // we only select by none latency as to ensure that we do not overly penalize disadvantaged (in terms of latency) peers.
-                // this strategy also slows down flooding (via time connected weighting), and multiple inbounds from a localized origin (via prefix bucket weighting).
-                weight_strats::by_highest_none_latency_rank,
             )
             .iterate_peers()
         {
             debug!("Disconnecting from {} because we're above the inbound limit", peer.net_address());
             futures.push(self.p2p_adaptor.terminate(peer.key()));
         }
-        debug!("Connection manager: disconnecting peers took {}", instant.elapsed().as_millis());
         join_all(futures).await;
     }
 

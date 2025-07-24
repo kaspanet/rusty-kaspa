@@ -104,11 +104,12 @@ struct RouterMutableState {
     last_ping_duration: u64,
 
     /// Time of the last block transfer
-    /// This corresponds to the last full block transfer, not the last Block Invoice message.
+    /// This corresponds to the last block transferred, even if it is header only, but not the last Block Inv message.
+    /// It also tracks Block Bodies and Block Headers transferred over IBD, excluding trusted blocks used to build the pruning proof.
     last_block_transfer: Option<Instant>,
 
     /// Time of the last transaction transfer
-    /// This corresponds to the last full transaction(s) transfer(ed), not the last Transaction Invoice message.
+    /// This corresponds to the last transaction(s) transferred, not the last Transaction Inv message.
     last_tx_transfer: Option<Instant>,
 }
 

@@ -13,7 +13,7 @@ pub struct PeerProperties {
     pub time_offset: i64,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug)]
 pub struct Peer {
     identity: PeerId,
     net_address: SocketAddr,
@@ -21,8 +21,8 @@ pub struct Peer {
     connection_started: Instant,
     properties: Arc<PeerProperties>,
     last_ping_duration: u64,
-    last_block_transfer: Option<Instant>, // TODO: add this to rpc, currently sidelined due to ongoing RPC development
-    last_tx_transfer: Option<Instant>,    // TODO: add this to rpc, currently sidelined due to ongoing RPC development
+    last_block_transfer: Option<Instant>, // TODO: consider adding this field to rpc
+    last_tx_transfer: Option<Instant>,    // TODO: consider adding this field to rpc
 }
 
 impl Peer {

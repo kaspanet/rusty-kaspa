@@ -5,6 +5,9 @@ use kaspa_p2p_lib::Peer;
 use kaspa_utils::networking::PrefixBucket;
 use rand::{seq::SliceRandom, thread_rng, Rng};
 
+use crate::eviction::{cmp_strats::by_lowest_rank, weight_strats::by_highest_none_latency_rank};
+use struct_as_array::AsArray;
+
 /*
 # Eviction Logic
 This module contains the backbone for the logic of evicting peers from the peer list.
@@ -26,7 +29,7 @@ pub mod cmp_strats {
     /// _**Note**: The lowest rank is the "best" rank, as ranks are organized from low ("good") to high ("bad")._
     #[inline]
     pub fn by_lowest_rank(ranks1: &EvictionRanks, ranks2: &EvictionRanks) -> Ordering {
-        ranks1.lowest_rank().partial_cmp(&ranks2.lowest_rank()).unwrap()
+        ranks1.lowest_rank().total_cmp(&ranks2.lowest_rank())
     }
 
     #[cfg(test)]
@@ -69,8 +72,6 @@ pub mod cmp_strats {
             };
             assert_eq!(by_lowest_rank(&ranks1, &ranks2), Ordering::Equal);
         }
-
-        //TODO: Add tests for the compare strategy functions
     }
 }
 
@@ -137,13 +138,14 @@ pub mod weight_strats {
 /// _1) Ranks are organized from low to high, the lower the rank, the better the peer's perf in that metric._
 ///
 /// _2) A peer may hold a rank as a multiple of 0.5, due to tie breaks splitting the rank._
-#[derive(Default, Clone, Copy, PartialEq, Debug)]
+#[derive(Default, Clone, Copy, PartialEq, Debug, AsArray)]
 pub struct EvictionRanks {
-    ip_prefix_bucket: f64,
-    time_connected: f64,
-    last_ping_duration: f64,
-    last_block_transfer: f64,
-    last_tx_transfer: f64,
+    // all times are in milliseconds
+    ip_prefix_bucket: f64,    // the first byte of the IP address, used to group peers by their IP prefix.
+    time_connected: f64,      // time connected to the peer.
+    last_ping_duration: f64,  // the duration of the last ping to the peer.
+    last_block_transfer: f64, // the duration since the last block was received from this peer.
+    last_tx_transfer: f64,    // the duration since the last transaction was received from this peer.
 }
 
 impl EvictionRanks {
@@ -194,14 +196,13 @@ pub trait EvictionIterExt<'a, Iter>: IntoIterator<Item = (&'a Peer, EvictionRank
 where
     Iter: Iterator<Item = (&'a Peer, EvictionRanks)> + 'a,
 {
-    fn filter_peers<F>(self, amount: usize, compare_fn: F) -> impl Iterator<Item = (&'a Peer, EvictionRanks)> + 'a
+    fn retain_lowest_rank_peers(self, amount: usize) -> impl Iterator<Item = (&'a Peer, EvictionRanks)> + 'a
     where
-        F: Fn(&EvictionRanks, &EvictionRanks) -> Ordering,
         Self: Sized,
     {
         let rng = &mut thread_rng();
         self.into_iter()
-            .sorted_unstable_by(move |(_, r1), (_, r2)| match compare_fn(r1, r2) {
+            .sorted_unstable_by(move |(_, r1), (_, r2)| match by_lowest_rank(r1, r2) {
                 Ordering::Greater => Ordering::Greater,
                 Ordering::Less => Ordering::Less,
                 // we tie break randomly, as to not expose preference due to pre-existing ordering.
@@ -216,15 +217,14 @@ where
             .skip(amount)
     }
 
-    fn select_peers_weighted<F>(self, amount: usize, weight_fn: F) -> impl Iterator<Item = (&'a Peer, EvictionRanks)> + 'a
+    fn evict_by_highest_none_latency_rank_weighted(self, amount: usize) -> impl Iterator<Item = (&'a Peer, EvictionRanks)> + 'a
     where
-        F: Fn(&EvictionRanks) -> f64,
         Self: Sized,
     {
         let rng = &mut thread_rng();
         self.into_iter()
             .collect_vec()
-            .choose_multiple_weighted(rng, amount, |(_, r)| weight_fn(r))
+            .choose_multiple_weighted(rng, amount, |(_, r)| by_highest_none_latency_rank(r))
             .unwrap()
             .copied()
             .collect_vec()
@@ -247,11 +247,11 @@ where
 }
 
 pub fn eviction_iter_from_peers<'a>(peers: &'a [&'a Peer]) -> impl Iterator<Item = (&'a Peer, EvictionRanks)> + 'a {
-    let ip_prefix_map = build_ip_prefix_map(peers);
+    let ip_prefix_histogram = build_ip_prefix_histogram(peers);
     let mut ranks = vec![EvictionRanks::default(); peers.len()];
     peers.iter().enumerate().map(move |(i1, p1)| {
         for (i2, p2) in peers[i1..].iter().enumerate().skip(1) {
-            match ip_prefix_map[&p1.prefix_bucket()].cmp(&ip_prefix_map[&p2.prefix_bucket()]) {
+            match ip_prefix_histogram[&p1.prefix_bucket()].cmp(&ip_prefix_histogram[&p2.prefix_bucket()]) {
                 // low is good, so we add rank to the peer with the greater ordering.
                 Ordering::Greater => ranks[i1].ip_prefix_bucket += 1.0,
                 Ordering::Less => ranks[i1 + i2].ip_prefix_bucket += 1.0,
@@ -328,12 +328,12 @@ pub fn eviction_iter_from_peers<'a>(peers: &'a [&'a Peer]) -> impl Iterator<Item
 }
 // Abstracted helper functions:
 
-fn build_ip_prefix_map(peers: &[&Peer]) -> HashMap<PrefixBucket, usize> {
-    let mut ip_prefix_map = HashMap::new();
+fn build_ip_prefix_histogram(peers: &[&Peer]) -> HashMap<PrefixBucket, usize> {
+    let mut ip_prefix_histogram = HashMap::new();
     for peer in peers.iter() {
-        *ip_prefix_map.entry(peer.prefix_bucket()).or_insert(1) += 1;
+        *ip_prefix_histogram.entry(peer.prefix_bucket()).or_insert(1) += 1;
     }
-    ip_prefix_map
+    ip_prefix_histogram
 }
 
 #[cfg(test)]
@@ -351,6 +351,11 @@ mod test {
         time::{Duration, Instant},
     };
     use uuid::Uuid;
+
+    fn assert_all_ranks_are_all_ranks(ranks: &EvictionRanks, expected: [f64; 5]) {
+        // assert that all ranks are all ranks
+        assert_eq!(ranks.all_ranks().len(), EvictionRanks { ..Default::default() }.as_array().len());
+    }
 
     fn build_test_peers() -> Vec<Peer> {
         let now = Instant::now();
@@ -618,9 +623,12 @@ mod test {
             let mut removed_counter = HashMap::<u64, usize>::new();
             let mut filtered_counter = HashMap::<u64, usize>::new();
             let eviction_candidates_iter = eviction_iter_vec.clone().into_iter();
-            let filtered_eviction_set = eviction_candidates_iter.filter_peers(i, cmp_strats::by_lowest_rank).collect_vec();
-            let removed_eviction_set =
-                eviction_iter_vec.clone().into_iter().filter(|item| !filtered_eviction_set.contains(item)).collect_vec();
+            let filtered_eviction_set = eviction_candidates_iter.retain_lowest_rank_peers(i).collect_vec();
+            let removed_eviction_set = eviction_iter_vec
+                .clone()
+                .into_iter()
+                .filter(|item| !filtered_eviction_set.iter().any(|&x| x.0.identity() == item.0.identity()))
+                .collect_vec();
             assert_eq!(filtered_eviction_set.len(), iterations - i);
             assert_eq!(removed_eviction_set.len(), i);
             for (_, er) in &removed_eviction_set {
@@ -766,8 +774,7 @@ mod test {
         for _ in 0..num_of_trials {
             //println!("sample_size: {}", sample_size);
             let eviction_iter = eviction_iter_vec.clone().into_iter();
-            let selected_eviction_set =
-                eviction_iter.select_peers_weighted(1, weight_strats::by_highest_none_latency_rank).collect_vec();
+            let selected_eviction_set = eviction_iter.evict_by_highest_none_latency_rank_weighted(1).collect_vec();
             assert_eq!(selected_eviction_set.len(), 1);
             for (_, er) in &selected_eviction_set {
                 let highest_none_latency_rank = er.highest_none_latency_rank();
@@ -809,6 +816,6 @@ mod test {
             .unwrap()
             .1;
         assert!(p < 0.05);
-        info!("Kolmogorov–Smirnov test result for `EvictionIter.select_peers_weighted`: p = {0:.3}, p < 0.5", p);
+        info!("Kolmogorov–Smirnov test result for `EvictionIter.select_peers_weighted`: p = {0:.3}, p < 0.05", p);
     }
 }

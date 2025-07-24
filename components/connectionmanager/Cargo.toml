@@ -21,6 +21,7 @@ log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
 tokio.workspace = true
+struct_as_array.workspace = true
 
 [dev-dependencies]
 rv.workspace = true

@@ -400,6 +400,8 @@ impl IbdFlow {
         let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route);
 
         if let Some(chunk) = chunk_stream.next().await? {
+            let mut prev_block_transfer_instant = Instant::now();
+
             let (mut prev_daa_score, mut prev_timestamp) = {
                 let last_header = chunk.last().expect("chunk is never empty");
                 (last_header.daa_score, last_header.timestamp)
@@ -408,6 +410,8 @@ impl IbdFlow {
                 chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task).collect();
 
             while let Some(chunk) = chunk_stream.next().await? {
+                let current_block_transfer_instant = Instant::now();
+
                 let (current_daa_score, current_timestamp) = {
                     let last_header = chunk.last().expect("chunk is never empty");
                     (last_header.daa_score, last_header.timestamp)
@@ -419,15 +423,19 @@ impl IbdFlow {
                 let prev_chunk_len = prev_jobs.len();
                 // Join the previous chunk so that we always concurrently process a chunk and receive another
                 try_join_all(prev_jobs).await?;
+                self.router.set_last_block_transfer(prev_block_transfer_instant);
+
                 // Log the progress
                 progress_reporter.report(prev_chunk_len, prev_daa_score, prev_timestamp);
                 prev_daa_score = current_daa_score;
                 prev_timestamp = current_timestamp;
                 prev_jobs = current_jobs;
+                prev_block_transfer_instant = current_block_transfer_instant;
             }
 
             let prev_chunk_len = prev_jobs.len();
             try_join_all(prev_jobs).await?;
+            self.router.set_last_block_transfer(prev_block_transfer_instant);
             progress_reporter.report_completion(prev_chunk_len);
         }
 
@@ -470,10 +478,12 @@ impl IbdFlow {
             .await?;
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::BlockHeaders)?;
+        let block_transfer_instant = Instant::now();
         let chunk: HeadersChunk = msg.try_into()?;
         let jobs: Vec<BlockValidationFuture> =
             chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task).collect();
         try_join_all(jobs).await?;
+        self.router.set_last_block_transfer(block_transfer_instant);
         dequeue_with_timeout!(self.incoming_route, Payload::DoneHeaders)?;
 
         if consensus.async_get_block_status(relay_block_hash).await.is_none() {
@@ -556,20 +566,26 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         let mut progress_reporter = ProgressReporter::new(low_header.daa_score, high_header.daa_score, "blocks");
 
         let mut iter = hashes.chunks(IBD_BATCH_SIZE);
-        let QueueChunkOutput { jobs: mut prev_jobs, daa_score: mut prev_daa_score, timestamp: mut prev_timestamp } =
-            self.queue_block_processing_chunk(consensus, iter.next().expect("hashes was non empty")).await?;
+        let (
+            mut prev_block_transfer_instant,
+            QueueChunkOutput { jobs: mut prev_jobs, daa_score: mut prev_daa_score, timestamp: mut prev_timestamp },
+        ) = self.queue_block_processing_chunk(consensus, iter.next().expect("hashes was non empty")).await?;
 
         for chunk in iter {
-            let QueueChunkOutput { jobs: current_jobs, daa_score: current_daa_score, timestamp: current_timestamp } =
-                self.queue_block_processing_chunk(consensus, chunk).await?;
+            let (
+                current_block_transfer_instant,
+                QueueChunkOutput { jobs: current_jobs, daa_score: current_daa_score, timestamp: current_timestamp },
+            ) = self.queue_block_processing_chunk(consensus, chunk).await?;
             let prev_chunk_len = prev_jobs.len();
             // Join the previous chunk so that we always concurrently process a chunk and receive another
             try_join_all(prev_jobs).await?;
+            self.router.set_last_block_transfer(prev_block_transfer_instant);
             // Log the progress
             progress_reporter.report(prev_chunk_len, prev_daa_score, prev_timestamp);
             prev_daa_score = current_daa_score;
             prev_timestamp = current_timestamp;
             prev_jobs = current_jobs;
+            prev_block_transfer_instant = current_block_transfer_instant;
         }
 
         let prev_chunk_len = prev_jobs.len();
@@ -583,10 +599,11 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         &mut self,
         consensus: &ConsensusProxy,
         chunk: &[Hash],
-    ) -> Result<QueueChunkOutput, ProtocolError> {
+    ) -> Result<(Instant, QueueChunkOutput), ProtocolError> {
         let mut jobs = Vec::with_capacity(chunk.len());
         let mut current_daa_score = 0;
         let mut current_timestamp = 0;
+        let mut last_block_transfer_instant = Instant::now();
         self.router
             .enqueue(make_message!(
                 Payload::RequestIbdBlocks,
@@ -595,6 +612,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             .await?;
         for &expected_hash in chunk {
             let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
+            last_block_transfer_instant = Instant::now();
             let block: Block = msg.try_into()?;
             if block.hash() != expected_hash {
                 return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", expected_hash, block.hash())));
@@ -607,6 +625,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             jobs.push(consensus.validate_and_insert_block(block).virtual_state_task);
         }
 
-        Ok(QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp })
+        Ok((last_block_transfer_instant, QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp }))
     }
 }
