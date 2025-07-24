@@ -700,7 +700,8 @@ pub trait DerivationCapableAccount: Account {
             let utxos = utxos
                 .iter()
                 .map(|utxo| {
-                    let utxo_ref = UtxoEntryReference::from(utxo);
+                    let utxo_ref = UtxoEntryReference::try_from(utxo)
+                        .expect("UtxoEntryReference::try_from(RpcUtxosByAddress) should succeed - perhaps the RpcUtxosByAddress is missing data?");
                     if let Some(address) = utxo_ref.utxo.address.as_ref() {
                         if let Some(address_index) = receive_address_manager.inner().address_to_index_map.get(address) {
                             if last_receive_address_index < *address_index {

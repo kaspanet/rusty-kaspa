@@ -9,7 +9,7 @@ use std::str::FromStr;
 
 from!(item: &kaspa_rpc_core::RpcBlock, protowire::RpcBlock, {
     Self {
-        header: Some(protowire::RpcBlockHeader::from(&item.header)),
+        header: item.header.as_ref().map(protowire::RpcBlockHeader::from),
         transactions: item.transactions.iter().map(protowire::RpcTransaction::from).collect(),
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
     }
@@ -47,8 +47,8 @@ try_from!(item: &protowire::RpcBlock, kaspa_rpc_core::RpcBlock, {
         header: item
             .header
             .as_ref()
-            .ok_or_else(|| RpcError::MissingRpcFieldError("RpcBlock".to_string(), "header".to_string()))?
-            .try_into()?,
+            .map(kaspa_rpc_core::RpcHeader::try_from)
+            .transpose()?,
         transactions: item.transactions.iter().map(kaspa_rpc_core::RpcTransaction::try_from).collect::<Result<Vec<_>, _>>()?,
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcBlockVerboseData::try_from).transpose()?,
     }
@@ -56,12 +56,8 @@ try_from!(item: &protowire::RpcBlock, kaspa_rpc_core::RpcBlock, {
 
 try_from!(item: &protowire::RpcBlock, kaspa_rpc_core::RpcRawBlock, {
     Self {
-        header: item
-            .header
-            .as_ref()
-            .ok_or_else(|| RpcError::MissingRpcFieldError("RpcBlock".to_string(), "header".to_string()))?
-            .try_into()?,
-        transactions: item.transactions.iter().map(kaspa_rpc_core::RpcTransaction::try_from).collect::<Result<Vec<_>, _>>()?,
+    header: kaspa_rpc_core::RpcRawHeader::try_from(item.header.as_ref().ok_or(RpcError::MissingRpcFieldError("RpcBlock".to_string(), "header".to_string()))?)?,
+    transactions: item.transactions.iter().map(kaspa_rpc_core::RpcTransaction::try_from).collect::<Result<Vec<_>, _>>()?,
     }
 });
 

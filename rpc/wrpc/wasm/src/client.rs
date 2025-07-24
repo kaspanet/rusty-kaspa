@@ -700,8 +700,8 @@ impl RpcClient {
                                     if let Some(handlers) = this.inner.notification_callbacks(notification_event) {
 
                                         let UtxosChangedNotification { added, removed } = utxos_changed_notification;
-                                        let added = js_sys::Array::from_iter(added.iter().map(UtxoEntryReference::from).map(JsValue::from));
-                                        let removed = js_sys::Array::from_iter(removed.iter().map(UtxoEntryReference::from).map(JsValue::from));
+                                        let added = js_sys::Array::from_iter(added.iter().map( |x| UtxoEntryReference::try_from(x).expect("expected UtxoEntryReference from RpcUtxoEntry to succeed")).map(JsValue::from));
+                                        let removed = js_sys::Array::from_iter(removed.iter().map(|x| UtxoEntryReference::try_from(x).expect("expected UtxoEntryReference from RpcUtxoEntry to succeed")).map(JsValue::from));
                                         let notification = Object::new();
                                         notification.set("added", &added).unwrap();
                                         notification.set("removed", &removed).unwrap();

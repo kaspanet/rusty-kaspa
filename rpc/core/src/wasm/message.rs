@@ -1210,7 +1210,7 @@ declare! {
 
 try_from! ( args: GetUtxosByAddressesResponse, IGetUtxosByAddressesResponse, {
     let GetUtxosByAddressesResponse { entries } = args;
-    let entries = entries.into_iter().map(UtxoEntryReference::from).collect::<Vec<UtxoEntryReference>>();
+    let entries = entries.into_iter().map(UtxoEntryReference::try_from).collect::<Result<Vec<UtxoEntryReference>>>()?;
     let entries = js_sys::Array::from_iter(entries.into_iter().map(JsValue::from));
     let response = IGetUtxosByAddressesResponse::default();
     response.set("entries", entries.as_ref())?;

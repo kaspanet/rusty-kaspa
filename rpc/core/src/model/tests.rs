@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod mockery {
 
-    use crate::{model::*, RpcScriptClass};
+    use crate::model::*;
     use kaspa_addresses::{Prefix, Version};
     use kaspa_consensus_core::api::BlockCount;
     use kaspa_consensus_core::network::NetworkType;
@@ -11,6 +11,7 @@ mod mockery {
     use kaspa_math::Uint192;
     use kaspa_notify::subscription::Command;
     use kaspa_rpc_macros::test_wrpc_serializer as test;
+    use kaspa_txscript::script_class::ScriptClass;
     use kaspa_utils::networking::{ContextualNetAddress, IpAddress, NetAddress};
     use rand::Rng;
     use std::net::{IpAddr, Ipv4Addr};
@@ -205,7 +206,7 @@ mod mockery {
 
     impl Mock for RpcTransactionInputVerboseData {
         fn mock() -> Self {
-            RpcTransactionInputVerboseData {}
+            RpcTransactionInputVerboseData { utxo_entry: mock() }
         }
     }
 
@@ -213,7 +214,7 @@ mod mockery {
         fn mock() -> Self {
             RpcTransactionInput {
                 previous_outpoint: mock(),
-                signature_script: Hash::mock().as_bytes().to_vec(),
+                signature_script: Some(Hash::mock().as_bytes().to_vec()),
                 sequence: mock(),
                 sig_op_count: mock(),
                 verbose_data: mock(),
@@ -223,7 +224,7 @@ mod mockery {
 
     impl Mock for RpcTransactionOutputVerboseData {
         fn mock() -> Self {
-            RpcTransactionOutputVerboseData { script_public_key_type: RpcScriptClass::PubKey, script_public_key_address: mock() }
+            RpcTransactionOutputVerboseData { script_public_key_type: mock(), script_public_key_address: mock() }
         }
     }
 
@@ -245,6 +246,85 @@ mod mockery {
         }
     }
 
+    impl Mock for RpcUtxoEntryVerbosity {
+        fn mock() -> Self {
+            RpcUtxoEntryVerbosity {
+                include_amount: mock(),
+                include_script_public_key: mock(),
+                include_block_daa_score: mock(),
+                include_is_coinbase: mock(),
+                verbose_data_verbosity: mock(),
+            }
+        }
+    }
+
+    impl Mock for RpcUtxoEntryVerboseDataVerbosity {
+        fn mock() -> Self {
+            RpcUtxoEntryVerboseDataVerbosity { include_script_public_key_type: mock(), include_script_public_key_address: mock() }
+        }
+    }
+
+    impl Mock for RpcTransactionInputVerboseDataVerbosity {
+        fn mock() -> Self {
+            RpcTransactionInputVerboseDataVerbosity { utxo_entry_verbosity: mock() }
+        }
+    }
+
+    impl Mock for RpcTransactionInputVerbosity {
+        fn mock() -> Self {
+            RpcTransactionInputVerbosity {
+                include_previous_outpoint: mock(),
+                include_signature_script: mock(),
+                include_sequence: mock(),
+                include_sig_op_count: mock(),
+                verbose_data_verbosity: mock(),
+            }
+        }
+    }
+
+    impl Mock for RpcTransactionOutputVerbosity {
+        fn mock() -> Self {
+            RpcTransactionOutputVerbosity { include_amount: mock(), include_script_public_key: mock(), verbose_data_verbosity: mock() }
+        }
+    }
+
+    impl Mock for RpcTransactionOutputVerboseDataVerbosity {
+        fn mock() -> Self {
+            RpcTransactionOutputVerboseDataVerbosity {
+                include_script_public_key_type: mock(),
+                include_script_public_key_address: mock(),
+            }
+        }
+    }
+
+    impl Mock for RpcTransactionVerboseDataVerbosity {
+        fn mock() -> Self {
+            RpcTransactionVerboseDataVerbosity {
+                include_transaction_id: mock(),
+                include_hash: mock(),
+                include_compute_mass: mock(),
+                include_block_hash: mock(),
+                include_block_time: mock(),
+            }
+        }
+    }
+
+    impl Mock for RpcTransactionVerbosity {
+        fn mock() -> Self {
+            RpcTransactionVerbosity {
+                include_version: mock(),
+                input_verbosity: mock(),
+                output_verbosity: mock(),
+                include_lock_time: mock(),
+                include_subnetwork_id: mock(),
+                include_gas: mock(),
+                include_payload: mock(),
+                include_mass: mock(),
+                verbose_data_verbosity: mock(),
+            }
+        }
+    }
+
     impl Mock for RpcTransaction {
         fn mock() -> Self {
             RpcTransaction {
@@ -254,10 +334,22 @@ mod mockery {
                 lock_time: mock(),
                 subnetwork_id: mock(),
                 gas: mock(),
-                payload: Hash::mock().as_bytes().to_vec(),
+                payload: Some(Hash::mock().as_bytes().to_vec()),
                 mass: mock(),
                 verbose_data: mock(),
             }
+        }
+    }
+
+    impl Mock for RpcMergesetBlockAcceptanceData {
+        fn mock() -> Self {
+            RpcMergesetBlockAcceptanceData { merged_header: mock(), accepted_transactions: mock() }
+        }
+    }
+
+    impl Mock for RpcAcceptanceData {
+        fn mock() -> Self {
+            RpcAcceptanceData { accepting_chain_header: mock(), mergeset_block_acceptance_data: mock() }
         }
     }
 
@@ -329,7 +421,30 @@ mod mockery {
 
     impl Mock for RpcUtxoEntry {
         fn mock() -> Self {
-            RpcUtxoEntry { amount: mock(), script_public_key: mock(), block_daa_score: mock(), is_coinbase: true }
+            RpcUtxoEntry {
+                amount: mock(),
+                script_public_key: mock(),
+                block_daa_score: mock(),
+                is_coinbase: mock(),
+                verbose_data: mock(),
+            }
+        }
+    }
+
+    impl Mock for RpcUtxoEntryVerboseData {
+        fn mock() -> Self {
+            RpcUtxoEntryVerboseData { script_public_key_type: mock(), script_public_key_address: mock() }
+        }
+    }
+
+    impl Mock for ScriptClass {
+        fn mock() -> Self {
+            match rand::thread_rng().gen::<u8>() % 4 {
+                0 => ScriptClass::NonStandard,
+                1 => ScriptClass::PubKey,
+                2 => ScriptClass::PubKeyECDSA,
+                _ => ScriptClass::ScriptHash, // 3
+            }
         }
     }
 
@@ -1063,6 +1178,26 @@ mod mockery {
     }
 
     test!(GetDaaScoreTimestampEstimateResponse);
+
+    impl Mock for GetVirtualChainFromBlockV2Request {
+        fn mock() -> Self {
+            GetVirtualChainFromBlockV2Request { start_hash: mock(), acceptance_data_verbosity: None }
+        }
+    }
+
+    test!(GetVirtualChainFromBlockV2Request);
+
+    impl Mock for GetVirtualChainFromBlockV2Response {
+        fn mock() -> Self {
+            GetVirtualChainFromBlockV2Response {
+                removed_chain_block_hashes: mock(),
+                added_chain_block_hashes: mock(),
+                added_acceptance_data: mock(),
+            }
+        }
+    }
+
+    test!(GetVirtualChainFromBlockV2Response);
 
     impl Mock for NotifyBlockAddedRequest {
         fn mock() -> Self {

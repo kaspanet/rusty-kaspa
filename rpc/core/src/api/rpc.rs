@@ -481,6 +481,20 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetCurrentBlockColorRequest,
     ) -> RpcResult<GetCurrentBlockColorResponse>;
 
+    async fn get_virtual_chain_from_block_v_2(
+        &self,
+        start_hash: RpcHash,
+        acceptance_data_verbosity: Option<RpcAcceptanceDataVerbosity>,
+    ) -> RpcResult<GetVirtualChainFromBlockV2Response> {
+        self.get_virtual_chain_from_block_v_2_call(None, GetVirtualChainFromBlockV2Request::new(start_hash, acceptance_data_verbosity))
+            .await
+    }
+    async fn get_virtual_chain_from_block_v_2_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetVirtualChainFromBlockV2Request,
+    ) -> RpcResult<GetVirtualChainFromBlockV2Response>;
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

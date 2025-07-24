@@ -22,7 +22,7 @@ use workflow_wasm::serde::to_value;
 full_featured! {
 #[derive(Clone, Debug, Display, Serialize, Deserialize)]
 pub enum Notification {
-    #[display(fmt = "BlockAdded notification: block hash {}", "_0.block.header.hash")]
+    #[display(fmt = "BlockAdded notification: block hash {}", "_0.block.header.as_ref().expect(\"expected header to be `Some()`\").hash.as_ref().expect(\"expected hash to be `Some()`\")")]
     BlockAdded(BlockAddedNotification),
 
     #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.accepted_transaction_ids.len()")]

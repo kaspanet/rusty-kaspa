@@ -28,7 +28,7 @@ use kaspa_rpc_core::{
     SubmitBlockRejectReason, SubmitBlockReport,
 };
 use kaspa_utils::hex::*;
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 macro_rules! from {
     // Response capture
@@ -264,10 +264,11 @@ from!(item: RpcResult<&kaspa_rpc_core::GetSubnetworkResponse>, protowire::GetSub
     Self { gas_limit: item.gas_limit, error: None }
 });
 
-// ~~~
-
 from!(item: &kaspa_rpc_core::GetVirtualChainFromBlockRequest, protowire::GetVirtualChainFromBlockRequestMessage, {
-    Self { start_hash: item.start_hash.to_string(), include_accepted_transaction_ids: item.include_accepted_transaction_ids }
+    Self {
+        start_hash: item.start_hash.to_string(),
+        include_accepted_transaction_ids: item.include_accepted_transaction_ids
+    }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockResponse>, protowire::GetVirtualChainFromBlockResponseMessage, {
     Self {
@@ -329,7 +330,7 @@ from!(item: &kaspa_rpc_core::GetHeadersRequest, protowire::GetHeadersRequestMess
     Self { start_hash: item.start_hash.to_string(), limit: item.limit, is_ascending: item.is_ascending }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetHeadersResponse>, protowire::GetHeadersResponseMessage, {
-    Self { headers: item.headers.iter().map(|x| x.hash.to_string()).collect(), error: None }
+    Self { headers: item.headers.iter().map(|x| x.hash.expect("expected hash").to_string()).collect(), error: None }
 });
 
 from!(item: &kaspa_rpc_core::GetUtxosByAddressesRequest, protowire::GetUtxosByAddressesRequestMessage, {
@@ -514,6 +515,22 @@ from!(&kaspa_rpc_core::GetSyncStatusRequest, protowire::GetSyncStatusRequestMess
 from!(item: RpcResult<&kaspa_rpc_core::GetSyncStatusResponse>, protowire::GetSyncStatusResponseMessage, {
     Self {
         is_synced: item.is_synced,
+        error: None,
+    }
+});
+
+from!(item: &kaspa_rpc_core::GetVirtualChainFromBlockV2Request, protowire::GetVirtualChainFromBlockV2RequestMessage, {
+    Self {
+        start_hash: item.start_hash.to_string(),
+        acceptance_data_verbosity: item.acceptance_data_verbosity.as_ref().map(|x| x.into())
+    }
+});
+
+from!(item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockV2Response>, protowire::GetVirtualChainFromBlockV2ResponseMessage, {
+    Self {
+        removed_chain_block_hashes: item.removed_chain_block_hashes.iter().map(|x| x.to_string()).collect(),
+        added_chain_block_hashes: item.added_chain_block_hashes.iter().map(|x| x.to_string()).collect(),
+        added_acceptance_data: item.added_acceptance_data.iter().map(|x| x.into()).collect(),
         error: None,
     }
 });
@@ -768,6 +785,20 @@ try_from!(item: &protowire::GetVirtualChainFromBlockResponseMessage, RpcResult<k
             .collect::<Result<Vec<_>, _>>()?,
         added_chain_block_hashes: item.added_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
         accepted_transaction_ids: item.accepted_transaction_ids.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
+    }
+});
+
+try_from!(item: &protowire::GetVirtualChainFromBlockV2RequestMessage, kaspa_rpc_core::GetVirtualChainFromBlockV2Request, {
+    Self {
+        start_hash: RpcHash::from_str(&item.start_hash)?,
+        acceptance_data_verbosity: item.acceptance_data_verbosity.as_ref().map(|x| x.try_into()).transpose()?,
+    }
+});
+try_from!(item: &protowire::GetVirtualChainFromBlockV2ResponseMessage, RpcResult<kaspa_rpc_core::GetVirtualChainFromBlockV2Response>, {
+    Self {
+        removed_chain_block_hashes: Arc::new(item.removed_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?),
+        added_chain_block_hashes: Arc::new(item.added_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?),
+        added_acceptance_data: Arc::new(item.added_acceptance_data.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?),
     }
 });
 
