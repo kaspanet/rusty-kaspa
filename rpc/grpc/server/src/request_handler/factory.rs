@@ -92,6 +92,8 @@ impl Factory {
                 NotifyVirtualChainChanged,
                 StopNotifyingUtxosChanged,
                 StopNotifyingPruningPointUtxoSetOverride,
+                GetPruningWindowRoots,
+                AddArchivalBlocks,
             ]
         );
 

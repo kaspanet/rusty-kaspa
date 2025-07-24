@@ -138,6 +138,9 @@ pub enum RpcApiOps {
     GetCurrentBlockColor = 149,
     /// Get UTXO Return Addresses
     GetUtxoReturnAddress = 150,
+
+    GetPruningWindowRoots = 151,
+    AddArchivalBlocks = 152,
 }
 
 impl RpcApiOps {
