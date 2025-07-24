@@ -140,12 +140,11 @@ pub mod weight_strats {
 /// _2) A peer may hold a rank as a multiple of 0.5, due to tie breaks splitting the rank._
 #[derive(Default, Clone, Copy, PartialEq, Debug, AsArray)]
 pub struct EvictionRanks {
-    // all times are in milliseconds
-    ip_prefix_bucket: f64,    // the first byte of the IP address, used to group peers by their IP prefix.
-    time_connected: f64,      // time connected to the peer.
-    last_ping_duration: f64,  // the duration of the last ping to the peer.
-    last_block_transfer: f64, // the duration since the last block was received from this peer.
-    last_tx_transfer: f64,    // the duration since the last transaction was received from this peer.
+    ip_prefix_bucket: f64, // the first byte of the IP address, used to group peers by their IP prefix, low value indicates a peer from a less populated prefix.
+    time_connected: f64,   // ranked time connected, low value indicates a peer with a long consistent connection to us.
+    last_ping_duration: f64, // ranked last ping duration, low value indicates a peer with a low latency.
+    last_block_transfer: f64, // ranked last block transfer duration, low value indicates a peer that is actively sending blocks to us.
+    last_tx_transfer: f64, // ranked last transaction transfer duration, low value indicates a peer that is actively sending transactions to us.
 }
 
 impl EvictionRanks {
