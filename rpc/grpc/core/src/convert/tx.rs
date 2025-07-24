@@ -331,7 +331,11 @@ try_from!(item: &protowire::RpcTransactionVerboseData, kaspa_rpc_core::RpcTransa
         transaction_id: Some(RpcHash::from_str(item.transaction_id.as_ref())?),
         hash: Some(RpcHash::from_str(item.hash.as_ref())?),
         compute_mass: Some(item.compute_mass),
-        block_hash: Some(RpcHash::from_str(item.block_hash.as_ref())?),
+        block_hash: if item.block_hash.is_empty() {
+            None
+        } else {
+            Some(RpcHash::from_str(item.block_hash.as_ref())?)
+        },
         block_time: Some(item.block_time),
     }
 });
