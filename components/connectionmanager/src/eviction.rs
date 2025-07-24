@@ -351,11 +351,6 @@ mod test {
     };
     use uuid::Uuid;
 
-    fn assert_all_ranks_are_all_ranks(ranks: &EvictionRanks, expected: [f64; 5]) {
-        // assert that all ranks are all ranks
-        assert_eq!(ranks.all_ranks().len(), EvictionRanks { ..Default::default() }.as_array().len());
-    }
-
     fn build_test_peers() -> Vec<Peer> {
         let now = Instant::now();
         let instants = Vec::from_iter((0..10).map(|i| now.checked_sub(Duration::from_secs(i)).unwrap())); // `from_secs` is important here, as time_connected has ms granularity, so it most be greater granularity than ms.
@@ -471,6 +466,12 @@ mod test {
         );
 
         vec![peer0, peer1, peer2, peer3, peer4, peer5, peer6, peer7, peer8, peer9]
+    }
+
+    #[test]
+    fn assert_all_ranks_are_all_ranks() {
+        // assert that all ranks are all ranks
+        assert_eq!(EvictionRanks { ..Default::default() }.all_ranks().len(), EvictionRanks { ..Default::default() }.as_array().len());
     }
 
     #[test]
