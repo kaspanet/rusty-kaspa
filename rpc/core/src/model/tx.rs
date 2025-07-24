@@ -584,7 +584,9 @@ impl Deserializer for RpcTransaction {
 
                 Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, verbose_data }
             }
-            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _struct_version))),
+            _ => {
+                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _struct_version)))
+            }
         })
     }
 }
