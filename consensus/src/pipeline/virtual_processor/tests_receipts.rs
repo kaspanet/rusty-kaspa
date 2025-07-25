@@ -27,13 +27,20 @@ async fn test_receipts_in_chain() {
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.prior_max_block_parents = 4;
-            p.prior_mergeset_size_limit = 10;
+            p.prior_max_block_parents = 10; //  is probably enough to avoid errors
+            p.crescendo.max_block_parents = 10;
+            p.prior_mergeset_size_limit = 30;
+            p.crescendo.mergeset_size_limit = 30;
             p.prior_ghostdag_k = 4;
+            p.crescendo.ghostdag_k = 4;
             p.prior_finality_depth = FINALITY_DEPTH as u64;
-            p.prior_target_time_per_block = (1000.0 / BPS) as u64;
+            p.crescendo.finality_depth = FINALITY_DEPTH as u64;
             p.prior_pruning_depth = (FINALITY_DEPTH * 3 - 5) as u64;
+            p.crescendo.pruning_depth = (FINALITY_DEPTH * 3 - 5) as u64;
             p.kip6_activation = ForkActivation::new(20);
+            p.crescendo_activation = ForkActivation::always();
+            p.prior_target_time_per_block = (1000.0 / BPS) as u64;
+            p.crescendo.target_time_per_block = (1000.0 / BPS) as u64;
         })
         .build();
     let mut expected_posterities = vec![];
@@ -183,12 +190,17 @@ async fn test_receipts_in_random() {
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.prior_max_block_parents = 10; //  is probably enough to avoid errors
+            p.crescendo.max_block_parents = 10;
             p.prior_mergeset_size_limit = 30;
+            p.crescendo.mergeset_size_limit = 30;
             p.prior_ghostdag_k = 4;
+            p.crescendo.ghostdag_k = 4;
             p.prior_finality_depth = FINALITY_DEPTH as u64;
+            p.crescendo.finality_depth = FINALITY_DEPTH as u64;
             p.prior_pruning_depth = (FINALITY_DEPTH * 3 - 5) as u64;
+            p.crescendo.pruning_depth = (FINALITY_DEPTH * 3 - 5) as u64;
             p.kip6_activation = ForkActivation::new(20);
-            p.crescendo_activation = ForkActivation::never();
+            p.crescendo_activation = ForkActivation::always();
         })
         .build();
     let mut receipts1 = std::collections::HashMap::<_, _>::new();

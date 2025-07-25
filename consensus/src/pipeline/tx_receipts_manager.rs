@@ -107,13 +107,15 @@ impl<
         //find the accepted tx in accepting_block_hash and create a merkle witness for it
         let mergeset_txs_data = self.acceptance_data_store.get(accepting_block_header.hash)?;
         let post_posterity_block = self.get_post_posterity_block(accepting_block_header.hash)?;
+        let selected_parent = self.reachability_service.get_chain_parent(accepting_block_header.hash);
+        let init_sqc = self.headers_store.get_header(selected_parent)?.accepted_id_merkle_root;
         let accepted_txs = mergeset_txs_data
             .iter()
             .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
             .collect::<Vec<_>>();
         let tx_acc_proof = create_merkle_witness(accepted_txs.into_iter(), tracked_tx_id, false)?;
 
-        let mut atmr_witnesses = vec![];
+        let mut atmr_chain = vec![];
         for block in self.reachability_service.forward_chain_iterator(accepting_block_header.hash, post_posterity_block, true) {
             let block_header = self.headers_store.get_header(block)?;
             let block_mergeset_txs_data = self.acceptance_data_store.get(block_header.hash)?;
@@ -121,9 +123,9 @@ impl<
                 .iter()
                 .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
                 .collect::<Vec<_>>();
-            atmr_witnesses.push(calc_merkle_root(block_accepted_txs.into_iter()))
+            atmr_chain.push(calc_merkle_root(block_accepted_txs.into_iter()))
         }
-        Ok(TxReceipt2 { tracked_tx_id, post_posterity_block, atmr_chain: atmr_witnesses, tx_acc_proof })
+        Ok(TxReceipt2 { tracked_tx_id, post_posterity_block, atmr_chain, tx_acc_proof, init_sqc })
     }
 
     pub fn generate_tx_receipt(&self, accepting_block_header: Arc<Header>, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
@@ -174,18 +176,22 @@ impl<
     pub fn verify_tx_receipt2(&self, tx_receipt: &TxReceipt2) -> bool {
         let tx_atmr = tx_receipt.atmr_chain[0];
         if !verify_merkle_witness(&tx_receipt.tx_acc_proof, tx_receipt.tracked_tx_id, tx_atmr) {
+            eprintln!("here");
             return false;
         }
-        let mut acc = tx_atmr;
-        for &curr_atmr in tx_receipt.atmr_chain.iter().skip(1) {
-            acc = merkle_hash(curr_atmr, acc);
+        let mut acc = tx_receipt.init_sqc;
+        for &curr_atmr in tx_receipt.atmr_chain.iter() {
+            acc = merkle_hash(acc, curr_atmr);
         }
         let post_posterity_header = self.headers_store.get_header(tx_receipt.post_posterity_block);
         if post_posterity_header.is_err() {
+            eprintln!("here2");
             return false;
         }
+        eprintln!("witness length:{}", tx_receipt.atmr_chain.len());
         let post_posterity_header = post_posterity_header.unwrap();
-        acc == post_posterity_header.hash_merkle_root
+        eprintln!("here3");
+        acc == post_posterity_header.accepted_id_merkle_root
     }
     pub fn verify_proof_of_pub(&self, proof_of_pub: &ProofOfPublication) -> bool {
         let valid_path = proof_of_pub

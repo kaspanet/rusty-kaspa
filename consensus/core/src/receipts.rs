@@ -98,6 +98,7 @@ pub struct ProofOfPublication {
 pub struct TxReceipt2 {
     pub tracked_tx_id: Hash,
     pub post_posterity_block: Hash,
+    pub init_sqc: Hash,
     pub atmr_chain: Vec<Hash>,
     pub tx_acc_proof: MerkleWitness,
 }
