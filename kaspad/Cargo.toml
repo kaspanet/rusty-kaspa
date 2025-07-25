@@ -43,8 +43,8 @@ kaspa-utxoindex.workspace = true
 kaspa-wrpc-server.workspace = true
 
 async-channel.workspace = true
+clap = { workspace = true, features = ["env"]}
 cfg-if.workspace = true
-clap.workspace = true
 dhat = { workspace = true, optional = true }
 dirs.workspace = true
 futures-util.workspace = true
