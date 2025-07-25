@@ -103,12 +103,16 @@ impl<
         accepting_block_header: Arc<Header>,
         tracked_tx_id: Hash,
     ) -> Result<TxReceipt2, ReceiptsErrors> {
+        //note: will fail for genesis, as its parent will be treated as "pruned"
         //Crescendo assumed activated
+        let selected_parent = self.reachability_service.get_chain_parent(accepting_block_header.hash);
+        // querying on the block itself would return the next posterity if the block is a posterity block
+        // which would mean having to wait far longer
+        let posterity_block = self.get_post_posterity_block(selected_parent)?;
+        let init_sqc = self.headers_store.get_header(selected_parent)?.accepted_id_merkle_root;
+
         //find the accepted tx in accepting_block_hash and create a merkle witness for it
         let mergeset_txs_data = self.acceptance_data_store.get(accepting_block_header.hash)?;
-        let post_posterity_block = self.get_post_posterity_block(accepting_block_header.hash)?;
-        let selected_parent = self.reachability_service.get_chain_parent(accepting_block_header.hash);
-        let init_sqc = self.headers_store.get_header(selected_parent)?.accepted_id_merkle_root;
         let accepted_txs = mergeset_txs_data
             .iter()
             .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
@@ -116,7 +120,7 @@ impl<
         let tx_acc_proof = create_merkle_witness(accepted_txs.into_iter(), tracked_tx_id, false)?;
 
         let mut atmr_chain = vec![];
-        for block in self.reachability_service.forward_chain_iterator(accepting_block_header.hash, post_posterity_block, true) {
+        for block in self.reachability_service.forward_chain_iterator(accepting_block_header.hash, posterity_block, true) {
             let block_header = self.headers_store.get_header(block)?;
             let block_mergeset_txs_data = self.acceptance_data_store.get(block_header.hash)?;
             let block_accepted_txs = block_mergeset_txs_data
@@ -125,7 +129,7 @@ impl<
                 .collect::<Vec<_>>();
             atmr_chain.push(calc_merkle_root(block_accepted_txs.into_iter()))
         }
-        Ok(TxReceipt2 { tracked_tx_id, post_posterity_block, atmr_chain, tx_acc_proof, init_sqc })
+        Ok(TxReceipt2 { tracked_tx_id, posterity_block, atmr_chain, tx_acc_proof, init_sqc })
     }
 
     pub fn generate_tx_receipt(&self, accepting_block_header: Arc<Header>, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
@@ -183,7 +187,7 @@ impl<
         for &curr_atmr in tx_receipt.atmr_chain.iter() {
             acc = merkle_hash(acc, curr_atmr);
         }
-        let post_posterity_header = self.headers_store.get_header(tx_receipt.post_posterity_block);
+        let post_posterity_header = self.headers_store.get_header(tx_receipt.posterity_block);
         if post_posterity_header.is_err() {
             eprintln!("here2");
             return false;
@@ -414,7 +418,6 @@ impl<
         representative_parents_partial_list
     }
     /* the function assumes that the path from block_hash up to its post posterity if it exits is intact and has not been pruned
-    (which should be the same as assuming block_hash has not been pruned)
     it will panic if not;
     An error is returned if post_posterity does not yet exist;
     The function does not assume block_hash is a chain block, however

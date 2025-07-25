@@ -38,7 +38,7 @@ async fn test_receipts_in_chain() {
             p.prior_pruning_depth = (FINALITY_DEPTH * 3 - 5) as u64;
             p.crescendo.pruning_depth = (FINALITY_DEPTH * 3 - 5) as u64;
             p.kip6_activation = ForkActivation::new(20);
-            p.crescendo_activation = ForkActivation::always();
+            p.crescendo_activation = ForkActivation::new(25);
             p.prior_target_time_per_block = (1000.0 / BPS) as u64;
             p.crescendo.target_time_per_block = (1000.0 / BPS) as u64;
         })
@@ -82,7 +82,7 @@ async fn test_receipts_in_chain() {
             let block_header = ctx.consensus.headers_store.get_header(block).unwrap();
             pochms_list.push((ctx.consensus.generate_pochm(block).unwrap(), block));
             let acc_tx = ctx.consensus.acceptance_data_store.get(block).unwrap()[0].accepted_transactions[0].transaction_id;
-            receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, None, None).unwrap(), acc_tx)); //add later: test if works via timestamp
+            receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, None, None).unwrap(), acc_tx));
             let pub_tx = ctx.consensus.block_transactions_store.get(block).unwrap()[0].id();
             pops.push((ctx.consensus.services.tx_receipts_manager.generate_proof_of_pub(block_header, pub_tx).unwrap(), pub_tx));
             let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(block);
@@ -100,9 +100,8 @@ async fn test_receipts_in_chain() {
         let past_posterity_block = it.next().unwrap();
         let past_posterity_header = ctx.consensus.headers_store.get_header(past_posterity_block).unwrap();
         pochms_list.push((ctx.consensus.generate_pochm(past_posterity_block).unwrap(), past_posterity_block));
-
         let acc_tx = ctx.consensus.acceptance_data_store.get(past_posterity_block).unwrap()[0].accepted_transactions[0].transaction_id;
-        receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, None, None).unwrap(), acc_tx)); //add later: test if works via timestamp
+        receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, None, None).unwrap(), acc_tx));
         let pub_tx = ctx.consensus.block_transactions_store.get(past_posterity_block).unwrap()[0].id();
         pops.push((ctx.consensus.services.tx_receipts_manager.generate_proof_of_pub(past_posterity_header, pub_tx).unwrap(), pub_tx));
         let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(past_posterity_block);
@@ -200,7 +199,7 @@ async fn test_receipts_in_random() {
             p.prior_pruning_depth = (FINALITY_DEPTH * 3 - 5) as u64;
             p.crescendo.pruning_depth = (FINALITY_DEPTH * 3 - 5) as u64;
             p.kip6_activation = ForkActivation::new(20);
-            p.crescendo_activation = ForkActivation::always();
+            p.crescendo_activation = ForkActivation::new(20);
         })
         .build();
     let mut receipts1 = std::collections::HashMap::<_, _>::new();
