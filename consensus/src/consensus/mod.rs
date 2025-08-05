@@ -41,7 +41,7 @@ use crate::{
     processes::{
         difficulty::calc_work,
         ghostdag::ordering::SortableBlock,
-        window::{self, WindowManager, WindowType},
+        window::{WindowManager, WindowType},
     },
 };
 use kaspa_consensus_core::{
@@ -59,7 +59,6 @@ use kaspa_consensus_core::{
     errors::{
         coinbase::CoinbaseResult,
         consensus::{ConsensusError, ConsensusResult},
-        difficulty::DifficultyError,
         pruning::PruningImportError,
         tx::TxResult,
     },

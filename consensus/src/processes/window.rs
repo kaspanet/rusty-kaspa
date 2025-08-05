@@ -10,7 +10,7 @@ use crate::{
 use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, ORIGIN},
     config::{genesis::GenesisBlock, params::ForkActivation},
-    errors::{block::RuleError, difficulty::DifficultyResult},
+    errors::block::RuleError,
     BlockHashSet, BlueWorkType, HashMapCustomHasher,
 };
 use kaspa_core::{info, log::CRESCENDO_KEYWORD};

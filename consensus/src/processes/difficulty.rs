@@ -5,7 +5,6 @@ use crate::model::stores::{
 };
 use kaspa_consensus_core::{
     config::params::{ForkActivation, MAX_DIFFICULTY_TARGET_AS_F64},
-    errors::difficulty::{DifficultyError, DifficultyResult},
     BlockHashSet, BlueWorkType, MAX_WORK_LEVEL,
 };
 use kaspa_core::{info, log::CRESCENDO_KEYWORD};
