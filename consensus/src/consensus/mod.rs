@@ -39,6 +39,7 @@ use crate::{
         ProcessingCounters,
     },
     processes::{
+        difficulty::calc_work,
         ghostdag::ordering::SortableBlock,
         window::{WindowManager, WindowType},
     },
@@ -469,12 +470,31 @@ impl Consensus {
     }
 
     fn estimate_network_hashes_per_second_impl(&self, ghostdag_data: &GhostdagData, window_size: usize) -> ConsensusResult<u64> {
-        let window = match self.services.window_manager.block_window(ghostdag_data, WindowType::VaryingWindow(window_size)) {
-            Ok(w) => w,
-            Err(RuleError::InsufficientDaaWindowSize(s)) => return Err(DifficultyError::InsufficientWindowData(s).into()),
-            Err(e) => panic!("unexpected error: {e}"),
-        };
-        Ok(self.services.window_manager.estimate_network_hashes_per_second(window)?)
+        let mut count = 0;
+        let mut red_work: BlueWorkType = 0.into();
+        let mut bottom = ghostdag_data.selected_parent;
+        for chain_block in self.services.reachability_service.default_backward_chain_iterator(ghostdag_data.selected_parent) {
+            let gd = self.get_ghostdag_data(chain_block).unwrap();
+            for red in &gd.mergeset_reds {
+                let red_header = self.headers_store.get_header(*red).unwrap();
+                red_work = red_work + calc_work(red_header.bits);
+            }
+            count += gd.mergeset_blues.len() + gd.mergeset_reds.len();
+            bottom = chain_block;
+            if count >= window_size {
+                break;
+            }
+        }
+        let sp_header = self.headers_store.get_header(ghostdag_data.selected_parent).unwrap();
+        let bottom_header = self.headers_store.get_header(bottom).unwrap();
+        let blue_work = sp_header.blue_work - bottom_header.blue_work;
+        let total_work = blue_work + red_work;
+        let time_diff = (sp_header.timestamp - bottom_header.timestamp) / 1000; // Time difference in seconds
+        if time_diff == 0 {
+            return Err(ConsensusError::General("time difference is zero, cannot estimate hashes per second"));
+        }
+        let hashes_per_second = (total_work / time_diff).as_u64();
+        Ok(hashes_per_second)
     }
 
     fn pruning_point_compact_headers(&self) -> Vec<(Hash, CompactHeaderData)> {
