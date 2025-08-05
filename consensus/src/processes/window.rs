@@ -57,7 +57,6 @@ pub trait WindowManager {
     fn calculate_difficulty_bits(&self, ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32;
     fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError>;
     fn calc_past_median_time_for_known_hash(&self, hash: Hash) -> Result<u64, RuleError>;
-    fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64>;
     fn window_size(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> usize;
     fn sample_rate(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> u64;
 
@@ -261,10 +260,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             self.block_window_cache_for_past_median_time.insert(hash, window);
             Ok(past_median_time)
         }
-    }
-
-    fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64> {
-        self.difficulty_manager.estimate_network_hashes_per_second(&window)
     }
 
     fn window_size(&self, _ghostdag_data: &GhostdagData, window_type: WindowType) -> usize {
@@ -682,10 +677,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         }
     }
 
-    fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64> {
-        self.difficulty_manager.estimate_network_hashes_per_second(&window)
-    }
-
     fn window_size(&self, _ghostdag_data: &GhostdagData, window_type: WindowType) -> usize {
         match window_type {
             WindowType::DifficultyWindow => self.difficulty_window_size,
@@ -863,10 +854,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             true => self.sampled_window_manager.calc_past_median_time_for_known_hash(hash),
             false => self.full_window_manager.calc_past_median_time_for_known_hash(hash),
         }
-    }
-
-    fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64> {
-        self.sampled_window_manager.estimate_network_hashes_per_second(window)
     }
 
     fn window_size(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> usize {

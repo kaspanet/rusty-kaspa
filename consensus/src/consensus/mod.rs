@@ -41,7 +41,7 @@ use crate::{
     processes::{
         difficulty::calc_work,
         ghostdag::ordering::SortableBlock,
-        window::{WindowManager, WindowType},
+        window::{self, WindowManager, WindowType},
     },
 };
 use kaspa_consensus_core::{
@@ -470,6 +470,11 @@ impl Consensus {
     }
 
     fn estimate_network_hashes_per_second_impl(&self, ghostdag_data: &GhostdagData, window_size: usize) -> ConsensusResult<u64> {
+        const MIN_WINDOW_SIZE: usize = 1000;
+        if window_size < MIN_WINDOW_SIZE {
+            return Err(ConsensusError::UnderMinWindowSizeAllowed(window_size, MIN_WINDOW_SIZE));
+        }
+
         let mut count = 0;
         let mut red_work: BlueWorkType = 0.into();
         let mut bottom = ghostdag_data.selected_parent;
@@ -485,6 +490,11 @@ impl Consensus {
                 break;
             }
         }
+
+        if count < window_size {
+            return Err(ConsensusError::InsufficientWindowData(count));
+        }
+
         let sp_header = self.headers_store.get_header(ghostdag_data.selected_parent).unwrap();
         let bottom_header = self.headers_store.get_header(bottom).unwrap();
         let blue_work = sp_header.blue_work - bottom_header.blue_work;
@@ -1135,7 +1145,7 @@ impl ConsensusApi for Consensus {
                 let ghostdag_data = self.ghostdag_store.get_data(hash).unwrap();
                 // The selected parent header is used within to check for sampling activation, so we verify its existence first
                 if !self.headers_store.has(ghostdag_data.selected_parent).unwrap() {
-                    return Err(ConsensusError::DifficultyError(DifficultyError::InsufficientWindowData(0)));
+                    return Err(ConsensusError::InsufficientWindowData(0));
                 }
                 self.estimate_network_hashes_per_second_impl(&ghostdag_data, window_size)
             }
