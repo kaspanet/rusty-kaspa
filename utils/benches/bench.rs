@@ -117,6 +117,7 @@ mod ref_lock {
             rg
         }
 
+        #[allow(dead_code)]
         pub async fn write(&self) -> OwnedTokioRwLockWriteGuard<T> {
             self.inner.clone().write_owned().await
         }

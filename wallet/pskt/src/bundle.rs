@@ -59,7 +59,7 @@ impl Bundle {
     }
 
     /// Iterator over the inner PSKT instances
-    pub fn iter(&self) -> std::slice::Iter<PSKTInner> {
+    pub fn iter(&self) -> std::slice::Iter<'_, PSKTInner> {
         self.0.iter()
     }
 

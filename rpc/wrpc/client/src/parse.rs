@@ -59,7 +59,7 @@ pub enum ParseHostError {
 /// IPv6 addresses are optionally enclosed in square brackets, and required if specifying a port.
 ///
 /// If a path is attached to the host string, it will not be discarded.
-pub fn parse_host(input: &str) -> Result<ParseHostOutput, ParseHostError> {
+pub fn parse_host(input: &str) -> Result<ParseHostOutput<'_>, ParseHostError> {
     // Attempt to split the input into scheme, host, and port.
     let (scheme, input) = match input.find("://") {
         Some(pos) => {

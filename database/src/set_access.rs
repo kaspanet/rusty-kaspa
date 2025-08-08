@@ -21,7 +21,7 @@ impl<T> ReadLock<T> {
         Self(rwlock)
     }
 
-    pub fn read(&self) -> RwLockReadGuard<T> {
+    pub fn read(&self) -> RwLockReadGuard<'_, T> {
         self.0.read()
     }
 }

@@ -88,7 +88,7 @@ impl Stream for AccountStream {
             let account = accounts[self.inner.cursor].clone();
             self.inner.cursor += 1;
             let meta = metadata.get(&account.id).cloned();
-            return Poll::Ready(Some(Ok((account, meta))));
+            Poll::Ready(Some(Ok((account, meta))))
         } else {
             Poll::Ready(None)
         }

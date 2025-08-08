@@ -59,11 +59,11 @@ impl SessionLock {
         SessionOwnedReadGuard(Arc::new(self.0.clone().read_owned().await))
     }
 
-    pub async fn read(&self) -> SessionReadGuard {
+    pub async fn read(&self) -> SessionReadGuard<'_> {
         SessionReadGuard(self.0.read().await)
     }
 
-    pub fn blocking_read(&self) -> SessionReadGuard {
+    pub fn blocking_read(&self) -> SessionReadGuard<'_> {
         SessionReadGuard(self.0.blocking_read())
     }
 
@@ -86,7 +86,7 @@ impl ConsensusInstance {
     /// Returns a blocking session to be used in **non async** environments.
     /// Users would usually need to call something like `futures::executor::block_on` in order
     /// to acquire the session, but we prefer leaving this decision to the caller
-    pub async fn session_blocking(&self) -> ConsensusSessionBlocking {
+    pub async fn session_blocking(&self) -> ConsensusSessionBlocking<'_> {
         let g = self.session_lock.read().await;
         ConsensusSessionBlocking::new(g, self.consensus.clone())
     }

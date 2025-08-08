@@ -54,7 +54,7 @@ pub trait StatusesStoreBatchExtensions {
         batch: &mut WriteBatch,
         hash: Hash,
         status: BlockStatus,
-    ) -> Result<RwLockWriteGuard<DbStatusesStore>, StoreError>;
+    ) -> Result<RwLockWriteGuard<'_, DbStatusesStore>, StoreError>;
 }
 
 impl StatusesStoreBatchExtensions for Arc<RwLock<DbStatusesStore>> {
@@ -63,7 +63,7 @@ impl StatusesStoreBatchExtensions for Arc<RwLock<DbStatusesStore>> {
         batch: &mut WriteBatch,
         hash: Hash,
         status: BlockStatus,
-    ) -> Result<RwLockWriteGuard<DbStatusesStore>, StoreError> {
+    ) -> Result<RwLockWriteGuard<'_, DbStatusesStore>, StoreError> {
         let write_guard = self.write();
         write_guard.access.write(BatchDbWriter::new(batch), hash, status)?;
         Ok(write_guard)

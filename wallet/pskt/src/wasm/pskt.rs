@@ -135,7 +135,7 @@ impl PSKT {
         serde_json::to_string(state.as_ref().unwrap()).unwrap()
     }
 
-    fn state(&self) -> MutexGuard<Option<State>> {
+    fn state(&self) -> MutexGuard<'_, Option<State>> {
         self.state.lock().unwrap()
     }
 

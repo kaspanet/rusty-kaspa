@@ -161,7 +161,7 @@ impl UtxoProcessor {
         &self.inner.multiplexer
     }
 
-    pub async fn notification_lock(&self) -> AsyncRwLockReadGuard<()> {
+    pub async fn notification_lock(&self) -> AsyncRwLockReadGuard<'_, ()> {
         self.inner.notification_guard.read().await
     }
 
