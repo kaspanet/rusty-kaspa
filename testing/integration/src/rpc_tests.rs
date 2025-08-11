@@ -95,7 +95,7 @@ async fn sanity_test() {
                             GetVirtualChainFromBlockRequest {
                                 start_hash: SIMNET_GENESIS.hash,
                                 include_accepted_transaction_ids: false,
-                                min_confirmation_count: 0,
+                                min_confirmation_count: Some(0),
                             },
                         )
                         .await
@@ -156,7 +156,7 @@ async fn sanity_test() {
                             GetVirtualChainFromBlockRequest {
                                 start_hash: SIMNET_GENESIS.hash,
                                 include_accepted_transaction_ids: false,
-                                min_confirmation_count: 0,
+                                min_confirmation_count: Some(0),
                             },
                         )
                         .await
@@ -171,7 +171,7 @@ async fn sanity_test() {
                             GetVirtualChainFromBlockRequest {
                                 start_hash: SIMNET_GENESIS.hash,
                                 include_accepted_transaction_ids: false,
-                                min_confirmation_count: 1,
+                                min_confirmation_count: Some(1),
                             },
                         )
                         .await

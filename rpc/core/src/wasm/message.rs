@@ -1230,7 +1230,7 @@ declare! {
     export interface IGetVirtualChainFromBlockRequest {
         startHash : HexString;
         includeAcceptedTransactionIds: boolean;
-        minConfirmationCount: number;
+        minConfirmationCount?: number;
     }
     "#,
 }

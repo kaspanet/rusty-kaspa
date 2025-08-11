@@ -11,10 +11,10 @@ const { networkId, encoding } = parseArgs();
 
 (async () => {
   const rpc = new RpcClient({
-    // url : "127.0.0.1",
+    url : "127.0.0.1",
     // encoding,
     resolver: new Resolver(),
-    networkId: "mainnet",
+    networkId: "devnet",
   });
   console.log(`Resolving RPC endpoint...`);
   await rpc.connect();
@@ -22,9 +22,9 @@ const { networkId, encoding } = parseArgs();
 
   const virtualChainFromBlockResponse = await rpc.getVirtualChainFromBlock({
     startHash:
-      "493435989075383ba92669d2bdcf12b6e894dac7d42e767aa93994637e8e5cd0",
+      "106145ef74693458e1013819f04cafb65d99fd17d28a8c0a6e3941199c0adf82",
     includeAcceptedTransactionIds: true,
-    minConfirmationCount: 1,
+    // minConfirmationCount: 1,
   });
   console.log(
     "GetVirtualChainFromBlock response:",

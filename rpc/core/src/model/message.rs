@@ -859,11 +859,11 @@ impl Deserializer for GetSubnetworkResponse {
 pub struct GetVirtualChainFromBlockRequest {
     pub start_hash: RpcHash,
     pub include_accepted_transaction_ids: bool,
-    pub min_confirmation_count: u64,
+    pub min_confirmation_count: Option<u64>,
 }
 
 impl GetVirtualChainFromBlockRequest {
-    pub fn new(start_hash: RpcHash, include_accepted_transaction_ids: bool, min_confirmation_count: u64) -> Self {
+    pub fn new(start_hash: RpcHash, include_accepted_transaction_ids: bool, min_confirmation_count: Option<u64>) -> Self {
         Self { start_hash, include_accepted_transaction_ids, min_confirmation_count }
     }
 }
@@ -873,7 +873,7 @@ impl Serializer for GetVirtualChainFromBlockRequest {
         store!(u16, &2, writer)?;
         store!(RpcHash, &self.start_hash, writer)?;
         store!(bool, &self.include_accepted_transaction_ids, writer)?;
-        store!(u64, &self.min_confirmation_count, writer)?;
+        store!(Option<u64>, &self.min_confirmation_count, writer)?;
 
         Ok(())
     }
@@ -886,7 +886,7 @@ impl Deserializer for GetVirtualChainFromBlockRequest {
         let include_accepted_transaction_ids = load!(bool, reader)?;
 
         // starting from version 2, min_confirmation_count is expected to be included in the request
-        let min_confirmation_count = if version > 1 { load!(u64, reader)? } else { 0 };
+        let min_confirmation_count = if version > 1 { load!(Option<u64>, reader)? } else { None };
 
         Ok(Self { start_hash, include_accepted_transaction_ids, min_confirmation_count })
     }
