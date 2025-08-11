@@ -67,6 +67,3 @@ targets = [
     { target = "web", out-dir = "web/kaspa" },
 ]
 folder = "setup"
-
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = false
