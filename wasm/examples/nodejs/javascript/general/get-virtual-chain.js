@@ -11,10 +11,10 @@ const { networkId, encoding } = parseArgs();
 
 (async () => {
   const rpc = new RpcClient({
-    url : "127.0.0.1",
+    // url : "127.0.0.1",
     // encoding,
     resolver: new Resolver(),
-    networkId: "devnet",
+    networkId: "mainnet",
   });
   console.log(`Resolving RPC endpoint...`);
   await rpc.connect();
