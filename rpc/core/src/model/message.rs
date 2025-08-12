@@ -885,7 +885,6 @@ impl Deserializer for GetVirtualChainFromBlockRequest {
         let start_hash = load!(RpcHash, reader)?;
         let include_accepted_transaction_ids = load!(bool, reader)?;
 
-        // starting from version 2, min_confirmation_count is expected to be included in the request
         let min_confirmation_count = if version > 1 { load!(Option<u64>, reader)? } else { None };
 
         Ok(Self { start_hash, include_accepted_transaction_ids, min_confirmation_count })

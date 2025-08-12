@@ -1230,6 +1230,11 @@ declare! {
     export interface IGetVirtualChainFromBlockRequest {
         startHash : HexString;
         includeAcceptedTransactionIds: boolean;
+        /**
+         * optional parameter, if not provided, it will be interpreted as 0
+         * 
+         * number of confirmation to wait for before a block is considered as part of the virtual chain
+         */
         minConfirmationCount?: number;
     }
     "#,

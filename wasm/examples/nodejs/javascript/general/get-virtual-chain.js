@@ -20,11 +20,19 @@ const { networkId, encoding } = parseArgs();
   await rpc.connect();
   console.log(`Connecting to ${rpc.url}`);
 
+  console.log("Getting known block hash from node...");
+
+  const info = await rpc.getBlockDagInfo();
+  const sinkHash = info.sink;
+
+  console.log(`Found sink hash: ${sinkHash}`);
+
+  console.log("Getting virtual chain from sink hash...");
+
   const virtualChainFromBlockResponse = await rpc.getVirtualChainFromBlock({
-    startHash:
-      "106145ef74693458e1013819f04cafb65d99fd17d28a8c0a6e3941199c0adf82",
+    startHash: sinkHash,
     includeAcceptedTransactionIds: true,
-    // minConfirmationCount: 1,
+    minConfirmationCount: 30,
   });
   console.log(
     "GetVirtualChainFromBlock response:",

@@ -685,8 +685,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let batch_size = (self.config.mergeset_size_limit().upper_bound() * 10) as usize;
         let mut virtual_chain_batch = session.async_get_virtual_chain_from_block(request.start_hash, Some(batch_size)).await?;
 
-        match request.min_confirmation_count {
-            Some(min_confirmation_count) if min_confirmation_count > 0 => {
+        if let Some(min_confirmation_count) = request.min_confirmation_count {
+            if min_confirmation_count > 0 {
                 let sink_blue_score = session.async_get_sink_blue_score().await;
 
                 while !virtual_chain_batch.added.is_empty() {
@@ -702,7 +702,6 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                     virtual_chain_batch.added.pop();
                 }
             }
-            _ => {}
         }
 
         let accepted_transaction_ids = if request.include_accepted_transaction_ids {
