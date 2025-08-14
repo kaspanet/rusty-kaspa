@@ -133,7 +133,11 @@ impl Rpc {
                 let result = rpc
                     .get_virtual_chain_from_block_call(
                         None,
-                        GetVirtualChainFromBlockRequest { start_hash, include_accepted_transaction_ids, min_confirmation_count: Some(min_confirmation_count) },
+                        GetVirtualChainFromBlockRequest {
+                            start_hash,
+                            include_accepted_transaction_ids,
+                            min_confirmation_count: Some(min_confirmation_count),
+                        },
                     )
                     .await?;
                 self.println(&ctx, result);
