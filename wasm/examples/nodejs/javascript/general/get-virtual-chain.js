@@ -29,15 +29,21 @@ const { networkId, encoding } = parseArgs();
 
   console.log("Getting virtual chain from sink hash...");
 
-  const virtualChainFromBlockResponse = await rpc.getVirtualChainFromBlock({
+  // 1. wait for the sink hash to be confirmed by 30 blocks
+  const virtualChainFromBlockResponseOne = await rpc.getVirtualChainFromBlock({
     startHash: sinkHash,
     includeAcceptedTransactionIds: true,
     minConfirmationCount: 30,
   });
-  console.log(
-    "GetVirtualChainFromBlock response:",
-    virtualChainFromBlockResponse
-  );
+  console.log({ virtualChainFromBlockResponseOne });
+
+  // 2. do not specify a minConfirmationCount, so the virtual chain will be returned from the sink hash
+  //    without waiting for any confirmations
+  const virtualChainFromBlockResponseTwo = await rpc.getVirtualChainFromBlock({
+    startHash: sinkHash,
+    includeAcceptedTransactionIds: true,
+  });
+  console.log({ virtualChainFromBlockResponseTwo });
 
   await rpc.disconnect();
   console.log("bye!");

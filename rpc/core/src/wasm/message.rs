@@ -1231,9 +1231,8 @@ declare! {
         startHash : HexString;
         includeAcceptedTransactionIds: boolean;
         /**
-         * optional parameter, if not provided, it will be interpreted as 0
-         * 
-         * number of confirmation to wait for before a block is considered as part of the virtual chain
+         * If passed, this request will only return blocks that have at least minConfirmationCount number of confirmations. Confirmation is counted through the distance from virtual chain tip.
+         * If not passed, it will be interpreted as 0.
          */
         minConfirmationCount?: number;
     }
