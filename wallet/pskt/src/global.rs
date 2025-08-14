@@ -185,9 +185,9 @@ pub enum CombineError {
     NotCompatibleProprietary(crate::utils::Error<String, serde_value::Value>),
     #[error("The transaction payloads are not compatible")]
     PayloadMismatch {
-        /// First payload
+        /// lhs
         this: Option<Vec<u8>>,
-        /// Second payload
+        /// rhs
         that: Option<Vec<u8>>,
     },
 }
