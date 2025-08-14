@@ -341,6 +341,17 @@ pub struct TransactionRecord {
     pub metadata: Option<String>,
 }
 
+#[wasm_bindgen]
+impl TransactionRecord {
+    #[wasm_bindgen(js_name = maturityProgress)]
+    #[allow(non_snake_case)]
+    pub fn maturity_progress_js(&self, currentDaaScore: BigInt) -> String {
+        self.maturity_progress(currentDaaScore.try_as_u64().unwrap_or_default())
+            .map(|progress| format!("{}", (progress * 100.) as usize))
+            .unwrap_or_default()
+    }
+}
+
 impl TransactionRecord {
     const STORAGE_MAGIC: u32 = 0x5854414b;
     const STORAGE_VERSION: u32 = 0;

@@ -46,7 +46,7 @@ impl ProgressReporter {
         if current_daa_score > self.high_daa_score {
             self.high_daa_score = current_daa_score + 1; // + 1 for keeping it at 99%
         }
-        let relative_daa_score = if current_daa_score > self.low_daa_score { current_daa_score - self.low_daa_score } else { 0 };
+        let relative_daa_score = current_daa_score.saturating_sub(self.low_daa_score);
         let percent = ((relative_daa_score as f64 / (self.high_daa_score - self.low_daa_score) as f64) * 100.0) as i32;
         if percent > self.last_reported_percent {
             let date = match Local.timestamp_opt(current_timestamp as i64 / 1000, 1000 * (current_timestamp as u32 % 1000)) {

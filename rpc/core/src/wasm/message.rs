@@ -1732,4 +1732,41 @@ try_from!( args: GetFeeEstimateExperimentalResponse, IGetFeeEstimateExperimental
     Ok(response)
 });
 
+declare! {
+    IGetUtxoReturnAddressRequest,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxoReturnAddressRequest {
+        txid: HexString;
+        acceptingBlockDaaScore: bigint;
+    }
+    "#,
+}
+
+try_from!(args: IGetUtxoReturnAddressRequest, GetUtxoReturnAddressRequest, {
+   Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetUtxoReturnAddressResponse,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxoReturnAddressResponse {
+        returnAddress: Address;
+    }
+    "#,
+}
+
+try_from!(args: GetUtxoReturnAddressResponse, IGetUtxoReturnAddressResponse, {
+    Ok(to_value(&args)?.into())
+});
+
 // ---

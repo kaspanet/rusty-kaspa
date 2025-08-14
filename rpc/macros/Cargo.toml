@@ -23,3 +23,6 @@ proc-macro2 = { version = "1.0.43" }
 quote = "1.0.21"
 regex.workspace = true
 syn = {version="1.0.99",features=["full","fold","extra-traits","parsing","proc-macro"]} # do not update!
+
+[lints]
+workspace = true
