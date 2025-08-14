@@ -33,17 +33,19 @@ pub struct Inner {
     pub outputs: Vec<Output>,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize_repr, Deserialize_repr)]
 #[repr(u8)]
 pub enum Version {
     #[default]
     Zero = 0,
+    One = 1,
 }
 
 impl Display for Version {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Version::Zero => write!(f, "{}", Version::Zero as u8),
+            Version::One => write!(f, "{}", Version::One as u8),
         }
     }
 }
@@ -238,6 +240,10 @@ impl PSKT<Constructor> {
     }
 
     pub fn payload(mut self, payload: Option<Vec<u8>>) -> Self {
+        // Only allow setting payload if version is One or greater
+        if payload.is_some() && self.inner_pskt.global.version < Version::One {
+            self.inner_pskt.global.version = Version::One;
+        }
         self.inner_pskt.global.payload = payload;
         self
     }
