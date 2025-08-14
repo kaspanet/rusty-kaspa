@@ -153,7 +153,12 @@ impl<R> PSKT<R> {
             self.determine_lock_time(),
             SUBNETWORK_ID_NATIVE,
             0,
-            self.global.payload.clone().unwrap_or_default(),
+            // Only include payload if version supports it (Version::One or higher)
+            if self.global.version >= Version::One {
+                self.global.payload.clone().unwrap_or_default()
+            } else {
+                vec![]
+            },
         );
         let entries = self.inputs.iter().filter_map(|Input { utxo_entry, .. }| utxo_entry.clone()).collect();
         SignableTransaction::with_entries(tx, entries)
@@ -239,13 +244,13 @@ impl PSKT<Constructor> {
         self
     }
 
-    pub fn payload(mut self, payload: Option<Vec<u8>>) -> Self {
+    pub fn payload(mut self, payload: Option<Vec<u8>>) -> Result<Self, Error> {
         // Only allow setting payload if version is One or greater
         if payload.is_some() && self.inner_pskt.global.version < Version::One {
-            self.inner_pskt.global.version = Version::One;
+            return Err(Error::PayloadRequiresVersion1(self.inner_pskt.global.version));
         }
         self.inner_pskt.global.payload = payload;
-        self
+        Ok(self)
     }
 
     /// Returns a PSKT [`Updater`] once construction is completed.
