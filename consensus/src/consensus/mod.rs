@@ -588,6 +588,10 @@ impl ConsensusApi for Consensus {
         self.headers_store.get_timestamp(self.get_sink()).unwrap()
     }
 
+    fn get_sink_blue_score(&self) -> u64 {
+        self.headers_store.get_blue_score(self.get_sink()).unwrap()
+    }
+
     fn get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
         let sink = self.get_sink();
         let compact = self.headers_store.get_compact_header_data(sink).unwrap();
