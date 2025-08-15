@@ -85,7 +85,7 @@ impl PubkeyDerivationManagerV0 {
         *self.opt_inner() = None;
     }
 
-    fn opt_inner(&self) -> MutexGuard<Option<Inner>> {
+    fn opt_inner(&self) -> MutexGuard<'_, Option<Inner>> {
         self.inner.lock().unwrap()
     }
 

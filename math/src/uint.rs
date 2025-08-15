@@ -904,7 +904,7 @@ macro_rules! construct_uint {
                         type Value = ();
                         #[inline]
                         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                            formatter.write_str(concat!("a hex string"))
+                            formatter.write_str("a hex string")
                         }
                         #[inline]
                         fn visit_str<E>(self, hex: &str) -> Result<Self::Value, E>

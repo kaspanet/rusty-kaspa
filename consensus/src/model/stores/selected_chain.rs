@@ -58,7 +58,7 @@ pub trait SelectedChainStoreBatchExtensions {
         batch: &mut WriteBatch,
         hash: Hash,
         status: BlockStatus,
-    ) -> Result<RwLockWriteGuard<DbSelectedChainStore>, StoreError>;
+    ) -> Result<RwLockWriteGuard<'_, DbSelectedChainStore>, StoreError>;
 }
 
 impl SelectedChainStoreReader for DbSelectedChainStore {

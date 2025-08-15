@@ -142,7 +142,7 @@ impl TransactionStore {
     }
 
     #[inline(always)]
-    fn inner(&self) -> MutexGuard<Arc<Inner>> {
+    fn inner(&self) -> MutexGuard<'_, Arc<Inner>> {
         self.inner.lock().unwrap()
     }
 

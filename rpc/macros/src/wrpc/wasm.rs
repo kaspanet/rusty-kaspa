@@ -229,10 +229,10 @@ impl Parse for TsInterface {
             let declaration = extract_literal(&iter.next().unwrap().clone())?;
             Ok(TsInterface { handler, alias, declaration })
         } else {
-            return Err(Error::new_spanned(
+            Err(Error::new_spanned(
                 parsed,
                 "usage: declare_wasm_interface!(typescript_type, [alias], typescript declaration)".to_string(),
-            ));
+            ))
         }
     }
 }

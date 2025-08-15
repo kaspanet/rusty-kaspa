@@ -272,7 +272,7 @@ impl Ord for UtxoEntryReference {
 
 impl PartialOrd for UtxoEntryReference {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.id().cmp(&other.id()))
+        Some(self.cmp(other))
     }
 }
 

@@ -408,7 +408,7 @@ impl Consensus {
     }
 
     /// Acquires a consensus session, blocking data-pruning from occurring until released
-    pub fn acquire_session(&self) -> SessionReadGuard {
+    pub fn acquire_session(&self) -> SessionReadGuard<'_> {
         self.pruning_lock.blocking_read()
     }
 
