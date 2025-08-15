@@ -422,3 +422,23 @@ Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.1
     In this command we set the `loglevel` to `INFO`.
 
 </details>
+
+## Run a devnet node (development only)
+
+Start the devnet node with the following command:
+
+```bash
+cargo run --bin kaspad -- --devnet --enable-unsynced-mining --rpclisten=127.0.0.1 --rpclisten-borsh=127.0.0.1 --utxoindex --disable-upnp
+```
+
+Start the [miner](https://github.com/elichai/kaspa-miner/releases) with the following command:
+
+```bash
+# replace the mining address with your own address to receive the block rewards
+cargo run --kaspad-address=127.0.0.1 --port=16610 --mine-when-not-synced --t=1 --mining-address=kaspadev:qzdclkk7kuzr3ps7nkz7ef0fdr8vf9cjgvlps4gxqw6qyujhu0ttc6e8en76a
+
+# if using the released compiled binary, use the following command instead:
+./kaspa-miner --kaspad-address=127.0.0.1 --port=16610 --mine-when-not-synced --t=1 --mining-address=kaspadev:qzdclkk7kuzr3ps7nkz7ef0fdr8vf9cjgvlps4gxqw6qyujhu0ttc6e8en76a
+```
+
+note: it will take a bit of time for the difficulty to find its sweet spot, so you may need to wait a bit before you see blocks being mined.
