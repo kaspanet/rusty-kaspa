@@ -323,13 +323,10 @@ impl UtxosChangedSubscription {
     }
 
     pub fn with_capacity(state: UtxosChangedState, listener_id: ListenerId, capacity: usize) -> Self {
+        let subscription_count = UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1;
         let data = RwLock::new(UtxosChangedSubscriptionData::with_capacity(state, capacity));
         let subscription = Self { data, listener_id };
-        trace!(
-            "UtxosChangedSubscription: {} in total (new {})",
-            UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
-            subscription
-        );
+        trace!("UtxosChangedSubscription: {} in total (new {})", subscription_count, subscription);
         subscription
     }
 
@@ -365,12 +362,9 @@ impl UtxosChangedSubscription {
 
 impl Clone for UtxosChangedSubscription {
     fn clone(&self) -> Self {
+        let subscription_count = UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1;
         let subscription = Self { data: RwLock::new(self.data().clone()), listener_id: self.listener_id };
-        trace!(
-            "UtxosChangedSubscription: {} in total (clone {})",
-            UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
-            subscription
-        );
+        trace!("UtxosChangedSubscription: {} in total (clone {})", subscription_count, subscription);
         subscription
     }
 }
