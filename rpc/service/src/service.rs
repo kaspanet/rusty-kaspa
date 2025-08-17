@@ -472,7 +472,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetBlockResponse {
             block: self
                 .consensus_converter
-                .get_block(&session, &block, request.include_transactions, request.include_transactions)
+                .get_block(&session, &block, request.include_transactions, request.include_transactions, &request.tx_payload_prefix)
                 .await?,
         })
     }
@@ -519,7 +519,13 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 let block = session.async_get_block_even_if_header_only(hash).await?;
                 let rpc_block = self
                     .consensus_converter
-                    .get_block(&session, &block, request.include_transactions, request.include_transactions)
+                    .get_block(
+                        &session,
+                        &block,
+                        request.include_transactions,
+                        request.include_transactions,
+                        &request.tx_payload_prefix,
+                    )
                     .await?;
                 blocks.push(rpc_block)
             }

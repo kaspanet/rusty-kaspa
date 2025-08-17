@@ -355,6 +355,7 @@ message GetBlockRequestMessage{
 
   // Whether to include transaction data in the response
   bool includeTransactions = 3;
+  bytes tx_payload_prefix = 4;
 }
 
 message GetBlockResponseMessage{
@@ -412,6 +413,7 @@ message GetBlocksRequestMessage{
   string lowHash = 1;
   bool includeBlocks = 2;
   bool includeTransactions = 3;
+  bytes tx_payload_prefix = 4;
 }
 
 message GetBlocksResponseMessage{

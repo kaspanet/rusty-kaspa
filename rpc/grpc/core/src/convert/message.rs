@@ -164,7 +164,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetBlockTemplateResponse>, protowire::Get
 });
 
 from!(item: &kaspa_rpc_core::GetBlockRequest, protowire::GetBlockRequestMessage, {
-    Self { hash: item.hash.to_string(), include_transactions: item.include_transactions }
+    Self { hash: item.hash.to_string(), include_transactions: item.include_transactions, tx_payload_prefix: item.tx_payload_prefix.clone() }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetBlockResponse>, protowire::GetBlockResponseMessage, {
     Self { block: Some((&item.block).into()), error: None }
@@ -283,6 +283,7 @@ from!(item: &kaspa_rpc_core::GetBlocksRequest, protowire::GetBlocksRequestMessag
         low_hash: item.low_hash.map_or(Default::default(), |x| x.to_string()),
         include_blocks: item.include_blocks,
         include_transactions: item.include_transactions,
+        tx_payload_prefix: item.tx_payload_prefix.clone(),
     }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetBlocksResponse>, protowire::GetBlocksResponseMessage, {
@@ -623,7 +624,7 @@ try_from!(item: &protowire::GetBlockTemplateResponseMessage, RpcResult<kaspa_rpc
 });
 
 try_from!(item: &protowire::GetBlockRequestMessage, kaspa_rpc_core::GetBlockRequest, {
-    Self { hash: RpcHash::from_str(&item.hash)?, include_transactions: item.include_transactions }
+    Self { hash: RpcHash::from_str(&item.hash)?, include_transactions: item.include_transactions, tx_payload_prefix: item.tx_payload_prefix.clone() }
 });
 try_from!(item: &protowire::GetBlockResponseMessage, RpcResult<kaspa_rpc_core::GetBlockResponse>, {
     Self {
@@ -776,6 +777,7 @@ try_from!(item: &protowire::GetBlocksRequestMessage, kaspa_rpc_core::GetBlocksRe
         low_hash: if item.low_hash.is_empty() { None } else { Some(RpcHash::from_str(&item.low_hash)?) },
         include_blocks: item.include_blocks,
         include_transactions: item.include_transactions,
+        tx_payload_prefix: item.tx_payload_prefix.clone(),
     }
 });
 try_from!(item: &protowire::GetBlocksResponseMessage, RpcResult<kaspa_rpc_core::GetBlocksResponse>, {

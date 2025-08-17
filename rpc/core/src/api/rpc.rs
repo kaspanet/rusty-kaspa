@@ -227,8 +227,8 @@ pub trait RpcApi: Sync + Send + AnySync {
     ) -> RpcResult<SubmitTransactionReplacementResponse>;
 
     /// Requests information about a specific block.
-    async fn get_block(&self, hash: RpcHash, include_transactions: bool) -> RpcResult<RpcBlock> {
-        Ok(self.get_block_call(None, GetBlockRequest::new(hash, include_transactions)).await?.block)
+    async fn get_block(&self, hash: RpcHash, include_transactions: bool, tx_payload_prefix: Vec<u8>) -> RpcResult<RpcBlock> {
+        Ok(self.get_block_call(None, GetBlockRequest::new(hash, include_transactions, tx_payload_prefix)).await?.block)
     }
     async fn get_block_call(&self, connection: Option<&DynRpcConnection>, request: GetBlockRequest) -> RpcResult<GetBlockResponse>;
 
@@ -267,8 +267,9 @@ pub trait RpcApi: Sync + Send + AnySync {
         low_hash: Option<RpcHash>,
         include_blocks: bool,
         include_transactions: bool,
+        tx_payload_prefix: Vec<u8>,
     ) -> RpcResult<GetBlocksResponse> {
-        self.get_blocks_call(None, GetBlocksRequest::new(low_hash, include_blocks, include_transactions)).await
+        self.get_blocks_call(None, GetBlocksRequest::new(low_hash, include_blocks, include_transactions, tx_payload_prefix)).await
     }
     async fn get_blocks_call(&self, connection: Option<&DynRpcConnection>, request: GetBlocksRequest) -> RpcResult<GetBlocksResponse>;
 

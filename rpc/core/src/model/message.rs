@@ -191,18 +191,21 @@ pub struct GetBlockRequest {
 
     /// Whether to include transaction data in the response
     pub include_transactions: bool,
+
+    pub tx_payload_prefix: Vec<u8>,
 }
 impl GetBlockRequest {
-    pub fn new(hash: RpcHash, include_transactions: bool) -> Self {
-        Self { hash, include_transactions }
+    pub fn new(hash: RpcHash, include_transactions: bool, tx_payload_prefix: Vec<u8>) -> Self {
+        Self { hash, include_transactions, tx_payload_prefix }
     }
 }
 
 impl Serializer for GetBlockRequest {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         store!(RpcHash, &self.hash, writer)?;
         store!(bool, &self.include_transactions, writer)?;
+        store!(Vec<u8>, &self.tx_payload_prefix, writer)?;
 
         Ok(())
     }
@@ -210,11 +213,11 @@ impl Serializer for GetBlockRequest {
 
 impl Deserializer for GetBlockRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let version = load!(u16, reader)?;
         let hash = load!(RpcHash, reader)?;
         let include_transactions = load!(bool, reader)?;
-
-        Ok(Self { hash, include_transactions })
+        let tx_payload_prefix = if version == 1 { vec![] } else { load!(Vec<u8>, reader)? };
+        Ok(Self { hash, include_transactions, tx_payload_prefix })
     }
 }
 
@@ -937,20 +940,22 @@ pub struct GetBlocksRequest {
     pub low_hash: Option<RpcHash>,
     pub include_blocks: bool,
     pub include_transactions: bool,
+    pub tx_payload_prefix: Vec<u8>,
 }
 
 impl GetBlocksRequest {
-    pub fn new(low_hash: Option<RpcHash>, include_blocks: bool, include_transactions: bool) -> Self {
-        Self { low_hash, include_blocks, include_transactions }
+    pub fn new(low_hash: Option<RpcHash>, include_blocks: bool, include_transactions: bool, tx_payload_prefix: Vec<u8>) -> Self {
+        Self { low_hash, include_blocks, include_transactions, tx_payload_prefix }
     }
 }
 
 impl Serializer for GetBlocksRequest {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         store!(Option<RpcHash>, &self.low_hash, writer)?;
         store!(bool, &self.include_blocks, writer)?;
         store!(bool, &self.include_transactions, writer)?;
+        store!(Vec<u8>, &self.tx_payload_prefix, writer)?;
 
         Ok(())
     }
@@ -958,12 +963,12 @@ impl Serializer for GetBlocksRequest {
 
 impl Deserializer for GetBlocksRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let version = load!(u16, reader)?;
         let low_hash = load!(Option<RpcHash>, reader)?;
         let include_blocks = load!(bool, reader)?;
         let include_transactions = load!(bool, reader)?;
-
-        Ok(Self { low_hash, include_blocks, include_transactions })
+        let tx_payload_prefix = if version == 0 { vec![] } else { load!(Vec<u8>, reader)? };
+        Ok(Self { low_hash, include_blocks, include_transactions, tx_payload_prefix })
     }
 }
 

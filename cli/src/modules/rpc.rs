@@ -115,7 +115,16 @@ impl Rpc {
                 let hash = argv.remove(0);
                 let hash = RpcHash::from_hex(hash.as_str())?;
                 let include_transactions = argv.first().and_then(|x| x.parse::<bool>().ok()).unwrap_or(true);
-                let result = rpc.get_block_call(None, GetBlockRequest { hash, include_transactions }).await?;
+                let tx_payload_prefix = argv
+                    .get(1)
+                    .map(|s| -> Result<_> {
+                        let mut out = Vec::with_capacity(s.len() / 2);
+                        faster_hex::hex_decode(s.as_bytes(), &mut out)?;
+                        Ok(out)
+                    })
+                    .transpose()?
+                    .unwrap_or_default();
+                let result = rpc.get_block_call(None, GetBlockRequest { hash, include_transactions, tx_payload_prefix }).await?;
                 self.println(&ctx, result);
             }
             // RpcApiOps::GetSubnetwork => {

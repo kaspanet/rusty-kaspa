@@ -213,12 +213,19 @@ async fn sanity_test() {
             KaspadPayloadOps::GetBlock => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let result =
-                        rpc_client.get_block_call(None, GetBlockRequest { hash: 0.into(), include_transactions: false }).await;
+                    let result = rpc_client
+                        .get_block_call(
+                            None,
+                            GetBlockRequest { hash: 0.into(), include_transactions: false, tx_payload_prefix: vec![] },
+                        )
+                        .await;
                     assert!(result.is_err());
 
                     let response = rpc_client
-                        .get_block_call(None, GetBlockRequest { hash: SIMNET_GENESIS.hash, include_transactions: false })
+                        .get_block_call(
+                            None,
+                            GetBlockRequest { hash: SIMNET_GENESIS.hash, include_transactions: false, tx_payload_prefix: vec![] },
+                        )
                         .await
                         .unwrap();
                     assert_eq!(response.block.header.hash, SIMNET_GENESIS.hash);
@@ -229,7 +236,15 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let response = rpc_client
-                        .get_blocks_call(None, GetBlocksRequest { include_blocks: true, include_transactions: false, low_hash: None })
+                        .get_blocks_call(
+                            None,
+                            GetBlocksRequest {
+                                include_blocks: true,
+                                include_transactions: false,
+                                low_hash: None,
+                                tx_payload_prefix: vec![],
+                            },
+                        )
                         .await
                         .unwrap();
                     assert_eq!(response.blocks.len(), 1, "genesis block should be returned");

@@ -52,6 +52,7 @@ impl ConsensusConverter {
         block: &Block,
         include_transactions: bool,
         include_transaction_verbose_data: bool,
+        tx_payload_prefix: &[u8],
     ) -> RpcResult<RpcBlock> {
         let hash = block.hash();
         let ghostdag_data = consensus.async_get_ghostdag_data(hash).await?;
@@ -71,10 +72,17 @@ impl ConsensusConverter {
             is_chain_block,
         });
 
-        let transactions = if include_transactions {
+        let transactions = if include_transactions && tx_payload_prefix.is_empty() {
             block
                 .transactions
                 .iter()
+                .map(|x| self.get_transaction(consensus, x, Some(&block.header), include_transaction_verbose_data))
+                .collect::<Vec<_>>()
+        } else if include_transactions {
+            block
+                .transactions
+                .iter()
+                .filter(|tx| tx.payload.starts_with(tx_payload_prefix))
                 .map(|x| self.get_transaction(consensus, x, Some(&block.header), include_transaction_verbose_data))
                 .collect::<Vec<_>>()
         } else {
@@ -190,7 +198,9 @@ impl Converter for ConsensusConverter {
             consensus_notify::Notification::BlockAdded(msg) => {
                 let session = self.consensus_manager.consensus().unguarded_session();
                 // If get_block fails, rely on the infallible From implementation which will lack verbose data
-                let block = Arc::new(self.get_block(&session, &msg.block, true, true).await.unwrap_or_else(|_| (&msg.block).into()));
+                // todo is it intentional override? what if scope has different payload filter???
+                let block =
+                    Arc::new(self.get_block(&session, &msg.block, true, true, &[]).await.unwrap_or_else(|_| (&msg.block).into()));
                 Notification::BlockAdded(BlockAddedNotification { block })
             }
             _ => (&incoming).into(),
