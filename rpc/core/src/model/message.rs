@@ -967,7 +967,7 @@ impl Deserializer for GetBlocksRequest {
         let low_hash = load!(Option<RpcHash>, reader)?;
         let include_blocks = load!(bool, reader)?;
         let include_transactions = load!(bool, reader)?;
-        let tx_payload_prefix = if version == 0 { vec![] } else { load!(Vec<u8>, reader)? };
+        let tx_payload_prefix = if version == 1 { vec![] } else { load!(Vec<u8>, reader)? };
         Ok(Self { low_hash, include_blocks, include_transactions, tx_payload_prefix })
     }
 }
