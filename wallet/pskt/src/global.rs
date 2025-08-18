@@ -106,7 +106,7 @@ impl Add for Global {
         self.proprietaries =
             combine_if_no_conflicts(self.proprietaries, rhs.proprietaries).map_err(CombineError::NotCompatibleProprietary)?;
         self.unknowns = combine_if_no_conflicts(self.unknowns, rhs.unknowns).map_err(CombineError::NotCompatibleUnknownField)?;
-        
+
         // Combine payloads according to the rules:
         // - Both None -> None
         // - One has payload -> use that payload
@@ -118,7 +118,7 @@ impl Add for Global {
             (Some(lhs), Some(rhs)) if lhs == rhs => Some(lhs),
             (Some(lhs), Some(rhs)) => return Err(CombineError::PayloadMismatch { this: Some(lhs), that: Some(rhs) }),
         };
-        
+
         Ok(self)
     }
 }

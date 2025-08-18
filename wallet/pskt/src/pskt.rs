@@ -154,11 +154,7 @@ impl<R> PSKT<R> {
             SUBNETWORK_ID_NATIVE,
             0,
             // Only include payload if version supports it (Version::One or higher)
-            if self.global.version >= Version::One {
-                self.global.payload.clone().unwrap_or_default()
-            } else {
-                vec![]
-            },
+            if self.global.version >= Version::One { self.global.payload.clone().unwrap_or_default() } else { vec![] },
         );
         let entries = self.inputs.iter().filter_map(|Input { utxo_entry, .. }| utxo_entry.clone()).collect();
         SignableTransaction::with_entries(tx, entries)
