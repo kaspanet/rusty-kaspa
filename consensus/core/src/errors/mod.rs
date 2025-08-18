@@ -1,3 +1,4 @@
+pub mod archival;
 pub mod block;
 pub mod coinbase;
 pub mod config;
