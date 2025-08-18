@@ -1,8 +1,8 @@
 use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_utils::networking::{IpAddress, PeerId};
+use kaspa_utils::networking::{IpAddress, PeerId, PrefixBucket};
 use std::{fmt::Display, net::SocketAddr, sync::Arc, time::Instant};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 pub struct PeerProperties {
     pub user_agent: String,
     // TODO: add services
@@ -21,6 +21,8 @@ pub struct Peer {
     connection_started: Instant,
     properties: Arc<PeerProperties>,
     last_ping_duration: u64,
+    last_block_transfer: Option<Instant>, // TODO: consider adding this field to rpc
+    last_tx_transfer: Option<Instant>,    // TODO: consider adding this field to rpc
 }
 
 impl Peer {
@@ -31,8 +33,19 @@ impl Peer {
         connection_started: Instant,
         properties: Arc<PeerProperties>,
         last_ping_duration: u64,
+        last_block_transfer: Option<Instant>,
+        last_tx_transfer: Option<Instant>,
     ) -> Self {
-        Self { identity, net_address, is_outbound, connection_started, properties, last_ping_duration }
+        Self {
+            identity,
+            net_address,
+            is_outbound,
+            connection_started,
+            properties,
+            last_ping_duration,
+            last_block_transfer,
+            last_tx_transfer,
+        }
     }
 
     /// Internal identity of this peer
@@ -43,6 +56,10 @@ impl Peer {
     /// The socket address of this peer
     pub fn net_address(&self) -> SocketAddr {
         self.net_address
+    }
+
+    pub fn prefix_bucket(&self) -> PrefixBucket {
+        self.net_address.ip().into()
     }
 
     pub fn key(&self) -> PeerKey {
@@ -64,6 +81,14 @@ impl Peer {
 
     pub fn last_ping_duration(&self) -> u64 {
         self.last_ping_duration
+    }
+
+    pub fn last_block_transfer(&self) -> Option<Instant> {
+        self.last_block_transfer
+    }
+
+    pub fn last_tx_transfer(&self) -> Option<Instant> {
+        self.last_tx_transfer
     }
 }
 
