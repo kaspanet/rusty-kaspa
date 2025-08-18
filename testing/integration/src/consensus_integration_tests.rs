@@ -847,6 +847,7 @@ impl KaspadGoParams {
             pruning_proof_m: self.PruningProofM,
             crescendo: CRESCENDO,
             crescendo_activation: ForkActivation::never(),
+            kip6_activation: ForkActivation::never(),
         }
     }
 }

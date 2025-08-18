@@ -62,6 +62,8 @@ pub enum DatabaseStorePrefixes {
     UtxoIndexTips = 193,
     CirculatingSupply = 194,
 
+    // ---- Dummy ----
+    PochmMerkleRoots = 200, //TODO: remove when added as field
     // ---- Separator ----
     /// Reserved as a separator
     Separator = SEPARATOR,
