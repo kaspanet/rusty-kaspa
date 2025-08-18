@@ -42,6 +42,8 @@ pub enum Error {
     PskbPrefixError,
     #[error("PSKT serialization requires 'PSKT' prefix")]
     PsktPrefixError,
+    #[error("Cannot set payload on PSKT version {0}, payload requires version 1 or higher")]
+    PayloadRequiresVersion1(crate::pskt::Version),
 }
 #[derive(thiserror::Error, Debug)]
 pub enum ConstructorError {
