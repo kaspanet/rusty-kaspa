@@ -86,6 +86,11 @@ pub struct Args {
 
     pub disable_upnp: bool,
     pub disable_ipv6_interface_discovery: bool,
+    // DynDNS external IP resolution arguments
+    pub external_dyndns_host: Option<String>,
+    pub external_dyndns_min_refresh_sec: u64,
+    pub external_dyndns_max_refresh_sec: u64,
+    pub external_dyndns_ip_version: String, // parsed into enum later (auto|ipv4|ipv6)
     #[serde(rename = "nodnsseed")]
     pub disable_dns_seeding: bool,
     #[serde(rename = "nogrpc")]
@@ -98,6 +103,10 @@ impl Default for Args {
     fn default() -> Self {
         Self {
             appdir: None,
+            external_dyndns_host: None,
+            external_dyndns_min_refresh_sec: 30,
+            external_dyndns_max_refresh_sec: 300,
+            external_dyndns_ip_version: "auto".to_string(),
             no_log_files: false,
             rpclisten_borsh: None,
             rpclisten_json: None,
@@ -165,6 +174,14 @@ impl Args {
         config.externalip = self.externalip.map(|v| v.normalize(config.default_p2p_port()));
         config.ram_scale = self.ram_scale;
         config.retention_period_days = self.retention_period_days;
+        config.external_dyndns_host = self.external_dyndns_host.clone();
+        config.external_dyndns_min_refresh_sec = self.external_dyndns_min_refresh_sec;
+        config.external_dyndns_max_refresh_sec = self.external_dyndns_max_refresh_sec;
+        config.external_dyndns_ip_version = match self.external_dyndns_ip_version.as_str() {
+            "ipv4" => kaspa_consensus_core::config::IpVersionMode::Ipv4,
+            "ipv6" => kaspa_consensus_core::config::IpVersionMode::Ipv6,
+            _ => kaspa_consensus_core::config::IpVersionMode::Auto,
+        };
 
         #[cfg(feature = "devnet-prealloc")]
         if let Some(num_prealloc_utxos) = self.num_prealloc_utxos {
@@ -366,6 +383,25 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
         )
         .arg(arg!(--"disable-upnp" "Disable upnp"))
         .arg(arg!(--"disable-ipv6-interface-discovery" "Disable IPv6 during automatic local address discovery (explicit IPv6 in config is still honored)"))
+        .arg(arg!(--"external-dyndns-host" <HOST> "DynDNS host to resolve periodically as fallback external IP source when UPnP fails"))
+        .arg(
+            Arg::new("external-dyndns-min-refresh")
+                .long("external-dyndns-min-refresh")
+                .value_parser(clap::value_parser!(u64))
+                .help("Minimum refresh interval (seconds) for DynDNS resolution (default 30)")
+        )
+        .arg(
+            Arg::new("external-dyndns-max-refresh")
+                .long("external-dyndns-max-refresh")
+                .value_parser(clap::value_parser!(u64))
+                .help("Maximum refresh interval (seconds) for DynDNS resolution (default 300)")
+        )
+        .arg(
+            Arg::new("external-dyndns-ip-version")
+                .long("external-dyndns-ip-version")
+                .value_parser(["auto","ipv4","ipv6"])
+                .help("IP version selection for DynDNS resolution: auto|ipv4|ipv6 (default auto)")
+        )
         .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers"))
         .arg(arg!(--"nogrpc" "Disable gRPC server"))
         .arg(
@@ -464,6 +500,10 @@ impl Args {
             disable_grpc: arg_match_unwrap_or::<bool>(&m, "nogrpc", defaults.disable_grpc),
             ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),
             retention_period_days: m.get_one::<f64>("retention-period-days").cloned().or(defaults.retention_period_days),
+            external_dyndns_host: m.get_one::<String>("external-dyndns-host").cloned().or(defaults.external_dyndns_host),
+            external_dyndns_min_refresh_sec: arg_match_unwrap_or::<u64>(&m, "external-dyndns-min-refresh", defaults.external_dyndns_min_refresh_sec),
+            external_dyndns_max_refresh_sec: arg_match_unwrap_or::<u64>(&m, "external-dyndns-max-refresh", defaults.external_dyndns_max_refresh_sec),
+            external_dyndns_ip_version: arg_match_unwrap_or::<String>(&m, "external-dyndns-ip-version", defaults.external_dyndns_ip_version.clone()),
 
             #[cfg(feature = "devnet-prealloc")]
             num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),
