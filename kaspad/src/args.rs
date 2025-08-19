@@ -71,8 +71,8 @@ pub struct Args {
     pub archival: bool,
     pub sanity: bool,
     pub yes: bool,
-    #[serde_as(as = "Option<DisplayFromStr>")]
-    pub externalip: Option<ContextualNetAddress>,
+    #[serde_as(as = "Option<Vec<DisplayFromStr>>")]
+    pub externalip: Option<Vec<ContextualNetAddress>>,
     pub perf_metrics: bool,
     pub perf_metrics_interval_sec: u64,
     pub block_template_cache_lifetime: Option<u64>,
@@ -159,7 +159,7 @@ impl Args {
         config.user_agent_comments.clone_from(&self.user_agent_comments);
         config.block_template_cache_lifetime = self.block_template_cache_lifetime;
         config.p2p_listen_address = self.listen.unwrap_or(ContextualNetAddress::unspecified());
-        config.externalip = self.externalip.map(|v| v.normalize(config.default_p2p_port()));
+        config.externalip = self.externalip.as_ref().map(|vec| vec.iter().map(|v| v.normalize(config.default_p2p_port())).collect());
         config.ram_scale = self.ram_scale;
         config.retention_period_days = self.retention_period_days;
 
@@ -348,10 +348,10 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
             Arg::new("externalip")
                 .long("externalip")
                 .value_name("externalip")
+                .action(clap::ArgAction::Append)
                 .require_equals(true)
-                .default_missing_value(None)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help("Add a socket address(ip:port) to the list of local addresses we claim to listen on to peers"),
+                .help("Add a socket address(ip:port) to the list of local addresses we claim to listen on to peers. May be specified multiple times."),
         )
         .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage"))
         .arg(
@@ -449,7 +449,7 @@ impl Args {
             sanity: arg_match_unwrap_or::<bool>(&m, "sanity", defaults.sanity),
             yes: arg_match_unwrap_or::<bool>(&m, "yes", defaults.yes),
             user_agent_comments: arg_match_many_unwrap_or::<String>(&m, "user_agent_comments", defaults.user_agent_comments),
-            externalip: m.get_one::<ContextualNetAddress>("externalip").cloned(),
+            externalip: m.get_many::<ContextualNetAddress>("externalip").map(|addrs| addrs.cloned().collect()),
             perf_metrics: arg_match_unwrap_or::<bool>(&m, "perf-metrics", defaults.perf_metrics),
             perf_metrics_interval_sec: arg_match_unwrap_or::<u64>(&m, "perf-metrics-interval-sec", defaults.perf_metrics_interval_sec),
             // Note: currently used programmatically by benchmarks and not exposed to CLI users
@@ -528,7 +528,7 @@ fn arg_match_many_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatch
       --nodnsseed                           Disable DNS seeding for peers
       --dnsseed=                            Override DNS seeds with specified hostname (Only 1 hostname allowed)
       --grpcseed=                           Hostname of gRPC server for seeding peers
-      --externalip=                         Add an ip to the list of local addresses we claim to listen on to peers
+      --externalip=                         Add an ip to the list of local addresses we claim to listen on to peers (repeatable)
       --proxy=                              Connect via SOCKS5 proxy (eg. 127.0.0.1:9050)
       --proxyuser=                          Username for proxy server
       --proxypass=                          Password for proxy server
