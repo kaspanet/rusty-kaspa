@@ -85,6 +85,7 @@ pub struct Args {
     pub prealloc_amount: u64,
 
     pub disable_upnp: bool,
+    pub disable_ipv6_interface_discovery: bool,
     #[serde(rename = "nodnsseed")]
     pub disable_dns_seeding: bool,
     #[serde(rename = "nogrpc")]
@@ -138,6 +139,7 @@ impl Default for Args {
             prealloc_amount: 10_000_000_000,
 
             disable_upnp: false,
+            disable_ipv6_interface_discovery: false,
             disable_dns_seeding: false,
             disable_grpc: false,
             ram_scale: 1.0,
@@ -150,6 +152,7 @@ impl Args {
     pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
         config.disable_upnp = self.disable_upnp;
+        config.disable_ipv6_interface_discovery = self.disable_ipv6_interface_discovery;
         config.unsafe_rpc = self.unsafe_rpc;
         config.enable_unsynced_mining = self.enable_unsynced_mining;
         config.enable_mainnet_mining = self.enable_mainnet_mining;
@@ -362,6 +365,7 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
                 .help("Interval in seconds for performance metrics collection."),
         )
         .arg(arg!(--"disable-upnp" "Disable upnp"))
+        .arg(arg!(--"disable-ipv6-interface-discovery" "Disable IPv6 during automatic local address discovery (explicit IPv6 in config is still honored)"))
         .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers"))
         .arg(arg!(--"nogrpc" "Disable gRPC server"))
         .arg(
@@ -455,6 +459,7 @@ impl Args {
             // Note: currently used programmatically by benchmarks and not exposed to CLI users
             block_template_cache_lifetime: defaults.block_template_cache_lifetime,
             disable_upnp: arg_match_unwrap_or::<bool>(&m, "disable-upnp", defaults.disable_upnp),
+            disable_ipv6_interface_discovery: arg_match_unwrap_or::<bool>(&m, "disable-ipv6-interface-discovery", defaults.disable_ipv6_interface_discovery),
             disable_dns_seeding: arg_match_unwrap_or::<bool>(&m, "nodnsseed", defaults.disable_dns_seeding),
             disable_grpc: arg_match_unwrap_or::<bool>(&m, "nogrpc", defaults.disable_grpc),
             ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),

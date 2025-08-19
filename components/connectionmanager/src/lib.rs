@@ -9,7 +9,7 @@ use std::{
 use duration_string::DurationString;
 use futures_util::future::{join_all, try_join_all};
 use itertools::Itertools;
-use kaspa_addressmanager::{AddressManager, NetAddress};
+use kaspa_addressmanager::{AddressManager, NetAddress, ExternalIpChangeSink};
 use kaspa_core::{debug, info, warn};
 use kaspa_p2p_lib::{common::ProtocolError, ConnectionError, Peer};
 use kaspa_utils::triggers::SingleTrigger;
@@ -91,6 +91,63 @@ impl ConnectionManager {
             }
             debug!("Connection manager event loop exiting");
         });
+    }
+
+    /// Synchronously trigger a staggered outbound reconnect (terminates peers one by one with 30s delays)
+    pub fn trigger_outbound_reconnect(&self) {
+        let outbound_peers: Vec<_> = self.p2p_adaptor.active_peers()
+            .into_iter()
+            .filter(|p| p.is_outbound())
+            .collect();
+        
+        if outbound_peers.is_empty() {
+            info!("No outbound peers to reconnect");
+            return;
+        }
+        
+        let peer_count = outbound_peers.len();
+        info!("Starting staggered outbound reconnect: {} peers will be renewed with 30s delays", peer_count);
+        
+        // Spawn async task for staggered renewal
+        let p2p_adaptor = self.p2p_adaptor.clone();
+        let force_sender = self.force_next_iteration.clone();
+        
+        tokio::spawn(async move {
+            for (i, peer) in outbound_peers.into_iter().enumerate() {
+                // Terminate peer
+                p2p_adaptor.terminate(peer.key()).await;
+                info!("Terminated outbound peer {} ({}/{})", peer.net_address(), i+1, peer_count);
+                
+                // Trigger reconnection (except for the last peer)
+                if i < peer_count - 1 {
+                    force_sender.send(()).unwrap();
+                    
+                    // Wait 30 seconds
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                }
+            }
+            
+            // Final trigger for the last renewal
+            force_sender.send(()).unwrap();
+            info!("Staggered outbound reconnect completed");
+        });
+    }
+
+    /// Synchronously trigger an outbound reconnect iteration (no await required)
+    pub fn trigger_outbound_reconnect_simple(&self) {
+        info!("Connection manager: trigger outbound reconnect (sync)");
+        if let Err(e) = self.force_next_iteration.send(()) {
+            warn!("Failed to trigger outbound reconnect: {}", e);
+        }
+    }
+
+    /// Triggers gradual outbound reconnection to establish new connections with updated local address
+    pub async fn reconnect_outbound_gradually(self: &Arc<Self>) {
+        info!("Connection manager: triggering gradual outbound reconnection due to IP change");
+        // Force next iteration to trigger new outbound connections
+        if let Err(e) = self.force_next_iteration.send(()) {
+            warn!("Failed to trigger outbound reconnection: {}", e);
+        }
     }
 
     async fn handle_event(self: Arc<Self>) {
@@ -337,4 +394,10 @@ impl ConnectionManager {
     pub async fn ip_has_permanent_connection(&self, ip: IpAddr) -> bool {
         self.connection_requests.lock().await.iter().any(|(address, request)| request.is_permanent && address.ip() == ip)
     }
+}
+
+impl ExternalIpChangeSink for ConnectionManager {
+	fn on_external_ip_changed(&self, _new_ip: std::net::IpAddr, _old_ip: Option<std::net::IpAddr>) {
+		self.trigger_outbound_reconnect();
+	}
 }

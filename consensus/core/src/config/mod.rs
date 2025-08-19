@@ -66,6 +66,9 @@ pub struct Config {
 
     pub disable_upnp: bool,
 
+    /// Disable IPv6 during automatic local address discovery (explicit IPv6 in config is still honored)
+    pub disable_ipv6_interface_discovery: bool,
+
     /// A scale factor to apply to memory allocation bounds
     pub ram_scale: f64,
 
@@ -97,6 +100,7 @@ impl Config {
             #[cfg(feature = "devnet-prealloc")]
             initial_utxo_set: Default::default(),
             disable_upnp: false,
+            disable_ipv6_interface_discovery: false,
             ram_scale: 1.0,
             retention_period_days: None,
         }
