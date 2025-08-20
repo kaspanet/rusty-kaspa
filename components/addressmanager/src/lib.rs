@@ -3,7 +3,7 @@ mod dyndns_extender;
 mod stores;
 extern crate self as address_manager;
 
-use std::{collections::HashSet, iter, net::SocketAddr, sync::Arc, time::{Duration, Instant}};
+use std::{collections::HashSet, iter, net::SocketAddr, sync::Arc, time::{Duration}};
 
 use address_manager::port_mapping_extender::Extender;
 use dyndns_extender::DynDnsExtender;
@@ -67,7 +67,6 @@ pub struct AddressManager {
 
 impl AddressManager {
     pub fn new(config: Arc<Config>, db: Arc<DB>, tick_service: Arc<TickService>) -> (Arc<Mutex<Self>>, Option<Extender>, Option<DynDnsExtender>) {
-        debug!("[AddrMan] Enter AddressManager::new");
         let instance = Self {
             banned_address_store: DbBannedAddressesStore::new(db.clone(), CachePolicy::Count(MAX_ADDRESSES)),
             address_store: address_store_with_cache::new(db),
@@ -80,7 +79,6 @@ impl AddressManager {
 
         let extender = Self::init_local_addresses(&am, tick_service.clone());
         let dyndns_extender = if extender.is_none() && am.lock().config.external_dyndns_host.is_some() {
-            debug!("[AddrMan] No UPnP extender; attempting DynDnsExtender construction (host present)");
             let res = DynDnsExtender::new(am.lock().config.clone(), am.clone(), tick_service);
             if res.is_some() { debug!("[AddrMan] DynDnsExtender constructed"); } else { debug!("[AddrMan] DynDnsExtender NOT constructed (unexpected None)"); }
             res
@@ -97,8 +95,8 @@ impl AddressManager {
 
     fn try_initial_dyndns_resolve(am: &Arc<Mutex<Self>>) {
         let host_opt = am.lock().config.external_dyndns_host.clone();
-        let Some(host) = host_opt else { return }; // no host
-        let ip_mode = am.lock().config.external_dyndns_ip_version; // copy (enum is Copy)
+        let Some(host) = host_opt else { return };
+        let ip_mode = am.lock().config.external_dyndns_ip_version; 
         let needs = { am.lock().best_local_address().is_none() };
         if !needs { return; }
         debug!("[AddrMan] Performing minimal initial DynDNS resolve for host {}", host);
@@ -142,22 +140,17 @@ impl AddressManager {
 
     fn init_local_addresses(this: &Arc<Mutex<Self>>, tick_service: Arc<TickService>) -> Option<Extender> {
         let mut me = this.lock();
-    debug!("[AddrMan] init_local_addresses_with_arc start");
         me.local_net_addresses = me.local_addresses().collect();
 
         let extender = if me.local_net_addresses.is_empty() && !me.config.disable_upnp {
-        debug!("[AddrMan] No local routable addresses; UPnP enabled -> invoking upnp()");
-        let t0 = Instant::now();
             let (net_address, ExtendHelper { gateway, local_addr, external_port }) = match me.upnp() {
                 Err(err) => {
                     warn!("[UPnP] Error adding port mapping: {err}");
-            debug!("[AddrMan] upnp() failed after {:?}", t0.elapsed());
                     return None;
                 }
                 Ok(None) => return None,
                 Ok(Some((net_address, extend_helper))) => (net_address, extend_helper),
             };
-        debug!("[AddrMan] upnp() succeeded in {:?}", t0.elapsed());
             me.local_net_addresses.push(net_address);
 
             let gateway: igd_next::aio::Gateway<Tokio> = igd_next::aio::Gateway {
@@ -185,7 +178,6 @@ impl AddressManager {
         me.local_net_addresses.iter().for_each(|net_addr| {
             info!("Publicly routable local address {} added to store", net_addr);
         });
-    debug!("[AddrMan] init_local_addresses_with_arc end (extender={})", extender.is_some());
         extender
     }
 

@@ -4,6 +4,7 @@ use kaspa_core::{info, debug, warn, trace, task::{tick::{TickService, TickReason
 use crate::{NetAddress, AddressManager};
 use kaspa_utils::networking::IpAddress;
 use kaspa_consensus_core::config::{Config, IpVersionMode};
+use std::net::ToSocketAddrs;
 
 pub const SERVICE_NAME: &str = "dyndns-extender";
 
@@ -16,7 +17,6 @@ struct DefaultResolver;
 impl DynResolver for DefaultResolver {
     fn resolve(&self, host: &str) -> std::io::Result<Vec<IpAddr>> { Ok((host, 0).to_socket_addrs()?.map(|sa| sa.ip()).collect()) }
 }
-use std::net::ToSocketAddrs; // required for resolution via (host,0)
 
 pub struct DynDnsExtender {
     tick_service: Arc<TickService>,
@@ -33,7 +33,6 @@ impl DynDnsExtender {
     pub fn new(config: Arc<Config>, am: Arc<Mutex<AddressManager>>, tick_service: Arc<TickService>) -> Option<Self> {
         let host = config.external_dyndns_host.clone()?; // only build if host provided
 
-        // Create instance first so we can reuse pick_ip helper for initial synchronous resolution
         let instance = Self {
             tick_service,
             address_manager: am.clone(),
@@ -44,11 +43,6 @@ impl DynDnsExtender {
             resolver: Box::new(DefaultResolver),
             last_ip: Arc::new(Mutex::new(None)),
         };
-
-        // Perform an immediate (synchronous) resolution so the external IP is available before P2P starts.
-        // IMPORTANT: At this point no tokio runtime tasks should be spawned (runtime not fully registered yet),
-        // so we only set the best_local_address and remember last_ip. Sinks will be notified later on changes.
-    // No initial resolve here (done by AddressManager if desired). This constructor is now non-blocking.
 
         Some(instance)
     }
@@ -68,7 +62,7 @@ impl DynDnsExtender {
     }
 
     async fn worker(&self) {
-        info!("[DynDNS] Starting dyn dns resolver for host {}", self.host);
+        info!("[DynDNS] Starting dyndns resolver for host {}", self.host);
         let mut interval = self.min_refresh; // adaptive later
         loop {
             match self.tick_service.tick(interval).await {
