@@ -77,7 +77,8 @@ impl AddressManager {
         };
 
         let am = Arc::new(Mutex::new(instance));
-        let extender = Self::init_local_addresses_with_arc(&am, tick_service.clone());
+
+        let extender = Self::init_local_addresses(&am, tick_service.clone());
         let dyndns_extender = if extender.is_none() && am.lock().config.external_dyndns_host.is_some() {
             debug!("[AddrMan] No UPnP extender; attempting DynDnsExtender construction (host present)");
             let res = DynDnsExtender::new(am.lock().config.clone(), am.clone(), tick_service);
@@ -139,7 +140,7 @@ impl AddressManager {
         self.external_ip_change_sinks.clone()
     }
 
-    fn init_local_addresses_with_arc(this: &Arc<Mutex<Self>>, tick_service: Arc<TickService>) -> Option<Extender> {
+    fn init_local_addresses(this: &Arc<Mutex<Self>>, tick_service: Arc<TickService>) -> Option<Extender> {
         let mut me = this.lock();
     debug!("[AddrMan] init_local_addresses_with_arc start");
         me.local_net_addresses = me.local_addresses().collect();
@@ -243,7 +244,7 @@ impl AddressManager {
 
     fn upnp(&self) -> Result<Option<(NetAddress, ExtendHelper)>, UpnpError> {
         info!("[UPnP] Attempting to register upnp... (to disable run the node with --disable-upnp)");
-        let gateway = igd::search_gateway (Default::default())?;
+        let gateway = igd::search_gateway(Default::default())?;
         let ip = IpAddress::new(gateway.get_external_ip()?);
         if !ip.is_publicly_routable() {
             info!("[UPnP] Non-publicly routable external ip from gateway using upnp {} not added to store", ip);

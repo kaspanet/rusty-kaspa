@@ -687,9 +687,6 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     })
     .for_each(|server| async_runtime.register(server));
 
-    // Set up UPnP/DynDNS address change event handling after services are registered
-    // We'll handle this in the Extender itself by checking if ConnectionManager is available
-
     // Consensus must start first in order to init genesis in stores
     core.bind(consensus_manager);
     core.bind(async_runtime);
