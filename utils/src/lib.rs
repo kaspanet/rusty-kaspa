@@ -18,6 +18,8 @@ pub mod refs;
 
 pub mod as_slice;
 
+pub mod flattened_slice;
+
 /// # Examples
 /// ## Implement serde::Serialize/serde::Deserialize for the Vec field of the struct
 /// ```

@@ -192,11 +192,17 @@ pub struct GetBlockRequest {
     /// Whether to include transaction data in the response
     pub include_transactions: bool,
 
-    pub tx_payload_prefix: Vec<u8>,
+    pub tx_payload_prefixes_flattened: Vec<u8>,
+    pub tx_payload_prefixes_lengths: Vec<u32>,
 }
 impl GetBlockRequest {
-    pub fn new(hash: RpcHash, include_transactions: bool, tx_payload_prefix: Vec<u8>) -> Self {
-        Self { hash, include_transactions, tx_payload_prefix }
+    pub fn new(
+        hash: RpcHash,
+        include_transactions: bool,
+        tx_payload_prefixes_flattened: Vec<u8>,
+        tx_payload_prefixes_lengths: Vec<u32>,
+    ) -> Self {
+        Self { hash, include_transactions, tx_payload_prefixes_flattened, tx_payload_prefixes_lengths }
     }
 }
 
@@ -205,7 +211,8 @@ impl Serializer for GetBlockRequest {
         store!(u16, &2, writer)?;
         store!(RpcHash, &self.hash, writer)?;
         store!(bool, &self.include_transactions, writer)?;
-        store!(Vec<u8>, &self.tx_payload_prefix, writer)?;
+        store!(Vec<u8>, &self.tx_payload_prefixes_flattened, writer)?;
+        store!(Vec<u32>, &self.tx_payload_prefixes_lengths, writer)?;
 
         Ok(())
     }
@@ -216,8 +223,14 @@ impl Deserializer for GetBlockRequest {
         let version = load!(u16, reader)?;
         let hash = load!(RpcHash, reader)?;
         let include_transactions = load!(bool, reader)?;
-        let tx_payload_prefix = if version == 1 { vec![] } else { load!(Vec<u8>, reader)? };
-        Ok(Self { hash, include_transactions, tx_payload_prefix })
+        let (tx_payload_prefixes_flattened, tx_payload_prefixes_lengths) = if version == 1 {
+            (vec![], vec![])
+        } else {
+            let tx_payload_prefixes_flattened = load!(Vec<u8>, reader)?;
+            let tx_payload_prefixes_lengths = load!(Vec<u32>, reader)?;
+            (tx_payload_prefixes_flattened, tx_payload_prefixes_lengths)
+        };
+        Ok(Self { hash, include_transactions, tx_payload_prefixes_flattened, tx_payload_prefixes_lengths })
     }
 }
 
@@ -940,12 +953,19 @@ pub struct GetBlocksRequest {
     pub low_hash: Option<RpcHash>,
     pub include_blocks: bool,
     pub include_transactions: bool,
-    pub tx_payload_prefix: Vec<u8>,
+    pub tx_payload_prefixes_flattened: Vec<u8>,
+    pub tx_payload_prefixes_lengths: Vec<u32>,
 }
 
 impl GetBlocksRequest {
-    pub fn new(low_hash: Option<RpcHash>, include_blocks: bool, include_transactions: bool, tx_payload_prefix: Vec<u8>) -> Self {
-        Self { low_hash, include_blocks, include_transactions, tx_payload_prefix }
+    pub fn new(
+        low_hash: Option<RpcHash>,
+        include_blocks: bool,
+        include_transactions: bool,
+        tx_payload_prefixes_flattened: Vec<u8>,
+        tx_payload_prefixes_lengths: Vec<u32>,
+    ) -> Self {
+        Self { low_hash, include_blocks, include_transactions, tx_payload_prefixes_flattened, tx_payload_prefixes_lengths }
     }
 }
 
@@ -955,7 +975,8 @@ impl Serializer for GetBlocksRequest {
         store!(Option<RpcHash>, &self.low_hash, writer)?;
         store!(bool, &self.include_blocks, writer)?;
         store!(bool, &self.include_transactions, writer)?;
-        store!(Vec<u8>, &self.tx_payload_prefix, writer)?;
+        store!(Vec<u8>, &self.tx_payload_prefixes_flattened, writer)?;
+        store!(Vec<u32>, &self.tx_payload_prefixes_lengths, writer)?;
 
         Ok(())
     }
@@ -967,8 +988,14 @@ impl Deserializer for GetBlocksRequest {
         let low_hash = load!(Option<RpcHash>, reader)?;
         let include_blocks = load!(bool, reader)?;
         let include_transactions = load!(bool, reader)?;
-        let tx_payload_prefix = if version == 1 { vec![] } else { load!(Vec<u8>, reader)? };
-        Ok(Self { low_hash, include_blocks, include_transactions, tx_payload_prefix })
+        let (tx_payload_prefixes_flattened, tx_payload_prefixes_lengths) = if version == 1 {
+            (vec![], vec![])
+        } else {
+            let tx_payload_prefixes_flattened = load!(Vec<u8>, reader)?;
+            let tx_payload_prefixes_lengths = load!(Vec<u32>, reader)?;
+            (tx_payload_prefixes_flattened, tx_payload_prefixes_lengths)
+        };
+        Ok(Self { low_hash, include_blocks, include_transactions, tx_payload_prefixes_flattened, tx_payload_prefixes_lengths })
     }
 }
 

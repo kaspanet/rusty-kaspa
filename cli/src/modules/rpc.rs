@@ -124,7 +124,17 @@ impl Rpc {
                     })
                     .transpose()?
                     .unwrap_or_default();
-                let result = rpc.get_block_call(None, GetBlockRequest { hash, include_transactions, tx_payload_prefix }).await?;
+                let result = rpc
+                    .get_block_call(
+                        None,
+                        GetBlockRequest {
+                            hash,
+                            include_transactions,
+                            tx_payload_prefixes_lengths: vec![tx_payload_prefix.len() as u32],
+                            tx_payload_prefixes_flattened: tx_payload_prefix,
+                        },
+                    )
+                    .await?;
                 self.println(&ctx, result);
             }
             // RpcApiOps::GetSubnetwork => {

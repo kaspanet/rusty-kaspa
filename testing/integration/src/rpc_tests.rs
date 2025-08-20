@@ -216,7 +216,12 @@ async fn sanity_test() {
                     let result = rpc_client
                         .get_block_call(
                             None,
-                            GetBlockRequest { hash: 0.into(), include_transactions: false, tx_payload_prefix: vec![] },
+                            GetBlockRequest {
+                                hash: 0.into(),
+                                include_transactions: false,
+                                tx_payload_prefixes_flattened: vec![],
+                                tx_payload_prefixes_lengths: vec![],
+                            },
                         )
                         .await;
                     assert!(result.is_err());
@@ -224,7 +229,12 @@ async fn sanity_test() {
                     let response = rpc_client
                         .get_block_call(
                             None,
-                            GetBlockRequest { hash: SIMNET_GENESIS.hash, include_transactions: false, tx_payload_prefix: vec![] },
+                            GetBlockRequest {
+                                hash: SIMNET_GENESIS.hash,
+                                include_transactions: false,
+                                tx_payload_prefixes_flattened: vec![],
+                                tx_payload_prefixes_lengths: vec![],
+                            },
                         )
                         .await
                         .unwrap();
@@ -242,7 +252,8 @@ async fn sanity_test() {
                                 include_blocks: true,
                                 include_transactions: false,
                                 low_hash: None,
-                                tx_payload_prefix: vec![],
+                                tx_payload_prefixes_flattened: vec![],
+                                tx_payload_prefixes_lengths: vec![],
                             },
                         )
                         .await
