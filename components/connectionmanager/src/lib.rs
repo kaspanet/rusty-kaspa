@@ -133,23 +133,6 @@ impl ConnectionManager {
         });
     }
 
-    /// Synchronously trigger an outbound reconnect iteration (no await required)
-    pub fn trigger_outbound_reconnect_simple(&self) {
-        info!("Connection manager: trigger outbound reconnect (sync)");
-        if let Err(e) = self.force_next_iteration.send(()) {
-            warn!("Failed to trigger outbound reconnect: {}", e);
-        }
-    }
-
-    /// Triggers gradual outbound reconnection to establish new connections with updated local address
-    pub async fn reconnect_outbound_gradually(self: &Arc<Self>) {
-        info!("Connection manager: triggering gradual outbound reconnection due to IP change");
-        // Force next iteration to trigger new outbound connections
-        if let Err(e) = self.force_next_iteration.send(()) {
-            warn!("Failed to trigger outbound reconnection: {}", e);
-        }
-    }
-
     async fn handle_event(self: Arc<Self>) {
         debug!("Starting connection loop iteration");
         let peers = self.p2p_adaptor.active_peers();
