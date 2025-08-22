@@ -15,7 +15,7 @@ use crate::{
     header::Header,
     mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
-    receipts::{Pochm, ProofOfPublication, TxReceipt2},
+    receipts::{Pochm, ProofOfPublication, TxReceipt},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     utxo::utxo_inquirer::UtxoInquirerError,
@@ -372,7 +372,7 @@ pub trait ConsensusApi: Send + Sync {
         tx_id: Hash,
         accepting_block: Option<Hash>,
         tx_timestamp: Option<u64>,
-    ) -> ConsensusResult<TxReceipt2> {
+    ) -> ConsensusResult<TxReceipt> {
         unimplemented!()
     }
     fn generate_proof_of_pub(
@@ -386,7 +386,7 @@ pub trait ConsensusApi: Send + Sync {
     fn generate_pochm(&self, block: Hash) -> ConsensusResult<Pochm> {
         unimplemented!()
     }
-    fn verify_tx_receipt(&self, receipt: &TxReceipt2) -> bool {
+    fn verify_tx_receipt(&self, receipt: &TxReceipt) -> bool {
         unimplemented!()
     }
     fn verify_proof_of_pub(&self, proof_of_pub: &ProofOfPublication) -> bool {

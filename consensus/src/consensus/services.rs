@@ -221,7 +221,6 @@ impl ConsensusServices {
             storage.block_transactions_store.clone(),
             storage.pruning_point_store.clone(),
             dag_traversal_manager.clone(),
-            storage.hash_to_pchmr_store.clone(),
             params.crescendo_activation,
             params.kip6_activation,
         );

@@ -6,10 +6,7 @@ use crate::model::{
 use crate::{
     consensus::services::DbDagTraversalManager,
     model::stores::{
-        block_transactions::BlockTransactionsStoreReader,
-        pchmr_store::{DbPchmrStore, PchmrStoreReader},
-        pruning::PruningStoreReader,
-        selected_chain::SelectedChainStoreReader,
+        block_transactions::BlockTransactionsStoreReader, pruning::PruningStoreReader, selected_chain::SelectedChainStoreReader,
     },
 };
 use kaspa_consensus_core::{
@@ -20,13 +17,10 @@ use kaspa_consensus_core::{
     hashing,
     header::Header,
     merkle::create_hash_merkle_witness,
-    receipts::{LegacyPochm, LogPathPochm, Pochm, ProofOfPublication, TxReceipt, TxReceipt2},
+    receipts::{Pochm, ProofOfPublication, TxReceipt},
 };
 use kaspa_hashes::Hash;
-use kaspa_hashes::ZERO_HASH;
-use kaspa_merkle::{
-    calc_merkle_root, create_merkle_witness, create_merkle_witness_from_unsorted, merkle_hash, verify_merkle_witness, MerkleWitness,
-};
+use kaspa_merkle::{calc_merkle_root, create_merkle_witness, merkle_hash, verify_merkle_witness};
 
 use parking_lot::RwLock;
 
@@ -49,7 +43,6 @@ pub struct TxReceiptsManager<
     pub selected_chain_store: Arc<RwLock<T>>,
     pub acceptance_data_store: Arc<X>,
     pub block_transactions_store: Arc<W>,
-    pub hash_to_pchmr_store: Arc<DbPchmrStore>,
     pub pruning_point_store: Arc<RwLock<Y>>,
 
     pub crescendo_activation: ForkActivation,
@@ -78,7 +71,6 @@ impl<
         block_transactions_store: Arc<W>,
         pruning_point_store: Arc<RwLock<Y>>,
         traversal_manager: DbDagTraversalManager,
-        hash_to_pchmr_store: Arc<DbPchmrStore>,
         crescendo_activation: ForkActivation,
         kip6_activation: ForkActivation,
     ) -> Self {
@@ -91,18 +83,13 @@ impl<
             reachability_service,
             crescendo_activation,
             kip6_activation,
-            hash_to_pchmr_store: hash_to_pchmr_store.clone(),
             block_transactions_store: block_transactions_store.clone(),
             pruning_point_store: pruning_point_store.clone(),
             traversal_manager: traversal_manager.clone(),
         }
     }
 
-    pub fn generate_tx_receipt2(
-        &self,
-        accepting_block_header: Arc<Header>,
-        tracked_tx_id: Hash,
-    ) -> Result<TxReceipt2, ReceiptsErrors> {
+    pub fn generate_tx_receipt(&self, accepting_block_header: Arc<Header>, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
         //note: will fail for genesis, as its parent will be treated as "pruned"
         //Crescendo assumed activated
         let selected_parent = self.reachability_service.get_chain_parent(accepting_block_header.hash);
@@ -129,26 +116,7 @@ impl<
                 .collect::<Vec<_>>();
             atmr_chain.push(calc_merkle_root(block_accepted_txs.into_iter()))
         }
-        Ok(TxReceipt2 { tracked_tx_id, posterity_block, atmr_chain, tx_acc_proof, init_sqc })
-    }
-
-    pub fn generate_tx_receipt(&self, accepting_block_header: Arc<Header>, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
-        let pochm = self.create_pochm_proof(accepting_block_header.clone())?;
-        //find the accepted tx in accepting_block_hash and create a merkle witness for it
-        let crescendo_activated = self.crescendo_activation.is_active(accepting_block_header.daa_score);
-
-        let mergeset_txs_data = self.acceptance_data_store.get(accepting_block_header.hash)?;
-        let mut accepted_txs = mergeset_txs_data
-            .iter()
-            .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
-            .collect::<Vec<Hash>>();
-        if !crescendo_activated
-        //since crescendo accepted transactions are no longer sorted
-        {
-            accepted_txs.sort();
-        }
-        let tx_acc_proof = create_merkle_witness(accepted_txs.into_iter(), tracked_tx_id, !crescendo_activated)?;
-        Ok(TxReceipt { tracked_tx_id, accepting_block_header, pochm, tx_acc_proof })
+        Ok(TxReceipt { tracked_tx_id, posterity_block, atmr_chain, tx_acc_proof, init_sqc })
     }
     pub fn generate_proof_of_pub(
         &self,
@@ -173,11 +141,6 @@ impl<
         Ok(ProofOfPublication { tracked_tx_hash, pub_block_header, pochm, tx_pub_proof, headers_path_to_selected })
     }
     pub fn verify_tx_receipt(&self, tx_receipt: &TxReceipt) -> bool {
-        let acc_atmr = tx_receipt.accepting_block_header.accepted_id_merkle_root;
-        verify_merkle_witness(&tx_receipt.tx_acc_proof, tx_receipt.tracked_tx_id, acc_atmr)
-            && self.verify_pochm_proof(tx_receipt.accepting_block_header.hash, &tx_receipt.pochm)
-    }
-    pub fn verify_tx_receipt2(&self, tx_receipt: &TxReceipt2) -> bool {
         let tx_atmr = tx_receipt.atmr_chain[0];
         if !verify_merkle_witness(&tx_receipt.tx_acc_proof, tx_receipt.tracked_tx_id, tx_atmr) {
             eprintln!("here");
@@ -218,72 +181,29 @@ impl<
     /*Assumes: chain_purporter is on the selected chain,
     if not returns error   */
     pub fn create_pochm_proof(&self, chain_purporter_hdr: Arc<Header>) -> Result<Pochm, ReceiptsErrors> {
-        if self.kip6_activation.is_active(chain_purporter_hdr.daa_score) {
-            Ok(Pochm::LogPath(self.create_log_path_pochm_proof(chain_purporter_hdr.hash)?))
-        } else {
-            Ok(Pochm::Legacy(self.create_legacy_pochm_proof(chain_purporter_hdr.hash)?))
-        }
+        self.create_legacy_pochm_proof(chain_purporter_hdr.hash)
     }
 
     /*Assumes: chain_purporter is on the selected chain,
     if not returns error   */
-    pub fn create_legacy_pochm_proof(&self, chain_purporter: Hash) -> Result<LegacyPochm, ReceiptsErrors> {
-        /* Currently an entire BFS traversal is kept,
-        for verification, it suffices to only store the headers selected chain path down to chain purporter,
-        and the headers of each of the parents on those in the path. In the future this function may be updated correspondingly.
-        For the time being this remains unimplemented because:
-        A) this is simpler and the necessity of legacy pochm is dubious to begin with
-        B)  there is a good case to allow users to store this full bfs traversal anyway.
-        Maybe in the future this will be classified as a third type of receipt
-        */
-        let _purporter_index = self
-            .selected_chain_store
-            .read()
-            .get_by_hash(chain_purporter)
-            .map_err(|_| ReceiptsErrors::RequestedBlockNotOnSelectedChain(chain_purporter))?;
-        let post_posterity_hash = self.get_post_posterity_block(chain_purporter)?;
-        let bfs_vec: Vec<_> = self
-            .traversal_manager
-            .forward_bfs_paths_iterator(chain_purporter, post_posterity_hash)
-            .map_paths_to_tips()
-            .map(|hash| (hash, self.headers_store.get_header(hash).unwrap()))
-            .collect();
-        Ok(LegacyPochm::new(bfs_vec))
-    }
-
-    /*Assumes: chain_purporter is on the selected chain,
-    if not returns error   */
-
-    pub fn create_log_path_pochm_proof(&self, chain_purporter: Hash) -> Result<LogPathPochm, ReceiptsErrors> {
-        let mut pochm_proof = LogPathPochm::new();
-        let purporter_index = self
-            .selected_chain_store
-            .read()
-            .get_by_hash(chain_purporter)
-            .map_err(|_| ReceiptsErrors::RequestedBlockNotOnSelectedChain(chain_purporter))?;
-        let post_posterity_hash = self.get_post_posterity_block(chain_purporter)?;
-
+    pub fn create_legacy_pochm_proof(&self, chain_purporter: Hash) -> Result<Pochm, ReceiptsErrors> {
         /*
-           iterate from post posterity down  to the chain purpoter creating pchmr witnesses along the way
+        traverse down the selected chain and derive a vector containing the headers of all blocks on it, as well as their parents.
         */
-        let mut leaf_block_index;
-        let mut leaf_block_hash;
-
-        let posterity_index = self.selected_chain_store.read().get_by_hash(post_posterity_hash).unwrap();
-        let (mut root_block_hash, mut root_block_index) = (post_posterity_hash, posterity_index); //first root is post posterity
-        let mut remaining_index_diff = root_block_index - purporter_index;
-        while remaining_index_diff > 0 {
-            leaf_block_index = root_block_index - (remaining_index_diff + 1).next_power_of_two() / 2; //subtract highest possible power of two such as to not cross 0
-            leaf_block_hash = self.selected_chain_store.read().get_by_index(leaf_block_index)?;
-
-            let leaf_is_in_pchmr_of_root_proof = self.create_pchmr_witness(leaf_block_hash, root_block_hash)?;
-            let root_block_header = self.headers_store.get_header(root_block_hash).unwrap();
-            pochm_proof.insert(root_block_header.clone(), leaf_is_in_pchmr_of_root_proof);
-
-            (root_block_hash, root_block_index) = (leaf_block_hash, leaf_block_index);
-            remaining_index_diff = root_block_index - purporter_index;
-        }
-        Ok(pochm_proof)
+        let post_posterity_hash = self.get_post_posterity_block(chain_purporter)?;
+        let traversal_vec: Vec<_> = self
+            .reachability_service
+            .forward_chain_iterator(chain_purporter, post_posterity_hash, true)
+            .map(|hash| self.headers_store.get_header(hash).unwrap())
+            .flat_map(|hdr| {
+                let mut chain_hdr = vec![hdr.clone()];
+                let mut chain_and_parents_hdrs: Vec<_> =
+                    hdr.direct_parents().iter().map(|&par| self.headers_store.get_header(par).unwrap()).collect::<_>();
+                chain_and_parents_hdrs.append(&mut chain_hdr); //this order makes sure posterity is the last in the vector
+                chain_and_parents_hdrs
+            })
+            .collect::<_>();
+        Ok(Pochm::new(traversal_vec))
     }
 
     /*this function will return true for any witness premiering with a currently non pruned block and
@@ -292,131 +212,9 @@ impl<
     and not just any block that may be pruned in the future, as this property is not verified in this function,
     and the function should not be relied upon to confirm the witness is everlasting*/
     pub fn verify_pochm_proof(&self, chain_purporter: Hash, witness: &Pochm) -> bool {
-        match witness {
-            Pochm::Legacy(witness) => witness.verify_path(chain_purporter),
-            Pochm::LogPath(witness) => {
-                if let Some(post_posterity_hash) = witness.get_path_origin() {
-                    if self.headers_store.get_header(post_posterity_hash).is_ok()
-                    // verify the corresponding header is available
-                    {
-                        //verification of path itself is delegated to the pochm struct
-                        return verify_pchmrs_path(witness, chain_purporter, self.hash_to_pchmr_store.clone());
-                    }
-                }
-                false
-            }
-        }
-    }
-    pub fn calc_pchmr_root_by_hash(&self, block_hash: Hash) -> Hash {
-        if block_hash == self.genesis.hash {
-            return ZERO_HASH;
-        }
-        let parent = self.reachability_service.get_chain_parent(block_hash);
-        self.calc_pchmr_root_by_parent(parent)
+        witness.verify_path(chain_purporter)
     }
 
-    /*  function receives the selected parent of the relevant block,
-    as the block itself at this point is not assumed to exist*/
-    pub fn calc_pchmr_root_by_parent(&self, parent_of_queried_block: Hash) -> Hash {
-        let representative_parents_list = self.representative_log_parents(parent_of_queried_block);
-        calc_merkle_root(representative_parents_list.into_iter())
-    }
-
-    /*proof that a block belongs to the pchmr tree of another block;
-    the function assumes that the path from block_hash down to its posterity is intact and has not been pruned
-    (which should be the same as assuming block_hash has not been pruned)
-    it will panic if not.*/
-    pub fn create_pchmr_witness(&self, leaf_block_hash: Hash, root_block_hash: Hash) -> Result<MerkleWitness, ReceiptsErrors> {
-        let parent_of_root = self.reachability_service.get_chain_parent(root_block_hash);
-        let log_sized_parents_list = self.representative_log_parents(parent_of_root);
-
-        create_merkle_witness_from_unsorted(log_sized_parents_list.into_iter(), leaf_block_hash).map_err(|e| e.into())
-    }
-    pub fn verify_pchmr_witness(&self, witness: &MerkleWitness, leaf_block_hash: Hash, root_block_hash: Hash) -> bool {
-        verify_merkle_witness(witness, leaf_block_hash, self.hash_to_pchmr_store.get(root_block_hash).unwrap())
-    }
-
-    /* the function assumes that the path from block_hash down to its posterity is intact and has not been pruned
-    (which should be the same as assuming block_hash has not been pruned)
-    it will panic if not.
-    Function receives the selected parent of the relevant block, as the block itself is not assumed to necessarily exist yet
-    Returns all 2^i deep 'selected' parents up to the posterity block not included */
-    fn representative_log_parents(&self, parent_of_queried_block: Hash) -> Vec<Hash> {
-        let pre_posterity_hash = self.get_pre_posterity_block_by_parent(parent_of_queried_block);
-        let pre_posterity_bscore = self.headers_store.get_blue_score(pre_posterity_hash).unwrap();
-        let mut representative_parents_list = vec![];
-        /*The following logic will not be efficient for blocks which are a long distance away from the selected chain,
-        Hence, the corresponding field for which this calculation should only be verified for selected chain candidates
-        This function is also called when creating said field - in this case however any honest node should only call for it on a block which
-        would be on the selected chain from its point of view
-        nethertheless, the logic will always return a correct answer if called.*/
-        let mut distance_covered_before_chain = 0; //compulsory initialization for compiler only , a chain block will have to be reached eventually
-        let mut first_chain_ancestor = ZERO_HASH; //compulsory initialization for compiler only, a chain block will have to be reached eventually
-        for (i, current) in
-            self.reachability_service.backward_chain_iterator(parent_of_queried_block, self.genesis.hash, true).enumerate()
-        {
-            let index = i + 1; //enumeration should start from 1
-            if self.selected_chain_store.read().get_by_hash(current).is_ok() {
-                // get out of loop and apply selected chain logic instead
-                first_chain_ancestor = current;
-                distance_covered_before_chain = index as u64;
-                break;
-            } else if index.is_power_of_two() {
-                //trickery to check if index is a power of two
-                representative_parents_list.push(current);
-            }
-            if current == pre_posterity_hash {
-                // notice the pre_posterity for a non chain block is not necessarily a chain block
-                return representative_parents_list;
-            }
-        }
-        let first_chain_ancestor_index = self.selected_chain_store.read().get_by_hash(first_chain_ancestor).unwrap();
-        representative_parents_list.append(&mut self.representative_log_parents_from_selected_chain(
-            first_chain_ancestor_index,
-            distance_covered_before_chain,
-            pre_posterity_bscore,
-        ));
-        representative_parents_list
-    }
-
-    /*
-       get the representative parents of a (implicit) queried block,
-       who are also ancestors of  the firs ancestor of queried block which is in the selected chain.
-       distance_covered_before_chain describes the  distance from queried block to  its first chain ancestor
-       Be wary this is only a partial list of all representative parents of queried block
-    */
-    fn representative_log_parents_from_selected_chain(
-        &self,
-        first_chain_ancestor_index: u64,
-        distance_covered_before_chain: u64,
-        pre_posterity_bscore: u64,
-    ) -> Vec<Hash> {
-        let mut representative_parents_partial_list = vec![];
-        let queried_block_fictional_index = first_chain_ancestor_index + distance_covered_before_chain;
-        let mut next_power = distance_covered_before_chain.next_power_of_two();
-        let mut next_chain_block_rep_parent =
-            self.selected_chain_store.read().get_by_index(queried_block_fictional_index.saturating_sub(next_power)).unwrap();
-        let mut next_bscore = self.headers_store.get_blue_score(next_chain_block_rep_parent).unwrap();
-        while next_bscore > pre_posterity_bscore {
-            representative_parents_partial_list.push(next_chain_block_rep_parent);
-            next_power *= 2;
-            if let Ok(unwarapped) = self
-                .selected_chain_store
-                .read()
-                .get_by_index(first_chain_ancestor_index.saturating_sub(next_power.saturating_sub(distance_covered_before_chain)))
-            {
-                next_chain_block_rep_parent = unwarapped;
-                next_bscore = self.headers_store.get_blue_score(next_chain_block_rep_parent).unwrap();
-            } else {
-                break;
-            }
-        }
-        if next_bscore == pre_posterity_bscore {
-            //edge case
-            representative_parents_partial_list.push(next_chain_block_rep_parent);
-        }
-        representative_parents_partial_list
-    }
     /* the function assumes that the path from block_hash up to its post posterity if it exits is intact and has not been pruned
     it will panic if not;
     An error is returned if post_posterity does not yet exist;
@@ -700,22 +498,4 @@ impl<
         let candidate_sel_parent_bscore = self.headers_store.get_blue_score(candidate_sel_parent_hash).unwrap();
         candidate_sel_parent_bscore < cutoff_bscore
     }
-}
-
-// this logic should be a method of Pochm in receipts.rs,
-//it is only here currently because pchmr_store is required for it
-// and cannot be accessed easily from receipt.rs
-pub fn verify_pchmrs_path(pochm: &LogPathPochm, destination_block_hash: Hash, pchmr_store: Arc<DbPchmrStore>) -> bool {
-    let leaf_hashes = pochm.vec.iter()
-        .skip(1)//remove first element to match accordingly to witnesses 
-        .map(|pochm_seg| pochm_seg.header.hash)//map to hashes
-        .chain(std::iter::once(destination_block_hash)); // add final block
-
-    /*verify the path from posterity down to chain_purporter:
-    iterate downward from posterity block header: for each, verify that leaf hash is in pchmr of ther header */
-    pochm.vec.iter().zip(leaf_hashes).all(|(pochm_seg, leaf_hash)| {
-        let pchmr_root_hash = pchmr_store.get(pochm_seg.header.hash).unwrap();
-        let witness = &pochm_seg.leaf_in_pchmr_witness;
-        verify_merkle_witness(witness, leaf_hash, pchmr_root_hash)
-    })
 }

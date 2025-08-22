@@ -69,7 +69,7 @@ use kaspa_consensus_core::{
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
-    receipts::{Pochm, ProofOfPublication, TxReceipt2},
+    receipts::{Pochm, ProofOfPublication, TxReceipt},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     utxo::utxo_inquirer::UtxoInquirerError,
@@ -488,7 +488,7 @@ impl Consensus {
             .collect_vec()
     }
     /* this logic may not be the most efficient and reliable as of now */
-    fn generate_tx_receipt_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<TxReceipt2> {
+    fn generate_tx_receipt_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<TxReceipt> {
         //utility closures
         let someize_header_if_blk_accepts_tx = |blk| {
             if self
@@ -568,7 +568,7 @@ impl Consensus {
         let acc_blocks = double_sided_iterator.filter(|blk| blk.is_some());
         for hdr in acc_blocks {
             //first Some represents the result of the find, second the fact that blk is a Some
-            if let Ok(ret) = self.services.tx_receipts_manager.generate_tx_receipt2(hdr.unwrap(), tx_id) {
+            if let Ok(ret) = self.services.tx_receipts_manager.generate_tx_receipt(hdr.unwrap(), tx_id) {
                 return Ok(ret);
             }
         }
@@ -1319,14 +1319,14 @@ impl ConsensusApi for Consensus {
         tx_id: Hash,
         accepting_block: Option<Hash>,
         tx_timestamp: Option<u64>,
-    ) -> ConsensusResult<TxReceipt2> {
+    ) -> ConsensusResult<TxReceipt> {
         if let Some(accepting_block) = accepting_block {
             //if a block hash is supplied, generate receipt directly
             let accepting_block_header = self.headers_store.get_header(accepting_block).unwrap();
             return self
                 .services
                 .tx_receipts_manager
-                .generate_tx_receipt2(accepting_block_header, tx_id)
+                .generate_tx_receipt(accepting_block_header, tx_id)
                 .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
         }
         //if no block is given, try to search based on time_stamp
@@ -1350,7 +1350,7 @@ impl ConsensusApi for Consensus {
                 .contains(&tx_id)
             {
                 let accepting_block_header = self.headers_store.get_header(block).unwrap();
-                if let Ok(ret) = self.services.tx_receipts_manager.generate_tx_receipt2(accepting_block_header, tx_id) {
+                if let Ok(ret) = self.services.tx_receipts_manager.generate_tx_receipt(accepting_block_header, tx_id) {
                     return Ok(ret);
                 }
             }
@@ -1406,15 +1406,15 @@ impl ConsensusApi for Consensus {
             .map_err(|_| ConsensusError::General("required data to create a proof of chain membership appears missing"))
     }
     //Note: wallets are expected to verify on their own that the tx_id corresponds to the tx they have stored
-    fn verify_tx_receipt(&self, receipt: &TxReceipt2) -> bool {
-        self.services.tx_receipts_manager.verify_tx_receipt2(receipt)
+    fn verify_tx_receipt(&self, receipt: &TxReceipt) -> bool {
+        self.services.tx_receipts_manager.verify_tx_receipt(receipt)
     }
     //Note: wallets are expected to verify on their own that the tx_id corresponds to the tx they have stored
     fn verify_proof_of_pub(&self, proof_of_pub: &ProofOfPublication) -> bool {
         self.services.tx_receipts_manager.verify_proof_of_pub(proof_of_pub)
     }
-    fn verify_pochm(&self, chain_purporter: Hash, proof_of_pub: &Pochm) -> bool {
-        self.services.tx_receipts_manager.verify_pochm_proof(chain_purporter, proof_of_pub)
+    fn verify_pochm(&self, chain_purporter: Hash, pochm: &Pochm) -> bool {
+        self.services.tx_receipts_manager.verify_pochm_proof(chain_purporter, pochm)
     }
     fn is_posterity_reached(&self, cutoff_bscore: u64) -> bool {
         /* note: this function only asserts a posterity with blue score higher than cutoff score exists

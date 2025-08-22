@@ -16,7 +16,6 @@ use kaspa_consensus_core::{
         params::{ForkActivation, MAINNET_PARAMS},
         ConfigBuilder,
     },
-    receipts::Pochm,
 };
 
 #[tokio::test]
@@ -156,9 +155,6 @@ async fn test_receipts_in_chain() {
     }
     for (pochm, blk) in pochms_list {
         assert!(ctx.consensus.verify_pochm(blk, &pochm));
-        if let Pochm::LogPath(pochm) = pochm {
-            assert!(pochm.vec.len() <= (FINALITY_DEPTH as f64).log2() as usize);
-        }
     }
     for (rec, tx_id) in receipts {
         assert!(ctx.consensus.verify_tx_receipt(&rec));
@@ -184,7 +180,7 @@ async fn test_receipts_in_random() {
      */
     const FINALITY_DEPTH: usize = 10;
     const DAG_SIZE: u64 = 500;
-    const BPS: f64 = 6.0;
+    const BPS: f64 = 10.0;
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
@@ -306,9 +302,6 @@ async fn test_receipts_in_random() {
     for (pochm, blk) in pochms_list.into_iter() {
         eprintln!("blk_verified: {:?}", blk);
         assert!(ctx.consensus.verify_pochm(blk, &pochm));
-        if let Pochm::LogPath(pochm) = pochm {
-            assert!(pochm.vec.len() <= (FINALITY_DEPTH as f64).log2() as usize);
-        }
     }
     for rec in receipts1.values() {
         assert!(ctx.consensus.verify_tx_receipt(rec));

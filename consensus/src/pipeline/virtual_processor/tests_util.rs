@@ -1,7 +1,4 @@
-use crate::{
-    consensus::{services::DbTxReceiptsManager, test_consensus::TestConsensus},
-    model::stores::pchmr_store::PchmrStore,
-};
+use crate::consensus::{services::DbTxReceiptsManager, test_consensus::TestConsensus};
 use kaspa_consensus_core::{
     api::ConsensusApi,
     block::{Block, BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
@@ -87,10 +84,7 @@ impl TestContext {
         while let Some(t) = self.current_templates.pop_front() {
             self.current_tips.insert(t.block.header.hash);
             let immutatble_block = t.block.to_immutable();
-            let block_hash = immutatble_block.header.hash;
             self.validate_and_insert_block(immutatble_block).await;
-            let pchmr_root = self.tx_receipts_manager().calc_pchmr_root_by_hash(block_hash);
-            self.store_pchmr_root(block_hash, pchmr_root);
         }
         self
     }
@@ -129,10 +123,7 @@ impl TestContext {
         b
     }
     pub async fn add_utxo_valid_block_with_parents(&self, hash: Hash, parents: Vec<Hash>, txs: Vec<Transaction>) -> BlockStatus {
-        let ret = self.consensus.add_utxo_valid_block_with_parents(hash, parents, txs).await.unwrap();
-        let pchmr_root = self.tx_receipts_manager().calc_pchmr_root_by_hash(hash);
-        self.store_pchmr_root(hash, pchmr_root);
-        ret
+        self.consensus.add_utxo_valid_block_with_parents(hash, parents, txs).await.unwrap()
     }
     pub async fn validate_and_insert_block(&mut self, block: Block) -> &mut Self {
         let status = self.consensus.validate_and_insert_block(block).virtual_state_task.await.unwrap();
@@ -159,9 +150,6 @@ impl TestContext {
         // Assert that at least one body tip was resolved with valid UTXO
         assert!(self.consensus.body_tips().iter().copied().any(|h| self.consensus.block_status(h) == BlockStatus::StatusUTXOValid));
         self
-    }
-    pub fn store_pchmr_root(&self, block_hash: Hash, pchmr_root_hash: Hash) {
-        self.tx_receipts_manager().hash_to_pchmr_store.insert(block_hash, pchmr_root_hash).unwrap();
     }
     pub fn tx_receipts_manager(&self) -> DbTxReceiptsManager {
         self.consensus.services.tx_receipts_manager.clone()
