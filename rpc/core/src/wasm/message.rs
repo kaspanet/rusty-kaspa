@@ -1230,6 +1230,11 @@ declare! {
     export interface IGetVirtualChainFromBlockRequest {
         startHash : HexString;
         includeAcceptedTransactionIds: boolean;
+        /**
+         * If passed, this request will only return blocks that have at least minConfirmationCount number of confirmations. Confirmation is counted through the distance from virtual chain tip.
+         * If not passed, it will be interpreted as 0.
+         */
+        minConfirmationCount?: number;
     }
     "#,
 }

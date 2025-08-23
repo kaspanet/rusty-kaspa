@@ -102,7 +102,7 @@ impl UtxoContext {
         &self.inner
     }
 
-    pub fn context(&self) -> MutexGuard<native::context::Context> {
+    pub fn context(&self) -> MutexGuard<'_, native::context::Context> {
         self.inner.context()
     }
 

@@ -10,7 +10,7 @@ use crate::imports::*;
 pub struct ActiveAccountMap(Arc<Mutex<HashMap<AccountId, Arc<dyn Account>>>>);
 
 impl ActiveAccountMap {
-    pub fn inner(&self) -> MutexGuard<HashMap<AccountId, Arc<dyn Account>>> {
+    pub fn inner(&self) -> MutexGuard<'_, HashMap<AccountId, Arc<dyn Account>>> {
         self.0.lock().unwrap()
     }
 
