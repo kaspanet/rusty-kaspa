@@ -125,7 +125,7 @@ impl<
         let mut headers_path_to_selected: Vec<_> =
             path_to_selected.iter().map(|&hash| self.headers_store.get_header(hash).unwrap()).collect();
 
-        let pochm = self.create_pochm_proof(headers_path_to_selected.last().unwrap().clone())?;
+        let pochm = self.create_pochm_proof(headers_path_to_selected.last().unwrap().hash)?;
         headers_path_to_selected.remove(0); //remove the publishing block itself from the chain as it is redundant to store
 
         //next, find the relevant transaction in pub_block_hash's published transactions and create a merkle witness for it
@@ -177,13 +177,7 @@ impl<
     }
     /*Assumes: chain_purporter is on the selected chain,
     if not returns error   */
-    pub fn create_pochm_proof(&self, chain_purporter_hdr: Arc<Header>) -> Result<Pochm, ReceiptsErrors> {
-        self.create_legacy_pochm_proof(chain_purporter_hdr.hash)
-    }
-
-    /*Assumes: chain_purporter is on the selected chain,
-    if not returns error   */
-    pub fn create_legacy_pochm_proof(&self, chain_purporter: Hash) -> Result<Pochm, ReceiptsErrors> {
+    pub fn create_pochm_proof(&self, chain_purporter: Hash) -> Result<Pochm, ReceiptsErrors> {
         /*
         traverse down the selected chain and derive a vector containing the headers of all blocks on it, as well as their parents.
         */

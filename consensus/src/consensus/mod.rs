@@ -1406,7 +1406,7 @@ impl ConsensusApi for Consensus {
     fn generate_pochm(&self, chain_purporter: Hash) -> ConsensusResult<Pochm> {
         self.services
             .tx_receipts_manager
-            .create_pochm_proof(self.headers_store.get_header(chain_purporter).unwrap())
+            .create_pochm_proof(chain_purporter)
             .map_err(|_| ConsensusError::General("required data to create a proof of chain membership appears missing"))
     }
     //Note: wallets are expected to verify on their own that the tx_id corresponds to the tx they have stored

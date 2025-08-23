@@ -53,7 +53,6 @@ pub type DbTxReceiptsManager = TxReceiptsManager<
     DbSelectedChainStore,
     DbReachabilityStore,
     DbHeadersStore,
-    // W:PchmrStoreReader,
     DbAcceptanceDataStore,
     DbBlockTransactionsStore,
     DbPruningStore,
