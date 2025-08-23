@@ -138,6 +138,10 @@ impl FlattenedSliceBuilder {
     pub fn as_holder(&self) -> FlattenedSliceHolder<'_> {
         FlattenedSliceHolder::new(&self.flattened_data, &self.slice_lengths)
     }
+
+    pub fn into_inner(self) -> (Vec<u8>, Vec<u32>) {
+        (self.flattened_data, self.slice_lengths)
+    }
 }
 
 impl Default for FlattenedSliceBuilder {
