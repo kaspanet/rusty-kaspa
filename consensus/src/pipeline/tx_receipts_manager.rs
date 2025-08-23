@@ -46,7 +46,6 @@ pub struct TxReceiptsManager<
     pub pruning_point_store: Arc<RwLock<Y>>,
 
     pub crescendo_activation: ForkActivation,
-    pub kip6_activation: ForkActivation,
 
     pub traversal_manager: DbDagTraversalManager,
 }
@@ -72,7 +71,6 @@ impl<
         pruning_point_store: Arc<RwLock<Y>>,
         traversal_manager: DbDagTraversalManager,
         crescendo_activation: ForkActivation,
-        kip6_activation: ForkActivation,
     ) -> Self {
         Self {
             genesis: genesis.clone(),
@@ -82,7 +80,6 @@ impl<
             acceptance_data_store: acceptance_data_store.clone(),
             reachability_service,
             crescendo_activation,
-            kip6_activation,
             block_transactions_store: block_transactions_store.clone(),
             pruning_point_store: pruning_point_store.clone(),
             traversal_manager: traversal_manager.clone(),

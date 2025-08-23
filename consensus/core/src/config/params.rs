@@ -255,7 +255,6 @@ pub struct Params {
 
     pub crescendo: CrescendoParams,
     pub crescendo_activation: ForkActivation,
-    pub kip6_activation: ForkActivation,
 }
 
 impl Params {
@@ -538,7 +537,6 @@ pub const MAINNET_PARAMS: Params = Params {
     crescendo: CRESCENDO,
     // Roughly 2025-05-05 1500 UTC
     crescendo_activation: ForkActivation::new(110_165_000),
-    kip6_activation: ForkActivation::never(),
 };
 
 pub const TESTNET_PARAMS: Params = Params {
@@ -598,7 +596,6 @@ pub const TESTNET_PARAMS: Params = Params {
     crescendo: CRESCENDO,
     // 18:30 UTC, March 6, 2025
     crescendo_activation: ForkActivation::new(88_657_000),
-    kip6_activation: ForkActivation::never(),
 };
 
 pub const SIMNET_PARAMS: Params = Params {
@@ -648,7 +645,6 @@ pub const SIMNET_PARAMS: Params = Params {
 
     crescendo: CRESCENDO,
     crescendo_activation: ForkActivation::always(),
-    kip6_activation: ForkActivation::never(),
 };
 
 pub const DEVNET_PARAMS: Params = Params {
@@ -702,5 +698,4 @@ pub const DEVNET_PARAMS: Params = Params {
     crescendo: CRESCENDO,
     // TODO: Set this to always after the fork
     crescendo_activation: ForkActivation::never(),
-    kip6_activation: ForkActivation::never(),
 };

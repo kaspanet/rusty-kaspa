@@ -36,7 +36,6 @@ async fn test_receipts_in_chain() {
             p.crescendo.finality_depth = FINALITY_DEPTH as u64;
             p.prior_pruning_depth = (FINALITY_DEPTH * 3 - 5) as u64;
             p.crescendo.pruning_depth = (FINALITY_DEPTH * 3 - 5) as u64;
-            p.kip6_activation = ForkActivation::new(20);
             p.crescendo_activation = ForkActivation::new(25);
             p.prior_target_time_per_block = (1000.0 / BPS) as u64;
             p.crescendo.target_time_per_block = (1000.0 / BPS) as u64;
@@ -194,7 +193,6 @@ async fn test_receipts_in_random() {
             p.crescendo.finality_depth = FINALITY_DEPTH as u64;
             p.prior_pruning_depth = (FINALITY_DEPTH * 3 - 5) as u64;
             p.crescendo.pruning_depth = (FINALITY_DEPTH * 3 - 5) as u64;
-            p.kip6_activation = ForkActivation::new(20);
             p.crescendo_activation = ForkActivation::new(20);
         })
         .build();

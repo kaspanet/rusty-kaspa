@@ -222,7 +222,6 @@ impl ConsensusServices {
             storage.pruning_point_store.clone(),
             dag_traversal_manager.clone(),
             params.crescendo_activation,
-            params.kip6_activation,
         );
 
         Arc::new(Self {
