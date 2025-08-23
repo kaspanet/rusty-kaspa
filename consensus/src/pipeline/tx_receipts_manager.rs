@@ -426,17 +426,19 @@ impl<
     // reference_wrapped is assumed to be a block on the selected chain, or None
     // will panic if not
     pub fn estimate_dag_width(&self, reference_wrapped: Option<Hash>) -> u64 {
-        let (reference_index, reference);
-        let pruning_read: parking_lot::lock_api::RwLockReadGuard<'_, parking_lot::RawRwLock, Y> = self.pruning_point_store.read(); //should I keep this lock till the end?
+        let pruning_read: parking_lot::lock_api::RwLockReadGuard<'_, parking_lot::RawRwLock, Y> = self.pruning_point_store.read();
         let pruning_point_index = self.selected_chain_store.read().get_by_hash(pruning_read.pruning_point().unwrap()).unwrap();
         drop(pruning_read);
-        if reference_wrapped.is_some() {
-            reference = reference_wrapped.unwrap();
-            reference_index = self.selected_chain_store.read().get_by_hash(reference).unwrap();
-        } else {
-            // if no refernce provided, take the sink as reference
-            (reference_index, reference) = self.selected_chain_store.read().get_tip().unwrap();
-        }
+        let (reference_index, reference) = match reference_wrapped {
+            Some(reference) => {
+                let reference_index = self.selected_chain_store.read().get_by_hash(reference).unwrap();
+                (reference_index, reference)
+            }
+            None => {
+                // if no refernce provided, take the sink as reference
+                self.selected_chain_store.read().get_tip().unwrap()
+            }
+        };
         let reference_bscore = self.headers_store.get_blue_score(reference).unwrap();
         let reference_daa = self.headers_store.get_daa_score(reference).unwrap();
         let past_dist_cover = std::cmp::min(100, self.posterity_depth.get(reference_daa)); //edge case relevant for testing mostly
