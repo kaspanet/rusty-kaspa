@@ -30,7 +30,7 @@ pub struct DynDnsExtender {
 }
 
 impl DynDnsExtender {
-    pub fn new(config: Arc<Config>, am: Arc<Mutex<AddressManager>>, tick_service: Arc<TickService>) -> Option<Self> {
+    pub fn new(config: Arc<Config>, am: Arc<Mutex<AddressManager>>, tick_service: Arc<TickService>, initial_external_ip: Option<IpAddr>) -> Option<Self> {
         let host = config.external_dyndns_host.clone()?; // only build if host provided
 
         let instance = Self {
@@ -41,7 +41,7 @@ impl DynDnsExtender {
             ip_mode: config.external_dyndns_ip_version,
             host,
             resolver: Box::new(DefaultResolver),
-            last_ip: Arc::new(Mutex::new(None)),
+            last_ip: Arc::new(Mutex::new(initial_external_ip)),
         };
 
         Some(instance)
