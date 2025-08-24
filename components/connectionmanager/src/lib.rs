@@ -93,7 +93,7 @@ impl ConnectionManager {
         });
     }
 
-    /// Synchronously trigger a staggered outbound reconnect (terminates peers one by one with 30s delays)
+    /// Synchronously trigger a staggered outbound reconnect (terminates peers one by one with 15s delays)
     pub fn trigger_outbound_reconnect(&self) {
         let outbound_peers: Vec<_> = self.p2p_adaptor.active_peers()
             .into_iter()
@@ -106,7 +106,7 @@ impl ConnectionManager {
         }
         
         let peer_count = outbound_peers.len();
-        info!("Starting staggered outbound reconnect: {} peers will be renewed with 30s delays", peer_count);
+    info!("Starting staggered outbound reconnect: {} peers will be renewed with 15s delays", peer_count);
         
         // Spawn async task for staggered renewal
         let p2p_adaptor = self.p2p_adaptor.clone();
@@ -122,8 +122,8 @@ impl ConnectionManager {
                 if i < peer_count - 1 {
                     force_sender.send(()).unwrap();
                     
-                    // Wait 30 seconds
-                    tokio::time::sleep(Duration::from_secs(30)).await;
+                    // Wait 15 seconds
+                    tokio::time::sleep(Duration::from_secs(15)).await;
                 }
             }
             
