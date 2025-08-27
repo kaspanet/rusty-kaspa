@@ -2,7 +2,7 @@ use crate::{
     consensus::{
         services::{
             ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbPruningPointManager,
-            DbWindowManager,
+            DbTxReceiptsManager, DbWindowManager,
         },
         storage::ConsensusStorage,
     },
@@ -48,6 +48,7 @@ use crate::{
         window::WindowManager,
     },
 };
+
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
@@ -158,6 +159,7 @@ pub struct VirtualStateProcessor {
     pub(super) pruning_point_manager: DbPruningPointManager,
     pub(super) parents_manager: DbParentsManager,
     pub(super) depth_manager: DbBlockDepthManager,
+    pub(super) tx_receipts_manager: DbTxReceiptsManager,
 
     // block window caches
     pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
@@ -239,6 +241,7 @@ impl VirtualStateProcessor {
             pruning_point_manager: services.pruning_point_manager.clone(),
             parents_manager: services.parents_manager.clone(),
             depth_manager: services.depth_manager.clone(),
+            tx_receipts_manager: services.tx_receipts_manager.clone(),
 
             pruning_lock,
             notification_root,
