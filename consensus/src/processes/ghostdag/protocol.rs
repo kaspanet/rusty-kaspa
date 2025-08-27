@@ -133,6 +133,11 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             // ORIGIN is always a single parent so both blue score and work should remain zero
             return GhostdagData::new_with_selected_parent(selected_parent, 1); // k is only a capacity hint here
         }
+
+        self.incremental_coloring(parents, selected_parent)
+    }
+
+    pub fn incremental_coloring(&self, parents: &[Hash], selected_parent: Hash) -> GhostdagData {
         let k = self.k;
         // Initialize new GHOSTDAG block data with the selected parent
         let mut new_block_data = GhostdagData::new_with_selected_parent(selected_parent, k);
