@@ -265,7 +265,7 @@ impl VirtualStateProcessor {
         let reply = self.pruning_point_manager.expected_header_pruning_point_v2(ghostdag_data);
         if self.crescendo_activation.is_active(selected_parent_daa_score) {
             if reply.pruning_point != header.pruning_point {
-                return Err(WrongHeaderPruningPoint(reply.pruning_point, header.pruning_point));
+                return Err(WrongHeaderPruningPoint(header.hash, reply.pruning_point, header.pruning_point));
             }
         } else {
             assert_eq!(reply.pruning_point, header.pruning_point, "verified by header validation (v1 = v2 pre activation)");
