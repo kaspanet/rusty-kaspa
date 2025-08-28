@@ -373,7 +373,7 @@ impl KaspaRpcClient {
     }
 
     pub fn network_id(&self) -> Result<Option<NetworkId>> {
-        Ok(self.inner.network_id.lock().unwrap().clone())
+        Ok(*self.inner.network_id.lock().unwrap())
     }
 
     pub fn set_network_id(&self, network_id: &NetworkId) -> Result<()> {
@@ -444,7 +444,7 @@ impl KaspaRpcClient {
 
         // current url is populated by a an implemented trait when not forced in options
         if let Some(ref url) = options.url {
-            self.inner.set_current_url(Some(&url));
+            self.inner.set_current_url(Some(url));
         }
 
         // 1Gb message and frame size limits (on native and NodeJs platforms)
