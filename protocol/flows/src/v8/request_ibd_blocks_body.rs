@@ -1,18 +1,21 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow, ibd::IBD_BATCH_SIZE};
 use kaspa_core::debug;
 use kaspa_p2p_lib::{
-    common::ProtocolError, dequeue_with_request_id, make_response, pb::kaspad_message::Payload, IncomingRoute, Router,
+    common::ProtocolError,
+    dequeue_with_request_id, make_response,
+    pb::{kaspad_message::Payload, BlockBodyMessage},
+    IncomingRoute, Router,
 };
 use std::sync::Arc;
 
-pub struct HandleIbdBlockRequests {
+pub struct HandleIbdBlockBodyRequests {
     ctx: FlowContext,
     router: Arc<Router>,
     incoming_route: IncomingRoute,
 }
 
 #[async_trait::async_trait]
-impl Flow for HandleIbdBlockRequests {
+impl Flow for HandleIbdBlockBodyRequests {
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }
@@ -22,22 +25,22 @@ impl Flow for HandleIbdBlockRequests {
     }
 }
 
-impl HandleIbdBlockRequests {
+impl HandleIbdBlockBodyRequests {
     pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
         Self { ctx, router, incoming_route }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
-            let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestIbdBlocks)?;
+            let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestIbdBlocksBodies)?;
             let hashes: Vec<_> = msg.try_into()?;
-
-            debug!("got request for {} IBD blocks", hashes.len());
+            debug!("got request for {} IBD blocks bodies", hashes.len());
             let session = self.ctx.consensus().unguarded_session();
             for chunk in hashes.chunks(IBD_BATCH_SIZE) {
-                let blocks_batch = session.async_get_block_batch(chunk.to_vec()).await;
-                for el in blocks_batch {
-                    self.router.enqueue(make_response!(Payload::IbdBlock, (&(el?)).into(), request_id)).await?;
+                let bodies_batch = session.async_get_block_body_batch(chunk.to_vec()).await;
+                for el in bodies_batch {
+                    let block_body_message = BlockBodyMessage { transactions: el?.iter().map(|tx| tx.into()).collect() };
+                    self.router.enqueue(make_response!(Payload::IbdBlockBody, block_body_message, request_id)).await?;
                 }
             }
         }
