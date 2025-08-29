@@ -651,6 +651,56 @@ pub const DEVNET_PARAMS: Params = Params {
     dns_seeders: &[],
     net: NetworkId::new(NetworkType::Devnet),
     genesis: DEVNET_GENESIS,
+    timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
+    max_difficulty_target: MAX_DIFFICULTY_TARGET,
+    max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
+    prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
+
+    //
+    // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
+    //
+    // Note we use a 10 BPS configuration for devnet
+    prior_ghostdag_k: TenBps::ghostdag_k(),
+    prior_target_time_per_block: TenBps::target_time_per_block(),
+    prior_max_block_parents: TenBps::max_block_parents(),
+    prior_mergeset_size_limit: TenBps::mergeset_size_limit(),
+    prior_merge_depth: TenBps::merge_depth_bound(),
+    prior_finality_depth: TenBps::finality_depth(),
+    prior_pruning_depth: TenBps::pruning_depth(),
+    deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
+    pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
+    prior_coinbase_maturity: TenBps::coinbase_maturity(),
+
+    coinbase_payload_script_public_key_max_len: 150,
+    max_coinbase_payload_len: 204,
+
+    prior_max_tx_inputs: 10_000,
+    prior_max_tx_outputs: 10_000,
+    prior_max_signature_script_len: 1_000_000,
+    prior_max_script_public_key_len: 1_000_000,
+
+    mass_per_tx_byte: 1,
+    mass_per_script_pub_key_byte: 10,
+    mass_per_sig_op: 1000,
+    max_block_mass: 500_000,
+
+    storage_mass_parameter: STORAGE_MASS_PARAMETER,
+
+    skip_proof_of_work: false,
+    max_block_level: 250,
+    pruning_proof_m: PRUNING_PROOF_M,
+
+    crescendo: CRESCENDO,
+    crescendo_activation: ForkActivation::always(),
+};
+
+// Some tests depend on a pre-crescendo devnet.
+// To keep these tests intact we keep the devnet params pre-crescendo
+pub const PRE_CRESCENDO_DEVNET_PARAMS: Params = Params {
+    dns_seeders: &[],
+    net: NetworkId::new(NetworkType::Devnet),
+    genesis: DEVNET_GENESIS,
     prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     prior_target_time_per_block: 1000,
