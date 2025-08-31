@@ -1230,6 +1230,11 @@ declare! {
     export interface IGetVirtualChainFromBlockRequest {
         startHash : HexString;
         includeAcceptedTransactionIds: boolean;
+        /**
+         * If passed, this request will only return blocks that have at least minConfirmationCount number of confirmations. Confirmation is counted through the distance from virtual chain tip.
+         * If not passed, it will be interpreted as 0.
+         */
+        minConfirmationCount?: number;
     }
     "#,
 }
@@ -1725,6 +1730,43 @@ try_from!( args: GetFeeEstimateExperimentalResponse, IGetFeeEstimateExperimental
     }
 
     Ok(response)
+});
+
+declare! {
+    IGetUtxoReturnAddressRequest,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxoReturnAddressRequest {
+        txid: HexString;
+        acceptingBlockDaaScore: bigint;
+    }
+    "#,
+}
+
+try_from!(args: IGetUtxoReturnAddressRequest, GetUtxoReturnAddressRequest, {
+   Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetUtxoReturnAddressResponse,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxoReturnAddressResponse {
+        returnAddress: Address;
+    }
+    "#,
+}
+
+try_from!(args: GetUtxoReturnAddressResponse, IGetUtxoReturnAddressResponse, {
+    Ok(to_value(&args)?.into())
 });
 
 // ---

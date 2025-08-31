@@ -45,3 +45,6 @@ rustls.workspace = true
 
 [features]
 heap = []
+
+[lints]
+workspace = true

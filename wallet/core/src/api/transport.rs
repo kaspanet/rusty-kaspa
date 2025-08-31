@@ -99,12 +99,21 @@ impl WalletApi for WalletClient {
         AccountsGet,
         AccountsCreateNewAddress,
         AccountsSend,
+        AccountsPskbSign,
+        AccountsPskbBroadcast,
+        AccountsPskbSend,
+        AccountsGetUtxos,
         AccountsTransfer,
         AccountsEstimate,
         TransactionsDataGet,
         TransactionsReplaceNote,
         TransactionsReplaceMetadata,
         AddressBookEnumerate,
+        FeeRateEstimate,
+        FeeRatePollerEnable,
+        FeeRatePollerDisable,
+        AccountsCommitReveal,
+        AccountsCommitRevealManual,
     ]}
 }
 
@@ -176,12 +185,21 @@ impl WalletServer {
         AccountsGet,
         AccountsCreateNewAddress,
         AccountsSend,
+        AccountsPskbSign,
+        AccountsPskbBroadcast,
+        AccountsPskbSend,
+        AccountsGetUtxos,
         AccountsTransfer,
         AccountsEstimate,
         TransactionsDataGet,
         TransactionsReplaceNote,
         TransactionsReplaceMetadata,
         AddressBookEnumerate,
+        FeeRateEstimate,
+        FeeRatePollerEnable,
+        FeeRatePollerDisable,
+        AccountsCommitReveal,
+        AccountsCommitRevealManual,
     ]}
 }
 
