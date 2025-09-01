@@ -112,7 +112,11 @@ impl Add for Global {
         // - One has payload -> use that payload
         // - Both have same payload -> use that payload
         // - Different payloads -> error
-        self.payload = match (self.payload.clone(), rhs.payload.clone()) {
+        // Payload requires version >= 1
+        if (self.payload.is_some() || rhs.payload.is_some()) && self.version < Version::One {
+            return Err(CombineError::PayloadRequiresHigherVersion { version: self.version });
+        }
+        self.payload = match (self.payload.take(), rhs.payload) {
             (None, None) => None,
             (Some(p), None) | (None, Some(p)) => Some(p),
             (Some(lhs), Some(rhs)) if lhs == rhs => Some(lhs),
@@ -189,5 +193,10 @@ pub enum CombineError {
         this: Option<Vec<u8>>,
         /// rhs
         that: Option<Vec<u8>>,
+    },
+    #[error("Payload requires PSKT version 1 or higher, but current version is {version}")]
+    PayloadRequiresHigherVersion {
+        /// Current PSKT version
+        version: Version,
     },
 }

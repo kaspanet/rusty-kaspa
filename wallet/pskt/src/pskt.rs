@@ -194,6 +194,12 @@ impl PSKT<Creator> {
         self
     }
 
+    /// Sets the PSKT version.
+    pub fn set_version(mut self, version: Version) -> Self {
+        self.inner_pskt.global.version = version;
+        self
+    }
+
     // todo generic const
     /// Sets the inputs modifiable bit in the transaction modifiable flags.
     pub fn inputs_modifiable(mut self) -> Self {
