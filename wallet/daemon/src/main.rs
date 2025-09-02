@@ -10,7 +10,7 @@ use kaspa_wallet_core::{
 };
 use kaspa_wallet_grpc_core::kaspawalletd::kaspawalletd_server::KaspawalletdServer;
 use kaspa_wallet_grpc_server::service::Service;
-use std::{error::Error, fs, str::FromStr, sync::Arc};
+use std::{error::Error, str::FromStr, sync::Arc};
 use tokio::sync::oneshot;
 use tonic::transport::Server;
 
@@ -20,8 +20,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
     let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, Some(Resolver::default()), None)?);
-    let password = fs::read_to_string(&args.password).unwrap();
-    wallet.clone().wallet_open(password.into(), args.name, false, false).await?;
+    wallet.clone().wallet_open(args.password.into(), args.name, false, false).await?;
     info!("Wallet path: {}", wallet.store().location()?);
 
     if let Some(wrpc_client) = wallet.try_wrpc_client().as_ref() {

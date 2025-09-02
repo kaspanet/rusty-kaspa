@@ -1,9 +1,8 @@
 pub mod service;
 
 use kaspa_addresses::Version;
-use kaspa_consensus_core::tx::{SignableTransaction, Transaction, UtxoEntry};
+use kaspa_consensus_core::tx::Transaction;
 use kaspa_wallet_core::api::WalletApi;
-use kaspa_wallet_core::tx::{Signer, SignerT};
 use kaspa_wallet_core::{
     api::{AccountsGetUtxosRequest, AccountsSendRequest, NewAddressKind},
     prelude::Address,
@@ -17,7 +16,7 @@ use kaspa_wallet_grpc_core::kaspawalletd::{
     NewAddressResponse, SendRequest, SendResponse, ShowAddressesRequest, ShowAddressesResponse, ShutdownRequest, ShutdownResponse,
     SignRequest, SignResponse,
 };
-use kaspa_wallet_grpc_core::protoserialization::PartiallySignedTransaction;
+use kaspa_wallet_grpc_core::protoserialization::{PartiallySignedTransaction, TransactionMessage};
 use service::Service;
 use tonic::{Code, Request, Response, Status};
 
@@ -170,46 +169,31 @@ impl Kaspawalletd for Service {
     }
 
     async fn sign(&self, request: Request<SignRequest>) -> Result<Response<SignResponse>, Status> {
-        if self.use_ecdsa() {
-            return Err(Status::unimplemented("Ecdsa signing is not supported yet"));
-        }
         let SignRequest { unsigned_transactions, password } = request.into_inner();
-        let account = self.wallet().account().map_err(|err| Status::internal(err.to_string()))?;
-        let txs = unsigned_transactions
-            .iter()
+
+        // Deserialization
+        let unsigned_transactions = unsigned_transactions
+            .into_iter()
             .map(|tx| extract_tx(tx.as_slice(), self.use_ecdsa()))
             // todo convert directly to consensus::transaction
             .map(|r| r
                 .and_then(|rtx| Transaction::try_from(rtx)
-                .map_err(|err| Status::internal(err.to_string()))))
+                    .map_err(|err| Status::internal(err.to_string()))))
             .collect::<Result<Vec<_>, _>>()?;
-        let utxos = account.clone().get_utxos(None, None).await.map_err(|err| Status::internal(err.to_string()))?;
-        let signable_txs: Vec<SignableTransaction> = txs
+
+        // Sign and convert to RpcTransaction
+        let signed_transactions = self.sign_transactions(unsigned_transactions, password).await?;
+
+        // Serialization - convert RpcTransaction directly to TransactionMessage
+        let signed_transactions = signed_transactions
             .into_iter()
-            .map(|tx| {
-                let utxos = tx
-                    .inputs
-                    .iter()
-                    .map(|input| {
-                        utxos
-                            .iter()
-                            .find(|utxo| utxo.outpoint != input.previous_outpoint)
-                            .map(UtxoEntry::from)
-                            .ok_or(Status::invalid_argument(format!("Wallet does not have mature utxo for input {input:?}")))
-                    })
-                    .collect::<Result<_, Status>>()?;
-                Ok(SignableTransaction::with_entries(tx, utxos))
+            .map(|rpc_tx| {
+                // Convert RpcTransaction directly to TransactionMessage using existing From implementation
+                let msg = TransactionMessage::from(rpc_tx);
+                Ok(msg.encode_to_vec())
             })
-            .collect::<Result<_, Status>>()?;
-        let addresses: Vec<_> = account.utxo_context().addresses().iter().map(|addr| addr.as_ref().clone()).collect();
-        let signer = Signer::new(
-            account.clone(),
-            account.prv_key_data(password.into()).await.map_err(|err| Status::internal(err.to_string()))?,
-            None,
-        );
-        let _signed_txs = signable_txs.into_iter().map(|tx| signer.try_sign(tx, addresses.as_slice()));
-        // todo fill all required fields, serialize and return
-        todo!()
+            .collect::<Result<Vec<Vec<u8>>, Status>>()?;
+        Ok(Response::new(SignResponse { signed_transactions }))
     }
 
     async fn get_version(&self, _request: Request<GetVersionRequest>) -> Result<Response<GetVersionResponse>, Status> {

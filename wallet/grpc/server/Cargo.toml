@@ -18,6 +18,7 @@ kaspa-wallet-grpc-core.workspace = true
 
 tokio.workspace = true
 tonic.workspace = true
+log.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "test-util"] }

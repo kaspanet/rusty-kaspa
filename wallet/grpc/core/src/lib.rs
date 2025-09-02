@@ -1,3 +1,4 @@
+pub mod convert;
 pub mod kaspawalletd {
     include!(concat!(env!("OUT_DIR"), "/kaspawalletd.rs"));
 }
@@ -10,5 +11,10 @@ pub mod protoserialization {
             prost::Message::encode_to_vec(self)
         }
     }
+
+    impl TransactionMessage {
+        pub fn encode_to_vec(&self) -> Vec<u8> {
+            prost::Message::encode_to_vec(self)
+        }
+    }
 }
-pub mod convert;

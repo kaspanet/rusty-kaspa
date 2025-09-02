@@ -3426,6 +3426,7 @@ dependencies = [
  "kaspa-rpc-core",
  "kaspa-wallet-core",
  "kaspa-wallet-grpc-core",
+ "log",
  "tokio",
  "tonic",
 ]

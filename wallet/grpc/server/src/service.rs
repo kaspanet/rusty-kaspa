@@ -2,10 +2,11 @@ use fee_policy::FeePolicy;
 use futures_util::{select, FutureExt, TryStreamExt};
 use kaspa_addresses::Prefix;
 use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
+use kaspa_consensus_core::tx::{SignableTransaction, Transaction, UtxoEntry};
 use kaspa_rpc_core::RpcTransaction;
 use kaspa_wallet_core::api::NewAddressKind;
 use kaspa_wallet_core::prelude::{PaymentDestination, PaymentOutput, PaymentOutputs};
-use kaspa_wallet_core::tx::{Fees, Generator, GeneratorSettings};
+use kaspa_wallet_core::tx::{Fees, Generator, GeneratorSettings, Signer, SignerT};
 use kaspa_wallet_core::utxo::UtxoEntryReference;
 use kaspa_wallet_core::{
     api::WalletApi,
@@ -15,6 +16,8 @@ use kaspa_wallet_core::{
 };
 use kaspa_wallet_grpc_core::kaspawalletd;
 use kaspa_wallet_grpc_core::kaspawalletd::fee_policy;
+use log::info;
+use std::cmp::Reverse;
 use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
 use tonic::Status;
@@ -148,10 +151,31 @@ impl Service {
         }
 
         let account = self.wallet().account().map_err(|err| Status::internal(err.to_string()))?;
+
+        info!("Processing request for account_id: {}", self.descriptor().account_id);
+
         let addresses = account.account_addresses().map_err(|err| Status::internal(err.to_string()))?;
         if let Some(non_existent_address) = from_addresses.iter().find(|from| addresses.iter().all(|address| &address != from)) {
             return Err(Status::invalid_argument(format!("specified from address {non_existent_address} does not exists")));
         }
+
+        // If specific addresses for sending are specified, use them
+        // Otherwise, use all wallet addresses to search for UTXO
+        let search_addresses = if from_addresses.is_empty() {
+            info!("No specific addresses specified, searching UTXOs in all wallet addresses");
+            None // Search UTXO from all addresses in wallet
+        } else {
+            info!("Searching UTXOs in specified addresses: {:?}", from_addresses);
+            Some(from_addresses)
+        };
+
+        let utxos = account.clone().get_utxos(search_addresses, None).await.map_err(|err| Status::internal(err.to_string()))?;
+
+        // Sort UTXOs by amount descending to optimize transaction weight
+        // Use large UTXOs in priority to minimize the number of inputs
+        let mut sorted_utxos = utxos;
+        sorted_utxos.sort_unstable_by_key(|a| Reverse(a.amount));
+
         let change_address = if !use_existing_change_address {
             self.wallet()
                 .accounts_create_new_address(self.descriptor().account_id, NewAddressKind::Change)
@@ -161,18 +185,22 @@ impl Service {
         } else {
             self.descriptor().change_address.ok_or(Status::internal("change address doesn't exist"))?.clone()
         };
-        let utxos = account.clone().get_utxos(Some(addresses), None).await.map_err(|err| Status::internal(err.to_string()))?;
-        let output_amount = if is_send_all { utxos.iter().map(|utxo| utxo.amount).sum::<u64>() } else { amount };
+
+        let total_balance: u64 = sorted_utxos.iter().map(|utxo| utxo.amount).sum();
+        let output_amount = if is_send_all { total_balance } else { amount };
+
+        info!("Found {} UTXOs with total value {} sompi", sorted_utxos.len(), total_balance);
+
         let settings = GeneratorSettings::try_new_with_iterator(
             current_network,
-            Box::new(utxos.into_iter().map(|utxo| UtxoEntryReference { utxo: Arc::new(utxo) })),
+            Box::new(sorted_utxos.into_iter().map(|utxo| UtxoEntryReference { utxo: Arc::new(utxo) })),
             None,
             change_address,
             account.sig_op_count(),
             account.minimum_signatures(),
             PaymentDestination::PaymentOutputs(PaymentOutputs { outputs: vec![PaymentOutput { address: to, amount: output_amount }] }),
             Some(fee_rate),
-            Fees::None,
+            Fees::SenderPays(0), // FIXME: @zelenevn
             None,
             None,
         )
@@ -193,5 +221,56 @@ impl Service {
             )));
         }
         Ok(txs)
+    }
+
+    pub async fn sign_transactions(
+        &self,
+        unsigned_transactions: Vec<Transaction>,
+        password: String,
+    ) -> Result<Vec<RpcTransaction>, Status> {
+        if self.use_ecdsa() {
+            return Err(Status::unimplemented("Ecdsa signing is not supported yet"));
+        }
+
+        let account = self.wallet().account().map_err(|e| Status::internal(format!("Account error: {}", e)))?;
+
+        let utxos = account.clone().get_utxos(None, None).await.map_err(|err| Status::internal(err.to_string()))?;
+        let utxo_context = account.utxo_context();
+
+        // Transaction -> SignableTransaction
+        let signable_txs: Vec<SignableTransaction> = unsigned_transactions
+            .into_iter()
+            .map(|tx| {
+                let entries = tx
+                    .inputs
+                    .iter()
+                    .map(|input| {
+                        utxos
+                            .iter()
+                            .find(|utxo| utxo.outpoint == input.previous_outpoint)
+                            .map(UtxoEntry::from)
+                            .ok_or(Status::invalid_argument(format!("Wallet does not have mature utxo for input {input:?}")))
+                    })
+                    .collect::<Result<_, Status>>()?;
+                Ok(SignableTransaction::with_entries(tx, entries))
+            })
+            .collect::<Result<_, Status>>()?;
+
+        // Get private key data for signing
+        let prv_key_data = account.prv_key_data(password.into()).await.map_err(|err| Status::internal(err.to_string()))?;
+        let addresses: Vec<_> = utxo_context.addresses().iter().map(|addr| addr.as_ref().clone()).collect();
+
+        let signer = Signer::new(account.clone(), prv_key_data, None);
+        let signed_txs = signable_txs
+            .into_iter()
+            .map(|tx| {
+                let signed = signer.try_sign(tx, addresses.as_slice()).map_err(|err| Status::internal(err.to_string()))?;
+                Ok(signed.tx)
+            })
+            .collect::<Result<Vec<_>, Status>>()?;
+
+        // Convert to RpcTransaction
+        let signed_txs = signed_txs.into_iter().map(|tx| RpcTransaction::from(&tx)).collect();
+        Ok(signed_txs)
     }
 }
