@@ -384,6 +384,7 @@ message GetSubnetworkResponseMessage{
 message GetVirtualChainFromBlockRequestMessage{
   string startHash = 1;
   bool includeAcceptedTransactionIds = 2;
+  optional uint64 minConfirmationCount = 3;
 }
 
 message RpcAcceptedTransactionIds{
