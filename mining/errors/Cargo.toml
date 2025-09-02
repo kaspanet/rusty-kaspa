@@ -14,3 +14,6 @@ repository.workspace = true
 [dependencies]
 thiserror.workspace = true
 kaspa-consensus-core.workspace = true
+
+[lints]
+workspace = true

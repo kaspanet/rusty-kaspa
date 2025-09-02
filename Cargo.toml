@@ -140,6 +140,7 @@ kaspa-wrpc-wasm = { version = "1.0.1", path = "rpc/wrpc/wasm" }
 kaspa-wrpc-example-subscriber = { version = "1.0.1", path = "rpc/wrpc/examples/subscriber" }
 kaspad = { version = "1.0.1", path = "kaspad" }
 kaspa-alloc = { version = "1.0.1", path = "utils/alloc" }
+kaspa-wallet = { version = "1.0.1", path = "wallet/native" }
 
 # external
 aes = "0.8.3"
@@ -342,3 +343,4 @@ strip = false
 
 [workspace.lints.clippy]
 empty_docs = "allow"
+uninlined_format_args = "allow"

@@ -28,3 +28,6 @@ workflow-log.workspace = true
 workflow-terminal.workspace = true
 clap.workspace = true
 futures-util.workspace = true
+
+[lints]
+workspace = true
