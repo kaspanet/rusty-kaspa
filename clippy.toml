@@ -1,4 +1,2 @@
 too-many-arguments-threshold = 10
-
-# todo remove me
-large-error-threshold = 1024
+large-error-threshold = 256
