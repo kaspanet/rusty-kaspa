@@ -84,11 +84,11 @@ pub struct CountersSnapshot {
 }
 
 impl CountersSnapshot {
-    pub fn to_process_metrics_display(&self) -> ProcessMetricsDisplay {
+    pub fn to_process_metrics_display(&self) -> ProcessMetricsDisplay<'_> {
         ProcessMetricsDisplay(self)
     }
 
-    pub fn to_io_metrics_display(&self) -> IoMetricsDisplay {
+    pub fn to_io_metrics_display(&self) -> IoMetricsDisplay<'_> {
         IoMetricsDisplay(self)
     }
 }
