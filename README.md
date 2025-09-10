@@ -244,7 +244,7 @@ cargo run --release --bin kaspad -- --testnet
   
 <details>
   <summary>
-    **Start a devnet node**
+    Start a devnet node
   </summary>
 
 Start the DevNet node with the following command:
