@@ -241,6 +241,24 @@ The framework is compatible with all major desktop and mobile browsers.
   ```bash
 cargo run --release --bin kaspad -- --testnet
   ```
+  
+<details>
+  <summary>
+    Start a devnet node
+  </summary>
+
+Start the DevNet node with the following command:
+
+```bash
+cargo run --bin kaspad -- --devnet --enable-unsynced-mining --rpclisten=127.0.0.1 --rpclisten-borsh=127.0.0.1 --utxoindex
+```
+* `enable-unsynced-mining` is required when the network isn't synchronized, which is the case on the first launch
+* `uxtoindex` is required to broadcast mined blocks on this node
+* `rpclisten-borsh` and `rpclisten-borsh` are likely to be required by mining softwares
+
+note: it will take a bit of time for difficulty to adjust, so you may need to wait a bit before you see blocks being mined consistently.
+
+</details>
 
 <details>
 
