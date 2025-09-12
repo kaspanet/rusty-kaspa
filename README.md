@@ -8,9 +8,9 @@ We invite developers and blockchain enthusiasts to collaborate, test, and optimi
 
 Your feedback, contributions, and issue reports will be integral to evolving this codebase and continuing its maturity as a reliable node in the Kaspa network.
 
-The default branch of this repository is `master` and new contributions are constantly merged into it. For a stable branch corresponding to the latest stable release please pull and compile the `stable` branch. 
+The default branch of this repository is `master` and new contributions are constantly merged into it. For a stable branch corresponding to the latest stable release please pull and compile the `stable` branch.
 
-## The Crescendo Hardfork  
+## The Crescendo Hardfork
 
 The [Crescendo Hardfork](docs/crescendo-guide.md) took place on May 5, 2025, at approximately 15:00 UTC. The fork has transitioned the network from a blockrate of 1 BPS to that of 10 BPS, and incorporated several major KIPs.
 
@@ -58,6 +58,31 @@ The [Crescendo Hardfork](docs/crescendo-guide.md) took place on May 5, 2025, at 
       git clone https://github.com/kaspanet/rusty-kaspa
       cd rusty-kaspa
       ```
+
+  ### Troubleshooting Linux Build Issues
+
+  **RocksDB compilation errors on non-Debian distributions:**
+
+  If you encounter compilation errors related to `cstdint` when building RocksDB (particularly on Arch Linux or other non-Debian based distributions), use:
+
+  ```bash
+  CXXFLAGS="-include cstdint" cargo build --release
+  ```
+
+  **Performance optimization (optional):**
+
+  For better performance with native CPU optimizations including AVX support:
+
+  ```bash
+  RUSTFLAGS="-C target-cpu=native" cargo build --release
+  ```
+
+  You can combine both flags if needed:
+
+  ```bash
+  CXXFLAGS="-include cstdint" RUSTFLAGS="-C target-cpu=native" cargo build --release
+  ```
+
   </details>
 
 
@@ -241,7 +266,7 @@ The framework is compatible with all major desktop and mobile browsers.
   ```bash
 cargo run --release --bin kaspad -- --testnet
   ```
-  
+
 <details>
   <summary>
     Start a devnet node
