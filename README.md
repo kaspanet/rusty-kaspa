@@ -58,31 +58,29 @@ The [Crescendo Hardfork](docs/crescendo-guide.md) took place on May 5, 2025, at 
       git clone https://github.com/kaspanet/rusty-kaspa
       cd rusty-kaspa
       ```
+      ### Troubleshooting Linux Build Issues
 
-  ### Troubleshooting Linux Build Issues
+        **RocksDB compilation errors on non-Debian distributions:**
 
-  **RocksDB compilation errors on non-Debian distributions:**
+        If you encounter compilation errors related to `cstdint` when building RocksDB (particularly on Arch Linux or other non-Debian based distributions), use:
 
-  If you encounter compilation errors related to `cstdint` when building RocksDB (particularly on Arch Linux or other non-Debian based distributions), use:
+        ```bash
+        CXXFLAGS="-include cstdint" cargo build --release
+        ```
 
-  ```bash
-  CXXFLAGS="-include cstdint" cargo build --release
-  ```
+        **Performance optimization (optional):**
 
-  **Performance optimization (optional):**
+        For better performance with native CPU optimizations including AVX support:
 
-  For better performance with native CPU optimizations including AVX support:
+        ```bash
+        RUSTFLAGS="-C target-cpu=native" cargo build --release
+        ```
 
-  ```bash
-  RUSTFLAGS="-C target-cpu=native" cargo build --release
-  ```
+        You can combine both flags if needed:
 
-  You can combine both flags if needed:
-
-  ```bash
-  CXXFLAGS="-include cstdint" RUSTFLAGS="-C target-cpu=native" cargo build --release
-  ```
-
+        ```bash
+        CXXFLAGS="-include cstdint" RUSTFLAGS="-C target-cpu=native" cargo build --release
+        ```
   </details>
 
 
