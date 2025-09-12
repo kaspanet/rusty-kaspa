@@ -130,8 +130,8 @@ pub enum RuleError {
     #[error("block has invalid proof-of-work")]
     InvalidPoW,
 
-    #[error("expected header pruning point is {0} but got {1}")]
-    WrongHeaderPruningPoint(Hash, Hash),
+    #[error("expected header pruning point of {0} is {1} but got {2}")]
+    WrongHeaderPruningPoint(Hash, Hash, Hash),
 
     #[error("expected indirect parents {0} but got {1}")]
     UnexpectedIndirectParents(TwoDimVecDisplay<Hash>, TwoDimVecDisplay<Hash>),
