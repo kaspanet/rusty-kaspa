@@ -48,6 +48,9 @@ pub enum Notification {
 
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
+
+    #[display(fmt = "MempoolSizeChanged notification: size {}", "_0.network_mempool_size")]
+    MempoolSizeChanged(MempoolSizeChangedNotification),
 }
 }
 
@@ -64,6 +67,7 @@ impl Notification {
             Notification::VirtualDaaScoreChanged(v) => to_value(&v),
             Notification::SinkBlueScoreChanged(v) => to_value(&v),
             Notification::VirtualChainChanged(v) => to_value(&v),
+            Notification::MempoolSizeChanged(v) => to_value(&v),
         }
     }
 }
@@ -157,6 +161,10 @@ impl Serializer for Notification {
                 store!(u16, &8, writer)?;
                 serialize!(NewBlockTemplateNotification, notification, writer)?;
             }
+            Notification::MempoolSizeChanged(notification) => {
+                store!(u16, &9, writer)?;
+                serialize!(MempoolSizeChangedNotification, notification, writer)?;
+            }
         }
         Ok(())
     }
@@ -201,6 +209,10 @@ impl Deserializer for Notification {
             8 => {
                 let notification = deserialize!(NewBlockTemplateNotification, reader)?;
                 Ok(Notification::NewBlockTemplate(notification))
+            }
+            9 => {
+                let notification = deserialize!(MempoolSizeChangedNotification, reader)?;
+                Ok(Notification::MempoolSizeChanged(notification))
             }
             _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid variant")),
         }
