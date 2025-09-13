@@ -1,7 +1,7 @@
 use kaspa_hashes::Hash;
 use thiserror::Error;
 
-use super::{difficulty::DifficultyError, sync::SyncManagerError, traversal::TraversalError};
+use super::{archival::ArchivalError, difficulty::DifficultyError, sync::SyncManagerError, traversal::TraversalError};
 
 #[derive(Error, Debug, Clone)]
 pub enum ConsensusError {
@@ -31,6 +31,9 @@ pub enum ConsensusError {
 
     #[error("difficulty error: {0}")]
     DifficultyError(#[from] DifficultyError),
+
+    #[error("archival error: {0}")]
+    ArchivalError(#[from] ArchivalError),
 
     #[error("{0}")]
     General(&'static str),
