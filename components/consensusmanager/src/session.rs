@@ -423,6 +423,12 @@ impl ConsensusSessionOwned {
     pub async fn async_get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {
         self.clone().spawn_blocking(move |c| c.get_missing_block_body_hashes(high)).await
     }
+    pub async fn async_get_disembodied_trusted_headers(&self) -> ConsensusResult<Vec<Arc<Header>>> {
+        self.clone().spawn_blocking(move |c| c.get_disembodied_trusted_headers()).await
+    }
+    pub async fn async_clear_anticone_disembodied_blocks(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_anticone_disembodied_blocks()).await
+    }
 
     pub async fn async_pruning_point(&self) -> Hash {
         self.clone().spawn_blocking(|c| c.pruning_point()).await
@@ -458,6 +464,27 @@ impl ConsensusSessionOwned {
 
     pub async fn async_finality_point(&self) -> Hash {
         self.clone().spawn_blocking(move |c| c.finality_point()).await
+    }
+    pub async fn async_clear_pruning_utxo_set(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_pruning_utxo_set()).await
+    }
+    pub async fn async_is_utxo_validated(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_utxo_validated()).await
+    }
+    pub async fn async_is_anticone_fully_synced(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_anticone_fully_synced()).await
+    }
+    pub async fn set_utxo_unvalidated(&self) {
+        self.clone().spawn_blocking(move |c| c.set_utxo_sync_flag(false)).await
+    }
+    pub async fn set_utxo_validated(&self) {
+        self.clone().spawn_blocking(move |c| c.set_utxo_sync_flag(true)).await
+    }
+    pub async fn async_is_pruning_sample(&self, candidate_hash: Hash) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_pruning_sample(candidate_hash)).await
+    }
+    pub async fn async_intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
+        self.clone().spawn_blocking(move |c| c.intrusive_pruning_point_update(new_pruning_point, syncer_sink)).await
     }
 }
 
