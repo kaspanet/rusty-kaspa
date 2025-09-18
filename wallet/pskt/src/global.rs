@@ -39,6 +39,8 @@ pub struct Global {
     /// Unknown key-value pairs for this output.
     #[serde(flatten)]
     pub unknowns: BTreeMap<String, serde_value::Value>,
+    #[serde(with = "kaspa_utils::serde_bytes_optional")]
+    pub payload: Option<Vec<u8>>,
 }
 
 impl Add for Global {
@@ -104,6 +106,23 @@ impl Add for Global {
         self.proprietaries =
             combine_if_no_conflicts(self.proprietaries, rhs.proprietaries).map_err(CombineError::NotCompatibleProprietary)?;
         self.unknowns = combine_if_no_conflicts(self.unknowns, rhs.unknowns).map_err(CombineError::NotCompatibleUnknownField)?;
+
+        // Combine payloads according to the rules:
+        // - Both None -> None
+        // - One has payload -> use that payload
+        // - Both have same payload -> use that payload
+        // - Different payloads -> error
+        // Payload requires version >= 1
+        if (self.payload.is_some() || rhs.payload.is_some()) && self.version < Version::One {
+            return Err(CombineError::PayloadRequiresHigherVersion { version: self.version });
+        }
+        self.payload = match (self.payload.take(), rhs.payload) {
+            (None, None) => None,
+            (Some(p), None) | (None, Some(p)) => Some(p),
+            (Some(lhs), Some(rhs)) if lhs == rhs => Some(lhs),
+            (Some(lhs), Some(rhs)) => return Err(CombineError::PayloadMismatch { this: Some(lhs), that: Some(rhs) }),
+        };
+
         Ok(self)
     }
 }
@@ -122,6 +141,7 @@ impl Default for Global {
             id: None,
             proprietaries: Default::default(),
             unknowns: Default::default(),
+            payload: None,
         }
     }
 }
@@ -167,4 +187,16 @@ pub enum CombineError {
     NotCompatibleUnknownField(crate::utils::Error<String, serde_value::Value>),
     #[error("Two different proprietary values")]
     NotCompatibleProprietary(crate::utils::Error<String, serde_value::Value>),
+    #[error("The transaction payloads are not compatible")]
+    PayloadMismatch {
+        /// lhs
+        this: Option<Vec<u8>>,
+        /// rhs
+        that: Option<Vec<u8>>,
+    },
+    #[error("Payload requires PSKT version 1 or higher, but current version is {version}")]
+    PayloadRequiresHigherVersion {
+        /// Current PSKT version
+        version: Version,
+    },
 }

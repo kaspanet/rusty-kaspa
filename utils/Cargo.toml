@@ -53,3 +53,6 @@ harness = false
 
 [features]
 semaphore-trace = []
+
+[lints]
+workspace = true

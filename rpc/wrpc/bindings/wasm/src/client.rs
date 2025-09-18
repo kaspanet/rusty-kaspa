@@ -1055,5 +1055,7 @@ build_wrpc_wasm_bindgen_interface!(
         /// to the Kaspa node again.
         /// Returned information: None.
         Unban,
+        /// Get UTXO Return Addresses.
+        GetUtxoReturnAddress
     ]
 );

@@ -26,5 +26,9 @@ rand.workspace = true
 name = "bench"
 harness = false
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+[lints]
+rust = { unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] } }
+
+[lints.clippy]
+empty_docs = "allow"
+uninlined_format_args = "allow"
