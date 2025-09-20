@@ -159,7 +159,8 @@ async def main():
 
     await client.get_virtual_chain_from_block(request={
         "startHash": tip_hashes[0],
-        "includeAcceptedTransactionIds": True
+        "includeAcceptedTransactionIds": True,
+        "minConfirmationCount": 10
     })
 
     # await client.resolve_finality_conflict(request)
