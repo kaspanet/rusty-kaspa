@@ -11,6 +11,7 @@ repository.workspace = true
 
 [features]
 no-asm = ["keccak"]
+py-sdk = ["pyo3"]
 
 [dependencies]
 blake2b_simd.workspace = true
@@ -20,6 +21,7 @@ js-sys.workspace = true
 kaspa-utils.workspace = true
 keccak = { workspace = true, optional = true }
 once_cell.workspace = true
+pyo3 = { workspace = true, optional = true }
 serde.workspace = true
 sha2.workspace = true
 wasm-bindgen.workspace = true

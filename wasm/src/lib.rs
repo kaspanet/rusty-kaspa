@@ -160,7 +160,7 @@ cfg_if::cfg_if! {
         pub use kaspa_addresses::{Address, Version as AddressVersion};
         pub use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
         pub use kaspa_pow::wasm::*;
-        pub use kaspa_txscript::wasm::*;
+        pub use kaspa_txscript::bindings::wasm::*;
 
         pub mod rpc {
             //! Kaspa RPC interface
@@ -171,7 +171,7 @@ cfg_if::cfg_if! {
                 pub use kaspa_rpc_core::model::message::*;
             }
             pub use kaspa_rpc_core::api::rpc::RpcApi;
-            pub use kaspa_rpc_core::wasm::message::*;
+            pub use kaspa_rpc_core::bindings::wasm::message::*;
 
             pub use kaspa_wrpc_wasm::client::*;
             pub use kaspa_wrpc_wasm::resolver::*;
@@ -179,7 +179,7 @@ cfg_if::cfg_if! {
         }
 
         pub use kaspa_consensus_wasm::*;
-        pub use kaspa_wallet_core::wasm::*;
+        pub use kaspa_wallet_core::bindings::wasm::*;
         pub use kaspa_wallet_keys::prelude::*;
         pub use kaspa_bip32::wasm::*;
 
@@ -188,7 +188,7 @@ cfg_if::cfg_if! {
         pub use kaspa_addresses::{Address, Version as AddressVersion};
         pub use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
         pub use kaspa_pow::wasm::*;
-        pub use kaspa_txscript::wasm::*;
+        pub use kaspa_txscript::bindings::wasm::*;
 
         pub mod rpc {
             //! Kaspa RPC interface
@@ -199,7 +199,7 @@ cfg_if::cfg_if! {
                 pub use kaspa_rpc_core::model::message::*;
             }
             pub use kaspa_rpc_core::api::rpc::RpcApi;
-            pub use kaspa_rpc_core::wasm::message::*;
+            pub use kaspa_rpc_core::bindings::wasm::message::*;
 
             pub use kaspa_wrpc_wasm::client::*;
             pub use kaspa_wrpc_wasm::resolver::*;
@@ -208,14 +208,14 @@ cfg_if::cfg_if! {
 
         pub use kaspa_consensus_wasm::*;
         pub use kaspa_wallet_keys::prelude::*;
-        pub use kaspa_wallet_core::wasm::*;
+        pub use kaspa_wallet_core::bindings::wasm::*;
         pub use kaspa_bip32::wasm::*;
 
     } else if #[cfg(feature = "wasm32-rpc")] {
 
         pub use kaspa_rpc_core::api::rpc::RpcApi;
-        pub use kaspa_rpc_core::wasm::message::*;
-        pub use kaspa_rpc_core::wasm::message::IPingRequest;
+        pub use kaspa_rpc_core::bindings::wasm::message::*;
+        pub use kaspa_rpc_core::bindings::wasm::message::IPingRequest;
         pub use kaspa_wrpc_wasm::client::*;
         pub use kaspa_wrpc_wasm::resolver::*;
         pub use kaspa_wrpc_wasm::notify::*;
