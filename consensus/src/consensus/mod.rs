@@ -69,7 +69,7 @@ use kaspa_consensus_core::{
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
-    receipts::{Pochm, ProofOfPublication, TxReceipt},
+    receipts::{ProofOfChainMembership, ProofOfPublication, TxReceipt},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     utxo::utxo_inquirer::UtxoInquirerError,
@@ -487,7 +487,13 @@ impl Consensus {
             .map(|hash| (hash, self.headers_store.get_compact_header_data(hash).unwrap()))
             .collect_vec()
     }
-    /* this logic may not be the most efficient and reliable as of now */
+    /*Attempts to find the owning block of tx_id based on the timestamp alone
+     The first part of the function tries to guess a block which should be nearby enough to the tx
+    the current logic does so by estimating when approximately should a block with this timestamp have occured,
+    based on the bps and the estimation dag_width.
+    Next, the function searches for the owning block  within a margin of error from the guess_block.
+    both forwards and backwards.
+     */
     fn generate_tx_receipt_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<TxReceipt> {
         //utility closures
         let someize_header_if_blk_accepts_tx = |blk| {
@@ -510,10 +516,8 @@ impl Consensus {
 
         let bps = self.config.bps();
 
-        /*The first part of the function tries to guess a block which should be nearby enough to the tx
-           the current logic does so by estimating when approximately should a block with this timestamp have occured,
-           based on the bps and the estimation dag_width.
-           This should function relatively well in the common case where the transaction is a couple days old
+        /*
+           The Guess block estimation  should function relatively well in the common case where the transaction is a couple days old
            There are two problems with this approach when dealing with old transactions:
            A) due to ever increasing hash rate, real bps is oftentimes ever so slightly higher than what it should be.
            This will add up.
@@ -536,15 +540,12 @@ impl Consensus {
         if !self.is_chain_ancestor_of(self.pruning_point_store.read().retention_period_root().unwrap(), guess_block).unwrap_or(false) {
             guess_block = self.pruning_point_store.read().retention_period_root().unwrap();
         }
-        //since guess_block is merely a guess, some margin of error needs be taken
-        // we account for a deviation of "10 minutes" and derive the expected max distance in chain blocks
-        const DEVIATION_IN_SECONDS: u64 = 600; //10 minutes deviation should be enough?
+        // we account for a deviation of "10 minutes" from the guess block and derive the expected max distance in chain blocks
+        const DEVIATION_IN_SECONDS: u64 = 600;
         let deviation_in_chain_blocks = ((DEVIATION_IN_SECONDS * bps.get(tip_daa)) / dag_width_guess) as usize;
 
-        /* The next segment searches for a block accepting the transaction within
-        deviation_in_chain_blocks distance, forward or backwards from guess_block.
-        A naive implementation would first check all "forward blocks" and only then all "backwards block"
-        However, checking the entire spectrum of one direction before any blocks of the other is wasteful,
+        /*
+        Checking the entire spectrum of one direction before any blocks of the other is wasteful,
         as the correct block is much more likely to be close to guess_block than far away from it
         (assuming the guess is decent)
         Because of this an iterator is constructed to iterate both directions simultaniously
@@ -567,13 +568,19 @@ impl Consensus {
         // we iterate backwards and forwards at the same time to locate the accepting block of the transaction
         let acc_blocks = double_sided_iterator.filter(|blk| blk.is_some());
         for hdr in acc_blocks {
-            //first Some represents the result of the find, second the fact that blk is a Some
             if let Ok(ret) = self.services.tx_receipts_manager.generate_tx_receipt(hdr.unwrap(), tx_id) {
                 return Ok(ret);
             }
         }
         Err(ConsensusError::General("cannot find block with given timestamp"))
     }
+
+    /*Attempts to find the owning block of tx_id based on the timestamp alone
+     The first part of the function tries to guess a block which should be nearby enough to the tx
+    the current logic does so by estimating when approximately should a block with this timestamp have occured,
+    based on the bps and the estimation dag_width.
+    Next, the function searches for the owning block  within a margin of error from the guess_block.
+    both forwards and backwards.*/
 
     fn generate_proof_of_publication_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<ProofOfPublication> {
         //utility closures
@@ -591,10 +598,8 @@ impl Consensus {
 
         let bps = self.config.bps();
 
-        /*The first part of the function tries to guess a block which should be nearby enough to the tx
-           the current logic does so by estimating when approximately should a block with this timestamp have occured,
-           based on the bps and the estimation dag_width.
-           This should function relatively well in the common case where the transaction is a couple days old
+        /*
+           The Guess block estimation  should function relatively well in the common case where the transaction is a couple days old
            There are two problems with this approach when dealing with old transactions:
            A) due to ever increasing hash rate, real bps is oftentimes ever so slightly higher than what it should be.
            This will add up.
@@ -617,15 +622,12 @@ impl Consensus {
         if !self.is_chain_ancestor_of(self.pruning_point_store.read().retention_period_root().unwrap(), guess_block).unwrap_or(false) {
             guess_block = self.pruning_point_store.read().retention_period_root().unwrap();
         }
-        //since guess_block is merely a guess, some margin of error needs be taken
         // we account for a deviation of "10 minutes" and derive the expected max distance in blocks
         const DEVIATION_IN_SECONDS: u64 = 600; //10 minutes deviation should be enough?
         let deviation_in_dag_blocks = (DEVIATION_IN_SECONDS * bps.get(tip_daa)) as usize;
 
-        /* The next segment searches for a block publishing the transaction within
-        deviation_in_chain_blocks distance, forward or backwards from guess_block.
-        A naive implementation would first check all "forward blocks" and only then all "backwards block"
-        However, checking the entire spectrum of one direction before any blocks of the other is wasteful,
+        /*
+        Checking the entire spectrum of one direction before any blocks of the other is wasteful,
         as the correct block is much more likely to be close to guess_block than far away from it
         (assuming the guess is decent)
         Because of this an iterator is constructed to iterate both directions simultaniously
@@ -648,15 +650,13 @@ impl Consensus {
             .map(someize_header_if_blk_publishes_tx);
 
         let double_sided_iterator = backward_search_iter.zip_longest(forward_search_iter).map(first_some_out_of_either_pair);
-        // we iterate backwards and forwards at the same time to locate the accepting block of the transaction
+        // we iterate backwards and forwards at the same time to locate a publishing block of the transaction
         let pub_blocks = double_sided_iterator.filter(|blk| blk.is_some());
         for hdr in pub_blocks {
-            //first Some represents the result of the find, second the fact that blk is a Some
-            if let Ok(ret) = self.services.tx_receipts_manager.generate_proof_of_pub(hdr.unwrap(), tx_id) {
+            if let Ok(ret) = self.services.tx_receipts_manager.generate_proof_of_publication(hdr.unwrap(), tx_id) {
                 return Ok(ret);
             }
         }
-
         Err(ConsensusError::General("cannot find block with given timestamp"))
     }
 }
@@ -1361,7 +1361,7 @@ impl ConsensusApi for Consensus {
         }
         Err(ConsensusError::MissingTx(tx_id))
     }
-    fn generate_proof_of_pub(
+    fn generate_proof_of_publication(
         &self,
         tx_id: Hash,
         publishing_block: Option<Hash>,
@@ -1374,7 +1374,7 @@ impl ConsensusApi for Consensus {
             //if a block is supplied, generate receipt directly
             self.services
                 .tx_receipts_manager
-                .generate_proof_of_pub(publishing_block_header, tx_id)
+                .generate_proof_of_publication(publishing_block_header, tx_id)
                 .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))
         } else {
             //if no block is given, try to search based on time_stamp
@@ -1395,7 +1395,7 @@ impl ConsensusApi for Consensus {
                 let published_txs = published_txs.unwrap();
                 if published_txs.iter().map(|t| t.id()).contains(&tx_id) {
                     let publishing_block_header = self.headers_store.get_header(block).unwrap();
-                    if let Ok(ret) = self.services.tx_receipts_manager.generate_proof_of_pub(publishing_block_header, tx_id) {
+                    if let Ok(ret) = self.services.tx_receipts_manager.generate_proof_of_publication(publishing_block_header, tx_id) {
                         return Ok(ret);
                     }
                 }
@@ -1403,10 +1403,10 @@ impl ConsensusApi for Consensus {
             Err(ConsensusError::MissingTx(tx_id))
         }
     }
-    fn generate_pochm(&self, chain_purporter: Hash) -> ConsensusResult<Pochm> {
+    fn generate_proof_of_chain_membership(&self, chain_purporter: Hash) -> ConsensusResult<ProofOfChainMembership> {
         self.services
             .tx_receipts_manager
-            .create_pochm_proof(chain_purporter)
+            .create_proof_of_chain_membership(chain_purporter)
             .map_err(|_| ConsensusError::General("required data to create a proof of chain membership appears missing"))
     }
     //Note: wallets are expected to verify on their own that the tx_id corresponds to the tx they have stored
@@ -1414,11 +1414,11 @@ impl ConsensusApi for Consensus {
         self.services.tx_receipts_manager.verify_tx_receipt(receipt)
     }
     //Note: wallets are expected to verify on their own that the tx_id corresponds to the tx they have stored
-    fn verify_proof_of_pub(&self, proof_of_pub: &ProofOfPublication) -> bool {
-        self.services.tx_receipts_manager.verify_proof_of_pub(proof_of_pub)
+    fn verify_proof_of_publication(&self, proof_of_pub: &ProofOfPublication) -> bool {
+        self.services.tx_receipts_manager.verify_proof_of_publication(proof_of_pub)
     }
-    fn verify_pochm(&self, chain_purporter: Hash, pochm: &Pochm) -> bool {
-        self.services.tx_receipts_manager.verify_pochm_proof(chain_purporter, pochm)
+    fn verify_proof_of_chain_membership(&self, chain_purporter: Hash, pochm: &ProofOfChainMembership) -> bool {
+        self.services.tx_receipts_manager.verify_proof_of_chain_membership(chain_purporter, pochm)
     }
     fn is_posterity_reached(&self, cutoff_bscore: u64) -> bool {
         /* note: this function only asserts a posterity with blue score higher than cutoff score exists
@@ -1434,6 +1434,6 @@ impl ConsensusApi for Consensus {
         let tip_daa = self.headers_store.get_daa_score(tip).unwrap();
 
         let security_margin = std::cmp::min(100 * self.config.bps().get(tip_daa), self.config.finality_depth().get(tip_daa)) / 2;
-        tip_bscore >= cutoff_bscore + security_margin
+        tip_bscore > cutoff_bscore + security_margin
     }
 }

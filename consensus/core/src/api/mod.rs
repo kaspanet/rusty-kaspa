@@ -15,7 +15,7 @@ use crate::{
     header::Header,
     mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
-    receipts::{Pochm, ProofOfPublication, TxReceipt},
+    receipts::{ProofOfChainMembership, ProofOfPublication, TxReceipt},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     utxo::utxo_inquirer::UtxoInquirerError,
@@ -379,7 +379,7 @@ pub trait ConsensusApi: Send + Sync {
     ) -> ConsensusResult<TxReceipt> {
         unimplemented!()
     }
-    fn generate_proof_of_pub(
+    fn generate_proof_of_publication(
         &self,
         tx_id: Hash,
         publishing_block: Option<Hash>,
@@ -387,16 +387,16 @@ pub trait ConsensusApi: Send + Sync {
     ) -> ConsensusResult<ProofOfPublication> {
         unimplemented!()
     }
-    fn generate_pochm(&self, block: Hash) -> ConsensusResult<Pochm> {
+    fn generate_proof_of_chain_membership(&self, block: Hash) -> ConsensusResult<ProofOfChainMembership> {
         unimplemented!()
     }
     fn verify_tx_receipt(&self, receipt: &TxReceipt) -> bool {
         unimplemented!()
     }
-    fn verify_proof_of_pub(&self, proof_of_pub: &ProofOfPublication) -> bool {
+    fn verify_proof_of_publication(&self, proof_of_pub: &ProofOfPublication) -> bool {
         unimplemented!()
     }
-    fn verify_pochm(&self, chain_purporter: Hash, pochm: &Pochm) -> bool {
+    fn verify_proof_of_chain_membership(&self, chain_purporter: Hash, pochm: &ProofOfChainMembership) -> bool {
         unimplemented!()
     }
     fn is_posterity_reached(&self, cutoff_bscore: u64) -> bool {
