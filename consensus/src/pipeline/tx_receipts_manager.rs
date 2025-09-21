@@ -181,17 +181,9 @@ impl<
         };
         let earliest_selected_chain_decendant =
             proof_of_pub.headers_path_to_selected.last().unwrap_or(&proof_of_pub.publication_block_header).hash;
-        eprintln!("pub hash: {}", proof_of_pub.publication_block_header.hash);
-
-        eprintln!("chain hash: {earliest_selected_chain_decendant}");
-        eprintln!("alleged_posterity: {}", proof_of_pub.proof_of_chain_membership.alleged_posterity);
-
         let pub_merkle_root = proof_of_pub.publication_block_header.hash_merkle_root;
-        if !verify_merkle_witness(&proof_of_pub.tx_publication_proof, proof_of_pub.tracked_tx_hash, pub_merkle_root) {
-            eprintln!("incorrect merkling.");
-            return false;
-        }
-        self.verify_proof_of_chain_membership(earliest_selected_chain_decendant, &proof_of_pub.proof_of_chain_membership)
+        verify_merkle_witness(&proof_of_pub.tx_publication_proof, proof_of_pub.tracked_tx_hash, pub_merkle_root)
+            && self.verify_proof_of_chain_membership(earliest_selected_chain_decendant, &proof_of_pub.proof_of_chain_membership)
     }
     /*Assumes: chain_purporter is on the selected chain,
     if not returns error   */
@@ -491,7 +483,6 @@ impl<
             //alleged_posterity is above the retention root, confirm directly that it is a post-posterity of its chain parent.
             let alleged_posterity_parent = self.reachability_service.get_chain_parent(alleged_posterity);
             if !self.verify_post_posterity_block(alleged_posterity_parent, alleged_posterity) {
-                eprintln!("not post posterity {alleged_posterity}");
                 return false;
             }
         } else {

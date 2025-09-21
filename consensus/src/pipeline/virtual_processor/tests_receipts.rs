@@ -374,11 +374,9 @@ async fn test_receipts_in_random() {
     }
 
     for proof in pops2.values() {
-        eprintln!("here2:");
         assert!(ctx.consensus.verify_proof_of_publication(proof));
     }
     for proof in pops3.values() {
-        eprintln!("here3:");
         assert!(ctx.consensus.verify_proof_of_publication(proof));
     }
     assert!(pathologies_count <= DAG_SIZE / 9);
