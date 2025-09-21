@@ -177,12 +177,11 @@ async fn test_receipts_in_chain() {
 #[tokio::test]
 async fn test_receipts_in_random() {
     /*The test generates a random dag and builds blocks from it, with some modifications to the dag to make it more realistic
-     whenever a new posterity block is reached by some margin, a batch of receipts is attempted to be generated for old blocks.
+    whenever a new posterity block is reached by some margin, a batch of receipts is attempted to be generated for old blocks.
     These receipts are then verified at the end of the test.
-    Occasionally the test fails because the real posterity of a block will change after a receipt for it has been pulled:
+    Rarely the test fails because the real posterity of a block will change after a receipt for it has been pulled:
     the security margin should be enough for real data but test data behaves unexpectedly and thus this error persists despite attempts to mitigate it
     This error appears to decrease with higher BPS
-    BPS too high though (10BPS) sometimes results in block status errors, occurs very rarely
 
     Perhaps this test needs just be replaced by a simulation on real data.
      */
@@ -211,6 +210,7 @@ async fn test_receipts_in_random() {
     let mut pops1 = std::collections::HashMap::<_, _>::new();
     let mut pops2 = std::collections::HashMap::<_, _>::new();
     let mut pops3 = std::collections::HashMap::<_, _>::new();
+    let mut pathologies_count = 0;
 
     let ctx = TestContext::new(TestConsensus::new(&config));
     let genesis_hash = ctx.consensus.params().genesis.hash;
@@ -275,32 +275,34 @@ async fn test_receipts_in_random() {
                 {
                     let blk_header = ctx.consensus.get_header(old_block).unwrap();
                     /*
-                    Proof of publications are prune to paradoxical
-                    scenarios where the posterity blocks change after the fact
-                    causing posterity pochms to fail
+                    A pathology sometimes occur where the first chain block found for a POP them is not in the past of the closest posterity.
+                    This does not necessarily imply a failure, but since the next posterity after is not yet finalized, the pop may be invalid.
+                    It proved very hard to avoid this pathologies in an elegant manner.
+                    Reluctantly we explicitely check for this pathology and exclude them.
+                    We also enumerate the number of pathologies  which are expected to be few.
+
+                    The pathology can occur for two reasons:
+                    First, since there are many publishing blocks, it is possible that the one found via searches
+                    for the transaction ID is different to the old_block.
+                    Second, even if a block has a chain block in its future before the nearest posterity,
+                    it may not be the one found by the naive search ran to find a future chain block - if  a later chain block is at a shorter distance
+                    from the block, the pop may miss the current posterity. There is clear lack of optimiality here which may need to be addressed
+                    if pops become common place. It is remarked that this scenario is expected to be rare in real data.
                      */
                     let pub_tx = ctx.consensus.block_transactions_store.get(old_block).unwrap()[0].id();
                     let proof = ctx.consensus.generate_proof_of_publication(pub_tx, Some(blk_header.hash), None);
                     if let Ok(proof) = proof {
-                        if !ctx.consensus.services.reachability_service.is_dag_ancestor_of(
+                        if ctx.consensus.services.reachability_service.is_dag_ancestor_of(
                             proof.headers_path_to_selected.last().unwrap_or(&proof.publication_block_header).hash,
                             parent_of_next_posterity,
                         ) {
-                            eprintln!(
-                                "makes no sense? old block: {}, chain hash:{}, parent_of_next_posterity:{}",
-                                old_block,
-                                proof.headers_path_to_selected.last().unwrap_or(&proof.publication_block_header).hash,
-                                parent_of_next_posterity
-                            );
+                            pops1.insert(old_block, proof);
+                        } else {
+                            pathologies_count += 1;
                         }
-                        pops1.insert(old_block, proof);
-
                         let pop_by_timestamp =
                             ctx.consensus.generate_proof_of_publication(pub_tx, None, Some(blk_header.timestamp)).unwrap();
-                        /* Since there are many publishing blocks, it is possible that the one found via searches
-                        is paradoxical in the sense that its accepting block is not an ancesstor of parent_of_next_posterity.
-                        We avert these paradoxical scenarios
-                         */
+
                         if ctx.consensus.services.reachability_service.is_dag_ancestor_of(
                             pop_by_timestamp
                                 .headers_path_to_selected
@@ -310,6 +312,8 @@ async fn test_receipts_in_random() {
                             parent_of_next_posterity,
                         ) {
                             pops2.insert(old_block, pop_by_timestamp);
+                        } else {
+                            pathologies_count += 1;
                         }
                         let pop_by_bfs = ctx.consensus.generate_proof_of_publication(pub_tx, None, None).unwrap();
                         if ctx.consensus.services.reachability_service.is_dag_ancestor_of(
@@ -317,6 +321,8 @@ async fn test_receipts_in_random() {
                             parent_of_next_posterity,
                         ) {
                             pops3.insert(old_block, pop_by_bfs);
+                        } else {
+                            pathologies_count += 1;
                         }
                     }
                     if old_block != genesis_hash && ctx.consensus.selected_chain_store.read().get_by_hash(old_block).is_ok() {
@@ -334,7 +340,6 @@ async fn test_receipts_in_random() {
             }
         }
     }
-
     for blk in ctx.consensus.services.reachability_service.default_backward_chain_iterator(ctx.consensus.get_sink()) {
         eprintln!("chain blk: {:?}", blk);
     }
@@ -349,7 +354,7 @@ async fn test_receipts_in_random() {
     eprintln!("receipts:{}", receipts1.len());
 
     assert!(receipts1.len() >= DAG_SIZE as usize / (4.5 * BPS) as usize); //sanity check
-                                                                          // assert!(pops1.len() >= DAG_SIZE as usize / (5 * BPS as usize)); //sanity check
+    assert!(pops1.len() >= DAG_SIZE as usize / (5 * BPS as usize)); //sanity check
     for (pochm, blk) in pochms_list.into_iter() {
         eprintln!("blk_verified: {:?}", blk);
         assert!(ctx.consensus.verify_proof_of_chain_membership(blk, &pochm));
@@ -376,4 +381,5 @@ async fn test_receipts_in_random() {
         eprintln!("here3:");
         assert!(ctx.consensus.verify_proof_of_publication(proof));
     }
+    assert!(pathologies_count <= DAG_SIZE / 9);
 }

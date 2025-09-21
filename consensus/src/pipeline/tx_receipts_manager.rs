@@ -470,8 +470,11 @@ impl<
         //avoiding a harmful 0 value
     }
 
-    /*block hash must be an ancestor of sink, otherwise an error will be returned
-    Maybe this kind of code needs to be on the traversal manager or something of sorts
+    /*
+    Code as currently implemented will return *a* chain block in the block's future,
+    not necessarily the earliest chain block occuring in its future
+    Perhaps code in these lines but more optimized should to be on the traversal manager
+    block hash must be an ancestor of sink, otherwise an error will be returned
     */
     pub fn find_future_chain_block_path(&self, block_hash: Hash) -> Result<Vec<Hash>, ReceiptsErrors> {
         let sink = self.selected_chain_store.read().get_tip()?.1;
@@ -519,6 +522,6 @@ impl<
         let cutoff_bscore = bscore - bscore % self.posterity_depth.get(daa_score) + self.posterity_depth.get(daa_score);
         let candidate_sel_parent_hash = self.reachability_service.get_chain_parent(post_posterity_candidate_hash);
         let candidate_sel_parent_bscore = self.headers_store.get_blue_score(candidate_sel_parent_hash).unwrap();
-        candidate_sel_parent_bscore < cutoff_bscore
+        candidate_sel_parent_bscore <= cutoff_bscore
     }
 }
