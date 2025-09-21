@@ -39,6 +39,29 @@ use crate::model::{
         Vanilla DK
         Implement F with basic DK logic, i.e., searching the k space
         TBD
+
+    ------------
+
+    Notation: the version of k-coloring where the set of parents you can inherit a blueset for is restricted to to those 
+              agreeing with you, should be named DK-committed coloring (megachain = DK-chain) 
+
+    There are 3 usages of GD coloring out of selected chain:
+        1. coinbase rewards
+        2. blue score (mainly for blue depth but also for client confirmation counting)
+        3. blue work (mainly for topological sorting and related usages)
+
+    Q. how do keep all these with DK?
+
+    A. 
+        For 1. 2. the answer is to have an incremental coloring with a fixed k over the main DK chain (name: global incremental/committed coloring )
+        For 3. it seems like we need a global free coloring (probably same fixed k)  
+
+    ------------
+
+    Possible next steps:
+        1. move code to correct place
+        2. moving to DK storage objects
+        3. switch GD/k-coloring to committed coloring 
 */
 
 pub struct DagknightConflictEntry {
