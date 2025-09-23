@@ -204,15 +204,27 @@ mod mockery {
         }
     }
 
-    impl Mock for RpcTransactionInputVerboseData {
+    impl Mock for RpcOptionalTransactionInputVerboseData {
         fn mock() -> Self {
-            RpcTransactionInputVerboseData { utxo_entry: mock() }
+            RpcOptionalTransactionInputVerboseData { utxo_entry: mock() }
         }
     }
 
     impl Mock for RpcTransactionInput {
         fn mock() -> Self {
             RpcTransactionInput {
+                previous_outpoint: mock(),
+                signature_script: Hash::mock().as_bytes().to_vec(),
+                sequence: mock(),
+                sig_op_count: mock(),
+                verbose_data: mock(),
+            }
+        }
+    }
+
+    impl Mock for RpcOptionalTransactionInput {
+        fn mock() -> Self {
+            RpcOptionalTransactionInput {
                 previous_outpoint: mock(),
                 signature_script: Some(Hash::mock().as_bytes().to_vec()),
                 sequence: mock(),
@@ -222,9 +234,21 @@ mod mockery {
         }
     }
 
+    impl Mock for RpcOptionalTransactionOutpoint {
+        fn mock() -> Self {
+            RpcOptionalTransactionOutpoint { transaction_id: mock(), index: mock() }
+        }
+    }
+
     impl Mock for RpcTransactionOutputVerboseData {
         fn mock() -> Self {
             RpcTransactionOutputVerboseData { script_public_key_type: mock(), script_public_key_address: mock() }
+        }
+    }
+
+    impl Mock for RpcOptionalTransactionOutputVerboseData {
+        fn mock() -> Self {
+            RpcOptionalTransactionOutputVerboseData { script_public_key_type: mock(), script_public_key_address: mock() }
         }
     }
 
@@ -234,9 +258,27 @@ mod mockery {
         }
     }
 
+    impl Mock for RpcOptionalTransactionOutput {
+        fn mock() -> Self {
+            RpcOptionalTransactionOutput { value: mock(), script_public_key: mock(), verbose_data: mock() }
+        }
+    }
+
     impl Mock for RpcTransactionVerboseData {
         fn mock() -> Self {
             RpcTransactionVerboseData {
+                transaction_id: mock(),
+                hash: mock(),
+                compute_mass: mock(),
+                block_hash: mock(),
+                block_time: mock(),
+            }
+        }
+    }
+
+    impl Mock for RpcOptionalTransactionVerboseData {
+        fn mock() -> Self {
+            RpcOptionalTransactionVerboseData {
                 transaction_id: mock(),
                 hash: mock(),
                 compute_mass: mock(),
@@ -267,6 +309,12 @@ mod mockery {
     impl Mock for RpcTransactionInputVerboseDataVerbosity {
         fn mock() -> Self {
             RpcTransactionInputVerboseDataVerbosity { utxo_entry_verbosity: mock() }
+        }
+    }
+
+    impl Mock for RpcTransactionInputVerboseData {
+        fn mock() -> Self {
+            RpcTransactionInputVerboseData {}
         }
     }
 
@@ -334,6 +382,22 @@ mod mockery {
                 lock_time: mock(),
                 subnetwork_id: mock(),
                 gas: mock(),
+                payload: Hash::mock().as_bytes().to_vec(),
+                mass: mock(),
+                verbose_data: mock(),
+            }
+        }
+    }
+
+    impl Mock for RpcOptionalTransaction {
+        fn mock() -> Self {
+            RpcOptionalTransaction {
+                version: mock(),
+                inputs: mock(),
+                outputs: mock(),
+                lock_time: mock(),
+                subnetwork_id: mock(),
+                gas: mock(),
                 payload: Some(Hash::mock().as_bytes().to_vec()),
                 mass: mock(),
                 verbose_data: mock(),
@@ -344,6 +408,26 @@ mod mockery {
     impl Mock for RpcMergesetBlockAcceptanceData {
         fn mock() -> Self {
             RpcMergesetBlockAcceptanceData { merged_header: mock(), accepted_transactions: mock() }
+        }
+    }
+
+    impl Mock for RpcOptionalHeader {
+        fn mock() -> Self {
+            RpcOptionalHeader {
+                version: mock(),
+                timestamp: mock(),
+                bits: mock(),
+                nonce: mock(),
+                hash_merkle_root: mock(),
+                accepted_id_merkle_root: mock(),
+                utxo_commitment: mock(),
+                hash: mock(),
+                parents_by_level: vec![mock()],
+                daa_score: mock(),
+                blue_score: mock(),
+                blue_work: mock(),
+                pruning_point: mock(),
+            }
         }
     }
 
@@ -421,7 +505,13 @@ mod mockery {
 
     impl Mock for RpcUtxoEntry {
         fn mock() -> Self {
-            RpcUtxoEntry {
+            RpcUtxoEntry { amount: mock(), script_public_key: mock(), block_daa_score: mock(), is_coinbase: mock() }
+        }
+    }
+
+    impl Mock for RpcOptionalUtxoEntry {
+        fn mock() -> Self {
+            RpcOptionalUtxoEntry {
                 amount: mock(),
                 script_public_key: mock(),
                 block_daa_score: mock(),
@@ -431,9 +521,9 @@ mod mockery {
         }
     }
 
-    impl Mock for RpcUtxoEntryVerboseData {
+    impl Mock for RpcOptionalUtxoEntryVerboseData {
         fn mock() -> Self {
-            RpcUtxoEntryVerboseData { script_public_key_type: mock(), script_public_key_address: mock() }
+            RpcOptionalUtxoEntryVerboseData { script_public_key_type: mock(), script_public_key_address: mock() }
         }
     }
 
