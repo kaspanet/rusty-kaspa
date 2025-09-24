@@ -3801,6 +3801,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-wrpc-vcc-v2"
+version = "1.0.1"
+dependencies = [
+ "futures",
+ "kaspa-rpc-core",
+ "kaspa-wrpc-client",
+ "tokio",
+]
+
+[[package]]
 name = "kaspa-wrpc-wasm"
 version = "1.0.1"
 dependencies = [
