@@ -179,7 +179,7 @@ impl UtxoContext {
         Self { inner: Arc::new(Inner::new_with_mature_entries(processor, binding, mature_entries)) }
     }
 
-    pub fn context(&self) -> MutexGuard<Context> {
+    pub fn context(&self) -> MutexGuard<'_, Context> {
         self.inner.context.lock().unwrap()
     }
 
@@ -834,6 +834,6 @@ impl Ord for UtxoContext {
 
 impl PartialOrd for UtxoContext {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.id().cmp(other.id_as_ref()))
+        Some(self.cmp(other))
     }
 }

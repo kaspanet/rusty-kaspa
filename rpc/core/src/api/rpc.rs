@@ -247,10 +247,11 @@ pub trait RpcApi: Sync + Send + AnySync {
         &self,
         start_hash: RpcHash,
         include_accepted_transaction_ids: bool,
+        min_confirmation_count: Option<u64>,
     ) -> RpcResult<GetVirtualChainFromBlockResponse> {
         self.get_virtual_chain_from_block_call(
             None,
-            GetVirtualChainFromBlockRequest::new(start_hash, include_accepted_transaction_ids),
+            GetVirtualChainFromBlockRequest::new(start_hash, include_accepted_transaction_ids, min_confirmation_count),
         )
         .await
     }

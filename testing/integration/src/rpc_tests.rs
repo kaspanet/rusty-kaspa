@@ -95,6 +95,7 @@ async fn sanity_test() {
                             GetVirtualChainFromBlockRequest {
                                 start_hash: SIMNET_GENESIS.hash,
                                 include_accepted_transaction_ids: false,
+                                min_confirmation_count: None,
                             },
                         )
                         .await
@@ -155,12 +156,27 @@ async fn sanity_test() {
                             GetVirtualChainFromBlockRequest {
                                 start_hash: SIMNET_GENESIS.hash,
                                 include_accepted_transaction_ids: false,
+                                min_confirmation_count: None,
                             },
                         )
                         .await
                         .unwrap();
                     assert!(response.added_chain_block_hashes.contains(&block_hash));
                     assert!(response.removed_chain_block_hashes.is_empty());
+
+                    // VSPC min confirmation count test
+                    let vc_min_count_1_response = rpc_client
+                        .get_virtual_chain_from_block_call(
+                            None,
+                            GetVirtualChainFromBlockRequest {
+                                start_hash: SIMNET_GENESIS.hash,
+                                include_accepted_transaction_ids: false,
+                                min_confirmation_count: Some(1),
+                            },
+                        )
+                        .await
+                        .unwrap();
+                    assert!(vc_min_count_1_response.added_chain_block_hashes.is_empty());
 
                     let result =
                         rpc_client.get_current_block_color_call(None, GetCurrentBlockColorRequest { hash: SIMNET_GENESIS.hash }).await;

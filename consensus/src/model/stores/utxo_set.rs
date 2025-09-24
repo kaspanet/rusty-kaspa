@@ -17,7 +17,7 @@ type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOut
 
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
-    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator;
+    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator<'_>;
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
@@ -151,7 +151,7 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
         self.access.read((*outpoint).into())
     }
 
-    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator {
+    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator<'_> {
         let seek_key = from_outpoint.map(UtxoKey::from);
         Box::new(self.access.seek_iterator(None, seek_key, limit, skip_first).map(|res| {
             let (key, entry) = res?;

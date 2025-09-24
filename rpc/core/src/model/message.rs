@@ -859,19 +859,21 @@ impl Deserializer for GetSubnetworkResponse {
 pub struct GetVirtualChainFromBlockRequest {
     pub start_hash: RpcHash,
     pub include_accepted_transaction_ids: bool,
+    pub min_confirmation_count: Option<u64>,
 }
 
 impl GetVirtualChainFromBlockRequest {
-    pub fn new(start_hash: RpcHash, include_accepted_transaction_ids: bool) -> Self {
-        Self { start_hash, include_accepted_transaction_ids }
+    pub fn new(start_hash: RpcHash, include_accepted_transaction_ids: bool, min_confirmation_count: Option<u64>) -> Self {
+        Self { start_hash, include_accepted_transaction_ids, min_confirmation_count }
     }
 }
 
 impl Serializer for GetVirtualChainFromBlockRequest {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         store!(RpcHash, &self.start_hash, writer)?;
         store!(bool, &self.include_accepted_transaction_ids, writer)?;
+        store!(Option<u64>, &self.min_confirmation_count, writer)?;
 
         Ok(())
     }
@@ -879,11 +881,13 @@ impl Serializer for GetVirtualChainFromBlockRequest {
 
 impl Deserializer for GetVirtualChainFromBlockRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let version = load!(u16, reader)?;
         let start_hash = load!(RpcHash, reader)?;
         let include_accepted_transaction_ids = load!(bool, reader)?;
 
-        Ok(Self { start_hash, include_accepted_transaction_ids })
+        let min_confirmation_count = if version > 1 { load!(Option<u64>, reader)? } else { None };
+
+        Ok(Self { start_hash, include_accepted_transaction_ids, min_confirmation_count })
     }
 }
 

@@ -128,10 +128,16 @@ impl Rpc {
                 };
                 let start_hash = RpcHash::from_hex(argv.remove(0).as_str())?;
                 let include_accepted_transaction_ids = argv.first().and_then(|x| x.parse::<bool>().ok()).unwrap_or_default();
+                let min_confirmation_count = argv.get(1).and_then(|x| x.parse::<u64>().ok()).unwrap_or_default();
+
                 let result = rpc
                     .get_virtual_chain_from_block_call(
                         None,
-                        GetVirtualChainFromBlockRequest { start_hash, include_accepted_transaction_ids },
+                        GetVirtualChainFromBlockRequest {
+                            start_hash,
+                            include_accepted_transaction_ids,
+                            min_confirmation_count: Some(min_confirmation_count),
+                        },
                     )
                     .await?;
                 self.println(&ctx, result);
