@@ -1,10 +1,9 @@
 // Example of VCCv2 endpoint
 
 use kaspa_rpc_core::{
-    api::rpc::RpcApi, GetBlockDagInfoResponse, GetServerInfoResponse, RpcAcceptanceDataVerbosity, RpcHash, RpcHeaderVerbosity,
-    RpcMergesetBlockAcceptanceDataVerbosity, RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity,
-    RpcTransactionOutputVerbosity, RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerboseDataVerbosity,
-    RpcUtxoEntryVerbosity,
+    api::rpc::RpcApi, RpcAcceptanceDataVerbosity, RpcHash, RpcHeaderVerbosity, RpcMergesetBlockAcceptanceDataVerbosity,
+    RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity, RpcTransactionOutputVerbosity,
+    RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerbosity,
 };
 use kaspa_wrpc_client::{
     client::{ConnectOptions, ConnectStrategy},
@@ -60,7 +59,7 @@ async fn get_vcc_v2() -> Result<()> {
 
     let response = client
         .get_virtual_chain_from_block_v_2(
-            RpcHash::from_str("16375b0a455f5df62c2026c79734cef678d1e9a1a07b5f99c14b110dc2052e2b").unwrap(),
+            RpcHash::from_str("cc3ba81f23d6fb0d0ef785100815c64609d9bdf8e442b34f71e392fbe86d47a7").unwrap(),
             Some(RpcAcceptanceDataVerbosity::new(
                 Some(RpcHeaderVerbosity { include_hash: Some(true), ..Default::default() }),
                 Some(RpcMergesetBlockAcceptanceDataVerbosity {

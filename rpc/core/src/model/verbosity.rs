@@ -2,7 +2,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcHeaderVerbosity {
     /// Cached hash
@@ -80,7 +80,7 @@ impl Deserializer for RpcHeaderVerbosity {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcUtxoEntryVerboseDataVerbosity {
     pub include_script_public_key_type: Option<bool>,
@@ -114,7 +114,7 @@ impl Deserializer for RpcUtxoEntryVerboseDataVerbosity {
 }
 
 // RpcUtxoEntryVerbosity
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcUtxoEntryVerbosity {
     pub include_amount: Option<bool>,
@@ -164,7 +164,7 @@ impl Deserializer for RpcUtxoEntryVerbosity {
 }
 
 // RpcTransactionInputVerbosity
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionInputVerbosity {
     pub include_previous_outpoint: Option<bool>,
@@ -220,7 +220,7 @@ impl Deserializer for RpcTransactionInputVerbosity {
 }
 
 // RpcTransactionInputVerboseDataVerbosity
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionInputVerboseDataVerbosity {
     pub utxo_entry_verbosity: Option<RpcUtxoEntryVerbosity>,
@@ -252,7 +252,7 @@ impl Deserializer for RpcTransactionInputVerboseDataVerbosity {
 
 // RpcTransactionOutputVerbosity
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionOutputVerbosity {
     pub include_amount: Option<bool>,
@@ -294,7 +294,7 @@ impl Deserializer for RpcTransactionOutputVerbosity {
 }
 
 // RpcTransactionOutputVerboseDataVerbosity
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionOutputVerboseDataVerbosity {
     pub include_script_public_key_type: Option<bool>,
@@ -329,7 +329,7 @@ impl Deserializer for RpcTransactionOutputVerboseDataVerbosity {
 }
 
 // RpcTransactionVerbosity
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionVerbosity {
     pub include_version: Option<bool>,
@@ -429,7 +429,7 @@ impl Deserializer for RpcTransactionVerbosity {
 }
 
 // RpcTransactionVerboseDataVerbosity
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionVerboseDataVerbosity {
     pub include_transaction_id: Option<bool>,
@@ -478,7 +478,7 @@ impl Deserializer for RpcTransactionVerboseDataVerbosity {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcAcceptanceDataVerbosity {
     pub accepting_chain_header_verbosity: Option<RpcHeaderVerbosity>,
@@ -528,7 +528,7 @@ impl Deserializer for RpcAcceptanceDataVerbosity {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcMergesetBlockAcceptanceDataVerbosity {
     pub merged_header_verbosity: Option<RpcHeaderVerbosity>,
