@@ -96,8 +96,7 @@ impl Scan {
             yield_executor().await;
 
             if !resp.is_empty() {
-                let refs: Vec<UtxoEntryReference> =
-                    resp.into_iter().map(UtxoEntryReference::try_from).collect::<Result<Vec<_>, _>>()?;
+                let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
                 for utxo_ref in refs.iter() {
                     if let Some(address) = utxo_ref.utxo.address.as_ref() {
                         if let Some(utxo_address_index) = address_manager.inner().address_to_index_map.get(address) {
@@ -152,7 +151,7 @@ impl Scan {
 
         utxo_context.register_addresses(&address_vec).await?;
         let resp = utxo_context.processor().rpc_api().get_utxos_by_addresses(address_vec).await?;
-        let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::try_from).collect::<Result<Vec<_>, _>>()?;
+        let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
 
         let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
             let entry_balance = r.balance(params, self.current_daa_score);

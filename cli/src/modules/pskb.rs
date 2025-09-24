@@ -129,12 +129,9 @@ impl Pskb {
                         }
 
                         let references: Vec<(UtxoEntry, TransactionOutpoint)> =
-                            spend_utxos.iter().map(|entry| (entry.utxo_entry.clone().try_into().expect("expected conversion from RpcUtxoEntry to UtxoEntry to succeed"), entry.outpoint.try_into().expect("expected conversion from RpcTransactionOutpoint to UtxoEntry to TransactionOutpoint to succeed"))).collect();
+                            spend_utxos.iter().map(|entry| (entry.utxo_entry.clone().into(), entry.outpoint.into())).collect();
 
-                        let total_locked_sompi: u64 = spend_utxos
-                            .iter()
-                            .map(|entry| entry.utxo_entry.amount.expect("expected RpcUtxoEntry amount field to be set"))
-                            .sum();
+                        let total_locked_sompi: u64 = spend_utxos.iter().map(|entry| entry.utxo_entry.amount).sum();
 
                         tprintln!(
                             ctx,

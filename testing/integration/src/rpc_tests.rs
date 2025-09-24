@@ -221,16 +221,7 @@ async fn sanity_test() {
                         .get_block_call(None, GetBlockRequest { hash: SIMNET_GENESIS.hash, include_transactions: false })
                         .await
                         .unwrap();
-                    assert_eq!(
-                        response
-                            .block
-                            .header
-                            .as_ref()
-                            .expect("expected header")
-                            .hash
-                            .expect("expected RpcHeader hash field to be set"),
-                        SIMNET_GENESIS.hash
-                    );
+                    assert_eq!(response.block.header.hash, SIMNET_GENESIS.hash);
                 })
             }
 
@@ -242,15 +233,7 @@ async fn sanity_test() {
                         .await
                         .unwrap();
                     assert_eq!(response.blocks.len(), 1, "genesis block should be returned");
-                    assert_eq!(
-                        response.blocks[0]
-                            .header
-                            .as_ref()
-                            .expect("expected header")
-                            .hash
-                            .expect("expected RpcHeader hash field to be set"),
-                        SIMNET_GENESIS.hash
-                    );
+                    assert_eq!(response.blocks[0].header.hash, SIMNET_GENESIS.hash);
                     assert_eq!(response.block_hashes[0], SIMNET_GENESIS.hash);
                 })
             }
