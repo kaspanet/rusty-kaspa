@@ -20,12 +20,14 @@ use kaspa_mining::model::{owner_txs::OwnerTransactions, TransactionIdSet};
 use kaspa_notify::converter::Converter;
 use kaspa_rpc_core::{
     BlockAddedNotification, Notification, RpcAcceptanceData, RpcAcceptanceDataVerbosity, RpcAcceptedTransactionIds, RpcBlock,
-    RpcBlockVerboseData, RpcError, RpcHash, RpcHeader, RpcHeaderVerbosity, RpcMempoolEntry, RpcMempoolEntryByAddress,
-    RpcMergesetBlockAcceptanceData, RpcMergesetBlockAcceptanceDataVerbosity, RpcResult, RpcTransaction, RpcTransactionInput,
-    RpcTransactionInputVerboseData, RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity, RpcTransactionOutput,
-    RpcTransactionOutputVerboseData, RpcTransactionOutputVerboseDataVerbosity, RpcTransactionOutputVerbosity,
-    RpcTransactionVerboseData, RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntry, RpcUtxoEntryVerboseData,
-    RpcUtxoEntryVerboseDataVerbosity, RpcUtxoEntryVerbosity,
+    RpcBlockVerboseData, RpcError, RpcHash, RpcHeaderVerbosity, RpcMempoolEntry, RpcMempoolEntryByAddress,
+    RpcMergesetBlockAcceptanceData, RpcMergesetBlockAcceptanceDataVerbosity, RpcOptionalHeader, RpcOptionalTransaction,
+    RpcOptionalTransactionInput, RpcOptionalTransactionInputVerboseData, RpcOptionalTransactionOutput,
+    RpcOptionalTransactionOutputVerboseData, RpcOptionalTransactionVerboseData, RpcOptionalUtxoEntry, RpcOptionalUtxoEntryVerboseData,
+    RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity,
+    RpcTransactionOutput, RpcTransactionOutputVerboseData, RpcTransactionOutputVerboseDataVerbosity, RpcTransactionOutputVerbosity,
+    RpcTransactionVerboseData, RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerboseDataVerbosity,
+    RpcUtxoEntryVerbosity,
 };
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
@@ -89,7 +91,7 @@ impl ConsensusConverter {
             vec![]
         };
 
-        Ok(RpcBlock { header: Some(block.header.as_ref().into()), transactions, verbose_data })
+        Ok(RpcBlock { header: block.header.as_ref().into(), transactions, verbose_data })
     }
 
     pub fn get_mempool_entry(&self, consensus: &ConsensusProxy, transaction: &MutableTransaction) -> RpcMempoolEntry {
@@ -131,21 +133,22 @@ impl ConsensusConverter {
     ) -> RpcTransaction {
         if include_verbose_data {
             let verbose_data = Some(RpcTransactionVerboseData {
-                transaction_id: Some(transaction.id()),
-                hash: Some(hash(transaction, false)),
-                compute_mass: Some(consensus.calculate_transaction_non_contextual_masses(transaction).compute_mass),
-                block_hash: header.map(|x| x.hash),
-                block_time: header.map(|x| x.timestamp),
+                transaction_id: transaction.id(),
+                hash: hash(transaction, false),
+                compute_mass: consensus.calculate_transaction_non_contextual_masses(transaction).compute_mass,
+                // TODO: make block_hash an option
+                block_hash: header.map_or_else(RpcHash::default, |x| x.hash),
+                block_time: header.map_or(0, |x| x.timestamp),
             });
             RpcTransaction {
-                version: Some(transaction.version),
+                version: transaction.version,
                 inputs: transaction.inputs.iter().map(|x| self.get_transaction_input(x)).collect(),
                 outputs: transaction.outputs.iter().map(|x| self.get_transaction_output(x)).collect(),
-                lock_time: Some(transaction.lock_time),
-                subnetwork_id: Some(transaction.subnetwork_id.clone()),
-                gas: Some(transaction.gas),
-                payload: Some(transaction.payload.clone()),
-                mass: Some(transaction.mass()),
+                lock_time: transaction.lock_time,
+                subnetwork_id: transaction.subnetwork_id.clone(),
+                gas: transaction.gas,
+                payload: transaction.payload.clone(),
+                mass: transaction.mass(),
                 verbose_data,
             }
         } else {
@@ -158,11 +161,11 @@ impl ConsensusConverter {
     }
 
     fn get_transaction_output(&self, output: &TransactionOutput) -> RpcTransactionOutput {
-        let script_public_key_type = Some(ScriptClass::from_script(&output.script_public_key));
+        let script_public_key_type = ScriptClass::from_script(&output.script_public_key);
         let address = extract_script_pub_key_address(&output.script_public_key, self.config.prefix()).ok();
-        let verbose_data = address
-            .map(|address| RpcTransactionOutputVerboseData { script_public_key_type, script_public_key_address: Some(address) });
-        RpcTransactionOutput { value: Some(output.value), script_public_key: Some(output.script_public_key.clone()), verbose_data }
+        let verbose_data =
+            address.map(|address| RpcTransactionOutputVerboseData { script_public_key_type, script_public_key_address: address });
+        RpcTransactionOutput { value: output.value, script_public_key: output.script_public_key.clone(), verbose_data }
     }
 
     pub async fn get_virtual_chain_accepted_transaction_ids(
@@ -191,9 +194,9 @@ impl ConsensusConverter {
         consensus: &ConsensusProxy,
         verbosity: &RpcHeaderVerbosity,
         block_hash: RpcHash,
-    ) -> RpcResult<RpcHeader> {
+    ) -> RpcResult<RpcOptionalHeader> {
         let header = consensus.async_get_header(block_hash).await?;
-        Ok(RpcHeader {
+        Ok(RpcOptionalHeader {
             hash: if verbosity.include_hash.unwrap_or(false) { Some(block_hash) } else { Default::default() },
             version: if verbosity.include_version.unwrap_or(false) { Some(header.version) } else { Default::default() },
             parents_by_level: if verbosity.include_parents_by_level.unwrap_or(false) {
@@ -230,8 +233,12 @@ impl ConsensusConverter {
         })
     }
 
-    fn convert_utxo_entry_with_verbosity(&self, utxo: UtxoEntry, verbosity: &RpcUtxoEntryVerbosity) -> RpcResult<RpcUtxoEntry> {
-        Ok(RpcUtxoEntry {
+    fn convert_utxo_entry_with_verbosity(
+        &self,
+        utxo: UtxoEntry,
+        verbosity: &RpcUtxoEntryVerbosity,
+    ) -> RpcResult<RpcOptionalUtxoEntry> {
+        Ok(RpcOptionalUtxoEntry {
             amount: if verbosity.include_amount.unwrap_or(false) { Some(utxo.amount) } else { Default::default() },
             script_public_key: if verbosity.include_script_public_key.unwrap_or(false) {
                 Some(utxo.script_public_key.clone())
@@ -256,8 +263,8 @@ impl ConsensusConverter {
         &self,
         utxo: &UtxoEntry,
         verbosity: &RpcUtxoEntryVerboseDataVerbosity,
-    ) -> RpcResult<RpcUtxoEntryVerboseData> {
-        Ok(RpcUtxoEntryVerboseData {
+    ) -> RpcResult<RpcOptionalUtxoEntryVerboseData> {
+        Ok(RpcOptionalUtxoEntryVerboseData {
             script_public_key_type: if verbosity.include_script_public_key_type.unwrap_or(false) {
                 Some(ScriptClass::from_script(&utxo.script_public_key))
             } else {
@@ -278,8 +285,8 @@ impl ConsensusConverter {
         &self,
         utxo: Option<UtxoEntry>,
         verbosity: &RpcTransactionInputVerboseDataVerbosity,
-    ) -> RpcResult<RpcTransactionInputVerboseData> {
-        Ok(RpcTransactionInputVerboseData {
+    ) -> RpcResult<RpcOptionalTransactionInputVerboseData> {
+        Ok(RpcOptionalTransactionInputVerboseData {
             utxo_entry: if let Some(utxo_entry_verbosity) = verbosity.utxo_entry_verbosity.as_ref() {
                 if let Some(utxo) = utxo {
                     Some(self.convert_utxo_entry_with_verbosity(utxo, utxo_entry_verbosity)?)
@@ -299,8 +306,8 @@ impl ConsensusConverter {
         block_time: u64,
         compute_mass: u64,
         verbosity: &RpcTransactionVerboseDataVerbosity,
-    ) -> RpcResult<RpcTransactionVerboseData> {
-        Ok(RpcTransactionVerboseData {
+    ) -> RpcResult<RpcOptionalTransactionVerboseData> {
+        Ok(RpcOptionalTransactionVerboseData {
             transaction_id: if verbosity.include_transaction_id.unwrap_or(false) {
                 Some(transaction.id())
             } else {
@@ -317,8 +324,8 @@ impl ConsensusConverter {
         &self,
         output: &TransactionOutput,
         verbosity: &RpcTransactionOutputVerboseDataVerbosity,
-    ) -> RpcResult<RpcTransactionOutputVerboseData> {
-        Ok(RpcTransactionOutputVerboseData {
+    ) -> RpcResult<RpcOptionalTransactionOutputVerboseData> {
+        Ok(RpcOptionalTransactionOutputVerboseData {
             script_public_key_type: if verbosity.include_script_public_key_type.unwrap_or(false) {
                 Some(ScriptClass::from_script(&output.script_public_key))
             } else {
@@ -339,8 +346,8 @@ impl ConsensusConverter {
         &self,
         output: &TransactionOutput,
         verbosity: &RpcTransactionOutputVerbosity,
-    ) -> RpcResult<RpcTransactionOutput> {
-        Ok(RpcTransactionOutput {
+    ) -> RpcResult<RpcOptionalTransactionOutput> {
+        Ok(RpcOptionalTransactionOutput {
             value: if verbosity.include_amount.unwrap_or(false) { Some(output.value) } else { Default::default() },
             script_public_key: if verbosity.include_script_public_key.unwrap_or(false) {
                 Some(output.script_public_key.clone())
@@ -360,8 +367,8 @@ impl ConsensusConverter {
         input: &TransactionInput,
         utxo: Option<UtxoEntry>,
         verbosity: &RpcTransactionInputVerbosity,
-    ) -> RpcResult<RpcTransactionInput> {
-        Ok(RpcTransactionInput {
+    ) -> RpcResult<RpcOptionalTransactionInput> {
+        Ok(RpcOptionalTransactionInput {
             previous_outpoint: if verbosity.include_previous_outpoint.unwrap_or(false) {
                 Some(input.previous_outpoint.into())
             } else {
@@ -389,8 +396,8 @@ impl ConsensusConverter {
         block_hash: Option<Hash>,
         block_time: Option<u64>,
         verbosity: &RpcTransactionVerbosity,
-    ) -> RpcResult<RpcTransaction> {
-        Ok(RpcTransaction {
+    ) -> RpcResult<RpcOptionalTransaction> {
+        Ok(RpcOptionalTransaction {
             version: if verbosity.include_version.unwrap_or(false) { Some(transaction.version) } else { Default::default() },
             inputs: if let Some(ref input_verbosity) = verbosity.input_verbosity {
                 transaction
@@ -446,8 +453,8 @@ impl ConsensusConverter {
         block_hash: Option<Hash>,
         block_time: Option<u64>,
         verbosity: &RpcTransactionVerbosity,
-    ) -> RpcResult<RpcTransaction> {
-        Ok(RpcTransaction {
+    ) -> RpcResult<RpcOptionalTransaction> {
+        Ok(RpcOptionalTransaction {
             version: if verbosity.include_version.unwrap_or(false) { Some(transaction.tx.version) } else { Default::default() },
             inputs: if let Some(input_verbosity) = verbosity.input_verbosity.as_ref() {
                 transaction
@@ -510,7 +517,7 @@ impl ConsensusConverter {
         mergeset_block_acceptance: &MergesetBlockAcceptanceData,
         block_time: Option<u64>,
         verbosity: &RpcTransactionVerbosity,
-    ) -> RpcResult<Vec<RpcTransaction>> {
+    ) -> RpcResult<Vec<RpcOptionalTransaction>> {
         let txs = consensus
             .async_get_transactions_by_accepting_block(
                 accepting_block_hash,
