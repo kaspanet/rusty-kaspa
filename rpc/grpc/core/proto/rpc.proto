@@ -23,7 +23,6 @@ message RpcBlock {
 }
 
 message RpcBlockHeader {
-  string hash = 15; // -> this field is new
   uint32 version = 1;
   repeated RpcBlockLevelParents parents = 12;
   string hashMerkleRoot = 3;
@@ -34,8 +33,9 @@ message RpcBlockHeader {
   uint64 nonce = 8;
   uint64 daaScore = 9;
   string blueWork = 10;
-  string pruningPoint = 14;
   uint64 blueScore = 13;
+  string pruningPoint = 14;
+  string hash = 15;
 }
 
 message RpcBlockLevelParents {
@@ -84,7 +84,7 @@ message RpcTransactionInput {
 }
 
 message RpcTransactionInputVerboseData{
-  RpcUtxoEntry utxoEntry = 1; // -> this field is new, if this is null, the utxo cannot be found, or is coinbase. 
+  RpcUtxoEntry utxoEntry = 1; // -> this field is new, if this is null, the utxo cannot be found, or is coinbase.
 }
 
 message RpcUtxoEntry {
@@ -564,7 +564,7 @@ message GetUtxosByAddressesResponseMessage {
 }
 
 // GetBalanceByAddressRequest returns the total balance in unspent transactions towards a given address
-// 
+//
 // This call is only available when this kaspad was started with `--utxoindex`
 message GetBalanceByAddressRequestMessage {
   string address = 1;
@@ -799,7 +799,7 @@ message ConnectionMetrics {
   uint32 jsonLiveConnections = 41;
   uint64 jsonConnectionAttempts = 42;
   uint64 jsonHandshakeFailures = 43;
-  
+
   uint32 activePeers = 51;
 }
 
@@ -822,7 +822,7 @@ message ConsensusMetrics{
   uint64 txsCounts = 5;
   uint64 chainBlockCounts = 6;
   uint64 massCounts = 7;
-  
+
   uint64 blockCount = 11;
   uint64 headerCount = 12;
   uint64 mempoolSize = 13;
@@ -924,7 +924,7 @@ message RpcFeerateBucket {
 }
 
 // Data required for making fee estimates.
-// 
+//
 // Feerate values represent fee/mass of a transaction in `sompi/gram` units.
 // Given a feerate value recommendation, calculate the required fee by
 // taking the transaction mass and multiplying it by feerate: `fee = feerate * mass(tx)`
@@ -985,7 +985,7 @@ message GetUtxoReturnAddressResponseMessage {
 
 // ### messages for vspcn v2 ###
 
-// verbosity messages for vspcn v2 
+// verbosity messages for vspcn v2
 
 message RpcAcceptanceDataVerbosity {
   optional RpcBlockHeaderVerbosity acceptingChainHeaderVerbosity = 1; // default is null
@@ -1095,7 +1095,7 @@ message RpcMergesetBlockAcceptanceData {
 ///         c. it does not batch the removed chain blocks, only the added ones.
 message GetVirtualChainFromBlockV2RequestMessage{
   string startHash = 1;
-  
+
   /// Note: where fields are switched to false, default values of the type will be used to fill the assosicated response fields.
   /// it is therefore the client's responsibility to ensure to ignore the fields in the response.
   optional RpcAcceptanceDataVerbosity acceptanceDataVerbosity = 2; // holds switches for the verbosity of the acceptance data, if null only added & removed chain blocks will be retrieved.

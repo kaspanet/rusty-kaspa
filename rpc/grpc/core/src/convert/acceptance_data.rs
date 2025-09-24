@@ -47,7 +47,7 @@ try_from!(item: &protowire::RpcAcceptanceData, kaspa_rpc_core::RpcAcceptanceData
         accepting_chain_header: item
             .accepting_chain_header
             .as_ref()
-            .map(kaspa_rpc_core::RpcHeader::try_from)
+            .map(kaspa_rpc_core::RpcOptionalHeader::try_from)
             .transpose()?,
         mergeset_block_acceptance_data: item
         .mergeset_block_acceptance_data
@@ -66,8 +66,8 @@ try_from!(item: &protowire::RpcAcceptanceDataVerbosity, kaspa_rpc_core::RpcAccep
 
 try_from!(item: &protowire::RpcMergesetBlockAcceptanceData, kaspa_rpc_core::RpcMergesetBlockAcceptanceData, {
     Self {
-        merged_header: item.merged_header.as_ref().map(kaspa_rpc_core::RpcHeader::try_from).transpose()?,
-        accepted_transactions: item.accepted_transactions.iter().map(kaspa_rpc_core::RpcTransaction::try_from).collect::<Result<_, _>>()?,
+        merged_header: item.merged_header.as_ref().map(kaspa_rpc_core::RpcOptionalHeader::try_from).transpose()?,
+        accepted_transactions: item.accepted_transactions.iter().map(kaspa_rpc_core::RpcOptionalTransaction::try_from).collect::<Result<_, _>>()?,
     }
 });
 

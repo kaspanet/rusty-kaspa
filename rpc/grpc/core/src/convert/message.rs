@@ -330,7 +330,7 @@ from!(item: &kaspa_rpc_core::GetHeadersRequest, protowire::GetHeadersRequestMess
     Self { start_hash: item.start_hash.to_string(), limit: item.limit, is_ascending: item.is_ascending }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetHeadersResponse>, protowire::GetHeadersResponseMessage, {
-    Self { headers: item.headers.iter().map(|x| x.hash.expect("expected hash").to_string()).collect(), error: None }
+    Self { headers: item.headers.iter().map(|x| x.hash.to_string()).collect(), error: None }
 });
 
 from!(item: &kaspa_rpc_core::GetUtxosByAddressesRequest, protowire::GetUtxosByAddressesRequestMessage, {
