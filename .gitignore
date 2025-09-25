@@ -3,6 +3,7 @@ web-root
 **/.idea/
 /rust-toolchain
 /.vscode/
+.zed
 **/db-*
 /testing/integration/testdata/dags_for_json_tests/goref-mainnet
 /testing/integration/testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks
