@@ -38,6 +38,15 @@ from!(item: &kaspa_rpc_core::RpcMergesetBlockAcceptanceDataVerbosity, protowire:
     }
 });
 
+from!(item: &kaspa_rpc_core::RpcDataVerbosityLevel, protowire::RpcDataVerbosityLevel, {
+    match item {
+        kaspa_rpc_core::RpcDataVerbosityLevel::Low => protowire::RpcDataVerbosityLevel::Low,
+        kaspa_rpc_core::RpcDataVerbosityLevel::Medium => protowire::RpcDataVerbosityLevel::Medium,
+        kaspa_rpc_core::RpcDataVerbosityLevel::High => protowire::RpcDataVerbosityLevel::High,
+        kaspa_rpc_core::RpcDataVerbosityLevel::Full => protowire::RpcDataVerbosityLevel::Full,
+    }
+});
+
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
@@ -75,5 +84,14 @@ try_from!(item: &protowire::RpcMergesetBlockAcceptanceDataVerbosity, kaspa_rpc_c
     Self {
         merged_header_verbosity: item.merged_header_verbosity.as_ref().map(kaspa_rpc_core::RpcHeaderVerbosity::try_from).transpose()?,
         accepted_transactions_verbosity: item.accepted_transactions_verbosity.as_ref().map(kaspa_rpc_core::RpcTransactionVerbosity::try_from).transpose()?,
+    }
+});
+
+try_from!(item: &protowire::RpcDataVerbosityLevel, kaspa_rpc_core::RpcDataVerbosityLevel,  {
+    match item {
+        protowire::RpcDataVerbosityLevel::Low => kaspa_rpc_core::RpcDataVerbosityLevel::Low,
+        protowire::RpcDataVerbosityLevel::Medium => kaspa_rpc_core::RpcDataVerbosityLevel::Medium,
+        protowire::RpcDataVerbosityLevel::High => kaspa_rpc_core::RpcDataVerbosityLevel::High,
+        protowire::RpcDataVerbosityLevel::Full => kaspa_rpc_core::RpcDataVerbosityLevel::Full
     }
 });

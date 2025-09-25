@@ -24,8 +24,8 @@ use kaspa_consensus_core::{network::NetworkId, Hash};
 use kaspa_core::debug;
 use kaspa_notify::subscription::Command;
 use kaspa_rpc_core::{
-    RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
-    SubmitBlockRejectReason, SubmitBlockReport,
+    RpcContextualPeerAddress, RpcDataVerbosityLevel, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress,
+    RpcResult, SubmitBlockRejectReason, SubmitBlockReport,
 };
 use kaspa_utils::hex::*;
 use std::{str::FromStr, sync::Arc};
@@ -519,7 +519,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetSyncStatusResponse>, protowire::GetSyn
 from!(item: &kaspa_rpc_core::GetVirtualChainFromBlockV2Request, protowire::GetVirtualChainFromBlockV2RequestMessage, {
     Self {
         start_hash: item.start_hash.to_string(),
-        acceptance_data_verbosity: item.acceptance_data_verbosity.as_ref().map(|x| x.into())
+        data_verbosity_level: item.data_verbosity_level.map(|v| v as i32),
     }
 });
 
@@ -788,7 +788,7 @@ try_from!(item: &protowire::GetVirtualChainFromBlockResponseMessage, RpcResult<k
 try_from!(item: &protowire::GetVirtualChainFromBlockV2RequestMessage, kaspa_rpc_core::GetVirtualChainFromBlockV2Request, {
     Self {
         start_hash: RpcHash::from_str(&item.start_hash)?,
-        acceptance_data_verbosity: item.acceptance_data_verbosity.as_ref().map(|x| x.try_into()).transpose()?,
+        data_verbosity_level: item.data_verbosity_level.map(RpcDataVerbosityLevel::try_from).transpose()?,
     }
 });
 try_from!(item: &protowire::GetVirtualChainFromBlockV2ResponseMessage, RpcResult<kaspa_rpc_core::GetVirtualChainFromBlockV2Response>, {

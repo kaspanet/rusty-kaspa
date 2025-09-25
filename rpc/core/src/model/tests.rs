@@ -1275,7 +1275,7 @@ mod mockery {
 
     impl Mock for GetVirtualChainFromBlockV2Request {
         fn mock() -> Self {
-            GetVirtualChainFromBlockV2Request { start_hash: mock(), acceptance_data_verbosity: None }
+            GetVirtualChainFromBlockV2Request { start_hash: mock(), data_verbosity_level: None }
         }
     }
 

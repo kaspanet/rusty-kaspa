@@ -2737,12 +2737,12 @@ impl Deserializer for GetUtxoReturnAddressResponse {
 #[serde(rename_all = "camelCase")]
 pub struct GetVirtualChainFromBlockV2Request {
     pub start_hash: RpcHash,
-    pub acceptance_data_verbosity: Option<RpcAcceptanceDataVerbosity>,
+    pub data_verbosity_level: Option<RpcDataVerbosityLevel>,
 }
 
 impl GetVirtualChainFromBlockV2Request {
-    pub fn new(start_hash: RpcHash, acceptance_data_verbosity: Option<RpcAcceptanceDataVerbosity>) -> Self {
-        Self { start_hash, acceptance_data_verbosity }
+    pub fn new(start_hash: RpcHash, data_verbosity_level: Option<RpcDataVerbosityLevel>) -> Self {
+        Self { start_hash, data_verbosity_level }
     }
 }
 
@@ -2750,7 +2750,7 @@ impl Serializer for GetVirtualChainFromBlockV2Request {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
         store!(RpcHash, &self.start_hash, writer)?;
-        serialize!(Option<RpcAcceptanceDataVerbosity>, &self.acceptance_data_verbosity, writer)?;
+        serialize!(Option<RpcDataVerbosityLevel>, &self.data_verbosity_level, writer)?;
 
         Ok(())
     }
@@ -2760,9 +2760,9 @@ impl Deserializer for GetVirtualChainFromBlockV2Request {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let start_hash = load!(RpcHash, reader)?;
-        let acceptance_data_verbosity = deserialize!(Option<RpcAcceptanceDataVerbosity>, reader)?;
+        let data_verbosity_level = deserialize!(Option<RpcDataVerbosityLevel>, reader)?;
 
-        Ok(Self { start_hash, acceptance_data_verbosity })
+        Ok(Self { start_hash, data_verbosity_level })
     }
 }
 

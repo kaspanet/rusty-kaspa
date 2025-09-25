@@ -1,10 +1,6 @@
 // Example of VCCv2 endpoint
 
-use kaspa_rpc_core::{
-    api::rpc::RpcApi, RpcAcceptanceDataVerbosity, RpcHash, RpcHeaderVerbosity, RpcMergesetBlockAcceptanceDataVerbosity,
-    RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity, RpcTransactionOutputVerbosity,
-    RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerbosity,
-};
+use kaspa_rpc_core::{api::rpc::RpcApi, RpcDataVerbosityLevel, RpcHash};
 use kaspa_wrpc_client::{
     client::{ConnectOptions, ConnectStrategy},
     prelude::NetworkId,
@@ -60,32 +56,7 @@ async fn get_vcc_v2() -> Result<()> {
     let response = client
         .get_virtual_chain_from_block_v_2(
             RpcHash::from_str("cc3ba81f23d6fb0d0ef785100815c64609d9bdf8e442b34f71e392fbe86d47a7").unwrap(),
-            Some(RpcAcceptanceDataVerbosity::new(
-                Some(RpcHeaderVerbosity { include_hash: Some(true), ..Default::default() }),
-                Some(RpcMergesetBlockAcceptanceDataVerbosity {
-                    merged_header_verbosity: Some(RpcHeaderVerbosity { include_hash: Some(true), ..Default::default() }),
-                    accepted_transactions_verbosity: Some(RpcTransactionVerbosity {
-                        input_verbosity: Some(RpcTransactionInputVerbosity {
-                            include_signature_script: Some(true),
-                            include_previous_outpoint: Some(true),
-                            verbose_data_verbosity: Some(RpcTransactionInputVerboseDataVerbosity {
-                                utxo_entry_verbosity: Some(RpcUtxoEntryVerbosity { include_amount: Some(true), ..Default::default() }),
-                            }),
-                            ..Default::default()
-                        }),
-                        output_verbosity: Some(RpcTransactionOutputVerbosity {
-                            include_script_public_key: Some(true),
-                            include_amount: Some(true),
-                            ..Default::default()
-                        }),
-                        verbose_data_verbosity: Some(RpcTransactionVerboseDataVerbosity {
-                            include_transaction_id: Some(true),
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    }),
-                }),
-            )),
+            Some(RpcDataVerbosityLevel::High),
         )
         .await?;
 

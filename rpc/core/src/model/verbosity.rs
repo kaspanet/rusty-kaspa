@@ -2,6 +2,34 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
 
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Copy)]
+#[borsh(use_discriminant = true)]
+#[repr(i32)]
+pub enum RpcDataVerbosityLevel {
+    Low = 0,
+    Medium = 1,
+    High = 2,
+    Full = 3,
+}
+
+impl Serializer for RpcDataVerbosityLevel {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        serialize!(RpcDataVerbosityLevel, &self.clone(), writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcDataVerbosityLevel {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let data_verbosity = deserialize!(RpcDataVerbosityLevel, reader)?;
+
+        Ok(data_verbosity)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcHeaderVerbosity {

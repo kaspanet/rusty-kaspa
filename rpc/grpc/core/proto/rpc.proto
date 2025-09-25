@@ -988,6 +988,13 @@ message GetUtxoReturnAddressResponseMessage {
 
 // verbosity messages for vspcn v2
 
+enum RpcDataVerbosityLevel {
+  LOW = 0;
+  MEDIUM = 1;
+  HIGH = 2;
+  FULL = 3;
+}
+
 message RpcAcceptanceDataVerbosity {
   optional RpcBlockHeaderVerbosity acceptingChainHeaderVerbosity = 1; // default is null
   optional RpcMergesetBlockAcceptanceDataVerbosity mergesetBlockAcceptanceDataVerbosity = 20; // default is null
@@ -1099,8 +1106,7 @@ message GetVirtualChainFromBlockV2RequestMessage{
 
   /// Note: where fields are switched to false, default values of the type will be used to fill the assosicated response fields.
   /// it is therefore the client's responsibility to ensure to ignore the fields in the response.
-  optional RpcAcceptanceDataVerbosity acceptanceDataVerbosity = 2; // holds switches for the verbosity of the acceptance data, if null only added & removed chain blocks will be retrieved.
-
+  optional RpcDataVerbosityLevel dataVerbosityLevel = 2;
 }
 
 message GetVirtualChainFromBlockV2ResponseMessage{

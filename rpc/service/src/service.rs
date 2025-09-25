@@ -331,7 +331,7 @@ impl RpcCoreService {
                 if storage_mass_lower > 0 {
                     warn!("The RPC submitted block {} contains a transaction {} with mass = 0 while it should have been strictly positive.
 This indicates that the RPC conversion flow used by the miner does not preserve the mass values received from GetBlockTemplate.
-You must upgrade your miner flow to propagate the mass field correctly prior to the Crescendo hardfork activation. 
+You must upgrade your miner flow to propagate the mass field correctly prior to the Crescendo hardfork activation.
 Failure to do so will result in your blocks being considered invalid when Crescendo activates.",
                             block.hash(),
                             tx.id()
@@ -398,7 +398,7 @@ impl RpcApi for RpcCoreService {
             }
             Err(ProtocolError::RuleError(RuleError::BadMerkleRoot(h1, h2))) => {
                 warn!(
-                    "The RPC submitted block {} triggered a {} error: {}. 
+                    "The RPC submitted block {} triggered a {} error: {}.
 NOTE: This error usually indicates an RPC conversion error between the node and the miner. This is likely to reflect using a NON-SUPPORTED miner.",
                     hash,
                     stringify!(RuleError::BadMerkleRoot),
@@ -1264,14 +1264,13 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         request: GetVirtualChainFromBlockV2Request,
     ) -> RpcResult<GetVirtualChainFromBlockV2Response> {
         let session = self.consensus_manager.consensus().session().await;
-        let verbosity = request.acceptance_data_verbosity;
+        let data_verbosity_level = request.data_verbosity_level;
+        let verbosity: RpcAcceptanceDataVerbosity = data_verbosity_level.map(RpcAcceptanceDataVerbosity::from).unwrap_or_default();
         let batch_size = (self.config.mergeset_size_limit().upper_bound() * 10) as usize;
         let mut chain_path = session.async_get_virtual_chain_from_block(request.start_hash, Some(batch_size)).await?;
-        let added_acceptance_data = if let Some(verbosity) = verbosity.as_ref() {
-            self.consensus_converter.get_acceptance_data_with_verbosity(&session, verbosity, &chain_path, Some(batch_size)).await?
-        } else {
-            Vec::new()
-        };
+        let added_acceptance_data =
+            self.consensus_converter.get_acceptance_data_with_verbosity(&session, &verbosity, &chain_path, Some(batch_size)).await?;
+
         chain_path.added.truncate(added_acceptance_data.len());
 
         Ok(GetVirtualChainFromBlockV2Response {
