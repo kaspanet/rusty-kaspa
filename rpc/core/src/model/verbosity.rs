@@ -15,7 +15,9 @@ pub enum RpcDataVerbosityLevel {
 impl Serializer for RpcDataVerbosityLevel {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u8, &1, writer)?;
-        serialize!(RpcDataVerbosityLevel, &self.clone(), writer)?;
+
+        let val: i32 = *self as i32;
+        writer.write_all(&val.to_le_bytes())?;
 
         Ok(())
     }
@@ -24,9 +26,12 @@ impl Serializer for RpcDataVerbosityLevel {
 impl Deserializer for RpcDataVerbosityLevel {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
-        let data_verbosity = deserialize!(RpcDataVerbosityLevel, reader)?;
 
-        Ok(data_verbosity)
+        let mut buf = [0u8; 4];
+        reader.read_exact(&mut buf)?;
+        let val = i32::from_le_bytes(buf);
+        Ok(RpcDataVerbosityLevel::try_from(val)
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid RpcDataVerbosityLevel"))?)
     }
 }
 
