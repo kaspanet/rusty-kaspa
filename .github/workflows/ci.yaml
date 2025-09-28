@@ -255,6 +255,8 @@ jobs:
       - name: Install stable toolchain
         if: steps.install_llvm.outcome == 'success' && steps.install_llvm.conclusion == 'success'
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Add wasm32 target
         run: rustup target add wasm32-unknown-unknown

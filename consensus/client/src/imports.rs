@@ -13,7 +13,7 @@ cfg_if::cfg_if! {
         pub use kaspa_python_core::types::PyBinary;
         pub use kaspa_utils::hex::FromHex;
         pub use pyo3::{
-            exceptions::PyException,
+            exceptions::{PyException, PyKeyError},
             prelude::*,
             types::PyDict,
         };

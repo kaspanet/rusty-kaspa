@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "kaspa"
-version = "1.0.1"
+version = "1.0.1.post1"
 description = "Kaspa Python SDK"
 requires-python = ">=3.8"
 readme = "README.md"
@@ -17,7 +17,8 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-"Source" = "https://github.com/kaspanet/rusty-kaspa/tree/master/python"
+"Source" = "https://github.com/aspectron/rusty-kaspa/tree/python/python"
+"Changelog" = "https://github.com/aspectron/rusty-kaspa/tree/python/python/CHANGELOG.md"
 
 [package.metadata.maturin]
 name = "kaspa"
@@ -28,3 +29,4 @@ name = "kaspa"
 bindings = "pyo3"
 features = ["pyo3/extension-module"]
 strip = true
+include = ["CHANGELOG.md"]

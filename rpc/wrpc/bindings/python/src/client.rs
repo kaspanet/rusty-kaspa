@@ -610,7 +610,7 @@ build_wrpc_python_interface!(
         GetUtxoReturnAddress,
         GetVirtualChainFromBlock,
         ResolveFinalityConflict,
-        // SubmitBlock, PY-TODO
+        SubmitBlock,
         SubmitTransaction,
         SubmitTransactionReplacement,
         Unban,

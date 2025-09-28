@@ -14,7 +14,7 @@ pub struct ScriptBuilder {
 
 impl ScriptBuilder {
     #[inline]
-    pub fn inner(&self) -> MutexGuard<native::ScriptBuilder> {
+    pub fn inner(&self) -> MutexGuard<'_, native::ScriptBuilder> {
         self.script_builder.lock().unwrap()
     }
 }

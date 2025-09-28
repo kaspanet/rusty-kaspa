@@ -1,8 +1,9 @@
-use crate::{message::*, RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
+use crate::{message::*, RpcRawBlock, RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
 use kaspa_addresses::Address;
 use kaspa_consensus_client::Transaction;
 use pyo3::{
-    exceptions::PyException,
+    exceptions::{PyDeprecationWarning, PyException, PyKeyError},
+    ffi::c_str,
     prelude::*,
     types::{PyDict, PyList},
 };
@@ -72,7 +73,7 @@ try_from_args! ( dict : EstimateNetworkHashesPerSecondRequest, {
 
 try_from_args! ( dict : GetBalanceByAddressRequest, {
     let address_value = dict.get_item("address")?
-        .ok_or_else(|| PyException::new_err("Key `address` not present"))?;
+        .ok_or_else(|| PyKeyError::new_err("Key `address` not present"))?;
 
     let address = if let Ok(address) = address_value.extract::<Address>() {
         address
@@ -88,7 +89,7 @@ try_from_args! ( dict : GetBalanceByAddressRequest, {
 
 try_from_args! ( dict : GetBalancesByAddressesRequest, {
     let items = dict.get_item("addresses")?
-        .ok_or_else(|| PyException::new_err("Key `addresses` not present"))?;
+        .ok_or_else(|| PyKeyError::new_err("Key `addresses` not present"))?;
 
     let list = items.downcast::<PyList>()
         .map_err(|_| PyException::new_err("`addresses` should be a list"))?;
@@ -146,7 +147,7 @@ try_from_args! ( dict : GetMempoolEntriesRequest, {
 
 try_from_args! ( dict : GetMempoolEntriesByAddressesRequest, {
     let items = dict.get_item("addresses")?
-        .ok_or_else(|| PyException::new_err("Key `addresses` not present"))?;
+        .ok_or_else(|| PyKeyError::new_err("Key `addresses` not present"))?;
 
     let list = items.downcast::<PyList>()
         .map_err(|_| PyException::new_err("`addresses` should be a list"))?;
@@ -164,11 +165,11 @@ try_from_args! ( dict : GetMempoolEntriesByAddressesRequest, {
     }).collect::<PyResult<Vec<Address>>>()?;
 
     let include_orphan_pool = dict.get_item("includeOrphanPool")?
-        .ok_or_else(|| PyException::new_err("Key `include_orphan_pool` not present"))?
+        .ok_or_else(|| PyKeyError::new_err("Key `include_orphan_pool` not present"))?
         .extract::<bool>()?;
 
     let filter_transaction_pool = dict.get_item("filterTransactionPool")?
-        .ok_or_else(|| PyException::new_err("Key `filter_transaction_pool` not present"))?
+        .ok_or_else(|| PyKeyError::new_err("Key `filter_transaction_pool` not present"))?
         .extract::<bool>()?;
 
     Ok(GetMempoolEntriesByAddressesRequest { addresses, include_orphan_pool, filter_transaction_pool })
@@ -188,7 +189,7 @@ try_from_args! ( dict : GetSubnetworkRequest, {
 
 try_from_args! ( dict : GetUtxosByAddressesRequest, {
     let items = dict.get_item("addresses")?
-        .ok_or_else(|| PyException::new_err("Key `addresses` not present"))?;
+        .ok_or_else(|| PyKeyError::new_err("Key `addresses` not present"))?;
     let list = items.downcast::<PyList>()
         .map_err(|_| PyException::new_err("`addresses` should be a list"))?;
 
@@ -219,20 +220,44 @@ try_from_args! ( dict : ResolveFinalityConflictRequest, {
     Ok(from_pyobject(dict)?)
 });
 
-// PY-TODO
-// try_from_args! ( dict : SubmitBlockRequest, {
-//     Ok(from_pyobject(dict)?)
-// });
+try_from_args! ( dict : SubmitBlockRequest, {
+    let d = dict.as_any();
+
+    let block = d.get_item("block")?;
+    let header = serde_pyobject::from_pyobject(block.get_item("header")?)?;
+    let transactions = serde_pyobject::from_pyobject(block.get_item("transactions")?)?;
+    let allow_non_daa_blocks = d.get_item("allowNonDaaBlocks")?.extract::<bool>()?;
+
+    let block = RpcRawBlock { header, transactions };
+
+    Ok(SubmitBlockRequest { block, allow_non_daa_blocks })
+});
 
 try_from_args! ( dict : SubmitTransactionRequest, {
     let transaction: Transaction = dict.get_item("transaction")?
-        .ok_or_else(|| PyException::new_err("Key `transactions` not present"))?
+        .ok_or_else(|| PyKeyError::new_err("Key `transaction` not present"))?
         .extract()?;
     let inner = transaction.inner();
 
-    let allow_orphan: bool = dict.get_item("allow_orphan")?
-        .ok_or_else(|| PyException::new_err("Key `allow_orphan` not present"))?
-        .extract()?;
+    // Deprecate allow_orphan in favor of allowOrphan for case consistency
+    // Deprecation warning added September 2025, version 1.0.1.post1
+    let py = dict.py();
+    if dict.get_item("allow_orphan")?.is_some() {
+        PyErr::warn(
+            py,
+            &py.get_type::<PyDeprecationWarning>(),
+            c_str!("`allow_orphan` will be deprecated in favor of `allowOrphan` for case consistency. Please switch."),
+            0
+        )?;
+    }
+
+    let allow_orphan: bool = if let Some(item) = dict.get_item("allowOrphan")? {
+        item.extract()?
+    } else if let Some(item) = dict.get_item("allow_orphan")? {
+        item.extract()?
+    } else {
+        return Err(PyKeyError::new_err("Key `allowOrphan` not present"));
+    };
 
     let inputs: Vec<RpcTransactionInput> =
         inner.inputs.clone().into_iter().map(|input| input.into()).collect::<Vec<RpcTransactionInput>>();
@@ -256,7 +281,7 @@ try_from_args! ( dict : SubmitTransactionRequest, {
 
 try_from_args! ( dict : SubmitTransactionReplacementRequest, {
     let transaction: Transaction = dict.get_item("transaction")?
-        .ok_or_else(|| PyException::new_err("Key `transactions` not present"))?
+        .ok_or_else(|| PyKeyError::new_err("Key `transactions` not present"))?
         .extract()?;
 
     Ok(SubmitTransactionReplacementRequest { transaction: transaction.into() })

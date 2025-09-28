@@ -102,7 +102,7 @@ impl TryCastFromJs for PaymentOutput {
 impl TryFrom<&Bound<'_, PyDict>> for PaymentOutput {
     type Error = PyErr;
     fn try_from(value: &Bound<PyDict>) -> PyResult<Self> {
-        let address_value = value.get_item("address")?.ok_or_else(|| PyException::new_err("Key `address` not present"))?;
+        let address_value = value.get_item("address")?.ok_or_else(|| PyKeyError::new_err("Key `address` not present"))?;
 
         let address = if let Ok(address) = address_value.extract::<Address>() {
             address
@@ -112,7 +112,7 @@ impl TryFrom<&Bound<'_, PyDict>> for PaymentOutput {
             return Err(PyException::new_err("Addresses must be either an Address instance or a string"));
         };
 
-        let amount: u64 = value.get_item("amount")?.ok_or_else(|| PyException::new_err("Key `amount` not present"))?.extract()?;
+        let amount: u64 = value.get_item("amount")?.ok_or_else(|| PyKeyError::new_err("Key `amount` not present"))?.extract()?;
 
         Ok(PaymentOutput::new(address, amount))
     }

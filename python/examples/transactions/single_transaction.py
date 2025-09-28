@@ -5,6 +5,7 @@ from kaspa import (
     RpcClient,
     Resolver,
     PaymentOutput,
+    calculate_transaction_mass,
     create_transaction,
     sign_transaction
 )
@@ -25,23 +26,27 @@ async def main():
     utxos = sorted(utxos, key=lambda x: x['utxoEntry']['amount'], reverse=True)
     total = sum(item['utxoEntry']['amount'] for item in utxos)
 
-    fee_rates = await client.get_fee_estimate()
-    fee = int(fee_rates["estimate"]["priorityBucket"]["feerate"])
-
-    fee = max(fee, 5000)
-    output_amount = int(total - fee)
-
-    change_address = address
+    # Placeholder tx, used to get mass
     outputs = [
-        {"address": change_address, "amount": output_amount},
+        {"address": address, "amount": total},
     ]
-
     tx = create_transaction(utxos, outputs, 0, None, 1)
+
+    mass = calculate_transaction_mass("testnet-10", tx)
+
+    fee_rates = await client.get_fee_estimate()
+    fee_rate = int(fee_rates["estimate"]["priorityBucket"]["feerate"])
+
+    outputs = [
+        {"address": address, "amount": int(total - (fee_rate * mass))},
+    ]
+    tx = create_transaction(utxos, outputs, 0, None, 1)
+
     tx_signed = sign_transaction(tx, [private_key], True)
 
     print(await client.submit_transaction({
         "transaction": tx_signed,
-        "allow_orphan": True
+        "allowOrphan": True
     }))
 
 if __name__ == "__main__":
