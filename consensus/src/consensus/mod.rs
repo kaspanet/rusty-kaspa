@@ -385,7 +385,7 @@ impl Consensus {
             // Populate the data
             let ghostdag_data = self.ghostdag_store.get_compact_data(current).unwrap();
             let pruning_sample_from_pov =
-                self.services.pruning_point_manager.expected_header_pruning_point_v2(ghostdag_data).pruning_sample;
+                self.services.pruning_point_manager.expected_header_pruning_point(ghostdag_data).pruning_sample;
             self.pruning_samples_store.insert(current, pruning_sample_from_pov).unwrap_or_exists();
         }
 
