@@ -16,7 +16,7 @@ use crate::{
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::DbHeadersStore,
             headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
-            pruning::{DbPruningStore, PruningPointInfo, PruningStoreReader},
+            pruning::{DbPruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreReader},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
@@ -53,7 +53,7 @@ use super::super::ProcessingCounters;
 pub struct HeaderProcessingContext {
     pub hash: Hash,
     pub header: Arc<Header>,
-    pub pruning_info: PruningPointInfo,
+    pub pruning_point: Hash,
     pub block_level: BlockLevel,
     pub known_parents: Vec<BlockHashes>,
 
@@ -71,14 +71,14 @@ impl HeaderProcessingContext {
         hash: Hash,
         header: Arc<Header>,
         block_level: BlockLevel,
-        pruning_info: PruningPointInfo,
+        pruning_point: Hash,
         known_parents: Vec<BlockHashes>,
     ) -> Self {
         Self {
             hash,
             header,
             block_level,
-            pruning_info,
+            pruning_point,
             known_parents,
             ghostdag_data: None,
             block_window_for_difficulty: None,
@@ -96,7 +96,7 @@ impl HeaderProcessingContext {
 
     /// Returns the pruning point at the time this header began processing
     pub fn pruning_point(&self) -> Hash {
-        self.pruning_info.pruning_point
+        self.pruning_point
     }
 
     /// Returns the primary (level 0) GHOSTDAG data of this header.
@@ -322,7 +322,7 @@ impl HeaderProcessor {
             header.hash,
             header.clone(),
             block_level,
-            self.pruning_point_store.read().get().unwrap(),
+            self.pruning_point_store.read().pruning_point().unwrap(),
             self.collect_known_parents(header, block_level),
         )
     }
@@ -483,7 +483,7 @@ impl HeaderProcessor {
             self.genesis.hash,
             genesis_header.clone(),
             self.max_block_level,
-            PruningPointInfo::from_genesis(self.genesis.hash),
+            self.genesis.hash,
             (0..=self.max_block_level).map(|_| BlockHashes::new(vec![ORIGIN])).collect(),
         );
         ctx.ghostdag_data = Some(Arc::new(self.ghostdag_manager.genesis_ghostdag_data()));
