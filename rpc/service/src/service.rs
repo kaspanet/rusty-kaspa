@@ -690,7 +690,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 let sink_blue_score = session.async_get_sink_blue_score().await;
 
                 while !virtual_chain_batch.added.is_empty() {
-                    let vc_last_accepted_block_hash = virtual_chain_batch.added.last().unwrap();
+                    let vc_last_accepted_block_hash = virtual_chain_batch.added.last()
+                        .ok_or_else(|| RpcError::General("Virtual chain batch is empty".to_string()))?;
                     let vc_last_accepted_block = session.async_get_block(*vc_last_accepted_block_hash).await?;
 
                     let distance = sink_blue_score.saturating_sub(vc_last_accepted_block.header.blue_score);
@@ -816,7 +817,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         //
         // TODO: optimize using binary search over the samples to obtain O(m log n) complexity (which is an improvement assuming m << n)
         while header_idx < headers.len() && req_idx < request.daa_scores.len() {
-            let header = headers.get(header_idx).unwrap();
+            let header = headers.get(header_idx)
+                .ok_or_else(|| RpcError::General(format!(
+                    "Header index {} out of range (0..{})",
+                    header_idx, headers.len()
+                )))?;
             let curr_daa_score = requested_daa_scores[req_idx];
 
             // Found daa_score in range
