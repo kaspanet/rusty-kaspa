@@ -1054,7 +1054,7 @@ impl VirtualStateProcessor {
         // [`calc_block_parents`] can use deep blocks below the pruning point for this calculation, so we
         // need to hold the pruning lock.
         let _prune_guard = self.pruning_lock.blocking_read();
-        let pruning_info = self.pruning_point_store.read().get().unwrap();
+        let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
         let header_pruning_point =
             self.pruning_point_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact()).pruning_point;
         let coinbase = self
@@ -1069,7 +1069,7 @@ impl VirtualStateProcessor {
             .unwrap();
         txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
-        let parents_by_level = self.parents_manager.calc_block_parents(pruning_info.pruning_point, &virtual_state.parents);
+        let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
 
         // Hash according to hardfork activation
         let storage_mass_activated = self.crescendo_activation.is_active(virtual_state.daa_score);
@@ -1119,7 +1119,7 @@ impl VirtualStateProcessor {
             let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
             let mut batch = WriteBatch::default();
             self.past_pruning_points_store.insert_batch(&mut batch, 0, self.genesis.hash).unwrap_or_exists();
-            pruning_point_write.set_batch(&mut batch, self.genesis.hash, self.genesis.hash, 0).unwrap();
+            pruning_point_write.set_batch(&mut batch, self.genesis.hash, 0).unwrap();
             pruning_point_write.set_retention_checkpoint(&mut batch, self.genesis.hash).unwrap();
             pruning_point_write.set_retention_period_root(&mut batch, self.genesis.hash).unwrap();
             pruning_utxoset_write.set_utxoset_position(&mut batch, self.genesis.hash).unwrap();
