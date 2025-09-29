@@ -150,7 +150,7 @@ impl Router {
                     .collect_vec();
                 handlers.into_iter().for_each(|x| x.launch());
                 let route = Route::new(sender, method.routing_policy());
-                entry.insert(route);
+                let route_ref = entry.insert(route);
                 match method.tasks() {
                     1 => {
                         trace!("GRPC, Connection::subscribe - {:?} route is registered, client:{:?}", rpc_op, connection.identity());
@@ -164,18 +164,18 @@ impl Router {
                         );
                     }
                 }
+                route_ref
             }
-            Entry::Occupied(_) => {}
+            Entry::Occupied(entry) => entry.into_mut()
         }
-        self.routing_map.get(&rpc_op).unwrap()
     }
 
     async fn route_to_handler(&mut self, connection: &Connection, request: KaspadRequest) -> GrpcServerResult<()> {
-        if request.payload.is_none() {
+        let Some(payload) = request.payload.as_ref() else {
             debug!("GRPC, Route to handler got empty payload, client: {}", connection);
             return Err(GrpcServerError::InvalidRequestPayload);
-        }
-        let rpc_op = request.payload.as_ref().unwrap().into();
+        };
+        let rpc_op = payload.into();
         let route = self.get_or_subscribe(connection, rpc_op);
         match route.policy {
             RoutingPolicy::Enqueue => match route.send(request).await {

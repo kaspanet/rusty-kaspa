@@ -157,7 +157,11 @@ impl Server {
             let _ = connection.grpc_client().join().await;
         }
 
-        self.inner.sockets.lock().unwrap().remove(&connection.id());
+        if let Ok(mut guard) = self.inner.sockets.lock() {
+            guard.remove(&connection.id());
+        } else {
+            log::error!("Failed to remove connection {} from sockets - mutex poisoned", connection.id());
+        }
 
         // FIXME: determine if messenger should be closed explicitly
         // connection.close();

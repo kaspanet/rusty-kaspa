@@ -114,11 +114,15 @@ impl Connection {
     }
 
     pub fn listener_id(&self) -> Option<ListenerId> {
-        *self.inner.listener_id.lock().unwrap()
+        self.inner.listener_id.lock().ok().and_then(|guard| *guard)
     }
 
     pub fn register_notification_listener(&self, listener_id: ListenerId) {
-        self.inner.listener_id.lock().unwrap().replace(listener_id);
+        if let Ok(mut guard) = self.inner.listener_id.lock() {
+            guard.replace(listener_id);
+        } else {
+            log::error!("Failed to acquire lock for listener_id registration - mutex poisoned");
+        }
     }
 
     pub fn peer(&self) -> &SocketAddr {
