@@ -14,7 +14,7 @@ use crate::{
             daa::DbDaaStore,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
-            headers::{DbHeadersStore, HeaderStoreReader},
+            headers::DbHeadersStore,
             headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
             pruning::{DbPruningStore, PruningPointInfo, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
@@ -59,7 +59,6 @@ pub struct HeaderProcessingContext {
 
     // Staging data
     pub ghostdag_data: Option<Arc<GhostdagData>>,
-    pub selected_parent_daa_score: Option<u64>, // [Crescendo]
     pub block_window_for_difficulty: Option<Arc<BlockWindowHeap>>,
     pub block_window_for_past_median_time: Option<Arc<BlockWindowHeap>>,
     pub mergeset_non_daa: Option<BlockHashSet>,
@@ -82,7 +81,6 @@ impl HeaderProcessingContext {
             pruning_info,
             known_parents,
             ghostdag_data: None,
-            selected_parent_daa_score: None,
             block_window_for_difficulty: None,
             mergeset_non_daa: None,
             block_window_for_past_median_time: None,
@@ -105,10 +103,6 @@ impl HeaderProcessingContext {
     /// NOTE: is expected to be called only after GHOSTDAG computation was pushed into the context
     pub fn ghostdag_data(&self) -> &Arc<GhostdagData> {
         self.ghostdag_data.as_ref().unwrap()
-    }
-
-    pub fn selected_parent_daa_score(&self) -> u64 {
-        self.selected_parent_daa_score.unwrap()
     }
 }
 
@@ -307,8 +301,6 @@ impl HeaderProcessor {
         self.validate_parent_relations(header)?;
         let mut ctx = self.build_processing_context(header, block_level);
         self.ghostdag(&mut ctx);
-        // [Crescendo]: persist the selected parent DAA score to be used for activation checks
-        ctx.selected_parent_daa_score = Some(self.headers_store.get_daa_score(ctx.ghostdag_data().selected_parent).unwrap());
         self.pre_pow_validation(&mut ctx, header)?;
         if let Err(e) = self.post_pow_validation(&mut ctx, header) {
             self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
