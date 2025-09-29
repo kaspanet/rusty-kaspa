@@ -125,14 +125,60 @@ pub mod parents_by_level_format {
     where
         S: Serializer,
     {
-        todo!()
+        /*
+
+        from:
+
+        [
+            [A, B, C],
+            [A, B, C],
+            [A, B, C],
+            [A, C],
+            [A, C],
+            [Z]
+        ]
+
+        to:
+
+        [
+            (3, [A, B, C]),
+            (5, [A, B]),
+            (6, [Z])
+        ]
+        */
+
+        /*
+        Option 1 (not to do):
+            1. convert the &[Vec<Hash>] to Vec<(u8, Vec<Hash>)>
+            2. serialize the result normally
+
+        Option 2:
+            Use the serialize_seq function
+        */
+
+        // 1. find count
+
+        let mut seq = serializer.serialize_seq(Some(count))?;
+
+        // 2. loop: 
+        seq.serialize_element(...)
+
+        // 3. end
+        seq.end()
+        // todo!()
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Vec<Hash>>, D::Error>
     where
         D: Deserializer<'de>,
     {
+
+        // if deserializer.is_human_readable() returns true then ser/deser normally 
+
+        // simply deser into Vec<(u8, Vec<Hash>)> and then convert to Vec<Vec<Hash>>
         todo!()
+
+        
     }
 }
 
