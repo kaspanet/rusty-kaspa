@@ -123,7 +123,7 @@ impl<
     /// Returns a logarithmic amount of blocks sampled from the virtual selected chain between `low` and `high`.
     /// Expects both blocks to be on the virtual selected chain, otherwise an error is returned
     pub fn create_virtual_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> SyncManagerResult<Vec<Hash>> {
-        let low = low.unwrap_or_else(|| self.pruning_point_store.read().get().unwrap().pruning_point);
+        let low = low.unwrap_or_else(|| self.pruning_point_store.read().pruning_point().unwrap());
         let sc_read = self.selected_chain_store.read();
         let high = high.unwrap_or_else(|| sc_read.get_tip().unwrap().1);
         if low == high {
