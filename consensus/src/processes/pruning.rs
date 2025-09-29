@@ -7,7 +7,6 @@ use crate::model::{
         headers::HeaderStoreReader,
         headers_selected_tip::HeadersSelectedTipStoreReader,
         past_pruning_points::PastPruningPointsStoreReader,
-        pruning::PruningPointInfo,
         pruning_samples::PruningSamplesStore,
         reachability::ReachabilityStoreReader,
     },
@@ -177,23 +176,12 @@ impl<
         self.finality_score(epoch_chain_ancestor_blue_score, finality_depth) < self.finality_score(self_blue_score, finality_depth)
     }
 
-    pub fn next_pruning_points(
-        &self,
-        sink_ghostdag: CompactGhostdagData,
-        current_candidate: Hash,
-        current_pruning_point: Hash,
-    ) -> (Vec<Hash>, Hash) {
+    pub fn next_pruning_points(&self, sink_ghostdag: CompactGhostdagData, current_pruning_point: Hash) -> Vec<Hash> {
         if sink_ghostdag.selected_parent.is_origin() {
             // This only happens when sink is genesis
-            return (vec![], current_candidate);
+            return vec![];
         }
-        let next_pruning_points = self.next_pruning_points_inner(sink_ghostdag, current_pruning_point);
-        // Keep the candidate valid also post activation just in case it's still used by v1 calls
-        let candidate = next_pruning_points.last().copied().unwrap_or(current_candidate);
-        (next_pruning_points, candidate)
-    }
 
-    fn next_pruning_points_inner(&self, sink_ghostdag: CompactGhostdagData, current_pruning_point: Hash) -> Vec<Hash> {
         let current_pruning_point_blue_score = self.headers_store.get_blue_score(current_pruning_point).unwrap();
 
         // Sanity check #1: global pruning point depth from sink >= P
@@ -250,7 +238,12 @@ impl<
         self.is_pruning_point_in_pruning_depth(tip_bs, pp_candidate, pruning_depth)
     }
 
-    pub fn are_pruning_points_in_valid_chain(&self, pruning_info: PruningPointInfo, syncer_sink: Hash) -> PruningImportResult<()> {
+    pub fn are_pruning_points_in_valid_chain(
+        &self,
+        pruning_point: Hash,
+        pruning_index: u64,
+        syncer_sink: Hash,
+    ) -> PruningImportResult<()> {
         // We want to validate that the past pruning points form a chain to genesis. Since
         // each pruning point's header doesn't point to the previous pruning point, but to
         // the pruning point from its POV, we can't just traverse from one pruning point to
@@ -267,7 +260,7 @@ impl<
         // any other pruning point in the list, so we are compelled to check if it's referenced by
         // the selected chain.
         let mut expected_pps_queue = VecDeque::new();
-        for current in self.reachability_service.forward_chain_iterator(pruning_info.pruning_point, syncer_sink, true).skip(1) {
+        for current in self.reachability_service.forward_chain_iterator(pruning_point, syncer_sink, true).skip(1) {
             let current_header = self.headers_store.get_header(current).unwrap();
             // Post-crescendo: expected header pruning point is no longer part of header validity, but we want to make sure
             // the syncer's virtual chain indeed coincides with the pruning point and past pruning points before downloading
@@ -288,12 +281,12 @@ impl<
                    2. the front of the queue is different than C; AND
                    3. the front of the queue is different than P(0) (if it is P(0), we already filled the queue with what we need)
             */
-            if expected_pps_queue.front().is_none_or(|&h| h != current_header.pruning_point && h != pruning_info.pruning_point) {
+            if expected_pps_queue.front().is_none_or(|&h| h != current_header.pruning_point && h != pruning_point) {
                 expected_pps_queue.push_front(current_header.pruning_point);
             }
         }
 
-        for idx in (0..=pruning_info.index).rev() {
+        for idx in (0..=pruning_index).rev() {
             let pp = self.past_pruning_points_store.get(idx).unwrap();
             let pp_header = self.headers_store.get_header(pp).unwrap();
             let Some(expected_pp) = expected_pps_queue.pop_front() else {

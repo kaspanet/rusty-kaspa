@@ -327,7 +327,7 @@ impl Consensus {
                 pruning_point_store.set_retention_period_root(&mut batch, retention_checkpoint).unwrap();
             } else {
                 // For non-archival nodes the retention root was the pruning point
-                let pruning_point = pruning_point_store.get().unwrap().pruning_point;
+                let pruning_point = pruning_point_store.pruning_point().unwrap();
                 pruning_point_store.set_retention_period_root(&mut batch, pruning_point).unwrap();
             }
             self.db.write(batch).unwrap();
@@ -421,10 +421,10 @@ impl Consensus {
 
     fn pruning_point_compact_headers(&self) -> Vec<(Hash, CompactHeaderData)> {
         // PRUNE SAFETY: index is monotonic and past pruning point headers are expected permanently
-        let current_pp_info = self.pruning_point_store.read().get().unwrap();
-        (0..current_pp_info.index)
+        let (pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
+        (0..pruning_index)
             .map(|index| self.past_pruning_points_store.get(index).unwrap())
-            .chain(once(current_pp_info.pruning_point))
+            .chain(once(pruning_point))
             .map(|hash| (hash, self.headers_store.get_compact_header_data(hash).unwrap()))
             .collect_vec()
     }
@@ -817,16 +817,16 @@ impl ConsensusApi for Consensus {
 
     fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         let hst = self.storage.headers_selected_tip_store.read().get().unwrap().hash;
-        let pp_info = self.pruning_point_store.read().get().unwrap();
-        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, hst) {
+        let (pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
+        if !self.services.pruning_point_manager.is_valid_pruning_point(pruning_point, hst) {
             return Err(ConsensusError::General("pruning point does not coincide with the synced header selected tip"));
         }
-        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, syncer_virtual_selected_parent) {
+        if !self.services.pruning_point_manager.is_valid_pruning_point(pruning_point, syncer_virtual_selected_parent) {
             return Err(ConsensusError::General("pruning point does not coincide with the syncer's sink (virtual selected parent)"));
         }
         self.services
             .pruning_point_manager
-            .are_pruning_points_in_valid_chain(pp_info, syncer_virtual_selected_parent)
+            .are_pruning_points_in_valid_chain(pruning_point, pruning_index, syncer_virtual_selected_parent)
             .map_err(|e| ConsensusError::GeneralOwned(format!("past pruning points do not form a valid chain: {}", e)))
     }
 
@@ -890,10 +890,10 @@ impl ConsensusApi for Consensus {
 
     fn pruning_point_headers(&self) -> Vec<Arc<Header>> {
         // PRUNE SAFETY: index is monotonic and past pruning point headers are expected permanently
-        let current_pp_info = self.pruning_point_store.read().get().unwrap();
-        (0..current_pp_info.index)
+        let (pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
+        (0..pruning_index)
             .map(|index| self.past_pruning_points_store.get(index).unwrap())
-            .chain(once(current_pp_info.pruning_point))
+            .chain(once(pruning_point))
             .map(|hash| self.headers_store.get_header(hash).unwrap())
             .collect_vec()
     }
