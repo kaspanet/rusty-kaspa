@@ -258,21 +258,27 @@ impl RpcCoreService {
         &self,
         addresses: impl Iterator<Item = &'a RpcAddress>,
     ) -> UtxoSetByScriptPublicKey {
-        self.utxoindex
-            .clone()
-            .unwrap()
-            .get_utxos_by_script_public_keys(addresses.map(pay_to_address_script).collect())
-            .await
-            .unwrap_or_default()
+        match self.utxoindex.clone() {
+            Some(utxoindex) => {
+                utxoindex
+                    .get_utxos_by_script_public_keys(addresses.map(pay_to_address_script).collect())
+                    .await
+                    .unwrap_or_default()
+            }
+            None => Default::default(),
+        }
     }
 
     async fn get_balance_by_script_public_key<'a>(&self, addresses: impl Iterator<Item = &'a RpcAddress>) -> BalanceByScriptPublicKey {
-        self.utxoindex
-            .clone()
-            .unwrap()
-            .get_balance_by_script_public_keys(addresses.map(pay_to_address_script).collect())
-            .await
-            .unwrap_or_default()
+        match self.utxoindex.clone() {
+            Some(utxoindex) => {
+                utxoindex
+                    .get_balance_by_script_public_keys(addresses.map(pay_to_address_script).collect())
+                    .await
+                    .unwrap_or_default()
+            }
+            None => Default::default(),
+        }
     }
 
     fn extract_tx_query(&self, filter_transaction_pool: bool, include_orphan_pool: bool) -> RpcResult<TransactionQuery> {
@@ -783,8 +789,13 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
-        let circulating_sompi =
-            self.utxoindex.clone().unwrap().get_circulating_supply().await.map_err(|e| RpcError::General(e.to_string()))?;
+        let circulating_sompi = self
+            .utxoindex
+            .clone()
+            .ok_or_else(|| RpcError::NoUtxoIndex)?
+            .get_circulating_supply()
+            .await
+            .map_err(|e| RpcError::General(e.to_string()))?;
         Ok(GetCoinSupplyResponse::new(MAX_SOMPI, circulating_sompi))
     }
 
