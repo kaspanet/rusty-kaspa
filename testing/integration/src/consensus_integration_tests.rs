@@ -460,12 +460,12 @@ async fn header_in_isolation_validation_test() {
     {
         let mut block = block.clone();
         block.header.hash = 4.into();
-        block.header.parents_by_level[0] =
-            std::iter::repeat_n(config.genesis.hash, config.prior_max_block_parents as usize + 1).collect();
+        let max_block_parents = config.max_block_parents().after() as usize;
+        block.header.parents_by_level[0] = std::iter::repeat_n(config.genesis.hash, max_block_parents + 1).collect();
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TooManyParents(num_parents, limit)) => {
-                assert_eq!((config.prior_max_block_parents + 1) as usize, num_parents);
-                assert_eq!(limit, config.prior_max_block_parents as usize);
+                assert_eq!(max_block_parents + 1, num_parents);
+                assert_eq!(limit, max_block_parents);
             }
             res => {
                 panic!("Unexpected result: {res:?}")
@@ -638,7 +638,7 @@ async fn mergeset_size_limit_test() {
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
-    let num_blocks_per_chain = config.prior_mergeset_size_limit + 1;
+    let num_blocks_per_chain = config.mergeset_size_limit().after() + 1;
 
     let mut tip1_hash = config.genesis.hash;
     for i in 1..(num_blocks_per_chain + 1) {
@@ -657,8 +657,8 @@ async fn mergeset_size_limit_test() {
     let block = consensus.build_header_only_block_with_parents((3 * num_blocks_per_chain + 1).into(), vec![tip1_hash, tip2_hash]);
     match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
         Err(RuleError::MergeSetTooBig(a, b)) => {
-            assert_eq!(a, config.prior_mergeset_size_limit + 1);
-            assert_eq!(b, config.prior_mergeset_size_limit);
+            assert_eq!(a, config.mergeset_size_limit().after() + 1);
+            assert_eq!(b, config.mergeset_size_limit().after());
         }
         res => {
             panic!("Unexpected result: {res:?}")
