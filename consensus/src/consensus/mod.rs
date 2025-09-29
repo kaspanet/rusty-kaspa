@@ -21,8 +21,6 @@ use crate::{
             headers_selected_tip::HeadersSelectedTipStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::PruningStoreReader,
-            pruning_samples::{PruningSamplesStore, PruningSamplesStoreReader},
-            reachability::ReachabilityStoreReader,
             relations::RelationsStoreReader,
             statuses::StatusesStoreReader,
             tips::TipsStoreReader,
@@ -82,22 +80,21 @@ use crossbeam_channel::{
 use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
-use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use std::{
+    cmp,
     cmp::Reverse,
-    collections::{BinaryHeap, VecDeque},
+    collections::BinaryHeap,
     future::Future,
     iter::once,
     ops::Deref,
-    sync::{atomic::Ordering, Arc},
-};
-use std::{
     sync::atomic::AtomicBool,
+    sync::{atomic::Ordering, Arc},
     thread::{self, JoinHandle},
 };
 use tokio::sync::oneshot;
@@ -105,8 +102,6 @@ use tokio::sync::oneshot;
 use self::{services::ConsensusServices, storage::ConsensusStorage};
 
 use crate::model::stores::selected_chain::SelectedChainStoreReader;
-
-use std::cmp;
 
 pub struct Consensus {
     // DB
@@ -320,10 +315,6 @@ impl Consensus {
     fn run_database_upgrades(&self) {
         // Upgrade to initialize the new retention root field correctly
         self.retention_root_database_upgrade();
-
-        // TODO (post HF): remove this upgrade
-        // Database upgrade to include pruning samples
-        self.pruning_samples_database_upgrade();
     }
 
     fn retention_root_database_upgrade(&self) {
@@ -341,55 +332,6 @@ impl Consensus {
             }
             self.db.write(batch).unwrap();
         }
-    }
-
-    fn pruning_samples_database_upgrade(&self) {
-        //
-        // For the first time this version runs, make sure we populate pruning samples
-        // from pov for all qualified chain blocks in the pruning point future
-        //
-
-        let sink = self.get_sink();
-        if self.storage.pruning_samples_store.pruning_sample_from_pov(sink).unwrap_option().is_some() {
-            // Sink is populated so we assume the database is upgraded
-            return;
-        }
-
-        // Populate past pruning points (including current one)
-        for (p1, p2) in (0..=self.pruning_point_store.read().get().unwrap().index)
-            .map(|index| self.past_pruning_points_store.get(index).unwrap())
-            .tuple_windows()
-        {
-            // Set p[i] to point at p[i-1]
-            self.pruning_samples_store.insert(p2, p1).unwrap_or_exists();
-        }
-
-        let pruning_point = self.pruning_point();
-        let reachability = self.reachability_store.read();
-
-        // We walk up via reachability tree children so that we only iterate blocks B s.t. pruning point ∈ chain(B)
-        let mut queue = VecDeque::<Hash>::from_iter(reachability.get_children(pruning_point).unwrap().iter().copied());
-        let mut processed = 0;
-        kaspa_core::info!("Upgrading database to include and populate the pruning samples store");
-        while let Some(current) = queue.pop_front() {
-            if !self.get_block_status(current).is_some_and(|s| s == BlockStatus::StatusUTXOValid) {
-                // Skip branches of the tree which are not chain qualified.
-                // This is sufficient since we will only assume this field exists
-                // for such chain qualified blocks
-                continue;
-            }
-            queue.extend(reachability.get_children(current).unwrap().iter());
-
-            processed += 1;
-
-            // Populate the data
-            let ghostdag_data = self.ghostdag_store.get_compact_data(current).unwrap();
-            let pruning_sample_from_pov =
-                self.services.pruning_point_manager.expected_header_pruning_point(ghostdag_data).pruning_sample;
-            self.pruning_samples_store.insert(current, pruning_sample_from_pov).unwrap_or_exists();
-        }
-
-        kaspa_core::info!("Done upgrading database (populated {} entries)", processed);
     }
 
     pub fn run_processors(&self) -> Vec<JoinHandle<()>> {
