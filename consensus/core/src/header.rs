@@ -11,6 +11,7 @@ pub struct Header {
     /// Cached hash
     pub hash: Hash,
     pub version: u16,
+    #[serde(with = "parents_by_level_format")]
     pub parents_by_level: Vec<Vec<Hash>>,
     pub hash_merkle_root: Hash,
     pub accepted_id_merkle_root: Hash,
@@ -102,6 +103,36 @@ impl AsRef<Header> for Header {
 impl MemSizeEstimator for Header {
     fn estimate_mem_bytes(&self) -> usize {
         size_of::<Self>() + self.parents_by_level.iter().map(|l| l.len()).sum::<usize>() * size_of::<Hash>()
+    }
+}
+
+pub mod parents_by_level_format {
+    use kaspa_hashes::Hash;
+    use serde::{
+        self,
+        de::Error,
+        ser::{Error as SerErr, SerializeSeq},
+        Deserialize, Deserializer, Serializer,
+    };
+
+    /// ## Serializer
+    ///
+    /// Serializes `Vec<Vec<Hash>>` into a run-length encoded (RLE) sequence of `(u8, Vec<Hash>)`.
+    /// The `u8` represents the cumulative count of inner vectors at the end of a run.
+    ///
+    /// For example: `[[A], [A], [B]]` becomes `[(2, [A]), (3, [B])]`.
+    pub fn serialize<S>(parents: &[Vec<Hash>], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        todo!()
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Vec<Hash>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        todo!()
     }
 }
 
