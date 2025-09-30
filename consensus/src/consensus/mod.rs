@@ -775,9 +775,8 @@ impl ConsensusApi for Consensus {
         self.services.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }
 
-    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], pov_daa_score: u64) -> Hash {
-        let storage_mass_activated = self.config.crescendo_activation.is_active(pov_daa_score);
-        calc_hash_merkle_root(txs.iter(), storage_mass_activated)
+    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction]) -> Hash {
+        calc_hash_merkle_root(txs.iter())
     }
 
     fn validate_pruning_proof(
