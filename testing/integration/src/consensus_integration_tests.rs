@@ -1879,8 +1879,7 @@ async fn run_kip10_activation_test() {
 
         // Insert our test transaction and recalculate block hashes
         block.transactions.push(tx.clone());
-        block.header.hash_merkle_root =
-            calc_hash_merkle_root(block.transactions.iter(), config.crescendo_activation.is_active(block.header.daa_score));
+        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
         assert_eq!(consensus.lkg_virtual_state.load().daa_score, 2);
@@ -2035,8 +2034,7 @@ async fn payload_activation_test() {
         // Insert our test transaction and recalculate block hashes
         block.transactions.push(tx.tx.unwrap_or_clone());
 
-        block.header.hash_merkle_root =
-            calc_hash_merkle_root(block.transactions.iter(), config.crescendo_activation.is_active(block.header.daa_score));
+        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Err(RuleError::TxInContextFailed(tx, TxRuleError::NonCoinbaseTxHasPayload)) if tx == tx_id));
         assert_eq!(consensus.lkg_virtual_state.load().daa_score, PAYLOAD_ACTIVATION_DAA_SCORE - 1);
@@ -2179,8 +2177,7 @@ async fn runtime_sig_op_counting_test() {
         let mut block =
             consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
         block.transactions.push(tx.clone());
-        block.header.hash_merkle_root =
-            calc_hash_merkle_root(block.transactions.iter(), config.crescendo_activation.is_active(block.header.daa_score));
+        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
         index += 1;

@@ -274,11 +274,7 @@ impl VirtualStateProcessor {
             .expected_coinbase_transaction(daa_score, miner_data, ghostdag_data, mergeset_rewards, mergeset_non_daa)
             .unwrap()
             .tx;
-        // [Crescendo]: we can pass include_mass_field = false here since post activation coinbase mass field
-        // is guaranteed to be zero (see check_coinbase_has_zero_mass), so after the fork we will be able to
-        // safely remove the include_mass_field parameter. This is because internally include_mass_field = false
-        // and mass = 0 are treated the same.
-        if hashing::tx::hash(coinbase, false) != hashing::tx::hash(&expected_coinbase, false) {
+        if hashing::tx::hash(coinbase) != hashing::tx::hash(&expected_coinbase) {
             Err(BadCoinbaseTransaction)
         } else {
             Ok(())

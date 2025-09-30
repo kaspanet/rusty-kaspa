@@ -1070,10 +1070,7 @@ impl VirtualStateProcessor {
         txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
-
-        // Hash according to hardfork activation
-        let storage_mass_activated = self.crescendo_activation.is_active(virtual_state.daa_score);
-        let hash_merkle_root = calc_hash_merkle_root(txs.iter(), storage_mass_activated);
+        let hash_merkle_root = calc_hash_merkle_root(txs.iter());
 
         let accepted_id_merkle_root = self.calc_accepted_id_merkle_root(
             virtual_state.daa_score,

@@ -129,7 +129,7 @@ mod tests {
     use kaspa_hashes::Hash;
 
     fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
-        calc_hash_merkle_root_with_options(txs, false)
+        calc_hash_merkle_root_with_options(txs)
     }
 
     #[tokio::test]
