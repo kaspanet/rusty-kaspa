@@ -40,7 +40,6 @@ use kaspa_utils_tower::{
     counters::TowerConnectionCounters,
     middleware::{BodyExt, CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
 };
-use regex::Regex;
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -122,8 +121,7 @@ impl GrpcClient {
         timeout_duration: Option<u64>,
         counters: Arc<TowerConnectionCounters>,
     ) -> Result<GrpcClient> {
-        let schema = Regex::new(r"^grpc://").unwrap();
-        if !schema.is_match(&url) {
+        if !url.starts_with("grpc://") {
             return Err(Error::GrpcAddressSchema(url));
         }
         let inner = Inner::connect(
@@ -178,11 +176,15 @@ impl GrpcClient {
         match &self.notification_mode {
             NotificationMode::MultiListeners => {
                 assert!(notify.is_none(), "client is on multi-listeners mode");
-                self.notifier.clone().unwrap().start();
+                if let Some(notifier) = &self.notifier {
+                    notifier.clone().start();
+                }
             }
             NotificationMode::Direct => {
                 if let Some(notify) = notify {
-                    self.collector.as_ref().unwrap().clone().start(notify);
+                    if let Some(collector) = &self.collector {
+                        collector.clone().start(notify);
+                    }
                 }
             }
         }
@@ -192,11 +194,15 @@ impl GrpcClient {
     pub async fn join(&self) -> Result<()> {
         match &self.notification_mode {
             NotificationMode::MultiListeners => {
-                self.notifier.as_ref().unwrap().join().await?;
+                if let Some(notifier) = &self.notifier {
+                    notifier.join().await?;
+                }
             }
             NotificationMode::Direct => {
-                if self.collector.as_ref().unwrap().is_started() {
-                    self.collector.as_ref().unwrap().clone().join().await?;
+                if let Some(collector) = &self.collector {
+                    if collector.is_started() {
+                        collector.clone().join().await?;
+                    }
                 }
             }
         }

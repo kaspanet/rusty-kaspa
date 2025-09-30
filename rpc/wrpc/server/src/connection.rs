@@ -85,7 +85,7 @@ pub struct Connection {
 impl Connection {
     pub fn new(id: u64, peer: &SocketAddr, messenger: Arc<Messenger>, grpc_client: Option<Arc<GrpcClient>>) -> Connection {
         // If a GrpcClient is provided, it has to come configured in direct mode
-        assert!(grpc_client.is_none() || grpc_client.as_ref().unwrap().notification_mode() == NotificationMode::Direct);
+        assert!(grpc_client.as_ref().map_or(true, |client| client.notification_mode() == NotificationMode::Direct));
         // Should a gRPC client be provided, no listener_id is required for subscriptions so the listener id is set to default
         let listener_id = Mutex::new(grpc_client.clone().map(|_| ListenerId::default()));
         Connection { inner: Arc::new(ConnectionInner { id, peer: *peer, messenger, grpc_client, listener_id }) }
@@ -162,7 +162,12 @@ impl ConnectionT for Connection {
 
     fn into_message(notification: &Self::Notification, encoding: &Self::Encoding) -> Self::Message {
         let op: RpcApiOps = notification.event_type().into();
-        Self::create_serialized_notification_message(encoding.clone().into(), op, Serializable(notification.clone())).unwrap()
+        Self::create_serialized_notification_message(encoding.clone().into(), op, Serializable(notification.clone()))
+            .unwrap_or_else(|err| {
+                log::error!("Failed to serialize notification: {}", err);
+                // Return a minimal error message as text
+                Message::text(format!(r#"{{"error":"Serialization failed"}}"#))
+            })
     }
 
     async fn send(&self, message: Self::Message) -> core::result::Result<(), Self::Error> {

@@ -124,9 +124,10 @@ impl Inner {
     }
 
     pub fn reset_notification_intake_channel(&self) {
-        let mut intake = self.notification_intake_channel.lock().unwrap();
-        intake.sender.close();
-        *intake = Channel::unbounded();
+        if let Ok(mut intake) = self.notification_intake_channel.lock() {
+            intake.sender.close();
+            *intake = Channel::unbounded();
+        }
     }
 
     /// Start sending notifications of some type to the client.
@@ -144,35 +145,40 @@ impl Inner {
     }
 
     fn ctor_url(&self) -> Option<String> {
-        self.ctor_url.lock().unwrap().clone()
+        self.ctor_url.lock().ok().and_then(|guard| guard.clone())
     }
 
     fn default_url(&self) -> Option<String> {
-        self.default_url.lock().unwrap().clone()
+        self.default_url.lock().ok().and_then(|guard| guard.clone())
     }
 
     fn set_default_url(&self, url: Option<&str>) {
-        *self.default_url.lock().unwrap() = url.map(String::from);
+        if let Ok(mut guard) = self.default_url.lock() {
+            *guard = url.map(String::from);
+        }
     }
 
     fn current_url(&self) -> Option<String> {
-        self.current_url.lock().unwrap().clone()
+        self.current_url.lock().ok().and_then(|guard| guard.clone())
     }
 
     fn set_current_url(&self, url: Option<&str>) {
-        *self.current_url.lock().unwrap() = url.map(String::from);
+        if let Ok(mut guard) = self.current_url.lock() {
+            *guard = url.map(String::from);
+        }
     }
 
     fn resolver(&self) -> Option<Resolver> {
-        self.resolver.lock().unwrap().clone()
+        self.resolver.lock().ok().and_then(|guard| guard.clone())
     }
 
     fn network_id(&self) -> Option<NetworkId> {
-        *self.network_id.lock().unwrap()
+        self.network_id.lock().ok().and_then(|guard| *guard)
     }
 
     fn build_notifier(self: &Arc<Self>, subscription_context: Option<SubscriptionContext>) -> Result<RpcClientNotifier> {
-        let receiver = self.notification_intake_channel.lock().unwrap().receiver.clone();
+        let receiver = self.notification_intake_channel.lock()
+            .map_err(|_| Error::Custom("Failed to acquire notification channel lock".to_string()))?.receiver.clone();
 
         let enabled_events = EVENT_TYPE_ARRAY[..].into();
         let converter = Arc::new(RpcCoreConverter::new());
@@ -195,7 +201,8 @@ impl Inner {
         // let collector = Arc::new(RpcCoreCollector::new(WRPC_CLIENT, receiver, converter));
         // let subscriber = Arc::new(Subscriber::new(WRPC_CLIENT, enabled_events, self.clone(), 0));
         // let notifier = Arc::new(Notifier::new(WRPC_CLIENT, enabled_events, vec![collector], vec![subscriber], 3));
-        *self.notifier.lock().unwrap() = Some(notifier.clone());
+        *self.notifier.lock()
+            .map_err(|_| Error::Custom("Failed to acquire notifier lock".to_string()))? = Some(notifier.clone());
         Ok(notifier)
     }
 }
@@ -234,7 +241,9 @@ impl RpcResolver for Inner {
             let network_id = self.network_id().expect("Resolver requires network id in RPC client configuration");
             let node = resolver.get_node(self.encoding, network_id).await.map_err(WebSocketError::custom)?;
             let url = node.url.clone();
-            self.node_descriptor.lock().unwrap().replace(Arc::new(node));
+            if let Ok(mut guard) = self.node_descriptor.lock() {
+                guard.replace(Arc::new(node));
+            }
             url
         } else {
             panic!("RpcClient resolver configuration error (expecting `url` or `resolver` as `Some(Resolver))`")
@@ -343,7 +352,10 @@ impl KaspaRpcClient {
     }
 
     fn notifier(&self) -> RpcClientNotifier {
-        self.inner.notifier.lock().unwrap().clone().expect("Rpc client is not correctly initialized")
+        self.inner.notifier.lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .expect("Rpc client is not correctly initialized")
     }
 
     pub fn url(&self) -> Option<String> {
@@ -368,17 +380,21 @@ impl KaspaRpcClient {
     }
 
     pub fn set_resolver(&self, resolver: Resolver) -> Result<()> {
-        self.inner.resolver.lock().unwrap().replace(resolver);
+        if let Ok(mut guard) = self.inner.resolver.lock() {
+            guard.replace(resolver);
+        }
         Ok(())
     }
 
     pub fn set_network_id(&self, network_id: &NetworkId) -> Result<()> {
-        self.inner.network_id.lock().unwrap().replace(*network_id);
+        if let Ok(mut guard) = self.inner.network_id.lock() {
+            guard.replace(*network_id);
+        }
         Ok(())
     }
 
     pub fn node_descriptor(&self) -> Option<Arc<NodeDescriptor>> {
-        self.inner.node_descriptor.lock().unwrap().clone()
+        self.inner.node_descriptor.lock().ok().and_then(|guard| guard.clone())
     }
 
     pub fn rpc_client(&self) -> &Arc<RpcClient<RpcApiOps>> {
@@ -489,7 +505,10 @@ impl KaspaRpcClient {
     }
 
     pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
-        self.inner.notification_intake_channel.lock().unwrap().receiver.clone()
+        self.inner.notification_intake_channel.lock()
+            .ok()
+            .map(|guard| guard.receiver.clone())
+            .unwrap_or_else(|| Channel::unbounded().receiver)
     }
 
     pub fn ctl(&self) -> &RpcCtl {
@@ -556,8 +575,12 @@ impl KaspaRpcClient {
                     msg = notification_relay_channel.receiver.recv().fuse() => {
                         if let Ok(msg) = msg {
                             // inner.rpc_ctl.notify(msg).await.expect("(KaspaRpcClient) rpc_ctl.notify() error");
-                            if let Err(err) = inner.notification_intake_channel.lock().unwrap().sender.try_send(msg) {
-                                log_error!("notification_intake_channel.sender.try_send() error: {err}");
+                            if let Ok(guard) = inner.notification_intake_channel.lock() {
+                                if let Err(err) = guard.sender.try_send(msg) {
+                                    log_error!("notification_intake_channel.sender.try_send() error: {err}");
+                                }
+                            } else {
+                                log_error!("notification_intake_channel mutex poisoned");
                             }
                         } else {
                             log_error!("notification_relay_channel receiver error");
