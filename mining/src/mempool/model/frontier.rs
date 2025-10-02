@@ -43,11 +43,18 @@ pub struct Frontier {
 
     /// Tracks the average transaction mass throughout the mempool's lifespan using a decayed weighting mechanism
     average_transaction_mass: f64,
+
+    target_time_per_block_seconds: f64,
 }
 
-impl Default for Frontier {
-    fn default() -> Self {
-        Self { search_tree: Default::default(), total_mass: Default::default(), average_transaction_mass: INITIAL_AVG_MASS }
+impl Frontier {
+    pub fn new(target_time_per_block_seconds: f64) -> Self {
+        Self {
+            search_tree: Default::default(),
+            total_mass: Default::default(),
+            average_transaction_mass: INITIAL_AVG_MASS,
+            target_time_per_block_seconds,
+        }
     }
 }
 
@@ -229,7 +236,7 @@ impl Frontier {
         let bps = args.network_blocks_per_second as f64;
         let mut mass_per_block = args.maximum_mass_per_block as f64;
         let mut inclusion_interval = average_transaction_mass / (mass_per_block * bps);
-        let mut estimator = FeerateEstimator::new(self.total_weight(), inclusion_interval);
+        let mut estimator = FeerateEstimator::new(self.total_weight(), inclusion_interval, self.target_time_per_block_seconds);
 
         // Search for better estimators by possibly removing extremely high outliers
         let mut down_iter = self.search_tree.descending_iter().peekable();
@@ -250,7 +257,7 @@ impl Frontier {
 
             // Compute the weight up to, and excluding, current key (which translates to zero weight if peek() is none)
             let prefix_weight = down_iter.peek().map(|key| self.search_tree.prefix_weight(key)).unwrap_or_default();
-            let pending_estimator = FeerateEstimator::new(prefix_weight, inclusion_interval);
+            let pending_estimator = FeerateEstimator::new(prefix_weight, inclusion_interval, self.target_time_per_block_seconds);
 
             // Test the pending estimator vs. the current one
             if pending_estimator.feerate_to_time(1.0) < estimator.feerate_to_time(1.0) {
@@ -294,7 +301,7 @@ mod tests {
             map.insert(key.tx.id(), key);
         }
 
-        let mut frontier = Frontier::default();
+        let mut frontier = Frontier::new(1.0);
         for item in map.values().cloned() {
             frontier.insert(item).then_some(()).unwrap();
         }
@@ -314,7 +321,7 @@ mod tests {
             map.insert(key.tx.id(), key);
         }
 
-        let mut frontier = Frontier::default();
+        let mut frontier = Frontier::new(1.0);
         for item in map.values().cloned() {
             frontier.insert(item).then_some(()).unwrap();
         }
@@ -348,7 +355,7 @@ mod tests {
         }
 
         let len = cap / 2;
-        let mut frontier = Frontier::default();
+        let mut frontier = Frontier::new(1.0);
         for item in map.values().take(len).cloned() {
             frontier.insert(item).then_some(()).unwrap();
         }
@@ -402,7 +409,7 @@ mod tests {
         }
 
         for len in [0, 1, 10, 100, 200, 300, 500, 750, cap / 2, (cap * 2) / 3, (cap * 4) / 5, (cap * 5) / 6, cap] {
-            let mut frontier = Frontier::default();
+            let mut frontier = Frontier::new(1.0);
             for item in map.values().take(len).cloned() {
                 frontier.insert(item).then_some(()).unwrap();
             }
@@ -444,7 +451,7 @@ mod tests {
         for len in [0, 1, 10, 100, 200, 300, 500, 750, cap / 2, (cap * 2) / 3, (cap * 4) / 5, (cap * 5) / 6, cap] {
             println!();
             println!("Testing a frontier with {} txs...", len.min(cap));
-            let mut frontier = Frontier::default();
+            let mut frontier = Frontier::new(1.0);
             for item in map.values().take(len).cloned() {
                 frontier.insert(item).then_some(()).unwrap();
             }
@@ -477,7 +484,7 @@ mod tests {
         const HIGH_FEERATE: f64 = 1000.0;
 
         let cap = 20_000;
-        let mut frontier = Frontier::default();
+        let mut frontier = Frontier::new(1.0);
         for i in 0..cap as u64 {
             let (mass, fee) = if i < 200 {
                 let mass = 1650;
@@ -533,7 +540,7 @@ mod tests {
 
         // All lens make for less than block capacity (given the mass used)
         for len in [0, 1, 10, 100, 200, 250, 300] {
-            let mut frontier = Frontier::default();
+            let mut frontier = Frontier::new(1.0);
             for item in map.values().take(len).cloned() {
                 frontier.insert(item).then_some(()).unwrap();
             }
