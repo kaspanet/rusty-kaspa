@@ -4,6 +4,15 @@ use kaspa_hashes::Hash;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 
+macro_rules! log_vrle {
+    ($action:expr, $fmt:expr) => {
+        println!(concat!("\x1b[38;5;208m[LOG VRLE]\x1b[0m + {} ", $fmt), $action);
+    };
+    ($action:expr, $fmt:expr, $($args:expr),+ $(,)?) => {
+        println!(concat!("\x1b[38;5;208m[LOG VRLE]\x1b[0m + {} ", $fmt), $action, $($args),+);
+    };
+}
+
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,71 +123,113 @@ pub mod parents_by_level_format {
         ser::{Error as SerErr, SerializeSeq},
         Deserialize, Deserializer, Serializer,
     };
+    use std::fmt::Debug;
 
-    /// ## Serializer
-    ///
-    /// Serializes `Vec<Vec<Hash>>` into a run-length encoded (RLE) sequence of `(u8, Vec<Hash>)`.
-    /// The `u8` represents the cumulative count of inner vectors at the end of a run.
-    ///
-    /// For example: `[[A], [A], [B]]` becomes `[(2, [A]), (3, [B])]`.
+    type Count = u32;
+
     pub fn serialize<S>(parents: &[Vec<Hash>], serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        /*
+    log_vrle!("Serializing", "parents_by_level...\nPrevious version (human-readable): {:?}", parents);
 
-        from:
+        if serializer.is_human_readable() {
+            log_vrle!("Serialize", "Using previous version (human-readable)");
+            return <&[Vec<Hash>] as serde::Serialize>::serialize(&parents, serializer);
+        }
 
-        [
-            [A, B, C],
-            [A, B, C],
-            [A, B, C],
-            [A, C],
-            [A, C],
-            [Z]
-        ]
+        struct Run<'a> {
+            cumulative: Count,
+            vec: &'a Vec<Hash>,
+        }
 
-        to:
+        if parents.is_empty() {
+            log_vrle!("Serialize", "VRLE version: empty parents");
+            let seq = serializer.serialize_seq(Some(0))?;
+            return seq.end();
+        }
 
-        [
-            (3, [A, B, C]),
-            (5, [A, B]),
-            (6, [Z])
-        ]
-        */
+        let mut runs: Vec<Run> = Vec::new();
+        let mut cumulative: Count = 0;
+        let mut current_vec = &parents[0];
+        let mut current_len: Count = 1;
 
-        /*
-        Option 1 (not to do):
-            1. convert the &[Vec<Hash>] to Vec<(u8, Vec<Hash>)>
-            2. serialize the result normally
+        for vec in &parents[1..] {
+            if vec == current_vec {
+                current_len = current_len.checked_add(1).ok_or_else(|| S::Error::custom("run length overflow"))?;
+            } else {
+                cumulative = cumulative.checked_add(current_len).ok_or_else(|| S::Error::custom("cumulative length overflow"))?;
+                runs.push(Run { cumulative, vec: current_vec });
 
-        Option 2:
-            Use the serialize_seq function
-        */
+                current_vec = vec;
+                current_len = 1;
+            }
+        }
+        cumulative = cumulative.checked_add(current_len).ok_or_else(|| S::Error::custom("cumulative length overflow"))?;
+        runs.push(Run { cumulative, vec: current_vec });
 
-        // 1. find count
+        log_vrle!("Serialize", "VRLE version (runs):");
+        for run in &runs {
+            log_vrle!("Serialize", "  cumulative: {}, vec: {:?}", run.cumulative, run.vec);
+        }
 
-        let mut seq = serializer.serialize_seq(Some(count))?;
-
-        // 2. loop: 
-        seq.serialize_element(...)
-
-        // 3. end
+        let mut seq = serializer.serialize_seq(Some(runs.len()))?;
+        for run in &runs {
+            let elem = (run.cumulative, run.vec);
+            seq.serialize_element(&elem)?;
+        }
         seq.end()
-        // todo!()
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Vec<Hash>>, D::Error>
     where
         D: Deserializer<'de>,
     {
+        log_vrle!("Deserializing", "parents_by_level...");
+        if deserializer.is_human_readable() {
+            log_vrle!("Deserialize", "Using previous version (human-readable)");
+            return <Vec<Vec<Hash>>>::deserialize(deserializer);
+        }
 
-        // if deserializer.is_human_readable() returns true then ser/deser normally 
+        type Pair = (Count, Vec<Hash>);
+        let pairs: Vec<Pair> = <Vec<Pair> as Deserialize>::deserialize(deserializer)?;
 
-        // simply deser into Vec<(u8, Vec<Hash>)> and then convert to Vec<Vec<Hash>>
-        todo!()
+    log_vrle!("Deserialize", "VRLE version (pairs): {:?}", pairs);
 
-        
+        let mut out: Vec<Vec<Hash>> = Vec::new();
+        let mut prev_cum: Count = 0usize as Count;
+        let mut last_vec: Option<&[Hash]> = None;
+
+        for (cum, v) in pairs.iter() {
+            if *cum < prev_cum {
+                return Err(D::Error::custom("non-monotonic cumulative count in VRLE stream"));
+            }
+            let run_len = (*cum)
+                .checked_sub(prev_cum)
+                .ok_or_else(|| D::Error::custom("invalid cumulative count (underflow)"))?;
+
+            if run_len == 0 {
+                return Err(D::Error::custom("zero-length run in VRLE stream"));
+            }
+            if let Some(prev) = last_vec {
+                if prev == v.as_slice() {
+                    return Err(D::Error::custom(
+                        "adjacent runs contain identical vectors (should be merged)",
+                    ));
+                }
+            }
+
+            for _ in 0..run_len {
+                out.push(v.clone());
+            }
+
+            prev_cum = *cum;
+            last_vec = Some(v.as_slice());
+        }
+
+    log_vrle!("Deserialize", "Deserialized parents_by_level: {:?}", out);
+
+        Ok(out)
     }
 }
 
