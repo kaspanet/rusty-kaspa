@@ -4,15 +4,6 @@ use kaspa_hashes::Hash;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 
-macro_rules! log_vrle {
-    ($action:expr, $fmt:expr) => {
-        println!(concat!("\x1b[38;5;208m[LOG VRLE]\x1b[0m + {} ", $fmt), $action);
-    };
-    ($action:expr, $fmt:expr, $($args:expr),+ $(,)?) => {
-        println!(concat!("\x1b[38;5;208m[LOG VRLE]\x1b[0m + {} ", $fmt), $action, $($args),+);
-    };
-}
-
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -123,7 +114,6 @@ pub mod parents_by_level_format {
         ser::{Error as SerErr, SerializeSeq},
         Deserialize, Deserializer, Serializer,
     };
-    use std::fmt::Debug;
 
     type Count = u32;
 
@@ -131,10 +121,7 @@ pub mod parents_by_level_format {
     where
         S: Serializer,
     {
-    log_vrle!("Serializing", "parents_by_level...\nPrevious version (human-readable): {:?}", parents);
-
         if serializer.is_human_readable() {
-            log_vrle!("Serialize", "Using previous version (human-readable)");
             return <&[Vec<Hash>] as serde::Serialize>::serialize(&parents, serializer);
         }
 
@@ -144,7 +131,6 @@ pub mod parents_by_level_format {
         }
 
         if parents.is_empty() {
-            log_vrle!("Serialize", "VRLE version: empty parents");
             let seq = serializer.serialize_seq(Some(0))?;
             return seq.end();
         }
@@ -165,13 +151,6 @@ pub mod parents_by_level_format {
                 current_len = 1;
             }
         }
-        cumulative = cumulative.checked_add(current_len).ok_or_else(|| S::Error::custom("cumulative length overflow"))?;
-        runs.push(Run { cumulative, vec: current_vec });
-
-        log_vrle!("Serialize", "VRLE version (runs):");
-        for run in &runs {
-            log_vrle!("Serialize", "  cumulative: {}, vec: {:?}", run.cumulative, run.vec);
-        }
 
         let mut seq = serializer.serialize_seq(Some(runs.len()))?;
         for run in &runs {
@@ -185,16 +164,12 @@ pub mod parents_by_level_format {
     where
         D: Deserializer<'de>,
     {
-        log_vrle!("Deserializing", "parents_by_level...");
         if deserializer.is_human_readable() {
-            log_vrle!("Deserialize", "Using previous version (human-readable)");
             return <Vec<Vec<Hash>>>::deserialize(deserializer);
         }
 
         type Pair = (Count, Vec<Hash>);
         let pairs: Vec<Pair> = <Vec<Pair> as Deserialize>::deserialize(deserializer)?;
-
-    log_vrle!("Deserialize", "VRLE version (pairs): {:?}", pairs);
 
         let mut out: Vec<Vec<Hash>> = Vec::new();
         let mut prev_cum: Count = 0usize as Count;
@@ -226,8 +201,6 @@ pub mod parents_by_level_format {
             prev_cum = *cum;
             last_vec = Some(v.as_slice());
         }
-
-    log_vrle!("Deserialize", "Deserialized parents_by_level: {:?}", out);
 
         Ok(out)
     }
