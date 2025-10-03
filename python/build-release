@@ -22,7 +22,7 @@ else
     maturin --version
 fi
 
-BUILD_CMD="maturin build --release --strip --sdist --target-dir target --out target/wheels --features py-sdk"
+BUILD_CMD="maturin build --release --strip --sdist --target-dir target --out target/wheels"
 echo "Building with command '$BUILD_CMD'"
 $BUILD_CMD
 

@@ -425,5 +425,5 @@ jobs:
         with:
           working-directory: python
           target: x86_64
-          args: --release --strip --out target/dist --features py-sdk --interpreter python3.12
+          args: --release --strip --out target/dist --interpreter python3.12
           manylinux: auto
