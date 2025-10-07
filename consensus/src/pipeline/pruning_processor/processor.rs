@@ -11,7 +11,7 @@ use crate::{
             ghostdag::{CompactGhostdagData, GhostdagStoreReader},
             headers::HeaderStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
-            pruning::{PruningStore, PruningStoreReader},
+            pruning::PruningStoreReader,
             pruning_samples::PruningSamplesStoreReader,
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::StagingRelationsStore,
@@ -169,12 +169,8 @@ impl PruningProcessor {
 
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
         let pruning_point_read = self.pruning_point_store.upgradable_read();
-        let current_pruning_info = pruning_point_read.get().unwrap();
-        let (new_pruning_points, new_candidate) = self.pruning_point_manager.next_pruning_points(
-            sink_ghostdag_data,
-            current_pruning_info.candidate,
-            current_pruning_info.pruning_point,
-        );
+        let (current_pruning_point, current_index) = pruning_point_read.pruning_point_and_index().unwrap();
+        let new_pruning_points = self.pruning_point_manager.next_pruning_points(sink_ghostdag_data, current_pruning_point);
 
         if let Some(new_pruning_point) = new_pruning_points.last().copied() {
             let retention_period_root = pruning_point_read.retention_period_root().unwrap();
@@ -183,10 +179,10 @@ impl PruningProcessor {
             let mut batch = WriteBatch::default();
             let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
             for (i, past_pp) in new_pruning_points.iter().copied().enumerate() {
-                self.past_pruning_points_store.insert_batch(&mut batch, current_pruning_info.index + i as u64 + 1, past_pp).unwrap();
+                self.past_pruning_points_store.insert_batch(&mut batch, current_index + i as u64 + 1, past_pp).unwrap();
             }
-            let new_pp_index = current_pruning_info.index + new_pruning_points.len() as u64;
-            pruning_point_write.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
+            let new_pp_index = current_index + new_pruning_points.len() as u64;
+            pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pp_index).unwrap();
 
             // For archival nodes, keep the retention root in place
             let adjusted_retention_period_root = if self.config.is_archival {
@@ -203,10 +199,10 @@ impl PruningProcessor {
             trace!("New Pruning Point: {} | New Retention Period Root: {}", new_pruning_point, adjusted_retention_period_root);
 
             // Inform the user
-            info!("Periodic pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
+            info!("Periodic pruning point movement: advancing from {} to {}", current_pruning_point, new_pruning_point);
 
             // Advance the pruning point utxoset to the state of the new pruning point using chain-block UTXO diffs
-            if !self.advance_pruning_utxoset(current_pruning_info.pruning_point, new_pruning_point) {
+            if !self.advance_pruning_utxoset(current_pruning_point, new_pruning_point) {
                 info!("Interrupted while advancing the pruning point UTXO set: Process is exiting");
                 return;
             }
@@ -214,9 +210,6 @@ impl PruningProcessor {
 
             // Finally, prune data in the new pruning point past
             self.prune(new_pruning_point, adjusted_retention_period_root);
-        } else if new_candidate != current_pruning_info.candidate {
-            let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
-            pruning_point_write.set(current_pruning_info.pruning_point, new_candidate, current_pruning_info.index).unwrap();
         }
     }
 
@@ -610,7 +603,7 @@ impl PruningProcessor {
     }
 
     fn past_pruning_points(&self) -> BlockHashSet {
-        (0..self.pruning_point_store.read().get().unwrap().index)
+        (0..self.pruning_point_store.read().pruning_point_index().unwrap())
             .map(|index| self.past_pruning_points_store.get(index).unwrap())
             .collect()
     }
