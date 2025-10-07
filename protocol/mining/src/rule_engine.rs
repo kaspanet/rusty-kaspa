@@ -99,7 +99,7 @@ impl MiningRuleEngine {
         mining_rules: Arc<MiningRules>,
     ) -> Self {
         let use_sync_rate_rule = Arc::new(AtomicBool::new(false));
-        let rules: Vec<Arc<(dyn MiningRule + 'static)>> = vec![Arc::new(SyncRateRule::new(use_sync_rate_rule.clone()))];
+        let rules: Vec<Arc<dyn MiningRule + 'static>> = vec![Arc::new(SyncRateRule::new(use_sync_rate_rule.clone()))];
 
         Self { consensus_manager, config, processing_counters, tick_service, hub, use_sync_rate_rule, mining_rules, rules }
     }
