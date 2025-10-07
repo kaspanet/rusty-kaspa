@@ -85,13 +85,15 @@ pub struct FeerateEstimator {
     /// other words, the inverse of the transaction inclusion rate. For instance, if the average transaction mass is 2500 grams,
     /// the block mass limit is 500,000 and the network has 10 BPS, then this number would be 1/2000 seconds.
     inclusion_interval: f64,
+
+    target_time_per_block_seconds: f64,
 }
 
 impl FeerateEstimator {
-    pub fn new(total_weight: f64, inclusion_interval: f64) -> Self {
+    pub fn new(total_weight: f64, inclusion_interval: f64, target_time_per_block_seconds: f64) -> Self {
         assert!(total_weight >= 0.0);
         assert!((0f64..1f64).contains(&inclusion_interval));
-        Self { total_weight, inclusion_interval }
+        Self { total_weight, inclusion_interval, target_time_per_block_seconds }
     }
 
     pub(crate) fn feerate_to_time(&self, feerate: f64) -> f64 {
@@ -132,8 +134,8 @@ impl FeerateEstimator {
 
     pub fn calc_estimations(&self, minimum_standard_feerate: f64) -> FeerateEstimations {
         let min = minimum_standard_feerate;
-        // Choose `high` such that it provides sub-second waiting time
-        let high = self.time_to_feerate(1f64).max(min);
+        // Choose `high` such that the transaction is expected to be included in the next block.
+        let high = self.time_to_feerate(self.target_time_per_block_seconds).max(min);
         // Choose `low` feerate such that it provides sub-hour waiting time AND it covers (at least) the 0.25 quantile
         let low = self.time_to_feerate(3600f64).max(self.quantile(min, high, 0.25));
         // Choose `normal` feerate such that it provides sub-minute waiting time AND it covers (at least) the 0.66 quantile between low and high.
@@ -176,7 +178,8 @@ mod tests {
 
     #[test]
     fn test_feerate_estimations() {
-        let estimator = FeerateEstimator { total_weight: 1002283.659, inclusion_interval: 0.004f64 };
+        let estimator =
+            FeerateEstimator { total_weight: 1002283.659, inclusion_interval: 0.004f64, target_time_per_block_seconds: 1.0 };
         let estimations = estimator.calc_estimations(1.0);
         let buckets = estimations.ordered_buckets();
         for (i, j) in buckets.into_iter().tuple_windows() {
@@ -187,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_min_feerate_estimations() {
-        let estimator = FeerateEstimator { total_weight: 0.00659, inclusion_interval: 0.004f64 };
+        let estimator = FeerateEstimator { total_weight: 0.00659, inclusion_interval: 0.004f64, target_time_per_block_seconds: 1.0 };
         let minimum_feerate = 0.755;
         let estimations = estimator.calc_estimations(minimum_feerate);
         println!("{estimations}");
@@ -201,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_zero_values() {
-        let estimator = FeerateEstimator { total_weight: 0.0, inclusion_interval: 0.0 };
+        let estimator = FeerateEstimator { total_weight: 0.0, inclusion_interval: 0.0, target_time_per_block_seconds: 1.0 };
         let minimum_feerate = 0.755;
         let estimations = estimator.calc_estimations(minimum_feerate);
         let buckets = estimations.ordered_buckets();
@@ -210,7 +213,7 @@ mod tests {
             assert_eq!(0.0, bucket.estimated_seconds);
         }
 
-        let estimator = FeerateEstimator { total_weight: 0.0, inclusion_interval: 0.1 };
+        let estimator = FeerateEstimator { total_weight: 0.0, inclusion_interval: 0.1, target_time_per_block_seconds: 1.0 };
         let minimum_feerate = 0.755;
         let estimations = estimator.calc_estimations(minimum_feerate);
         let buckets = estimations.ordered_buckets();
@@ -219,7 +222,7 @@ mod tests {
             assert_eq!(estimator.inclusion_interval, bucket.estimated_seconds);
         }
 
-        let estimator = FeerateEstimator { total_weight: 0.1, inclusion_interval: 0.0 };
+        let estimator = FeerateEstimator { total_weight: 0.1, inclusion_interval: 0.0, target_time_per_block_seconds: 1.0 };
         let minimum_feerate = 0.755;
         let estimations = estimator.calc_estimations(minimum_feerate);
         let buckets = estimations.ordered_buckets();
