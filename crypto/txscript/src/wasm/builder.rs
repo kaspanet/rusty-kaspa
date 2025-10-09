@@ -176,4 +176,9 @@ impl ScriptBuilder {
         let config = args.map(HexViewConfig::try_from).transpose()?.unwrap_or_default();
         Ok(config.build(script).to_string())
     }
+
+    #[wasm_bindgen(js_name = "stringView")]
+    pub fn string_view(&self) -> String {
+        self.inner().string_view()
+    }
 }

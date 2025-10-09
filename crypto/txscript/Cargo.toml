@@ -12,6 +12,9 @@ repository.workspace = true
 [[example]]
 name = "kip-10"
 
+[[example]]
+name = "script-viewer"
+
 [features]
 wasm32-core = []
 wasm32-sdk = []
@@ -41,11 +44,11 @@ smallvec.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
+hex.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
 smallvec.workspace = true
-hex.workspace = true
 serde_json.workspace = true
 
 [[bench]]

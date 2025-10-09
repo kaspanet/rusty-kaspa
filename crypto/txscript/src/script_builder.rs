@@ -9,6 +9,8 @@ use hexplay::{HexView, HexViewBuilder};
 use kaspa_txscript_errors::SerializationError;
 use thiserror::Error;
 
+use crate::viewer::ScriptViewer;
+
 /// DEFAULT_SCRIPT_ALLOC is the default size used for the backing array
 /// for a script being built by the ScriptBuilder. The array will
 /// dynamically grow as needed, but this figure is intended to provide
@@ -268,6 +270,14 @@ impl ScriptBuilder {
     /// Return ready to use [`HexView`] for the script
     pub fn hex_view(&self, offset: usize, width: usize) -> HexView<'_> {
         HexViewBuilder::new(&self.script).address_offset(offset).row_width(width).finish()
+    }
+
+    pub fn viewer(&self) -> ScriptViewer<'_> {
+        ScriptViewer::new(&self.script)
+    }
+
+    pub fn string_view(&self) -> String {
+        self.viewer().to_string().unwrap_or_else(|e| e.to_string())
     }
 }
 

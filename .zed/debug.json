@@ -1,0 +1,42 @@
+// Project-local debug tasks
+//
+// For more documentation on how to configure debug tasks,
+// see: https://zed.dev/docs/debugger
+[
+  // Debug the `vccv2` example (cargo debug build)
+  {
+    "adapter": "CodeLLDB",
+    "label": "wrpc vccv2 (debug)",
+    "build": {
+      "label": "cargo build (wrpc example vccv2, debug)",
+      "command": "cargo",
+      "args": [
+        "build",
+        "--manifest-path",
+        "rpc/wrpc/examples/vcc_v2/Cargo.toml"
+      ],
+      "env": {
+        "RUSTC_TOOLCHAIN": "C:\\Users\\Izio\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc"
+      },
+      "cwd": "D:\\Dev\\kaspa\\rusty-kaspa",
+      "use_new_terminal": false,
+      "allow_concurrent_runs": false,
+      "reveal": "always",
+      "reveal_target": "dock",
+      "hide": "never",
+      "tags": [],
+      "shell": "system",
+      "show_summary": false,
+      "show_command": false
+    },
+    // On Windows keep .exe; on Unix drop the .exe
+    "program": "D:\\Dev\\kaspa\\rusty-kaspa\\target\\debug\\examples\\vccv2.exe",
+    "args": [],
+    "cwd": "D:\\Dev\\kaspa\\rusty-kaspa",
+    "env": {
+      "RUST_BACKTRACE": "full",
+      "RUST_LOG": "info"
+    },
+    "sourceLanguages": ["rust"]
+  }
+]
