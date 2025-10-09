@@ -372,8 +372,8 @@ impl KaspaRpcClient {
         Ok(())
     }
 
-    pub fn network_id(&self) -> Result<Option<NetworkId>> {
-        Ok(*self.inner.network_id.lock().unwrap())
+    pub fn network_id(&self) -> Option<NetworkId> {
+        *self.inner.network_id.lock().unwrap()
     }
 
     pub fn set_network_id(&self, network_id: &NetworkId) -> Result<()> {

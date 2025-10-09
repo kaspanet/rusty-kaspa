@@ -37,7 +37,7 @@ declare! {
     r#"
     /**
      * RPC client configuration options
-     * 
+     *
      * @category Node RPC
      */
     export interface IRpcConfig {
@@ -343,7 +343,7 @@ impl RpcClient {
     /// Current nerwork id
     #[wasm_bindgen(getter, js_name = networkId)]
     pub fn network_id(&self) -> Option<NetworkId> {
-        self.inner.client.network_id().ok().flatten()
+        self.inner.client.network_id()
     }
 
     /// Set the resolver for the RPC client.
