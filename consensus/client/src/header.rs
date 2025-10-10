@@ -16,6 +16,12 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::prelude::{JsError, JsValue};
 use workflow_wasm::prelude::*;
 
+cfg_if::cfg_if! {
+    if #[cfg(feature = "py-sdk")] {
+        use pyo3::prelude::*;
+    }
+}
+
 #[wasm_bindgen(typescript_custom_section)]
 const TS_HEADER: &'static str = r#"
 /**
@@ -77,6 +83,7 @@ extern "C" {
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct Header {
     inner: native::Header,
