@@ -433,8 +433,8 @@ mod tests {
 
     #[test]
     fn subsidy_test() {
-        const PRE_DEFLATIONARY_PHASE_BASE_SUBSIDY: u64 = 50000000000;
-        const DEFLATIONARY_PHASE_INITIAL_SUBSIDY: u64 = 44000000000;
+        const PRE_DEFLATIONARY_PHASE_BASE_SUBSIDY: u64 = 50_000_000_000;
+        const DEFLATIONARY_PHASE_INITIAL_SUBSIDY: u64 = 44_000_000_000;
         const SECONDS_PER_MONTH: u64 = 2629800;
         const SECONDS_PER_HALVING: u64 = SECONDS_PER_MONTH * 12;
 
@@ -500,7 +500,6 @@ mod tests {
                     expected: 0,
                 },
             ];
-
             for t in tests {
                 assert_eq!(cbm.calc_block_subsidy(t.daa_score), t.expected, "{} test '{}' failed", network_id, t.name);
                 if bps == 1 {
