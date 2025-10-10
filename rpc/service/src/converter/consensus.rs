@@ -54,22 +54,26 @@ impl ConsensusConverter {
         include_transaction_verbose_data: bool,
     ) -> RpcResult<RpcBlock> {
         let hash = block.hash();
-        let ghostdag_data = consensus.async_get_ghostdag_data(hash).await?;
-        let block_status = consensus.async_get_block_status(hash).await.unwrap();
-        let children = consensus.async_get_block_children(hash).await.unwrap_or_default();
-        let is_chain_block = consensus.async_is_chain_block(hash).await?;
-        let verbose_data = Some(RpcBlockVerboseData {
-            hash,
-            difficulty: self.get_difficulty_ratio(block.header.bits),
-            selected_parent_hash: ghostdag_data.selected_parent,
-            transaction_ids: block.transactions.iter().map(|x| x.id()).collect(),
-            is_header_only: block_status.is_header_only(),
-            blue_score: ghostdag_data.blue_score,
-            children_hashes: children,
-            merge_set_blues_hashes: ghostdag_data.mergeset_blues,
-            merge_set_reds_hashes: ghostdag_data.mergeset_reds,
-            is_chain_block,
-        });
+        let verbose_data = if include_transaction_verbose_data {
+            let ghostdag_data = consensus.async_get_ghostdag_data(hash).await?;
+            let block_status = consensus.async_get_block_status(hash).await.unwrap();
+            let children = consensus.async_get_block_children(hash).await.unwrap_or_default();
+            let is_chain_block = consensus.async_is_chain_block(hash).await?;
+            Some(RpcBlockVerboseData {
+                hash,
+                difficulty: self.get_difficulty_ratio(block.header.bits),
+                selected_parent_hash: ghostdag_data.selected_parent,
+                transaction_ids: block.transactions.iter().map(|x| x.id()).collect(),
+                is_header_only: block_status.is_header_only(),
+                blue_score: ghostdag_data.blue_score,
+                children_hashes: children,
+                merge_set_blues_hashes: ghostdag_data.mergeset_blues,
+                merge_set_reds_hashes: ghostdag_data.mergeset_reds,
+                is_chain_block,
+            })
+        } else {
+            None
+        };
 
         let transactions = if include_transactions {
             block
