@@ -55,7 +55,7 @@ async fn get_vcc_v2() -> Result<()> {
 
     let response = client
         .get_virtual_chain_from_block_v_2(
-            RpcHash::from_str("cc3ba81f23d6fb0d0ef785100815c64609d9bdf8e442b34f71e392fbe86d47a7").unwrap(),
+            RpcHash::from_str("281cafeb68b409fda4a8980469129672b2620039a88b748505b88f4feae927e0").unwrap(),
             Some(RpcDataVerbosityLevel::High),
         )
         .await?;

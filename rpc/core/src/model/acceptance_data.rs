@@ -6,7 +6,9 @@ use super::{RpcOptionalHeader, RpcOptionalTransaction};
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcAcceptanceData {
+    /// struct properties are optionally returned depending on the verbosity level
     pub accepting_chain_header: Option<RpcOptionalHeader>,
+    /// struct properties are optionally returned depending on the verbosity level
     pub mergeset_block_acceptance_data: Vec<RpcMergesetBlockAcceptanceData>,
 }
 

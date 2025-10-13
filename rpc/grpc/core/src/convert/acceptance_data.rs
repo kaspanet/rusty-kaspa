@@ -40,8 +40,8 @@ from!(item: &kaspa_rpc_core::RpcMergesetBlockAcceptanceDataVerbosity, protowire:
 
 from!(item: &kaspa_rpc_core::RpcDataVerbosityLevel, protowire::RpcDataVerbosityLevel, {
     match item {
+        kaspa_rpc_core::RpcDataVerbosityLevel::None => protowire::RpcDataVerbosityLevel::None,
         kaspa_rpc_core::RpcDataVerbosityLevel::Low => protowire::RpcDataVerbosityLevel::Low,
-        kaspa_rpc_core::RpcDataVerbosityLevel::Medium => protowire::RpcDataVerbosityLevel::Medium,
         kaspa_rpc_core::RpcDataVerbosityLevel::High => protowire::RpcDataVerbosityLevel::High,
         kaspa_rpc_core::RpcDataVerbosityLevel::Full => protowire::RpcDataVerbosityLevel::Full,
     }
@@ -89,8 +89,8 @@ try_from!(item: &protowire::RpcMergesetBlockAcceptanceDataVerbosity, kaspa_rpc_c
 
 try_from!(item: &protowire::RpcDataVerbosityLevel, kaspa_rpc_core::RpcDataVerbosityLevel,  {
     match item {
+        protowire::RpcDataVerbosityLevel::None => kaspa_rpc_core::RpcDataVerbosityLevel::None,
         protowire::RpcDataVerbosityLevel::Low => kaspa_rpc_core::RpcDataVerbosityLevel::Low,
-        protowire::RpcDataVerbosityLevel::Medium => kaspa_rpc_core::RpcDataVerbosityLevel::Medium,
         protowire::RpcDataVerbosityLevel::High => kaspa_rpc_core::RpcDataVerbosityLevel::High,
         protowire::RpcDataVerbosityLevel::Full => kaspa_rpc_core::RpcDataVerbosityLevel::Full
     }

@@ -695,7 +695,7 @@ async fn sanity_test() {
                     let response = rpc_client
                         .get_virtual_chain_from_block_v_2_call(
                             None,
-                            GetVirtualChainFromBlockV2Request { start_hash: SIMNET_GENESIS.hash, acceptance_data_verbosity: None },
+                            GetVirtualChainFromBlockV2Request { start_hash: SIMNET_GENESIS.hash, data_verbosity_level: None },
                         )
                         .await
                         .unwrap();

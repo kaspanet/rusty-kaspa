@@ -989,8 +989,8 @@ message GetUtxoReturnAddressResponseMessage {
 // verbosity messages for vspcn v2
 
 enum RpcDataVerbosityLevel {
-  LOW = 0;
-  MEDIUM = 1;
+  NONE = 0;
+  LOW = 1;
   HIGH = 2;
   FULL = 3;
 }

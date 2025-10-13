@@ -6,8 +6,8 @@ use workflow_serializer::prelude::*;
 #[borsh(use_discriminant = true)]
 #[repr(i32)]
 pub enum RpcDataVerbosityLevel {
-    Low = 0,
-    Medium = 1,
+    None = 0,
+    Low = 1,
     High = 2,
     Full = 3,
 }

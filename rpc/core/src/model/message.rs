@@ -2769,8 +2769,11 @@ impl Deserializer for GetVirtualChainFromBlockV2Request {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetVirtualChainFromBlockV2Response {
+    /// always present, no matter the verbosity level
     pub removed_chain_block_hashes: Arc<Vec<RpcHash>>,
+    /// always present, no matter the verbosity level
     pub added_chain_block_hashes: Arc<Vec<RpcHash>>,
+    /// struct properties are optionally returned depending on the verbosity level
     pub added_acceptance_data: Arc<Vec<RpcAcceptanceData>>,
 }
 
