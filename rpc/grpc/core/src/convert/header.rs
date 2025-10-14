@@ -44,24 +44,6 @@ from!(item: &kaspa_rpc_core::RpcOptionalHeader, protowire::RpcBlockHeader, {
     }
 });
 
-from!(item: &kaspa_rpc_core::RpcHeaderVerbosity, protowire::RpcBlockHeaderVerbosity, {
-    Self {
-        include_hash: item.include_hash,
-        include_version: item.include_version,
-        include_parents: item.include_parents_by_level,
-        include_hash_merkle_root: item.include_hash_merkle_root,
-        include_accepted_id_merkle_root: item.include_accepted_id_merkle_root,
-        include_utxo_commitment: item.include_utxo_commitment,
-        include_timestamp: item.include_timestamp,
-        include_bits: item.include_bits,
-        include_nonce: item.include_nonce,
-        include_daa_score: item.include_daa_score,
-        include_blue_work: item.include_blue_work,
-        include_blue_score: item.include_blue_score,
-        include_pruning_point: item.include_pruning_point,
-    }
-});
-
 from!(item: &kaspa_rpc_core::RpcRawHeader, protowire::RpcBlockHeader, {
     Self {
         hash: Default::default(), // We don't include the hash for the raw header
@@ -100,24 +82,6 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcRawHeader, {
         blue_work: kaspa_rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
         blue_score: item.blue_score,
         pruning_point: RpcHash::from_str(&item.pruning_point)?,
-    }
-});
-
-try_from!(item: &protowire::RpcBlockHeaderVerbosity, kaspa_rpc_core::RpcHeaderVerbosity, {
-    Self {
-        include_hash: item.include_hash,
-        include_version: item.include_version,
-        include_parents_by_level: item.include_parents,
-        include_hash_merkle_root: item.include_hash_merkle_root,
-        include_accepted_id_merkle_root: item.include_accepted_id_merkle_root,
-        include_utxo_commitment: item.include_utxo_commitment,
-        include_timestamp: item.include_timestamp,
-        include_bits: item.include_bits,
-        include_nonce: item.include_nonce,
-        include_daa_score: item.include_daa_score,
-        include_blue_work: item.include_blue_work,
-        include_blue_score: item.include_blue_score,
-        include_pruning_point: item.include_pruning_point,
     }
 });
 

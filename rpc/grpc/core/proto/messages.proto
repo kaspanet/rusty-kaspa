@@ -67,8 +67,6 @@ message KaspadRequest {
     GetCurrentBlockColorRequestMessage getCurrentBlockColorRequest = 1110;
     GetUtxoReturnAddressRequestMessage getUtxoReturnAddressRequest = 1112;
     GetVirtualChainFromBlockV2RequestMessage getVirtualChainFromBlockV2Request = 1114;
-    //NotifyVirtualChainChangedV2RequestMessage notifyVirtualChainChangedV2Request = 1116;
-    // VirtualChainChangedV2NotificationMessage virtualChainChangedV2Notification = 1118;
   }
 }
 
@@ -136,8 +134,6 @@ message KaspadResponse {
     GetCurrentBlockColorResponseMessage getCurrentBlockColorResponse = 1111;
     GetUtxoReturnAddressResponseMessage getUtxoReturnAddressResponse = 1113;
     GetVirtualChainFromBlockV2ResponseMessage getVirtualChainFromBlockV2Response = 1115;
-    //NotifyVirtualChainChangedV2ResponseMessage notifyVirtualChainChangedV2Response = 1117;
-    //VirtualChainChangedV2NotificationMessage virtualChainChangedV2Notification = 1118;
   }
 }
 

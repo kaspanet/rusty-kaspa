@@ -83,8 +83,8 @@ message RpcTransactionInput {
   RpcTransactionInputVerboseData verboseData = 4;
 }
 
-message RpcTransactionInputVerboseData{
-  RpcUtxoEntry utxoEntry = 1; // -> this field is new, if this is null, the utxo cannot be found, or is coinbase.
+message RpcTransactionInputVerboseData {
+  RpcUtxoEntry utxoEntry = 1; // this field is new, if this is null, the utxo cannot be found, or is coinbase.
 }
 
 message RpcUtxoEntry {
@@ -986,100 +986,11 @@ message GetUtxoReturnAddressResponseMessage {
 
 // ### messages for vspcn v2 ###
 
-// verbosity messages for vspcn v2
-
 enum RpcDataVerbosityLevel {
   NONE = 0;
   LOW = 1;
   HIGH = 2;
   FULL = 3;
-}
-
-message RpcAcceptanceDataVerbosity {
-  optional RpcBlockHeaderVerbosity acceptingChainHeaderVerbosity = 1; // default is null
-  optional RpcMergesetBlockAcceptanceDataVerbosity mergesetBlockAcceptanceDataVerbosity = 20; // default is null
-}
-
-message RpcMergesetBlockAcceptanceDataVerbosity {
-  optional RpcBlockHeaderVerbosity mergedHeaderVerbosity = 2; // default is null
-  optional RpcTransactionVerbosity acceptedTransactionsVerbosity = 4; // default is null
-}
-
-message RpcBlockHeaderVerbosity {
-  optional bool includeHash = 1; // default is true
-  optional bool includeVersion = 2; // default is false
-  optional bool includeParents = 3; // default is false
-  optional bool includeHashMerkleRoot = 4; // default is false
-  optional bool includeAcceptedIdMerkleRoot = 5; // default is false
-  optional bool includeUtxoCommitment = 6; // default is false
-  optional bool includeTimestamp = 7; // default is false
-  optional bool includeBits = 8; // default is false
-  optional bool includeNonce = 9; // default is false
-  optional bool includeDaaScore = 10; // default is false
-  optional bool includeBlueWork = 11; // default is false
-  optional bool includePruningPoint = 12; // default is false
-  optional bool includeBlueScore = 13; // default is false
-}
-
-message RpcTransactionVerbosity {
-  optional bool includeVersion = 1; // default is false
-  optional RpcTransactionInputVerbosity inputVerbosity = 2; // default is null
-  optional RpcTransactionOutputVerbosity outputVerbosity = 3; // default is false
-  optional bool includeLockTime = 4; // default is false
-  optional bool includeSubnetworkId = 5; // default is false
-  optional bool includeGas = 6; // default is false
-  optional bool includePayload = 7; // default is false
-  optional RpcTransactionVerboseDataVerbosity verboseDataVerbosity = 8; // default is null
-  optional bool includeMass = 9; // default is false
-}
-
-message RpcTransactionVerboseDataVerbosity {
-  optional bool includeTransactionId = 1; // default is false
-  optional bool includeHash = 2; // default is false
-  optional bool includeComputeMass = 3; // default is false
-  optional bool includeBlockHash = 4; // default is false
-  optional bool includeBlockTime = 5; // default is false
-}
-
-message RpcTransactionInputVerbosity {
-  optional bool includePreviousOutpoint = 1; // default is false
-  optional bool includeSignatureScript = 2; // default is false
-  optional bool includeSequence = 3; // default is false
-  optional bool includeSigOpCount = 4; // default is false
-  optional RpcTransactionInputVerboseDataVerbosity verboseDataVerbosity = 5; // default is null
-}
-
-message RpcTransactionInputVerboseDataVerbosity {
-  optional RpcUtxoEntryVerbosity utxoEntryVerbosity = 1; // default is false
-}
-
-message RpcOutpointVerbosity {
-  optional bool includeTransactionId = 1; // default is false
-  optional bool includeIndex = 2; // default is false
-}
-
-message RpcTransactionOutputVerbosity {
-  optional bool includeAmount = 1; // default is false
-  optional bool includeScriptPublicKey = 2; // default is false
-  optional RpcTransactionOutputVerboseDataVerbosity verbose_data_verbosity = 3; // default is false
-}
-
-message RpcTransactionOutputVerboseDataVerbosity {
-  optional bool includeScriptPublicKeyType = 5; // default is false
-  optional bool includeScriptPublicKeyAddress = 6; // default is false
-}
-
-message RpcUtxoEntryVerbosity {
-  optional bool includeAmount = 1; // default is false
-  optional bool includeScriptPublicKey = 2; // default is false
-  optional bool includeBlockDaaScore = 3; // default is false
-  optional bool includeIsCoinbase = 4; // default is false
-  optional RpcUtxoEntryVerboseDataVerbosity verboseDataVerbosity = 5; // default is false
-}
-
-message RpcUtxoEntryVerboseDataVerbosity {
-  optional bool includeScriptPublicKeyType = 5; // default is false
-  optional bool includeScriptPublicKeyAddress = 6; // default is false
 }
 
 // new base messages for vspcn v2
