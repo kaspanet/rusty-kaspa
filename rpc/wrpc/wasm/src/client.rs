@@ -37,7 +37,7 @@ declare! {
     r#"
     /**
      * RPC client configuration options
-     * 
+     *
      * @category Node RPC
      */
     export interface IRpcConfig {

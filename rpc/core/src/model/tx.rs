@@ -313,7 +313,7 @@ impl std::fmt::Debug for RpcTransaction {
             .field("gas", &self.gas)
             .field("payload", &self.payload.to_hex())
             .field("mass", &self.mass)
-            .field("inputs", &self.inputs) // Inputs and outputs are placed purposely at the end for better debug visibility 
+            .field("inputs", &self.inputs) // Inputs and outputs are placed purposely at the end for better debug visibility
             .field("outputs", &self.outputs)
             .field("verbose_data", &self.verbose_data)
             .finish()
