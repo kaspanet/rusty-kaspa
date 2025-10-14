@@ -68,16 +68,16 @@ impl_verbosity_from! {
     for RpcHeaderVerbosity, from RpcDataVerbosityLevel {
         include_hash:                    (RpcDataVerbosityLevel::None),
         include_version:                 (RpcDataVerbosityLevel::Low),
-        include_parents_by_level:        (RpcDataVerbosityLevel::High),
-        include_hash_merkle_root:        (RpcDataVerbosityLevel::High),
-        include_accepted_id_merkle_root: (RpcDataVerbosityLevel::High),
-        include_utxo_commitment:         (RpcDataVerbosityLevel::Full),
         include_timestamp:               (RpcDataVerbosityLevel::Low),
         include_bits:                    (RpcDataVerbosityLevel::Low),
         include_nonce:                   (RpcDataVerbosityLevel::Low),
         include_daa_score:               (RpcDataVerbosityLevel::Low),
         include_blue_work:               (RpcDataVerbosityLevel::Low),
         include_blue_score:              (RpcDataVerbosityLevel::Low),
+        include_parents_by_level:        (RpcDataVerbosityLevel::High),
+        include_hash_merkle_root:        (RpcDataVerbosityLevel::High),
+        include_accepted_id_merkle_root: (RpcDataVerbosityLevel::High),
+        include_utxo_commitment:         (RpcDataVerbosityLevel::Full),
         include_pruning_point:           (RpcDataVerbosityLevel::Full),
     }
 }
@@ -141,18 +141,18 @@ impl_verbosity_from! {
 
 impl_verbosity_from! {
     for RpcTransactionVerbosity, from RpcDataVerbosityLevel {
+        include_payload:           (RpcDataVerbosityLevel::High),
+        include_mass:              (RpcDataVerbosityLevel::High),
         include_version:           (RpcDataVerbosityLevel::Full),
+        include_lock_time:         (RpcDataVerbosityLevel::Full),
+        include_subnetwork_id:     (RpcDataVerbosityLevel::Full),
+        include_gas:               (RpcDataVerbosityLevel::Full),
         input_verbosity:           (|level| {
             RpcTransactionInputVerbosity::from(level)
         }),
         output_verbosity:          (|level| {
             RpcTransactionOutputVerbosity::from(level)
         }),
-        include_lock_time:         (RpcDataVerbosityLevel::Full),
-        include_subnetwork_id:     (RpcDataVerbosityLevel::Full),
-        include_gas:               (RpcDataVerbosityLevel::Full),
-        include_payload:           (RpcDataVerbosityLevel::High),
-        include_mass:              (RpcDataVerbosityLevel::High),
         verbose_data_verbosity:    (|level| {
             RpcTransactionVerboseDataVerbosity::from(level)
         }),

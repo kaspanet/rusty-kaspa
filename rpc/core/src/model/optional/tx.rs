@@ -16,9 +16,13 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalUtxoEntry {
+    /// Level: High
     pub amount: Option<u64>,
+    /// Level: High
     pub script_public_key: Option<ScriptPublicKey>,
+    /// Level: Full
     pub block_daa_score: Option<u64>,
+    /// Level: High
     pub is_coinbase: Option<bool>,
     pub verbose_data: Option<RpcOptionalUtxoEntryVerboseData>,
 }
@@ -109,7 +113,9 @@ impl Deserializer for RpcOptionalUtxoEntry {
 #[derive(Eq, Hash, PartialEq, Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalUtxoEntryVerboseData {
+    /// Level: Low
     pub script_public_key_type: Option<RpcScriptClass>,
+    /// Level: Low
     pub script_public_key_address: Option<Address>,
 }
 
@@ -215,10 +221,14 @@ impl Deserializer for RpcOptionalTransactionOutpoint {
 #[serde_nested]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionInput {
+    /// Level: High
     pub previous_outpoint: Option<RpcOptionalTransactionOutpoint>,
     #[serde_nested(sub = "Vec<u8>", serde(with = "hex::serde"))]
+    /// Level: Low
     pub signature_script: Option<Vec<u8>>,
+    /// Level: High
     pub sequence: Option<u64>,
+    /// Level: High
     pub sig_op_count: Option<u8>,
     pub verbose_data: Option<RpcOptionalTransactionInputVerboseData>,
 }
@@ -327,7 +337,9 @@ impl Deserializer for RpcOptionalTransactionInputVerboseData {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionOutput {
+    /// Level - Low
     pub value: Option<u64>,
+    /// Level - Low
     pub script_public_key: Option<RpcScriptPublicKey>,
     pub verbose_data: Option<RpcOptionalTransactionOutputVerboseData>,
 }
@@ -381,7 +393,9 @@ impl Deserializer for RpcOptionalTransactionOutput {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionOutputVerboseData {
+    /// Level: Low
     pub script_public_key_type: Option<RpcScriptClass>,
+    /// Level: Low
     pub script_public_key_address: Option<Address>,
 }
 
@@ -420,14 +434,20 @@ impl Deserializer for RpcOptionalTransactionOutputVerboseData {
 #[serde_nested]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransaction {
+    /// Level: Full
     pub version: Option<u16>,
     pub inputs: Vec<RpcOptionalTransactionInput>,
     pub outputs: Vec<RpcOptionalTransactionOutput>,
+    /// Level: Full
     pub lock_time: Option<u64>,
+    /// Level: Full
     pub subnetwork_id: Option<RpcSubnetworkId>,
+    /// Level: Full
     pub gas: Option<u64>,
     #[serde_nested(sub = "Vec<u8>", serde(with = "hex::serde"))]
+    /// Level: High
     pub payload: Option<Vec<u8>>,
+    /// Level: High
     pub mass: Option<u64>,
     pub verbose_data: Option<RpcOptionalTransactionVerboseData>,
 }
@@ -509,12 +529,17 @@ impl Deserializer for RpcOptionalTransaction {
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionVerboseData {
     #[serde_nested(sub = "RpcTransactionId", serde(with = "serde_bytes_fixed_ref"))]
+    /// Level: Low
     pub transaction_id: Option<RpcTransactionId>,
     #[serde_nested(sub = "RpcHash", serde(with = "serde_bytes_fixed_ref"))]
+    /// Level: Low
     pub hash: Option<RpcHash>,
+    /// Level: High
     pub compute_mass: Option<u64>,
     #[serde_nested(sub = "RpcHash", serde(with = "serde_bytes_fixed_ref"))]
+    /// Level: Low
     pub block_hash: Option<RpcHash>,
+    /// Level: Low
     pub block_time: Option<u64>,
 }
 

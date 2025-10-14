@@ -55,8 +55,8 @@ async fn get_vcc_v2() -> Result<()> {
 
     let response = client
         .get_virtual_chain_from_block_v_2(
-            RpcHash::from_str("281cafeb68b409fda4a8980469129672b2620039a88b748505b88f4feae927e0").unwrap(),
-            Some(RpcDataVerbosityLevel::High),
+            RpcHash::from_str("5f04a7525c0bc96959b32e6862893181a3f22d7403e3a549063762a2fc4bac78").unwrap(),
+            Some(RpcDataVerbosityLevel::None),
         )
         .await?;
 
@@ -64,6 +64,8 @@ async fn get_vcc_v2() -> Result<()> {
     let mut count_block = 0;
     let mut seen_tx = HashSet::<RpcHash>::with_capacity(30_000);
     let mut count_duplicated_tx = 0;
+
+    println!("{:#?}", response);
     response.added_acceptance_data.iter().for_each(|acd| {
         // println!("mergeset of {}", acd.accepting_chain_header.as_ref().unwrap().hash.unwrap());
 

@@ -9,21 +9,31 @@ use crate::{RpcError, RpcResult};
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalHeader {
-    /// Level: None, Cached hash
+    /// Level: None - Cached hash
     pub hash: Option<Hash>,
     /// Level: Low
     pub version: Option<u16>,
+    /// Level: High
     pub parents_by_level: Vec<Vec<Hash>>,
+    /// Level: High
     pub hash_merkle_root: Option<Hash>,
+    /// Level: High
     pub accepted_id_merkle_root: Option<Hash>,
+    /// Level: Full
     pub utxo_commitment: Option<Hash>,
-    /// Timestamp is in milliseconds
+    /// Level: Low - Timestamp is in milliseconds
     pub timestamp: Option<u64>,
+    /// Level: Low
     pub bits: Option<u32>,
+    /// Level: Low
     pub nonce: Option<u64>,
+    /// Level: Low
     pub daa_score: Option<u64>,
+    /// Level: Low
     pub blue_work: Option<BlueWorkType>,
+    /// Level: Low
     pub blue_score: Option<u64>,
+    /// Level: Full
     pub pruning_point: Option<Hash>,
 }
 
