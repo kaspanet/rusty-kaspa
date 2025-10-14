@@ -22,7 +22,7 @@ from!(item: &kaspa_rpc_core::RpcHeader, protowire::RpcBlockHeader, {
         blue_work: item.blue_work.to_rpc_hex(),
         blue_score: item.blue_score,
         pruning_point: item.pruning_point.to_string(),
-        hash: String::default(),
+        hash: Default::default(),
     }
 });
 
