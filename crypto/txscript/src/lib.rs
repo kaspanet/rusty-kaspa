@@ -4,6 +4,7 @@ extern crate core;
 pub mod caches;
 mod data_stack;
 pub mod error;
+pub mod multi_sig;
 pub mod opcodes;
 pub mod result;
 pub mod script_builder;
@@ -216,64 +217,6 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
         }
     }
     num_sigs
-}
-
-/// Extracts the parameters from a standard multisig script.
-/// It looks for the pattern: OP_m <pubkey1>...<pubkeyn> OP_n OP_CHECKMULTISIG
-///
-/// # Arguments
-/// * `opcodes` - A slice of parsed script opcodes.
-/// * `checkmultisig_index` - The index of the OP_CHECKMULTISIG.
-///
-/// # Returns
-/// * `(m, n, pubkeys)` if the pattern is matched.
-///   - `m` is the number of required signatures.
-///   - `n` is the total number of public keys.
-///   - `pubkeys` is a vector of the public key data slices.
-pub fn get_multisig_params<'a, T: VerifiableTransaction, Reused: SigHashReusedValues>(
-    opcodes: &'a [Box<dyn OpCodeImplementation<T, Reused>>],
-    checkmultisig_index: usize,
-) -> Option<(u8, u8, Vec<&'a [u8]>)> {
-    let op_n = opcodes.get(checkmultisig_index.checked_sub(1)?)?;
-    let n_val = op_n.value();
-    if !(codes::Op1..=codes::Op16).contains(&n_val) {
-        return None;
-    }
-
-    let n = to_small_int(op_n);
-    if n == 0 {
-        return None;
-    }
-    let n_usize = n as usize;
-
-    let pubkeys_end = checkmultisig_index.checked_sub(1)?;
-    let pubkeys_start = pubkeys_end.checked_sub(n_usize)?;
-    let pubkeys_ops = opcodes.get(pubkeys_start..pubkeys_end)?;
-
-    let mut pubkeys = Vec::with_capacity(n_usize);
-    for op in pubkeys_ops {
-        if !op.is_push_opcode() {
-            return None;
-        }
-        let data = op.get_data();
-        match data.len() {
-            32 | 33 => pubkeys.push(data),
-            _ => return None,
-        }
-    }
-
-    let op_m = opcodes.get(pubkeys_start.checked_sub(1)?)?;
-    let m_val = op_m.value();
-    if !(codes::Op1..=codes::Op16).contains(&m_val) {
-        return None;
-    }
-
-    let m = to_small_int(op_m);
-    if m > n {
-        return None;
-    }
-
-    Some((m, n, pubkeys))
 }
 
 /// Returns whether the passed public key script is unspendable, or guaranteed to fail at execution.

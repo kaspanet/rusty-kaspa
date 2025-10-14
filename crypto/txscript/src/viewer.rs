@@ -1,50 +1,27 @@
-use crate::{
-    opcodes::{self, codes, OpCodeImplementation},
-    TxScriptError,
-};
-use itertools::Itertools;
-use kaspa_consensus_core::{
-    hashing::sighash::SigHashReusedValuesUnsync,
-    tx::{Transaction, TransactionInput, UtxoEntry, VerifiableTransaction},
-};
+use crate::{multi_sig::get_multisig_params, opcodes::codes, parse_script, TxScriptError};
+use kaspa_consensus_core::{hashing::sighash::SigHashReusedValues, tx::VerifiableTransaction};
 use std::{
     fmt::{Display, Formatter},
+    marker::PhantomData,
     str,
 };
 
-// ensure unused at runtime
-// @QUESTION: is there a better way to deser a script without implementing these traits?
-struct VerifiableTransactionMock;
-impl VerifiableTransaction for VerifiableTransactionMock {
-    fn tx(&self) -> &Transaction {
-        unimplemented!()
-    }
-    fn populated_input(&self, _index: usize) -> (&TransactionInput, &UtxoEntry) {
-        unimplemented!()
-    }
-    fn utxo(&self, _index: usize) -> Option<&UtxoEntry> {
-        unimplemented!()
-    }
-}
-
-fn parse_script(
-    script: &[u8],
-) -> impl Iterator<Item = Result<Box<dyn OpCodeImplementation<VerifiableTransactionMock, SigHashReusedValuesUnsync>>, TxScriptError>> + '_
-{
-    script.iter().batching(|it| opcodes::deserialize_next_opcode(it))
-}
-
-pub struct ScriptViewer<'a> {
+pub struct ScriptViewer<'a, T, Reused> {
     script: &'a [u8],
+    _phantom: PhantomData<(T, Reused)>,
 }
 
-impl<'a> ScriptViewer<'a> {
+impl<'a, T, Reused> ScriptViewer<'a, T, Reused>
+where
+    T: VerifiableTransaction,
+    Reused: SigHashReusedValues,
+{
     pub fn new(script: &'a [u8]) -> Self {
-        Self { script }
+        Self { script, _phantom: PhantomData }
     }
 
     pub fn to_string(&self) -> Result<String, TxScriptError> {
-        let opcodes: Vec<_> = parse_script(self.script).collect::<Result<_, _>>()?;
+        let opcodes: Vec<_> = parse_script::<T, Reused>(self.script).collect::<Result<_, _>>()?;
         let mut s = String::new();
         let mut indent_level: usize = 0;
 
@@ -72,7 +49,7 @@ impl<'a> ScriptViewer<'a> {
                 s.push_str(&hex::encode(data));
 
                 // try to disassemble the data as a script
-                let sub_viewer = ScriptViewer::new(data);
+                let sub_viewer = ScriptViewer::<T, Reused>::new(data);
                 if let Ok(sub_disassembly) = sub_viewer.to_string() {
                     if sub_disassembly.contains("OP_") {
                         s.push_str("\n    -- Begin Redeem Script --\n");
@@ -82,9 +59,8 @@ impl<'a> ScriptViewer<'a> {
                     }
                 }
             } else if value == codes::OpCheckMultiSig || value == codes::OpCheckMultiSigVerify {
-                if let Some((m, n, _)) = crate::get_multisig_params(&opcodes, i) {
-                    s.push_str(&format!(" // {} of {}", m, n));
-                }
+                let multisig_parameters = get_multisig_params(&opcodes, i)?;
+                s.push_str(&format!(" // {} of {}", multisig_parameters.required_signatures_count, multisig_parameters.signers_count));
             }
 
             s.push('\n');
@@ -97,8 +73,12 @@ impl<'a> ScriptViewer<'a> {
     }
 }
 
-impl Display for ScriptViewer<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl<T, Reused> Display for ScriptViewer<'_, T, Reused>
+where
+    T: VerifiableTransaction,
+    Reused: SigHashReusedValues,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self.to_string() {
             Ok(s) => f.write_str(&s),
             Err(e) => write!(f, "Error disassembling script: {}", e),
