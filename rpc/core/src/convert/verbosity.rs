@@ -17,7 +17,6 @@ macro_rules! impl_verbosity_from {
                     $(
                         $field: impl_verbosity_from!(@eval level, $level, $handler),
                     )*
-                    ..::core::default::Default::default()
                 }
             }
         }
@@ -107,9 +106,11 @@ impl_verbosity_from! {
         include_signature_script:   (RpcDataVerbosityLevel::Low),
         include_sequence:           (RpcDataVerbosityLevel::High),
         include_sig_op_count:       (RpcDataVerbosityLevel::High),
+        include_previous_outpoint:  (RpcDataVerbosityLevel::High),
         verbose_data_verbosity:     (|level| {
             RpcTransactionInputVerboseDataVerbosity::from(level)
         }),
+
     }
 }
 
@@ -164,6 +165,7 @@ impl_verbosity_from! {
         include_compute_mass:   (RpcDataVerbosityLevel::High),
         include_block_hash:     (RpcDataVerbosityLevel::Low),
         include_block_time:     (RpcDataVerbosityLevel::Low),
+        include_hash:           (RpcDataVerbosityLevel::Low),
     }
 }
 

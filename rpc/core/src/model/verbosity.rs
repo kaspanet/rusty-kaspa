@@ -30,8 +30,8 @@ impl Deserializer for RpcDataVerbosityLevel {
         let mut buf = [0u8; 4];
         reader.read_exact(&mut buf)?;
         let val = i32::from_le_bytes(buf);
-        Ok(RpcDataVerbosityLevel::try_from(val)
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid RpcDataVerbosityLevel"))?)
+        RpcDataVerbosityLevel::try_from(val)
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid RpcDataVerbosityLevel"))
     }
 }
 
