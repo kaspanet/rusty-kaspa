@@ -670,7 +670,7 @@ impl ConsensusApi for Consensus {
     /// Estimates the number of blocks and headers stored in the node database.
     ///
     /// This is an estimation based on the DAA score difference between the node's `retention root` and `virtual`'s DAA score,
-    /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.  
+    /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.
     fn estimate_block_count(&self) -> BlockCount {
         // PRUNE SAFETY: retention root is always a current or past pruning point which its header is kept permanently
         let retention_period_root_score = self.headers_store.get_daa_score(self.get_retention_period_root()).unwrap();
@@ -799,15 +799,19 @@ impl ConsensusApi for Consensus {
 
         match tx_type {
             TransactionType::Transaction => {
+                let accepting_block_mergeset_acceptance_data_iter = self
+                    .acceptance_data_store
+                    .get(accepting_block)
+                    .map_err(|_| ConsensusError::MissingData(accepting_block))?
+                    .unwrap_or_clone()
+                    .into_iter();
+
                 if let Some(tx_ids) = tx_ids {
-                    let tx_id_set = HashSet::<TransactionId>::from_iter(tx_ids);
+                    let mut tx_ids_filter = HashSet::with_capacity(tx_ids.len());
+                    tx_ids_filter.extend(tx_ids);
 
                     Ok(TransactionQueryResult::Transaction(Arc::new(
-                        self.acceptance_data_store
-                            .get(accepting_block)
-                            .map_err(|_| ConsensusError::MissingData(accepting_block))?
-                            .unwrap_or_clone()
-                            .into_iter()
+                        accepting_block_mergeset_acceptance_data_iter
                             .flat_map(|mbad| {
                                 self.get_block_transactions(
                                     mbad.block_hash,
@@ -815,7 +819,7 @@ impl ConsensusApi for Consensus {
                                         mbad.accepted_transactions
                                             .into_iter()
                                             .filter_map(|atx| {
-                                                if tx_id_set.contains(&atx.transaction_id) {
+                                                if tx_ids_filter.contains(&atx.transaction_id) {
                                                     Some(atx.index_within_block)
                                                 } else {
                                                     None
@@ -830,11 +834,7 @@ impl ConsensusApi for Consensus {
                     )))
                 } else {
                     Ok(TransactionQueryResult::Transaction(Arc::new(
-                        self.acceptance_data_store
-                            .get(accepting_block)
-                            .map_err(|_| ConsensusError::MissingData(accepting_block))?
-                            .unwrap_or_clone()
-                            .into_iter()
+                        accepting_block_mergeset_acceptance_data_iter
                             .flat_map(|mbad| {
                                 self.get_block_transactions(
                                     mbad.block_hash,
