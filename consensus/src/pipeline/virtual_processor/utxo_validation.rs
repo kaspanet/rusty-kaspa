@@ -252,23 +252,9 @@ impl VirtualStateProcessor {
         header: &Header,
         ghostdag_data: CompactGhostdagData,
     ) -> BlockProcessResult<PruningPointReply> {
-        // [Crescendo]: changing expected pruning point check from header validity to chain qualification.
-        // Note that we activate here based on the selected parent DAA score thus complementing the deactivation
-        // in header processor which is based on selected parent DAA score as well.
-
-        if self.crescendo_activation.is_within_range_from_activation(header.daa_score, 1000) {
-            self.crescendo_logger.report_activation();
-        }
-
-        let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
-        // [Crescendo]: we need to save reply.pruning_sample to the database also prior to activation
-        let reply = self.pruning_point_manager.expected_header_pruning_point_v2(ghostdag_data);
-        if self.crescendo_activation.is_active(selected_parent_daa_score) {
-            if reply.pruning_point != header.pruning_point {
-                return Err(WrongHeaderPruningPoint(reply.pruning_point, header.pruning_point));
-            }
-        } else {
-            assert_eq!(reply.pruning_point, header.pruning_point, "verified by header validation (v1 = v2 pre activation)");
+        let reply = self.pruning_point_manager.expected_header_pruning_point(ghostdag_data);
+        if reply.pruning_point != header.pruning_point {
+            return Err(WrongHeaderPruningPoint(reply.pruning_point, header.pruning_point));
         }
         Ok(reply)
     }
@@ -288,11 +274,7 @@ impl VirtualStateProcessor {
             .expected_coinbase_transaction(daa_score, miner_data, ghostdag_data, mergeset_rewards, mergeset_non_daa)
             .unwrap()
             .tx;
-        // [Crescendo]: we can pass include_mass_field = false here since post activation coinbase mass field
-        // is guaranteed to be zero (see check_coinbase_has_zero_mass), so after the fork we will be able to
-        // safely remove the include_mass_field parameter. This is because internally include_mass_field = false
-        // and mass = 0 are treated the same.
-        if hashing::tx::hash(coinbase, false) != hashing::tx::hash(&expected_coinbase, false) {
+        if hashing::tx::hash(coinbase) != hashing::tx::hash(&expected_coinbase) {
             Err(BadCoinbaseTransaction)
         } else {
             Ok(())
