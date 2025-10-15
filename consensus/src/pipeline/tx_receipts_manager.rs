@@ -14,10 +14,8 @@ use kaspa_consensus_core::{
         genesis::GenesisBlock,
         params::{ForkActivation, ForkedParam},
     },
-    hashing,
     header::Header,
-    merkle::create_hash_merkle_witness,
-    receipts::{ProofOfChainMembership, ProofOfPublication, TxReceipt},
+    receipts::TxReceipt,
 };
 use kaspa_hashes::Hash;
 use kaspa_merkle::{calc_merkle_root, create_merkle_witness, merkle_hash, verify_merkle_witness};
@@ -121,34 +119,6 @@ impl<
             initial_sequencing_commitment,
         })
     }
-    pub fn generate_proof_of_publication(
-        &self,
-        pub_block_header: Arc<Header>,
-        tracked_tx_id: Hash,
-    ) -> Result<ProofOfPublication, ReceiptsErrors> {
-        let path_to_selected = self.find_future_chain_block_path(pub_block_header.hash)?;
-
-        let mut headers_path_to_selected: Vec<_> =
-            path_to_selected.iter().map(|&hash| self.headers_store.get_header(hash).unwrap()).collect();
-
-        let proof_of_chain_membership = self.create_proof_of_chain_membership(headers_path_to_selected.last().unwrap().hash)?;
-        headers_path_to_selected.remove(0); //remove the publishing block itself from the chain as it is redundant to store
-
-        //next, find the relevant transaction in pub_block_hash's published transactions and create a merkle witness for it
-        let published_txs = self.block_transactions_store.get(pub_block_header.hash)?;
-        let tracked_tx = published_txs.iter().find(|tx| tx.id() == tracked_tx_id).unwrap();
-        let include_mass_field = self.crescendo_activation.is_active(pub_block_header.daa_score);
-        let tx_pub_proof = create_hash_merkle_witness(published_txs.iter(), tracked_tx, include_mass_field)?;
-
-        let tracked_tx_hash = hashing::tx::hash(tracked_tx, include_mass_field); //leaf value in merkle tree
-        Ok(ProofOfPublication {
-            tracked_tx_hash,
-            publication_block_header: pub_block_header,
-            proof_of_chain_membership,
-            tx_publication_proof: tx_pub_proof,
-            headers_path_to_selected,
-        })
-    }
     pub fn verify_tx_receipt(&self, tx_receipt: &TxReceipt) -> bool {
         if !self.verify_is_posterity(tx_receipt.posterity_block) {
             return false;
@@ -164,69 +134,17 @@ impl<
         let post_posterity_header = self.headers_store.get_header(tx_receipt.posterity_block).unwrap();
         acc == post_posterity_header.accepted_id_merkle_root
     }
-    pub fn verify_proof_of_publication(&self, proof_of_pub: &ProofOfPublication) -> bool {
-        let valid_path = proof_of_pub
-            .headers_path_to_selected
-            .iter()
-            .try_fold(proof_of_pub.publication_block_header.hash, |curr, next| {
-                if next.direct_parents().contains(&curr) {
-                    Some(next.hash)
-                } else {
-                    None
-                }
-            })
-            .is_some();
-        if !valid_path {
-            return false;
-        };
-        let earliest_selected_chain_decendant =
-            proof_of_pub.headers_path_to_selected.last().unwrap_or(&proof_of_pub.publication_block_header).hash;
-        let pub_merkle_root = proof_of_pub.publication_block_header.hash_merkle_root;
-        verify_merkle_witness(&proof_of_pub.tx_publication_proof, proof_of_pub.tracked_tx_hash, pub_merkle_root)
-            && self.verify_proof_of_chain_membership(earliest_selected_chain_decendant, &proof_of_pub.proof_of_chain_membership)
-    }
-    /*Assumes: chain_purporter is on the selected chain,
-    if not returns error   */
-    pub fn create_proof_of_chain_membership(&self, chain_purporter: Hash) -> Result<ProofOfChainMembership, ReceiptsErrors> {
-        /*
-        traverse down the selected chain and derive a vector containing the headers of all blocks on it, as well as their parents.
-        */
-        let post_posterity_hash = self.get_post_posterity_block(chain_purporter)?;
-        let traversal_vec: Vec<_> = self
-            .reachability_service
-            .forward_chain_iterator(chain_purporter, post_posterity_hash, true)
-            .map(|hash| self.headers_store.get_header(hash).unwrap())
-            .flat_map(|header| {
-                let mut chain_header = vec![header.clone()];
-                let mut chain_and_parents_headers: Vec<_> =
-                    header.direct_parents().iter().map(|&par| self.headers_store.get_header(par).unwrap()).collect::<_>();
-                chain_and_parents_headers.append(&mut chain_header); //this order makes sure posterity is the last in the vector
-                chain_and_parents_headers
-            })
-            .collect::<_>();
-        Ok(ProofOfChainMembership::new(traversal_vec, post_posterity_hash))
-    }
-
-    pub fn verify_proof_of_chain_membership(&self, chain_purporter: Hash, witness: &ProofOfChainMembership) -> bool {
-        // first assert alleged_posterity is a posterity block
-        // then verify the pochm path from the alleged posterity to chain_purporter is valid.
-        self.verify_is_posterity(witness.alleged_posterity) && witness.verify_path(chain_purporter)
-    }
 
     /* the function assumes that the path from block_hash up to its post posterity if it exits is intact and has not been pruned
     it will panic if not;
     An error is returned if post_posterity does not yet exist;
-    The function does not assume block_hash is a chain block, however
+    The function  assumes block_hash is a chain block.
     The get_post_posterity_block on a posterity block, will not return the block itself rather the posterity after it. */
     pub fn get_post_posterity_block(&self, block_hash: Hash) -> Result<Hash, ReceiptsErrors> {
         /*try and reach the first proceeding selected chain block,
         in the majority of cases, a very short distance is covered before reaching a chain block.*/
         let block_daa = self.headers_store.get_daa_score(block_hash)?;
-        let candidate_block = *self
-            .find_future_chain_block_path(block_hash)
-            .map_err(|_| ReceiptsErrors::PosterityDoesNotExistYet(block_hash))?
-            .last()
-            .unwrap();
+        let candidate_block = block_hash;
         let candidate_bscore = self.headers_store.get_blue_score(candidate_block)?;
 
         let head_hash = self.selected_chain_store.read().get_tip()?.1;
@@ -462,22 +380,6 @@ impl<
         //avoiding a harmful 0 value
     }
 
-    /*
-    Code as currently implemented will return *a* chain block in the block's future,
-    not necessarily the earliest chain block occuring in its future
-    Perhaps code in these lines but more optimized should to be on the traversal manager
-    block hash must be an ancestor of sink, otherwise an error will be returned
-    */
-    pub fn find_future_chain_block_path(&self, block_hash: Hash) -> Result<Vec<Hash>, ReceiptsErrors> {
-        let sink = self.selected_chain_store.read().get_tip()?.1;
-        self.traversal_manager
-            .forward_bfs_paths_iterator(block_hash, sink)
-            .find(|path| {
-                let curr = *path.last().unwrap();
-                self.selected_chain_store.read().get_by_hash(curr).is_ok()
-            })
-            .ok_or(ReceiptsErrors::NoChainBlockInFuture(block_hash))
-    }
     pub fn verify_is_posterity(&self, alleged_posterity: Hash) -> bool {
         if self.block_transactions_store.get(alleged_posterity).is_ok() {
             //alleged_posterity is above the retention root, confirm directly that it is a post-posterity of its chain parent.

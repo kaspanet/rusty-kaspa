@@ -2,12 +2,8 @@ use std::{collections::HashMap, thread::sleep, time::Duration};
 
 use crate::{
     consensus::test_consensus::TestConsensus,
-    model::{
-        services::reachability::ReachabilityService,
-        stores::{
-            acceptance_data::AcceptanceDataStoreReader, block_transactions::BlockTransactionsStoreReader, headers::HeaderStoreReader,
-            pruning::PruningStoreReader, selected_chain::SelectedChainStoreReader,
-        },
+    model::stores::{
+        acceptance_data::AcceptanceDataStoreReader, pruning::PruningStoreReader, selected_chain::SelectedChainStoreReader,
     },
     pipeline::virtual_processor::tests_util::TestContext,
     processes::reachability::tests::gen::generate_complex_dag,
@@ -46,9 +42,6 @@ async fn test_receipts_in_chain() {
         .build();
     let mut expected_posterities = vec![];
     let mut receipts = vec![];
-    let mut pops = vec![];
-
-    let mut pochms_list = vec![];
 
     let mut ctx = TestContext::new(TestConsensus::new(&config));
     let genesis_hash = ctx.consensus.params().genesis.hash;
@@ -80,15 +73,8 @@ async fn test_receipts_in_chain() {
 
             ctx.build_block_template_row(0..1).validate_and_insert_row().await.assert_valid_utxo_tip();
             let block = it.next().unwrap();
-            let block_header = ctx.consensus.headers_store.get_header(block).unwrap();
-            pochms_list.push((ctx.consensus.generate_proof_of_chain_membership(block).unwrap(), block));
             let acc_tx = ctx.consensus.acceptance_data_store.get(block).unwrap()[0].accepted_transactions[0].transaction_id;
             receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, None, None).unwrap(), acc_tx));
-            let pub_tx = ctx.consensus.block_transactions_store.get(block).unwrap()[0].id();
-            pops.push((
-                ctx.consensus.services.tx_receipts_manager.generate_proof_of_publication(block_header, pub_tx).unwrap(),
-                pub_tx,
-            ));
             let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(block);
             let post_posterity = ctx.tx_receipts_manager().get_post_posterity_block(block);
             assert_eq!(pre_posterity, expected_posterities[i]);
@@ -102,15 +88,8 @@ async fn test_receipts_in_chain() {
         expected_posterities.push(tip);
         //verify posterity qualities of a 3*FINALITY_DEPTH blocks in the past posterity block
         let past_posterity_block = it.next().unwrap();
-        let past_posterity_header = ctx.consensus.headers_store.get_header(past_posterity_block).unwrap();
-        pochms_list.push((ctx.consensus.generate_proof_of_chain_membership(past_posterity_block).unwrap(), past_posterity_block));
         let acc_tx = ctx.consensus.acceptance_data_store.get(past_posterity_block).unwrap()[0].accepted_transactions[0].transaction_id;
         receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, None, None).unwrap(), acc_tx));
-        let pub_tx = ctx.consensus.block_transactions_store.get(past_posterity_block).unwrap()[0].id();
-        pops.push((
-            ctx.consensus.services.tx_receipts_manager.generate_proof_of_publication(past_posterity_header, pub_tx).unwrap(),
-            pub_tx,
-        ));
         let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(past_posterity_block);
         let post_posterity = ctx.tx_receipts_manager().get_post_posterity_block(past_posterity_block);
         assert_eq!(pre_posterity, expected_posterities[i]);
@@ -161,17 +140,10 @@ async fn test_receipts_in_chain() {
         assert_eq!(pre_posterity, expected_posterities[PERIODS]);
         assert!(post_posterity.is_err());
     }
-    for (pochm, blk) in pochms_list {
-        assert!(ctx.consensus.verify_proof_of_chain_membership(blk, &pochm));
-    }
     for (rec, tx_id) in receipts {
         assert!(ctx.consensus.verify_tx_receipt(&rec));
         // sanity check
         assert_eq!(rec.tracked_tx_id, tx_id);
-    }
-
-    for (proof, _) in pops {
-        assert!(ctx.consensus.verify_proof_of_publication(&proof));
     }
 }
 #[tokio::test]
@@ -207,14 +179,9 @@ async fn test_receipts_in_random() {
     let mut receipts1 = std::collections::HashMap::<_, _>::new();
     let mut receipts2 = std::collections::HashMap::<_, _>::new();
     let mut receipts3 = std::collections::HashMap::<_, _>::new();
-    let mut pops1 = std::collections::HashMap::<_, _>::new();
-    let mut pops2 = std::collections::HashMap::<_, _>::new();
-    let mut pops3 = std::collections::HashMap::<_, _>::new();
-    let mut pathologies_count = 0;
 
     let ctx = TestContext::new(TestConsensus::new(&config));
     let genesis_hash = ctx.consensus.params().genesis.hash;
-    let mut pochms_list = vec![];
     let mut posterity_list = vec![genesis_hash];
 
     let dag = generate_complex_dag(2.0, BPS, DAG_SIZE);
@@ -264,70 +231,19 @@ async fn test_receipts_in_random() {
             next_posterity_score += FINALITY_DEPTH as u64;
             posterity_list.push(ctx.consensus.services.tx_receipts_manager.get_pre_posterity_block_by_hash(ctx.consensus.get_sink()));
             if posterity_list.len() >= 3 {
-                let parent_of_next_posterity =
-                    ctx.consensus.services.reachability_service.get_chain_parent(posterity_list[posterity_list.len() - 2]);
                 for old_block in ctx
                     .consensus
                     .services
-                    .dag_traversal_manager
-                    .forward_bfs_paths_iterator(ctx.consensus.pruning_point(), parent_of_next_posterity)
-                    .map_paths_to_tips()
+                    .reachability_service
+                    .forward_chain_iterator(ctx.consensus.pruning_point(), posterity_list[posterity_list.len() - 2], true)
+                    .skip(1)
+                // skip pruning_point
                 {
                     let blk_header = ctx.consensus.get_header(old_block).unwrap();
-                    /*
-                    A pathology sometimes occur where the first chain block found for a POP them is not in the past of the closest posterity.
-                    This does not necessarily imply a failure, but since the next posterity after is not yet finalized, the pop may be invalid.
-                    It proved very hard to avoid this pathologies in an elegant manner.
-                    Reluctantly we explicitely check for this pathology and exclude them.
-                    We also enumerate the number of pathologies  which are expected to be few.
-
-                    The pathology can occur for two reasons:
-                    First, since there are many publishing blocks, it is possible that the one found via searches
-                    for the transaction ID is different to the old_block.
-                    Second, even if a block has a chain block in its future before the nearest posterity,
-                    it may not be the one found by the naive search ran to find a future chain block - if  a later chain block is at a shorter distance
-                    from the block, the pop may miss the current posterity. There is clear lack of optimiality here which may need to be addressed
-                    if pops become common place. It is remarked that this scenario is expected to be rare in real data.
-                     */
-                    let pub_tx = ctx.consensus.block_transactions_store.get(old_block).unwrap()[0].id();
-                    let proof = ctx.consensus.generate_proof_of_publication(pub_tx, Some(blk_header.hash), None);
-                    if let Ok(proof) = proof {
-                        if ctx.consensus.services.reachability_service.is_dag_ancestor_of(
-                            proof.headers_path_to_selected.last().unwrap_or(&proof.publication_block_header).hash,
-                            parent_of_next_posterity,
-                        ) {
-                            pops1.insert(old_block, proof);
-                        } else {
-                            pathologies_count += 1;
-                        }
-                        let pop_by_timestamp =
-                            ctx.consensus.generate_proof_of_publication(pub_tx, None, Some(blk_header.timestamp)).unwrap();
-
-                        if ctx.consensus.services.reachability_service.is_dag_ancestor_of(
-                            pop_by_timestamp
-                                .headers_path_to_selected
-                                .last()
-                                .unwrap_or(&pop_by_timestamp.publication_block_header)
-                                .hash,
-                            parent_of_next_posterity,
-                        ) {
-                            pops2.insert(old_block, pop_by_timestamp);
-                        } else {
-                            pathologies_count += 1;
-                        }
-                        let pop_by_bfs = ctx.consensus.generate_proof_of_publication(pub_tx, None, None).unwrap();
-                        if ctx.consensus.services.reachability_service.is_dag_ancestor_of(
-                            pop_by_bfs.headers_path_to_selected.last().unwrap_or(&pop_by_bfs.publication_block_header).hash,
-                            parent_of_next_posterity,
-                        ) {
-                            pops3.insert(old_block, pop_by_bfs);
-                        } else {
-                            pathologies_count += 1;
-                        }
-                    }
                     if old_block != genesis_hash && ctx.consensus.selected_chain_store.read().get_by_hash(old_block).is_ok() {
-                        //genesis is an annoying edge case as it has no accepted txs
-                        pochms_list.push((ctx.consensus.generate_proof_of_chain_membership(old_block).unwrap(), old_block));
+                        /* 1) genesis is an annoying edge case as it has no accepted txs
+                        2) since the posterity list is merely an apporximation of reality, it is still
+                        required to explicitely check if the blocks are on the selceted chain */
                         let acc_tx =
                             ctx.consensus.acceptance_data_store.get(old_block).unwrap()[0].accepted_transactions[0].transaction_id;
                         receipts1.insert(old_block, ctx.consensus.generate_tx_receipt(acc_tx, Some(blk_header.hash), None).unwrap());
@@ -354,11 +270,7 @@ async fn test_receipts_in_random() {
     eprintln!("receipts:{}", receipts1.len());
 
     assert!(receipts1.len() >= DAG_SIZE as usize / (4.5 * BPS) as usize); //sanity check
-    assert!(pops1.len() >= DAG_SIZE as usize / (5 * BPS as usize)); //sanity check
-    for (pochm, blk) in pochms_list.into_iter() {
-        eprintln!("blk_verified: {:?}", blk);
-        assert!(ctx.consensus.verify_proof_of_chain_membership(blk, &pochm));
-    }
+
     for rec in receipts1.values() {
         assert!(ctx.consensus.verify_tx_receipt(rec));
     }
@@ -368,16 +280,4 @@ async fn test_receipts_in_random() {
     for rec in receipts3.values() {
         assert!(ctx.consensus.verify_tx_receipt(rec));
     }
-
-    for proof in pops1.values() {
-        assert!(ctx.consensus.verify_proof_of_publication(proof));
-    }
-
-    for proof in pops2.values() {
-        assert!(ctx.consensus.verify_proof_of_publication(proof));
-    }
-    for proof in pops3.values() {
-        assert!(ctx.consensus.verify_proof_of_publication(proof));
-    }
-    assert!(pathologies_count <= DAG_SIZE / 9);
 }
