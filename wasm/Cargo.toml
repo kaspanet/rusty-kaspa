@@ -38,7 +38,7 @@ workflow-log.workspace = true
 workflow-core.workspace = true
 workflow-wasm.workspace = true
 
-[features] 
+[features]
 wasm32-sdk = [
     "kaspa-wallet-core/wasm32-sdk",
     "kaspa-pow/wasm32-sdk",
@@ -64,7 +64,7 @@ targets = ["wasm32-unknown-unknown"]
 [package.metadata.emanate.wasm]
 targets = [
     { target = "nodejs", out-dir = "nodejs/kaspa" },
-    { target = "web", out-dir = "web/kaspa" }
+    { target = "web", out-dir = "web/kaspa" },
 ]
 folder = "setup"
 
