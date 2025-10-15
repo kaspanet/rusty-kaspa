@@ -696,6 +696,5 @@ pub const DEVNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 
     crescendo: CRESCENDO,
-    // TODO: Set this to always after the fork
-    crescendo_activation: ForkActivation::never(),
+    crescendo_activation: ForkActivation::always(),
 };
