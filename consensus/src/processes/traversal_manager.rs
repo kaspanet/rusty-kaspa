@@ -1,4 +1,7 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::Arc,
+};
 
 use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
@@ -154,5 +157,100 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
         }
 
         current
+    }
+    /* returns all blocks on route on the bfs path from this to descendant
+     */
+    pub fn forward_bfs_paths_iterator(&self, this: Hash, descendant: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
+        BlocksBfsPathsIterator::new(this, Some(descendant), &self.reachability_service, &self.relations_store, BfsDirection::Forward)
+    }
+
+    /* returns all  known blocks on route on the bfs path from this onward
+     */
+    pub fn default_forward_bfs_paths_iterator(&self, this: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
+        BlocksBfsPathsIterator::new(this, None, &self.reachability_service, &self.relations_store, BfsDirection::Forward)
+    }
+
+    /* returns all nodes on route on the backward bfs path from this to ancestor
+     */
+    pub fn backward_bfs_paths_iterator(&self, this: Hash, ancestor: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
+        BlocksBfsPathsIterator::new(this, Some(ancestor), &self.reachability_service, &self.relations_store, BfsDirection::Backward)
+    }
+    /* returns all nodes on route on the backward bfs path from this to genesis
+     */
+    pub fn default_backward_bfs_paths_iterator(&self, this: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
+        BlocksBfsPathsIterator::new(this, None, &self.reachability_service, &self.relations_store, BfsDirection::Backward)
+    }
+}
+#[derive(PartialEq, Eq)]
+pub enum BfsDirection {
+    Forward,
+    Backward,
+}
+pub struct BlocksBfsPathsIterator<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> {
+    queue: VecDeque<Vec<Hash>>,
+    visited: HashSet<Hash>,
+    edge: Option<Hash>,
+    reachability_service: &'a MTReachabilityService<U>,
+    relations_store: &'a V,
+    bfs_direction: BfsDirection,
+}
+
+impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> BlocksBfsPathsIterator<'a, U, V> {
+    pub fn new(
+        start: Hash,
+        edge: Option<Hash>,
+        reachability_service: &'a MTReachabilityService<U>,
+        relations_store: &'a V,
+        bfs_direction: BfsDirection,
+    ) -> Self {
+        let mut queue = VecDeque::new();
+        queue.push_back(vec![start]);
+        let mut visited = HashSet::new();
+        visited.insert(start); //note that in a dag this isn't actually necessary, but is kept for logical clarity
+        Self { queue, visited, edge, reachability_service, relations_store, bfs_direction }
+    }
+    pub fn map_paths_to_tips(self) -> impl Iterator<Item = Hash> + use<'a, U, V> {
+        self.map(|path| path.last().cloned().unwrap())
+    }
+}
+impl<U: ReachabilityStoreReader, V: RelationsStoreReader> Iterator for BlocksBfsPathsIterator<'_, U, V> {
+    type Item = Vec<Hash>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut curr;
+        let mut path;
+        loop {
+            //loop until a block on the route is found
+            if self.queue.is_empty() {
+                return None;
+            }
+            path = self.queue.pop_front().unwrap();
+            curr = *path.last().unwrap(); // path should never be empty
+
+            if self.edge.is_none()
+                || self.bfs_direction == BfsDirection::Forward
+                    && self.reachability_service.is_dag_ancestor_of_result(curr, self.edge.unwrap()).is_ok_and(|bool| bool)
+                || self.bfs_direction == BfsDirection::Backward
+                    && self.reachability_service.is_dag_ancestor_of_result(self.edge.unwrap(), curr).is_ok_and(|bool| bool)
+            {
+                //once a block on the route is found in the queue, break out of loop
+                break;
+            }
+        }
+        let next_batch = match self.bfs_direction {
+            // type checker gives me hell here
+            BfsDirection::Forward => self.relations_store.get_children(curr).unwrap().read().iter().cloned().collect_vec(), // I feel like this can potentially panic
+            BfsDirection::Backward => self.relations_store.get_parents(curr).unwrap_or(vec![].into()).iter().cloned().collect_vec(),
+        };
+        for &elem in next_batch.iter() {
+            if !self.visited.contains(&elem) {
+                let mut new_path = path.clone();
+                new_path.push(elem);
+                self.queue.push_back(new_path);
+                self.visited.insert(elem);
+            }
+        }
+
+        Some(path)
     }
 }

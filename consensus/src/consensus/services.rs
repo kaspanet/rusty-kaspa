@@ -4,12 +4,14 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
+            acceptance_data::DbAcceptanceDataStore, block_transactions::DbBlockTransactionsStore,
             block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
             headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore,
             pruning::DbPruningStore, pruning_samples::DbPruningSamplesStore, reachability::DbReachabilityStore,
             relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
         },
     },
+    pipeline::tx_receipts_manager::TxReceiptsManager,
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, ghostdag::protocol::GhostdagManager,
         parents_builder::ParentsManager, pruning::PruningPointManager, pruning_proof::PruningProofManager, sync::SyncManager,
@@ -25,7 +27,6 @@ pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
 
 pub type DbDagTraversalManager = DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
-
 pub type DbWindowManager = DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>;
 
 pub type DbSyncManager = SyncManager<
@@ -48,6 +49,14 @@ pub type DbPruningPointManager = PruningPointManager<
 >;
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore, DbHeadersStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
+pub type DbTxReceiptsManager = TxReceiptsManager<
+    DbSelectedChainStore,
+    DbReachabilityStore,
+    DbHeadersStore,
+    DbAcceptanceDataStore,
+    DbBlockTransactionsStore,
+    DbPruningStore,
+>;
 
 pub struct ConsensusServices {
     // Underlying storage
@@ -68,6 +77,7 @@ pub struct ConsensusServices {
     pub depth_manager: DbBlockDepthManager,
     pub mass_calculator: MassCalculator,
     pub transaction_validator: TransactionValidator,
+    pub tx_receipts_manager: DbTxReceiptsManager,
 }
 
 impl ConsensusServices {
@@ -79,7 +89,6 @@ impl ConsensusServices {
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Arc<Self> {
         let params = &config.params;
-
         let statuses_service = MTStatusesService::new(storage.statuses_store.clone());
         let relations_services =
             (0..=params.max_block_level).map(|level| MTRelationsService::new(storage.relations_stores.clone(), level)).collect_vec();
@@ -201,6 +210,18 @@ impl ConsensusServices {
             storage.pruning_point_store.clone(),
             storage.statuses_store.clone(),
         );
+        let tx_receipts_manager = TxReceiptsManager::new(
+            params.genesis.clone(),
+            params.finality_depth(),
+            reachability_service.clone(),
+            storage.headers_store.clone(),
+            storage.selected_chain_store.clone(),
+            storage.acceptance_data_store.clone(),
+            storage.block_transactions_store.clone(),
+            storage.pruning_point_store.clone(),
+            dag_traversal_manager.clone(),
+            params.crescendo_activation,
+        );
 
         Arc::new(Self {
             storage,
@@ -218,6 +239,7 @@ impl ConsensusServices {
             depth_manager,
             mass_calculator,
             transaction_validator,
+            tx_receipts_manager,
         })
     }
 }
