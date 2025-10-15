@@ -24,14 +24,14 @@ ENV RUSTFLAGS="-C target-feature=-crt-static" \
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL="sparse"
 
 # Build dependencies - this is the caching Docker layer
-RUN cargo chef cook --release --recipe-path recipe.json -p kaspad --bin kaspad
+RUN cargo chef cook --release --recipe-path recipe.json -p rothschild --bin rothschild
 
 COPY . .
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=cargo-target,target=/app/target,sharing=locked \
-    cargo build --release --bin kaspad \
-    && cp /app/target/release/kaspad /app/kaspad   # <-- outside the mount, persists
+    cargo build --release --bin rothschild \
+    && cp /app/target/release/rothschild /app/rothschild   # <-- outside the mount, persists
 
 
 # ---------------------------------------- Runtime image ----------------------------------------
@@ -44,8 +44,8 @@ RUN apk --no-cache add \
   tini \
   ca-certificates
 
-COPY --from=builder /app/kaspad .
+COPY --from=builder /app/rothschild .
 
 USER root
 ENTRYPOINT [ "/sbin/tini", "--" ]
-CMD [ "/app/kaspad" ]
+CMD [ "/app/rothschild" ]
