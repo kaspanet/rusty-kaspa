@@ -124,6 +124,13 @@ impl PruningProcessor {
         while let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() {
             if !recovered {
                 if !self.recover_pruning_workflows_if_needed() {
+                    // Recovery could fail for several reasons:
+                    // (a) Consensus has exited while it was undergoing
+                    // (b) Consensus is in a transitional state
+                    // (c) Consensus is no longer in a transitional state per-se but has yet to catch up on sufficient block data
+                    // For (a), the best course of measure is to exit the loop
+                    // For (b)+(c), it is to attempt it again
+                    // Continuing the loop satisfies both since if consensus exited the next iteration of the loop will exit as well
                     continue;
                 }
                 recovered = true;
@@ -133,7 +140,7 @@ impl PruningProcessor {
     }
 
     fn recover_pruning_workflows_if_needed(&self) -> bool {
-        /*returns true if recorvery was completed successfully or was not needed */
+        //returns true if recorvery was completed successfully or was not needed
         let pruning_point_read = self.pruning_point_store.read();
         let pruning_point = pruning_point_read.pruning_point().unwrap();
         let retention_checkpoint = pruning_point_read.retention_checkpoint().unwrap();
@@ -166,7 +173,7 @@ impl PruningProcessor {
             }
             let pruning_meta_read = self.pruning_meta_stores.read();
 
-            // halt pruning if syncing is undergoing
+            // halt pruning if in a transitional ibd case.
             if !pruning_meta_read.utxo_sync_flag().unwrap_or(false) || !pruning_meta_read.is_anticone_fully_synced() {
                 return false;
             }

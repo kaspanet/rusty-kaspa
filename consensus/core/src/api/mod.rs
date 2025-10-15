@@ -336,10 +336,10 @@ pub trait ConsensusApi: Send + Sync {
     fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
-    fn get_disembodied_trusted_headers(&self) -> ConsensusResult<Vec<Arc<Header>>> {
+    fn get_disembodied_anticone(&self) -> Vec<Hash> {
         unimplemented!()
     }
-    fn clear_anticone_disembodied_blocks(&self) {
+    fn clear_disembodied_anticone_cache(&self) {
         unimplemented!()
     }
 

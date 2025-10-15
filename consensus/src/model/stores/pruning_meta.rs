@@ -38,6 +38,7 @@ impl PruningMetaStores {
     pub fn set_utxoset_position(&mut self, batch: &mut WriteBatch, pruning_utxoset_position: Hash) -> StoreResult<()> {
         self.utxoset_position_access.write(BatchDbWriter::new(batch), &pruning_utxoset_position)
     }
+
     /// Flip the sync flag in the same batch as your other writes
     pub fn set_utxo_sync_flag(&mut self, batch: &mut WriteBatch, synced: bool) -> StoreResult<()> {
         self.utxoset_sync_flag_access.write(BatchDbWriter::new(batch), &synced)
@@ -47,15 +48,18 @@ impl PruningMetaStores {
     pub fn utxo_sync_flag(&self) -> StoreResult<bool> {
         self.utxoset_sync_flag_access.read().or(Ok(true))
     }
-    /* represents blocks in the anticone of the current pruning point which may lack a block body
-    This blocks need to be kept track of as they require trusted validation,
-    so that downloading of further blocks on top of them could resume*/
+
+    /// Represents blocks in the anticone of the current pruning point which may lack a block body
+    /// These blocks need to be kept track of as they require trusted validation,
+    /// so that downloading of further blocks on top of them could resume
     pub fn set_disembodied_anticone(&mut self, batch: &mut WriteBatch, disembodied_anticone: Vec<Hash>) -> StoreResult<()> {
         self.disembodied_anticone_blocks.write(BatchDbWriter::new(batch), &disembodied_anticone)
     }
+
     pub fn get_disembodied_anticone(&self) -> StoreResult<Vec<Hash>> {
         self.disembodied_anticone_blocks.read()
     }
+
     // check if there are any disembodied blocks remanining in the anticone of the current pruning point
     pub fn is_anticone_fully_synced(&self) -> bool {
         self.disembodied_anticone_blocks.read().unwrap_or_default().is_empty()

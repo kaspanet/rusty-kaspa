@@ -423,11 +423,11 @@ impl ConsensusSessionOwned {
     pub async fn async_get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {
         self.clone().spawn_blocking(move |c| c.get_missing_block_body_hashes(high)).await
     }
-    pub async fn async_get_disembodied_trusted_headers(&self) -> ConsensusResult<Vec<Arc<Header>>> {
-        self.clone().spawn_blocking(move |c| c.get_disembodied_trusted_headers()).await
+    pub async fn async_get_disembodied_anticone(&self) -> Vec<Hash> {
+        self.clone().spawn_blocking(move |c| c.get_disembodied_anticone()).await
     }
-    pub async fn async_clear_anticone_disembodied_blocks(&self) {
-        self.clone().spawn_blocking(move |c| c.clear_anticone_disembodied_blocks()).await
+    pub async fn async_clear_disembodied_anticone_cache(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_disembodied_anticone_cache()).await
     }
 
     pub async fn async_pruning_point(&self) -> Hash {

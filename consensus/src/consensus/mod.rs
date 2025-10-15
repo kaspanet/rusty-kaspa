@@ -1066,26 +1066,20 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(high)?;
         Ok(self.services.sync_manager.get_missing_block_body_hashes(high)?)
     }
-    fn get_disembodied_trusted_headers(&self) -> ConsensusResult<Vec<Arc<Header>>> {
-        let disembodied_hashes = self.pruning_meta_stores.read().get_disembodied_anticone().unwrap_or_default();
-        print!("{disembodied_hashes:?}");
-        let pruning_point = self.pruning_point();
-        //sanity check
-        for &h in disembodied_hashes.iter() {
-            if h != pruning_point {
-                assert!(!self.services.reachability_service.is_dag_ancestor_of(h, pruning_point));
-                assert!(!self.services.reachability_service.is_dag_ancestor_of(pruning_point, h));
-            }
-        }
-        let ret = disembodied_hashes.iter().map(|&h| self.headers_store.get_header(h).unwrap()).collect_vec();
-        Ok(ret)
+    /// Returns the set of blocks in the anticone of the current pruning point
+    /// which (may) lack a block body due to being in a transitional state
+    /// If not in a transitional state this list is supposed to be empty
+    fn get_disembodied_anticone(&self) -> Vec<Hash> {
+        self.pruning_meta_stores.read().get_disembodied_anticone().unwrap_or_default()
     }
-    fn clear_anticone_disembodied_blocks(&self) {
+
+    fn clear_disembodied_anticone_cache(&self) {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
         let mut batch = rocksdb::WriteBatch::default();
         pruning_meta_write.set_disembodied_anticone(&mut batch, vec![]).unwrap();
         self.db.write(batch).unwrap();
     }
+
     fn pruning_point(&self) -> Hash {
         self.pruning_point_store.read().pruning_point().unwrap()
     }
@@ -1165,6 +1159,7 @@ impl ConsensusApi for Consensus {
     fn finality_point(&self) -> Hash {
         self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
     }
+
     fn clear_pruning_utxo_set(&self) {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
         let mut batch = rocksdb::WriteBatch::default();
@@ -1173,7 +1168,11 @@ impl ConsensusApi for Consensus {
         self.db.write(batch).unwrap();
         pruning_meta_write.utxo_set.clear().unwrap();
     }
+
     fn is_pruning_sample(&self, candidate_hash: Hash) -> bool {
+        if candidate_hash == self.config.genesis.hash {
+            return true;
+        }
         if let Ok(candidate_hdr) = self.get_header(candidate_hash) {
             let candidate_bscore = candidate_hdr.blue_score;
             let parent_bscore = self.get_header(candidate_hdr.direct_parents()[0]).unwrap().blue_score;
@@ -1185,10 +1184,11 @@ impl ConsensusApi for Consensus {
         }
         false
     }
+
     fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
-        /*The new pruning point must be an ancestor of the syncer_sink, if it is not return an error at once */
+        //The new pruning point must be an ancestor of the syncer_sink, if it is not return an error at once
         if !self.services.reachability_service.is_chain_ancestor_of(new_pruning_point, syncer_sink) {
-            return Err(ConsensusError::General(" new pruning point is not in the past of syncer sink"));
+            return Err(ConsensusError::General("new pruning point is not in the past of syncer sink"));
         }
         info!("Setting {new_pruning_point} as the pruning point");
 
@@ -1269,6 +1269,7 @@ impl ConsensusApi for Consensus {
         drop(pruning_point_write);
         Ok(())
     }
+
     fn set_utxo_sync_flag(&self, set_val: bool) {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
         let mut batch = rocksdb::WriteBatch::default();
@@ -1276,10 +1277,12 @@ impl ConsensusApi for Consensus {
         pruning_meta_write.set_utxo_sync_flag(&mut batch, set_val).unwrap();
         self.db.write(batch).unwrap();
     }
+
     fn is_utxo_validated(&self) -> bool {
         let pruning_meta_read = self.pruning_meta_stores.read();
         pruning_meta_read.utxo_sync_flag().unwrap()
     }
+
     fn is_anticone_fully_synced(&self) -> bool {
         let pruning_meta_read = self.pruning_meta_stores.read();
         pruning_meta_read.is_anticone_fully_synced()
