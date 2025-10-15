@@ -817,3 +817,31 @@ fn test_generator_fan_out_1() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_generator_payload_only() -> Result<()> {
+    let utxo_value = 130.0;
+    let utxo_entries: Vec<UtxoEntryReference> =
+        vec![utxo_value].into_iter().map(kaspa_to_sompi).map(UtxoEntryReference::simulated).collect();
+
+    let utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static> = Box::new(utxo_entries.into_iter());
+
+    let settings = GeneratorSettings::try_new_with_iterator(
+        test_network_id(),
+        utxo_iterator,
+        None,
+        change_address(test_network_id().into()),
+        1,
+        1,
+        PaymentDestination::Change,
+        None,
+        Fees::None,
+        Some("Test Payload".into()),
+        None,
+    )?;
+
+    let generator = Generator::try_new(settings, None, None)?;
+    generator.harness().accumulate(1).finalize();
+
+    Ok(())
+}

@@ -540,6 +540,12 @@ impl Generator {
         &self.inner.signer
     }
 
+    /// Returns the payload (if available)
+    #[inline(always)]
+    pub fn payload(&self) -> Option<&[u8]> {
+        (!self.inner.final_transaction_payload.is_empty()).then(|| self.inner.final_transaction_payload.as_slice())
+    }
+
     /// The total amount of fees in SOMPI consumed during the transaction generation process.
     #[inline(always)]
     pub fn aggregate_fees(&self) -> u64 {
@@ -753,7 +759,7 @@ impl Generator {
         stage.aggregate_fees += data.transaction_fees;
         context.aggregate_fees += data.transaction_fees;
 
-        if context.aggregated_utxos < 2 {
+        if context.aggregated_utxos < 2 && self.payload().is_none() {
             Ok((DataKind::NoOp, data))
         } else if stage.number_of_transactions > 0 {
             data.aggregate_mass += self.inner.standard_change_output_compute_mass;
