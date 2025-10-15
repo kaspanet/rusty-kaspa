@@ -4,7 +4,7 @@ use clap::{Arg, ArgAction, Command};
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
-    config::params::TESTNET_PARAMS,
+    config::params::{DEVNET_PARAMS, TESTNET_PARAMS},
     constants::{SOMPI_PER_KASPA, TX_VERSION},
     sign::sign,
     subnets::SUBNETWORK_ID_NATIVE,
@@ -27,7 +27,6 @@ use tokio::time::{interval, Instant, MissedTickBehavior};
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
 const FEE_RATE: u64 = 10;
 const MILLIS_PER_TICK: u64 = 10;
-const ADDRESS_PREFIX: Prefix = Prefix::Testnet;
 const ADDRESS_VERSION: Version = Version::PubKey;
 
 struct Stats {
@@ -48,6 +47,7 @@ pub struct Args {
     pub priority_fee: u64,
     pub randomize_fee: bool,
     pub payload_size: usize,
+    pub devnet: bool,
 }
 
 impl Args {
@@ -63,6 +63,7 @@ impl Args {
             priority_fee: m.get_one::<u64>("priority-fee").cloned().unwrap_or(0),
             randomize_fee: m.get_one::<bool>("randomize-fee").cloned().unwrap_or(false),
             payload_size: m.get_one::<usize>("payload-size").cloned().unwrap_or(0),
+            devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(false),
         }
     }
 }
@@ -126,6 +127,14 @@ pub fn cli() -> Command {
                 .value_parser(clap::value_parser!(usize))
                 .help("Randomized payload size"),
         )
+        .arg(
+            Arg::new("devnet")
+                .long("devnet")
+                .value_name("devnet")
+                .action(ArgAction::SetTrue)
+                .default_value("false")
+                .help("Enable devnet mode (otherwise testnet is used)"),
+        )
 }
 
 async fn new_rpc_client(subscription_context: &SubscriptionContext, address: &str) -> GrpcClient {
@@ -181,13 +190,14 @@ async fn main() {
 
     let mut pending: HashMap<TransactionOutpoint, Instant> = HashMap::new();
 
+    let address_prefix = if args.devnet { Prefix::Devnet } else { Prefix::Testnet };
     let schnorr_key = if let Some(private_key_hex) = args.private_key {
         let mut private_key_bytes = [0u8; 32];
         faster_hex::hex_decode(private_key_hex.as_bytes(), &mut private_key_bytes).unwrap();
         Keypair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap()
     } else {
         let (sk, pk) = &secp256k1::generate_keypair(&mut thread_rng());
-        let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &pk.x_only_public_key().0.serialize());
+        let kaspa_addr = Address::new(address_prefix, ADDRESS_VERSION, &pk.x_only_public_key().0.serialize());
         info!(
             "Generated private key {} and address {}. Send some funds to this address and rerun rothschild with `--private-key {}`",
             sk.display_secret(),
@@ -197,7 +207,7 @@ async fn main() {
         return;
     };
 
-    let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &schnorr_key.x_only_public_key().0.serialize());
+    let kaspa_addr = Address::new(address_prefix, ADDRESS_VERSION, &schnorr_key.x_only_public_key().0.serialize());
 
     let kaspa_to_addr = args.addr.as_ref().map_or_else(|| kaspa_addr.clone(), |addr_str| Address::try_from(addr_str.clone()).unwrap());
 
@@ -231,9 +241,10 @@ async fn main() {
 
     let info = rpc_client.get_block_dag_info().await.expect("Failed to get block dag info.");
 
+    let params = if args.devnet { &DEVNET_PARAMS } else { &TESTNET_PARAMS };
     let coinbase_maturity = match info.network.suffix {
         Some(11) => panic!("TN11 is not supported on this version"),
-        None | Some(_) => TESTNET_PARAMS.coinbase_maturity().upper_bound(),
+        None | Some(_) => params.coinbase_maturity().upper_bound(),
     };
     info!(
         "Node block-DAG info: \n\tNetwork: {}, \n\tBlock count: {}, \n\tHeader count: {}, \n\tDifficulty: {}, 
