@@ -62,7 +62,7 @@ macro_rules! opcode_init {
 }
 
 macro_rules! opcode_impl {
-    ($name: ident, $num: literal, $length: tt, $code: expr, $self:ident, $vm:ident ) => {
+    ($name: ident, $str_rep: literal, $num: literal, $length: tt, $code: expr, $self:ident, $vm:ident ) => {
         type $name = OpCode<$num>;
 
         impl OpcodeSerialization for $name {
@@ -83,11 +83,17 @@ macro_rules! opcode_impl {
         }
 
         impl<T: VerifiableTransaction, Reused: SigHashReusedValues> OpCodeImplementation<T, Reused> for $name {}
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, $str_rep)
+            }
+        }
     }
 }
 
 macro_rules! opcode_list {
-    ( $( opcode $(|$alias:ident|)? $name:ident<$num:literal, $length:tt>($self:ident, $vm:ident) $code: expr ) *)  => {
+    ( $( opcode $(|$alias:ident|)? $name:ident<$str_rep:literal, $num:literal, $length:tt>($self:ident, $vm:ident) $code: expr ) *)  => {
         pub mod codes {
             $(
                 #[allow(non_upper_case_globals)]
@@ -103,7 +109,7 @@ macro_rules! opcode_list {
         }
 
         $(
-            opcode_impl!($name, $num, $length, $code, $self, $vm);
+            opcode_impl!($name, $str_rep, $num, $length, $code, $self, $vm);
 
             $(
                 #[allow(dead_code)]

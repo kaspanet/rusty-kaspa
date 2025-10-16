@@ -3179,6 +3179,7 @@ version = "1.0.1"
 dependencies = [
  "blake2b_simd",
  "borsh",
+ "bs58",
  "cfg-if 1.0.0",
  "criterion",
  "hex",

@@ -11,7 +11,7 @@ pub struct MultiSigScriptParameters {
     pub signers_pubkey: Vec<secp256k1::XOnlyPublicKey>,
 }
 
-/// Extract parameters from a standard multisig script:
+/// Extract parameters from a standard multisig script (schnorr):
 ///   OP_m <pubkey1> ... <pubkeyn> OP_n OP_CHECKMULTISIG
 pub fn get_multisig_params<'a, T: VerifiableTransaction, Reused: SigHashReusedValues>(
     opcodes: &'a [Box<dyn OpCodeImplementation<T, Reused>>],
