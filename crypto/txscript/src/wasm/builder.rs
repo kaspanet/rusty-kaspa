@@ -1,6 +1,9 @@
 use crate::result::Result;
 use crate::{script_builder as native, standard};
-use kaspa_consensus_core::tx::ScriptPublicKey;
+use kaspa_consensus_core::{
+    hashing::sighash::SigHashReusedValuesSync,
+    tx::{ScriptPublicKey, ValidatedTransaction},
+};
 use kaspa_utils::hex::ToHex;
 use kaspa_wasm_core::hex::{HexViewConfig, HexViewConfigT};
 use kaspa_wasm_core::types::{BinaryT, HexString};
@@ -179,6 +182,6 @@ impl ScriptBuilder {
 
     #[wasm_bindgen(js_name = "stringView")]
     pub fn string_view(&self) -> String {
-        self.inner().string_view()
+        self.inner().string_view::<ValidatedTransaction, SigHashReusedValuesSync>()
     }
 }
