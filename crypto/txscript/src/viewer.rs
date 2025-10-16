@@ -3,7 +3,6 @@ use kaspa_consensus_core::{hashing::sighash::SigHashReusedValues, tx::Verifiable
 use std::{
     fmt::{Display, Formatter},
     marker::PhantomData,
-    str,
 };
 
 pub struct ScriptViewer<'a, T, Reused> {
@@ -36,7 +35,7 @@ where
 
             s.push_str(opcode.to_string().as_str());
 
-            if value >= codes::OpData1 && value <= codes::OpData75 {
+            if (codes::OpData1..=codes::OpData75).contains(&value) {
                 let data = opcode.get_data();
                 s.push(' ');
                 s.push_str(&hex::encode(data));
@@ -52,7 +51,7 @@ where
                 if let Ok(sub_disassembly) = sub_viewer.try_to_string() {
                     if sub_disassembly.contains("OP_") {
                         s.push_str("\n    -- Begin Redeem Script --\n");
-                        let indented = sub_disassembly.lines().map(|line| format!("{}", line)).collect::<Vec<_>>().join("\n");
+                        let indented = sub_disassembly.lines().map(|line| line.to_string()).collect::<Vec<_>>().join("\n");
                         s.push_str(&indented);
                         s.push_str("\n    -- End Redeem Script --");
                     }

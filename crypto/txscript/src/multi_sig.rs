@@ -13,8 +13,8 @@ pub struct MultiSigScriptParameters {
 
 /// Extract parameters from a standard multisig script (schnorr):
 ///   OP_m <pubkey1> ... <pubkeyn> OP_n OP_CHECKMULTISIG
-pub fn get_multisig_params<'a, T: VerifiableTransaction, Reused: SigHashReusedValues>(
-    opcodes: &'a [Box<dyn OpCodeImplementation<T, Reused>>],
+pub fn get_multisig_params<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+    opcodes: &[Box<dyn OpCodeImplementation<T, Reused>>],
     checkmultisig_index: usize,
 ) -> Result<MultiSigScriptParameters, TxScriptError> {
     let op_n = opcodes
