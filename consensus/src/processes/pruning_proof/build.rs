@@ -178,15 +178,14 @@ impl PruningProofManager {
         pp_header: &HeaderWithBlockLevel,
         temp_db: Arc<DB>,
     ) -> (Vec<Arc<DbGhostdagStore>>, Vec<Hash>, Vec<Hash>) {
-        let current_dag_level = self.find_current_dag_level(&pp_header.header);
         let mut ghostdag_stores: Vec<Option<Arc<DbGhostdagStore>>> = vec![None; self.max_block_level as usize + 1];
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
-        let mut root_by_level = vec![None; self.max_block_level as usize + 1];
+        let mut root_by_level: Vec<Option<Hash>> = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
             let level_usize = level as usize;
             let required_block = if level != self.max_block_level {
                 let next_level_store = ghostdag_stores[level_usize + 1].as_ref().unwrap().clone();
-                let block_at_depth_m_at_next_level = self
+                let block_at_depth_m_at_next_level: Hash = self
                     .block_at_depth(&*next_level_store, selected_tip_by_level[level_usize + 1].unwrap(), self.pruning_proof_m)
                     .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
                     .unwrap();
@@ -195,7 +194,7 @@ impl PruningProofManager {
                 None
             };
             let (store, selected_tip, root) = self
-                .find_sufficient_root(pp_header, level, current_dag_level, required_block, temp_db.clone())
+                .find_sufficiently_deep_level_root(pp_header, level, required_block, temp_db.clone())
                 .unwrap_or_else(|_| panic!("find_sufficient_root failed for level {level}"));
             ghostdag_stores[level_usize] = Some(store);
             selected_tip_by_level[level_usize] = Some(selected_tip);
@@ -217,11 +216,10 @@ impl PruningProofManager {
     /// 2. block at depth m at the next level ∈ Future(root)
     ///
     /// Returns: the filled ghostdag store from root to tip, the selected tip and the root
-    fn find_sufficient_root(
+    fn find_sufficiently_deep_level_root(
         &self,
         pp_header: &HeaderWithBlockLevel,
         level: BlockLevel,
-        _current_dag_level: BlockLevel,
         required_block: Option<Hash>,
         temp_db: Arc<DB>,
     ) -> PruningProofManagerInternalResult<(Arc<DbGhostdagStore>, Hash, Hash)> {
@@ -409,12 +407,12 @@ impl PruningProofManager {
             .parents_by_level
             .iter()
             .enumerate()
-            .skip(1)
+            .skip(1) // skip checking direct parents
             .find_map(|(level, parents)| {
                 if BlockHashSet::from_iter(parents.iter().copied()) == direct_parents {
                     None
                 } else {
-                    Some((level - 1) as BlockLevel)
+                    Some((level - 1)  as BlockLevel)
                 }
             })
             .unwrap_or(self.max_block_level)
@@ -465,6 +463,7 @@ impl PruningProofManager {
 
         while current_header.blue_score + base_depth >= high_header_score {
             if current_header.direct_parents().is_empty() {
+                //reached genesis
                 break;
             }
 

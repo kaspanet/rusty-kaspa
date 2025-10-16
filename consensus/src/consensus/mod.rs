@@ -24,9 +24,11 @@ use crate::{
             pruning_samples::{PruningSamplesStore, PruningSamplesStoreReader},
             reachability::ReachabilityStoreReader,
             relations::RelationsStoreReader,
+            selected_chain::SelectedChainStore,
             statuses::StatusesStoreReader,
-            tips::TipsStoreReader,
+            tips::{TipsStore, TipsStoreReader},
             utxo_set::{UtxoSetStore, UtxoSetStoreReader},
+            virtual_state::VirtualState,
             DB,
         },
     },
@@ -82,11 +84,14 @@ use crossbeam_channel::{
 use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
+use kaspa_core::info;
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
+use parking_lot::RwLockUpgradableReadGuard;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rocksdb::WriteBatch;
 
 use std::{
     cmp::Reverse,
@@ -815,10 +820,10 @@ impl ConsensusApi for Consensus {
         if self.pruning_point_store.read().pruning_point().unwrap() != expected_pruning_point {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
-        let pruning_utxoset_read = self.pruning_utxoset_stores.read();
-        let iter = pruning_utxoset_read.utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        let iter = pruning_meta_read.utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
         let utxos = iter.map(|item| item.unwrap()).collect();
-        drop(pruning_utxoset_read);
+        drop(pruning_meta_read);
 
         // We recheck the expected pruning point in case it was switched just before the utxo set read.
         // NOTE: we rely on order of operations by pruning processor. See extended comment therein.
@@ -855,8 +860,8 @@ impl ConsensusApi for Consensus {
     }
 
     fn append_imported_pruning_point_utxos(&self, utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)], current_multiset: &mut MuHash) {
-        let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
-        pruning_utxoset_write.utxo_set.write_many(utxoset_chunk).unwrap();
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        pruning_meta_write.utxo_set.write_many(utxoset_chunk).unwrap();
 
         // Parallelize processing using the context of an existing thread pool.
         let inner_multiset = self.virtual_processor.install(|| {
@@ -875,17 +880,16 @@ impl ConsensusApi for Consensus {
 
     fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         let hst = self.storage.headers_selected_tip_store.read().get().unwrap().hash;
-        let pp_info = self.pruning_point_store.read().get().unwrap();
-        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, hst) {
+        let synced_pp_info = self.pruning_point_store.read().get().unwrap();
+        if !self.services.pruning_point_manager.is_valid_pruning_point(synced_pp_info.pruning_point, hst) {
             return Err(ConsensusError::General("pruning point does not coincide with the synced header selected tip"));
         }
-        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, syncer_virtual_selected_parent) {
+        if !self.services.pruning_point_manager.is_valid_pruning_point(synced_pp_info.pruning_point, syncer_virtual_selected_parent) {
             return Err(ConsensusError::General("pruning point does not coincide with the syncer's sink (virtual selected parent)"));
         }
-        self.services
-            .pruning_point_manager
-            .are_pruning_points_in_valid_chain(pp_info, syncer_virtual_selected_parent)
-            .map_err(|e| ConsensusError::GeneralOwned(format!("past pruning points do not form a valid chain: {}", e)))
+        self.services.pruning_point_manager.are_pruning_points_in_valid_chain(synced_pp_info, syncer_virtual_selected_parent).map_err(
+            |e: PruningImportError| ConsensusError::GeneralOwned(format!("past pruning points do not form a valid chain: {}", e)),
+        )
     }
 
     fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
@@ -1061,6 +1065,19 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(high)?;
         Ok(self.services.sync_manager.get_missing_block_body_hashes(high)?)
     }
+    /// Returns the set of blocks in the anticone of the current pruning point
+    /// which (may) lack a block body due to being in a transitional state
+    /// If not in a transitional state this list is supposed to be empty
+    fn get_disembodied_anticone(&self) -> Vec<Hash> {
+        self.pruning_meta_stores.read().get_disembodied_anticone().unwrap_or_default()
+    }
+
+    fn clear_disembodied_anticone_cache(&self) {
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+        pruning_meta_write.set_disembodied_anticone(&mut batch, vec![]).unwrap();
+        self.db.write(batch).unwrap();
+    }
 
     fn pruning_point(&self) -> Hash {
         self.pruning_point_store.read().pruning_point().unwrap()
@@ -1140,5 +1157,134 @@ impl ConsensusApi for Consensus {
 
     fn finality_point(&self) -> Hash {
         self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
+    }
+
+    fn clear_pruning_utxo_set(&self) {
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+
+        pruning_meta_write.set_utxo_sync_flag(&mut batch, false).unwrap();
+        self.db.write(batch).unwrap();
+        pruning_meta_write.utxo_set.clear().unwrap();
+    }
+
+    fn is_pruning_sample(&self, candidate_hash: Hash) -> bool {
+        if candidate_hash == self.config.genesis.hash {
+            return true;
+        }
+        if let Ok(candidate_hdr) = self.get_header(candidate_hash) {
+            let candidate_bscore = candidate_hdr.blue_score;
+            let parent_bscore = self.get_header(candidate_hdr.direct_parents()[0]).unwrap().blue_score;
+            return self.services.pruning_point_manager.is_pruning_sample(
+                candidate_bscore,
+                parent_bscore,
+                self.config.params.finality_depth().after(),
+            );
+        }
+        false
+    }
+
+    fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
+        //The new pruning point must be an ancestor of the syncer_sink, if it is not return an error at once
+        if !self.services.reachability_service.is_chain_ancestor_of(new_pruning_point, syncer_sink) {
+            return Err(ConsensusError::General("new pruning point is not in the past of syncer sink"));
+        }
+        info!("Setting {new_pruning_point} as the pruning point");
+
+        let pruning_point_read = self.pruning_point_store.upgradable_read();
+        let retention_period_root = pruning_point_read.retention_period_root().unwrap();
+
+        let old_pruning_info = pruning_point_read.get().unwrap();
+        // note that the function below also updates the pruning samples,
+        // and implicitly confirms any pruning point pointed at en route to virtual is a pruning sample
+        let mut pruning_points_to_add =
+            self.services.pruning_point_manager.pruning_points_on_path_to_syncer_sink(old_pruning_info, syncer_sink).map_err(
+                |e: PruningImportError| {
+                    ConsensusError::GeneralOwned(format!("pruning points en route to syncer sink do not form a valid chain: {}", e))
+                },
+            )?;
+        // remove excess pruning points before the old pruning point
+        while let Some(past_pp) = pruning_points_to_add.pop_back() {
+            if past_pp == old_pruning_info.pruning_point {
+                break;
+            }
+        }
+        if pruning_points_to_add.is_empty() {
+            return Err(ConsensusError::General("old pruning points is inconsistent with synced headers"));
+        }
+        // remove excess pruning points beyond the new pruning_point
+        while let Some(&future_pp) = pruning_points_to_add.front() {
+            if future_pp == new_pruning_point {
+                break;
+            }
+            // here we only pop_front after checking as we want the new pruning_point to stay in the list
+            pruning_points_to_add.pop_front();
+        }
+        if pruning_points_to_add.is_empty() {
+            return Err(ConsensusError::General("new pruning point is inconsistent with synced headers"));
+        }
+
+        // if all has gone well, we can finally update pruning point and other stores.
+        let mut batch = WriteBatch::default();
+        let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
+        let new_pp_index = old_pruning_info.index + pruning_points_to_add.len() as u64;
+        pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pruning_point, new_pp_index).unwrap();
+        for (i, &past_pp) in pruning_points_to_add.iter().rev().enumerate() {
+            self.past_pruning_points_store.insert_batch(&mut batch, old_pruning_info.index + i as u64 + 1, past_pp).unwrap();
+        }
+
+        // For archival nodes, keep the retention root in place
+        if !self.config.is_archival {
+            // Possibly we should just advance to the pruning point and be done with.
+            // Currently this creates a weird hybrid where
+            // data would be available in gaps
+            let adjusted_retention_period_root =
+                self.pruning_processor.advance_retention_period_root(retention_period_root, new_pruning_point);
+            pruning_point_write.set_retention_period_root(&mut batch, adjusted_retention_period_root).unwrap();
+        }
+
+        // update virtual state based to the new pruning point
+        // updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
+        let virtual_parents = vec![new_pruning_point];
+        let virtual_state = Arc::new(VirtualState {
+            parents: virtual_parents.clone(),
+            ghostdag_data: self.services.ghostdag_manager.ghostdag(&virtual_parents),
+            ..VirtualState::default()
+        });
+        self.virtual_stores.write().state.set_batch(&mut batch, virtual_state).unwrap();
+        // remove old body tips and insert pruning point as the current tip
+        self.body_tips_store.write().delete_all_tips(&mut batch).unwrap();
+        self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
+        // update selected_chain
+        self.selected_chain_store.write().init_with_pruning_point(&mut batch, new_pruning_point).unwrap();
+        // it is important to set this flag to false together with writing the batch, in case the node crashes suddenly before syncing of new utxo starts
+        self.pruning_meta_stores.write().set_utxo_sync_flag(&mut batch, false).unwrap();
+        // store the currently bodyless anticone from the POV of the syncer, for trusted body validation at a later stage.
+        let mut anticone = self.services.dag_traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
+        // add the pruning point itself which is also missing a body
+        anticone.push(new_pruning_point);
+        self.pruning_meta_stores.write().set_disembodied_anticone(&mut batch, anticone).unwrap();
+
+        self.db.write(batch).unwrap();
+        drop(pruning_point_write);
+        Ok(())
+    }
+
+    fn set_utxo_sync_flag(&self, set_val: bool) {
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+
+        pruning_meta_write.set_utxo_sync_flag(&mut batch, set_val).unwrap();
+        self.db.write(batch).unwrap();
+    }
+
+    fn is_utxo_validated(&self) -> bool {
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        pruning_meta_read.utxo_sync_flag().unwrap()
+    }
+
+    fn is_pruning_point_anticone_fully_synced(&self) -> bool {
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        pruning_meta_read.is_anticone_fully_synced()
     }
 }
