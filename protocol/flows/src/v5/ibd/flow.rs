@@ -344,18 +344,9 @@ impl IbdFlow {
         consensus.async_intrusive_pruning_point_update(syncer_pp, syncer_sink).await?;
         // Sanity check
         if self.ctx.config.enable_sanity_checks {
-            consensus
-                .clone()
-                .spawn_blocking(move |c| {
-                    info!("validating pruning points consistency");
-
-                    if let Err(err) = c.validate_pruning_points(syncer_sink) {
-                        panic!("pruning points failed validation ({err})");
-                    }
-                    info!("pruning points consistency validated");
-                    Result::<_, ProtocolError>::Ok(())
-                })
-                .await?;
+            info!("validating pruning points consistency");
+            consensus.async_validate_pruning_points(syncer_sink).await.unwrap();
+            info!("pruning points consistency validated");
         }
         Ok(())
     }
