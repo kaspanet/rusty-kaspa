@@ -51,10 +51,11 @@ impl PruningProofManager {
         let proof_sets = (0..=self.max_block_level)
             .map(|level| BlockHashSet::from_iter(proof[level as usize].iter().map(|header| header.hash)))
             .collect_vec();
-        let mut expanded_proof = proof; //rename for clarity
-                                        //calculate ghostdag data for each block in the trusted set
-                                        // expand the proof with the hashes of trusted set
+
+        let mut expanded_proof = proof;
         let mut trusted_gd_map: BlockHashMap<GhostdagData> = BlockHashMap::new();
+        // this loop calculates ghostdag data for each block in the trusted set
+        // and expands the proof with the hashes of trusted set
         for tb in trusted_set.iter() {
             trusted_gd_map.insert(tb.block.hash(), tb.ghostdag.clone().into());
             let tb_block_level = calc_block_level(&tb.block.header, self.max_block_level);
@@ -68,14 +69,14 @@ impl PruningProofManager {
                 expanded_proof[current_proof_level as usize].push(tb.block.header.clone());
             });
         }
-        //topologically sort every level in the proof
+        // topologically sort every level in the proof
         expanded_proof.iter_mut().for_each(|level_proof| {
             level_proof.sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
         });
 
         self.populate_reachability_and_headers(&expanded_proof);
 
-        //sanity check
+        // sanity check
         {
             let reachability_read = self.reachability_store.read();
             for tb in trusted_set.iter() {
@@ -85,14 +86,13 @@ impl PruningProofManager {
                 }
             }
         }
-        //populate ghostdag_store and relation store (on a per level basis) for every block in the proof
+        // Populate ghostdag_store and relation store (on a per level basis) for every block in the proof
         for (level, headers) in expanded_proof.iter().enumerate() {
             trace!("Applying level {} from the pruning point proof", level);
-            /* we are only interested in those level ancestors that belong to the pruning proof at that level,
-            so other level parents are filtered out
-            Since each level is topologically sorted, we can construct the level ancesstors
-            on the fly rather than constructing it ahead of time
-             */
+            // We are only interested in those level ancestors that belong to the pruning proof at that level,
+            // so other level parents are filtered out.
+            // Since each level is topologically sorted, we can construct the level ancesstors
+            // on the fly rather than constructing it ahead of time
             let mut level_ancestors: HashSet<Hash> = HashSet::new();
             level_ancestors.insert(ORIGIN);
 
@@ -130,7 +130,7 @@ impl PruningProofManager {
             }
         }
 
-        //update virtual state based on proof derived pruning point
+        // update virtual state based on proof derived pruning point
         // updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
         let virtual_parents = vec![pruning_point];
         let virtual_state = Arc::new(VirtualState {

@@ -490,6 +490,8 @@ impl<
         pruning_info: PruningPointInfo,
         syncer_sink: Hash,
     ) -> PruningImportResult<VecDeque<Hash>> {
+        // Function returns the pruning points on the path
+        // ordered from newest to the oldest
         let mut pps_on_path = VecDeque::new();
         for current in self.reachability_service.forward_chain_iterator(pruning_info.pruning_point, syncer_sink, true).skip(1) {
             let current_header = self.headers_store.get_header(current).unwrap();
@@ -502,16 +504,14 @@ impl<
             }
             // Save so that following blocks can recursively use this value
             self.pruning_samples_store.insert(current, reply.pruning_sample).unwrap_or_exists();
-            /*
-               Going up the chain from the pruning point to the sink. The goal is to exit this loop with a queue [P(k)...,P(0), P(-1), P(-2), ..., P(-n)]
-               where P(0) is the new pruning point, P(-1) is the point before it and P(-n) is the pruning point of P(0). That is,
-               ceiling(P/F) = n (where n is usually 3).
-               k is the number of future pruning points on path to virtual beyond the new, currently synced pruning point /*
-
-            */Let C be the current block's pruning point. Push to the front of the queue if:
-                   1. the queue is empty; OR
-                   2. the front of the queue is different than C
-            */
+            // Going up the chain from the pruning point to the sink. The goal is to exit this loop with a queue [P(k),...,P(0), P(-1), P(-2), ..., P(-n)]
+            // where P(0) is the new pruning point, P(-1) is the point before it and P(-n) is the pruning point of P(0). That is,
+            // ceiling(P/F) = n (where n is usually 3).
+            // k is the number of future pruning points on path to virtual beyond the new, currently synced pruning point
+            //
+            // Let C be the current block's pruning point. Push to the front of the queue if:
+            // 1. the queue is empty
+            // 2. the front of the queue is different than C
             if pps_on_path.front().is_none_or(|&h| h != current_header.pruning_point) {
                 pps_on_path.push_front(current_header.pruning_point);
             }

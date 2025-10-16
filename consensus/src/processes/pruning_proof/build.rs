@@ -178,7 +178,6 @@ impl PruningProofManager {
         pp_header: &HeaderWithBlockLevel,
         temp_db: Arc<DB>,
     ) -> (Vec<Arc<DbGhostdagStore>>, Vec<Hash>, Vec<Hash>) {
-        let current_dag_level = self.find_current_dag_level(&pp_header.header); //is this even required?
         let mut ghostdag_stores: Vec<Option<Arc<DbGhostdagStore>>> = vec![None; self.max_block_level as usize + 1];
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         let mut root_by_level: Vec<Option<Hash>> = vec![None; self.max_block_level as usize + 1];
@@ -195,7 +194,7 @@ impl PruningProofManager {
                 None
             };
             let (store, selected_tip, root) = self
-                .find_sufficiently_deep_level_root(pp_header, level, current_dag_level, required_block, temp_db.clone())
+                .find_sufficiently_deep_level_root(pp_header, level, required_block, temp_db.clone())
                 .unwrap_or_else(|_| panic!("find_sufficient_root failed for level {level}"));
             ghostdag_stores[level_usize] = Some(store);
             selected_tip_by_level[level_usize] = Some(selected_tip);
@@ -221,7 +220,6 @@ impl PruningProofManager {
         &self,
         pp_header: &HeaderWithBlockLevel,
         level: BlockLevel,
-        _current_dag_level: BlockLevel,
         required_block: Option<Hash>,
         temp_db: Arc<DB>,
     ) -> PruningProofManagerInternalResult<(Arc<DbGhostdagStore>, Hash, Hash)> {
@@ -408,13 +406,13 @@ impl PruningProofManager {
         pp_header
             .parents_by_level
             .iter()
-            .skip(1) //skip checking direct parents
             .enumerate()
+            .skip(1) // skip checking direct parents
             .find_map(|(level, parents)| {
                 if BlockHashSet::from_iter(parents.iter().copied()) == direct_parents {
                     None
                 } else {
-                    Some(level  as BlockLevel)
+                    Some((level - 1)  as BlockLevel)
                 }
             })
             .unwrap_or(self.max_block_level)

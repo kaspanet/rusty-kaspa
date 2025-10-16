@@ -386,7 +386,7 @@ pub trait ConsensusApi: Send + Sync {
     fn is_utxo_validated(&self) -> bool {
         unimplemented!()
     }
-    fn is_anticone_fully_synced(&self) -> bool {
+    fn is_pruning_point_anticone_fully_synced(&self) -> bool {
         unimplemented!()
     }
     fn is_pruning_sample(&self, candidate_hash: Hash) -> bool {

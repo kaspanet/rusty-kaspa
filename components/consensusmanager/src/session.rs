@@ -423,9 +423,11 @@ impl ConsensusSessionOwned {
     pub async fn async_get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {
         self.clone().spawn_blocking(move |c| c.get_missing_block_body_hashes(high)).await
     }
+
     pub async fn async_get_disembodied_anticone(&self) -> Vec<Hash> {
         self.clone().spawn_blocking(move |c| c.get_disembodied_anticone()).await
     }
+
     pub async fn async_clear_disembodied_anticone_cache(&self) {
         self.clone().spawn_blocking(move |c| c.clear_disembodied_anticone_cache()).await
     }
@@ -471,8 +473,8 @@ impl ConsensusSessionOwned {
     pub async fn async_is_utxo_validated(&self) -> bool {
         self.clone().spawn_blocking(move |c| c.is_utxo_validated()).await
     }
-    pub async fn async_is_anticone_fully_synced(&self) -> bool {
-        self.clone().spawn_blocking(move |c| c.is_anticone_fully_synced()).await
+    pub async fn async_is_pruning_point_anticone_fully_synced(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_pruning_point_anticone_fully_synced()).await
     }
     pub async fn set_utxo_unvalidated(&self) {
         self.clone().spawn_blocking(move |c| c.set_utxo_sync_flag(false)).await

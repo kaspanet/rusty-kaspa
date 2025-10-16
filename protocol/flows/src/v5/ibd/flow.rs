@@ -124,7 +124,7 @@ impl IbdFlow {
                 but not necessarily so after sync_headers -
                 as it might sync following a previous pruning_catch_up that crashed before this stage concluded
                 */
-                if !session.async_is_anticone_fully_synced().await {
+                if !session.async_is_pruning_point_anticone_fully_synced().await {
                     self.sync_missing_trusted_bodies(&session).await?;
                 }
                 if !session.async_is_utxo_validated().await
@@ -241,7 +241,7 @@ impl IbdFlow {
                     // The node is missing a segment in the near future of its current pruning point, but the syncer is ahead
                     // and already pruned the current pruning point.
                     if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body())
-                        && consensus.async_is_anticone_fully_synced().await
+                        && consensus.async_is_pruning_point_anticone_fully_synced().await
                         && consensus.async_is_utxo_validated().await
                     {
                         // The data pruned by the syncer is already available from within the node (from relay or past ibd attempts)
@@ -644,9 +644,8 @@ impl IbdFlow {
         consensus: &ConsensusProxy,
         staging_consensus: &ConsensusProxy,
     ) -> Result<(), ProtocolError> {
-        /*The purpose of this check is to prevent the potential abuse explained here:
-        https://github.com/kaspanet/research/issues/3#issuecomment-895243792
-         */
+        // The purpose of this check is to prevent the potential abuse explained here:
+        // https://github.com/kaspanet/research/issues/3#issuecomment-895243792
         let staging_hst = staging_consensus.async_get_header(staging_consensus.async_get_headers_selected_tip().await).await.unwrap();
         let current_hst = consensus.async_get_header(consensus.async_get_headers_selected_tip().await).await.unwrap();
         // If staging is behind current or within 10 minutes ahead of it, then something is wrong and we reject the IBD

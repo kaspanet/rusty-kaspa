@@ -89,7 +89,6 @@ use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
-use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rocksdb::WriteBatch;
@@ -1196,33 +1195,33 @@ impl ConsensusApi for Consensus {
         let retention_period_root = pruning_point_read.retention_period_root().unwrap();
 
         let old_pruning_info = pruning_point_read.get().unwrap();
-        //note that the function below also updates the pruning samples,
-        //and implicitely confirms any pruning point pointed at en route to virtual is a pruning sample
+        // note that the function below also updates the pruning samples,
+        // and implicitly confirms any pruning point pointed at en route to virtual is a pruning sample
         let mut pruning_points_to_add =
             self.services.pruning_point_manager.pruning_points_on_path_to_syncer_sink(old_pruning_info, syncer_sink).map_err(
                 |e: PruningImportError| {
-                    ConsensusError::GeneralOwned(format!("pruning points en route to syncer sink do not form a valid chain{}", e))
+                    ConsensusError::GeneralOwned(format!("pruning points en route to syncer sink do not form a valid chain: {}", e))
                 },
             )?;
-        //remove excess pruning points before the old pruning point
+        // remove excess pruning points before the old pruning point
         while let Some(past_pp) = pruning_points_to_add.pop_back() {
             if past_pp == old_pruning_info.pruning_point {
                 break;
             }
         }
         if pruning_points_to_add.is_empty() {
-            return Err(ConsensusError::General(" old pruning points is inconsistent with synced headers"));
+            return Err(ConsensusError::General("old pruning points is inconsistent with synced headers"));
         }
         // remove excess pruning points beyond the new pruning_point
         while let Some(&future_pp) = pruning_points_to_add.front() {
             if future_pp == new_pruning_point {
                 break;
             }
-            // here we only pop_front after checking as we want the new pruning_point to stay is the list
+            // here we only pop_front after checking as we want the new pruning_point to stay in the list
             pruning_points_to_add.pop_front();
         }
         if pruning_points_to_add.is_empty() {
-            return Err(ConsensusError::General(" new pruning point is inconsistent with synced headers"));
+            return Err(ConsensusError::General("new pruning point is inconsistent with synced headers"));
         }
 
         // if all has gone well, we can finally update pruning point and other stores.
@@ -1236,19 +1235,20 @@ impl ConsensusApi for Consensus {
 
         // For archival nodes, keep the retention root in place
         if !self.config.is_archival {
-            /* Possibly we should just advance to the pruning point and be done with. Currently this creates a weird hybrid where
-            data would be available in gaps */
+            // Possibly we should just advance to the pruning point and be done with.
+            // Currently this creates a weird hybrid where
+            // data would be available in gaps
             let adjusted_retention_period_root =
                 self.pruning_processor.advance_retention_period_root(retention_period_root, new_pruning_point);
             pruning_point_write.set_retention_period_root(&mut batch, adjusted_retention_period_root).unwrap();
         }
 
-        //update virtual state based to the new pruning point
+        // update virtual state based to the new pruning point
         // updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
         let virtual_parents = vec![new_pruning_point];
         let virtual_state = Arc::new(VirtualState {
             parents: virtual_parents.clone(),
-            ghostdag_data: self.ghostdag_store.get_data(new_pruning_point).unwrap().unwrap_or_clone(),
+            ghostdag_data: self.services.ghostdag_manager.ghostdag(&virtual_parents),
             ..VirtualState::default()
         });
         self.virtual_stores.write().state.set_batch(&mut batch, virtual_state).unwrap();
@@ -1283,7 +1283,7 @@ impl ConsensusApi for Consensus {
         pruning_meta_read.utxo_sync_flag().unwrap()
     }
 
-    fn is_anticone_fully_synced(&self) -> bool {
+    fn is_pruning_point_anticone_fully_synced(&self) -> bool {
         let pruning_meta_read = self.pruning_meta_stores.read();
         pruning_meta_read.is_anticone_fully_synced()
     }
