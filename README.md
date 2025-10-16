@@ -158,6 +158,52 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
 
  </details>
 
+ <details>
+ <summary> Building with Docker </summary>
+
+  You can build the project using Docker in two ways: a simple single-architecture build, or a multi-architecture build using the provided script.
+
+  #### 1. Simple Docker Build
+
+  To build for your current architecture (e.g., `linux/amd64`):
+
+  ```sh
+  docker build -f docker/Dockerfile.kaspad -t kaspad:latest .
+  ```
+
+  Replace `Dockerfile.kaspad` with the appropriate Dockerfile for your target (`kaspad`, `kaspa-wallet`, `rothschild`, or `simpa`).
+
+  #### 2. Multi-Architecture Build
+
+  To build images for multiple architectures (e.g., `linux/amd64` and `linux/arm64`) and optionally push them to a registry, use the `build-docker-multi-arch.sh` script:
+
+  ```sh
+  ./build-docker-multi-arch.sh --tag <tag> --artifact <artifact> [--arches "<arches>"] [--push]
+  ```
+
+  - `--tag <tag>`: **(required)** The Docker image tag to use.
+  - `--artifact <artifact>`: The build target/artifact (default: `kaspad`). Must match the Dockerfile name, e.g., `kaspad` for `Dockerfile.kaspad`.
+  - `--arches "<arches>"`: Space-separated list of architectures (default: `"linux/amd64 linux/arm64"`).
+  - `--push`: If specified, the built images will be pushed to your Docker registry.
+
+  **Examples:**
+
+  Build and push a multi-arch image for `kaspad`:
+
+  ```sh
+  ./build-docker-multi-arch.sh --tag myrepo/kaspad:latest --artifact kaspad --push
+  ```
+
+  Build a multi-arch image for `kaspa-wallet` without pushing:
+
+  ```sh
+  ./build-docker-multi-arch.sh --tag kaspa-wallet:test --artifact kaspa-wallet
+  ```
+
+  **Note:**  
+  In order to use `build-docker-multi-arch.sh`, you need Docker with Buildx enabled.
+ </details>
+
   <details>
 
   <summary>Building WASM32 SDK</summary>
