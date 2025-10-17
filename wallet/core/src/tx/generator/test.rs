@@ -833,7 +833,7 @@ fn test_generator_payload_only() -> Result<()> {
         change_address(test_network_id().into()),
         1,
         1,
-        PaymentDestination::Change,
+        PaymentDestination::PayloadOnly,
         None,
         Fees::None,
         Some("Test Payload".into()),

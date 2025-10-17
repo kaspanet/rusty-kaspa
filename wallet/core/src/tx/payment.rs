@@ -46,6 +46,7 @@ extern "C" {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum PaymentDestination {
     Change,
+    PayloadOnly, // No funds moved, just a payload and fees
     PaymentOutputs(PaymentOutputs),
 }
 
@@ -53,6 +54,7 @@ impl PaymentDestination {
     pub fn amount(&self) -> Option<u64> {
         match self {
             Self::Change => None,
+            Self::PayloadOnly => None,
             Self::PaymentOutputs(payment_outputs) => Some(payment_outputs.amount()),
         }
     }

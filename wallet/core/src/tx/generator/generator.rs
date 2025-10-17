@@ -402,6 +402,13 @@ impl Generator {
                     Some(outputs.iter().map(|output| output.amount).sum()),
                 )
             }
+            PaymentDestination::PayloadOnly => {
+                if !final_transaction_priority_fee.is_none() {
+                    return Err(Error::GeneratorFeesInSweepTransaction);
+                }
+
+                (vec![], Some(0))
+            }
         };
 
         if final_transaction_outputs.is_empty() && matches!(final_transaction_priority_fee, Fees::ReceiverPays(_)) {
@@ -538,12 +545,6 @@ impl Generator {
     #[inline(always)]
     pub(crate) fn signer(&self) -> &Option<Arc<dyn SignerT>> {
         &self.inner.signer
-    }
-
-    /// Returns the payload (if available)
-    #[inline(always)]
-    pub fn payload(&self) -> Option<&[u8]> {
-        (!self.inner.final_transaction_payload.is_empty()).then(|| self.inner.final_transaction_payload.as_slice())
     }
 
     /// The total amount of fees in SOMPI consumed during the transaction generation process.
@@ -688,6 +689,7 @@ impl Generator {
                         && stage.aggregate_input_value >= final_transaction.value_with_priority_fee)
                     || (self.inner.final_transaction_priority_fee.receiver_pays()
                         && stage.aggregate_input_value >= final_transaction.value_no_fees.saturating_sub(context.aggregate_fees))
+                    || (self.inner.final_transaction_outputs.is_empty())
                 {
                     if let Some(kind) = self.try_finish_standard_stage_processing(context, stage, &mut data, final_transaction)? {
                         return Ok((kind, data));
@@ -759,7 +761,7 @@ impl Generator {
         stage.aggregate_fees += data.transaction_fees;
         context.aggregate_fees += data.transaction_fees;
 
-        if context.aggregated_utxos < 2 && self.payload().is_none() {
+        if context.aggregated_utxos < 2 {
             Ok((DataKind::NoOp, data))
         } else if stage.number_of_transactions > 0 {
             data.aggregate_mass += self.inner.standard_change_output_compute_mass;
@@ -817,7 +819,7 @@ impl Generator {
         let reject = match self.inner.final_transaction_priority_fee {
             Fees::SenderPays(_) => stage.aggregate_input_value < total_stage_value_needed,
             Fees::ReceiverPays(_) => stage.aggregate_input_value + context.aggregate_fees < total_stage_value_needed,
-            Fees::None => unreachable!("Fees::None can not occur for final transaction"),
+            Fees::None => false,
         };
 
         if reject {
@@ -855,7 +857,10 @@ impl Generator {
                     let change_output_value = data.aggregate_input_value.saturating_sub(final_transaction.value_no_fees);
                     (transaction_fees, change_output_value)
                 }
-                Fees::None => unreachable!("Fees::None is not allowed for final transactions"),
+                Fees::None => {
+                    let change_output_value = data.aggregate_input_value - transaction_fees;
+                    (transaction_fees, change_output_value)
+                }
             };
 
             // checks output dust threshold in network params
