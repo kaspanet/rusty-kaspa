@@ -3,6 +3,7 @@ pub mod block_transactions;
 pub mod block_window_cache;
 pub mod children;
 pub mod daa;
+pub mod dagknight;
 pub mod depth;
 pub mod ghostdag;
 pub mod headers;
