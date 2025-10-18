@@ -104,7 +104,7 @@ impl Service {
     pub fn receive_addresses(&self) -> Vec<Address> {
         // TODO: move into WalletApi
         let manager = self.wallet.account().unwrap().as_derivation_capable().unwrap().derivation().receive_address_manager();
-        manager.get_range_with_args(0..manager.index(), false).unwrap()
+        manager.get_range_with_args(0..manager.index() + 1, false).unwrap()
     }
 
     pub fn wallet(&self) -> Arc<Wallet> {
