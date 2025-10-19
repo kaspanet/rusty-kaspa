@@ -470,17 +470,17 @@ impl ConsensusSessionOwned {
     pub async fn async_clear_pruning_utxo_set(&self) {
         self.clone().spawn_blocking(move |c| c.clear_pruning_utxo_set()).await
     }
-    pub async fn async_is_utxo_validated(&self) -> bool {
-        self.clone().spawn_blocking(move |c| c.is_utxo_validated()).await
+    pub async fn async_is_pruning_utxoset_stable(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_pruning_utxoset_stable()).await
     }
     pub async fn async_is_pruning_point_anticone_fully_synced(&self) -> bool {
         self.clone().spawn_blocking(move |c| c.is_pruning_point_anticone_fully_synced()).await
     }
-    pub async fn set_utxo_unvalidated(&self) {
-        self.clone().spawn_blocking(move |c| c.set_utxo_sync_flag(false)).await
+    pub async fn async_set_pruning_utxoset_unstable(&self) {
+        self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable(false)).await
     }
-    pub async fn set_utxo_validated(&self) {
-        self.clone().spawn_blocking(move |c| c.set_utxo_sync_flag(true)).await
+    pub async fn async_set_pruning_utxoset_stable(&self) {
+        self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable(true)).await
     }
     pub async fn async_is_pruning_sample(&self, candidate_hash: Hash) -> bool {
         self.clone().spawn_blocking(move |c| c.is_pruning_sample(candidate_hash)).await

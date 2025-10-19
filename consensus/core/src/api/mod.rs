@@ -380,13 +380,16 @@ pub trait ConsensusApi: Send + Sync {
     fn clear_pruning_utxo_set(&self) {
         unimplemented!()
     }
-    fn set_utxo_sync_flag(&self, set_val: bool) {
+    fn set_pruning_utxoset_stable(&self, set_val: bool) {
         unimplemented!()
     }
-    fn is_utxo_validated(&self) -> bool {
+    fn is_pruning_utxoset_stable(&self) -> bool {
         unimplemented!()
     }
     fn is_pruning_point_anticone_fully_synced(&self) -> bool {
+        unimplemented!()
+    }
+    fn is_consensus_in_transitional_ibd_state(&self) -> bool {
         unimplemented!()
     }
     fn is_pruning_sample(&self, candidate_hash: Hash) -> bool {

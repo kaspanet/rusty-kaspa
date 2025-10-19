@@ -463,7 +463,7 @@ impl PruningProofManager {
 
         while current_header.blue_score + base_depth >= high_header_score {
             if current_header.direct_parents().is_empty() {
-                //reached genesis
+                // Reached genesis
                 break;
             }
 

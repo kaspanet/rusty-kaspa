@@ -42,7 +42,7 @@ use super::PruningProofManager;
 
 impl PruningProofManager {
     pub fn apply_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
-        /* Following validation of a pruning proof, various consensus storages must be updated */
+        // Following validation of a pruning proof, various consensus storages must be updated
 
         let pruning_point_header = proof[0].last().unwrap().clone();
         let pruning_point = pruning_point_header.hash;
@@ -130,7 +130,7 @@ impl PruningProofManager {
             }
         }
 
-        // update virtual state based on proof derived pruning point
+        // Update virtual state based on proof derived pruning point.
         // updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
         let virtual_parents = vec![pruning_point];
         let virtual_state = Arc::new(VirtualState {

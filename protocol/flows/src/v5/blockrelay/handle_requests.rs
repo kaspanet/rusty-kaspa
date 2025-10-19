@@ -51,7 +51,8 @@ impl HandleRelayBlockRequests {
 
     async fn send_sink(&mut self) -> Result<(), ProtocolError> {
         let session = self.ctx.consensus().unguarded_session();
-        let should_sync = !(session.async_is_utxo_validated().await && session.async_is_pruning_point_anticone_fully_synced().await);
+        let should_sync =
+            !(session.async_is_pruning_utxoset_stable().await && session.async_is_pruning_point_anticone_fully_synced().await);
         drop(session);
         if should_sync {
             return Ok(());

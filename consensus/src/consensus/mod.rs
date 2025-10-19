@@ -1159,11 +1159,17 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
     }
 
+    /// The utxoset is an additive structure,
+    /// to make room for the gradual aggregation of a new utxoset,
+    /// first the old one must be cleared.
+    /// Likewise, clearing the old utxoset is also a gradual process.
+    /// The utxo sync flag guarantees that a full utxoset is never mistaken for
+    /// an incomplete or partially deleted one.
     fn clear_pruning_utxo_set(&self) {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
         let mut batch = rocksdb::WriteBatch::default();
 
-        pruning_meta_write.set_utxo_sync_flag(&mut batch, false).unwrap();
+        pruning_meta_write.set_pruning_utxoset_stable(&mut batch, false).unwrap();
         self.db.write(batch).unwrap();
         pruning_meta_write.utxo_set.clear().unwrap();
     }
@@ -1183,9 +1189,11 @@ impl ConsensusApi for Consensus {
         }
         false
     }
-
+    /// The usual flow consists of the pruning point naturally updating during pruning, and hence maintains consistency by defualt
+    /// On some cases, namely during pruning catchup, we need to manually update the pruning point and
+    /// make sure that consensus looks "as if" it has just moved to a new pruning point.
     fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
-        //The new pruning point must be an ancestor of the syncer_sink, if it is not return an error at once
+        // The new pruning point must be an ancestor of the syncer_sink, if it is not return an error at once
         if !self.services.reachability_service.is_chain_ancestor_of(new_pruning_point, syncer_sink) {
             return Err(ConsensusError::General("new pruning point is not in the past of syncer sink"));
         }
@@ -1195,7 +1203,7 @@ impl ConsensusApi for Consensus {
         let retention_period_root = pruning_point_read.retention_period_root().unwrap();
 
         let old_pruning_info = pruning_point_read.get().unwrap();
-        // note that the function below also updates the pruning samples,
+        // Note that the function below also updates the pruning samples,
         // and implicitly confirms any pruning point pointed at en route to virtual is a pruning sample
         let mut pruning_points_to_add =
             self.services.pruning_point_manager.pruning_points_on_path_to_syncer_sink(old_pruning_info, syncer_sink).map_err(
@@ -1203,7 +1211,7 @@ impl ConsensusApi for Consensus {
                     ConsensusError::GeneralOwned(format!("pruning points en route to syncer sink do not form a valid chain: {}", e))
                 },
             )?;
-        // remove excess pruning points before the old pruning point
+        // Remove excess pruning points before the old pruning point
         while let Some(past_pp) = pruning_points_to_add.pop_back() {
             if past_pp == old_pruning_info.pruning_point {
                 break;
@@ -1212,19 +1220,19 @@ impl ConsensusApi for Consensus {
         if pruning_points_to_add.is_empty() {
             return Err(ConsensusError::General("old pruning points is inconsistent with synced headers"));
         }
-        // remove excess pruning points beyond the new pruning_point
+        // Remove excess pruning points beyond the new pruning_point
         while let Some(&future_pp) = pruning_points_to_add.front() {
             if future_pp == new_pruning_point {
                 break;
             }
-            // here we only pop_front after checking as we want the new pruning_point to stay in the list
+            // Here we only pop_front after checking as we want the new pruning_point to stay in the list
             pruning_points_to_add.pop_front();
         }
         if pruning_points_to_add.is_empty() {
             return Err(ConsensusError::General("new pruning point is inconsistent with synced headers"));
         }
 
-        // if all has gone well, we can finally update pruning point and other stores.
+        // If all has gone well, we can finally update pruning point and other stores.
         let mut batch = WriteBatch::default();
         let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
         let new_pp_index = old_pruning_info.index + pruning_points_to_add.len() as u64;
@@ -1243,8 +1251,8 @@ impl ConsensusApi for Consensus {
             pruning_point_write.set_retention_period_root(&mut batch, adjusted_retention_period_root).unwrap();
         }
 
-        // update virtual state based to the new pruning point
-        // updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
+        // Update virtual state based to the new pruning point
+        // Updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
         let virtual_parents = vec![new_pruning_point];
         let virtual_state = Arc::new(VirtualState {
             parents: virtual_parents.clone(),
@@ -1252,39 +1260,41 @@ impl ConsensusApi for Consensus {
             ..VirtualState::default()
         });
         self.virtual_stores.write().state.set_batch(&mut batch, virtual_state).unwrap();
-        // remove old body tips and insert pruning point as the current tip
+        // Remove old body tips and insert pruning point as the current tip
         self.body_tips_store.write().delete_all_tips(&mut batch).unwrap();
         self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
-        // update selected_chain
+        // Update selected_chain
         self.selected_chain_store.write().init_with_pruning_point(&mut batch, new_pruning_point).unwrap();
-        // it is important to set this flag to false together with writing the batch, in case the node crashes suddenly before syncing of new utxo starts
-        self.pruning_meta_stores.write().set_utxo_sync_flag(&mut batch, false).unwrap();
-        // store the currently bodyless anticone from the POV of the syncer, for trusted body validation at a later stage.
+        // It is important to set this flag to false together with writing the batch, in case the node crashes suddenly before syncing of new utxo starts
+        self.pruning_meta_stores.write().set_pruning_utxoset_stable(&mut batch, false).unwrap();
+        // Store the currently bodyless anticone from the POV of the syncer, for trusted body validation at a later stage.
         let mut anticone = self.services.dag_traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
-        // add the pruning point itself which is also missing a body
+        // Add the pruning point itself which is also missing a body
         anticone.push(new_pruning_point);
         self.pruning_meta_stores.write().set_disembodied_anticone(&mut batch, anticone).unwrap();
-
         self.db.write(batch).unwrap();
         drop(pruning_point_write);
         Ok(())
     }
 
-    fn set_utxo_sync_flag(&self, set_val: bool) {
+    fn set_pruning_utxoset_stable(&self, set_val: bool) {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
         let mut batch = rocksdb::WriteBatch::default();
 
-        pruning_meta_write.set_utxo_sync_flag(&mut batch, set_val).unwrap();
+        pruning_meta_write.set_pruning_utxoset_stable(&mut batch, set_val).unwrap();
         self.db.write(batch).unwrap();
     }
 
-    fn is_utxo_validated(&self) -> bool {
+    fn is_pruning_utxoset_stable(&self) -> bool {
         let pruning_meta_read = self.pruning_meta_stores.read();
-        pruning_meta_read.utxo_sync_flag().unwrap()
+        pruning_meta_read.pruning_utxoset_stable_flag().unwrap()
     }
 
     fn is_pruning_point_anticone_fully_synced(&self) -> bool {
         let pruning_meta_read = self.pruning_meta_stores.read();
         pruning_meta_read.is_anticone_fully_synced()
+    }
+    fn is_consensus_in_transitional_ibd_state(&self) -> bool {
+        self.is_pruning_utxoset_stable() && self.is_pruning_point_anticone_fully_synced()
     }
 }

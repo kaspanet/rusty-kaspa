@@ -140,7 +140,7 @@ impl PruningProcessor {
     }
 
     fn recover_pruning_workflows_if_needed(&self) -> bool {
-        //returns true if recorvery was completed successfully or was not needed
+        // returns true if recorvery was completed successfully or was not needed
         let pruning_point_read = self.pruning_point_store.read();
         let pruning_point = pruning_point_read.pruning_point().unwrap();
         let retention_checkpoint = pruning_point_read.retention_checkpoint().unwrap();
@@ -174,7 +174,7 @@ impl PruningProcessor {
             let pruning_meta_read = self.pruning_meta_stores.read();
 
             // halt pruning if in a transitional ibd case.
-            if !pruning_meta_read.utxo_sync_flag().unwrap_or(false) || !pruning_meta_read.is_anticone_fully_synced() {
+            if !pruning_meta_read.pruning_utxoset_stable_flag().unwrap_or(false) || !pruning_meta_read.is_anticone_fully_synced() {
                 return false;
             }
             drop(pruning_meta_read);
@@ -265,7 +265,7 @@ impl PruningProcessor {
             // halt pruning if syncing was initiated
             let pruning_meta_read = self.pruning_meta_stores.upgradable_read();
 
-            if !pruning_meta_read.is_anticone_fully_synced() || !pruning_meta_read.utxo_sync_flag().unwrap_or(false) {
+            if !pruning_meta_read.is_anticone_fully_synced() || !pruning_meta_read.pruning_utxoset_stable_flag().unwrap_or(false) {
                 return false;
             }
             let mut pruning_meta_write = RwLockUpgradableReadGuard::upgrade(pruning_meta_read);

@@ -116,26 +116,25 @@ impl IbdFlow {
                 let pruning_point = session.async_pruning_point().await;
 
                 info!("syncing ahead from pruning point {} ", pruning_point);
-                /* Following IBD catchup a new pruning point is designated and finalized in consensus. Blocks from its anticone (including itself)
-                have undergone normal header verification, but contain no body yet. Processing of new blocks in the pruning point's future cannot proceed
-                since these blocks' parents are missing block data.
-                Hence we explicitely process bodies of the yet disembodied anticone blocks as trusted blocks
-                Notice that this is degenerate following sync_with_headers_proof
-                but not necessarily so after sync_headers -
-                as it might sync following a previous pruning_catch_up that crashed before this stage concluded
-                */
+                // Following IBD catchup a new pruning point is designated and finalized in consensus. Blocks from its anticone (including itself)
+                // have undergone normal header verification, but contain no body yet. Processing of new blocks in the pruning point's future cannot proceed
+                // since these blocks' parents are missing block data.
+                // Hence we explicitely process bodies of the yet disembodied anticone blocks as trusted blocks
+                // Notice that this is degenerate following sync_with_headers_proof
+                // but not necessarily so after sync_headers -
+                // as it might sync following a previous pruning_catch_up that crashed before this stage concluded
                 if !session.async_is_pruning_point_anticone_fully_synced().await {
                     self.sync_missing_trusted_bodies(&session).await?;
                 }
-                if !session.async_is_utxo_validated().await
-                // utxo might not be available even if the pruning point block data is.
-                // utxo must be synced before all so the node could function
+                if !session.async_is_pruning_utxoset_stable().await
+                // Utxo might not be available even if the pruning point block data is.
+                // Utxo must be synced before all so the node could function
                 {
                     info!("utxo set missing, downloading utxo set corresponding to the pruning point ");
 
                     self.sync_new_utxo_set(&session, pruning_point).await?;
                 }
-                // once utxo is valid, simply sync missing headers
+                // Once utxo is valid, simply sync missing headers
                 self.sync_headers(
                     &session,
                     negotiation_output.syncer_virtual_selected_parent,
@@ -160,7 +159,7 @@ impl IbdFlow {
                         // Next, sync a utxoset corresponding to the new pruning point from the syncer.
                         // Note that the new pruning point's anticone need not be downloaded separately as in other IBDtypes
                         // as it was just downloaded as part of the headers proof.
-                        self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point.unwrap()).await?;
+                        self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point).await?;
                     }
                     Err(e) => {
                         info!("IBD with headers proof from {} was unsuccessful ({})", self.router, e);
@@ -170,13 +169,13 @@ impl IbdFlow {
                 }
             }
             IbdType::PruningCatchUp => {
-                info!("catching up to new pruning point {} ", negotiation_output.syncer_pruning_point.unwrap());
+                info!("catching up to new pruning point {} ", negotiation_output.syncer_pruning_point);
                 match self.pruning_point_catchup(&session, &negotiation_output, &relay_block).await {
                     Ok(()) => {
                         info!("header stage of pruning catchup from peer {} completed", self.router);
                         self.sync_missing_trusted_bodies(&session).await?;
-                        self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point.unwrap()).await?;
-                        //Note that pruning of old data will only occur once virtual has caught up sufficintly far
+                        self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point).await?;
+                        // Note that pruning of old data will only occur once virtual has caught up sufficintly far
                     }
 
                     Err(e) => {
@@ -220,7 +219,7 @@ impl IbdFlow {
         consensus: &ConsensusProxy,
         relay_header: &Header,
         highest_known_syncer_chain_hash: Option<Hash>,
-        syncer_pruning_point: Option<Hash>,
+        syncer_pruning_point: Hash,
     ) -> Result<IbdType, ProtocolError> {
         if let Some(highest_known_syncer_chain_hash) = highest_known_syncer_chain_hash {
             let pruning_point = consensus.async_pruning_point().await;
@@ -228,7 +227,6 @@ impl IbdFlow {
             info!("current sink is:{}", sink);
             info!("current pruning point is:{}", pruning_point);
             if consensus.async_is_chain_ancestor_of(pruning_point, highest_known_syncer_chain_hash).await? {
-                let syncer_pruning_point = syncer_pruning_point.unwrap();
                 if syncer_pruning_point == pruning_point {
                     // The node is only missing a segment in the future of its current pruning point, and the chains
                     // agree as well, so we perform a simple sync IBD and only download the missing data
@@ -242,7 +240,7 @@ impl IbdFlow {
                     // and already pruned the current pruning point.
                     if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body())
                         && consensus.async_is_pruning_point_anticone_fully_synced().await
-                        && consensus.async_is_utxo_validated().await
+                        && consensus.async_is_pruning_utxoset_stable().await
                     {
                         // The data pruned by the syncer is already available from within the node (from relay or past ibd attempts)
                         // and the consensus was fully synced and hence
@@ -313,20 +311,24 @@ impl IbdFlow {
             Ok(IbdType::None)
         }
     }
+    /// This function is triggered when the syncer's pruning point is higher
+    /// than ours and we already processed its header before,
+    /// so we only need to sync more headers and set it to our new pruning point before proceeding with IBD
     async fn pruning_point_catchup(
         &mut self,
         consensus: &ConsensusProxy,
         negotiation_output: &ChainNegotiationOutput,
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
-        // The syncer pruning point is "finalized" into consensus if
-        // 1) it satisfies that Min(P| P.B>Nf) for some integer N (i.e. it is a valid pruning point based on score)
-        // 2)there are sufficient headers built on top of it, specifically, a header is validated whose blue_score is greater than P.B+p
+        // Let B.sp denote the the selected parant of a block B, let f be the finality depth.
+        // The syncer's pruning point P is "finalized" into consensus if:
+        // 1)  P satisfies P.blue_score>Nf and P.sp.blue_score<=NF for some integer N (i.e. it is a valid pruning point based on score).
+        // 2) There are sufficient headers built on top of it, specifically, a header is validated whose blue_score is greater than P.B+p.
         // 3) Additionally, the syncer pruning point must be on the selected chain from that header, and any pruning points declared
-        // on headers on its path must be consistent with those already known
+        // on headers on its path must be consistent with those already known.
         // Since (1) was already checked during determine_ibd, we only need to check (2) and (3)
 
-        let syncer_pp = negotiation_output.syncer_pruning_point.unwrap();
+        let syncer_pp = negotiation_output.syncer_pruning_point;
         let syncer_pp_bscore = consensus.async_get_header(syncer_pp).await?.blue_score;
         let syncer_sink = negotiation_output.syncer_virtual_selected_parent;
         // (2) verify pruning_depth on top of syncer_pp
@@ -402,7 +404,7 @@ impl IbdFlow {
         self.router
             .enqueue(make_message!(Payload::RequestPruningPointAndItsAnticone, RequestPruningPointAndItsAnticoneMessage {}))
             .await?;
-        //first, all pruning points up to the last  are sent
+        // First, all pruning points up to the last  are sent
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPoints)?;
         let pruning_points: PruningPointsList = msg.try_into()?;
 
@@ -582,7 +584,7 @@ impl IbdFlow {
         // A  better solution could be to create a copy of the old utxo state for some sort of fallback rather than delete it.
         consensus.async_clear_pruning_utxo_set().await; // this deletes the old pruning utxoset and also sets the pruning utxo as invalidated
         self.sync_pruning_point_utxoset(consensus, pruning_point).await?;
-        consensus.set_utxo_validated().await; //  only if the function has reached here, will the utxo be considered "final"
+        consensus.async_set_pruning_utxoset_stable().await; //  only if the function has reached here, will the utxo be considered "final"
         self.ctx.on_pruning_point_utxoset_override();
         Ok(())
     }
@@ -686,7 +688,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             let mut jobs = Vec::with_capacity(chunk.len());
 
             for &hash in chunk.iter() {
-                //TODO: change to BodyOnly requests when incorporated
+                // TODO: change to BodyOnly requests when incorporated
                 let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
                 let block: Block = msg.try_into()?;
                 if block.hash() != hash {
@@ -695,16 +697,16 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 if block.is_header_only() {
                     return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
                 }
-                // Note: it appears to me that sending ghostdag data may be redundant, especially when the headers were already verified
-                // Consider sending empty ghostdag data, simplifying a great deal. I believe the result would be the same -
-                // a trusted task is sent, however the header is already verified, and hence only the block body will be verified
+                // TODO (relaxed): sending ghostdag data may be redundant, especially when the headers were already verified.
+                // Consider sending empty ghostdag data, simplifying a great deal. The result should be the same -
+                // a trusted task is sent, however the header is already verified, and hence only the block body will be verified.
                 jobs.push(
                     consensus
                         .validate_and_insert_trusted_block(TrustedBlock::new(block, consensus.async_get_ghostdag_data(hash).await?))
                         .virtual_state_task,
                 );
             }
-            try_join_all(jobs).await?; //TODO: be more efficient with batching as done below
+            try_join_all(jobs).await?; // TODO (relaxed): be more efficient with batching as done with block bodies in general
         }
         consensus.async_clear_disembodied_anticone_cache().await;
         Ok(())

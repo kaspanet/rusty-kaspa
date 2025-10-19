@@ -14,7 +14,7 @@ use super::utxo_set::DbUtxoSetStore;
 pub struct PruningMetaStores {
     pub utxo_set: DbUtxoSetStore,
     utxoset_position_access: CachedDbItem<Hash>,
-    utxoset_sync_flag_access: CachedDbItem<bool>,
+    utxoset_stable_flag_access: CachedDbItem<bool>,
     disembodied_anticone_blocks: CachedDbItem<Vec<Hash>>,
 }
 
@@ -23,7 +23,7 @@ impl PruningMetaStores {
         Self {
             utxo_set: DbUtxoSetStore::new(db.clone(), utxoset_cache_policy, DatabaseStorePrefixes::PruningUtxoset.into()),
             utxoset_position_access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::PruningUtxosetPosition.into()),
-            utxoset_sync_flag_access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::PruningUtxosetSyncFlag.into()),
+            utxoset_stable_flag_access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::PruningUtxosetSyncFlag.into()),
             disembodied_anticone_blocks: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::DisembodiedAnticoneBlocks.into()),
         }
     }
@@ -40,13 +40,13 @@ impl PruningMetaStores {
     }
 
     /// Flip the sync flag in the same batch as your other writes
-    pub fn set_utxo_sync_flag(&mut self, batch: &mut WriteBatch, synced: bool) -> StoreResult<()> {
-        self.utxoset_sync_flag_access.write(BatchDbWriter::new(batch), &synced)
+    pub fn set_pruning_utxoset_stable(&mut self, batch: &mut WriteBatch, synced: bool) -> StoreResult<()> {
+        self.utxoset_stable_flag_access.write(BatchDbWriter::new(batch), &synced)
     }
 
     /// Read the flag; default to true if missing, which corresponds to a new consensus
-    pub fn utxo_sync_flag(&self) -> StoreResult<bool> {
-        self.utxoset_sync_flag_access.read().or(Ok(true))
+    pub fn pruning_utxoset_stable_flag(&self) -> StoreResult<bool> {
+        self.utxoset_stable_flag_access.read().or(Ok(true))
     }
 
     /// Represents blocks in the anticone of the current pruning point which may lack a block body

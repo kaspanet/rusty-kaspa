@@ -91,7 +91,7 @@ impl HandleRelayInvsFlow {
         // if utxo is not synced, we should sync it as soon as possible.
         let session = self.ctx.consensus().unguarded_session();
         let mut should_sync =
-            !(session.async_is_utxo_validated().await && session.async_is_pruning_point_anticone_fully_synced().await);
+            !(session.async_is_pruning_utxoset_stable().await && session.async_is_pruning_point_anticone_fully_synced().await);
         drop(session);
         loop {
             // Loop over incoming block inv messages
