@@ -88,6 +88,11 @@ impl HandleRelayInvsFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
+        // if utxo is not synced, we should sync it as soon as possible.
+        let session = self.ctx.consensus().unguarded_session();
+        let mut should_sync =
+            !(session.async_is_pruning_utxoset_stable().await && session.async_is_pruning_point_anticone_fully_synced().await);
+        drop(session);
         loop {
             // Loop over incoming block inv messages
             let inv = self.invs_route.dequeue().await?;
@@ -147,6 +152,14 @@ impl HandleRelayInvsFlow {
                     "Relay block {} has lower blue work than virtual's merge depth root ({} <= {}), hence we are skipping it",
                     inv.hash, block.header.blue_work, blue_work_threshold
                 );
+                continue;
+            }
+            // if utxo is not synced or missing block bodies on the anticone, do not wait, sync
+            if should_sync {
+                match self.ibd_sender.try_send(block.clone(), |b, c| if b.header.blue_work > c.header.blue_work { b } else { c }) {
+                    Ok(_) | Err(TrySendError::Full(_)) => should_sync = false,
+                    Err(TrySendError::Closed(_)) => return Err(ProtocolError::ConnectionClosed), // This indicates that IBD flow has exited
+                }
                 continue;
             }
 
