@@ -356,7 +356,9 @@ async fn main() {
             utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending, coinbase_maturity).await;
             last_refresh = unix_now();
             next_available_utxo_index = 0;
-            pause_if_mempool_is_full(&rpc_client).await;
+            if !args.unleashed {
+                pause_if_mempool_is_full(&rpc_client).await;
+            }
         }
         clean_old_pending_outpoints(&mut pending);
     }
