@@ -85,12 +85,3 @@ rustup target add x86_64-unknown-linux-musl
 
 # Install missing dependencies
 cargo fetch --target x86_64-unknown-linux-musl
-
-# Patch missing include in librocksdb-sys-0.16.0+8.10.0. Credit: @supertypo
-FILE_PATH=$(find $HOME/.cargo/registry/src/ -path "*/librocksdb-sys-0.16.0+8.10.0/*/offpeak_time_info.h")
-
-if [ -n "$FILE_PATH" ]; then
-  sed -i '1i #include <cstdint>' "$FILE_PATH"
-else
-  echo "No such file for sed modification."
-fi
