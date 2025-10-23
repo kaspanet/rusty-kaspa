@@ -6,8 +6,11 @@ use crate::{
     MAX_SCRIPTS_SIZE, MAX_SCRIPT_ELEMENT_SIZE,
 };
 use hexplay::{HexView, HexViewBuilder};
+use kaspa_consensus_core::{hashing::sighash::SigHashReusedValues, tx::VerifiableTransaction};
 use kaspa_txscript_errors::SerializationError;
 use thiserror::Error;
+
+use crate::viewer::ScriptViewer;
 
 /// DEFAULT_SCRIPT_ALLOC is the default size used for the backing array
 /// for a script being built by the ScriptBuilder. The array will
@@ -268,6 +271,22 @@ impl ScriptBuilder {
     /// Return ready to use [`HexView`] for the script
     pub fn hex_view(&self, offset: usize, width: usize) -> HexView<'_> {
         HexViewBuilder::new(&self.script).address_offset(offset).row_width(width).finish()
+    }
+
+    pub fn viewer<T, Reused>(&self) -> ScriptViewer<'_, T, Reused>
+    where
+        T: VerifiableTransaction,
+        Reused: SigHashReusedValues,
+    {
+        ScriptViewer::new(&self.script)
+    }
+
+    pub fn string_view<T, Reused>(&self) -> String
+    where
+        T: VerifiableTransaction,
+        Reused: SigHashReusedValues,
+    {
+        self.viewer::<T, Reused>().try_to_string().unwrap_or_else(|e| e.to_string())
     }
 }
 
