@@ -1321,7 +1321,7 @@ impl ConsensusApi for Consensus {
 
     fn is_pruning_utxoset_stable(&self) -> bool {
         let pruning_meta_read = self.pruning_meta_stores.read();
-        pruning_meta_read.pruning_utxoset_stable_flag().unwrap()
+        pruning_meta_read.pruning_utxoset_stable_flag()
     }
 
     fn is_pruning_point_anticone_fully_synced(&self) -> bool {
@@ -1330,6 +1330,8 @@ impl ConsensusApi for Consensus {
     }
 
     fn is_consensus_in_transitional_ibd_state(&self) -> bool {
-        !(self.is_pruning_utxoset_stable() && self.is_pruning_point_anticone_fully_synced())
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        // equivalent to !self.is_pruning_point_anticone_fully_synced || !self.is_pruning_utxoset_stable
+        pruning_meta_read.is_in_transitional_ibd_state()
     }
 }

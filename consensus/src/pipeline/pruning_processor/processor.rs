@@ -163,18 +163,15 @@ impl PruningProcessor {
                 return false;
             }
         } else {
-            // these conditions are usually checked inside advance_pruning_utxoset, if skipped they should be checked here
-            let virtual_state = self.virtual_stores.read().state.get().unwrap();
-            let pp_bs = self.headers_store.get_blue_score(pruning_point).unwrap();
-            let pp_daa = self.headers_store.get_daa_score(pruning_point).unwrap();
-
-            if virtual_state.ghostdag_data.blue_score < pp_bs + self.config.params.pruning_depth().get(pp_daa) {
+            // these conditions are implicitely checked in advance_pruning_utxoset, so we only need to check
+            // them explicitely if we skipped advance_pruning_utxoset
+            if !self.confirm_pruning_depth_below_virtual(pruning_point) {
                 return false;
             }
             let pruning_meta_read = self.pruning_meta_stores.read();
 
-            // halt pruning if in a transitional ibd case.
-            if !pruning_meta_read.pruning_utxoset_stable_flag().unwrap_or(false) || !pruning_meta_read.is_anticone_fully_synced() {
+            // don't prune if in a transitional ibd state.
+            if pruning_meta_read.is_in_transitional_ibd_state() {
                 return false;
             }
             drop(pruning_meta_read);
@@ -249,12 +246,7 @@ impl PruningProcessor {
     }
 
     fn advance_pruning_utxoset(&self, utxoset_position: Hash, new_pruning_point: Hash) -> bool {
-        let virtual_state = self.virtual_stores.read().state.get().unwrap();
-        let pp_bs = self.headers_store.get_blue_score(new_pruning_point).unwrap();
-        let pp_daa = self.headers_store.get_daa_score(new_pruning_point).unwrap();
-
-        // do not attempt to prune before virtual caught up sufficiently
-        if virtual_state.ghostdag_data.blue_score < pp_bs + self.config.params.pruning_depth().get(pp_daa) {
+        if !self.confirm_pruning_depth_below_virtual(new_pruning_point) {
             return false;
         }
 
@@ -262,10 +254,10 @@ impl PruningProcessor {
             if self.is_consensus_exiting.load(Ordering::Relaxed) {
                 return false;
             }
-            // halt pruning if syncing was initiated
+            // halt pruning if an unstable IBD state was initiated in the midst of it
             let pruning_meta_read = self.pruning_meta_stores.upgradable_read();
 
-            if !pruning_meta_read.is_anticone_fully_synced() || !pruning_meta_read.pruning_utxoset_stable_flag().unwrap_or(false) {
+            if pruning_meta_read.is_in_transitional_ibd_state() {
                 return false;
             }
             let mut pruning_meta_write = RwLockUpgradableReadGuard::upgrade(pruning_meta_read);
@@ -663,6 +655,18 @@ impl PruningProcessor {
         (0..self.pruning_point_store.read().get().unwrap().index)
             .map(|index| self.past_pruning_points_store.get(index).unwrap())
             .collect()
+    }
+
+    fn confirm_pruning_depth_below_virtual(&self, pruning_point: Hash) -> bool {
+        // If the latest pruning point is the result of an IBD catchup, it is guaranteed that the headers selected tip
+        // is pruning_depth on top of it
+        // but crucially it is not guaranteed *virtual* is of sufficient depth above it
+        // internally the pruning process checks this process for virtual and fails otherwise
+        // for this reason, pruning is held until virtual has advanced enough.
+        let virtual_state = self.virtual_stores.read().state.get().unwrap();
+        let pp_bs = self.headers_store.get_blue_score(pruning_point).unwrap();
+        let pp_daa = self.headers_store.get_daa_score(pruning_point).unwrap();
+        virtual_state.ghostdag_data.blue_score >= pp_bs + self.config.params.pruning_depth().get(pp_daa)
     }
 
     fn assert_proof_rebuilding(&self, ref_proof: Arc<PruningPointProof>, new_pruning_point: Hash) {

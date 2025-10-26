@@ -45,8 +45,8 @@ impl PruningMetaStores {
     }
 
     /// Read the flag; default to true if missing, which corresponds to a new consensus
-    pub fn pruning_utxoset_stable_flag(&self) -> StoreResult<bool> {
-        self.utxoset_stable_flag_access.read().or(Ok(true))
+    pub fn pruning_utxoset_stable_flag(&self) -> bool {
+        self.utxoset_stable_flag_access.read().unwrap_or(true)
     }
 
     /// Represents blocks in the anticone of the current pruning point which may lack a block body
@@ -63,5 +63,8 @@ impl PruningMetaStores {
     // check if there are any disembodied blocks remanining in the anticone of the current pruning point
     pub fn is_anticone_fully_synced(&self) -> bool {
         self.disembodied_anticone_blocks.read().unwrap_or_default().is_empty()
+    }
+    pub fn is_in_transitional_ibd_state(&self) -> bool {
+        !self.is_anticone_fully_synced() || !self.pruning_utxoset_stable_flag()
     }
 }
