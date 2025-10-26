@@ -3677,6 +3677,7 @@ dependencies = [
  "rayon",
  "rocksdb",
  "serde",
+ "serde_json",
  "serde_with",
  "tempfile",
  "thiserror",
@@ -5411,6 +5412,7 @@ dependencies = [
  "rand_distr",
  "rayon",
  "secp256k1",
+ "serde_json",
  "tokio",
 ]
 
