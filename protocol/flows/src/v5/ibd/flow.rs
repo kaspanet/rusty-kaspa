@@ -239,12 +239,11 @@ impl IbdFlow {
                     // The node is missing a segment in the near future of its current pruning point, but the syncer is ahead
                     // and already pruned the current pruning point.
                     if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body())
-                        && consensus.async_is_pruning_point_anticone_fully_synced().await
-                        && consensus.async_is_pruning_utxoset_stable().await
+                        && !consensus.async_is_consensus_in_transitional_ibd_state().await
                     {
                         // The data pruned by the syncer is already available from within the node (from relay or past ibd attempts)
-                        // and the consensus was fully synced and hence
-                        // can carry on syncing as normal
+                        // and the consensus is not in a transtional state requiring data on the previous pruning point,
+                        // hence we can carry on syncing as normal.
                         return Ok(IbdType::Sync);
                     } else {
                         // Two options:
@@ -311,6 +310,7 @@ impl IbdFlow {
             Ok(IbdType::None)
         }
     }
+
     /// This function is triggered when the syncer's pruning point is higher
     /// than ours and we already processed its header before,
     /// so we only need to sync more headers and set it to our new pruning point before proceeding with IBD
@@ -320,7 +320,7 @@ impl IbdFlow {
         negotiation_output: &ChainNegotiationOutput,
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
-        // Let B.sp denote the the selected parant of a block B, let f be the finality depth.
+        // Let B.sp denote the selected parent of a block B, and let f be the finality depth.
         // The syncer's pruning point P is "finalized" into consensus if:
         // 1)  P satisfies P.blue_score>Nf and P.sp.blue_score<=NF for some integer N (i.e. it is a valid pruning point based on score).
         // 2) There are sufficient headers built on top of it, specifically, a header is validated whose blue_score is greater than P.B+p.
@@ -329,29 +329,24 @@ impl IbdFlow {
         // Since (1) was already checked during determine_ibd, we only need to check (2) and (3)
 
         let syncer_pp = negotiation_output.syncer_pruning_point;
-        let syncer_pp_bscore = consensus.async_get_header(syncer_pp).await?.blue_score;
         let syncer_sink = negotiation_output.syncer_virtual_selected_parent;
         // (2) verify pruning_depth on top of syncer_pp
         self.sync_headers(consensus, syncer_sink, negotiation_output.highest_known_syncer_chain_hash.unwrap(), relay_block).await?;
-        let syncer_virtual_bscore = consensus.async_get_header(syncer_sink).await?.blue_score;
-
-        // Check blue score  following the sync
-        // [Crescendo]: Remove after()
-        if syncer_virtual_bscore < syncer_pp_bscore + self.ctx.config.pruning_depth().after() {
-            return Err(ProtocolError::Other("Declared pruning point is not of sufficient depth"));
-        }
 
         // This function's main effect is to update the pruning point and apply necessary changes to the various
         // stores accordingly. Before doing all that though, it confirms (3)
         consensus.async_intrusive_pruning_point_update(syncer_pp, syncer_sink).await?;
-        // Sanity check
         if self.ctx.config.enable_sanity_checks {
+            // A sanity check to confirm that following the intrusive adition of new pruning points,
+            // the latest pruning point still correctly agrees with the DAG data,
+            // and is the head of a pruning points "chain" leading all the way down to genesis
             info!("validating pruning points consistency");
             consensus.async_validate_pruning_points(syncer_sink).await.unwrap();
             info!("pruning points consistency validated");
         }
         Ok(())
     }
+
     async fn ibd_with_headers_proof(
         &mut self,
         staging: &StagingConsensus,
@@ -674,6 +669,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         consensus.clone().spawn_blocking(move |c| c.import_pruning_point_utxo_set(pruning_point, multiset)).await?;
         Ok(())
     }
+
     async fn sync_missing_trusted_bodies(&mut self, consensus: &ConsensusProxy) -> Result<(), ProtocolError> {
         info!("downloading pruning point anticone missing block data");
         let diesembodied_hashes = consensus.async_get_disembodied_anticone().await;
@@ -711,6 +707,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         consensus.async_clear_disembodied_anticone_cache().await;
         Ok(())
     }
+
     async fn sync_missing_block_bodies(&mut self, consensus: &ConsensusProxy, high: Hash) -> Result<(), ProtocolError> {
         // TODO (relaxed): query consensus in batches
         let sleep_task = sleep(Duration::from_secs(2));

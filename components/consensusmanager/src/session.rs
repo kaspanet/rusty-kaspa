@@ -476,6 +476,9 @@ impl ConsensusSessionOwned {
     pub async fn async_is_pruning_point_anticone_fully_synced(&self) -> bool {
         self.clone().spawn_blocking(move |c| c.is_pruning_point_anticone_fully_synced()).await
     }
+    pub async fn async_is_consensus_in_transitional_ibd_state(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_consensus_in_transitional_ibd_state()).await
+    }
     pub async fn async_set_pruning_utxoset_unstable(&self) {
         self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable(false)).await
     }

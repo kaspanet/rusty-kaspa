@@ -51,10 +51,10 @@ impl HandleRelayBlockRequests {
 
     async fn send_sink(&mut self) -> Result<(), ProtocolError> {
         let session = self.ctx.consensus().unguarded_session();
-        let should_sync =
-            !(session.async_is_pruning_utxoset_stable().await && session.async_is_pruning_point_anticone_fully_synced().await);
+        let is_in_transitional_ibd_state = session.async_is_consensus_in_transitional_ibd_state().await;
         drop(session);
-        if should_sync {
+        // The sink may miss block body while in a transitional state, hence syncing with others must be prevented in the meanwhile
+        if is_in_transitional_ibd_state {
             return Ok(());
         }
         let sink = self.ctx.consensus().unguarded_session().async_get_sink().await;

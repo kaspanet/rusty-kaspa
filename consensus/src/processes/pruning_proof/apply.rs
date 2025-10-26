@@ -81,7 +81,7 @@ impl PruningProofManager {
             let reachability_read = self.reachability_store.read();
             for tb in trusted_set.iter() {
                 // A trusted block not in the past of the pruning point is in its anticone and thus must have a body
-                if !reachability_read.is_dag_ancestor_of(tb.block.hash(), pruning_point) && tb.block.is_header_only() {
+                if tb.block.is_header_only() && !reachability_read.is_dag_ancestor_of(tb.block.hash(), pruning_point) {
                     return Err(PruningImportError::PruningPointPastMissingReachability(tb.block.hash()));
                 }
             }

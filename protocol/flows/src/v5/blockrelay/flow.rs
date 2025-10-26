@@ -88,15 +88,14 @@ impl HandleRelayInvsFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
-        // if utxo is not synced, we should sync it as soon as possible.
+        // If utxo is not synced, we should sync it as soon as possible.
         let session = self.ctx.consensus().unguarded_session();
-        let mut should_sync =
-            !(session.async_is_pruning_utxoset_stable().await && session.async_is_pruning_point_anticone_fully_synced().await);
         drop(session);
         loop {
             // Loop over incoming block inv messages
             let inv = self.invs_route.dequeue().await?;
             let session = self.ctx.consensus().unguarded_session();
+            let is_ibd_in_transitional_state = session.async_is_consensus_in_transitional_ibd_state().await;
 
             match session.async_get_block_status(inv.hash).await {
                 None | Some(BlockStatus::StatusHeaderOnly) => {} // Continue processing this missing inv
@@ -154,10 +153,10 @@ impl HandleRelayInvsFlow {
                 );
                 continue;
             }
-            // if utxo is not synced or missing block bodies on the anticone, do not wait, sync
-            if should_sync {
+            // if in a transitional ibd state, do not wait, sync
+            if is_ibd_in_transitional_state {
                 match self.ibd_sender.try_send(block.clone(), |b, c| if b.header.blue_work > c.header.blue_work { b } else { c }) {
-                    Ok(_) | Err(TrySendError::Full(_)) => should_sync = false,
+                    Ok(_) | Err(TrySendError::Full(_)) => {}
                     Err(TrySendError::Closed(_)) => return Err(ProtocolError::ConnectionClosed), // This indicates that IBD flow has exited
                 }
                 continue;
