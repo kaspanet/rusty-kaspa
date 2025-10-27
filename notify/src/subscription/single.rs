@@ -342,11 +342,11 @@ impl UtxosChangedSubscription {
         subscription
     }
 
-    pub fn data(&self) -> RwLockReadGuard<UtxosChangedSubscriptionData> {
+    pub fn data(&self) -> RwLockReadGuard<'_, UtxosChangedSubscriptionData> {
         self.data.read()
     }
 
-    pub fn data_mut(&self) -> RwLockWriteGuard<UtxosChangedSubscriptionData> {
+    pub fn data_mut(&self) -> RwLockWriteGuard<'_, UtxosChangedSubscriptionData> {
         self.data.write()
     }
 
