@@ -15,14 +15,14 @@ fn derive_merkle_tree(hashes: impl ExactSizeIterator<Item = Hash>) -> Vec<Option
     if hashes.len() == 0 {
         return vec![Some(ZERO_HASH)];
     }
-    let next_pot = hashes.len().next_power_of_two(); //maximal number of  leaves in last level of tree
-    let vec_len = 2 * next_pot - 1; //maximal number of nodes in tree
+    let next_pot = hashes.len().next_power_of_two(); // Maximal number of  leaves in last level of tree
+    let vec_len = 2 * next_pot - 1; // Maximal number of nodes in tree
     let mut merkles = vec![None; vec_len];
-    //store leaves in the bottom level of the tree
+    // Store leaves in the bottom level of the tree
     for (i, hash) in hashes.enumerate() {
         merkles[i] = Some(hash);
     }
-    //compute merkle tree
+    // Compute merkle tree
     let mut offset = next_pot;
     for i in (0..vec_len - 1).step_by(2) {
         if merkles[i].is_none() {
@@ -36,8 +36,8 @@ fn derive_merkle_tree(hashes: impl ExactSizeIterator<Item = Hash>) -> Vec<Option
 }
 
 pub fn calc_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
-    // derive the merkle tree
-    // the last element in the tree is always the merkle tree root.
+    // Derive the merkle tree
+    // The last element in the tree is always the merkle tree root.
     let merkles = derive_merkle_tree(hashes);
     merkles.last().unwrap().unwrap()
 }
@@ -62,10 +62,10 @@ pub fn create_merkle_witness(
 ) -> Result<MerkleWitness, MerkleTreeError> {
     let vec_len = hashes.len();
     if vec_len == 0 && leaf_hash == ZERO_HASH {
-        //edge case, return empty witness and not an error
+        // Edge case, return empty witness and not an error
         return Ok(vec![]);
     }
-    let next_pot = vec_len.next_power_of_two(); //maximal number of  leaves in last level of tree
+    let next_pot = vec_len.next_power_of_two(); // Maximal number of  leaves in last level of tree
     let merkles = derive_merkle_tree(hashes);
     let leaf_index = if is_sorted {
         merkles[0..vec_len].binary_search(&Some(leaf_hash)).map_err(|_| MerkleTreeError::HashNotFoundInSorterd(leaf_hash))?
@@ -77,16 +77,16 @@ pub fn create_merkle_witness(
     let mut level_length = next_pot;
     let mut level_index = leaf_index;
 
-    //iterate over the indices per level corresponding to the route from leaf to the root and collect their "matches"
-    //alongside the path - the merkle root itself is not collected
+    // Iterate over the indices per level corresponding to the route from leaf to the root and collect their "matches"
+    // alongside the path - the merkle root itself is not collected
     while level_length > 1 {
         witness_vec.push({
-            //the leaf_index describes the indexing of the leaf itself per level, we store its "companion" hash as witness
+            // The leaf_index describes the indexing of the leaf itself per level, we store its "companion" hash as witness
             if level_index % 2 == 0 {
                 WitnessSegment {
                     companion_hash: merkles[level_start + level_index + 1].unwrap_or(ZERO_HASH),
                     leaf_route: LeafRoute::Left,
-                } //ZERO_HASH edge case relevant to the leaf level only
+                } // ZERO_HASH edge case relevant to the leaf level only
             } else {
                 WitnessSegment { companion_hash: merkles[level_start + level_index - 1].unwrap(), leaf_route: LeafRoute::Right }
             }
@@ -104,7 +104,7 @@ pub fn create_merkle_witness(
 pub fn verify_merkle_witness(witness_vec: &MerkleWitness, leaf_value: Hash, merkle_root_hash: Hash) -> bool {
     let mut current_hash = leaf_value;
     for witness_segment in witness_vec.iter() {
-        //the LeafRoute describes which branch the leaf is at from bottom to top
+        // The LeafRoute describes which branch the leaf is at from bottom to top
         match witness_segment.leaf_route {
             LeafRoute::Right => {
                 current_hash = merkle_hash(witness_segment.companion_hash, current_hash);
@@ -128,7 +128,7 @@ mod tests {
     use super::{calc_merkle_root, create_merkle_witness_from_sorted, create_merkle_witness_from_unsorted, verify_merkle_witness};
     use kaspa_hashes::Hash;
     use kaspa_hashes::{HASH_SIZE, ZERO_HASH};
-    // test the case of the empty tree which gets missed in the more general tests
+    // Test the case of the empty tree which gets missed in the more general tests
     const HASH1: [u8; 32] = [0x1u8; HASH_SIZE];
     const HASH2: [u8; 32] = [0x2u8; HASH_SIZE];
     const HASH3: [u8; 32] = [0x3u8; HASH_SIZE];
@@ -138,16 +138,16 @@ mod tests {
         let empty_witness = create_merkle_witness_from_sorted(empty_vec.clone().into_iter(), ZERO_HASH).unwrap();
         let merkle_root = calc_merkle_root(empty_vec.clone().into_iter());
 
-        //sanity checks
+        // Sanity checks
         assert_eq!(empty_vec, vec!());
         assert_eq!(merkle_root, ZERO_HASH);
         assert!(verify_merkle_witness(&empty_witness, ZERO_HASH, merkle_root));
-        //check false is returned for other hashes
+        // Check false is returned for other hashes
         assert!(!verify_merkle_witness(&empty_witness, Hash::from(HASH1), merkle_root));
-        //check erronous case behaves as expected
+        // Check erronous case behaves as expected
         assert!(create_merkle_witness_from_sorted(empty_vec.clone().into_iter(), Hash::from(HASH1)).is_err());
     }
-    // test separately the single leaf and double leaf tree cases
+    // Test separately the single leaf and double leaf tree cases
     #[test]
     fn test_witnesses_basic() {
         let single_vec = vec![Hash::from(HASH1)];
@@ -167,7 +167,7 @@ mod tests {
             Hash::from(HASH2),
             calc_merkle_root(double_vec.clone().into_iter())
         ));
-        // //testing erronous case behaviour
+        // Testing erronous case behaviour
         assert!(create_merkle_witness_from_unsorted(single_vec.clone().into_iter(), Hash::from(HASH2)).is_err());
         assert!(create_merkle_witness_from_unsorted(single_vec.clone().into_iter(), Hash::from(HASH3)).is_err());
         assert!(create_merkle_witness_from_unsorted(double_vec.clone().into_iter(), Hash::from(HASH3)).is_err());
@@ -178,19 +178,19 @@ mod tests {
 
         let mut hash_vec = vec![];
         for i in 0..TREE_LENGTH {
-            let temp = [(TREE_LENGTH + 2 - i) as u8; HASH_SIZE]; //skip ZERO_HASH and HASH1
+            let temp = [(TREE_LENGTH + 2 - i) as u8; HASH_SIZE]; // skip ZERO_HASH and HASH1
             hash_vec.push(Hash::from(temp));
         }
         let mut sorted_hash_vec = hash_vec.clone();
         sorted_hash_vec.sort();
         for _ in 0..TREE_LENGTH {
-            //feel up missing space with "garbage"
+            // Fill up missing space with "garbage"
             hash_vec.push(Hash::from(HASH1));
             sorted_hash_vec.push(Hash::from(HASH1));
         }
 
         for i in 1..TREE_LENGTH {
-            //disregard the 0 edge case as it is tested separately
+            // Disregard the 0 edge case as it is tested separately
             for leaf_index in 0..i {
                 println!("{} {} {}", leaf_index, i, sorted_hash_vec[leaf_index]);
 
@@ -203,13 +203,13 @@ mod tests {
                 let sorted_merkle_root = calc_merkle_root(sorted_hash_vec.clone().into_iter().take(i));
 
                 assert!(verify_merkle_witness(&witness_sorted, sorted_hash_vec[leaf_index], sorted_merkle_root));
-                assert!(verify_merkle_witness(&witness_unsorted, hash_vec[leaf_index], merkle_root)); //the witnesses are expected to be the same in this case
+                assert!(verify_merkle_witness(&witness_unsorted, hash_vec[leaf_index], merkle_root)); // the witnesses are expected to be the same in this case
 
-                //check false is returned when witness doesn't match
+                // Check false is returned when witness doesn't match
                 assert!(!verify_merkle_witness(&witness_unsorted, hash_vec[leaf_index + 1], merkle_root));
                 assert!(!verify_merkle_witness(&witness_sorted, sorted_hash_vec[leaf_index + 1], sorted_merkle_root));
             }
-            //testing erronous case behaviour
+            // Testing erronous case behaviour
             let leaf_index = 2 * i - 1;
             assert!(
                 create_merkle_witness_from_sorted(sorted_hash_vec.clone().into_iter().take(i), sorted_hash_vec[leaf_index]).is_err()

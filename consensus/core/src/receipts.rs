@@ -10,7 +10,7 @@ pub struct TxReceipt {
     pub posterity_block: Hash,
     pub initial_sequencing_commitment: Hash,
     // the accepted transactions merkle root segment of each sequencing commitment on path
-    //from the accepting block to posterity
+    // from the accepting block to posterity
     pub accepted_tx_mroot_chain: Vec<Hash>,
     pub tx_acceptance_proof: MerkleWitness,
 }

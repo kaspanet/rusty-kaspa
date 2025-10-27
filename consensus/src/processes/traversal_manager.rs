@@ -87,14 +87,12 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
         max_traversal_allowed: Option<u64>,
         return_anticone_only: bool,
     ) -> Result<Vec<Hash>, TraversalError> {
-        /*
-           In some cases we search for the anticone of the pruning point starting from virtual parents.
-           This means we might traverse ~pruning_depth blocks which are all stored in the visited set.
-           Experiments (and theory) show that w/o completely tracking visited, the queue might grow in
-           size quadratically due to many duplicate blocks, easily resulting in OOM errors if the DAG is
-           wide. On the other hand, even at 10 BPS, pruning depth is around 2M blocks which is approx 64MB, a modest
-           memory peak which happens at most once a in a pruning period (since pruning anticone is cached).
-        */
+        //  In some cases we search for the anticone of the pruning point starting from virtual parents.
+        //  This means we might traverse ~pruning_depth blocks which are all stored in the visited set.
+        //  Experiments (and theory) show that w/o completely tracking visited, the queue might grow in
+        //  size quadratically due to many duplicate blocks, easily resulting in OOM errors if the DAG is
+        //  wide. On the other hand, even at 10 BPS, pruning depth is around 2M blocks which is approx 64MB, a modest
+        //  memory peak which happens at most once a in a pruning period (since pruning anticone is cached).
         let mut output = Vec::new(); // Anticone or antipast, depending on args
         let mut queue = VecDeque::from_iter(tips);
         let mut visited = BlockHashSet::from_iter(queue.iter().copied());
@@ -158,25 +156,21 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
 
         current
     }
-    /* returns all blocks on route on the bfs path from this to descendant
-     */
+    // Returns all blocks on route on the bfs path from this to descendant
     pub fn forward_bfs_paths_iterator(&self, this: Hash, descendant: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
         BlocksBfsPathsIterator::new(this, Some(descendant), &self.reachability_service, &self.relations_store, BfsDirection::Forward)
     }
 
-    /* returns all  known blocks on route on the bfs path from this onward
-     */
+    // Returns all  known blocks on route on the bfs path from this onward
     pub fn default_forward_bfs_paths_iterator(&self, this: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
         BlocksBfsPathsIterator::new(this, None, &self.reachability_service, &self.relations_store, BfsDirection::Forward)
     }
 
-    /* returns all nodes on route on the backward bfs path from this to ancestor
-     */
+    // Returns all nodes on route on the backward bfs path from this to ancestor
     pub fn backward_bfs_paths_iterator(&self, this: Hash, ancestor: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
         BlocksBfsPathsIterator::new(this, Some(ancestor), &self.reachability_service, &self.relations_store, BfsDirection::Backward)
     }
-    /* returns all nodes on route on the backward bfs path from this to genesis
-     */
+    // Returns all nodes on route on the backward bfs path from this to genesis
     pub fn default_backward_bfs_paths_iterator(&self, this: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
         BlocksBfsPathsIterator::new(this, None, &self.reachability_service, &self.relations_store, BfsDirection::Backward)
     }
@@ -206,7 +200,7 @@ impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> BlocksBfsPathsIter
         let mut queue = VecDeque::new();
         queue.push_back(vec![start]);
         let mut visited = HashSet::new();
-        visited.insert(start); //note that in a dag this isn't actually necessary, but is kept for logical clarity
+        visited.insert(start); // Note that in a dag this isn't actually necessary, but is kept for logical clarity
         Self { queue, visited, edge, reachability_service, relations_store, bfs_direction }
     }
     pub fn map_paths_to_tips(self) -> impl Iterator<Item = Hash> + use<'a, U, V> {
@@ -220,12 +214,12 @@ impl<U: ReachabilityStoreReader, V: RelationsStoreReader> Iterator for BlocksBfs
         let mut curr;
         let mut path;
         loop {
-            //loop until a block on the route is found
+            // Loop until a block on the route is found
             if self.queue.is_empty() {
                 return None;
             }
             path = self.queue.pop_front().unwrap();
-            curr = *path.last().unwrap(); // path should never be empty
+            curr = *path.last().unwrap(); // Path should never be empty
 
             if self.edge.is_none()
                 || self.bfs_direction == BfsDirection::Forward
@@ -233,12 +227,11 @@ impl<U: ReachabilityStoreReader, V: RelationsStoreReader> Iterator for BlocksBfs
                 || self.bfs_direction == BfsDirection::Backward
                     && self.reachability_service.is_dag_ancestor_of_result(self.edge.unwrap(), curr).is_ok_and(|bool| bool)
             {
-                //once a block on the route is found in the queue, break out of loop
+                // Once a block on the route is found in the queue, break out of loop
                 break;
             }
         }
         let next_batch = match self.bfs_direction {
-            // type checker gives me hell here
             BfsDirection::Forward => self.relations_store.get_children(curr).unwrap().read().iter().cloned().collect_vec(), // I feel like this can potentially panic
             BfsDirection::Backward => self.relations_store.get_parents(curr).unwrap_or(vec![].into()).iter().cloned().collect_vec(),
         };
