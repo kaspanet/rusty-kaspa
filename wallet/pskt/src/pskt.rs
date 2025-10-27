@@ -3,7 +3,7 @@
 //!
 
 use kaspa_bip32::{secp256k1, DerivationPath, KeyFingerprint};
-use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
+use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, Hash};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{collections::BTreeMap, fmt::Display, fmt::Formatter, future::Future, marker::PhantomData, ops::Deref};
@@ -13,7 +13,8 @@ pub use crate::global::{Global, GlobalBuilder};
 pub use crate::input::{Input, InputBuilder};
 pub use crate::output::{Output, OutputBuilder};
 pub use crate::role::{Combiner, Constructor, Creator, Extractor, Finalizer, Signer, Updater};
-use kaspa_consensus_core::tx::UtxoEntry;
+use kaspa_consensus_core::config::params::Params;
+use kaspa_consensus_core::mass::{MassCalculator, NonContextualMasses};
 use kaspa_consensus_core::{
     hashing::sighash_type::SigHashType,
     subnets::SUBNETWORK_ID_NATIVE,
@@ -32,17 +33,19 @@ pub struct Inner {
     pub outputs: Vec<Output>,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize_repr, Deserialize_repr)]
 #[repr(u8)]
 pub enum Version {
     #[default]
     Zero = 0,
+    One = 1,
 }
 
 impl Display for Version {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Version::Zero => write!(f, "{}", Version::Zero as u8),
+            Version::One => write!(f, "{}", Version::One as u8),
         }
     }
 }
@@ -150,7 +153,8 @@ impl<R> PSKT<R> {
             self.determine_lock_time(),
             SUBNETWORK_ID_NATIVE,
             0,
-            vec![],
+            // Only include payload if version supports it (Version::One or higher)
+            if self.global.version >= Version::One { self.global.payload.clone().unwrap_or_default() } else { vec![] },
         );
         let entries = self.inputs.iter().filter_map(|Input { utxo_entry, .. }| utxo_entry.clone()).collect();
         SignableTransaction::with_entries(tx, entries)
@@ -187,6 +191,12 @@ impl PSKT<Creator> {
     /// Sets the fallback lock time.
     pub fn fallback_lock_time(mut self, fallback: u64) -> Self {
         self.inner_pskt.global.fallback_lock_time = Some(fallback);
+        self
+    }
+
+    /// Sets the PSKT version.
+    pub fn set_version(mut self, version: Version) -> Self {
+        self.inner_pskt.global.version = version;
         self
     }
 
@@ -234,6 +244,15 @@ impl PSKT<Constructor> {
         self.inner_pskt.outputs.push(output);
         self.inner_pskt.global.output_count += 1;
         self
+    }
+
+    pub fn payload(mut self, payload: Option<Vec<u8>>) -> Result<Self, Error> {
+        // Only allow setting payload if version is One or greater
+        if payload.is_some() && self.inner_pskt.global.version < Version::One {
+            return Err(Error::PayloadRequiresVersion1(self.inner_pskt.global.version));
+        }
+        self.inner_pskt.global.payload = payload;
+        Ok(self)
     }
 
     /// Returns a PSKT [`Updater`] once construction is completed.
@@ -312,6 +331,20 @@ impl PSKT<Signer> {
 
     pub fn combiner(self) -> PSKT<Combiner> {
         PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
+    }
+
+    // Unorphan batch transaction UTXO.
+    pub fn set_input_prev_transaction_id(self, transaction_id: Hash) -> PSKT<Signer> {
+        let mut new_inputs = self.inner_pskt.inputs.clone();
+
+        new_inputs.iter_mut().for_each(|input| {
+            input.previous_outpoint.transaction_id = transaction_id;
+        });
+
+        let mut updated_inner = self.inner_pskt.clone();
+        updated_inner.inputs = new_inputs;
+
+        PSKT { inner_pskt: updated_inner, role: Default::default() }
     }
 }
 
@@ -411,7 +444,7 @@ impl PSKT<Finalizer> {
 }
 
 impl PSKT<Extractor> {
-    pub fn extract_tx_unchecked(self) -> Result<impl FnOnce(u64) -> (Transaction, Vec<Option<UtxoEntry>>), TxNotFinalized> {
+    pub fn extract_tx_unchecked(self, params: &Params) -> Result<MutableTransaction<Transaction>, TxNotFinalized> {
         let tx = self.unsigned_tx();
         let entries = tx.entries;
         let mut tx = tx.tx;
@@ -419,16 +452,17 @@ impl PSKT<Extractor> {
             dest.signature_script = src.final_script_sig.ok_or(TxNotFinalized {})?;
             Ok(())
         })?;
-        Ok(move |mass| {
-            tx.set_mass(mass);
-            (tx, entries)
-        })
+        let tx = MutableTransaction { tx, entries, calculated_fee: None, calculated_non_contextual_masses: None };
+        let calculator = MassCalculator::new_with_consensus_params(params);
+        let storage_mass = calculator.calc_contextual_masses(&tx.as_verifiable()).map(|mass| mass.storage_mass).unwrap_or_default();
+        let NonContextualMasses { compute_mass, transient_mass } = calculator.calc_non_contextual_masses(&tx.tx);
+        let mass = storage_mass.max(compute_mass).max(transient_mass);
+        tx.tx.set_mass(mass);
+        Ok(tx)
     }
 
-    pub fn extract_tx(self) -> Result<impl FnOnce(u64) -> (Transaction, Vec<Option<UtxoEntry>>), ExtractError> {
-        let (tx, entries) = self.extract_tx_unchecked()?(0);
-
-        let tx = MutableTransaction::with_entries(tx, entries.into_iter().flatten().collect());
+    pub fn extract_tx(self, params: &Params) -> Result<MutableTransaction<Transaction>, ExtractError> {
+        let tx = self.extract_tx_unchecked(params)?;
         use kaspa_consensus_core::tx::VerifiableTransaction;
         {
             let tx = tx.as_verifiable();
@@ -440,13 +474,7 @@ impl PSKT<Extractor> {
                 <Result<(), ExtractError>>::Ok(())
             })?;
         }
-        let entries = tx.entries;
-        let tx = tx.tx;
-        let closure = move |mass| {
-            tx.set_mass(mass);
-            (tx, entries)
-        };
-        Ok(closure)
+        Ok(tx)
     }
 }
 

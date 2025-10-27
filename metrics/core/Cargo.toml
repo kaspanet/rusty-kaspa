@@ -20,3 +20,6 @@ serde.workspace = true
 thiserror.workspace = true
 workflow-core.workspace = true
 workflow-log.workspace = true
+
+[lints]
+workspace = true

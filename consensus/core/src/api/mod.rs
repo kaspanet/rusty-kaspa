@@ -138,6 +138,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_sink_blue_score(&self) -> u64 {
+        unimplemented!()
+    }
+
     fn get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
         unimplemented!()
     }

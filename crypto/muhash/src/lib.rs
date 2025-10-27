@@ -71,13 +71,13 @@ impl MuHash {
 
     #[inline]
     // returns a hasher for hashing data which on `finalize` adds the finalized hash to the muhash.
-    pub fn add_element_builder(&mut self) -> MuHashElementBuilder {
+    pub fn add_element_builder(&mut self) -> MuHashElementBuilder<'_> {
         MuHashElementBuilder::new(&mut self.numerator)
     }
 
     #[inline]
     // returns a hasher for hashing data which on `finalize` removes the finalized hash from the muhash.
-    pub fn remove_element_builder(&mut self) -> MuHashElementBuilder {
+    pub fn remove_element_builder(&mut self) -> MuHashElementBuilder<'_> {
         MuHashElementBuilder::new(&mut self.denominator)
     }
 
