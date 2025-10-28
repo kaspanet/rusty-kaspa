@@ -38,8 +38,8 @@ impl HandleIbdBlockBodyRequests {
             let session = self.ctx.consensus().unguarded_session();
             for chunk in hashes.chunks(IBD_BATCH_SIZE) {
                 let bodies_batch = session.async_get_block_body_batch(chunk.to_vec()).await;
-                for el in bodies_batch {
-                    let block_body_message = BlockBodyMessage { transactions: el?.iter().map(|tx| tx.into()).collect() };
+                for body in bodies_batch {
+                    let block_body_message = BlockBodyMessage { transactions: body?.iter().map(|tx| tx.into()).collect() };
                     self.router.enqueue(make_response!(Payload::IbdBlockBody, block_body_message, request_id)).await?;
                 }
             }

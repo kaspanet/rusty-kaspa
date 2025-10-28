@@ -36,6 +36,7 @@ use std::{
 use tokio::time::sleep;
 
 use super::{progress::ProgressReporter, HeadersChunk, PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
+type BlockBody = Vec<Transaction>;
 
 /// Flow for managing IBD - Initial Block Download
 pub struct IbdFlow {
@@ -597,6 +598,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             self.queue_block_processing_chunk_full_block(consensus, chunk).await
         }
     }
+
     async fn queue_block_processing_chunk_full_block(
         &mut self,
         consensus: &ConsensusProxy,
@@ -626,6 +628,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         }
         Ok(QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp })
     }
+
     async fn queue_block_processing_chunk_body_only(
         &mut self,
         consensus: &ConsensusProxy,
@@ -642,22 +645,16 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             .await?;
         for &expected_hash in chunk {
             let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlockBody)?;
-            //possibly worthwhile to make the header queries in a batch
+            //TODO(relaxed): make header queries in a batch.
             let blk_header = consensus.async_get_header(expected_hash).await?;
-            let mut blk_body: Vec<Transaction> = vec![];
-            for el in msg.transactions {
-                // a bit roundabout, but into doesn't work nicely
-                blk_body.push(el.try_into()?);
-            }
+            let blk_body: BlockBody = msg.try_into()?;
             if blk_body.is_empty() {
                 return Err(ProtocolError::OtherOwned(format!("sent empty block body for block {}", expected_hash)));
             }
-
             let block = Block { header: blk_header, transactions: blk_body.into() };
-
             current_daa_score = block.header.daa_score;
             current_timestamp = block.header.timestamp;
-            jobs.push(consensus.validate_and_insert_body(block).virtual_state_task);
+            jobs.push(consensus.validate_and_insert_block(block).virtual_state_task);
         }
         Ok(QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp })
     }

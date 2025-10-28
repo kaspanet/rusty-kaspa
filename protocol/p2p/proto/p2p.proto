@@ -185,6 +185,7 @@ message DonePruningPointUtxoSetChunksMessage {
 message RequestIBDBlocksMessage{
   repeated Hash hashes = 1;
 }
+
 message RequestIBDBlocksBodiesMessage{
   repeated Hash hashes = 1;
 }
