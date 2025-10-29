@@ -1,144 +1,121 @@
 use std::sync::Arc;
 
 use kaspa_consensus_core::{
-    BlockHashMap, BlockLevel, BlueWorkType, HashMapCustomHasher,
-    blockhash::{self, BlockHashExtensions, BlockHashes},
+    BlockHashMap, BlockHashSet, BlueWorkType, HashKTypeMap, HashMapCustomHasher, KType, blockhash::BlockHashExtensions,
 };
+use kaspa_database::prelude::StoreError;
 use kaspa_hashes::Hash;
-use kaspa_utils::refs::Refs;
 
 use crate::{
     model::{
-        services::reachability::ReachabilityService,
+        services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            ghostdag::{GhostdagData, GhostdagStoreReader, HashKTypeMap, KType},
+            dagknight::{DagknightKey, DagknightStore, DagknightStoreReader},
+            ghostdag::GhostdagData,
             headers::HeaderStoreReader,
+            reachability::ReachabilityStoreReader,
             relations::RelationsStoreReader,
         },
     },
-    processes::difficulty::{calc_work, level_work},
+    processes::{
+        difficulty::calc_work,
+        ghostdag::{
+            mergeset::unordered_mergeset_without_selected_parent,
+            ordering::SortableBlock,
+            protocol::{ChainBlock, ColoringOutput, ColoringState},
+        },
+        reachability::relations::FutureIntersectRelations,
+    },
 };
 
-use super::ordering::*;
-
-#[derive(Clone)]
-pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> {
-    genesis_hash: Hash,
-    pub(super) k: KType,
-    pub(super) ghostdag_store: Arc<T>,
-    pub(super) relations_store: S,
-    pub(super) headers_store: Arc<V>,
-    pub(super) reachability_service: U,
-
-    /// Level work is a lower-bound for the amount of work represented by each block.
-    /// When running GD for higher-level sub-DAGs, this value should be set accordingly
-    /// to the work represented by that level, and then used as a lower bound
-    /// for the work calculated from header bits (which depends on current difficulty).
-    /// For instance, assuming level 80 (i.e., pow hash has at least 80 zeros) is always
-    /// above the difficulty target, all blocks in it should represent the same amount of
-    /// work regardless of whether current difficulty requires 20 zeros or 25 zeros.  
-    level_work: BlueWorkType,
+// START Copied from GD Manager
+// NOTE: This is a copy from GD Manager right now, but the idea here is that it will update k_colouring to
+// be more in line with what the paper needs
+// Renamed from ghostdag_customized to k_colouring
+pub struct ConflictZoneManager<
+    S: DagknightStore + DagknightStoreReader,
+    Q: RelationsStoreReader,
+    R: ReachabilityStoreReader + Clone,
+    T: HeaderStoreReader,
+> {
+    k: KType,
+    root: Hash,
+    dagknight_store: Arc<S>,
+    relations_store: FutureIntersectRelations<Q, MTReachabilityService<R>>,
+    reachability_service: MTReachabilityService<R>,
+    headers_store: Arc<T>,
 }
 
-impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
+impl<S: DagknightStore + DagknightStoreReader, Q: RelationsStoreReader, R: ReachabilityStoreReader + Clone, T: HeaderStoreReader>
+    ConflictZoneManager<S, Q, R, T>
+{
     pub fn new(
-        genesis_hash: Hash,
         k: KType,
-        ghostdag_store: Arc<T>,
-        relations_store: S,
-        headers_store: Arc<V>,
-        reachability_service: U,
+        root: Hash,
+        dagknight_store: Arc<S>,
+        relations_store: FutureIntersectRelations<Q, MTReachabilityService<R>>,
+        reachability_service: MTReachabilityService<R>,
+        headers_store: Arc<T>,
     ) -> Self {
-        // For ordinary GD, always keep level_work=0 so the lower bound is ineffective
-        Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store, level_work: 0.into() }
+        Self { k, root, dagknight_store, headers_store, reachability_service, relations_store }
     }
 
-    pub fn with_level(
-        genesis_hash: Hash,
-        k: KType,
-        ghostdag_store: Arc<T>,
-        relations_store: S,
-        headers_store: Arc<V>,
-        reachability_service: U,
-        level: BlockLevel,
-        max_block_level: BlockLevel,
-    ) -> Self {
-        Self {
-            genesis_hash,
-            k,
-            ghostdag_store,
-            relations_store,
-            reachability_service,
-            headers_store,
-            level_work: level_work(level, max_block_level),
-        }
+    pub fn has(&self, pov_hash: Hash) -> bool {
+        let key = self.get_key(pov_hash);
+
+        self.dagknight_store.get_data(key).is_ok()
     }
 
-    pub fn genesis_ghostdag_data(&self) -> GhostdagData {
-        GhostdagData::new(
-            0,
-            Default::default(),
-            blockhash::ORIGIN,
-            BlockHashes::new(Vec::new()),
-            BlockHashes::new(Vec::new()),
-            HashKTypeMap::new(BlockHashMap::new()),
-        )
+    pub fn insert(&self, pov_hash: Hash, gd: Arc<GhostdagData>) -> Result<(), StoreError> {
+        let key = self.get_key(pov_hash);
+
+        self.dagknight_store.insert(key, gd)
     }
 
-    pub fn origin_ghostdag_data(&self) -> Arc<GhostdagData> {
-        Arc::new(GhostdagData::new(
-            0,
-            Default::default(),
-            0.into(),
-            BlockHashes::new(Vec::new()),
-            BlockHashes::new(Vec::new()),
-            HashKTypeMap::new(BlockHashMap::new()),
-        ))
+    fn get_key(&self, pov_hash: Hash) -> DagknightKey {
+        DagknightKey { k: self.k, pov_hash, root_hash: self.root }
     }
 
-    pub fn find_selected_parent(&self, parents: impl IntoIterator<Item = Hash>) -> Hash {
-        parents
-            .into_iter()
-            .map(|parent| SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() })
-            .max()
-            .unwrap()
-            .hash
+    pub fn get_blue_score(&self, pov_hash: Hash) -> Result<u64, StoreError> {
+        let key = self.get_key(pov_hash);
+
+        Ok(self.dagknight_store.get_data(key)?.blue_score)
     }
 
-    /// Runs the GHOSTDAG protocol and calculates the block GhostdagData by the given parents.
-    /// The function calculates mergeset blues by iterating over the blocks in
-    /// the anticone of the new block selected parent (which is the parent with the
-    /// highest blue work) and adds any block to the blue set if by adding
-    /// it these conditions will not be violated:
-    ///
-    /// 1) |anticone-of-candidate-block ∩ blue-set-of-new-block| ≤ K
-    ///
-    /// 2) For every blue block in blue-set-of-new-block:
-    ///    |(anticone-of-blue-block ∩ blue-set-new-block) ∪ {candidate-block}| ≤ K.
-    ///    We validate this condition by maintaining a map blues_anticone_sizes for
-    ///    each block which holds all the blue anticone sizes that were affected by
-    ///    the new added blue blocks.
-    ///    So to find out what is |anticone-of-blue ∩ blue-set-of-new-block| we just iterate in
-    ///    the selected parent chain of the new block until we find an existing entry in
-    ///    blues_anticone_sizes.
-    ///
-    /// For further details see the article <https://eprint.iacr.org/2018/104.pdf>
-    pub fn ghostdag(&self, parents: &[Hash]) -> GhostdagData {
+    pub fn get_blue_work(&self, pov_hash: Hash) -> Result<BlueWorkType, StoreError> {
+        let key = self.get_key(pov_hash);
+
+        Ok(self.dagknight_store.get_data(key)?.blue_work)
+    }
+
+    pub fn get_selected_parent(&self, pov_hash: Hash) -> Result<Hash, StoreError> {
+        let key = self.get_key(pov_hash);
+
+        Ok(self.dagknight_store.get_data(key)?.selected_parent)
+    }
+
+    pub fn get_blues_anticone_sizes(&self, pov_hash: Hash) -> Result<Arc<BlockHashMap<KType>>, StoreError> {
+        let key = self.get_key(pov_hash);
+
+        Ok(self.dagknight_store.get_data(key)?.blues_anticone_sizes.clone())
+    }
+
+    pub fn get_data(&self, pov_hash: Hash) -> Result<Arc<GhostdagData>, StoreError> {
+        let key = self.get_key(pov_hash);
+
+        self.dagknight_store.get_data(key)
+    }
+
+    pub fn k_colouring(&self, parents: &[Hash], k: KType, custom_selected_parent: Option<Hash>) -> GhostdagData {
         assert!(!parents.is_empty(), "genesis must be added via a call to init");
 
         // Run the GHOSTDAG parent selection algorithm
-        let selected_parent = self.find_selected_parent(parents.iter().copied());
+        let selected_parent = custom_selected_parent.unwrap_or(self.find_selected_parent(parents.iter().copied()));
         // Handle the special case of origin children first
         if selected_parent.is_origin() {
             // ORIGIN is always a single parent so both blue score and work should remain zero
             return GhostdagData::new_with_selected_parent(selected_parent, 1); // k is only a capacity hint here
         }
-
-        self.incremental_coloring(parents, selected_parent)
-    }
-
-    pub fn incremental_coloring(&self, parents: &[Hash], selected_parent: Hash) -> GhostdagData {
-        let k = self.k;
         // Initialize new GHOSTDAG block data with the selected parent
         let mut new_block_data = GhostdagData::new_with_selected_parent(selected_parent, k);
         // Get the mergeset in consensus-agreed topological order (topological here means forward in time from blocks to children)
@@ -155,15 +132,11 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             }
         }
 
-        let blue_score = self.ghostdag_store.get_blue_score(selected_parent).unwrap() + new_block_data.mergeset_blues.len() as u64;
+        let blue_score = self.get_blue_score(selected_parent).unwrap() + new_block_data.mergeset_blues.len() as u64;
 
-        let added_blue_work: BlueWorkType = new_block_data
-            .mergeset_blues
-            .iter()
-            .cloned()
-            .map(|hash| calc_work(self.headers_store.get_bits(hash).unwrap()).max(self.level_work))
-            .sum();
-        let blue_work: BlueWorkType = self.ghostdag_store.get_blue_work(selected_parent).unwrap() + added_blue_work;
+        let added_blue_work: BlueWorkType =
+            new_block_data.mergeset_blues.iter().cloned().map(|hash| calc_work(self.headers_store.get_bits(hash).unwrap())).sum();
+        let blue_work: BlueWorkType = self.get_blue_work(selected_parent).unwrap() + added_blue_work;
 
         new_block_data.finalize_score_and_work(blue_score, blue_work);
 
@@ -225,6 +198,8 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             // This is a sanity check that validates that a blue
             // block's blue anticone is not already larger than K.
             assert!(peer_blue_anticone_size <= k, "found blue anticone larger than K");
+            // [Crescendo]: this ^ is a valid assert since we are increasing k. Had we decreased k, this line would
+            //              need to be removed and the condition above would need to be changed to >= k
         }
 
         ColoringState::Pending
@@ -240,12 +215,12 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
                 return *size;
             }
 
-            if current_selected_parent == self.genesis_hash || current_selected_parent == blockhash::ORIGIN {
-                panic!("block {block} is not in blue set of the given context");
-            }
+            // if current_selected_parent == self.genesis_hash || current_selected_parent == blockhash::ORIGIN {
+            //     panic!("block {block} is not in blue set of the given context");
+            // }
 
-            current_blues_anticone_sizes = self.ghostdag_store.get_blues_anticone_sizes(current_selected_parent).unwrap();
-            current_selected_parent = self.ghostdag_store.get_selected_parent(current_selected_parent).unwrap();
+            current_blues_anticone_sizes = self.get_blues_anticone_sizes(current_selected_parent).unwrap();
+            current_selected_parent = self.get_selected_parent(current_selected_parent).unwrap();
         }
     }
 
@@ -282,27 +257,32 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
             chain_block = ChainBlock {
                 hash: Some(chain_block.data.selected_parent),
-                data: self.ghostdag_store.get_data(chain_block.data.selected_parent).unwrap().into(),
+                data: self.get_data(chain_block.data.selected_parent).unwrap().into(),
             }
         }
     }
-}
 
-/// Chain block with attached ghostdag data
-pub struct ChainBlock<'a> {
-    pub hash: Option<Hash>, // if set to `None`, signals being the new block
-    pub data: Refs<'a, GhostdagData>,
-}
+    pub fn sort_blocks(&self, blocks: impl IntoIterator<Item = Hash>) -> Vec<Hash> {
+        let mut sorted_blocks: Vec<Hash> = blocks.into_iter().collect();
+        sorted_blocks.sort_by_cached_key(|block| SortableBlock { hash: *block, blue_work: self.get_blue_work(*block).unwrap() });
+        sorted_blocks
+    }
 
-/// Represents the intermediate GHOSTDAG coloring state for the current candidate
-pub enum ColoringState {
-    Blue,
-    Red,
-    Pending,
-}
+    pub fn ordered_mergeset_without_selected_parent(&self, selected_parent: Hash, parents: &[Hash]) -> Vec<Hash> {
+        self.sort_blocks(self.unordered_mergeset_without_selected_parent(selected_parent, parents))
+    }
 
-/// Represents the final output of GHOSTDAG coloring for the current candidate
-pub enum ColoringOutput {
-    Blue(KType, BlockHashMap<KType>), // (blue anticone size, map of blue anticone sizes for each affected blue)
-    Red,
+    pub fn unordered_mergeset_without_selected_parent(&self, selected_parent: Hash, parents: &[Hash]) -> BlockHashSet {
+        unordered_mergeset_without_selected_parent(&self.relations_store, &self.reachability_service, selected_parent, parents)
+    }
+
+    pub fn find_selected_parent(&self, parents: impl IntoIterator<Item = Hash>) -> Hash {
+        parents
+            .into_iter()
+            .map(|parent| SortableBlock { hash: parent, blue_work: self.get_blue_work(parent).unwrap() })
+            .max()
+            .unwrap()
+            .hash
+    }
+    // END Copied from GD Manager
 }
