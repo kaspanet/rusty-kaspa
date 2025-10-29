@@ -20,11 +20,10 @@ use kaspa_muhash::MuHash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
     convert::model::trusted::TrustedDataPackage,
-    dequeue_with_timeout, make_message,
+    dequeue_with_timeout, make_message, make_request,
     pb::{
-        kaspad_message::Payload, RequestAntipastMessage, RequestHeadersMessage, RequestIbdBlocksBodiesMessage,
-        RequestIbdBlocksMessage, RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage,
-        RequestPruningPointUtxoSetMessage,
+        kaspad_message::Payload, RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
+        RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
     },
     IncomingRoute, Router,
 };
@@ -638,13 +637,14 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         let mut current_daa_score = 0;
         let mut current_timestamp = 0;
         self.router
-            .enqueue(make_message!(
-                Payload::RequestIbdBlocksBodies,
-                RequestIbdBlocksBodiesMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
+            .enqueue(make_request!(
+                Payload::RequestBlockBodies,
+                RequestBlockBodiesMessage { hashes: chunk.iter().map(|h| h.into()).collect() },
+                self.incoming_route.id()
             ))
             .await?;
         for &expected_hash in chunk {
-            let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlockBody)?;
+            let msg = dequeue_with_timeout!(self.incoming_route, Payload::BlockBody)?;
             // TODO (relaxed): make header queries in a batch.
             let blk_header = consensus.async_get_header(expected_hash).await.map_err(|err| {
                 // Conceptually this indicates local inconsistency, since we received the expected hashes via a local

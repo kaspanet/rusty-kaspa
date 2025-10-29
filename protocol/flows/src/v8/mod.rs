@@ -11,13 +11,13 @@ use crate::v5::{
     request_pruning_point_utxo_set::RequestPruningPointUtxoSetFlow,
     txrelay::flow::{RelayTransactionsFlow, RequestTransactionsFlow},
 };
-pub(crate) mod request_ibd_blocks_body;
+pub(crate) mod request_block_bodies;
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 
 use crate::ibd::IbdFlow;
 use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
 use kaspa_utils::channel;
-use request_ibd_blocks_body::HandleIbdBlockBodyRequests;
+use request_block_bodies::HandleBlockBodyRequests;
 use std::sync::Arc;
 
 use crate::v6::request_pruning_point_and_anticone::PruningPointAndItsAnticoneRequestsFlow;
@@ -40,7 +40,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
                 KaspadMessagePayloadType::DoneBlocksWithTrustedData,
                 KaspadMessagePayloadType::IbdChainBlockLocator,
                 KaspadMessagePayloadType::IbdBlock,
-                KaspadMessagePayloadType::IbdBlockBody,
+                KaspadMessagePayloadType::BlockBody,
                 KaspadMessagePayloadType::TrustedData,
                 KaspadMessagePayloadType::PruningPoints,
                 KaspadMessagePayloadType::PruningPointProof,
@@ -94,10 +94,10 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestIbdBlocks]),
         )),
-        Box::new(HandleIbdBlockBodyRequests::new(
+        Box::new(HandleBlockBodyRequests::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestIbdBlocksBodies]),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestBlockBodies]),
         )),
         Box::new(HandleAntipastRequests::new(
             ctx.clone(),
