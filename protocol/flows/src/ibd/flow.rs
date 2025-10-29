@@ -645,8 +645,12 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             .await?;
         for &expected_hash in chunk {
             let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlockBody)?;
-            //TODO(relaxed): make header queries in a batch.
-            let blk_header = consensus.async_get_header(expected_hash).await?;
+            // TODO (relaxed): make header queries in a batch.
+            let blk_header = consensus.async_get_header(expected_hash).await.map_err(|err| {
+                // Conceptually this indicates local inconsistency, since we received the expected hashes via a local
+                // get_missing_block_body_hashes call. However for now we fail gracefully and only disconnect from this peer.
+                ProtocolError::OtherOwned(format!("syncee inconsistency: missing block header for {}, err: {}", expected_hash, err))
+            })?;
             let blk_body: BlockBody = msg.try_into()?;
             if blk_body.is_empty() {
                 return Err(ProtocolError::OtherOwned(format!("sent empty block body for block {}", expected_hash)));

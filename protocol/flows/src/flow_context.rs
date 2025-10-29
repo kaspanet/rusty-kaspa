@@ -1,12 +1,9 @@
-use crate::{
-    flowcontext::{
-        orphans::{OrphanBlocksPool, OrphanOutput},
-        process_queue::ProcessQueue,
-        transactions::TransactionsSpread,
-    },
-    v8,
+use crate::flowcontext::{
+    orphans::{OrphanBlocksPool, OrphanOutput},
+    process_queue::ProcessQueue,
+    transactions::TransactionsSpread,
 };
-use crate::{v5, v6, v7};
+use crate::{v5, v6, v7, v8};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
@@ -64,6 +61,7 @@ use tokio::sync::{
 use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 use uuid::Uuid;
 
+/// The P2P protocol version.
 const PROTOCOL_VERSION: u32 = 8;
 
 /// See `check_orphan_resolution_range`
