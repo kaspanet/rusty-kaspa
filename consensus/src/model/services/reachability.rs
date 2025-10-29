@@ -15,6 +15,11 @@ pub trait ReachabilityService {
         self.try_is_chain_ancestor_of(this, queried).unwrap()
     }
 
+    /// Checks if `this` block is a chain ancestor all the blocks in `queried`
+    fn is_chain_ancestor_of_all(&self, this: Hash, queried: &[Hash]) -> bool {
+        queried.iter().all(|&hash| self.is_chain_ancestor_of(this, hash))
+    }
+
     /// Result version of [`Self::is_chain_ancestor_of`] (avoids unwrapping internally)
     fn try_is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> Result<bool>;
 
