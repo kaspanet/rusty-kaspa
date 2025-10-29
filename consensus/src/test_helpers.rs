@@ -1,4 +1,8 @@
+use std::fs::File;
+use std::io::Write;
+
 use kaspa_consensus_core::{
+    BlockHashSet,
     block::Block,
     header::Header,
     subnets::SubnetworkId,
@@ -159,4 +163,103 @@ pub fn generate_random_transaction_outpoint(rng: &mut SmallRng) -> TransactionOu
     TransactionOutpoint::new(generate_random_hash(rng), rng.r#gen())
 }
 
-//TODO: create `assert_eq_<kaspa-sturct>!()` helper macros in `consensus::test_helpers`
+//TODO: create `assert_eq_<kaspa-struct>!()` helper macros in `consensus::test_helpers`
+/// Utility to output a JSON representation of a DAG
+pub fn dag_to_json(genesis: u64, blocks: &[(u64, Vec<u64>)]) -> serde_json::Value {
+    let mut dag_data = serde_json::Map::new();
+    dag_data.insert("genesis".to_string(), serde_json::Value::Number(genesis.into()));
+
+    let blocks_array: Vec<serde_json::Value> = blocks
+        .iter()
+        .map(|(block, parents)| {
+            let mut block_obj = serde_json::Map::new();
+            block_obj.insert("id".to_string(), serde_json::Value::Number((*block).into()));
+            block_obj.insert(
+                "parents".to_string(),
+                serde_json::Value::Array(parents.iter().map(|p| serde_json::Value::Number((*p).into())).collect()),
+            );
+            serde_json::Value::Object(block_obj)
+        })
+        .collect();
+
+    dag_data.insert("blocks".to_string(), serde_json::Value::Array(blocks_array));
+    serde_json::Value::Object(dag_data)
+}
+
+/// Utility to output a DOT/Graphviz representation of a DAG
+pub fn dag_to_dot(genesis: u64, blocks: &Vec<(u64, Vec<u64>)>) -> String {
+    let mut dot = String::from("digraph DAG {\n");
+    dot.push_str(&format!("    {} [shape=doublecircle];\n", genesis));
+    for (block, parents) in blocks {
+        dot.push_str(&format!("    {} [shape=circle];\n", block));
+        for parent in parents {
+            dot.push_str(&format!("    {} -> {};\n", block, parent));
+        }
+    }
+    dot.push_str("}\n");
+    dot
+}
+
+pub fn generate_dot_with_chain(
+    blocks: &[(u64, Vec<u64>)],
+    chain_nodes: &BlockHashSet,
+    reds: BlockHashSet,
+    base_name: &str,
+) -> std::io::Result<()> {
+    let dot_filename = format!("{}.dot", base_name);
+    let mut dot_file = File::create(&dot_filename)?;
+
+    // Write DOT header
+    writeln!(dot_file, "digraph DAG {{")?;
+    writeln!(dot_file, "    // Graph settings")?;
+    writeln!(dot_file, "    rankdir=TB;")?;
+    writeln!(dot_file, "    node [fontname=\"Arial\", fontsize=10];")?;
+    writeln!(dot_file, "    edge [fontname=\"Arial\", fontsize=8];")?;
+    writeln!(dot_file)?;
+
+    // Write node definitions
+    for (block_id, _) in blocks {
+        let block_hash = Hash::from_u64_word(*block_id);
+        if chain_nodes.contains(&block_hash) {
+            // Chain nodes get double circle
+            writeln!(
+                dot_file,
+                "    {} [shape=doublecircle, color=blue, style=filled, fillcolor=lightsteelblue, penwidth=2];",
+                block_id
+            )?;
+        } else if reds.contains(&block_hash) {
+            // Non-chain nodes get regular circle
+            writeln!(dot_file, "    {} [shape=circle, style=filled, fillcolor=lightcoral];", block_id)?;
+        } else {
+            // Non-chain nodes get regular circle
+            writeln!(dot_file, "    {} [shape=circle, style=filled, fillcolor=lightskyblue];", block_id)?;
+        }
+    }
+
+    writeln!(dot_file)?;
+
+    // Write edge definitions
+    for (block_id, parent_ids) in blocks {
+        let from_node = Hash::from_u64_word(*block_id);
+
+        if parent_ids.is_empty() {
+            continue;
+        }
+        for &parent_id in parent_ids {
+            let to_node = Hash::from_u64_word(parent_id);
+
+            if chain_nodes.contains(&from_node) && chain_nodes.contains(&to_node) {
+                // Chain edges get bold red
+                writeln!(dot_file, "    {} -> {} [color=blue, penwidth=3, style=bold];", block_id, parent_id)?;
+            } else {
+                // Regular edges get gray dashed
+                writeln!(dot_file, "    {} -> {} [color=gray, style=dashed];", block_id, parent_id)?;
+            }
+        }
+    }
+
+    writeln!(dot_file, "}}")?;
+
+    println!("Generated DOT file: {}", dot_filename);
+    Ok(())
+}
