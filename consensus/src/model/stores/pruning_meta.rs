@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use kaspa_database::prelude::CachePolicy;
 use kaspa_database::prelude::StoreResult;
+use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem};
 use kaspa_database::registry::DatabaseStorePrefixes;
@@ -46,7 +47,7 @@ impl PruningMetaStores {
 
     /// Read the flag; default to true if missing, which corresponds to a new consensus
     pub fn pruning_utxoset_stable_flag(&self) -> bool {
-        self.utxoset_stable_flag_access.read().unwrap_or(true)
+        self.utxoset_stable_flag_access.read().unwrap_option().unwrap_or(true)
     }
 
     /// Represents blocks in the anticone of the current pruning point which may lack a block body

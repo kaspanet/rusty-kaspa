@@ -1180,7 +1180,7 @@ impl ConsensusApi for Consensus {
     /// which (may) lack a block body due to being in a transitional state
     /// If not in a transitional state this list is supposed to be empty
     fn get_disembodied_anticone(&self) -> Vec<Hash> {
-        self.pruning_meta_stores.read().get_disembodied_anticone().unwrap_or_default()
+        self.pruning_meta_stores.read().get_disembodied_anticone().unwrap_option().unwrap_or_default()
     }
 
     fn clear_disembodied_anticone_cache(&self) {
@@ -1311,11 +1311,11 @@ impl ConsensusApi for Consensus {
         self.intrusive_pruning_point_store_writes(new_pruning_point, syncer_sink, pruning_points_to_add)
     }
 
-    fn set_pruning_utxoset_stable(&self, set_val: bool) {
+    fn set_pruning_utxoset_stable(&self, val: bool) {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
         let mut batch = rocksdb::WriteBatch::default();
 
-        pruning_meta_write.set_pruning_utxoset_stable(&mut batch, set_val).unwrap();
+        pruning_meta_write.set_pruning_utxoset_stable(&mut batch, val).unwrap();
         self.db.write(batch).unwrap();
     }
 
@@ -1331,7 +1331,6 @@ impl ConsensusApi for Consensus {
 
     fn is_consensus_in_transitional_ibd_state(&self) -> bool {
         let pruning_meta_read = self.pruning_meta_stores.read();
-        // equivalent to !self.is_pruning_point_anticone_fully_synced || !self.is_pruning_utxoset_stable
         pruning_meta_read.is_in_transitional_ibd_state()
     }
 }

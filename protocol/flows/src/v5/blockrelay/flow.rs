@@ -153,12 +153,9 @@ impl HandleRelayInvsFlow {
                 );
                 continue;
             }
-            // if in a transitional ibd state, do not wait, sync
+            // if in a transitional ibd state, do not wait, sync immediately
             if is_ibd_in_transitional_state {
-                match self.ibd_sender.try_send(block.clone(), |b, c| if b.header.blue_work > c.header.blue_work { b } else { c }) {
-                    Ok(_) | Err(TrySendError::Full(_)) => {}
-                    Err(TrySendError::Closed(_)) => return Err(ProtocolError::ConnectionClosed), // This indicates that IBD flow has exited
-                }
+                self.try_trigger_ibd(block)?;
                 continue;
             }
 
@@ -302,12 +299,7 @@ impl HandleRelayInvsFlow {
                 None | Some(OrphanOutput::Unknown) => {}
             }
         } else {
-            // Send the block to IBD flow via the dedicated job channel. If the channel has a pending job, we prefer
-            // the block with higher blue work, since it is usually more recent
-            match self.ibd_sender.try_send(block, |b, c| if b.header.blue_work > c.header.blue_work { b } else { c }) {
-                Ok(_) | Err(TrySendError::Full(_)) => {}
-                Err(TrySendError::Closed(_)) => return Err(ProtocolError::ConnectionClosed), // This indicates that IBD flow has exited
-            }
+            self.try_trigger_ibd(block)?;
         }
         Ok(None)
     }
@@ -367,5 +359,14 @@ impl HandleRelayInvsFlow {
             }
         }
         Ok(false)
+    }
+
+    // Send the block to IBD flow via the dedicated job channel. If the channel has a pending job, we prefer
+    // the block with higher blue work, since it is usually more recent
+    fn try_trigger_ibd(&self, block: Block) -> Result<(), ProtocolError> {
+        match self.ibd_sender.try_send(block.clone(), |b, c| if b.header.blue_work > c.header.blue_work { b } else { c }) {
+            Ok(_) | Err(TrySendError::Full(_)) => Ok(()),
+            Err(TrySendError::Closed(_)) => Err(ProtocolError::ConnectionClosed), // This indicates that IBD flow has exited
+        }
     }
 }

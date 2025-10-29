@@ -139,7 +139,7 @@ pub enum RpcError {
     UtxoReturnAddressNotFound(UtxoInquirerError),
 
     #[error("consensus is currently in a transitional ibd state")]
-    ConsensusInTransitionalIbdState(),
+    ConsensusInTransitionalIbdState,
 }
 
 impl From<String> for RpcError {

@@ -163,8 +163,8 @@ impl PruningProcessor {
                 return false;
             }
         } else {
-            // these conditions are implicitely checked in advance_pruning_utxoset, so we only need to check
-            // them explicitely if we skipped advance_pruning_utxoset
+            // these conditions are implicitly checked in advance_pruning_utxoset, so we only need to check
+            // them explicitly if we skipped advance_pruning_utxoset
             if !self.confirm_pruning_depth_below_virtual(pruning_point) {
                 return false;
             }

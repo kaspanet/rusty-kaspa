@@ -377,24 +377,31 @@ pub trait ConsensusApi: Send + Sync {
     fn finality_point(&self) -> Hash {
         unimplemented!()
     }
+
     fn clear_pruning_utxo_set(&self) {
         unimplemented!()
     }
-    fn set_pruning_utxoset_stable(&self, set_val: bool) {
+
+    fn set_pruning_utxoset_stable(&self, val: bool) {
         unimplemented!()
     }
+
     fn is_pruning_utxoset_stable(&self) -> bool {
         unimplemented!()
     }
+
     fn is_pruning_point_anticone_fully_synced(&self) -> bool {
         unimplemented!()
     }
+
     fn is_consensus_in_transitional_ibd_state(&self) -> bool {
         unimplemented!()
     }
+
     fn is_pruning_sample(&self, candidate_hash: Hash) -> bool {
         unimplemented!()
     }
+
     fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
         unimplemented!()
     }

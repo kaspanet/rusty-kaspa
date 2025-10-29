@@ -119,7 +119,7 @@ impl IbdFlow {
                 // Following IBD catchup a new pruning point is designated and finalized in consensus. Blocks from its anticone (including itself)
                 // have undergone normal header verification, but contain no body yet. Processing of new blocks in the pruning point's future cannot proceed
                 // since these blocks' parents are missing block data.
-                // Hence we explicitely process bodies of the yet disembodied anticone blocks as trusted blocks
+                // Hence we explicitly process bodies of the yet disembodied anticone blocks as trusted blocks
                 // Notice that this is degenerate following sync_with_headers_proof
                 // but not necessarily so after sync_headers -
                 // as it might sync following a previous pruning_catch_up that crashed before this stage concluded
@@ -130,7 +130,7 @@ impl IbdFlow {
                 // Utxo might not be available even if the pruning point block data is.
                 // Utxo must be synced before all so the node could function
                 {
-                    info!("utxo set missing, downloading utxo set corresponding to the pruning point ");
+                    info!("utxo set missing, downloading utxo set corresponding to the pruning point");
 
                     self.sync_new_utxo_set(&session, pruning_point).await?;
                 }
@@ -162,7 +162,7 @@ impl IbdFlow {
                         self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point).await?;
                     }
                     Err(e) => {
-                        info!("IBD with headers proof from {} was unsuccessful ({})", self.router, e);
+                        warn!("IBD with headers proof from {} was unsuccessful ({})", self.router, e);
                         staging.cancel();
                         return Err(e);
                     }
@@ -179,7 +179,7 @@ impl IbdFlow {
                     }
 
                     Err(e) => {
-                        info!("IBD catchup from peer {} was unsuccessful ({})", self.router, e);
+                        warn!("IBD catchup from peer {} was unsuccessful ({})", self.router, e);
                         return Err(e);
                     }
                 }
@@ -251,14 +251,11 @@ impl IbdFlow {
                         // 2: syncer_pruning_point is in the past of current pruning point, or is unknown on which case the syncing node is flawed,
                         // and IBD should be stopped
 
-                        let current_pp_daa_score = consensus.async_get_header(pruning_point).await?.daa_score;
-                        // The syncer_pruning_point is in the past of highest known syncer_chain_hash, ergo we should know it
-                        let syncer_pp_daa_score = consensus
-                            .async_get_header(syncer_pruning_point)
+                        if consensus
+                            .async_is_chain_ancestor_of(pruning_point, syncer_pruning_point)
                             .await
                             .map_err(|_| ProtocolError::Other("syncer pruning point is corrupted"))?
-                            .daa_score;
-                        if current_pp_daa_score < syncer_pp_daa_score {
+                        {
                             return Ok(IbdType::PruningCatchUp);
                         } else {
                             return Err(ProtocolError::Other("syncer pruning point is outdated"));
@@ -320,9 +317,9 @@ impl IbdFlow {
         negotiation_output: &ChainNegotiationOutput,
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
-        // Let B.sp denote the selected parent of a block B, and let f be the finality depth.
+        // Let B.sp denote the selected parent of a block B, let f be the finality depth, and let p be the pruning depth.
         // The syncer's pruning point P is "finalized" into consensus if:
-        // 1)  P satisfies P.blue_score>Nf and P.sp.blue_score<=NF for some integer N (i.e. it is a valid pruning point based on score).
+        // 1) P satisfies P.blue_score>Nf and P.sp.blue_score<=NF for some integer N (i.e. it is a valid pruning point based on score).
         // 2) There are sufficient headers built on top of it, specifically, a header is validated whose blue_score is greater than P.B+p.
         // 3) Additionally, the syncer pruning point must be on the selected chain from that header, and any pruning points declared
         // on headers on its path must be consistent with those already known.

@@ -485,13 +485,13 @@ impl<
         self.is_pruning_point_in_pruning_depth(tip_bs, pp_candidate, pruning_depth)
     }
 
+    // Function returns the pruning points on the path
+    // ordered from newest to the oldest
     pub fn pruning_points_on_path_to_syncer_sink(
         &self,
         pruning_info: PruningPointInfo,
         syncer_sink: Hash,
     ) -> PruningImportResult<VecDeque<Hash>> {
-        // Function returns the pruning points on the path
-        // ordered from newest to the oldest
         let mut pps_on_path = VecDeque::new();
         for current in self.reachability_service.forward_chain_iterator(pruning_info.pruning_point, syncer_sink, true).skip(1) {
             let current_header = self.headers_store.get_header(current).unwrap();

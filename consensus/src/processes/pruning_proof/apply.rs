@@ -54,7 +54,7 @@ impl PruningProofManager {
 
         let mut expanded_proof = proof;
         let mut trusted_gd_map: BlockHashMap<GhostdagData> = BlockHashMap::new();
-        // this loop calculates ghostdag data for each block in the trusted set
+        // this loop retrieves ghostdag data for each block in the trusted set
         // and expands the proof with the hashes of trusted set
         for tb in trusted_set.iter() {
             trusted_gd_map.insert(tb.block.hash(), tb.ghostdag.clone().into());
@@ -82,7 +82,7 @@ impl PruningProofManager {
             for tb in trusted_set.iter() {
                 // A trusted block not in the past of the pruning point is in its anticone and thus must have a body
                 if tb.block.is_header_only() && !reachability_read.is_dag_ancestor_of(tb.block.hash(), pruning_point) {
-                    return Err(PruningImportError::PruningPointPastMissingReachability(tb.block.hash()));
+                    return Err(PruningImportError::PruningPointAnticoneMissingBody(tb.block.hash()));
                 }
             }
         }
