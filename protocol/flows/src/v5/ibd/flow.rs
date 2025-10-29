@@ -256,7 +256,17 @@ impl IbdFlow {
                             .await
                             .map_err(|_| ProtocolError::Other("syncer pruning point is corrupted"))?
                         {
-                            return Ok(IbdType::PruningCatchUp);
+                            // Archival nodes generally want "full" data, and it is hence safer to disconnect from the peer
+                            // and possibly invite human intervention
+                            // then automatically syncing and unknowingly accept data gaps
+                            // TODO(relaxed): introduce a general flag to prevent pruning catchup functionality
+                            if self.ctx.config.is_archival {
+                                return Err(ProtocolError::Other(
+                                    "attempted to initiate pruning point catch up, but local node is archival and does not permit it",
+                                ));
+                            } else {
+                                return Ok(IbdType::PruningCatchUp);
+                            }
                         } else {
                             return Err(ProtocolError::Other("syncer pruning point is outdated"));
                         }

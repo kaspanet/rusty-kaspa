@@ -499,7 +499,6 @@ impl Consensus {
         let mut batch = WriteBatch::default();
         let mut pruning_point_write = self.pruning_point_store.write();
         let old_pruning_info = pruning_point_write.get().unwrap();
-        let retention_period_root = pruning_point_write.retention_period_root().unwrap();
 
         let new_pp_index = old_pruning_info.index + pruning_points_to_add.len() as u64;
         pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pruning_point, new_pp_index).unwrap();
@@ -507,15 +506,11 @@ impl Consensus {
             self.past_pruning_points_store.insert_batch(&mut batch, old_pruning_info.index + i as u64 + 1, past_pp).unwrap();
         }
 
-        // For archival nodes, keep the retention root in place
-        if !self.config.is_archival {
-            // Possibly we should just advance to the pruning point and be done with.
-            // Currently this creates a weird hybrid where
-            // data would be available in gaps
-            let adjusted_retention_period_root =
-                self.pruning_processor.advance_retention_period_root(retention_period_root, new_pruning_point);
-            pruning_point_write.set_retention_period_root(&mut batch, adjusted_retention_period_root).unwrap();
-        }
+        // Arhcival nodes should not be doing intrusive updates
+        assert!(!self.config.is_archival);
+        // To prevent paradoxical data gaps creating unexpected behaviour, we advance to the new pruning point
+        // regardless of the reterntion period
+        pruning_point_write.set_retention_period_root(&mut batch, new_pruning_point).unwrap();
 
         // Update virtual state based to the new pruning point
         // Updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
