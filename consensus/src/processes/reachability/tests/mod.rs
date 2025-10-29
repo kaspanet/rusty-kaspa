@@ -148,8 +148,24 @@ impl<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ChildrenStore + ?Siz
         self
     }
 
+    pub fn add_block_with_selected_parent(&mut self, mut block: DagBlock, selected_parent: Hash) -> &mut Self {
+        if block.parents.is_empty() {
+            block.parents.push(ORIGIN);
+        }
+        assert!(block.parents.contains(&selected_parent));
+        let mergeset = unordered_mergeset_without_selected_parent(self.relations, self.reachability, selected_parent, &block.parents);
+        add_block(self.reachability, block.hash, selected_parent, &mut mergeset.iter().cloned()).unwrap();
+        hint_virtual_selected_parent(self.reachability, block.hash).unwrap();
+        self.relations.insert(block.hash, BlockHashes::new(block.parents)).unwrap();
+        self
+    }
+
     pub fn store(&self) -> &&'a mut T {
         &self.reachability
+    }
+
+    pub fn relations(&self) -> &&'a mut S {
+        &self.relations
     }
 }
 
