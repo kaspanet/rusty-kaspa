@@ -1,10 +1,7 @@
-use crate::{flow_context::FlowContext, flow_trait::Flow, ibd::IBD_BATCH_SIZE};
+use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
 use kaspa_p2p_lib::{
-    common::ProtocolError,
-    dequeue_with_request_id, make_response,
-    pb::{kaspad_message::Payload, BlockBodyMessage},
-    IncomingRoute, Router,
+    common::ProtocolError, dequeue_with_request_id, make_response, pb::kaspad_message::Payload, IncomingRoute, Router,
 };
 use std::sync::Arc;
 
@@ -36,12 +33,10 @@ impl HandleIbdBlockBodyRequests {
             let hashes: Vec<_> = msg.try_into()?;
             debug!("got request for {} IBD blocks bodies", hashes.len());
             let session = self.ctx.consensus().unguarded_session();
-            for chunk in hashes.chunks(IBD_BATCH_SIZE) {
-                let bodies_batch = session.async_get_block_body_batch(chunk.to_vec()).await;
-                for body in bodies_batch {
-                    let block_body_message = BlockBodyMessage { transactions: body?.iter().map(|tx| tx.into()).collect() };
-                    self.router.enqueue(make_response!(Payload::IbdBlockBody, block_body_message, request_id)).await?;
-                }
+
+            for hash in hashes {
+                let body = session.async_get_block_body(hash).await?;
+                self.router.enqueue(make_response!(Payload::IbdBlockBody, body.as_ref().into(), request_id)).await?;
             }
         }
     }

@@ -368,12 +368,7 @@ impl ConsensusSessionOwned {
     pub async fn async_get_block(&self, hash: Hash) -> ConsensusResult<Block> {
         self.clone().spawn_blocking(move |c| c.get_block(hash)).await
     }
-    pub async fn async_get_block_batch(&self, batch: Vec<Hash>) -> Vec<ConsensusResult<Block>> {
-        self.clone().spawn_blocking(move |c| batch.iter().map(|&el| c.get_block(el)).collect()).await
-    }
-    pub async fn async_get_block_body_batch(&self, batch: Vec<Hash>) -> Vec<ConsensusResult<Arc<Vec<Transaction>>>> {
-        self.clone().spawn_blocking(move |c| batch.iter().map(|&el| c.get_block_body(el)).collect()).await
-    }
+
     pub async fn async_get_block_body(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
         self.clone().spawn_blocking(move |c| c.get_block_body(hash)).await
     }

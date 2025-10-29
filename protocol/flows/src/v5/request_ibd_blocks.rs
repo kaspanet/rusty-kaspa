@@ -1,4 +1,4 @@
-use crate::{flow_context::FlowContext, flow_trait::Flow, ibd::IBD_BATCH_SIZE};
+use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
 use kaspa_p2p_lib::{
     common::ProtocolError, dequeue_with_request_id, make_response, pb::kaspad_message::Payload, IncomingRoute, Router,
@@ -34,11 +34,10 @@ impl HandleIbdBlockRequests {
 
             debug!("got request for {} IBD blocks", hashes.len());
             let session = self.ctx.consensus().unguarded_session();
-            for chunk in hashes.chunks(IBD_BATCH_SIZE) {
-                let blocks_batch = session.async_get_block_batch(chunk.to_vec()).await;
-                for el in blocks_batch {
-                    self.router.enqueue(make_response!(Payload::IbdBlock, (&(el?)).into(), request_id)).await?;
-                }
+
+            for hash in hashes {
+                let block = session.async_get_block(hash).await?;
+                self.router.enqueue(make_response!(Payload::IbdBlock, (&block).into(), request_id)).await?;
             }
         }
     }

@@ -64,6 +64,7 @@ impl BlockTask {
     pub fn is_trusted(&self) -> bool {
         matches!(self, BlockTask::Trusted { .. })
     }
+    
     pub fn requires_virtual_processing(&self) -> bool {
         // Trusted blocks should not trigger virtual processing
         self.is_ordinary()
