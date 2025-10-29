@@ -359,7 +359,7 @@ impl RpcApi for RpcCoreService {
         }
 
         // TODO: consider adding an error field to SubmitBlockReport to document both the report and error fields
-        let is_synced: bool = self.mining_rule_engine.should_mine(sink_daa_score_timestamp);
+        let is_synced = self.mining_rule_engine.should_mine(sink_daa_score_timestamp);
 
         if !self.config.enable_unsynced_mining && !is_synced {
             // error = "Block not submitted - node is not synced"
@@ -749,7 +749,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
-        let session: kaspa_consensusmanager::ConsensusSessionOwned = self.consensus_manager.consensus().unguarded_session();
+        let session = self.consensus_manager.consensus().unguarded_session();
         // do not retrieve utxos  while in unstable ibd state.
         if session.async_is_consensus_in_transitional_ibd_state().await {
             return Err(RpcError::ConsensusInTransitionalIbdState);
@@ -770,7 +770,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             return Err(RpcError::NoUtxoIndex);
         }
 
-        let session: kaspa_consensusmanager::ConsensusSessionOwned = self.consensus_manager.consensus().unguarded_session();
+        let session = self.consensus_manager.consensus().unguarded_session();
 
         // do not retrieve utxo balances while in unstable ibd state.
         if session.async_is_consensus_in_transitional_ibd_state().await {
@@ -789,7 +789,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
-        let session: kaspa_consensusmanager::ConsensusSessionOwned = self.consensus_manager.consensus().unguarded_session();
+        let session = self.consensus_manager.consensus().unguarded_session();
 
         // do not retrieve utxo balances while in unstable ibd state.
         if session.async_is_consensus_in_transitional_ibd_state().await {
@@ -816,7 +816,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
-        let session: kaspa_consensusmanager::ConsensusSessionOwned = self.consensus_manager.consensus().unguarded_session();
+        let session = self.consensus_manager.consensus().unguarded_session();
 
         // do not retrieve supply balances while in unstable ibd state.
         if session.async_is_consensus_in_transitional_ibd_state().await {
@@ -1268,7 +1268,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetServerInfoResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
         let sink_daa_score_timestamp = session.async_get_sink_daa_score_timestamp().await;
-        let is_synced: bool = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp);
+        let is_synced = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp);
         let virtual_daa_score = session.get_virtual_daa_score();
 
         Ok(GetServerInfoResponse {
@@ -1287,10 +1287,10 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         _request: GetSyncStatusRequest,
     ) -> RpcResult<GetSyncStatusResponse> {
-        let session: kaspa_consensusmanager::ConsensusSessionOwned = self.consensus_manager.consensus().unguarded_session();
+        let session = self.consensus_manager.consensus().unguarded_session();
 
         let sink_daa_score_timestamp = session.async_get_sink_daa_score_timestamp().await;
-        let is_synced: bool = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp)
+        let is_synced = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp)
             && !session.async_is_consensus_in_transitional_ibd_state().await;
         Ok(GetSyncStatusResponse { is_synced })
     }

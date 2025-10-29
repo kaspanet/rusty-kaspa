@@ -180,12 +180,12 @@ impl PruningProofManager {
     ) -> (Vec<Arc<DbGhostdagStore>>, Vec<Hash>, Vec<Hash>) {
         let mut ghostdag_stores: Vec<Option<Arc<DbGhostdagStore>>> = vec![None; self.max_block_level as usize + 1];
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
-        let mut root_by_level: Vec<Option<Hash>> = vec![None; self.max_block_level as usize + 1];
+        let mut root_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
             let level_usize = level as usize;
             let required_block = if level != self.max_block_level {
                 let next_level_store = ghostdag_stores[level_usize + 1].as_ref().unwrap().clone();
-                let block_at_depth_m_at_next_level: Hash = self
+                let block_at_depth_m_at_next_level = self
                     .block_at_depth(&*next_level_store, selected_tip_by_level[level_usize + 1].unwrap(), self.pruning_proof_m)
                     .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
                     .unwrap();
@@ -412,7 +412,7 @@ impl PruningProofManager {
                 if BlockHashSet::from_iter(parents.iter().copied()) == direct_parents {
                     None
                 } else {
-                    Some((level - 1)  as BlockLevel)
+                    Some((level - 1) as BlockLevel)
                 }
             })
             .unwrap_or(self.max_block_level)

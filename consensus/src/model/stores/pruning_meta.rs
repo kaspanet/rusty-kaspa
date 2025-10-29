@@ -65,6 +65,7 @@ impl PruningMetaStores {
     pub fn is_anticone_fully_synced(&self) -> bool {
         self.disembodied_anticone_blocks.read().unwrap_or_default().is_empty()
     }
+
     pub fn is_in_transitional_ibd_state(&self) -> bool {
         !self.is_anticone_fully_synced() || !self.pruning_utxoset_stable_flag()
     }
