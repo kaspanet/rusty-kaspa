@@ -13,6 +13,8 @@ pub trait ReachabilityService {
     /// Note that we use the graph theory convention here which defines that a block is also an ancestor of itself.
     fn is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> bool;
 
+    fn is_chain_ancestor_of_all(&self, this: Hash, queried: &[Hash]) -> bool;
+
     /// Result version of [`Self::is_dag_ancestor_of`] (avoids unwrapping internally)
     fn is_dag_ancestor_of_result(&self, this: Hash, queried: Hash) -> Result<bool>;
 
@@ -44,6 +46,10 @@ pub trait ReachabilityService {
 impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for T {
     fn is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> bool {
         inquirer::is_chain_ancestor_of(self, this, queried).unwrap()
+    }
+
+    fn is_chain_ancestor_of_all(&self, this: Hash, queried: &[Hash]) -> bool {
+        queried.iter().all(|&hash| inquirer::is_chain_ancestor_of(self, this, hash).unwrap())
     }
 
     fn is_dag_ancestor_of_result(&self, this: Hash, queried: Hash) -> Result<bool> {
@@ -100,6 +106,11 @@ impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for MTReachability
     fn is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> bool {
         let read_guard = self.store.read();
         inquirer::is_chain_ancestor_of(read_guard.deref(), this, queried).unwrap()
+    }
+
+    fn is_chain_ancestor_of_all(&self, this: Hash, queried: &[Hash]) -> bool {
+        let read_guard = self.store.read();
+        queried.iter().all(|&hash| inquirer::is_chain_ancestor_of(read_guard.deref(), this, hash).unwrap())
     }
 
     fn is_dag_ancestor_of_result(&self, this: Hash, queried: Hash) -> Result<bool> {
