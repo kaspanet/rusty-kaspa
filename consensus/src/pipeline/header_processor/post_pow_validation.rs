@@ -88,7 +88,7 @@ impl HeaderProcessor {
             let expected =
                 self.pruning_point_manager.expected_header_pruning_point_v1(ctx.ghostdag_data().to_compact(), ctx.pruning_info);
             if expected != header.pruning_point {
-                return Err(RuleError::WrongHeaderPruningPoint(expected, header.pruning_point));
+                return Err(RuleError::WrongHeaderPruningPoint(header.hash, expected, header.pruning_point));
             }
         }
         Ok(())
