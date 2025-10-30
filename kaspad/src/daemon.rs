@@ -26,7 +26,11 @@ use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use kaspa_addressmanager::AddressManager;
-use kaspa_consensus::{consensus::factory::Factory as ConsensusFactory, pipeline::ProcessingCounters};
+use kaspa_consensus::{
+    consensus::factory::Factory as ConsensusFactory,
+    params::{OverrideParams, Params},
+    pipeline::ProcessingCounters,
+};
 use kaspa_consensus::{
     consensus::factory::MultiConsensusManagementStore, model::stores::headers::DbHeadersStore, pipeline::monitor::ConsensusMonitor,
 };
@@ -235,11 +239,31 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
         exit(1);
     }
 
+    let params = {
+        let params: Params = network.into();
+        match &args.override_params_file {
+            Some(path) => {
+                if network.is_mainnet() {
+                    println!("Overriding params on mainnet is not allowed.");
+                    exit(1);
+                }
+
+                let file_content = fs::read_to_string(path).unwrap_or_else(|err| {
+                    println!("Failed to read override params file '{}': {}", path, err);
+                    exit(1);
+                });
+                let override_params: OverrideParams = serde_json::from_str(&file_content).unwrap_or_else(|err| {
+                    println!("Failed to parse override params file '{}': {}", path, err);
+                    exit(1);
+                });
+                params.override_params(override_params)
+            }
+            None => params,
+        }
+    };
+
     let config = Arc::new(
-        ConfigBuilder::new(network.into())
-            .adjust_perf_params_to_consensus_params()
-            .apply_args(|config| args.apply_to_config(config))
-            .build(),
+        ConfigBuilder::new(params).adjust_perf_params_to_consensus_params().apply_args(|config| args.apply_to_config(config)).build(),
     );
 
     let app_dir = get_app_dir_from_args(args);

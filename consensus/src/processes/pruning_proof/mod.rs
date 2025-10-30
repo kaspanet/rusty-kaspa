@@ -129,6 +129,7 @@ pub struct PruningProofManager {
     pruning_proof_m: u64,
     anticone_finalization_depth: ForkedParam<u64>,
     ghostdag_k: ForkedParam<KType>,
+    skip_proof_of_work: bool,
 
     is_consensus_exiting: Arc<AtomicBool>,
 }
@@ -148,6 +149,7 @@ impl PruningProofManager {
         pruning_proof_m: u64,
         anticone_finalization_depth: ForkedParam<u64>,
         ghostdag_k: ForkedParam<KType>,
+        skip_proof_of_work: bool,
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -179,6 +181,7 @@ impl PruningProofManager {
             pruning_proof_m,
             anticone_finalization_depth,
             ghostdag_k,
+            skip_proof_of_work,
             ghostdag_manager,
 
             is_consensus_exiting,

@@ -91,6 +91,8 @@ pub struct Args {
     pub disable_grpc: bool,
     pub ram_scale: f64,
     pub retention_period_days: Option<f64>,
+
+    pub override_params_file: Option<String>,
 }
 
 impl Default for Args {
@@ -142,6 +144,7 @@ impl Default for Args {
             disable_grpc: false,
             ram_scale: 1.0,
             retention_period_days: None,
+            override_params_file: None,
         }
     }
 }
@@ -379,6 +382,13 @@ a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance
                 .value_parser(clap::value_parser!(f64))
                 .help("The number of total days of data to keep.")
         )
+        .arg(
+            Arg::new("override-params-file")
+                .long("override-params-file")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(String))
+                .help("Path to a JSON file containing override parameters.")
+        )
         ;
 
     #[cfg(feature = "devnet-prealloc")]
@@ -466,6 +476,7 @@ impl Args {
             prealloc_address: m.get_one::<String>("prealloc-address").cloned(),
             #[cfg(feature = "devnet-prealloc")]
             prealloc_amount: arg_match_unwrap_or::<u64>(&m, "prealloc-amount", defaults.prealloc_amount),
+            override_params_file: m.get_one::<String>("override-params-file").cloned(),
         };
 
         if arg_match_unwrap_or::<bool>(&m, "enable-mainnet-mining", false) {
