@@ -611,7 +611,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         notify_service.notifier(),
         index_service.as_ref().map(|x| x.notifier()),
         mining_manager,
-        flow_context,
+        flow_context.clone(),
         subscription_context,
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
         config.clone(),
@@ -646,13 +646,14 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     if let Some(index_service) = index_service {
         async_runtime.register(index_service)
     };
+    
     if let Some(port_mapping_extender_svc) = port_mapping_extender_svc {
         async_runtime.register(Arc::new(port_mapping_extender_svc))
     };
     async_runtime.register(rpc_core_service.clone());
     if let Some(grpc_service) = grpc_service {
         async_runtime.register(grpc_service)
-    }
+    };
     async_runtime.register(p2p_service);
     async_runtime.register(consensus_monitor);
     async_runtime.register(mining_monitor);
