@@ -11,6 +11,8 @@ extern crate self as consensus_core;
 use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasher, Hasher};
 
+use acceptance_data::AcceptanceData;
+use block::Block;
 pub use kaspa_hashes::Hash;
 
 pub mod acceptance_data;
@@ -131,6 +133,13 @@ impl BuildHasher for BlockHasher {
 }
 
 pub type BlockLevel = u8;
+
+#[derive(Clone)]
+pub struct ArchivalBlock {
+    pub block: Block,
+    pub child: Option<Hash>,
+    pub acceptance_data: Option<(Hash, AcceptanceData)>, // Selected parent and acceptance data
+}
 
 #[cfg(test)]
 mod tests {
