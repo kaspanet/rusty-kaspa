@@ -94,13 +94,8 @@ impl HeaderProcessingContext {
         &self.known_parents[0]
     }
 
-    /// Returns the pruning point at the time this header began processing
-    pub fn pruning_point(&self) -> Hash {
-        self.pruning_point
-    }
-
     /// Returns the primary (level 0) GHOSTDAG data of this header.
-    /// NOTE: is expected to be called only after GHOSTDAG computation was pushed into the context
+    /// NOTE: expected to be called only after GHOSTDAG computation was pushed into the context
     pub fn ghostdag_data(&self) -> &Arc<GhostdagData> {
         self.ghostdag_data.as_ref().unwrap()
     }
@@ -360,7 +355,6 @@ impl HeaderProcessor {
 
     fn commit_header(&self, ctx: HeaderProcessingContext, header: &Header) {
         let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
-        let pp = ctx.pruning_point();
 
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
@@ -399,7 +393,7 @@ impl HeaderProcessor {
         let mut hst_write = self.headers_selected_tip_store.write();
         let prev_hst = hst_write.get().unwrap();
         if SortableBlock::new(ctx.hash, header.blue_work) > prev_hst
-            && reachability::is_chain_ancestor_of(&staging, pp, ctx.hash).unwrap()
+            && reachability::is_chain_ancestor_of(&staging, ctx.pruning_point, ctx.hash).unwrap()
         {
             // Hint reachability about the new tip.
             reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();

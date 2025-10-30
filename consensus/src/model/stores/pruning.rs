@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 struct PruningPointInfo {
-    pub pruning_point: Hash,
-    pub _candidate: Hash, // Obsolete filed. Kept only for avoiding the DB upgrade logic. TODO: remove all together
-    pub index: u64,
+    pruning_point: Hash,
+    _candidate: Hash, // Obsolete field. Kept only for avoiding the DB upgrade logic. TODO: remove all together
+    index: u64,
 }
 
 impl PruningPointInfo {
