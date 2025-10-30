@@ -682,15 +682,18 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             let mut jobs = Vec::with_capacity(chunk.len());
 
             for &hash in chunk.iter() {
-                // TODO: change to BodyOnly requests when incorporated
-                let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-                let block: Block = msg.try_into()?;
-                if block.hash() != hash {
-                    return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", hash, block.hash())));
+                let msg = dequeue_with_timeout!(self.incoming_route, Payload::BlockBody)?;
+                let blk_body: BlockBody = msg.try_into()?;
+                // TODO (relaxed): make header queries in a batch.
+                let blk_header = consensus.async_get_header(hash).await.map_err(|err| {
+                    // Conceptually this indicates local inconsistency, since we received the expected hashes via a local
+                    // get_missing_block_body_hashes call. However for now we fail gracefully and only disconnect from this peer.
+                    ProtocolError::OtherOwned(format!("syncee inconsistency: missing block header for {}, err: {}", hash, err))
+                })?;
+                if blk_body.is_empty() {
+                    return Err(ProtocolError::OtherOwned(format!("sent empty block body for block {}", hash)));
                 }
-                if block.is_header_only() {
-                    return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
-                }
+                let block = Block { header: blk_header, transactions: blk_body.into() };
                 // TODO (relaxed): sending ghostdag data may be redundant, especially when the headers were already verified.
                 // Consider sending empty ghostdag data, simplifying a great deal. The result should be the same -
                 // a trusted task is sent, however the header is already verified, and hence only the block body will be verified.
