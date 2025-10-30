@@ -162,21 +162,27 @@ impl PruningProcessor {
                 info!("Interrupted while advancing the pruning point UTXO set: Process is exiting");
                 return false;
             }
-        } else {
-            // these conditions are implicitly checked in advance_pruning_utxoset, so we only need to check
-            // them explicitly if we skipped advance_pruning_utxoset
-            if !self.confirm_pruning_depth_below_virtual(pruning_point) {
-                return false;
-            }
-            let pruning_meta_read = self.pruning_meta_stores.read();
+        }
+        // The following two chekcs are implicitly checked in advance_pruning_utxoset, and hence can theoretically
+        // be skipped if that function was called. As these checks are cheap, we  perform them regardless
+        // as to not complicate the logic.
 
-            // don't prune if in a transitional ibd state.
-            if pruning_meta_read.is_in_transitional_ibd_state() {
-                return false;
-            }
-            drop(pruning_meta_read);
+        // If the latest pruning point is the result of an IBD catchup, it is guaranteed that the headers selected tip
+        // is pruning_depth on top of it
+        // but crucially it is not guaranteed *virtual* is of sufficient depth above it
+        // internally the pruning process checks this process for virtual and fails otherwise
+        // for this reason, pruning is held until virtual has advanced enough.
+        if !self.confirm_pruning_depth_below_virtual(pruning_point) {
+            return false;
+        }
+        let pruning_meta_read = self.pruning_meta_stores.read();
+
+        // don't prune if in a transitional ibd state.
+        if pruning_meta_read.is_in_transitional_ibd_state() {
+            return false;
         }
 
+        drop(pruning_meta_read);
         trace!(
             "retention_checkpoint: {:?} | retention_period_root: {} | pruning_point: {}",
             retention_checkpoint,
@@ -246,6 +252,11 @@ impl PruningProcessor {
     }
 
     fn advance_pruning_utxoset(&self, utxoset_position: Hash, new_pruning_point: Hash) -> bool {
+        // If the latest pruning point is the result of an IBD catchup, it is guaranteed that the headers selected tip
+        // is pruning_depth on top of it
+        // but crucially it is not guaranteed *virtual* is of sufficient depth above it
+        // internally the pruning process checks this process for virtual and fails otherwise
+        // for this reason, pruning is held until virtual has advanced enough.
         if !self.confirm_pruning_depth_below_virtual(new_pruning_point) {
             return false;
         }
@@ -600,7 +611,7 @@ impl PruningProcessor {
     /// doing any pruning. Pruning point must be the new pruning point this node is advancing to.
     ///
     /// The returned retention_period_root is guaranteed to be in past(pruning_point) or the pruning point itself.
-    pub fn advance_retention_period_root(&self, retention_period_root: Hash, pruning_point: Hash) -> Hash {
+    fn advance_retention_period_root(&self, retention_period_root: Hash, pruning_point: Hash) -> Hash {
         match self.config.retention_period_days {
             // If the retention period wasn't set, immediately default to the pruning point.
             None => pruning_point,
@@ -658,11 +669,6 @@ impl PruningProcessor {
     }
 
     fn confirm_pruning_depth_below_virtual(&self, pruning_point: Hash) -> bool {
-        // If the latest pruning point is the result of an IBD catchup, it is guaranteed that the headers selected tip
-        // is pruning_depth on top of it
-        // but crucially it is not guaranteed *virtual* is of sufficient depth above it
-        // internally the pruning process checks this process for virtual and fails otherwise
-        // for this reason, pruning is held until virtual has advanced enough.
         let virtual_state = self.virtual_stores.read().state.get().unwrap();
         let pp_bs = self.headers_store.get_blue_score(pruning_point).unwrap();
         let pp_daa = self.headers_store.get_daa_score(pruning_point).unwrap();
