@@ -14,6 +14,10 @@ wasm32-sdk = [
     "kaspa-consensus-client/wasm32-sdk",
     "kaspa-consensus-wasm/wasm32-sdk"
 ]
+py-sdk = [
+    "pyo3", 
+    "serde-pyobject"
+]
 
 [dependencies]
 kaspa-addresses.workspace = true
@@ -43,7 +47,9 @@ js-sys.workspace = true
 log.workspace = true
 paste.workspace = true
 rand.workspace = true
+pyo3 = { workspace = true, optional = true }
 serde-wasm-bindgen.workspace = true
+serde-pyobject = { workspace = true, optional = true }
 serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
