@@ -178,6 +178,9 @@ impl PruningProofManager {
         pp_header: &HeaderWithBlockLevel,
         temp_db: Arc<DB>,
     ) -> (Vec<Arc<DbGhostdagStore>>, Vec<Hash>, Vec<Hash>) {
+        // TODO: Uncomment line and send as argument to find_sufficiently_deep_level_root
+        // once full fix to minimize proof sizes comes
+        // let current_dag_level = self.find_current_dag_level(&pp_header.header);
         let mut ghostdag_stores: Vec<Option<Arc<DbGhostdagStore>>> = vec![None; self.max_block_level as usize + 1];
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         let mut root_by_level = vec![None; self.max_block_level as usize + 1];
@@ -235,7 +238,7 @@ impl PruningProofManager {
 
         // We only have the headers store (which has level 0 blue_scores) to assemble the proof data from.
         // We need to look deeper at higher levels (2x deeper every level) to find 2M (plus margin) blocks at that level
-        // TODO: uncomment when the full fix to minimize proof sizes comes.
+        // TODO: uncomment when the full fix to minimize proof sizes comes, and add current_dag_level as an argument
         // let mut required_base_level_depth = self.estimated_blue_depth_at_level_0(
         //     level,
         //     required_level_depth + 100, // We take a safety margin

@@ -611,7 +611,7 @@ impl PruningProcessor {
     /// doing any pruning. Pruning point must be the new pruning point this node is advancing to.
     ///
     /// The returned retention_period_root is guaranteed to be in past(pruning_point) or the pruning point itself.
-    fn advance_retention_period_root(&self, retention_period_root: Hash, pruning_point: Hash) -> Hash {
+    pub fn advance_retention_period_root(&self, retention_period_root: Hash, pruning_point: Hash) -> Hash {
         match self.config.retention_period_days {
             // If the retention period wasn't set, immediately default to the pruning point.
             None => pruning_point,

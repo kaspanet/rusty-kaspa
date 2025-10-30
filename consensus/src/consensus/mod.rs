@@ -24,9 +24,11 @@ use crate::{
             pruning_samples::{PruningSamplesStore, PruningSamplesStoreReader},
             reachability::ReachabilityStoreReader,
             relations::RelationsStoreReader,
+            selected_chain::SelectedChainStore,
             statuses::StatusesStoreReader,
-            tips::TipsStoreReader,
+            tips::{TipsStore, TipsStoreReader},
             utxo_set::{UtxoSetStore, UtxoSetStoreReader},
+            virtual_state::VirtualState,
             DB,
         },
     },
@@ -88,6 +90,7 @@ use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rocksdb::WriteBatch;
 
 use std::{
     cmp::Reverse,
@@ -487,13 +490,63 @@ impl Consensus {
             .map(|hash| (hash, self.headers_store.get_compact_header_data(hash).unwrap()))
             .collect_vec()
     }
+    pub fn intrusive_pruning_point_store_writes(
+        &self,
+        new_pruning_point: Hash,
+        syncer_sink: Hash,
+        pruning_points_to_add: VecDeque<Hash>,
+    ) -> ConsensusResult<()> {
+        let mut batch = WriteBatch::default();
+        let mut pruning_point_write = self.pruning_point_store.write();
+        let old_pruning_info = pruning_point_write.get().unwrap();
+        let retention_period_root = pruning_point_write.retention_period_root().unwrap();
+
+        let new_pp_index = old_pruning_info.index + pruning_points_to_add.len() as u64;
+        pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pruning_point, new_pp_index).unwrap();
+        for (i, &past_pp) in pruning_points_to_add.iter().rev().enumerate() {
+            self.past_pruning_points_store.insert_batch(&mut batch, old_pruning_info.index + i as u64 + 1, past_pp).unwrap();
+        }
+
+        // For archival nodes, keep the retention root in place
+        if !self.config.is_archival {
+            let adjusted_retention_period_root =
+                self.pruning_processor.advance_retention_period_root(retention_period_root, new_pruning_point);
+            pruning_point_write.set_retention_period_root(&mut batch, adjusted_retention_period_root).unwrap();
+        }
+
+        // Update virtual state based to the new pruning point
+        // Updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
+        let virtual_parents = vec![new_pruning_point];
+        let virtual_state = Arc::new(VirtualState {
+            parents: virtual_parents.clone(),
+            ghostdag_data: self.services.ghostdag_manager.ghostdag(&virtual_parents),
+            ..VirtualState::default()
+        });
+        self.virtual_stores.write().state.set_batch(&mut batch, virtual_state).unwrap();
+        // Remove old body tips and insert pruning point as the current tip
+        self.body_tips_store.write().delete_all_tips(&mut batch).unwrap();
+        self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
+        // Update selected_chain
+        self.selected_chain_store.write().init_with_pruning_point(&mut batch, new_pruning_point).unwrap();
+        // It is important to set this flag to false together with writing the batch, in case the node crashes suddenly before syncing of new utxo starts
+        self.pruning_meta_stores.write().set_pruning_utxoset_stable(&mut batch, false).unwrap();
+        // Store the currently bodyless anticone from the POV of the syncer, for trusted body validation at a later stage.
+        let mut anticone = self.services.dag_traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
+        // Add the pruning point itself which is also missing a body
+        anticone.push(new_pruning_point);
+        self.pruning_meta_stores.write().set_disembodied_anticone(&mut batch, anticone).unwrap();
+        self.db.write(batch).unwrap();
+        drop(pruning_point_write);
+        Ok(())
+    }
+
     // Verify that the new pruning point can be safely imported
     // and return all new pruning point on path to it that needs to be updated in consensus
     fn get_and_verify_novel_pruning_points(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<VecDeque<Hash>> {
         // Let B.sp denote the selected parent of a block B, let f be the finality depth, and let p be the pruning depth.
         // The new pruning point P can be "finalized" into consensus if:
         // 1) P satisfies P.blue_score>Nf and selected_parent(P).blue_score<=NF
-        // where f is the finality depth, and N is some integer (i.e. it is a valid pruning point based on score) and p is the
+        // where N is some integer (i.e. it is a valid pruning point based on score)
         // *this condition is assumed to have already been checked externally and we do not repeat it here*.
 
         // 2) There are sufficient headers built on top of it, specifically,
@@ -1261,16 +1314,10 @@ impl ConsensusApi for Consensus {
     /// During pruning catchup, we need to manually update the pruning point and
     /// make sure that consensus looks "as if" it has just moved to a new pruning point.
     fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
-        // Arhcival nodes should not be doing intrusive updates
-        assert!(!self.config.is_archival);
         let pruning_points_to_add = self.get_and_verify_novel_pruning_points(new_pruning_point, syncer_sink)?;
 
         // If all has gone well, we can finally update pruning point and other stores.
-        Ok(self.services.pruning_proof_manager.intrusive_pruning_point_store_writes(
-            new_pruning_point,
-            syncer_sink,
-            pruning_points_to_add,
-        )?)
+        self.intrusive_pruning_point_store_writes(new_pruning_point, syncer_sink, pruning_points_to_add)
     }
 
     fn set_pruning_utxoset_stable(&self, val: bool) {

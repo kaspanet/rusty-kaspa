@@ -213,14 +213,14 @@ impl ConsensusStorage {
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), past_pruning_points_builder.build()));
         let pruning_meta_stores = Arc::new(RwLock::new(PruningMetaStores::new(db.clone(), utxo_set_builder.build())));
         let pruning_samples_store = Arc::new(DbPruningSamplesStore::new(db.clone(), header_data_builder.build()));
-        
+
         // Write to some internal storage  so they will remain in cache
         let mut batch = rocksdb::WriteBatch::default();
-        if pruning_meta_stores.read().is_anticone_fully_synced(){
-            pruning_meta_stores.write().set_disembodied_anticone( & mut batch,vec![]).unwrap();
+        if pruning_meta_stores.read().is_anticone_fully_synced() {
+            pruning_meta_stores.write().set_disembodied_anticone(&mut batch, vec![]).unwrap();
         }
-        if pruning_meta_stores.read().pruning_utxoset_stable_flag()==true{
-            pruning_meta_stores.write().set_pruning_utxoset_stable( & mut batch,true).unwrap();
+        if pruning_meta_stores.read().pruning_utxoset_stable_flag() {
+            pruning_meta_stores.write().set_pruning_utxoset_stable(&mut batch, true).unwrap();
         }
         db.write(batch).unwrap();
 

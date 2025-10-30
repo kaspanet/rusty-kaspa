@@ -41,8 +41,8 @@ impl PruningMetaStores {
     }
 
     /// Flip the sync flag in the same batch as your other writes
-    pub fn set_pruning_utxoset_stable(&mut self, batch: &mut WriteBatch, synced: bool) -> StoreResult<()> {
-        self.utxoset_stable_flag_access.write(BatchDbWriter::new(batch), &synced)
+    pub fn set_pruning_utxoset_stable(&mut self, batch: &mut WriteBatch, stable: bool) -> StoreResult<()> {
+        self.utxoset_stable_flag_access.write(BatchDbWriter::new(batch), &stable)
     }
 
     /// Read the flag; default to true if missing, which corresponds to a new consensus
