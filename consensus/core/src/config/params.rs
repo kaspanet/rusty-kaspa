@@ -195,7 +195,7 @@ pub const CRESCENDO: CrescendoParams = CrescendoParams {
     max_script_public_key_len: 10_000,
 };
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct OverrideParams {
     pub prior_ghostdag_k: Option<KType>,
 

@@ -264,7 +264,7 @@ impl PruningProofManager {
                 if header_level < level {
                     return Err(PruningImportError::PruningProofWrongBlockLevel(header.hash, header_level, level));
                 }
-                if !pow_passes {
+                if !self.skip_proof_of_work && !pow_passes {
                     return Err(PruningImportError::ProofOfWorkFailed(header.hash, level));
                 }
 

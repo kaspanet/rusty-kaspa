@@ -6,7 +6,7 @@ use crate::common::{
 };
 use kaspa_addresses::Address;
 use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_consensus::params::SIMNET_PARAMS;
+use kaspa_consensus::params::{CrescendoParams, OverrideParams, SIMNET_PARAMS};
 use kaspa_consensus_core::header::Header;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
@@ -16,6 +16,7 @@ use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcTransactionId};
 use kaspa_txscript::pay_to_address_script;
 use kaspad_lib::args::Args;
 use rand::thread_rng;
+use std::io::Write;
 use std::{sync::Arc, time::Duration};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -378,4 +379,133 @@ async fn daemon_cleaning_test() {
     assert_eq!(consensus_manager.strong_count(), 0);
     assert_eq!(async_runtime.strong_count(), 0);
     assert_eq!(core.strong_count(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn daemon_ibd_test() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO");
+
+    let args = Args {
+        simnet: true,
+        unsafe_rpc: true,
+        enable_unsynced_mining: true,
+        disable_upnp: true, // UPnP registration might take some time and is not needed for this test
+        ..Default::default()
+    };
+    // let total_fd_limit = kaspa_utils::fd_budget::get_limit() / 2 - 128;
+    let total_fd_limit = 10;
+
+    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client1 = kaspad1.start().await;
+    let rpc_client2 = kaspad2.start().await;
+
+    rpc_client1.start(None).await;
+
+    // Mine blocks to daemon #1
+    const NUM_BLOCKS: u64 = 1100;
+    let mut last_block_hash = None;
+    for _ in 0..NUM_BLOCKS {
+        let template = rpc_client1
+            .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
+            .await
+            .unwrap();
+        let header: Header = (&template.block.header).into();
+        last_block_hash = Some(header.hash);
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
+
+    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await; // Let it connect
+    assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 1);
+
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    // Expect the blocks to be relayed to daemon #2
+    let dag_info = rpc_client2.get_block_dag_info().await.unwrap();
+    assert_eq!(dag_info.block_count, NUM_BLOCKS);
+    assert_eq!(dag_info.sink, last_block_hash.unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn daemon_pruning_catchup_test() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO");
+
+    const PRUNING_DEPTH: u64 = 1000;
+    const FINALITY_DEPTH: u64 = 500;
+    let override_params = OverrideParams {
+        prior_pruning_depth: Some(PRUNING_DEPTH),
+        prior_finality_depth: Some(FINALITY_DEPTH),
+        min_difficulty_window_size: Some(2),
+        prior_difficulty_window_size: Some(64),
+        timestamp_deviation_tolerance: Some(16),
+        prior_ghostdag_k: Some(20),
+        prior_merge_depth: Some(64),
+        prior_mergeset_size_limit: Some(32),
+        pruning_proof_m: Some(2000),
+        crescendo: Some(CrescendoParams {
+            ghostdag_k: 20,
+            finality_depth: FINALITY_DEPTH,
+            pruning_depth: PRUNING_DEPTH,
+            merge_depth: 64 * 2,
+            mergeset_size_limit: 32 * 2,
+            sampled_difficulty_window_size: 15,
+            difficulty_sample_rate: 10,
+            past_median_time_sampled_window_size: 15,
+            past_median_time_sample_rate: 10,
+            ..SIMNET_PARAMS.crescendo
+        }),
+        ..Default::default()
+    };
+
+    // Serialize override_params to JSON and save to a temp file
+    let override_params_json = serde_json::to_string(&override_params).unwrap();
+    let mut temp_file = tempfile::NamedTempFile::new().unwrap();
+    temp_file.write_all(override_params_json.as_bytes()).unwrap();
+    let temp_file_path = temp_file.path().to_owned();
+    let temp_file_path = temp_file_path.to_str().unwrap().into();
+
+    let args = Args {
+        simnet: true,
+        unsafe_rpc: true,
+        enable_unsynced_mining: true,
+        disable_upnp: true, // UPnP registration might take some time and is not needed for this test
+        override_params_file: Some(temp_file_path),
+        ..Default::default()
+    };
+    // let total_fd_limit = kaspa_utils::fd_budget::get_limit() / 2 - 128;
+    let total_fd_limit = 10;
+
+    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client1 = kaspad1.start().await;
+    let rpc_client2 = kaspad2.start().await;
+
+    // Mine blocks to daemon #1
+    const NUM_BLOCKS: u64 = 1499;
+    for _ in 0..NUM_BLOCKS {
+        let template = rpc_client1
+            .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
+            .await
+            .unwrap();
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
+
+    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await; // Let it connect
+    assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 1);
+
+    let template = rpc_client1
+        .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
+        .await
+        .unwrap();
+    let header: Header = (&template.block.header).into();
+    let last_block_hash = header.hash;
+    rpc_client1.submit_block(template.block, false).await.unwrap();
+
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    // Expect the blocks to be relayed to daemon #2
+    let dag_info = rpc_client2.get_block_dag_info().await.unwrap();
+    assert_eq!(dag_info.sink, last_block_hash);
 }
