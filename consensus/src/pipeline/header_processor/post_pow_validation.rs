@@ -53,7 +53,7 @@ impl HeaderProcessor {
     }
 
     pub fn check_indirect_parents(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        let expected_block_parents = self.parents_manager.calc_block_parents(ctx.pruning_point(), header.direct_parents());
+        let expected_block_parents = self.parents_manager.calc_block_parents(ctx.pruning_point, header.direct_parents());
         if header.parents_by_level.len() != expected_block_parents.len()
             || !expected_block_parents.iter().enumerate().all(|(block_level, expected_level_parents)| {
                 let header_level_parents = &header.parents_by_level[block_level];
@@ -77,8 +77,8 @@ impl HeaderProcessor {
 
     pub fn check_bounded_merge_depth(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
         let ghostdag_data = ctx.ghostdag_data();
-        let merge_depth_root = self.depth_manager.calc_merge_depth_root(ghostdag_data, ctx.pruning_point());
-        let finality_point = self.depth_manager.calc_finality_point(ghostdag_data, ctx.pruning_point());
+        let merge_depth_root = self.depth_manager.calc_merge_depth_root(ghostdag_data, ctx.pruning_point);
+        let finality_point = self.depth_manager.calc_finality_point(ghostdag_data, ctx.pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;
 
         for red in ghostdag_data.mergeset_reds.iter().copied() {
