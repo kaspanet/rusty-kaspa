@@ -19,6 +19,13 @@ pub fn hash(tx: &Transaction) -> Hash {
     hasher.finalize()
 }
 
+/// Returns the transaction hash pre-crescendo (which excludes the mass commitment)
+pub fn hash_pre_crescendo(tx: &Transaction) -> Hash {
+    let mut hasher = kaspa_hashes::TransactionHash::new();
+    write_transaction(&mut hasher, tx, TxEncodingFlags::EXCLUDE_MASS_COMMIT);
+    hasher.finalize()
+}
+
 /// Not intended for direct use by clients. Instead use `tx.id()`
 pub(crate) fn id(tx: &Transaction) -> TransactionId {
     // Encode the transaction, replace signature script with an empty array, skip

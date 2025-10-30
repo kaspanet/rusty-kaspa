@@ -229,8 +229,8 @@ impl Transaction {
         self.id
     }
 
-    /// Set the storage mass commitment field of this transaction. This field is expected to be activated on mainnet
-    /// as part of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
+    /// Set the storage mass commitment field of this transaction. This field has been activated on mainnet as part
+    /// of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
     pub fn set_mass(&self, mass: u64) {
         self.mass.0.store(mass, SeqCst)
     }
