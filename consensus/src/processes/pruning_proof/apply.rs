@@ -1,13 +1,16 @@
 use std::{
     cmp::Reverse,
-    collections::{hash_map::Entry::Vacant, BinaryHeap, HashSet},
+    collections::{hash_map::Entry::Vacant, BinaryHeap, HashSet, VecDeque},
     sync::Arc,
 };
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::{BlockHashes, ORIGIN},
-    errors::pruning::{PruningImportError, PruningImportResult},
+    errors::{
+        pruning::{PruningImportError, PruningImportResult},
+        traversal::TraversalResult,
+    },
     header::Header,
     pruning::PruningPointProof,
     trusted::TrustedBlock,
@@ -25,9 +28,11 @@ use crate::{
         stores::{
             ghostdag::{GhostdagData, GhostdagStore},
             headers::HeaderStore,
+            pruning::PruningStoreReader,
             reachability::StagingReachabilityStore,
             relations::StagingRelationsStore,
             selected_chain::SelectedChainStore,
+            tips::TipsStore,
             virtual_state::{VirtualState, VirtualStateStore},
         },
     },
@@ -150,6 +155,54 @@ impl PruningProofManager {
         self.depth_store.insert_batch(&mut batch, pruning_point, ORIGIN, ORIGIN).unwrap();
         self.db.write(batch).unwrap();
 
+        Ok(())
+    }
+
+    pub fn intrusive_pruning_point_store_writes(
+        &self,
+        new_pruning_point: Hash,
+        syncer_sink: Hash,
+        pruning_points_to_add: VecDeque<Hash>,
+    ) -> TraversalResult<()> {
+        let mut batch = WriteBatch::default();
+        let mut pruning_point_write = self.pruning_point_store.write();
+        let old_pruning_info = pruning_point_write.get().unwrap();
+
+        let new_pp_index = old_pruning_info.index + pruning_points_to_add.len() as u64;
+        pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pruning_point, new_pp_index).unwrap();
+        for (i, &past_pp) in pruning_points_to_add.iter().rev().enumerate() {
+            self.past_pruning_points_store.insert_batch(&mut batch, old_pruning_info.index + i as u64 + 1, past_pp).unwrap();
+        }
+
+        // To prevent paradoxical data gaps creating unexpected behaviour, we advance to the new pruning point
+        // regardless of the reterntion period.
+        // Note that this will overwrite even archival nodes - archival nodes should generally reject incocation
+        // of this function externally.
+        pruning_point_write.set_retention_period_root(&mut batch, new_pruning_point).unwrap();
+
+        // Update virtual state based to the new pruning point
+        // Updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
+        let virtual_parents = vec![new_pruning_point];
+        let virtual_state = Arc::new(VirtualState {
+            parents: virtual_parents.clone(),
+            ghostdag_data: self.ghostdag_manager.ghostdag(&virtual_parents),
+            ..VirtualState::default()
+        });
+        self.virtual_stores.write().state.set_batch(&mut batch, virtual_state).unwrap();
+        // Remove old body tips and insert pruning point as the current tip
+        self.body_tips_store.write().delete_all_tips(&mut batch).unwrap();
+        self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
+        // Update selected_chain
+        self.selected_chain_store.write().init_with_pruning_point(&mut batch, new_pruning_point).unwrap();
+        // It is important to set this flag to false together with writing the batch, in case the node crashes suddenly before syncing of new utxo starts
+        self.pruning_meta_stores.write().set_pruning_utxoset_stable(&mut batch, false).unwrap();
+        // Store the currently bodyless anticone from the POV of the syncer, for trusted body validation at a later stage.
+        let mut anticone = self.traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
+        // Add the pruning point itself which is also missing a body
+        anticone.push(new_pruning_point);
+        self.pruning_meta_stores.write().set_disembodied_anticone(&mut batch, anticone).unwrap();
+        self.db.write(batch).unwrap();
+        drop(pruning_point_write);
         Ok(())
     }
 

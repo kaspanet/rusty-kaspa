@@ -319,7 +319,7 @@ impl IbdFlow {
     }
 
     /// This function is triggered when the syncer's pruning point is higher
-    /// than ours and we already processed its header before,
+    /// than ours and we already processed its header before.
     /// so we only need to sync more headers and set it to our new pruning point before proceeding with IBD
     async fn pruning_point_catchup(
         &mut self,
@@ -327,30 +327,23 @@ impl IbdFlow {
         negotiation_output: &ChainNegotiationOutput,
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
-        // Let B.sp denote the selected parent of a block B, let f be the finality depth, and let p be the pruning depth.
-        // The syncer's pruning point P is "finalized" into consensus if:
-        // 1) P satisfies P.blue_score>Nf and P.sp.blue_score<=NF for some integer N (i.e. it is a valid pruning point based on score).
-        // 2) There are sufficient headers built on top of it, specifically, a header is validated whose blue_score is greater than P.B+p.
-        // 3) Additionally, the syncer pruning point must be on the selected chain from that header, and any pruning points declared
-        // on headers on its path must be consistent with those already known.
-        // Since (1) was already checked during determine_ibd, we only need to check (2) and (3)
-
+        // Before attempting to update to the syncers pruning point, sync to the latest headers of the syncer,
+        // to ensure that  we will locally have sufficient headers on top of  the syncer's pruning point
         let syncer_pp = negotiation_output.syncer_pruning_point;
         let syncer_sink = negotiation_output.syncer_virtual_selected_parent;
-        // (2) verify pruning_depth on top of syncer_pp
         self.sync_headers(consensus, syncer_sink, negotiation_output.highest_known_syncer_chain_hash.unwrap(), relay_block).await?;
 
-        // This function's main effect is to update the pruning point and apply necessary changes to the various
-        // stores accordingly. Before doing all that though, it confirms (3)
+        // This function's main effect is to confirm the syncer's pruning point can be finalized into the consensus, and to update
+        // all the relavant stores
         consensus.async_intrusive_pruning_point_update(syncer_pp, syncer_sink).await?;
-        if self.ctx.config.enable_sanity_checks {
-            // A sanity check to confirm that following the intrusive adition of new pruning points,
-            // the latest pruning point still correctly agrees with the DAG data,
-            // and is the head of a pruning points "chain" leading all the way down to genesis
-            info!("validating pruning points consistency");
-            consensus.async_validate_pruning_points(syncer_sink).await.unwrap();
-            info!("pruning points consistency validated");
-        }
+
+        // A sanity check to confirm that following the intrusive adition of new pruning points,
+        // the latest pruning point still correctly agrees with the DAG data,
+        // and is the head of a pruning points "chain" leading all the way down to genesis
+        // TODO(relaxed): once the catchup functionality has sufficiently matured, consider only doing this test if sanity checks are enabled
+        info!("validating pruning points consistency");
+        consensus.async_validate_pruning_points(syncer_sink).await.unwrap();
+        info!("pruning points consistency validated");
         Ok(())
     }
 
