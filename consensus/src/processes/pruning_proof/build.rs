@@ -178,7 +178,9 @@ impl PruningProofManager {
         pp_header: &HeaderWithBlockLevel,
         temp_db: Arc<DB>,
     ) -> (Vec<Arc<DbGhostdagStore>>, Vec<Hash>, Vec<Hash>) {
-        let current_dag_level = self.find_current_dag_level(&pp_header.header);
+        // TODO: Uncomment line and send as argument to find_sufficiently_deep_level_root
+        // once full fix to minimize proof sizes comes
+        // let current_dag_level = self.find_current_dag_level(&pp_header.header);
         let mut ghostdag_stores: Vec<Option<Arc<DbGhostdagStore>>> = vec![None; self.max_block_level as usize + 1];
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         let mut root_by_level = vec![None; self.max_block_level as usize + 1];
@@ -195,7 +197,7 @@ impl PruningProofManager {
                 None
             };
             let (store, selected_tip, root) = self
-                .find_sufficient_root(pp_header, level, current_dag_level, required_block, temp_db.clone())
+                .find_sufficiently_deep_level_root(pp_header, level, required_block, temp_db.clone())
                 .unwrap_or_else(|_| panic!("find_sufficient_root failed for level {level}"));
             ghostdag_stores[level_usize] = Some(store);
             selected_tip_by_level[level_usize] = Some(selected_tip);
@@ -217,11 +219,10 @@ impl PruningProofManager {
     /// 2. block at depth m at the next level ∈ Future(root)
     ///
     /// Returns: the filled ghostdag store from root to tip, the selected tip and the root
-    fn find_sufficient_root(
+    fn find_sufficiently_deep_level_root(
         &self,
         pp_header: &HeaderWithBlockLevel,
         level: BlockLevel,
-        _current_dag_level: BlockLevel,
         required_block: Option<Hash>,
         temp_db: Arc<DB>,
     ) -> PruningProofManagerInternalResult<(Arc<DbGhostdagStore>, Hash, Hash)> {
@@ -237,7 +238,7 @@ impl PruningProofManager {
 
         // We only have the headers store (which has level 0 blue_scores) to assemble the proof data from.
         // We need to look deeper at higher levels (2x deeper every level) to find 2M (plus margin) blocks at that level
-        // TODO: uncomment when the full fix to minimize proof sizes comes.
+        // TODO: uncomment when the full fix to minimize proof sizes comes, and add current_dag_level as an argument
         // let mut required_base_level_depth = self.estimated_blue_depth_at_level_0(
         //     level,
         //     required_level_depth + 100, // We take a safety margin
@@ -409,7 +410,7 @@ impl PruningProofManager {
             .parents_by_level
             .iter()
             .enumerate()
-            .skip(1)
+            .skip(1) // skip checking direct parents
             .find_map(|(level, parents)| {
                 if BlockHashSet::from_iter(parents.iter().copied()) == direct_parents {
                     None
@@ -465,6 +466,7 @@ impl PruningProofManager {
 
         while current_header.blue_score + base_depth >= high_header_score {
             if current_header.direct_parents().is_empty() {
+                // Reached genesis
                 break;
             }
 
