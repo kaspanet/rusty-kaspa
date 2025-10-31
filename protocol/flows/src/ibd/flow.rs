@@ -675,8 +675,8 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         for chunk in iter {
             self.router
                 .enqueue(make_message!(
-                    Payload::RequestIbdBlocks,
-                    RequestIbdBlocksMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
+                    Payload::RequestBlockBodies,
+                    RequestBlockBodiesMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
                 ))
                 .await?;
             let mut jobs = Vec::with_capacity(chunk.len());
