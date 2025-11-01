@@ -107,7 +107,6 @@ mod tests {
         assert_eq!(rpc_parents_1, rpc_parents_2);
     }
     fn test_parents_by_level_rxp(rpc_parents: &[Vec<RpcHash>], proto_parents: &[protowire::RpcBlockLevelParents]) {
-        assert_eq!(rpc_parents.len(), proto_parents.len(), "Number of parent levels differ");
         for (r_level_parents, proto_level_parents) in rpc_parents.iter().zip_eq(proto_parents.iter()) {
             for (r_parent, proto_parent) in r_level_parents.iter().zip_eq(proto_level_parents.parent_hashes.iter()) {
                 assert_eq!(r_parent.to_string(), *proto_parent);
