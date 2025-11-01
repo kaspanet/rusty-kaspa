@@ -34,6 +34,7 @@ tokio-stream.workspace = true
 tonic = { workspace = true, features = ["tls", "gzip"] }
 triggered.workspace = true
 workflow-core.workspace = true
+itertools.workspace = true
 
 [build-dependencies]
 tonic-build = { workspace = true, features = ["prost"] }
