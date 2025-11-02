@@ -60,13 +60,13 @@ impl KHeavyHash {
 }
 
 mod keccak256 {
-    #[cfg(any(not(target_arch = "x86_64"), feature = "no-asm", target_os = "windows"))]
+    #[cfg(any(not(target_arch = "x86_64"), feature = "no-asm"))]
     #[inline(always)]
     pub(super) fn f1600(state: &mut [u64; 25]) {
         keccak::f1600(state);
     }
 
-    #[cfg(all(target_arch = "x86_64", not(feature = "no-asm"), not(target_os = "windows")))]
+    #[cfg(all(target_arch = "x86_64", not(feature = "no-asm")))]
     #[inline(always)]
     pub(super) fn f1600(state: &mut [u64; 25]) {
         extern "C" {
