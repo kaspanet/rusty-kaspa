@@ -1393,7 +1393,7 @@ async fn difficulty_test() {
     const PMT_SAMPLED_WINDOW_SIZE: u64 = 13;
     const HIGH_BPS_SAMPLED_WINDOW_SIZE: u64 = 12;
     const HIGH_BPS: u64 = 4;
-    let tests = vec![
+    let tests = [
         Test {
             name: "MAINNET with full window",
             enabled: true,

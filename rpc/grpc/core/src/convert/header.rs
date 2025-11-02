@@ -92,6 +92,7 @@ try_from!(item: &protowire::RpcBlockLevelParents, Vec<RpcHash>, {
 #[cfg(test)]
 mod tests {
     use crate::protowire;
+    use itertools::Itertools;
     use kaspa_consensus_core::{block::Block, header::Header};
     use kaspa_rpc_core::{RpcBlock, RpcHash, RpcHeader};
 
@@ -102,49 +103,48 @@ mod tests {
         RpcHash::from_u64_word(c)
     }
 
-    fn test_parents_by_level_rxr(r: &[Vec<RpcHash>], r2: &[Vec<RpcHash>]) {
-        for i in 0..r.len() {
-            for j in 0..r[i].len() {
-                assert_eq!(r[i][j], r2[i][j]);
-            }
-        }
+    fn test_parents_by_level_rxr(rpc_parents_1: &[Vec<RpcHash>], rpc_parents_2: &[Vec<RpcHash>]) {
+        assert_eq!(rpc_parents_1, rpc_parents_2);
     }
-    fn test_parents_by_level_rxp(r: &[Vec<RpcHash>], p: &[protowire::RpcBlockLevelParents]) {
-        for i in 0..r.len() {
-            for j in 0..r[i].len() {
-                assert_eq!(r[i][j].to_string(), p[i].parent_hashes[j]);
+    fn test_parents_by_level_rxp(rpc_parents: &[Vec<RpcHash>], proto_parents: &[protowire::RpcBlockLevelParents]) {
+        for (r_level_parents, proto_level_parents) in rpc_parents.iter().zip_eq(proto_parents.iter()) {
+            for (r_parent, proto_parent) in r_level_parents.iter().zip_eq(proto_level_parents.parent_hashes.iter()) {
+                assert_eq!(r_parent.to_string(), *proto_parent);
             }
         }
     }
 
     #[test]
     fn test_rpc_block_level_parents() {
-        let p = protowire::RpcBlockLevelParents {
+        let proto_block_level_parents = protowire::RpcBlockLevelParents {
             parent_hashes: vec![new_unique().to_string(), new_unique().to_string(), new_unique().to_string()],
         };
-        let r: Vec<RpcHash> = (&p).try_into().unwrap();
-        let p2: protowire::RpcBlockLevelParents = (&r).into();
-        for (i, _) in r.iter().enumerate() {
-            assert_eq!(p.parent_hashes[i], r[i].to_string());
-            assert_eq!(p2.parent_hashes[i], r[i].to_string());
-            assert_eq!(p.parent_hashes[i], p2.parent_hashes[i]);
+        let rpc_block_level_parents: Vec<RpcHash> = (&proto_block_level_parents).try_into().unwrap();
+        let proto_block_level_parents_reconverted: protowire::RpcBlockLevelParents = (&rpc_block_level_parents).into();
+        for (i, _) in rpc_block_level_parents.iter().enumerate() {
+            assert_eq!(proto_block_level_parents.parent_hashes[i], rpc_block_level_parents[i].to_string());
+            assert_eq!(proto_block_level_parents_reconverted.parent_hashes[i], rpc_block_level_parents[i].to_string());
+            assert_eq!(proto_block_level_parents.parent_hashes[i], proto_block_level_parents_reconverted.parent_hashes[i]);
         }
-        assert_eq!(p, p2);
+        assert_eq!(proto_block_level_parents, proto_block_level_parents_reconverted);
 
-        let r: Vec<RpcHash> = vec![new_unique(), new_unique()];
-        let p: protowire::RpcBlockLevelParents = (&r).into();
-        let r2: Vec<RpcHash> = (&p).try_into().unwrap();
-        for i in 0..r.len() {
-            assert_eq!(p.parent_hashes[i], r[i].to_string());
-            assert_eq!(p.parent_hashes[i], r2[i].to_string());
-            assert_eq!(r[i], r2[i]);
+        let rpc_block_level_parents: Vec<RpcHash> = vec![new_unique(), new_unique()];
+        let proto_block_level_parents: protowire::RpcBlockLevelParents = (&rpc_block_level_parents).into();
+        let rpc_block_level_parents_reconverted: Vec<RpcHash> = (&proto_block_level_parents).try_into().unwrap();
+
+        assert_eq!(rpc_block_level_parents, rpc_block_level_parents_reconverted);
+        for ((p_hash, r1_hash), r2_hash) in
+            proto_block_level_parents.parent_hashes.iter().zip_eq(rpc_block_level_parents).zip_eq(rpc_block_level_parents_reconverted)
+        {
+            assert_eq!(p_hash, &r1_hash.to_string());
+            assert_eq!(p_hash, &r2_hash.to_string());
+            assert_eq!(r1_hash, r2_hash);
         }
-        assert_eq!(r, r2);
     }
 
     #[test]
     fn test_rpc_header() {
-        let r = Header::new_finalized(
+        let header = Header::new_finalized(
             0,
             vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]],
             new_unique(),
@@ -158,25 +158,25 @@ mod tests {
             1928374,
             new_unique(),
         );
-        let r = RpcHeader::from(r);
-        let p: protowire::RpcBlockHeader = (&r).into();
-        let r2: RpcHeader = (&p).try_into().unwrap();
-        let p2: protowire::RpcBlockHeader = (&r2).into();
+        let rpc_header = RpcHeader::from(header);
+        let proto_header: protowire::RpcBlockHeader = (&rpc_header).into();
+        let reconverted_rpc_header: RpcHeader = (&proto_header).try_into().unwrap();
+        let reconverted_proto_header: protowire::RpcBlockHeader = (&reconverted_rpc_header).into();
 
-        assert_eq!(r.parents_by_level, r2.parents_by_level);
-        assert_eq!(p.parents, p2.parents);
-        test_parents_by_level_rxr(&r.parents_by_level, &r2.parents_by_level);
-        test_parents_by_level_rxp(&r.parents_by_level, &p.parents);
-        test_parents_by_level_rxp(&r.parents_by_level, &p2.parents);
-        test_parents_by_level_rxp(&r2.parents_by_level, &p2.parents);
+        assert_eq!(rpc_header.parents_by_level, reconverted_rpc_header.parents_by_level);
+        assert_eq!(proto_header.parents, reconverted_proto_header.parents);
+        test_parents_by_level_rxr(&rpc_header.parents_by_level, &reconverted_rpc_header.parents_by_level);
+        test_parents_by_level_rxp(&rpc_header.parents_by_level, &proto_header.parents);
+        test_parents_by_level_rxp(&rpc_header.parents_by_level, &reconverted_proto_header.parents);
+        test_parents_by_level_rxp(&reconverted_rpc_header.parents_by_level, &reconverted_proto_header.parents);
 
-        assert_eq!(r.hash, r2.hash);
-        assert_eq!(p, p2);
+        assert_eq!(rpc_header.hash, reconverted_rpc_header.hash);
+        assert_eq!(proto_header, reconverted_proto_header);
     }
 
     #[test]
     fn test_rpc_block() {
-        let h = Header::new_finalized(
+        let header = Header::new_finalized(
             0,
             vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]],
             new_unique(),
@@ -190,25 +190,28 @@ mod tests {
             1928374,
             new_unique(),
         );
-        let b = Block::from_header(h);
-        let r: RpcBlock = (&b).into();
-        let p: protowire::RpcBlock = (&r).into();
-        let r2: RpcBlock = (&p).try_into().unwrap();
-        let b2: Block = r2.clone().try_into().unwrap();
-        let r3: RpcBlock = (&b2).into();
-        let p2: protowire::RpcBlock = (&r3).into();
+        let consensus_block = Block::from_header(header);
+        let rpc_block: RpcBlock = (&consensus_block).into();
+        let proto_block: protowire::RpcBlock = (&rpc_block).into();
+        let rpc_block_converted_from_proto: RpcBlock = (&proto_block).try_into().unwrap();
+        let consensus_block_reconverted: Block = rpc_block_converted_from_proto.clone().try_into().unwrap();
+        let rpc_block_reconverted_from_consensus: RpcBlock = (&consensus_block_reconverted).into();
+        let proto_block_reconverted: protowire::RpcBlock = (&rpc_block_reconverted_from_consensus).into();
 
-        assert_eq!(r.header.parents_by_level, r2.header.parents_by_level);
-        assert_eq!(p.header.as_ref().unwrap().parents, p2.header.as_ref().unwrap().parents);
-        test_parents_by_level_rxr(&r.header.parents_by_level, &r2.header.parents_by_level);
-        test_parents_by_level_rxr(&r.header.parents_by_level, &r3.header.parents_by_level);
-        test_parents_by_level_rxr(&b.header.parents_by_level, &r2.header.parents_by_level);
-        test_parents_by_level_rxr(&b.header.parents_by_level, &b2.header.parents_by_level);
-        test_parents_by_level_rxp(&r.header.parents_by_level, &p.header.as_ref().unwrap().parents);
-        test_parents_by_level_rxp(&r.header.parents_by_level, &p2.header.as_ref().unwrap().parents);
-        test_parents_by_level_rxp(&r2.header.parents_by_level, &p2.header.as_ref().unwrap().parents);
+        assert_eq!(rpc_block.header.parents_by_level, rpc_block_converted_from_proto.header.parents_by_level);
+        assert_eq!(proto_block.header.as_ref().unwrap().parents, proto_block_reconverted.header.as_ref().unwrap().parents);
+        test_parents_by_level_rxr(&rpc_block.header.parents_by_level, &rpc_block_converted_from_proto.header.parents_by_level);
+        test_parents_by_level_rxr(&rpc_block.header.parents_by_level, &rpc_block_reconverted_from_consensus.header.parents_by_level);
+        test_parents_by_level_rxr(&consensus_block.header.parents_by_level, &rpc_block_converted_from_proto.header.parents_by_level);
+        test_parents_by_level_rxr(&consensus_block.header.parents_by_level, &consensus_block_reconverted.header.parents_by_level);
+        test_parents_by_level_rxp(&rpc_block.header.parents_by_level, &proto_block.header.as_ref().unwrap().parents);
+        test_parents_by_level_rxp(&rpc_block.header.parents_by_level, &proto_block_reconverted.header.as_ref().unwrap().parents);
+        test_parents_by_level_rxp(
+            &rpc_block_converted_from_proto.header.parents_by_level,
+            &proto_block_reconverted.header.as_ref().unwrap().parents,
+        );
 
-        assert_eq!(b.hash(), b2.hash());
-        assert_eq!(p, p2);
+        assert_eq!(consensus_block.hash(), consensus_block_reconverted.hash());
+        assert_eq!(proto_block, proto_block_reconverted);
     }
 }
