@@ -1,6 +1,6 @@
 extern crate alloc;
 extern crate core;
-
+mod zk_precompiles;
 pub mod caches;
 mod data_stack;
 pub mod error;

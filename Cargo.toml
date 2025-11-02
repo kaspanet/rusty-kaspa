@@ -165,7 +165,10 @@ crypto_box = { version = "0.9.1", features = ["chacha20"] }
 dashmap = "6.0.1"
 derivative = "2.2.0"
 derive_builder = "0.20.0"
-derive_more = "0.99.17"
+derive_more = { version = "2.0.1", default-features = false, features = [
+  "debug",
+  "from",
+] }
 # derive_more = { version = "1.0.0", features = ["full"] }
 dhat = "0.3.2"
 dirs = "5.0.1"
