@@ -673,14 +673,18 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         info!("downloading pruning point anticone missing block data");
         let diesembodied_hashes = consensus.async_get_disembodied_anticone().await;
         if self.body_only_ibd_permitted {
-            self.sync_missing_trusted_bodies_no_headers(consensus,diesembodied_hashes).await?
+            self.sync_missing_trusted_bodies_no_headers(consensus, diesembodied_hashes).await?
         } else {
-            self.sync_missing_trusted_bodies_full_blocks(consensus,diesembodied_hashes).await?;
+            self.sync_missing_trusted_bodies_full_blocks(consensus, diesembodied_hashes).await?;
         }
         consensus.async_clear_disembodied_anticone_cache().await;
         Ok(())
     }
-    async fn sync_missing_trusted_bodies_no_headers(&mut self, consensus: &ConsensusProxy,diesembodied_hashes:Vec<Hash>) -> Result<(), ProtocolError> {
+    async fn sync_missing_trusted_bodies_no_headers(
+        &mut self,
+        consensus: &ConsensusProxy,
+        diesembodied_hashes: Vec<Hash>,
+    ) -> Result<(), ProtocolError> {
         let iter = diesembodied_hashes.chunks(IBD_BATCH_SIZE);
         for chunk in iter {
             self.router
@@ -717,7 +721,11 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         }
         Ok(())
     }
-    async fn sync_missing_trusted_bodies_full_blocks(&mut self, consensus: &ConsensusProxy,diesembodied_hashes:Vec<Hash>) -> Result<(), ProtocolError> {
+    async fn sync_missing_trusted_bodies_full_blocks(
+        &mut self,
+        consensus: &ConsensusProxy,
+        diesembodied_hashes: Vec<Hash>,
+    ) -> Result<(), ProtocolError> {
         let iter = diesembodied_hashes.chunks(IBD_BATCH_SIZE);
         for chunk in iter {
             self.router
