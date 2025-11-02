@@ -40,7 +40,7 @@ use risc0_zkp::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::zk_precompiles::risc0::{VerifierContext, claim::maybe_pruned::MaybePruned, merkle::MerkleProof};
+use crate::zk_precompiles::risc0::{VerifierContext, claim::maybe_pruned::MaybePruned, merkle::{MerkleGroup, MerkleProof}};
 use crate::zk_precompiles::risc0::claim::Unknown;
 use crate::zk_precompiles::risc0::sha;
 /// A succinct receipt, produced via recursion, proving the execution of the zkVM with a [STARK].
@@ -376,8 +376,9 @@ impl Default for SuccinctReceiptVerifierParameters {
 
 #[cfg(test)]
 mod tests {
+    use crate::zk_precompiles::risc0::{DEFAULT_MAX_PO2, sha::Digestible};
+
     use super::{ALLOWED_CONTROL_ROOT, SuccinctReceiptVerifierParameters, allowed_control_root};
-    use crate::{receipt::DEFAULT_MAX_PO2, sha::Digestible};
     use risc0_zkp::core::digest::digest;
 
     // Check that the verifier parameters has a stable digest (and therefore a stable value). This

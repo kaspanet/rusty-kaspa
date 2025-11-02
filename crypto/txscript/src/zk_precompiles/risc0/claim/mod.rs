@@ -23,10 +23,6 @@ use serde::{Deserialize, Serialize};
 use crate::zk_precompiles::risc0::sha::Sha256;
 
 pub mod maybe_pruned;
-#[cfg(feature = "prove")]
-pub(crate) mod merge;
-//pub(crate) mod receipt;
-//pub(crate) mod work;
 
 /// A receipt (e.g. [SuccinctReceipt][crate::SuccinctReceipt]) may have an unknown claim type when
 /// only the digest of the claim is needed, and the full claim value cannot be determined by the

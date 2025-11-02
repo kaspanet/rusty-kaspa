@@ -3513,6 +3513,7 @@ dependencies = [
  "anyhow",
  "blake2b_simd",
  "borsh",
+ "bytemuck",
  "cfg-if 1.0.0",
  "criterion",
  "derive_more",
