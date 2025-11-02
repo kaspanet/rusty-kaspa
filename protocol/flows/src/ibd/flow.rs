@@ -239,12 +239,9 @@ impl IbdFlow {
                     // agree as well, so we perform a simple sync IBD and only download the missing data
                     return Ok(IbdType::Sync);
                 } else {
-                    if !consensus.async_is_pruning_sample(syncer_pruning_point).await {
-                        // this is not a pruning point, no point in continuing mallicious IBD
-                        return Ok(IbdType::None);
-                    }
                     // The node is missing a segment in the near future of its current pruning point, but the syncer is ahead
                     // and already pruned the current pruning point.
+
                     if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body())
                         && !consensus.async_is_consensus_in_transitional_ibd_state().await
                     {
@@ -263,7 +260,12 @@ impl IbdFlow {
                             .await
                             .map_err(|_| ProtocolError::Other("syncer pruning point is corrupted"))?
                         {
-                            return Ok(IbdType::PruningCatchUp);
+                            if !consensus.async_is_pruning_sample(syncer_pruning_point).await {
+                                // this is not a pruning point, no point in continuing mallicious IBD
+                                return Ok(IbdType::None);
+                            } else {
+                                return Ok(IbdType::PruningCatchUp);
+                            }
                         } else {
                             return Err(ProtocolError::Other("syncer pruning point is outdated"));
                         }

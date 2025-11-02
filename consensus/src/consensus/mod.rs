@@ -1298,14 +1298,17 @@ impl ConsensusApi for Consensus {
         if candidate_hash == self.config.genesis.hash {
             return true;
         }
-        if let Ok(candidate_hdr) = self.get_header(candidate_hash) {
-            let candidate_bscore = candidate_hdr.blue_score;
-            let parent_bscore = self.get_header(candidate_hdr.direct_parents()[0]).unwrap().blue_score;
-            return self.services.pruning_point_manager.is_pruning_sample(
-                candidate_bscore,
-                parent_bscore,
-                self.config.params.finality_depth().after(),
-            );
+        if let Ok(ghostdag_data) = self.get_ghostdag_data(candidate_hash) {
+            let candidate_bscore = ghostdag_data.blue_score;
+            if let Ok(selected_parent_ghostdag_data) = self.get_ghostdag_data(ghostdag_data.selected_parent) {
+                return self.services.pruning_point_manager.is_pruning_sample(
+                    candidate_bscore,
+                    selected_parent_ghostdag_data.blue_score,
+                    self.config.params.finality_depth().after(),
+                );
+            } else {
+                return false;
+            }
         }
         false
     }
