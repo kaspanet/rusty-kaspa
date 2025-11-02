@@ -58,12 +58,12 @@ impl HeaderProcessor {
         let crescendo_activated = self.crescendo_activation.is_active(ctx.selected_parent_daa_score());
         if header.parents_by_level.len() != expected_block_parents.len()
             || !expected_block_parents.iter().enumerate().all(|(block_level, expected_level_parents)| {
-                let header_level_parents = &header.parents_by_level[block_level];
+                let header_level_parents = header.parents_by_level.get(block_level).map(Vec::as_slice).unwrap_or(&[]);
                 if header_level_parents.len() != expected_level_parents.len() {
                     return false;
                 }
                 // Optimistic path where both arrays are identical also in terms of order
-                if header_level_parents == expected_level_parents {
+                if header_level_parents == expected_level_parents.as_slice() {
                     return true;
                 }
                 if crescendo_activated {
@@ -76,7 +76,7 @@ impl HeaderProcessor {
         {
             return Err(RuleError::UnexpectedIndirectParents(
                 TwoDimVecDisplay(expected_block_parents),
-                TwoDimVecDisplay(header.parents_by_level.clone()),
+                TwoDimVecDisplay(Vec::from(&header.parents_by_level)),
             ));
         };
         Ok(())

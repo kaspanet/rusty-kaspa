@@ -445,7 +445,9 @@ async fn header_in_isolation_validation_test() {
     {
         let mut block = block.clone();
         block.header.hash = 3.into();
-        block.header.parents_by_level[0] = vec![];
+        let mut parents = block.header.parents_by_level_vec();
+        parents[0] = vec![];
+        block.header.set_parents_by_level_vec(parents);
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::NoParents) => {}
             res => {
@@ -457,8 +459,9 @@ async fn header_in_isolation_validation_test() {
     {
         let mut block = block.clone();
         block.header.hash = 4.into();
-        block.header.parents_by_level[0] =
-            std::iter::repeat_n(config.genesis.hash, config.prior_max_block_parents as usize + 1).collect();
+        let mut parents = block.header.parents_by_level_vec();
+        parents[0] = std::iter::repeat_n(config.genesis.hash, config.prior_max_block_parents as usize + 1).collect();
+        block.header.set_parents_by_level_vec(parents);
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TooManyParents(num_parents, limit)) => {
                 assert_eq!((config.prior_max_block_parents + 1) as usize, num_parents);
@@ -485,7 +488,9 @@ async fn incest_test() {
     virtual_state_task.await.unwrap();
 
     let mut block = consensus.build_block_with_parents(2.into(), vec![config.genesis.hash]);
-    block.header.parents_by_level[0] = vec![1.into(), config.genesis.hash];
+    let mut parents = block.header.parents_by_level_vec();
+    parents[0] = vec![1.into(), config.genesis.hash];
+    block.header.set_parents_by_level_vec(parents);
     let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
     match virtual_state_task.await {
         Err(RuleError::InvalidParentsRelation(a, b)) => {
@@ -509,7 +514,9 @@ async fn missing_parents_test() {
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
-    block.header.parents_by_level[0] = vec![0.into()];
+    let mut parents = block.header.parents_by_level_vec();
+    parents[0] = vec![0.into()];
+    block.header.set_parents_by_level_vec(parents);
     let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
     match virtual_state_task.await {
         Err(RuleError::MissingParents(missing)) => {
@@ -1463,7 +1470,7 @@ async fn difficulty_test() {
         let fake_genesis = Header {
             hash: test.config.genesis.hash,
             version: 0,
-            parents_by_level: vec![],
+            parents_by_level: Vec::<Vec<Hash>>::new().into(),
             hash_merkle_root: 0.into(),
             accepted_id_merkle_root: 0.into(),
             utxo_commitment: 0.into(),

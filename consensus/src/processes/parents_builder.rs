@@ -184,14 +184,11 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
     }
 
     pub fn parents_at_level<'a>(&'a self, header: &'a Header, level: u8) -> &'a [Hash] {
-        if header.parents_by_level.is_empty() {
-            // If is genesis
-            &[]
-        } else if header.parents_by_level.len() > level as usize {
-            &header.parents_by_level[level as usize][..]
-        } else {
-            std::slice::from_ref(&self.genesis_hash)
-        }
+        header
+            .parents_by_level
+            .get(level as usize)
+            .map(Vec::as_slice)
+            .unwrap_or_else(|| if header.parents_by_level.is_empty() { &[] } else { std::slice::from_ref(&self.genesis_hash) })
     }
 }
 
@@ -315,7 +312,8 @@ mod tests {
                         vec![1001.into()],
                         vec![1001.into()],
                         vec![1002.into()],
-                    ],
+                    ]
+                    .into(),
                     hash_merkle_root: 1.into(),
                     accepted_id_merkle_root: 1.into(),
                     utxo_commitment: 1.into(),
@@ -344,7 +342,8 @@ mod tests {
                         vec![2001.into()],
                         vec![2001.into()],
                         vec![2001.into()],
-                    ],
+                    ]
+                    .into(),
                     hash_merkle_root: 1.into(),
                     accepted_id_merkle_root: 1.into(),
                     utxo_commitment: 1.into(),
@@ -373,7 +372,8 @@ mod tests {
                         vec![2001.into()],
                         vec![2001.into()],
                         vec![2001.into()],
-                    ],
+                    ]
+                    .into(),
                     hash_merkle_root: 1.into(),
                     accepted_id_merkle_root: 1.into(),
                     utxo_commitment: 1.into(),
@@ -475,7 +475,7 @@ mod tests {
                     header: Arc::new(Header {
                         hash,
                         version: 0,
-                        parents_by_level: expected_parents,
+                        parents_by_level: expected_parents.into(),
                         hash_merkle_root: 1.into(),
                         accepted_id_merkle_root: 1.into(),
                         utxo_commitment: 1.into(),
@@ -537,7 +537,7 @@ mod tests {
                 header: Arc::new(Header {
                     hash: pruning_point,
                     version: 0,
-                    parents_by_level: vec![vec![1001.into(), 1002.into()], vec![1001.into(), 1002.into()]],
+                    parents_by_level: vec![vec![1001.into(), 1002.into()], vec![1001.into(), 1002.into()]].into(),
                     hash_merkle_root: 1.into(),
                     accepted_id_merkle_root: 1.into(),
                     utxo_commitment: 1.into(),
@@ -578,7 +578,7 @@ mod tests {
                     header: Arc::new(Header {
                         hash,
                         version: 0,
-                        parents_by_level: expected_parents,
+                        parents_by_level: expected_parents.into(),
                         hash_merkle_root: 1.into(),
                         accepted_id_merkle_root: 1.into(),
                         utxo_commitment: 1.into(),

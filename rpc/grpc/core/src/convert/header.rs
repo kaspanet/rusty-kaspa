@@ -197,13 +197,15 @@ mod tests {
         let consensus_block_reconverted: Block = rpc_block_converted_from_proto.clone().try_into().unwrap();
         let rpc_block_reconverted_from_consensus: RpcBlock = (&consensus_block_reconverted).into();
         let proto_block_reconverted: protowire::RpcBlock = (&rpc_block_reconverted_from_consensus).into();
+        let consensus_parents = Vec::from(&consensus_block.header.parents_by_level);
+        let consensus_reconverted_parents = Vec::from(&consensus_block_reconverted.header.parents_by_level);
 
         assert_eq!(rpc_block.header.parents_by_level, rpc_block_converted_from_proto.header.parents_by_level);
         assert_eq!(proto_block.header.as_ref().unwrap().parents, proto_block_reconverted.header.as_ref().unwrap().parents);
         test_parents_by_level_rxr(&rpc_block.header.parents_by_level, &rpc_block_converted_from_proto.header.parents_by_level);
         test_parents_by_level_rxr(&rpc_block.header.parents_by_level, &rpc_block_reconverted_from_consensus.header.parents_by_level);
-        test_parents_by_level_rxr(&consensus_block.header.parents_by_level, &rpc_block_converted_from_proto.header.parents_by_level);
-        test_parents_by_level_rxr(&consensus_block.header.parents_by_level, &consensus_block_reconverted.header.parents_by_level);
+        test_parents_by_level_rxr(&consensus_parents, &rpc_block_converted_from_proto.header.parents_by_level);
+        test_parents_by_level_rxr(&consensus_parents, &consensus_reconverted_parents);
         test_parents_by_level_rxp(&rpc_block.header.parents_by_level, &proto_block.header.as_ref().unwrap().parents);
         test_parents_by_level_rxp(&rpc_block.header.parents_by_level, &proto_block_reconverted.header.as_ref().unwrap().parents);
         test_parents_by_level_rxp(

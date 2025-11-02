@@ -65,7 +65,7 @@ impl From<Header> for RpcHeader {
         Self {
             hash: header.hash,
             version: header.version,
-            parents_by_level: header.parents_by_level,
+            parents_by_level: header.parents_by_level.into(),
             hash_merkle_root: header.hash_merkle_root,
             accepted_id_merkle_root: header.accepted_id_merkle_root,
             utxo_commitment: header.utxo_commitment,
@@ -85,7 +85,7 @@ impl From<&Header> for RpcHeader {
         Self {
             hash: header.hash,
             version: header.version,
-            parents_by_level: header.parents_by_level.clone(),
+            parents_by_level: Vec::from(&header.parents_by_level),
             hash_merkle_root: header.hash_merkle_root,
             accepted_id_merkle_root: header.accepted_id_merkle_root,
             utxo_commitment: header.utxo_commitment,
@@ -105,7 +105,7 @@ impl From<RpcHeader> for Header {
         Self {
             hash: header.hash,
             version: header.version,
-            parents_by_level: header.parents_by_level,
+            parents_by_level: header.parents_by_level.into(),
             hash_merkle_root: header.hash_merkle_root,
             accepted_id_merkle_root: header.accepted_id_merkle_root,
             utxo_commitment: header.utxo_commitment,
@@ -125,7 +125,7 @@ impl From<&RpcHeader> for Header {
         Self {
             hash: header.hash,
             version: header.version,
-            parents_by_level: header.parents_by_level.clone(),
+            parents_by_level: header.parents_by_level.clone().into(),
             hash_merkle_root: header.hash_merkle_root,
             accepted_id_merkle_root: header.accepted_id_merkle_root,
             utxo_commitment: header.utxo_commitment,
@@ -240,7 +240,7 @@ impl From<&Header> for RpcRawHeader {
     fn from(header: &Header) -> Self {
         Self {
             version: header.version,
-            parents_by_level: header.parents_by_level.clone(),
+            parents_by_level: Vec::from(&header.parents_by_level),
             hash_merkle_root: header.hash_merkle_root,
             accepted_id_merkle_root: header.accepted_id_merkle_root,
             utxo_commitment: header.utxo_commitment,
@@ -259,7 +259,7 @@ impl From<Header> for RpcRawHeader {
     fn from(header: Header) -> Self {
         Self {
             version: header.version,
-            parents_by_level: header.parents_by_level,
+            parents_by_level: header.parents_by_level.into(),
             hash_merkle_root: header.hash_merkle_root,
             accepted_id_merkle_root: header.accepted_id_merkle_root,
             utxo_commitment: header.utxo_commitment,
