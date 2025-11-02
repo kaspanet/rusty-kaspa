@@ -164,7 +164,7 @@ impl IbdFlow {
                         // This will reobtain the freshly committed staging consensus
                         session = self.ctx.consensus().session().await;
                         // Next, sync a utxoset corresponding to the new pruning point from the syncer.
-                        // Note that the new pruning point's anticone need not be downloaded separately as in other IBDtypes
+                        // Note that the new pruning point's anticone need not be downloaded separately as in other IBD types
                         // as it was just downloaded as part of the headers proof.
                         self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point).await?;
                     }
@@ -182,7 +182,7 @@ impl IbdFlow {
                         info!("header stage of pruning catchup from peer {} completed", self.router);
                         self.sync_missing_trusted_bodies(&session).await?;
                         self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point).await?;
-                        // Note that pruning of old data will only occur once virtual has caught up sufficintly far
+                        // Note that pruning of old data will only occur once virtual has caught up sufficiently far
                     }
 
                     Err(e) => {
@@ -239,6 +239,10 @@ impl IbdFlow {
                     // agree as well, so we perform a simple sync IBD and only download the missing data
                     return Ok(IbdType::Sync);
                 } else {
+                    if !consensus.async_is_pruning_sample(syncer_pruning_point).await {
+                        // this is not a pruning point, no point in continuing malicious IBD
+                        return Err(ProtocolError::Other("syncer pruning point is not a valid pruning point"));
+                    }
                     // The node is missing a segment in the near future of its current pruning point, but the syncer is ahead
                     // and already pruned the current pruning point.
 
@@ -246,7 +250,7 @@ impl IbdFlow {
                         && !consensus.async_is_consensus_in_transitional_ibd_state().await
                     {
                         // The data pruned by the syncer is already available from within the node (from relay or past ibd attempts)
-                        // and the consensus is not in a transtional state requiring data on the previous pruning point,
+                        // and the consensus is not in a transitional state requiring data on the previous pruning point,
                         // hence we can carry on syncing as normal.
                         return Ok(IbdType::Sync);
                     } else {
@@ -260,12 +264,7 @@ impl IbdFlow {
                             .await
                             .map_err(|_| ProtocolError::Other("syncer pruning point is corrupted"))?
                         {
-                            if !consensus.async_is_pruning_sample(syncer_pruning_point).await {
-                                // this is not a pruning point, no point in continuing mallicious IBD
-                                return Ok(IbdType::None);
-                            } else {
-                                return Ok(IbdType::PruningCatchUp);
-                            }
+                            return Ok(IbdType::PruningCatchUp);
                         } else {
                             return Err(ProtocolError::Other("syncer pruning point is outdated"));
                         }
@@ -333,10 +332,10 @@ impl IbdFlow {
         self.sync_headers(consensus, syncer_sink, negotiation_output.highest_known_syncer_chain_hash.unwrap(), relay_block).await?;
 
         // This function's main effect is to confirm the syncer's pruning point can be finalized into the consensus, and to update
-        // all the relavant stores
+        // all the relevant stores
         consensus.async_intrusive_pruning_point_update(syncer_pp, syncer_sink).await?;
 
-        // A sanity check to confirm that following the intrusive adition of new pruning points,
+        // A sanity check to confirm that following the intrusive addition of new pruning points,
         // the latest pruning point still correctly agrees with the DAG data,
         // and is the head of a pruning points "chain" leading all the way down to genesis
         // TODO(relaxed): once the catchup functionality has sufficiently matured, consider only doing this test if sanity checks are enabled

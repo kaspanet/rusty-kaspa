@@ -1298,22 +1298,20 @@ impl ConsensusApi for Consensus {
         if candidate_hash == self.config.genesis.hash {
             return true;
         }
-        if let Ok(ghostdag_data) = self.get_ghostdag_data(candidate_hash) {
-            let candidate_bscore = ghostdag_data.blue_score;
-            if let Ok(selected_parent_ghostdag_data) = self.get_ghostdag_data(ghostdag_data.selected_parent) {
-                return self.services.pruning_point_manager.is_pruning_sample(
-                    candidate_bscore,
-                    selected_parent_ghostdag_data.blue_score,
-                    self.config.params.finality_depth().after(),
-                );
-            } else {
-                return false;
-            }
-        }
-        false
+        let Ok(candidate_ghostdag_data) = self.get_ghostdag_data(candidate_hash) else {
+            return false;
+        };
+        let Ok(selected_parent_ghostdag_data) = self.get_ghostdag_data(candidate_ghostdag_data.selected_parent) else {
+            return false;
+        };
+        self.services.pruning_point_manager.is_pruning_sample(
+            candidate_ghostdag_data.blue_score,
+            selected_parent_ghostdag_data.blue_score,
+            self.config.params.finality_depth().after(),
+        )
     }
 
-    /// The usual flow consists of the pruning point naturally updating during pruning, and hence maintains consistency by defualt
+    /// The usual flow consists of the pruning point naturally updating during pruning, and hence maintains consistency by default
     /// During pruning catchup, we need to manually update the pruning point and
     /// make sure that consensus looks "as if" it has just moved to a new pruning point.
     fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
