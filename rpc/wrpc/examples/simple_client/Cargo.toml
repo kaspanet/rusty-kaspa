@@ -16,3 +16,6 @@ kaspa-rpc-core.workspace = true
 kaspa-wrpc-client.workspace = true
 tokio.workspace = true
 
+
+[lints]
+workspace = true

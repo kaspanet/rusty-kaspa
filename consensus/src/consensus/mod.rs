@@ -408,7 +408,7 @@ impl Consensus {
     }
 
     /// Acquires a consensus session, blocking data-pruning from occurring until released
-    pub fn acquire_session(&self) -> SessionReadGuard {
+    pub fn acquire_session(&self) -> SessionReadGuard<'_> {
         self.pruning_lock.blocking_read()
     }
 
@@ -586,6 +586,10 @@ impl ConsensusApi for Consensus {
 
     fn get_sink_timestamp(&self) -> u64 {
         self.headers_store.get_timestamp(self.get_sink()).unwrap()
+    }
+
+    fn get_sink_blue_score(&self) -> u64 {
+        self.headers_store.get_blue_score(self.get_sink()).unwrap()
     }
 
     fn get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
@@ -970,6 +974,17 @@ impl ConsensusApi for Consensus {
             header: self.headers_store.get_header(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))?,
             transactions: self.block_transactions_store.get(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))?,
         })
+    }
+
+    fn get_block_body(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
+        if match self.statuses_store.read().get(hash).unwrap_option() {
+            Some(status) => !status.has_block_body(),
+            None => true,
+        } {
+            return Err(ConsensusError::BlockNotFound(hash));
+        }
+
+        self.block_transactions_store.get(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))
     }
 
     fn get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {

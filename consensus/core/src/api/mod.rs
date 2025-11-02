@@ -135,6 +135,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_sink_blue_score(&self) -> u64 {
+        unimplemented!()
+    }
+
     fn get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
         unimplemented!()
     }
@@ -277,6 +281,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_block(&self, hash: Hash) -> ConsensusResult<Block> {
+        unimplemented!()
+    }
+
+    fn get_block_body(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
         unimplemented!()
     }
 

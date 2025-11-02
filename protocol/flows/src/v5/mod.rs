@@ -1,7 +1,6 @@
 use self::{
     address::{ReceiveAddressesFlow, SendAddressesFlow},
     blockrelay::{flow::HandleRelayInvsFlow, handle_requests::HandleRelayBlockRequests},
-    ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
     request_antipast::HandleAntipastRequests,
     request_block_locator::RequestBlockLocatorFlow,
@@ -15,13 +14,12 @@ use self::{
 };
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 
+use crate::ibd::IbdFlow;
 use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
 use kaspa_utils::channel;
 use std::sync::Arc;
-
 pub(crate) mod address;
 pub(crate) mod blockrelay;
-pub(crate) mod ibd;
 pub(crate) mod ping;
 pub(crate) mod request_antipast;
 pub(crate) mod request_block_locator;
@@ -37,6 +35,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // IBD flow <-> invs flow communication uses a job channel in order to always
     // maintain at most a single pending job which can be updated
     let (ibd_sender, relay_receiver) = channel::job();
+    let body_only_ibd_permitted = false;
     let flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
             ctx.clone(),
@@ -58,6 +57,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
                 KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
             ]),
             relay_receiver,
+            body_only_ibd_permitted,
         )),
         Box::new(HandleRelayInvsFlow::new(
             ctx.clone(),

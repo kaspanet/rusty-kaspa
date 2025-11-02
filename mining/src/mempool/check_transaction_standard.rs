@@ -263,7 +263,7 @@ mod tests {
             want: u64,
         }
 
-        let tests = vec![
+        let tests = [
             Test {
                 // Ensure combination of size and fee that are less than 1000
                 // produce a non-zero fee.
