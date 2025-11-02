@@ -667,10 +667,18 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         consensus.clone().spawn_blocking(move |c| c.import_pruning_point_utxo_set(pruning_point, multiset)).await?;
         Ok(())
     }
-
     async fn sync_missing_trusted_bodies(&mut self, consensus: &ConsensusProxy) -> Result<(), ProtocolError> {
         info!("downloading pruning point anticone missing block data");
         let diesembodied_hashes = consensus.async_get_disembodied_anticone().await;
+        if self.body_only_ibd_permitted {
+            self.sync_missing_trusted_bodies_no_headers(consensus,diesembodied_hashes).await?
+        } else {
+            self.sync_missing_trusted_bodies_full_blocks(consensus,diesembodied_hashes).await?;
+        }
+        consensus.async_clear_disembodied_anticone_cache().await;
+        Ok(())
+    }
+    async fn sync_missing_trusted_bodies_no_headers(&mut self, consensus: &ConsensusProxy,diesembodied_hashes:Vec<Hash>) -> Result<(), ProtocolError> {
         let iter = diesembodied_hashes.chunks(IBD_BATCH_SIZE);
         for chunk in iter {
             self.router
@@ -705,10 +713,42 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             }
             try_join_all(jobs).await?; // TODO (relaxed): be more efficient with batching as done with block bodies in general
         }
-        consensus.async_clear_disembodied_anticone_cache().await;
         Ok(())
     }
+    async fn sync_missing_trusted_bodies_full_blocks(&mut self, consensus: &ConsensusProxy,diesembodied_hashes:Vec<Hash>) -> Result<(), ProtocolError> {
+        let iter = diesembodied_hashes.chunks(IBD_BATCH_SIZE);
+        for chunk in iter {
+            self.router
+                .enqueue(make_message!(
+                    Payload::RequestIbdBlocks,
+                    RequestIbdBlocksMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
+                ))
+                .await?;
+            let mut jobs = Vec::with_capacity(chunk.len());
 
+            for &hash in chunk.iter() {
+                // TODO: change to BodyOnly requests when incorporated
+                let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
+                let block: Block = msg.try_into()?;
+                if block.hash() != hash {
+                    return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", hash, block.hash())));
+                }
+                if block.is_header_only() {
+                    return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
+                }
+                // TODO (relaxed): sending ghostdag data may be redundant, especially when the headers were already verified.
+                // Consider sending empty ghostdag data, simplifying a great deal. The result should be the same -
+                // a trusted task is sent, however the header is already verified, and hence only the block body will be verified.
+                jobs.push(
+                    consensus
+                        .validate_and_insert_trusted_block(TrustedBlock::new(block, consensus.async_get_ghostdag_data(hash).await?))
+                        .virtual_state_task,
+                );
+            }
+            try_join_all(jobs).await?; // TODO (relaxed): be more efficient with batching as done with block bodies in general
+        }
+        Ok(())
+    }
     async fn sync_missing_block_bodies(&mut self, consensus: &ConsensusProxy, high: Hash) -> Result<(), ProtocolError> {
         // TODO (relaxed): query consensus in batches
         let sleep_task = sleep(Duration::from_secs(2));
