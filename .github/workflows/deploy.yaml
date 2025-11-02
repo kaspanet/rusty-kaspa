@@ -175,8 +175,6 @@ jobs:
           bash build-release
           cd release
           zip -q -r kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip kaspa-wasm32-sdk
-          #mv release/kaspa-wasm32-sdk.zip ../kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip
-
           archive="wasm/release/kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip"
           echo "archive=${archive}" >> $GITHUB_ENV
 
