@@ -1,38 +1,46 @@
 use crate::{hashing, BlueWorkType};
 use borsh::{BorshDeserialize, BorshSerialize};
-use itertools::Itertools;
 use kaspa_hashes::Hash;
-use kaspa_utils::mem_size::MemSizeEstimator;
+use kaspa_utils::{iter::IterExtensions, mem_size::MemSizeEstimator};
 use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
 use std::{mem::size_of, slice};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct CompressedParents(Vec<(u32, Vec<Hash>)>);
+pub struct CompressedParents(Vec<(u8, Vec<Hash>)>);
+
+impl From<Vec<Vec<Hash>>> for CompressedParents {
+    fn from(parents: Vec<Vec<Hash>>) -> Self {
+        Self::from_vec(parents)
+    }
+}
 
 impl CompressedParents {
-    pub fn from_vec(parents: Vec<Vec<Hash>>) -> Self {
-        if parents.is_empty() {
-            return Self(Vec::new());
+    fn compress(parents: Vec<Vec<Hash>>) -> Result<Vec<(u8, Vec<Hash>)>, &'static str> {
+        if parents.len() > u8::MAX as usize {
+            return Err("Parents by level exceeds maximum levels of 255");
         }
 
-        let runs = parents
-            .into_iter()
-            .dedup_with_count()
-            .scan(0u32, |cumulative, (count, level)| {
-                *cumulative += count as u32;
-                Some((*cumulative, level))
-            })
-            .collect();
+        if parents.is_empty() {
+            return Ok(Vec::new());
+        }
 
-        Self(runs)
+        // Casting count from usize to u8 is safe because of the check above
+        Ok(parents.into_iter().dedup_with_cumulative_count().map(|(count, level)| (count as u8, level)).collect())
     }
 
-    fn from_cumulative_runs(runs: Vec<(u32, Vec<Hash>)>) -> Self {
+    pub fn try_from_vec(parents: Vec<Vec<Hash>>) -> Result<Self, &'static str> {
+        Self::compress(parents).map(Self)
+    }
+
+    pub fn from_vec(parents: Vec<Vec<Hash>>) -> Self {
+        Self::try_from_vec(parents).expect("Parents by level exceeds maximum levels of 255")
+    }
+    fn from_cumulative_runs(runs: Vec<(u8, Vec<Hash>)>) -> Self {
         if runs.is_empty() {
             return Self(Vec::new());
         }
 
-        let mut prev = 0u32;
+        let mut prev = 0u8;
         let mut storage = Vec::with_capacity(runs.len());
 
         for (cum, level_parents) in runs {
@@ -46,7 +54,7 @@ impl CompressedParents {
 
     pub fn to_vec(&self) -> Vec<Vec<Hash>> {
         let mut out = Vec::new();
-        let mut prev = 0u32;
+        let mut prev = 0u8;
 
         for (cum, level_parents) in &self.0 {
             let run_len = cum - prev;
@@ -68,27 +76,15 @@ impl CompressedParents {
     }
 
     pub fn get(&self, index: usize) -> Option<&Vec<Hash>> {
-        if index > u32::MAX as usize {
+        if index >= self.len() {
             return None;
         }
-
-        let target = index as u32;
-        let mut prev = 0u32;
-
-        for (cum, level_parents) in &self.0 {
-            if target < *cum {
-                if target >= prev {
-                    return Some(level_parents);
-                }
-                break;
-            }
-            prev = *cum;
-        }
-
-        None
+        let target = index as u8;
+        let i = self.0.binary_search_by_key(&target, |(cum, _)| *cum - 1).unwrap_or_else(|i| i);
+        Some(&self.0[i].1)
     }
 
-    pub fn runs(&self) -> &[(u32, Vec<Hash>)] {
+    pub fn runs(&self) -> &[(u8, Vec<Hash>)] {
         &self.0
     }
 
@@ -98,10 +94,10 @@ impl CompressedParents {
 }
 
 pub struct CompressedParentsIter<'a> {
-    runs: slice::Iter<'a, (u32, Vec<Hash>)>,
-    remaining_in_run: u32,
+    runs: slice::Iter<'a, (u8, Vec<Hash>)>,
+    remaining_in_run: u8,
     current_vec: Option<&'a Vec<Hash>>,
-    prev_cumulative: u32,
+    prev_cumulative: u8,
 }
 
 impl<'a> Iterator for CompressedParentsIter<'a> {
@@ -128,12 +124,6 @@ impl<'a> IntoIterator for &'a CompressedParents {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
-    }
-}
-
-impl From<Vec<Vec<Hash>>> for CompressedParents {
-    fn from(value: Vec<Vec<Hash>>) -> Self {
-        Self::from_vec(value)
     }
 }
 
@@ -184,7 +174,7 @@ impl<'de> Deserialize<'de> for CompressedParents {
             return Ok(Self::from_vec(parents));
         }
 
-        let runs: Vec<(u32, Vec<Hash>)> = <Vec<(u32, Vec<Hash>)> as Deserialize>::deserialize(deserializer)?;
+        let runs: Vec<(u8, Vec<Hash>)> = <Vec<(u8, Vec<Hash>)> as Deserialize>::deserialize(deserializer)?;
         Ok(Self::from_cumulative_runs(runs))
     }
 }
@@ -198,13 +188,13 @@ impl BorshSerialize for CompressedParents {
 impl BorshDeserialize for CompressedParents {
     fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let parents = Vec::<Vec<Hash>>::deserialize_reader(reader)?;
-        Ok(Self::from_vec(parents))
+        Self::try_from_vec(parents).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
 }
 
 impl MemSizeEstimator for CompressedParents {
     fn estimate_mem_bytes(&self) -> usize {
-        let runs_overhead = self.0.capacity() * size_of::<(u32, Vec<Hash>)>();
+        let runs_overhead = self.0.capacity() * size_of::<(u8, Vec<Hash>)>();
         let vectors_bytes: usize = self.0.iter().map(|(_, vec)| vec.capacity() * size_of::<Hash>()).sum();
         size_of::<Self>() + runs_overhead + vectors_bytes
     }

@@ -56,23 +56,25 @@ impl HeaderProcessor {
     pub fn check_indirect_parents(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
         let expected_block_parents = self.parents_manager.calc_block_parents(ctx.pruning_point(), header.direct_parents());
         let crescendo_activated = self.crescendo_activation.is_active(ctx.selected_parent_daa_score());
+
         if header.parents_by_level.len() != expected_block_parents.len()
-            || !expected_block_parents.iter().enumerate().all(|(block_level, expected_level_parents)| {
-                let header_level_parents = header.parents_by_level.get(block_level).map(Vec::as_slice).unwrap_or(&[]);
-                if header_level_parents.len() != expected_level_parents.len() {
-                    return false;
-                }
-                // Optimistic path where both arrays are identical also in terms of order
-                if header_level_parents == expected_level_parents.as_slice() {
-                    return true;
-                }
-                if crescendo_activated {
-                    HashSet::<&Hash>::from_iter(header_level_parents) == HashSet::<&Hash>::from_iter(expected_level_parents)
-                } else {
-                    let expected_set = HashSet::<&Hash>::from_iter(expected_level_parents);
-                    header_level_parents.iter().all(|header_parent| expected_set.contains(header_parent))
-                }
-            })
+            || !expected_block_parents.iter().zip(header.parents_by_level.iter()).all(
+                |(expected_level_parents, header_level_parents)| {
+                    if header_level_parents.len() != expected_level_parents.len() {
+                        return false;
+                    }
+                    // Optimistic path where both arrays are identical also in terms of order
+                    if header_level_parents == expected_level_parents {
+                        return true;
+                    }
+                    if crescendo_activated {
+                        HashSet::<&Hash>::from_iter(header_level_parents) == HashSet::<&Hash>::from_iter(expected_level_parents)
+                    } else {
+                        let expected_set = HashSet::<&Hash>::from_iter(expected_level_parents);
+                        header_level_parents.iter().all(|header_parent| expected_set.contains(header_parent))
+                    }
+                },
+            )
         {
             return Err(RuleError::UnexpectedIndirectParents(
                 TwoDimVecDisplay(expected_block_parents),

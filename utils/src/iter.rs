@@ -11,6 +11,18 @@ pub trait IterExtensions: Iterator {
     {
         ReusableIterFormat::new(self.format(sep))
     }
+
+    fn dedup_with_cumulative_count(self) -> impl Iterator<Item = (usize, Self::Item)>
+    where
+        Self: Sized,
+        Self::Item: PartialEq,
+    {
+        let mut cumulative: usize = 0;
+        self.dedup_with_count().map(move |(count, value)| {
+            cumulative += count;
+            (cumulative, value)
+        })
+    }
 }
 
 impl<T: ?Sized> IterExtensions for T where T: Iterator {}
