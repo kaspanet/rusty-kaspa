@@ -12,11 +12,15 @@ use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
 use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::scope::{BlockAddedScope, UtxosChangedScope, VirtualDaaScoreChangedScope};
-use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcTransactionId};
+use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcIpAddress, RpcTransactionId};
 use kaspa_txscript::pay_to_address_script;
 use kaspad_lib::args::Args;
 use rand::thread_rng;
-use std::io::Write;
+use std::{
+    fs::File,
+    io::{BufRead, BufReader, Seek, SeekFrom, Write},
+    net::Ipv4Addr,
+};
 use std::{sync::Arc, time::Duration};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -430,7 +434,17 @@ async fn daemon_ibd_test() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_pruning_catchup_test() {
     init_allocator_with_default_settings();
-    kaspa_core::log::try_init_logger("INFO");
+
+    let global_tempdir = std::env::temp_dir();
+    let local_tempdir = global_tempdir.join("kaspa-tests");
+    let temp_log_dir: tempfile::TempDir = tempfile::tempdir_in(local_tempdir.as_path()).unwrap();
+
+    let log_dir_path = temp_log_dir.path();
+    std::fs::create_dir_all(log_dir_path).unwrap();
+
+    println!("Log dir path: {}", log_dir_path.display());
+
+    kaspa_core::log::init_logger(Some(log_dir_path.to_str().unwrap()), "INFO"); // We use Some(..unwrap()) to verify that we actually pass a logdir.
 
     const PRUNING_DEPTH: u64 = 1000;
     const FINALITY_DEPTH: u64 = 500;
@@ -466,24 +480,29 @@ async fn daemon_pruning_catchup_test() {
     let temp_file_path = temp_file.path().to_owned();
     let temp_file_path = temp_file_path.to_str().unwrap().into();
 
-    let args = Args {
+    let args1 = Args {
         simnet: true,
         unsafe_rpc: true,
         enable_unsynced_mining: true,
         disable_upnp: true, // UPnP registration might take some time and is not needed for this test
         override_params_file: Some(temp_file_path),
+        // logdir: Some(log_dir_path1.to_str().unwrap().into()),
         ..Default::default()
+    };
+    let args2 = Args {
+        // logdir: Some(log_dir_path2.to_str().unwrap().into()),
+        ..args1.clone()
     };
     // let total_fd_limit = kaspa_utils::fd_budget::get_limit() / 2 - 128;
     let total_fd_limit = 10;
 
-    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
-    let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
+    let mut kaspad1 = Daemon::new_random_with_args(args1, total_fd_limit);
+    let mut kaspad2 = Daemon::new_random_with_args(args2, total_fd_limit);
     let rpc_client1 = kaspad1.start().await;
     let rpc_client2 = kaspad2.start().await;
 
     // Mine blocks to daemon #1
-    const NUM_BLOCKS: u64 = 1499;
+    const NUM_BLOCKS: u64 = 2499;
     for _ in 0..NUM_BLOCKS {
         let template = rpc_client1
             .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
@@ -492,9 +511,32 @@ async fn daemon_pruning_catchup_test() {
         rpc_client1.submit_block(template.block, false).await.unwrap();
     }
 
-    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    let log_file_path = log_dir_path.join("rusty-kaspa.log");
+    let mut f = File::open(&log_file_path).unwrap();
+    f.seek(SeekFrom::End(0)).unwrap();
+    let mut r = BufReader::new(f);
+    let peer1_p2p_addr = format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap();
+    rpc_client2.add_peer(peer1_p2p_addr, false).await.unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await; // Let it connect
     assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 1);
+
+    loop {
+        let mut line = String::new();
+        match r.read_line(&mut line).unwrap() {
+            0 => {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            _ => {
+                if line.contains("Header download stage of IBD with headers proof completed successfully from") {
+                    break;
+                }
+            }
+        }
+    }
+
+    rpc_client2.ban(Ipv4Addr::new(127, 0, 0, 1).into()).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 0);
 
     let template = rpc_client1
         .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
@@ -503,6 +545,11 @@ async fn daemon_pruning_catchup_test() {
     let header: Header = (&template.block.header).into();
     let last_block_hash = header.hash;
     rpc_client1.submit_block(template.block, false).await.unwrap();
+
+    tokio::time::sleep(Duration::from_secs(10)).await; // Wait for pruning to happen
+    rpc_client2.add_peer(peer1_p2p_addr, true).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 1);
 
     tokio::time::sleep(Duration::from_secs(10)).await;
     // Expect the blocks to be relayed to daemon #2

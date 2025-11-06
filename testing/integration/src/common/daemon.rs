@@ -7,7 +7,10 @@ use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::triggers::Listener;
-use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
+use kaspad_lib::{
+    args::Args,
+    daemon::{create_core_with_runtime, Runtime},
+};
 use parking_lot::RwLock;
 use std::{ops::Deref, sync::Arc, time::Duration};
 use tempfile::TempDir;
@@ -93,7 +96,7 @@ pub struct Daemon {
     shutdown_requested: Listener,
     workers: Option<Vec<std::thread::JoinHandle<()>>>,
 
-    _appdir_tempdir: TempDir,
+    pub appdir_tempdir: TempDir,
 }
 
 impl Daemon {
@@ -131,19 +134,25 @@ impl Daemon {
     pub fn new_random_with_args(mut args: Args, fd_total_budget: i32) -> Daemon {
         Self::fill_args_with_random_ports(&mut args);
         let client_manager = Arc::new(ClientManager::new(args));
-        Self::with_manager(client_manager, fd_total_budget)
+        Self::with_manager(client_manager, fd_total_budget, &Default::default())
     }
 
-    pub fn with_manager(client_manager: Arc<ClientManager>, fd_total_budget: i32) -> Daemon {
+    pub fn new_random_with_args_with_logs(mut args: Args, fd_total_budget: i32) -> Daemon {
+        Self::fill_args_with_random_ports(&mut args);
+        let client_manager = Arc::new(ClientManager::new(args.clone()));
+        Self::with_manager(client_manager, fd_total_budget, &Runtime::from_args(&args))
+    }
+
+    pub fn with_manager(client_manager: Arc<ClientManager>, fd_total_budget: i32, runtime: &Runtime) -> Daemon {
         let appdir_tempdir = get_kaspa_tempdir();
         client_manager.args.write().appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
-        let (core, _) = create_core_with_runtime(&Default::default(), &client_manager.args.read(), fd_total_budget);
+        let (core, _) = create_core_with_runtime(runtime, &client_manager.args.read(), fd_total_budget);
         let async_service = &Arc::downcast::<AsyncRuntime>(core.find(AsyncRuntime::IDENT).unwrap().arc_any()).unwrap();
         let rpc_core_service = &Arc::downcast::<RpcCoreService>(async_service.find(RpcCoreService::IDENT).unwrap().arc_any()).unwrap();
         let shutdown_requested = rpc_core_service.core_shutdown_request_listener();
         let grpc_server = &Arc::downcast::<GrpcService>(async_service.find(GrpcService::IDENT).unwrap().arc_any()).unwrap();
         let grpc_server_started = grpc_server.started();
-        Daemon { client_manager, core, grpc_server_started, shutdown_requested, workers: None, _appdir_tempdir: appdir_tempdir }
+        Daemon { client_manager, core, grpc_server_started, shutdown_requested, workers: None, appdir_tempdir }
     }
 
     pub fn client_manager(&self) -> Arc<ClientManager> {

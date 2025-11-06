@@ -149,7 +149,7 @@ impl Task for DaemonTask {
     fn start(&self, stop_signal: SingleTrigger) -> Vec<JoinHandle<()>> {
         let ready_signal = self.ready_signal.trigger.clone();
         let fd_total_budget = fd_budget::limit();
-        let mut daemon = Daemon::with_manager(self.client_manager.clone(), fd_total_budget);
+        let mut daemon = Daemon::with_manager(self.client_manager.clone(), fd_total_budget, &Default::default());
         let task = tokio::spawn(async move {
             warn!("Daemon task starting...");
             daemon.run();
