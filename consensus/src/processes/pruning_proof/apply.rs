@@ -102,6 +102,8 @@ impl PruningProofManager {
                 if level == 0 {
                     let gd = if let Some(gd) = trusted_gd_map.get(&header.hash) {
                         gd.clone()
+                    } else if header.hash == self.genesis_hash {
+                        self.ghostdag_manager.genesis_ghostdag_data()
                     } else {
                         let calculated_gd = self.ghostdag_manager.ghostdag(&parents);
                         // Override the ghostdag data with the real blue score and blue work
