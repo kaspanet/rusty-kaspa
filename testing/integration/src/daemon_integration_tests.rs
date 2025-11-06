@@ -432,7 +432,11 @@ async fn daemon_ibd_test() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn daemon_pruning_catchup_test() {
+async fn daemon_pruning_catchup_test1() {
+    daemon_pruning_catchup_test("Header download stage of IBD with headers proof completed successfully from").await;
+}
+
+async fn daemon_pruning_catchup_test(log_stop_line: &str) {
     init_allocator_with_default_settings();
 
     let global_tempdir = std::env::temp_dir();
@@ -441,8 +445,6 @@ async fn daemon_pruning_catchup_test() {
 
     let log_dir_path = temp_log_dir.path();
     std::fs::create_dir_all(log_dir_path).unwrap();
-
-    println!("Log dir path: {}", log_dir_path.display());
 
     kaspa_core::log::init_logger(Some(log_dir_path.to_str().unwrap()), "INFO"); // We use Some(..unwrap()) to verify that we actually pass a logdir.
 
@@ -527,14 +529,15 @@ async fn daemon_pruning_catchup_test() {
                 tokio::time::sleep(Duration::from_millis(200)).await;
             }
             _ => {
-                if line.contains("Header download stage of IBD with headers proof completed successfully from") {
+                if line.contains(log_stop_line) {
                     break;
                 }
             }
         }
     }
 
-    rpc_client2.ban(Ipv4Addr::new(127, 0, 0, 1).into()).await.unwrap();
+    let peer1_ip = Ipv4Addr::new(127, 0, 0, 1).into();
+    rpc_client2.ban(peer1_ip).await.unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
     assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 0);
 
@@ -547,6 +550,7 @@ async fn daemon_pruning_catchup_test() {
     rpc_client1.submit_block(template.block, false).await.unwrap();
 
     tokio::time::sleep(Duration::from_secs(10)).await; // Wait for pruning to happen
+    rpc_client2.unban(peer1_ip).await.unwrap();
     rpc_client2.add_peer(peer1_p2p_addr, true).await.unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
     assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 1);
