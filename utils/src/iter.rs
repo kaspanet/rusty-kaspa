@@ -12,7 +12,7 @@ pub trait IterExtensions: Iterator {
         ReusableIterFormat::new(self.format(sep))
     }
 
-    fn dedup_with_cumulative_count(self) -> impl Iterator<Item = (usize, Self::Item)>
+    fn rle_cumulative(self) -> impl Iterator<Item = (usize, Self::Item)>
     where
         Self: Sized,
         Self::Item: PartialEq,
@@ -23,6 +23,30 @@ pub trait IterExtensions: Iterator {
             (cumulative, value)
         })
     }
+}
+
+pub trait IterExtensions2<T>: Iterator<Item = (usize, T)>
+where
+    T: Clone,
+{
+    fn expand_rle(self) -> impl Iterator<Item = T>
+    where
+        Self: Sized,
+    {
+        self.scan(0usize, |prev, (cum, level)| {
+            let count = cum.checked_sub(*prev).expect("expecting cumulative counts");
+            *prev = cum;
+            Some((count, level))
+        })
+        .flat_map(|(count, level)| std::iter::repeat_n(level, count))
+    }
+}
+
+impl<I, T> IterExtensions2<T> for I
+where
+    I: Iterator<Item = (usize, T)>,
+    T: Clone,
+{
 }
 
 impl<T: ?Sized> IterExtensions for T where T: Iterator {}

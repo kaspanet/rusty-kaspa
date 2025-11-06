@@ -1,7 +1,10 @@
 use crate::{hashing, BlueWorkType};
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_hashes::Hash;
-use kaspa_utils::{iter::IterExtensions, mem_size::MemSizeEstimator};
+use kaspa_utils::{
+    iter::{IterExtensions, IterExtensions2},
+    mem_size::MemSizeEstimator,
+};
 use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
 use std::{mem::size_of, slice};
 
@@ -25,7 +28,7 @@ impl CompressedParents {
         }
 
         // Casting count from usize to u8 is safe because of the check above
-        Ok(parents.into_iter().dedup_with_cumulative_count().map(|(count, level)| (count as u8, level)).collect())
+        Ok(parents.into_iter().rle_cumulative().map(|(count, level)| (count as u8, level)).collect())
     }
 
     pub fn try_from_vec(parents: Vec<Vec<Hash>>) -> Result<Self, &'static str> {
@@ -53,18 +56,7 @@ impl CompressedParents {
     }
 
     pub fn to_vec(&self) -> Vec<Vec<Hash>> {
-        let mut out = Vec::new();
-        let mut prev = 0u8;
-
-        for (cum, level_parents) in &self.0 {
-            let run_len = cum - prev;
-            for _ in 0..run_len {
-                out.push(level_parents.clone());
-            }
-            prev = *cum;
-        }
-
-        out
+        self.0.iter().map(|(count, v)| (*count as usize, v)).expand_rle().cloned().collect()
     }
 
     pub fn len(&self) -> usize {
@@ -76,16 +68,15 @@ impl CompressedParents {
     }
 
     pub fn get(&self, index: usize) -> Option<&Vec<Hash>> {
+        // Note that self.len is NOT the number of runs, but the total number of levels
         if index >= self.len() {
             return None;
         }
-        let target = index as u8;
-        let i = self.0.binary_search_by_key(&target, |(cum, _)| *cum - 1).unwrap_or_else(|i| i);
+        // `partition_point` returns the index of the first element for which the predicate is false.
+        // The predicate `cum - 1 < index` checks if a run is before the desired `index`.
+        // The first run for which this is false is the one that contains our index.
+        let i = self.0.partition_point(|(cum, _)| (*cum as usize) - 1 < index);
         Some(&self.0[i].1)
-    }
-
-    pub fn runs(&self) -> &[(u8, Vec<Hash>)] {
-        &self.0
     }
 
     pub fn iter(&self) -> CompressedParentsIter<'_> {
@@ -262,7 +253,10 @@ impl Header {
     }
 
     pub fn direct_parents(&self) -> &[Hash] {
-        self.parents_by_level.get(0).map(Vec::as_slice).unwrap_or(&[])
+        match self.parents_by_level.get(0) {
+            Some(parents) => parents.as_slice(),
+            None => &[],
+        }
     }
 
     pub fn parents_by_level_vec(&self) -> Vec<Vec<Hash>> {
@@ -421,6 +415,7 @@ mod tests {
 
     #[test]
     fn compressed_parents_len_and_get() {
+        // Test with multiple runs of different lengths
         let first = vec_from(&[1]);
         let second = vec_from(&[2, 3]);
         let third = vec_from(&[4]);
@@ -428,14 +423,36 @@ mod tests {
         let compressed = CompressedParents::from_vec(parents.clone());
 
         assert_eq!(compressed.len(), parents.len());
-        assert_eq!(compressed.get(0), Some(&first));
-        assert_eq!(compressed.get(1), Some(&first));
-        assert_eq!(compressed.get(2), Some(&second));
-        assert_eq!(compressed.get(10), None);
+        assert!(!compressed.is_empty());
+
+        // Test `get` at various positions
+        assert_eq!(compressed.get(0), Some(&first), "get first element");
+        assert_eq!(compressed.get(1), Some(&first), "get element in the middle of a run");
+        assert_eq!(compressed.get(2), Some(&second), "get first element of a new run");
+        assert_eq!(compressed.get(3), Some(&second), "get element in the middle of a new run");
+        assert_eq!(compressed.get(4), Some(&third), "get last element");
+        assert_eq!(compressed.get(5), None, "get out of bounds (just over)");
+        assert_eq!(compressed.get(10), None, "get out of bounds (far over)");
 
         let collected: Vec<&Vec<Hash>> = compressed.iter().collect();
-        let expected = vec![&first, &first, &second, &second, &third];
+        let expected: Vec<&Vec<Hash>> = parents.iter().collect();
         assert_eq!(collected, expected);
+
+        // Test with an empty vec
+        let parents_empty: Vec<Vec<Hash>> = vec![];
+        let compressed_empty = CompressedParents::from_vec(parents_empty.clone());
+        assert_eq!(compressed_empty.len(), 0);
+        assert!(compressed_empty.is_empty());
+        assert_eq!(compressed_empty.get(0), None);
+
+        // Test with a single run
+        let parents_single_run = vec![first.clone(), first.clone(), first.clone()];
+        let compressed_single_run = CompressedParents::from_vec(parents_single_run.clone());
+        assert_eq!(compressed_single_run.len(), 3);
+        assert_eq!(compressed_single_run.get(0), Some(&first));
+        assert_eq!(compressed_single_run.get(1), Some(&first));
+        assert_eq!(compressed_single_run.get(2), Some(&first));
+        assert_eq!(compressed_single_run.get(3), None);
     }
 
     #[test]
@@ -444,7 +461,7 @@ mod tests {
         let compressed = CompressedParents::from_vec(parents);
 
         let encoded = bincode::serialize(&compressed).unwrap();
-        let expected = bincode::serialize(compressed.runs()).unwrap();
+        let expected = bincode::serialize(&compressed.0).unwrap();
         assert_eq!(encoded, expected);
     }
 }
