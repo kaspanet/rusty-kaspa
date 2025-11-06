@@ -486,3 +486,6 @@ Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.1
     In this command we set the `loglevel` to `INFO`.
 
 </details>
+
+## Override consensus parameters
+You can experiment with non-standard consensus parameters by supplying a JSON file with `--override-params-file <path>`. See [docs/override-params.md](docs/override-params.md) for a more detailed explanation.
