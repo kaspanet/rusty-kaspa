@@ -8,7 +8,10 @@ use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
 
-use crate::prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId};
+use crate::{
+    prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
+    RpcOptionalHeader, RpcOptionalTransaction,
+};
 
 /// Represents the ID of a Kaspa transaction
 pub type RpcTransactionId = TransactionId;
@@ -397,4 +400,32 @@ impl Deserializer for RpcTransactionVerboseData {
 pub struct RpcAcceptedTransactionIds {
     pub accepting_block_hash: RpcHash,
     pub accepted_transaction_ids: Vec<RpcTransactionId>,
+}
+
+/// Represents accepted transaction ids
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcChainBlockAcceptedTransactions {
+    pub chain_block_header: RpcOptionalHeader,
+    pub accepted_transactions: Vec<RpcOptionalTransaction>,
+}
+
+impl Serializer for RpcChainBlockAcceptedTransactions {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcOptionalHeader, &self.chain_block_header, writer)?;
+        serialize!(Vec<RpcOptionalTransaction>, &self.accepted_transactions, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcChainBlockAcceptedTransactions {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _struct_version = load!(u16, reader)?;
+        let chain_block_header = deserialize!(RpcOptionalHeader, reader)?;
+        let accepted_transactions = deserialize!(Vec<RpcOptionalTransaction>, reader)?;
+
+        Ok(Self { chain_block_header, accepted_transactions })
+    }
 }

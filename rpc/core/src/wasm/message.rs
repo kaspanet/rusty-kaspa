@@ -44,6 +44,35 @@ const TS_ACCEPTED_TRANSACTION_IDS: &'static str = r#"
     }
 "#;
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_ADDED_ACCEPTANCE_DATA: &'static str = r#"
+    /**
+     * Accepted Acceptance Data
+     * 
+     * @category Node RPC
+     */
+    export interface IChainBlockAddedTransactions {
+        chainBlockHeader: Header;
+        acceptedTransactions: Transaction[];
+    }
+"#;
+
+// DataVerbosityLevel
+#[wasm_bindgen(typescript_custom_section)]
+const TS_DATA_VERBOSITY_LEVEL: &'static str = r#"
+    /**
+     * Data Verbosity level
+     * 
+     * @category Node RPC
+     */
+    export enum DataVerbosityLevel {
+        None = "None",
+        Low = "Low",
+        High = "High",
+        Full = "Full",
+    }
+"#;
+
 // ---
 
 declare! {
@@ -1263,6 +1292,44 @@ try_from! ( args: GetVirtualChainFromBlockResponse, IGetVirtualChainFromBlockRes
     Ok(to_value(&args)?.into())
 });
 
+declare! {
+    IGetVirtualChainFromBlockV2Request,
+    r#"
+    /**
+     * 
+     * 
+     * @category Node RPC
+     */
+    export interface IGetVirtualChainFromBlockV2Request {
+        startHash : HexString;
+        dataVerbosityLevel?: string;
+    }
+    "#,
+}
+
+try_from! ( args: IGetVirtualChainFromBlockV2Request, GetVirtualChainFromBlockV2Request, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetVirtualChainFromBlockV2Response,
+    r#"
+    /**
+     * 
+     * 
+     * @category Node RPC
+     */
+    export interface IGetVirtualChainFromBlockV2Response {
+        removedChainBlockHashes : HexString[];
+        addedChainBlockHashes : HexString[];
+        chainBlockAcceptedTransactions : IChainBlockAddedTransactions[];
+    }
+    "#,
+}
+
+try_from! ( args: GetVirtualChainFromBlockV2Response, IGetVirtualChainFromBlockV2Response, {
+    Ok(to_value(&args)?.into())
+});
 // ---
 
 declare! {

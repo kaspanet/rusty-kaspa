@@ -527,7 +527,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockV2Response>, prot
     Self {
         removed_chain_block_hashes: item.removed_chain_block_hashes.iter().map(|x| x.to_string()).collect(),
         added_chain_block_hashes: item.added_chain_block_hashes.iter().map(|x| x.to_string()).collect(),
-        added_acceptance_data: item.added_acceptance_data.iter().map(|x| x.into()).collect(),
+        chain_block_accepted_transactions: item.chain_block_accepted_transactions.iter().map(|x| x.into()).collect(),
         error: None,
     }
 });
@@ -795,7 +795,7 @@ try_from!(item: &protowire::GetVirtualChainFromBlockV2ResponseMessage, RpcResult
     Self {
         removed_chain_block_hashes: Arc::new(item.removed_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?),
         added_chain_block_hashes: Arc::new(item.added_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?),
-        added_acceptance_data: Arc::new(item.added_acceptance_data.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?),
+        chain_block_accepted_transactions: Arc::new(item.chain_block_accepted_transactions.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?),
     }
 });
 

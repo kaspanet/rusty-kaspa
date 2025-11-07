@@ -2774,7 +2774,7 @@ pub struct GetVirtualChainFromBlockV2Response {
     /// always present, no matter the verbosity level
     pub added_chain_block_hashes: Arc<Vec<RpcHash>>,
     /// struct properties are optionally returned depending on the verbosity level
-    pub added_acceptance_data: Arc<Vec<RpcAcceptanceData>>,
+    pub chain_block_accepted_transactions: Arc<Vec<RpcChainBlockAcceptedTransactions>>,
 }
 
 impl Serializer for GetVirtualChainFromBlockV2Response {
@@ -2782,7 +2782,7 @@ impl Serializer for GetVirtualChainFromBlockV2Response {
         store!(u16, &1, writer)?;
         store!(Vec<RpcHash>, &self.removed_chain_block_hashes, writer)?;
         store!(Vec<RpcHash>, &self.added_chain_block_hashes, writer)?;
-        serialize!(Vec<RpcAcceptanceData>, &self.added_acceptance_data, writer)?;
+        serialize!(Vec<RpcChainBlockAcceptedTransactions>, &self.chain_block_accepted_transactions, writer)?;
         Ok(())
     }
 }
@@ -2792,11 +2792,11 @@ impl Deserializer for GetVirtualChainFromBlockV2Response {
         let _version = load!(u16, reader)?;
         let removed_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
         let added_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
-        let added_acceptance_data = deserialize!(Vec<RpcAcceptanceData>, reader)?;
+        let chain_block_accepted_transactions = deserialize!(Vec<RpcChainBlockAcceptedTransactions>, reader)?;
         Ok(Self {
             removed_chain_block_hashes: removed_chain_block_hashes.into(),
             added_chain_block_hashes: added_chain_block_hashes.into(),
-            added_acceptance_data: added_acceptance_data.into(),
+            chain_block_accepted_transactions: chain_block_accepted_transactions.into(),
         })
     }
 }
