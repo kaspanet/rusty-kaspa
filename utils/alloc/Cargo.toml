@@ -9,16 +9,14 @@ edition.workspace = true
 include.workspace = true
 repository.workspace = true
 
-# TODO: advance to version > 0.1.46 once released. The following commit includes a fix required for rust 1.87 windows linker error 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
-mimalloc = { git = "https://github.com/purpleprotocol/mimalloc_rust", rev = "eff21096d5ee5337ec89e2b7174f1bbb11026c70", default-features = false, features = [
+mimalloc = { version = "0.1.48", default-features = false, features = [
     'override',
 ] }
 
-# TODO: advance to version > 0.1.46 once released. The following commit includes a fix required for rust 1.87 windows linker error
 [target.'cfg(target_os = "macos")'.dependencies]
 # override is unstable in MacOS and is thus excluded
-mimalloc = { git = "https://github.com/purpleprotocol/mimalloc_rust", rev = "eff21096d5ee5337ec89e2b7174f1bbb11026c70", default-features = false }
+mimalloc = { version = "0.1.48", default-features = false }
 
 [features]
 heap = []
