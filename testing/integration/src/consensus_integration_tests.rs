@@ -1135,8 +1135,9 @@ fn rpc_header_to_header(rpc_header: &RPCBlockHeader) -> Header {
         rpc_header
             .Parents
             .iter()
-            .map(|item| item.ParentHashes.iter().map(|parent| Hash::from_str(parent).unwrap()).collect())
-            .collect(),
+            .map(|item| item.ParentHashes.iter().map(|parent| Hash::from_str(parent).unwrap()).collect::<Vec<Hash>>())
+            .collect::<Vec<Vec<Hash>>>()
+            .into(),
         Hash::from_str(&rpc_header.HashMerkleRoot).unwrap(),
         Hash::from_str(&rpc_header.AcceptedIDMerkleRoot).unwrap(),
         Hash::from_str(&rpc_header.UTXOCommitment).unwrap(),

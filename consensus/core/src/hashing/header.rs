@@ -43,7 +43,7 @@ mod tests {
     fn test_header_hashing() {
         let header = Header::new_finalized(
             1,
-            vec![vec![1.into()]],
+            vec![vec![1.into()]].into(),
             Default::default(),
             Default::default(),
             Default::default(),

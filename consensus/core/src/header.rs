@@ -2,11 +2,11 @@ use crate::{hashing, BlueWorkType};
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_hashes::Hash;
 use kaspa_utils::{
-    iter::{IterExtensions, IterExtensions2},
+    iter::{IterExtensions, IterExtensionsRle},
     mem_size::MemSizeEstimator,
 };
 use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
-use std::{mem::size_of, slice};
+use std::mem::size_of;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CompressedParents(Vec<(u8, Vec<Hash>)>);
@@ -79,39 +79,14 @@ impl CompressedParents {
         Some(&self.0[i].1)
     }
 
-    pub fn iter(&self) -> CompressedParentsIter<'_> {
-        CompressedParentsIter { runs: self.0.iter(), remaining_in_run: 0, current_vec: None, prev_cumulative: 0 }
-    }
-}
-
-pub struct CompressedParentsIter<'a> {
-    runs: slice::Iter<'a, (u8, Vec<Hash>)>,
-    remaining_in_run: u8,
-    current_vec: Option<&'a Vec<Hash>>,
-    prev_cumulative: u8,
-}
-
-impl<'a> Iterator for CompressedParentsIter<'a> {
-    type Item = &'a Vec<Hash>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.remaining_in_run == 0 {
-            let (cum, vec) = self.runs.next()?;
-            let run_len = cum - self.prev_cumulative;
-            self.prev_cumulative = *cum;
-            self.remaining_in_run = run_len;
-            self.current_vec = Some(vec);
-        }
-
-        debug_assert!(self.remaining_in_run > 0);
-        self.remaining_in_run -= 1;
-        self.current_vec
+    pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Vec<Hash>> + 'a> {
+        Box::new(self.0.iter().map(|(cum, v)| (*cum as usize, v)).expand_rle())
     }
 }
 
 impl<'a> IntoIterator for &'a CompressedParents {
     type Item = &'a Vec<Hash>;
-    type IntoIter = CompressedParentsIter<'a>;
+    type IntoIter = Box<dyn Iterator<Item = &'a Vec<Hash>> + 'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -216,7 +191,7 @@ impl Header {
     #[allow(clippy::too_many_arguments)]
     pub fn new_finalized(
         version: u16,
-        parents_by_level: Vec<Vec<Hash>>,
+        parents_by_level: CompressedParents,
         hash_merkle_root: Hash,
         accepted_id_merkle_root: Hash,
         utxo_commitment: Hash,
@@ -231,7 +206,7 @@ impl Header {
         let mut header = Self {
             hash: Default::default(), // Temp init before the finalize below
             version,
-            parents_by_level: CompressedParents::from_vec(parents_by_level),
+            parents_by_level,
             hash_merkle_root,
             accepted_id_merkle_root,
             utxo_commitment,
@@ -336,7 +311,7 @@ mod tests {
     fn test_header_ser() {
         let header = Header::new_finalized(
             1,
-            vec![vec![1.into()]],
+            vec![vec![1.into()]].into(),
             Default::default(),
             Default::default(),
             Default::default(),

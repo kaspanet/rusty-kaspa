@@ -52,7 +52,7 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
     // We re-hash the block to remain as most trustless as possible
     let header = Header::new_finalized(
         item.version.try_into()?,
-        item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?,
+        item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?.into(),
         RpcHash::from_str(&item.hash_merkle_root)?,
         RpcHash::from_str(&item.accepted_id_merkle_root)?,
         RpcHash::from_str(&item.utxo_commitment)?,
@@ -71,7 +71,7 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
 try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcRawHeader, {
     Self {
         version: item.version.try_into()?,
-        parents_by_level: item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?,
+        parents_by_level: item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?.into(),
         hash_merkle_root: RpcHash::from_str(&item.hash_merkle_root)?,
         accepted_id_merkle_root: RpcHash::from_str(&item.accepted_id_merkle_root)?,
         utxo_commitment: RpcHash::from_str(&item.utxo_commitment)?,
@@ -146,7 +146,7 @@ mod tests {
     fn test_rpc_header() {
         let header = Header::new_finalized(
             0,
-            vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]],
+            vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]].into(),
             new_unique(),
             new_unique(),
             new_unique(),
@@ -164,7 +164,7 @@ mod tests {
         let reconverted_proto_header: protowire::RpcBlockHeader = (&reconverted_rpc_header).into();
 
         assert_eq!(rpc_header.parents_by_level, reconverted_rpc_header.parents_by_level);
-        assert_eq!(proto_header.parents, reconverted_proto_header.parents);
+        assert_eq!(proto_header.parents, reconverted_proto_header.parents.to_vec());
         test_parents_by_level_rxr(&rpc_header.parents_by_level, &reconverted_rpc_header.parents_by_level);
         test_parents_by_level_rxp(&rpc_header.parents_by_level, &proto_header.parents);
         test_parents_by_level_rxp(&rpc_header.parents_by_level, &reconverted_proto_header.parents);
@@ -178,7 +178,7 @@ mod tests {
     fn test_rpc_block() {
         let header = Header::new_finalized(
             0,
-            vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]],
+            vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]].into(),
             new_unique(),
             new_unique(),
             new_unique(),

@@ -202,7 +202,7 @@ impl From<RpcRawHeader> for Header {
     fn from(header: RpcRawHeader) -> Self {
         Self::new_finalized(
             header.version,
-            header.parents_by_level,
+            header.parents_by_level.into(),
             header.hash_merkle_root,
             header.accepted_id_merkle_root,
             header.utxo_commitment,
@@ -221,7 +221,7 @@ impl From<&RpcRawHeader> for Header {
     fn from(header: &RpcRawHeader) -> Self {
         Self::new_finalized(
             header.version,
-            header.parents_by_level.clone(),
+            header.parents_by_level.clone().into(),
             header.hash_merkle_root,
             header.accepted_id_merkle_root,
             header.utxo_commitment,

@@ -44,7 +44,7 @@ impl TryFrom<protowire::BlockHeader> for Header {
     fn try_from(item: protowire::BlockHeader) -> Result<Self, Self::Error> {
         Ok(Self::new_finalized(
             item.version.try_into()?,
-            item.parents.into_iter().map(Vec::<Hash>::try_from).collect::<Result<Vec<Vec<Hash>>, ConversionError>>()?,
+            item.parents.into_iter().map(Vec::<Hash>::try_from).collect::<Result<Vec<Vec<Hash>>, ConversionError>>()?.into(),
             item.hash_merkle_root.try_into_ex()?,
             item.accepted_id_merkle_root.try_into_ex()?,
             item.utxo_commitment.try_into_ex()?,

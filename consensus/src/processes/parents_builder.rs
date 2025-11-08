@@ -1,6 +1,10 @@
 use indexmap::IndexSet;
 use itertools::Itertools;
-use kaspa_consensus_core::{blockhash::ORIGIN, header::Header, BlockHashMap, BlockHasher, BlockLevel};
+use kaspa_consensus_core::{
+    blockhash::ORIGIN,
+    header::{CompressedParents, Header},
+    BlockHashMap, BlockHasher, BlockLevel,
+};
 use kaspa_hashes::Hash;
 use smallvec::{smallvec, SmallVec};
 use std::sync::Arc;
@@ -33,7 +37,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
 
     /// Calculates the parents for each level based on the direct parents. Expects the current
     /// global pruning point s.t. at least one of the direct parents is in its inclusive future
-    pub fn calc_block_parents(&self, current_pruning_point: Hash, direct_parents: &[Hash]) -> Vec<Vec<Hash>> {
+    pub fn calc_block_parents(&self, current_pruning_point: Hash, direct_parents: &[Hash]) -> CompressedParents {
         let mut direct_parent_headers =
             direct_parents.iter().copied().map(|parent| self.headers_store.get_header_with_block_level(parent).unwrap()).collect_vec();
 
@@ -176,19 +180,17 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             parents.push(parents_at_level);
         }
 
-        parents
-    }
-
-    pub fn parents<'a>(&'a self, header: &'a Header) -> impl ExactSizeIterator<Item = &'a [Hash]> {
-        (0..=self.max_block_level).map(|level| self.parents_at_level(header, level))
+        parents.into()
     }
 
     pub fn parents_at_level<'a>(&'a self, header: &'a Header, level: u8) -> &'a [Hash] {
-        header
-            .parents_by_level
-            .get(level as usize)
-            .map(Vec::as_slice)
-            .unwrap_or_else(|| if header.parents_by_level.is_empty() { &[] } else { std::slice::from_ref(&self.genesis_hash) })
+        header.parents_by_level.get(level as usize).map(Vec::as_slice).unwrap_or_else(|| {
+            if header.parents_by_level.is_empty() {
+                &[]
+            } else {
+                std::slice::from_ref(&self.genesis_hash)
+            }
+        })
     }
 }
 
