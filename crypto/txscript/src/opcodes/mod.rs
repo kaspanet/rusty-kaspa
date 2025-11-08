@@ -1,6 +1,7 @@
 #[macro_use]
 mod macros;
-
+use crate::zk_precompiles::ZkIntegrityVerifier;
+use crate::zk_precompiles::ZkPrecompile;
 use crate::{
     data_stack::{DataStack, Kip10I64, OpcodeData},
     ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE,
@@ -995,8 +996,26 @@ opcode_list! {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
     }
+    opcode OpZkPrecompile<0xc4, 1>(self, vm) {
+        // Pop the ZK proof data from the stack
+        let [proof_bytes] = vm.dstack.pop_raw()?;
+
+        // Try to deserialize and verify
+        let is_valid = match ZkPrecompile::from_bytes(&proof_bytes) {
+            Ok(zk_precompile) => {
+                // Verify integrity
+                zk_precompile.verify_integrity().is_ok()
+            },
+            Err(err) =>false, // Invalid format = invalid proof
+        };
+
+        // Push result onto stack (similar to OpCheckSig behavior)
+        vm.dstack.push_item(is_valid)?;
+        Ok(())
+    }
+
+
     // Undefined opcodes
-    opcode OpUnknown196<0xc4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown197<0xc5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown198<0xc6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown199<0xc7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1201,7 +1220,6 @@ mod test {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpUnknown166::empty().expect("Should accept empty"),
             opcodes::OpUnknown167::empty().expect("Should accept empty"),
-            opcodes::OpUnknown196::empty().expect("Should accept empty"),
             opcodes::OpUnknown197::empty().expect("Should accept empty"),
             opcodes::OpUnknown198::empty().expect("Should accept empty"),
             opcodes::OpUnknown199::empty().expect("Should accept empty"),

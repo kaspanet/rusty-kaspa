@@ -1,6 +1,5 @@
 extern crate alloc;
 extern crate core;
-mod zk_precompiles;
 pub mod caches;
 mod data_stack;
 pub mod error;
@@ -11,6 +10,7 @@ pub mod script_class;
 pub mod standard;
 #[cfg(feature = "wasm32-sdk")]
 pub mod wasm;
+mod zk_precompiles;
 
 pub mod runtime_sig_op_counter;
 
@@ -37,7 +37,7 @@ pub use standard::*;
 
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 pub const MAX_STACK_SIZE: usize = 244;
-pub const MAX_SCRIPTS_SIZE: usize = 10_000;
+pub const MAX_SCRIPTS_SIZE: usize = 206_000;
 pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 520;
 pub const MAX_OPS_PER_SCRIPT: i32 = 201;
 pub const MAX_TX_IN_SEQUENCE_NUM: u64 = u64::MAX;
@@ -316,15 +316,19 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 
     fn execute_opcode(&mut self, opcode: DynOpcodeImplementation<T, Reused>) -> Result<(), TxScriptError> {
-        // Different from kaspad: Illegal and disabled opcode are checked on execute instead
-        // Note that this includes OP_RESERVED which counts as a push operation.
         if !opcode.is_push_opcode() {
             self.num_ops += 1;
             if self.num_ops > MAX_OPS_PER_SCRIPT {
                 return Err(TxScriptError::TooManyOperations(MAX_OPS_PER_SCRIPT));
             }
-        } else if opcode.len() > MAX_SCRIPT_ELEMENT_SIZE {
-            return Err(TxScriptError::ElementTooBig(opcode.len(), MAX_SCRIPT_ELEMENT_SIZE));
+        } else {
+            // TODO make this proper
+            // Skip size check for OpZkPrecompile (0xc4) or other special opcodes
+            let is_special_opcode = opcode.value() == 0xc4; // OpZkPrecompile
+
+            if !is_special_opcode && opcode.len() > MAX_SCRIPT_ELEMENT_SIZE {
+                return Err(TxScriptError::ElementTooBig(opcode.len(), MAX_SCRIPT_ELEMENT_SIZE));
+            }
         }
 
         if self.is_executing() || opcode.is_conditional() {

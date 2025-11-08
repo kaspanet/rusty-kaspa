@@ -3552,6 +3552,7 @@ dependencies = [
 name = "kaspa-txscript-errors"
 version = "1.0.1"
 dependencies = [
+ "borsh",
  "secp256k1",
  "thiserror 1.0.64",
 ]

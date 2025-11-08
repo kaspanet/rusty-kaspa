@@ -13,35 +13,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use alloc::{
-    collections::{BTreeSet, VecDeque},
-    format,
-    string::{String, ToString},
-    vec::Vec,
-};
+use std::collections::BTreeMap;
 
-use anyhow::bail;
+use alloc::{collections::VecDeque, string::String, vec::Vec};
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Debug;
-use risc0_binfmt::{Digestible, read_sha_halfs, tagged_struct};
-use risc0_circuit_keccak::KECCAK_CONTROL_ROOT;
-use risc0_circuit_recursion::{
-    CIRCUIT, CircuitImpl,
-    control_id::{ALLOWED_CONTROL_ROOT, MIN_LIFT_PO2, POSEIDON2_CONTROL_IDS, SHA256_CONTROL_IDS},
-};
+use risc0_binfmt::{read_sha_halfs, Digestible};
+use risc0_circuit_recursion::{control_id::ALLOWED_CONTROL_ROOT, CircuitImpl, CIRCUIT};
 use risc0_core::field::baby_bear::BabyBearElem;
-use risc0_zkp::{
-    adapter::{CircuitInfo, PROOF_SYSTEM_INFO, ProtocolInfo},
-    core::{
-        digest::Digest,
-        hash::{hash_suite_from_name, sha::Sha256},
-    },
-    verify::VerificationError,
-};
+use risc0_zkp::core::hash::{blake2b::Blake2bCpuHashSuite, poseidon2::Poseidon2HashSuite, sha::Sha256HashSuite, HashSuite};
+use risc0_zkp::{adapter::CircuitInfo, core::digest::Digest, verify::VerificationError};
 use serde::{Deserialize, Serialize};
 
-use crate::zk_precompiles::risc0::{VerifierContext, claim::maybe_pruned::MaybePruned, merkle::{MerkleGroup, MerkleProof}};
-use crate::zk_precompiles::risc0::claim::Unknown;
+use crate::zk_precompiles::error::ZkIntegrityError;
+use crate::zk_precompiles::risc0::merkle::MerkleProof;
 use crate::zk_precompiles::risc0::sha;
 /// A succinct receipt, produced via recursion, proving the execution of the zkVM with a [STARK].
 ///
@@ -50,13 +35,12 @@ use crate::zk_precompiles::risc0::sha;
 /// computations, and with an arbitrary number of segments linked via composition.
 ///
 /// [STARK]: https://dev.risczero.com/terminology#stark
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Serialize, BorshSerialize, BorshDeserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[non_exhaustive]
-pub struct SuccinctReceipt<Claim> {
+pub struct SuccinctReceipt {
     /// The cryptographic seal of this receipt. This seal is a STARK proving an execution of the
     /// recursion circuit.
-    #[debug("{} bytes", self.get_seal_bytes().len())]
     pub seal: Vec<u32>,
 
     /// The control ID of this receipt, identifying the recursion program that was run (e.g. lift,
@@ -67,7 +51,7 @@ pub struct SuccinctReceipt<Claim> {
     ///
     /// The standard claim type is [ReceiptClaim][crate::ReceiptClaim], which represents a RISC-V
     /// zkVM execution.
-    pub claim: MaybePruned<Claim>,
+    pub claim: Digest,
 
     /// Name of the hash function used to create this receipt.
     pub hashfn: String,
@@ -83,71 +67,26 @@ pub struct SuccinctReceipt<Claim> {
     pub control_inclusion_proof: MerkleProof,
 }
 
-impl<Claim> SuccinctReceipt<Claim> {
+impl SuccinctReceipt {
     /// Verify the integrity of this receipt, ensuring the claim is attested
     /// to by the seal.
-    pub fn verify_integrity(&self) -> Result<(), VerificationError>
-    where
-        Claim: risc0_binfmt::Digestible + core::fmt::Debug,
-    {
-        self.verify_integrity_with_context(&VerifierContext::default())
-    }
-
-    /// Verify the integrity of this receipt, ensuring the claim is attested
-    /// to by the seal.
-    pub fn verify_integrity_with_context(
-        &self,
-        ctx: &VerifierContext,
-    ) -> Result<(), VerificationError>
-    where
-        Claim: risc0_binfmt::Digestible + core::fmt::Debug,
-    {
-        let params = ctx
-            .succinct_verifier_parameters
-            .as_ref()
-            .ok_or(VerificationError::VerifierParametersMissing)?;
-
-        if params.digest::<sha::Impl>() != self.verifier_parameters {
-            return Err(VerificationError::VerifierParametersMismatch {
-                expected: params.digest::<sha::Impl>(),
-                received: self.verifier_parameters,
-            });
-        }
-
-        // Check that the proof system and circuit info strings match what is implemented by this
-        // function. Info strings are used a version identifiers, and this verify implementation
-        // supports exactly one proof system and circuit version at a time.
-        if params.proof_system_info != PROOF_SYSTEM_INFO {
-            return Err(VerificationError::ProofSystemInfoMismatch {
-                expected: PROOF_SYSTEM_INFO,
-                received: params.proof_system_info,
-            });
-        }
-        if params.circuit_info != CircuitImpl::CIRCUIT_INFO {
-            return Err(VerificationError::CircuitInfoMismatch {
-                expected: CircuitImpl::CIRCUIT_INFO,
-                received: params.circuit_info,
-            });
-        }
-
-        let suite = ctx
-            .suites
-            .get(&self.hashfn)
-            .ok_or(VerificationError::InvalidHashSuite)?;
+    pub fn verify_integrity(&self) -> Result<(), ZkIntegrityError> {
+        let suites: BTreeMap<String, HashSuite<risc0_zkp::field::baby_bear::BabyBear>> = BTreeMap::from([
+            ("blake2b".into(), Blake2bCpuHashSuite::new_suite()),
+            ("poseidon2".into(), Poseidon2HashSuite::new_suite()),
+            ("sha-256".into(), Sha256HashSuite::new_suite()),
+        ]);
+        let suite = suites.get(&self.hashfn).ok_or(VerificationError::InvalidHashSuite)?;
 
         let check_code = |_, control_id: &Digest| -> Result<(), VerificationError> {
-            self.control_inclusion_proof
-                .verify(control_id, &params.control_root, suite.hashfn.as_ref())
-                .map_err(|_| {
-                    tracing::debug!(
-                        "failed to verify control inclusion proof for {control_id} against root {} with {}",
-                        params.control_root,
-                        suite.name,
-                    );
-                    VerificationError::ControlVerificationError {
-                        control_id: *control_id,
-                    }
-                })
+            self.control_inclusion_proof.verify(control_id, &ALLOWED_CONTROL_ROOT, suite.hashfn.as_ref()).map_err(|_| {
+                tracing::debug!(
+                    "failed to verify control inclusion proof for {control_id} against root {} with {}",
+                    ALLOWED_CONTROL_ROOT,
+                    suite.name,
+                );
+                VerificationError::ControlVerificationError { control_id: *control_id }
+            })
         };
 
         // Verify the receipt itself is correct, and therefore the encoded globals are
@@ -155,8 +94,7 @@ impl<Claim> SuccinctReceipt<Claim> {
         risc0_zkp::verify::verify(&CIRCUIT, suite, &self.seal, check_code)?;
 
         // Extract the globals from the seal
-        let output_elems: &[BabyBearElem] =
-            bytemuck::checked::cast_slice(&self.seal[..CircuitImpl::OUTPUT_SIZE]);
+        let output_elems: &[BabyBearElem] = bytemuck::checked::cast_slice(&self.seal[..CircuitImpl::OUTPUT_SIZE]);
         let mut seal_claim = VecDeque::new();
         for elem in output_elems {
             seal_claim.push_back(elem.as_u32())
@@ -174,213 +112,38 @@ impl<Claim> SuccinctReceipt<Claim> {
             .try_into()
             .map_err(|_| VerificationError::ReceiptFormatError)?;
 
-        if control_root != params.inner_control_root.unwrap_or(params.control_root) {
+        if control_root != ALLOWED_CONTROL_ROOT {
             tracing::debug!(
                 "succinct receipt does not match the expected control root: decoded: {:#?}, expected: {:?}",
                 control_root,
-                params.inner_control_root.unwrap_or(params.control_root),
+                ALLOWED_CONTROL_ROOT,
             );
-            return Err(VerificationError::ControlVerificationError {
-                control_id: control_root,
-            });
+            return Err(VerificationError::ControlVerificationError { control_id: control_root })?;
         }
 
         // Verify the output hash matches that data
-        let output_hash =
-            read_sha_halfs(&mut seal_claim).map_err(|_| VerificationError::ReceiptFormatError)?;
-        if output_hash != self.claim.digest::<sha::Impl>() {
+        let output_hash = read_sha_halfs(&mut seal_claim).map_err(|_| VerificationError::ReceiptFormatError)?;
+        if output_hash != self.claim {
             tracing::debug!(
                 "succinct receipt claim does not match the output digest: claim: {:#?}, digest expected: {output_hash:?}",
                 self.claim,
             );
-            return Err(VerificationError::JournalDigestMismatch);
+            return Err(VerificationError::JournalDigestMismatch)?;
         }
         // Everything passed
         Ok(())
-    }
-
-    /// Return the seal for this receipt, as a vector of bytes.
-    pub fn get_seal_bytes(&self) -> Vec<u8> {
-        self.seal.iter().flat_map(|x| x.to_le_bytes()).collect()
-    }
-
-    /// Number of bytes used by the seal for this receipt.
-    pub fn seal_size(&self) -> usize {
-        core::mem::size_of_val(self.seal.as_slice())
-    }
-
-    #[cfg(feature = "prove")]
-    pub(crate) fn control_root(&self) -> anyhow::Result<Digest> {
-        let hash_suite = hash_suite_from_name(&self.hashfn)
-            .ok_or_else(|| anyhow::anyhow!("unsupported hash function: {}", self.hashfn))?;
-        Ok(self
-            .control_inclusion_proof
-            .root(&self.control_id, hash_suite.hashfn.as_ref()))
-    }
-
-    #[cfg(feature = "prove")]
-    pub(crate) fn to_assumption(
-        &self,
-        erase_control_root: bool,
-    ) -> anyhow::Result<crate::Assumption>
-    where
-        Claim: risc0_binfmt::Digestible,
-    {
-        Ok(crate::Assumption {
-            claim: self.claim.digest::<sha::Impl>(),
-            control_root: match erase_control_root {
-                false => self.control_root()?,
-                true => Digest::ZERO,
-            },
-        })
-    }
-
-    /// Prunes the claim, retaining its digest, and converts into a [SuccinctReceipt] with an unknown
-    /// claim type. Can be used to get receipts of a uniform type across heterogeneous claims.
-    pub fn into_unknown(self) -> SuccinctReceipt<Unknown>
-    where
-        Claim: risc0_binfmt::Digestible,
-    {
-        SuccinctReceipt {
-            claim: MaybePruned::Pruned(self.claim.digest::<sha::Impl>()),
-            seal: self.seal,
-            control_id: self.control_id,
-            hashfn: self.hashfn,
-            verifier_parameters: self.verifier_parameters,
-            control_inclusion_proof: self.control_inclusion_proof,
-        }
-    }
-}
-
-/// Constructs the set of allowed control IDs, given a maximum cycle count as a po2.
-pub(crate) fn allowed_control_ids(
-    hash_name: impl AsRef<str> + 'static,
-    po2_max: usize,
-) -> anyhow::Result<impl Iterator<Item = Digest>> {
-    // Recursion programs (ZKRs) that are to be included in the allowed set.
-    let po2_range = MIN_LIFT_PO2..=usize::min(po2_max, risc0_zkp::MAX_CYCLES_PO2);
-    let allowed_zkr_names: BTreeSet<String> = [
-        "join.zkr",
-        "join_povw.zkr",
-        "join_unwrap_povw.zkr",
-        "resolve.zkr",
-        "resolve_povw.zkr",
-        "resolve_unwrap_povw.zkr",
-        "identity.zkr",
-        "unwrap_povw.zkr",
-        "union.zkr",
-    ]
-    .map(str::to_string)
-    .into_iter()
-    .chain(po2_range.clone().map(|i| format!("lift_rv32im_v2_{i}.zkr")))
-    .chain(po2_range.map(|i| format!("lift_rv32im_v2_povw_{i}.zkr")))
-    .chain((risc0_circuit_recursion::LIFT_PO2_RANGE).map(|i| format!("lift_rv32im_m3_{i}.zkr")))
-    .collect();
-
-    let zkr_control_ids = match hash_name.as_ref() {
-        "sha-256" => SHA256_CONTROL_IDS,
-        "poseidon2" => POSEIDON2_CONTROL_IDS,
-        _ => bail!(
-            "unrecognized hash name for zkr control ids: {}",
-            hash_name.as_ref()
-        ),
-    };
-
-    Ok(allowed_zkr_names.into_iter().map(move |name| {
-        *zkr_control_ids
-            .iter()
-            .find_map(|(zkr_name, digest)| (zkr_name == &name).then_some(digest))
-            .expect("zkr name in allowed_zkr_names not found in zkr_control_ids")
-    }))
-}
-
-/// Constructs the root for the set of allowed control IDs, given a maximum cycle count as a po2.
-pub(crate) fn allowed_control_root(
-    hash_name: impl AsRef<str> + 'static,
-    po2_max: usize,
-) -> anyhow::Result<Digest> {
-    Ok(
-        MerkleGroup::new(allowed_control_ids(hash_name.as_ref().to_string(), po2_max)?.collect())?
-            .calc_root(
-                hash_suite_from_name(hash_name.as_ref())
-                    .unwrap()
-                    .hashfn
-                    .as_ref(),
-            ),
-    )
-}
-
-/// Verifier parameters used to verify a [SuccinctReceipt].
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct SuccinctReceiptVerifierParameters {
-    /// Control root used to verify the control ID binding the executed recursion program.
-    pub control_root: Digest,
-
-    /// Control root used to verify the recursive control root in the output of the receipt.
-    ///
-    /// Usually, this should be set to None, which means it is equal to control_root. It may be set
-    /// to a different value than control root when switching hash functions (e.g. recursively
-    /// verifying a receipt produced with "poseidon2", producing a new receipt using "sha-256").
-    pub inner_control_root: Option<Digest>,
-
-    /// Protocol info string distinguishing the proof system under which the receipt should verify.
-    pub proof_system_info: ProtocolInfo,
-
-    /// Protocol info string distinguishing circuit with which the receipt should verify.
-    pub circuit_info: ProtocolInfo,
-}
-
-impl SuccinctReceiptVerifierParameters {
-
-
-    /// Construct verifier parameters that will accept lifted keccak receipts.
-    pub fn for_keccak() -> Self {
-        Self {
-            control_root: KECCAK_CONTROL_ROOT,
-            inner_control_root: None,
-            proof_system_info: PROOF_SYSTEM_INFO,
-            circuit_info: CircuitImpl::CIRCUIT_INFO,
-        }
-    }
-}
-
-impl Digestible for SuccinctReceiptVerifierParameters {
-    /// Hash the [SuccinctReceiptVerifierParameters] to get a digest of the struct.
-    fn digest<S: Sha256>(&self) -> Digest {
-        tagged_struct::<S>(
-            "risc0.SuccinctReceiptVerifierParameters",
-            &[
-                self.control_root,
-                self.inner_control_root.unwrap_or(self.control_root),
-                *S::hash_bytes(&self.proof_system_info.0),
-                *S::hash_bytes(&self.circuit_info.0),
-            ],
-            &[],
-        )
-    }
-}
-
-impl Default for SuccinctReceiptVerifierParameters {
-    /// Default set of parameters used to verify a [SuccinctReceipt].
-    fn default() -> Self {
-        Self {
-            // ALLOWED_CONTROL_ROOT is a precalculated version of the control root, as calculated
-            // by the allowed_control_root function above.
-            control_root: ALLOWED_CONTROL_ROOT,
-            inner_control_root: None,
-            proof_system_info: PROOF_SYSTEM_INFO,
-            circuit_info: CircuitImpl::CIRCUIT_INFO,
-        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::zk_precompiles::risc0::{DEFAULT_MAX_PO2, sha::Digestible};
-
-    use super::{ALLOWED_CONTROL_ROOT, SuccinctReceiptVerifierParameters, allowed_control_root};
-    use risc0_zkp::core::digest::digest;
-
+    use risc0_binfmt::tagged_struct;
+    use risc0_circuit_recursion::{control_id::ALLOWED_CONTROL_ROOT, CircuitImpl};
+    use risc0_zkp::adapter::{CircuitInfo, PROOF_SYSTEM_INFO};
+    use risc0_zkp::core::{
+        digest::digest,
+        hash::sha::{Impl, Sha256},
+    };
     // Check that the verifier parameters has a stable digest (and therefore a stable value). This
     // struct encodes parameters used in verification, and so this value should be updated if and
     // only if a change to the verifier parameters is expected. Updating the verifier parameters
@@ -388,29 +151,17 @@ mod tests {
     #[test]
     fn succinct_receipt_verifier_parameters_is_stable() {
         assert_eq!(
-            SuccinctReceiptVerifierParameters::default().digest(),
+            tagged_struct::<Impl>(
+                "risc0.SuccinctReceiptVerifierParameters",
+                &[
+                    ALLOWED_CONTROL_ROOT,
+                    ALLOWED_CONTROL_ROOT,
+                    *Impl::hash_bytes(&PROOF_SYSTEM_INFO.0),
+                    *Impl::hash_bytes(&CircuitImpl::CIRCUIT_INFO.0),
+                ],
+                &[],
+            ),
             digest!("08bfab58d6c29162aa18e69bc4cd7e109dc87fb7319072fb8a3d2131f149abb0")
-        );
-    }
-
-    #[test]
-    fn allowed_control_root_fn_matches_bootstrap() {
-        assert_eq!(
-            allowed_control_root("poseidon2", DEFAULT_MAX_PO2).unwrap(),
-            ALLOWED_CONTROL_ROOT
-        )
-    }
-
-    #[test]
-    fn allowed_control_root_fn_doesnt_panic() {
-        for i in 0..=24 {
-            allowed_control_root("poseidon2", i)
-                .unwrap_or_else(|_| panic!("allowed_control_root panicked with i = {i}"));
-        }
-        // When po2_max is greater than 24, this simply returns the same result as 24.
-        assert_eq!(
-            allowed_control_root("poseidon2", 24).unwrap(),
-            allowed_control_root("poseidon2", 25).unwrap(),
         );
     }
 }

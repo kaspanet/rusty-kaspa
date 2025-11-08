@@ -48,8 +48,8 @@
 //! ```
 
 pub use risc0_zkp::core::{
-    digest::{DIGEST_BYTES, DIGEST_SHORTS, DIGEST_WORDS, Digest},
-    hash::sha::{BLOCK_BYTES, BLOCK_WORDS, Block, SHA256_INIT, Sha256, WORD_SIZE},
+    digest::{Digest, DIGEST_BYTES, DIGEST_SHORTS, DIGEST_WORDS},
+    hash::sha::{Block, Sha256, BLOCK_BYTES, BLOCK_WORDS, SHA256_INIT, WORD_SIZE},
 };
 
 // This Impl selects the appropriate implementation of SHA-256 depending on whether we are
