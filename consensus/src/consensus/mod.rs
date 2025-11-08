@@ -1294,21 +1294,25 @@ impl ConsensusApi for Consensus {
         pruning_meta_write.utxo_set.clear().unwrap();
     }
 
-    fn is_pruning_sample(&self, candidate_hash: Hash) -> bool {
-        if candidate_hash == self.config.genesis.hash {
-            return true;
+    fn confirm_is_pruning_sample(&self, pruning_candidate: Hash) -> ConsensusResult<()> {
+        if pruning_candidate == self.config.genesis.hash {
+            return Ok(());
         }
-        let Ok(candidate_ghostdag_data) = self.get_ghostdag_data(candidate_hash) else {
-            return false;
+        let Ok(candidate_ghostdag_data) = self.get_ghostdag_data(pruning_candidate) else {
+            return Err(ConsensusError::General("pruning candidate missing ghostdag data"));
         };
         let Ok(selected_parent_ghostdag_data) = self.get_ghostdag_data(candidate_ghostdag_data.selected_parent) else {
-            return false;
+            return Err(ConsensusError::General("pruning candidate selected parent missing ghostdag data"));
         };
-        self.services.pruning_point_manager.is_pruning_sample(
-            candidate_ghostdag_data.blue_score,
-            selected_parent_ghostdag_data.blue_score,
-            self.config.params.finality_depth().after(),
-        )
+        self.services
+            .pruning_point_manager
+            .is_pruning_sample(
+                candidate_ghostdag_data.blue_score,
+                selected_parent_ghostdag_data.blue_score,
+                self.config.params.finality_depth().after(),
+            )
+            .then_some(())
+            .ok_or(ConsensusError::General("pruning candidate is not a pruning sample"))
     }
 
     /// The usual flow consists of the pruning point naturally updating during pruning, and hence maintains consistency by default

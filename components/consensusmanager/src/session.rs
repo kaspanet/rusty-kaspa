@@ -489,8 +489,8 @@ impl ConsensusSessionOwned {
     pub async fn async_set_pruning_utxoset_stable(&self) {
         self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable(true)).await
     }
-    pub async fn async_is_pruning_sample(&self, candidate_hash: Hash) -> bool {
-        self.clone().spawn_blocking(move |c| c.is_pruning_sample(candidate_hash)).await
+    pub async fn async_confirm_is_pruning_sample(&self, candidate_hash: Hash) -> ConsensusResult<()> {
+        self.clone().spawn_blocking(move |c| c.confirm_is_pruning_sample(candidate_hash)).await
     }
     pub async fn async_intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
         self.clone().spawn_blocking(move |c| c.intrusive_pruning_point_update(new_pruning_point, syncer_sink)).await

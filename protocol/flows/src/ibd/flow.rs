@@ -122,7 +122,7 @@ impl IbdFlow {
             IbdType::Sync => {
                 let pruning_point = session.async_pruning_point().await;
 
-                info!("syncing ahead from pruning point {} ", pruning_point);
+                info!("syncing ahead from current pruning point");
                 // Following IBD catchup a new pruning point is designated and finalized in consensus. Blocks from its anticone (including itself)
                 // have undergone normal header verification, but contain no body yet. Processing of new blocks in the pruning point's future cannot proceed
                 // since these blocks' parents are missing block data.
@@ -137,7 +137,10 @@ impl IbdFlow {
                 // Utxo might not be available even if the pruning point block data is.
                 // Utxo must be synced before all so the node could function
                 {
-                    info!("utxo set missing, downloading utxo set corresponding to the pruning point");
+                    info!(
+                        "utxoset corresponding to the current pruning point is incomplete, attempting to download it from {}",
+                        self.router
+                    );
 
                     self.sync_new_utxo_set(&session, pruning_point).await?;
                 }
@@ -239,9 +242,9 @@ impl IbdFlow {
                     // agree as well, so we perform a simple sync IBD and only download the missing data
                     return Ok(IbdType::Sync);
                 } else {
-                    if !consensus.async_is_pruning_sample(syncer_pruning_point).await {
+                    if consensus.async_confirm_is_pruning_sample(syncer_pruning_point).await.is_err() {
                         // this is not a pruning point, no point in continuing malicious IBD
-                        return Err(ProtocolError::Other("syncer pruning point is not a valid pruning point"));
+                        return Err(ProtocolError::Other("syncer's pruning point could not be confirmed as a pruning sample"));
                     }
                     // The node is missing a segment in the near future of its current pruning point, but the syncer is ahead
                     // and already pruned the current pruning point.
@@ -648,6 +651,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
     }
 
     async fn sync_pruning_point_utxoset(&mut self, consensus: &ConsensusProxy, pruning_point: Hash) -> Result<(), ProtocolError> {
+        info!("downloading the pruning point utxoset, this can take a little while.");
         self.router
             .enqueue(make_message!(
                 Payload::RequestPruningPointUtxoSet,
