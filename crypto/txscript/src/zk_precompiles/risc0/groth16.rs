@@ -17,7 +17,6 @@ use alloc::vec::Vec;
 
 use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
-use derive_more::Debug;
 use risc0_binfmt::Digestible;
 use risc0_circuit_recursion::control_id::{ALLOWED_CONTROL_ROOT, BN254_IDENTITY_CONTROL_ID};
 use risc0_groth16::Verifier;
@@ -31,7 +30,6 @@ use crate::zk_precompiles::{error::ZkIntegrityError, risc0::sha, ZkIntegrityVeri
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Groth16Receipt {
     /// A Groth16 proof of a zkVM execution with the associated claim.
-    #[debug("{} bytes", seal.len())]
     pub seal: Vec<u8>,
 
     /// [ReceiptClaim][crate::ReceiptClaim] containing information about the execution that this

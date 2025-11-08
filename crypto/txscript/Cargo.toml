@@ -48,7 +48,6 @@ risc0-zkp = {path = "/Users/saefstroem/Documents/GitHub/risc0/risc0/zkp",default
 risc0-core={path = "/Users/saefstroem/Documents/GitHub/risc0/risc0/core",default-features = false}
 risc0-binfmt={path = "/Users/saefstroem/Documents/GitHub/risc0/risc0/binfmt",default-features = false}
 anyhow = "1.0.100"
-derive_more.workspace = true
 tracing = "0.1.41"
 hex.workspace = true
 bytemuck = "1.24.0"
