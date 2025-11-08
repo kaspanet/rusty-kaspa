@@ -242,10 +242,7 @@ impl IbdFlow {
                     // agree as well, so we perform a simple sync IBD and only download the missing data
                     return Ok(IbdType::Sync);
                 } else {
-                    if consensus.async_confirm_is_pruning_sample(syncer_pruning_point).await.is_err() {
-                        // this is not a pruning point, no point in continuing malicious IBD
-                        return Err(ProtocolError::Other("syncer's pruning point could not be confirmed as a pruning sample"));
-                    }
+                    consensus.async_verify_is_pruning_sample(syncer_pruning_point).await?;
                     // The node is missing a segment in the near future of its current pruning point, but the syncer is ahead
                     // and already pruned the current pruning point.
 
