@@ -5,7 +5,7 @@ use kaspa_txscript_errors::TxScriptError;
 use crate::opcodes::OpCodeImplementation;
 
 #[derive(Debug)]
-pub struct MultiSigScriptParameters {
+pub struct MultiSigSchnorrScriptParameters {
     pub required_signatures_count: u8,
     pub signers_count: u8,
     pub signers_pubkey: Vec<secp256k1::XOnlyPublicKey>,
@@ -13,10 +13,10 @@ pub struct MultiSigScriptParameters {
 
 /// Extract parameters from a standard multisig script (schnorr):
 ///   OP_m <pubkey1> ... <pubkeyn> OP_n OP_CHECKMULTISIG
-pub fn get_multisig_params<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+pub fn get_schnorr_multisig_params<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     opcodes: &[Box<dyn OpCodeImplementation<T, Reused>>],
     checkmultisig_index: usize,
-) -> Result<MultiSigScriptParameters, TxScriptError> {
+) -> Result<MultiSigSchnorrScriptParameters, TxScriptError> {
     let op_n = opcodes
         .get(checkmultisig_index.checked_sub(1).ok_or_else(|| TxScriptError::InvalidState("index out of bounds".into()))?)
         .ok_or_else(|| TxScriptError::InvalidState("index out of bounds".into()))?;
@@ -59,5 +59,5 @@ pub fn get_multisig_params<T: VerifiableTransaction, Reused: SigHashReusedValues
         return Err(TxScriptError::InvalidSignatureCount("m must be <= n".into()));
     }
 
-    Ok(MultiSigScriptParameters { required_signatures_count: m, signers_count: n, signers_pubkey: pubkeys })
+    Ok(MultiSigSchnorrScriptParameters { required_signatures_count: m, signers_count: n, signers_pubkey: pubkeys })
 }

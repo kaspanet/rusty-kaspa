@@ -1,4 +1,4 @@
-use crate::{multi_sig::get_multisig_params, opcodes::codes, parse_script, TxScriptError};
+use crate::{multi_sig::get_schnorr_multisig_params, opcodes::codes, parse_script, TxScriptError};
 use kaspa_consensus_core::{hashing::sighash::SigHashReusedValues, tx::VerifiableTransaction};
 use std::{
     fmt::{Display, Formatter},
@@ -57,7 +57,7 @@ where
                     }
                 }
             } else if value == codes::OpCheckMultiSig || value == codes::OpCheckMultiSigVerify {
-                let multisig_parameters = get_multisig_params(&opcodes, i)?;
+                let multisig_parameters = get_schnorr_multisig_params(&opcodes, i)?;
                 s.push_str(&format!(
                     "\n// {} of {}",
                     multisig_parameters.required_signatures_count, multisig_parameters.signers_count
