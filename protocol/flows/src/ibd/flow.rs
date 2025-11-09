@@ -61,7 +61,6 @@ impl Flow for IbdFlow {
 }
 
 pub enum IbdType {
-    None,
     Sync,
     DownloadHeadersProof,
     PruningCatchUp,
@@ -116,9 +115,6 @@ impl IbdFlow {
             )
             .await?;
         match ibd_type {
-            IbdType::None => {
-                return Err(ProtocolError::Other("peer has no known block and conditions for requesting headers proof are not met"))
-            }
             IbdType::Sync => {
                 let pruning_point = session.async_pruning_point().await;
 
@@ -279,7 +275,7 @@ impl IbdFlow {
             //
             // TODO (relaxed): consider performing additional actions on finality conflicts in addition
             // to disconnecting from the peer (e.g., banning, rpc notification)
-            return Ok(IbdType::None);
+            return Err(ProtocolError::Other("peer is in a finality conflict with the local pruning point"));
         }
 
         let hst_header = consensus.async_get_header(consensus.async_get_headers_selected_tip().await).await.unwrap();
@@ -305,14 +301,16 @@ impl IbdFlow {
                     // consensus has matured for long enough (and not recently synced). This is mostly a spam-protector
                     // since subsequent checks identify these violations as well
                     // TODO (relaxed): consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
-                    return Ok(IbdType::None);
+                    return Err(ProtocolError::Other(
+                        "peer has no known block but local consensus appears to be up to date, this is most likely a spam attempt",
+                    ));
                 }
             }
 
             // The relayed block has sufficient blue score and blue work over the current header selected tip
             Ok(IbdType::DownloadHeadersProof)
         } else {
-            Ok(IbdType::None)
+            return Err(ProtocolError::Other("peer has no known block but conditions for requesting headers proof are not met"));
         }
     }
 
