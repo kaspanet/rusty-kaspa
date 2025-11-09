@@ -5,8 +5,14 @@ use std::{
     marker::PhantomData,
 };
 
+pub struct ScriptViewerOptions {
+    /// if true, viewer tries to dissassemble a sub-script
+    pub contains_redeem_script: bool,
+}
+
 pub struct ScriptViewer<'a, T, Reused> {
     script: &'a [u8],
+    options: ScriptViewerOptions,
     _phantom: PhantomData<(T, Reused)>,
 }
 
@@ -15,8 +21,8 @@ where
     T: VerifiableTransaction,
     Reused: SigHashReusedValues,
 {
-    pub fn new(script: &'a [u8]) -> Self {
-        Self { script, _phantom: PhantomData }
+    pub fn new(script: &'a [u8], options: ScriptViewerOptions) -> Self {
+        Self { script, options, _phantom: PhantomData }
     }
 
     pub fn try_to_string(&self) -> Result<String, TxScriptError> {
@@ -39,7 +45,9 @@ where
                 let data = opcode.get_data();
                 s.push(' ');
                 s.push_str(&faster_hex::hex_string(data));
-            } else if value == codes::OpPushData1 || value == codes::OpPushData2 || value == codes::OpPushData4 {
+            } else if (value == codes::OpPushData1 || value == codes::OpPushData2 || value == codes::OpPushData4)
+                && self.options.contains_redeem_script
+            {
                 let data = opcode.get_data();
                 s.push(' ');
                 s.push_str(&data.len().to_string());
@@ -47,7 +55,7 @@ where
                 s.push_str(&faster_hex::hex_string(data));
 
                 // try to disassemble the data as a script
-                let sub_viewer = ScriptViewer::<T, Reused>::new(data);
+                let sub_viewer = ScriptViewer::<T, Reused>::new(data, ScriptViewerOptions { contains_redeem_script: false });
                 if let Ok(sub_disassembly) = sub_viewer.try_to_string() {
                     if sub_disassembly.contains("OP_") {
                         s.push_str("\n    -- Begin Redeem Script --\n");
