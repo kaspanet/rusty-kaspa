@@ -490,6 +490,7 @@ impl Consensus {
             .map(|hash| (hash, self.headers_store.get_compact_header_data(hash).unwrap()))
             .collect_vec()
     }
+
     pub fn intrusive_pruning_point_store_writes(
         &self,
         new_pruning_point: Hash,
@@ -540,8 +541,8 @@ impl Consensus {
         Ok(())
     }
 
-    // Verify that the new pruning point can be safely imported
-    // and return all new pruning point on path to it that needs to be updated in consensus
+    /// Verify that the new pruning point can be safely imported
+    /// and return all new pruning point on path to it that needs to be updated in consensus
     fn get_and_verify_novel_pruning_points(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<VecDeque<Hash>> {
         // Let B.sp denote the selected parent of a block B, let f be the finality depth, and let p be the pruning depth.
         // The new pruning point P can be "finalized" into consensus if:
@@ -563,7 +564,7 @@ impl Consensus {
         }
         info!("Setting {new_pruning_point} as the pruning point");
         // 4) The pruning points declared on headers on that path must be consistent with those already known by the node:
-        let pruning_point_read = self.pruning_point_store.upgradable_read();
+        let pruning_point_read = self.pruning_point_store.read();
         let old_pruning_info = pruning_point_read.get().unwrap();
 
         // Note that the function below also updates the pruning samples,
