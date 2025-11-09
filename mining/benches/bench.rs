@@ -69,11 +69,11 @@ pub fn bench_compare_topological_index_fns(c: &mut Criterion) {
     let mut group = c.benchmark_group("compare fns");
     group.bench_function("TopologicalIndex::topological_index", |b| {
         let dag = build_dag();
-        b.iter(|| (black_box(dag.topological_index())))
+        b.iter(|| black_box(dag.topological_index()))
     });
     group.bench_function("TopologicalIndex::topological_index_dfs", |b| {
         let dag = build_dag();
-        b.iter(|| (black_box(dag.topological_index_dfs())))
+        b.iter(|| black_box(dag.topological_index_dfs()))
     });
     group.finish();
 }

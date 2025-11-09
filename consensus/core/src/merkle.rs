@@ -17,7 +17,7 @@ mod tests {
 
     #[test]
     fn merkle_root_test() {
-        let txs = vec![
+        let txs = [
             Transaction::new(
                 0,
                 vec![],
