@@ -1,3 +1,4 @@
+use super::viewer::WasmScriptViewerOptions;
 use crate::result::Result;
 use crate::{script_builder as native, standard};
 use kaspa_consensus_core::{
@@ -181,7 +182,7 @@ impl ScriptBuilder {
     }
 
     #[wasm_bindgen(js_name = "stringView")]
-    pub fn string_view(&self) -> String {
-        self.inner().string_view::<ValidatedTransaction, SigHashReusedValuesSync>()
+    pub fn string_view(&self, options: &WasmScriptViewerOptions) -> String {
+        self.inner().string_view::<ValidatedTransaction, SigHashReusedValuesSync>(options.into())
     }
 }

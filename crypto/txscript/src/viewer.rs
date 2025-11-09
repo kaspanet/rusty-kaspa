@@ -5,6 +5,7 @@ use std::{
     marker::PhantomData,
 };
 
+#[derive(Debug, Clone)]
 pub struct ScriptViewerOptions {
     /// if true, viewer tries to dissassemble a sub-script
     pub contains_redeem_script: bool,
