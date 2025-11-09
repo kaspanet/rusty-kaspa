@@ -31,11 +31,11 @@ const MAX_STANDARD_P2SH_SIG_OPS: u8 = 15;
 /// That brings the total to 1+(15*74)+3+513 = 1627. This value also
 /// adds a few extra bytes to provide a little buffer.
 /// (1 + 15*74 + 3) + (15*34 + 3) + 23 = 1650
-const MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE: u64 = 1650;
+const MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE: u64 = 300_000;
 
 /// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum mass allowed for transactions that
 /// are considered standard and will therefore be relayed and considered for mining.
-const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 100_000;
+const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 1_000_000;
 
 impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {

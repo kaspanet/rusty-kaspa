@@ -76,7 +76,7 @@ impl SuccinctReceipt {
             ("sha-256".into(), Sha256HashSuite::new_suite()),
         ]);
         let suite = suites.get(&self.hashfn).ok_or(VerificationError::InvalidHashSuite)?;
-
+        println!("Using hash suite: {}", self.hashfn);
         let check_code = |_, control_id: &Digest| -> Result<(), VerificationError> {
             self.control_inclusion_proof.verify(control_id, &ALLOWED_CONTROL_ROOT, suite.hashfn.as_ref()).map_err(|_| {
                 tracing::debug!(
@@ -88,10 +88,12 @@ impl SuccinctReceipt {
             })
         };
 
+        println!("Verifying succinct receipt with control ID: {:?}", self.control_id);
         // Verify the receipt itself is correct, and therefore the encoded globals are
         // reliable.
         risc0_zkp::verify::verify(&CIRCUIT, suite, &self.seal, check_code)?;
 
+        println!("Extracting globals from succinct receipt seal");
         // Extract the globals from the seal
         let output_elems: &[BabyBearElem] = bytemuck::checked::cast_slice(&self.seal[..CircuitImpl::OUTPUT_SIZE]);
         let mut seal_claim = VecDeque::new();
@@ -110,7 +112,7 @@ impl SuccinctReceipt {
             .collect::<Vec<_>>()
             .try_into()
             .map_err(|_| VerificationError::ReceiptFormatError)?;
-
+        println!("Decoded control root from succinct receipt: {:?}", control_root);
         if control_root != ALLOWED_CONTROL_ROOT {
             tracing::debug!(
                 "succinct receipt does not match the expected control root: decoded: {:#?}, expected: {:?}",
@@ -119,6 +121,8 @@ impl SuccinctReceipt {
             );
             return Err(VerificationError::ControlVerificationError { control_id: control_root })?;
         }
+
+        println!("Verifying claim digest from succinct receipt");
 
         // Verify the output hash matches that data
         let output_hash = read_sha_halfs(&mut seal_claim).map_err(|_| VerificationError::ReceiptFormatError)?;
@@ -129,6 +133,7 @@ impl SuccinctReceipt {
             );
             return Err(VerificationError::JournalDigestMismatch)?;
         }
+        println!("Succinct receipt integrity verified successfully");
         // Everything passed
         Ok(())
     }

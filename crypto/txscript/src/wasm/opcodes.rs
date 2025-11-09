@@ -232,7 +232,7 @@ pub enum Opcodes {
     OpUnknown193 = 0xc1,
     OpUnknown194 = 0xc2,
     OpUnknown195 = 0xc3,
-    OpUnknown196 = 0xc4,
+    OpZkPrecompile = 0xc4,
     OpUnknown197 = 0xc5,
     OpUnknown198 = 0xc6,
     OpUnknown199 = 0xc7,

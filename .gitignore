@@ -14,3 +14,6 @@ testing/integration/perflogs*
 Servers.toml
 release
 package-sizes.js
+miner.sh
+kaspa-ng
+out.txt

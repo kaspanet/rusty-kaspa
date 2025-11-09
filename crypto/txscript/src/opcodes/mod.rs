@@ -997,23 +997,21 @@ opcode_list! {
         }
     }
     opcode OpZkPrecompile<0xc4, 1>(self, vm) {
+        println!("Executing OpZkPrecompile");
         // Pop the ZK proof data from the stack
         let [proof_bytes] = vm.dstack.pop_raw()?;
 
         // Try to deserialize and verify
         let is_valid = match ZkPrecompile::from_bytes(&proof_bytes) {
-            Ok(zk_precompile) => {
-                // Verify integrity
-                zk_precompile.verify_integrity().is_ok()
-            },
-            Err(err) =>false, // Invalid format = invalid proof
+            Ok(zk_precompile) => zk_precompile.verify_integrity().is_ok(),
+            Err(err) =>false            
         };
 
         // Push result onto stack (similar to OpCheckSig behavior)
         vm.dstack.push_item(is_valid)?;
+        println!("OpZkPrecompile result pushed to stack: {}", is_valid);
         Ok(())
     }
-
 
     // Undefined opcodes
     opcode OpUnknown197<0xc5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))

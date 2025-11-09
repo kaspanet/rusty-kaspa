@@ -24,17 +24,18 @@ impl ZkPrecompile {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, kaspa_txscript_errors::TxScriptError> {
         let tag = bytes[0];
         let data = &bytes[1..];
-
         match tag {
             0x00 => {
-                let receipt = Groth16Receipt::try_from_slice(data).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))?;
+                let receipt: Groth16Receipt = borsh::from_slice(data).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))?;
                 Ok(ZkPrecompile::R0Groth16(receipt))
             }
             0x01 => {
-                let receipt = SuccinctReceipt::try_from_slice(data).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))?;
+                let receipt: SuccinctReceipt =  borsh::from_slice(data).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))?;
                 Ok(ZkPrecompile::R0Succinct(receipt))
             }
-            _ => Err(TxScriptError::ZkIntegrity(format!("Unknown ZkPrecompile tag: {}", tag))),
+            _ =>{
+                Err(TxScriptError::ZkIntegrity(format!("Unknown ZkPrecompile tag: {}", tag)))
+            } 
         }
     }
 }
