@@ -3182,6 +3182,7 @@ dependencies = [
  "bs58",
  "cfg-if 1.0.0",
  "criterion",
+ "faster-hex",
  "hex",
  "hexplay",
  "indexmap 2.6.0",

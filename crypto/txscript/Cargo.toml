@@ -24,6 +24,7 @@ blake2b_simd.workspace = true
 borsh.workspace = true
 bs58.workspace = true
 cfg-if.workspace = true
+faster-hex.workspace = true
 hex.workspace = true
 hexplay.workspace = true
 indexmap.workspace = true

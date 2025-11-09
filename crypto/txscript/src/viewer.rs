@@ -38,13 +38,13 @@ where
             if (codes::OpData1..=codes::OpData75).contains(&value) {
                 let data = opcode.get_data();
                 s.push(' ');
-                s.push_str(&hex::encode(data));
+                s.push_str(&faster_hex::hex_string(data));
             } else if value == codes::OpPushData1 || value == codes::OpPushData2 || value == codes::OpPushData4 {
                 let data = opcode.get_data();
                 s.push(' ');
                 s.push_str(&data.len().to_string());
                 s.push(' ');
-                s.push_str(&hex::encode(data));
+                s.push_str(&faster_hex::hex_string(data));
 
                 // try to disassemble the data as a script
                 let sub_viewer = ScriptViewer::<T, Reused>::new(data);
