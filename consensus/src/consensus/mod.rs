@@ -1295,7 +1295,7 @@ impl ConsensusApi for Consensus {
         pruning_meta_write.utxo_set.clear().unwrap();
     }
 
-    fn confirm_is_pruning_sample(&self, pruning_candidate: Hash) -> ConsensusResult<()> {
+    fn verify_is_pruning_sample(&self, pruning_candidate: Hash) -> ConsensusResult<()> {
         if pruning_candidate == self.config.genesis.hash {
             return Ok(());
         }

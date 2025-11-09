@@ -402,7 +402,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn confirm_is_pruning_sample(&self, candidate_hash: Hash) -> ConsensusResult<()> {
+    fn verify_is_pruning_sample(&self, candidate_hash: Hash) -> ConsensusResult<()> {
         unimplemented!()
     }
 
