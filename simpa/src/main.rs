@@ -101,6 +101,10 @@ struct Args {
     #[arg(long, default_value_t = false)]
     test_pruning: bool,
 
+    /// Skip acceptance-data validation when running with --test-pruning (useful for lightweight pruning benchmarks)
+    #[arg(long, default_value_t = false)]
+    skip_acceptance_validation: bool,
+
     /// Use the legacy full-window DAA mechanism (note: the size of this window scales with bps)
     #[arg(long, default_value_t = false)]
     daa_legacy: bool,
@@ -292,33 +296,34 @@ fn main_impl(mut args: Args) {
 
         consensus.validate_pruning_points(consensus.get_sink()).unwrap();
 
-        // Test whether we can still retrieve a populated transaction given a txid and the accepting block daa score.
-        for hash in hashes.iter().cloned() {
-            if !consensus.is_chain_block(hash).unwrap() {
-                // only chain blocks are worth checking the acceptance data of
-                continue;
-            }
+        if !args.skip_acceptance_validation {
+            // Test whether we can still retrieve a populated transaction given a txid and the accepting block daa score.
+            for hash in hashes.iter().cloned() {
+                if !consensus.is_chain_block(hash).unwrap() {
+                    // only chain blocks are worth checking the acceptance data of
+                    continue;
+                }
 
-            if let Ok(block_acceptance_data) = consensus.get_block_acceptance_data(hash) {
-                block_acceptance_data.iter().for_each(|cbad| {
-                    let block = consensus.get_block(hash).unwrap();
-                    cbad.accepted_transactions.iter().for_each(|ate| {
-                        assert!(
-                            consensus
-                                .get_transactions_by_accepting_daa_score(
-                                    block.header.daa_score,
-                                    Some(vec![ate.transaction_id]),
-                                    TransactionType::SignableTransaction
-                                )
-                                .is_ok(),
-                            "Expected to find find tx {} at accepted daa {} via get_populated_transaction",
-                            ate.transaction_id,
-                            block.header.daa_score
-                        );
+                if let Ok(block_acceptance_data) = consensus.get_block_acceptance_data(hash) {
+                    block_acceptance_data.iter().for_each(|cbad| {
+                        let block = consensus.get_block(hash).unwrap();
+                        cbad.accepted_transactions.iter().for_each(|ate| {
+                            assert!(
+                                consensus
+                                    .get_transactions_by_accepting_daa_score(
+                                        block.header.daa_score,
+                                        Some(vec![ate.transaction_id]),
+                                        TransactionType::SignableTransaction
+                                    )
+                                    .is_ok(),
+                                "Expected to find find tx {} at accepted daa {} via get_populated_transaction",
+                                ate.transaction_id,
+                                block.header.daa_score
+                            );
+                        });
                     });
-                });
+                }
             }
-        }
 
         drop(consensus);
         return;
