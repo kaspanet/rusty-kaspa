@@ -1,8 +1,6 @@
+use super::{difficulty::DifficultyError, sync::SyncManagerError, traversal::TraversalError};
 use kaspa_hashes::Hash;
 use thiserror::Error;
-
-use super::{difficulty::DifficultyError, sync::SyncManagerError, traversal::TraversalError};
-
 #[derive(Error, Debug, Clone)]
 pub enum ConsensusError {
     #[error("cannot find full block {0}")]
@@ -16,6 +14,9 @@ pub enum ConsensusError {
 
     #[error("some data is missing for block {0}")]
     MissingData(Hash),
+
+    #[error("tx with id:{0} was not found in local storage")]
+    MissingTx(Hash),
 
     #[error("got unexpected pruning point")]
     UnexpectedPruningPoint,

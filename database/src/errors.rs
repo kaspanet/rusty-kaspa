@@ -28,7 +28,7 @@ pub enum StoreError {
 pub type StoreResult<T> = std::result::Result<T, StoreError>;
 
 pub trait StoreResultExtensions<T> {
-    /// Unwrap or assert that the error is key not fund in which case `None` is returned
+    /// Unwrap or assert that the error is key not found in which case `None` is returned
     fn unwrap_option(self) -> Option<T>;
 }
 

@@ -509,7 +509,7 @@ impl<
             // the UTXO set and resolving virtual. Hence we perform the check over this chain here.
             let reply = self.expected_header_pruning_point_v2(self.ghostdag_store.get_compact_data(current).unwrap());
             if reply.pruning_point != current_header.pruning_point {
-                return Err(PruningImportError::WrongHeaderPruningPoint(current_header.pruning_point, current));
+                return Err(PruningImportError::WrongHeaderPruningPoint(current, reply.pruning_point, current_header.pruning_point));
             }
             // Save so that following blocks can recursively use this value
             self.pruning_samples_store.insert(current, reply.pruning_sample).unwrap_or_exists();
@@ -574,7 +574,7 @@ mod tests {
     use kaspa_consensus_core::{config::params::Params, network::NetworkType};
 
     #[test]
-    fn assert_pruning_depth_consistency() {
+    fn assert_pruning_depth_consistency_test() {
         for net in NetworkType::iter() {
             let params: Params = net.into();
 

@@ -156,7 +156,6 @@ impl TestConsensus {
         self.validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs).to_immutable())
             .virtual_state_task
     }
-
     /// Builds a valid block with the given transactions, parents, and miner data.
     ///
     /// # Panics

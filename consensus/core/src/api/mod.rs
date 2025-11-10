@@ -1,7 +1,3 @@
-use futures_util::future::BoxFuture;
-use kaspa_muhash::MuHash;
-use std::sync::Arc;
-
 use crate::{
     acceptance_data::AcceptanceData,
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
@@ -19,12 +15,16 @@ use crate::{
     header::Header,
     mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
+    receipts::TxReceipt,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     utxo::utxo_inquirer::UtxoInquirerError,
     BlockHashSet, BlueWorkType, ChainPath,
 };
+use futures_util::future::BoxFuture;
 use kaspa_hashes::Hash;
+use kaspa_muhash::MuHash;
+use std::sync::Arc;
 
 pub use self::stats::{BlockCount, ConsensusStats};
 
@@ -373,6 +373,20 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn finality_point(&self) -> Hash {
+        unimplemented!()
+    }
+    fn generate_tx_receipt(
+        &self,
+        tx_id: Hash,
+        accepting_block: Option<Hash>,
+        tx_timestamp: Option<u64>,
+    ) -> ConsensusResult<TxReceipt> {
+        unimplemented!()
+    }
+    fn verify_tx_receipt(&self, receipt: &TxReceipt) -> bool {
+        unimplemented!()
+    }
+    fn is_posterity_reached(&self, cutoff_bscore: u64) -> bool {
         unimplemented!()
     }
 }

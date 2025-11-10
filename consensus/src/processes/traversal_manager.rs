@@ -1,4 +1,7 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::Arc,
+};
 
 use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
@@ -84,14 +87,12 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
         max_traversal_allowed: Option<u64>,
         return_anticone_only: bool,
     ) -> Result<Vec<Hash>, TraversalError> {
-        /*
-           In some cases we search for the anticone of the pruning point starting from virtual parents.
-           This means we might traverse ~pruning_depth blocks which are all stored in the visited set.
-           Experiments (and theory) show that w/o completely tracking visited, the queue might grow in
-           size quadratically due to many duplicate blocks, easily resulting in OOM errors if the DAG is
-           wide. On the other hand, even at 10 BPS, pruning depth is around 2M blocks which is approx 64MB, a modest
-           memory peak which happens at most once a in a pruning period (since pruning anticone is cached).
-        */
+        //  In some cases we search for the anticone of the pruning point starting from virtual parents.
+        //  This means we might traverse ~pruning_depth blocks which are all stored in the visited set.
+        //  Experiments (and theory) show that w/o completely tracking visited, the queue might grow in
+        //  size quadratically due to many duplicate blocks, easily resulting in OOM errors if the DAG is
+        //  wide. On the other hand, even at 10 BPS, pruning depth is around 2M blocks which is approx 64MB, a modest
+        //  memory peak which happens at most once a in a pruning period (since pruning anticone is cached).
         let mut output = Vec::new(); // Anticone or antipast, depending on args
         let mut queue = VecDeque::from_iter(tips);
         let mut visited = BlockHashSet::from_iter(queue.iter().copied());
@@ -154,5 +155,95 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
         }
 
         current
+    }
+    // Returns all blocks on route on the bfs path from this to descendant
+    pub fn forward_bfs_paths_iterator(&self, this: Hash, descendant: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
+        BlocksBfsPathsIterator::new(this, Some(descendant), &self.reachability_service, &self.relations_store, BfsDirection::Forward)
+    }
+
+    // Returns all  known blocks on route on the bfs path from this onward
+    pub fn default_forward_bfs_paths_iterator(&self, this: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
+        BlocksBfsPathsIterator::new(this, None, &self.reachability_service, &self.relations_store, BfsDirection::Forward)
+    }
+
+    // Returns all nodes on route on the backward bfs path from this to ancestor
+    pub fn backward_bfs_paths_iterator(&self, this: Hash, ancestor: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
+        BlocksBfsPathsIterator::new(this, Some(ancestor), &self.reachability_service, &self.relations_store, BfsDirection::Backward)
+    }
+    // Returns all nodes on route on the backward bfs path from this to genesis
+    pub fn default_backward_bfs_paths_iterator(&self, this: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
+        BlocksBfsPathsIterator::new(this, None, &self.reachability_service, &self.relations_store, BfsDirection::Backward)
+    }
+}
+#[derive(PartialEq, Eq)]
+pub enum BfsDirection {
+    Forward,
+    Backward,
+}
+pub struct BlocksBfsPathsIterator<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> {
+    queue: VecDeque<Vec<Hash>>,
+    visited: HashSet<Hash>,
+    edge: Option<Hash>,
+    reachability_service: &'a MTReachabilityService<U>,
+    relations_store: &'a V,
+    bfs_direction: BfsDirection,
+}
+
+impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> BlocksBfsPathsIterator<'a, U, V> {
+    pub fn new(
+        start: Hash,
+        edge: Option<Hash>,
+        reachability_service: &'a MTReachabilityService<U>,
+        relations_store: &'a V,
+        bfs_direction: BfsDirection,
+    ) -> Self {
+        let mut queue = VecDeque::new();
+        queue.push_back(vec![start]);
+        let mut visited = HashSet::new();
+        visited.insert(start); // Note that in a dag this isn't actually necessary, but is kept for logical clarity
+        Self { queue, visited, edge, reachability_service, relations_store, bfs_direction }
+    }
+    pub fn map_paths_to_tips(self) -> impl Iterator<Item = Hash> + use<'a, U, V> {
+        self.map(|path| path.last().cloned().unwrap())
+    }
+}
+impl<U: ReachabilityStoreReader, V: RelationsStoreReader> Iterator for BlocksBfsPathsIterator<'_, U, V> {
+    type Item = Vec<Hash>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut curr;
+        let mut path;
+        loop {
+            // Loop until a block on the route is found
+            if self.queue.is_empty() {
+                return None;
+            }
+            path = self.queue.pop_front().unwrap();
+            curr = *path.last().unwrap(); // Path should never be empty
+
+            if self.edge.is_none()
+                || self.bfs_direction == BfsDirection::Forward
+                    && self.reachability_service.is_dag_ancestor_of_result(curr, self.edge.unwrap()).is_ok_and(|bool| bool)
+                || self.bfs_direction == BfsDirection::Backward
+                    && self.reachability_service.is_dag_ancestor_of_result(self.edge.unwrap(), curr).is_ok_and(|bool| bool)
+            {
+                // Once a block on the route is found in the queue, break out of loop
+                break;
+            }
+        }
+        let next_batch = match self.bfs_direction {
+            BfsDirection::Forward => self.relations_store.get_children(curr).unwrap().read().iter().cloned().collect_vec(), // I feel like this can potentially panic
+            BfsDirection::Backward => self.relations_store.get_parents(curr).unwrap_or(vec![].into()).iter().cloned().collect_vec(),
+        };
+        for &elem in next_batch.iter() {
+            if !self.visited.contains(&elem) {
+                let mut new_path = path.clone();
+                new_path.push(elem);
+                self.queue.push_back(new_path);
+                self.visited.insert(elem);
+            }
+        }
+
+        Some(path)
     }
 }
