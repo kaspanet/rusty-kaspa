@@ -10,9 +10,10 @@ use crate::{
 };
 use kaspa_addresses::Prefix;
 use kaspa_math::Uint256;
+use serde::{Deserialize, Serialize};
 use std::cmp::min;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForkActivation(u64);
 
 impl ForkActivation {
@@ -139,7 +140,7 @@ impl<T: Copy + Ord> ForkedParam<T> {
 }
 
 /// Fork params for the Crescendo hardfork
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CrescendoParams {
     pub past_median_time_sampled_window_size: u64,
     pub sampled_difficulty_window_size: u64,
@@ -193,6 +194,93 @@ pub const CRESCENDO: CrescendoParams = CrescendoParams {
     // Note that storage mass will kick in and gradually penalize also for lower lengths (generalized KIP-0009, plurality will be high).
     max_script_public_key_len: 10_000,
 };
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OverrideParams {
+    pub prior_ghostdag_k: Option<KType>,
+
+    /// Timestamp deviation tolerance (in seconds)
+    pub timestamp_deviation_tolerance: Option<u64>,
+
+    /// Target time per block (in milliseconds)
+    pub prior_target_time_per_block: Option<u64>,
+
+    /// Size of full blocks window that is inspected to calculate the required difficulty of each block
+    pub prior_difficulty_window_size: Option<usize>,
+
+    /// The minimum size a difficulty window (full or sampled) must have to trigger a DAA calculation
+    pub min_difficulty_window_size: Option<usize>,
+
+    pub prior_max_block_parents: Option<u8>,
+    pub prior_mergeset_size_limit: Option<u64>,
+    pub prior_merge_depth: Option<u64>,
+    pub prior_finality_depth: Option<u64>,
+    pub prior_pruning_depth: Option<u64>,
+
+    pub coinbase_payload_script_public_key_max_len: Option<u8>,
+    pub max_coinbase_payload_len: Option<usize>,
+
+    pub prior_max_tx_inputs: Option<usize>,
+    pub prior_max_tx_outputs: Option<usize>,
+    pub prior_max_signature_script_len: Option<usize>,
+    pub prior_max_script_public_key_len: Option<usize>,
+
+    pub mass_per_tx_byte: Option<u64>,
+    pub mass_per_script_pub_key_byte: Option<u64>,
+    pub mass_per_sig_op: Option<u64>,
+    pub max_block_mass: Option<u64>,
+
+    /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
+    pub storage_mass_parameter: Option<u64>,
+
+    /// DAA score after which the pre-deflationary period switches to the deflationary period
+    pub deflationary_phase_daa_score: Option<u64>,
+
+    pub pre_deflationary_phase_base_subsidy: Option<u64>,
+    pub prior_coinbase_maturity: Option<u64>,
+    pub skip_proof_of_work: Option<bool>,
+    pub max_block_level: Option<BlockLevel>,
+    pub pruning_proof_m: Option<u64>,
+
+    pub crescendo: Option<CrescendoParams>,
+    pub crescendo_activation: Option<ForkActivation>,
+}
+
+impl From<Params> for OverrideParams {
+    fn from(p: Params) -> Self {
+        Self {
+            prior_ghostdag_k: Some(p.prior_ghostdag_k),
+            timestamp_deviation_tolerance: Some(p.timestamp_deviation_tolerance),
+            prior_target_time_per_block: Some(p.prior_target_time_per_block),
+            prior_difficulty_window_size: Some(p.prior_difficulty_window_size),
+            min_difficulty_window_size: Some(p.min_difficulty_window_size),
+            prior_max_block_parents: Some(p.prior_max_block_parents),
+            prior_mergeset_size_limit: Some(p.prior_mergeset_size_limit),
+            prior_merge_depth: Some(p.prior_merge_depth),
+            prior_finality_depth: Some(p.prior_finality_depth),
+            prior_pruning_depth: Some(p.prior_pruning_depth),
+            coinbase_payload_script_public_key_max_len: Some(p.coinbase_payload_script_public_key_max_len),
+            max_coinbase_payload_len: Some(p.max_coinbase_payload_len),
+            prior_max_tx_inputs: Some(p.prior_max_tx_inputs),
+            prior_max_tx_outputs: Some(p.prior_max_tx_outputs),
+            prior_max_signature_script_len: Some(p.prior_max_signature_script_len),
+            prior_max_script_public_key_len: Some(p.prior_max_script_public_key_len),
+            mass_per_tx_byte: Some(p.mass_per_tx_byte),
+            mass_per_script_pub_key_byte: Some(p.mass_per_script_pub_key_byte),
+            mass_per_sig_op: Some(p.mass_per_sig_op),
+            max_block_mass: Some(p.max_block_mass),
+            storage_mass_parameter: Some(p.storage_mass_parameter),
+            deflationary_phase_daa_score: Some(p.deflationary_phase_daa_score),
+            pre_deflationary_phase_base_subsidy: Some(p.pre_deflationary_phase_base_subsidy),
+            prior_coinbase_maturity: Some(p.prior_coinbase_maturity),
+            skip_proof_of_work: Some(p.skip_proof_of_work),
+            max_block_level: Some(p.max_block_level),
+            pruning_proof_m: Some(p.pruning_proof_m),
+            crescendo: Some(p.crescendo),
+            crescendo_activation: Some(p.crescendo_activation),
+        }
+    }
+}
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
 /// Changing one of these on a network node would exclude and prevent it from reaching consensus
@@ -438,6 +526,69 @@ impl Params {
 
     pub fn default_rpc_port(&self) -> u16 {
         self.net.default_rpc_port()
+    }
+
+    pub fn override_params(self, overrides: OverrideParams) -> Self {
+        Self {
+            dns_seeders: self.dns_seeders,
+            net: self.net,
+            genesis: self.genesis.clone(),
+            prior_ghostdag_k: overrides.prior_ghostdag_k.unwrap_or(self.prior_ghostdag_k),
+
+            timestamp_deviation_tolerance: overrides.timestamp_deviation_tolerance.unwrap_or(self.timestamp_deviation_tolerance),
+
+            prior_target_time_per_block: overrides.prior_target_time_per_block.unwrap_or(self.prior_target_time_per_block),
+
+            max_difficulty_target: self.max_difficulty_target,
+            max_difficulty_target_f64: self.max_difficulty_target_f64,
+
+            prior_difficulty_window_size: overrides.prior_difficulty_window_size.unwrap_or(self.prior_difficulty_window_size),
+
+            min_difficulty_window_size: overrides.min_difficulty_window_size.unwrap_or(self.min_difficulty_window_size),
+
+            prior_max_block_parents: overrides.prior_max_block_parents.unwrap_or(self.prior_max_block_parents),
+
+            prior_mergeset_size_limit: overrides.prior_mergeset_size_limit.unwrap_or(self.prior_mergeset_size_limit),
+
+            prior_merge_depth: overrides.prior_merge_depth.unwrap_or(self.prior_merge_depth),
+            prior_finality_depth: overrides.prior_finality_depth.unwrap_or(self.prior_finality_depth),
+            prior_pruning_depth: overrides.prior_pruning_depth.unwrap_or(self.prior_pruning_depth),
+
+            coinbase_payload_script_public_key_max_len: overrides
+                .coinbase_payload_script_public_key_max_len
+                .unwrap_or(self.coinbase_payload_script_public_key_max_len),
+
+            max_coinbase_payload_len: overrides.max_coinbase_payload_len.unwrap_or(self.max_coinbase_payload_len),
+
+            prior_max_tx_inputs: overrides.prior_max_tx_inputs.unwrap_or(self.prior_max_tx_inputs),
+            prior_max_tx_outputs: overrides.prior_max_tx_outputs.unwrap_or(self.prior_max_tx_outputs),
+            prior_max_signature_script_len: overrides.prior_max_signature_script_len.unwrap_or(self.prior_max_signature_script_len),
+            prior_max_script_public_key_len: overrides.prior_max_script_public_key_len.unwrap_or(self.prior_max_script_public_key_len),
+
+            mass_per_tx_byte: overrides.mass_per_tx_byte.unwrap_or(self.mass_per_tx_byte),
+            mass_per_script_pub_key_byte: overrides.mass_per_script_pub_key_byte.unwrap_or(self.mass_per_script_pub_key_byte),
+            mass_per_sig_op: overrides.mass_per_sig_op.unwrap_or(self.mass_per_sig_op),
+            max_block_mass: overrides.max_block_mass.unwrap_or(self.max_block_mass),
+
+            storage_mass_parameter: overrides.storage_mass_parameter.unwrap_or(self.storage_mass_parameter),
+
+            deflationary_phase_daa_score: overrides.deflationary_phase_daa_score.unwrap_or(self.deflationary_phase_daa_score),
+
+            pre_deflationary_phase_base_subsidy: overrides
+                .pre_deflationary_phase_base_subsidy
+                .unwrap_or(self.pre_deflationary_phase_base_subsidy),
+
+            prior_coinbase_maturity: overrides.prior_coinbase_maturity.unwrap_or(self.prior_coinbase_maturity),
+
+            skip_proof_of_work: overrides.skip_proof_of_work.unwrap_or(self.skip_proof_of_work),
+
+            max_block_level: overrides.max_block_level.unwrap_or(self.max_block_level),
+
+            pruning_proof_m: overrides.pruning_proof_m.unwrap_or(self.pruning_proof_m),
+
+            crescendo: overrides.crescendo.clone().unwrap_or(self.crescendo.clone()),
+            crescendo_activation: overrides.crescendo_activation.unwrap_or(self.crescendo_activation),
+        }
     }
 }
 

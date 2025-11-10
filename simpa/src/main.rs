@@ -13,7 +13,7 @@ use kaspa_consensus::{
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
     },
-    params::{ForkActivation, Params, TenBps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, SIMNET_PARAMS},
+    params::{ForkActivation, OverrideParams, Params, TenBps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, SIMNET_PARAMS},
 };
 use kaspa_consensus_core::{
     api::ConsensusApi, block::Block, blockstatus::BlockStatus, config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult,
@@ -126,6 +126,9 @@ struct Args {
     long_payload: bool,
     #[arg(long)]
     retention_period_days: Option<f64>,
+
+    #[arg(long)]
+    override_params_output: Option<String>,
 }
 
 #[cfg(feature = "heap")]
@@ -218,6 +221,13 @@ fn main_impl(mut args: Args) {
     if let Some(rocksdb_mem_budget) = args.rocksdb_mem_budget {
         conn_builder = conn_builder.with_mem_budget(rocksdb_mem_budget);
     }
+
+    if let Some(output_path) = args.override_params_output {
+        let override_params: OverrideParams = config.params.clone().into();
+        let override_params_json = serde_json::to_string_pretty(&override_params).unwrap();
+        std::fs::write(output_path, override_params_json).expect("Unable to write override_params to file");
+    }
+
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
         let mut config = (*config).clone();
