@@ -16,3 +16,4 @@ Servers.toml
 release
 package-sizes.js
 rustbridge_*.log
+pruning-optimisation/
