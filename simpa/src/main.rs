@@ -100,6 +100,10 @@ struct Args {
     #[arg(long, default_value_t = false)]
     test_pruning: bool,
 
+    /// Skip acceptance-data validation when running with --test-pruning (useful for lightweight pruning benchmarks)
+    #[arg(long, default_value_t = false)]
+    skip_acceptance_validation: bool,
+
     /// Use the legacy full-window DAA mechanism (note: the size of this window scales with bps)
     #[arg(long, default_value_t = false)]
     daa_legacy: bool,
@@ -284,25 +288,27 @@ fn main_impl(mut args: Args) {
 
         consensus.validate_pruning_points(consensus.get_sink()).unwrap();
 
-        // Test whether we can still retrieve a populated transaction given a txid and the accepting block daa score.
-        for hash in hashes.iter().cloned() {
-            if !consensus.is_chain_block(hash).unwrap() {
-                // only chain blocks are worth checking the acceptance data of
-                continue;
-            }
+        if !args.skip_acceptance_validation {
+            // Test whether we can still retrieve a populated transaction given a txid and the accepting block daa score.
+            for hash in hashes.iter().cloned() {
+                if !consensus.is_chain_block(hash).unwrap() {
+                    // only chain blocks are worth checking the acceptance data of
+                    continue;
+                }
 
-            if let Ok(block_acceptance_data) = consensus.get_block_acceptance_data(hash) {
-                block_acceptance_data.iter().for_each(|cbad| {
-                    let block = consensus.get_block(hash).unwrap();
-                    cbad.accepted_transactions.iter().for_each(|ate| {
-                        assert!(
-                            consensus.get_populated_transaction(ate.transaction_id, block.header.daa_score).is_ok(),
-                            "Expected to find find tx {} at accepted daa {} via get_populated_transaction",
-                            ate.transaction_id,
-                            block.header.daa_score
-                        );
+                if let Ok(block_acceptance_data) = consensus.get_block_acceptance_data(hash) {
+                    block_acceptance_data.iter().for_each(|cbad| {
+                        let block = consensus.get_block(hash).unwrap();
+                        cbad.accepted_transactions.iter().for_each(|ate| {
+                            assert!(
+                                consensus.get_populated_transaction(ate.transaction_id, block.header.daa_score).is_ok(),
+                                "Expected to find find tx {} at accepted daa {} via get_populated_transaction",
+                                ate.transaction_id,
+                                block.header.daa_score
+                            );
+                        });
                     });
-                });
+                }
             }
         }
 
@@ -383,17 +389,22 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.timestamp_deviation_tolerance = 16;
         params.crescendo.sampled_difficulty_window_size = params.crescendo.sampled_difficulty_window_size.min(32);
 
-        params.prior_ghostdag_k = 10;
-        params.prior_finality_depth = 100;
-        params.prior_merge_depth = 64;
-        params.prior_mergeset_size_limit = 32;
-        params.prior_pruning_depth = 100 * 2 + 50;
+        let base_finality = 5;
+        let base_pruning = base_finality * 2; // maintain identical pre/post ratios
+        let base_merge_depth = 10;
+        let base_mergeset_limit = 16;
 
-        params.crescendo.ghostdag_k = 20;
-        params.crescendo.finality_depth = 100 * 2;
-        params.crescendo.merge_depth = 64 * 2;
-        params.crescendo.mergeset_size_limit = 32 * 2;
-        params.crescendo.pruning_depth = 100 * 2 * 2 + 50;
+        params.prior_ghostdag_k = 6;
+        params.prior_finality_depth = base_finality;
+        params.prior_merge_depth = base_merge_depth;
+        params.prior_mergeset_size_limit = base_mergeset_limit;
+        params.prior_pruning_depth = base_pruning;
+
+        params.crescendo.ghostdag_k = 12;
+        params.crescendo.finality_depth = base_finality;
+        params.crescendo.merge_depth = base_merge_depth;
+        params.crescendo.mergeset_size_limit = base_mergeset_limit * 2;
+        params.crescendo.pruning_depth = base_pruning;
 
         info!("Setting pruning depth to {:?}", params.pruning_depth());
     }
