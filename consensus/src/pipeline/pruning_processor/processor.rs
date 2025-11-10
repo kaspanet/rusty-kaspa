@@ -44,7 +44,7 @@ use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
-    collections::{VecDeque, hash_map::Entry::Vacant},
+    collections::{hash_map::Entry::Vacant, BTreeMap, VecDeque},
     ops::Deref,
     sync::{
         Arc,
@@ -52,6 +52,105 @@ use std::{
     },
     time::{Duration, Instant},
 };
+
+#[derive(Default)]
+struct CommitStats {
+    commits: usize,
+    total_ops: usize,
+    max_ops: usize,
+    total_bytes: usize,
+    max_bytes: usize,
+    total_duration: Duration,
+    max_duration: Duration,
+}
+
+impl CommitStats {
+    fn record(&mut self, ops: usize, bytes: usize, duration: Duration) {
+        self.commits += 1;
+        self.total_ops += ops;
+        self.max_ops = self.max_ops.max(ops);
+        self.total_bytes += bytes;
+        self.max_bytes = self.max_bytes.max(bytes);
+        self.total_duration += duration;
+        self.max_duration = self.max_duration.max(duration);
+    }
+}
+
+struct PruningPhaseMetrics {
+    started: Instant,
+    commit_stats: BTreeMap<&'static str, CommitStats>,
+    total_traversed: usize,
+    total_pruned: usize,
+    total_lock_hold: Duration,
+    lock_yield_count: usize,
+    lock_reacquire_count: usize,
+}
+
+impl PruningPhaseMetrics {
+    fn new() -> Self {
+        Self {
+            started: Instant::now(),
+            commit_stats: BTreeMap::new(),
+            total_traversed: 0,
+            total_pruned: 0,
+            total_lock_hold: Duration::ZERO,
+            lock_yield_count: 0,
+            lock_reacquire_count: 0,
+        }
+    }
+
+    fn record_commit(&mut self, context: &'static str, ops: usize, bytes: usize, duration: Duration) {
+        self.commit_stats.entry(context).or_default().record(ops, bytes, duration);
+    }
+
+    fn record_lock_yield(&mut self, held: Duration) {
+        self.total_lock_hold += held;
+        self.lock_yield_count += 1;
+    }
+
+    fn finalize_lock_hold(&mut self, held: Duration) {
+        self.total_lock_hold += held;
+    }
+
+    fn record_lock_reacquire(&mut self) {
+        self.lock_reacquire_count += 1;
+    }
+
+    fn set_traversed(&mut self, traversed: usize, pruned: usize) {
+        self.total_traversed = traversed;
+        self.total_pruned = pruned;
+    }
+
+    fn log_summary(&self) {
+        let elapsed_ms = self.started.elapsed().as_millis();
+        info!(
+            "[PRUNING METRICS] duration_ms={} traversed={} pruned={} lock_hold_ms={} lock_yields={} lock_reacquires={}",
+            elapsed_ms,
+            self.total_traversed,
+            self.total_pruned,
+            self.total_lock_hold.as_millis(),
+            self.lock_yield_count,
+            self.lock_reacquire_count
+        );
+        for (context, stats) in &self.commit_stats {
+            let avg_ops = if stats.commits == 0 { 0.0 } else { stats.total_ops as f64 / stats.commits as f64 };
+            let avg_bytes = if stats.commits == 0 { 0.0 } else { stats.total_bytes as f64 / stats.commits as f64 };
+            let avg_duration_ms =
+                if stats.commits == 0 { 0.0 } else { stats.total_duration.as_secs_f64() * 1000.0 / stats.commits as f64 };
+            info!(
+                "[PRUNING METRICS] commit_type={} count={} avg_ops={:.2} max_ops={} avg_bytes={:.2} max_bytes={} avg_commit_ms={:.3} max_commit_ms={:.3}",
+                context,
+                stats.commits,
+                avg_ops,
+                stats.max_ops,
+                avg_bytes,
+                stats.max_bytes,
+                avg_duration_ms,
+                stats.max_duration.as_secs_f64() * 1000.0
+            );
+        }
+    }
+}
 
 pub enum PruningProcessingMessage {
     Exit,
@@ -298,6 +397,7 @@ impl PruningProcessor {
         }
 
         info!("Header and Block pruning: preparing proof and anticone data...");
+        let mut metrics = PruningPhaseMetrics::new();
 
         let proof = self.pruning_proof_manager.get_pruning_point_proof();
         let data = self
@@ -327,6 +427,8 @@ impl PruningProcessor {
         info!("Header and Block pruning: waiting for consensus write permissions...");
 
         let mut prune_guard = self.pruning_lock.blocking_write();
+        metrics.record_lock_reacquire();
+        let mut lock_acquire_time = Instant::now();
 
         info!("Starting Header and Block pruning...");
 
@@ -350,11 +452,16 @@ impl PruningProcessor {
                     self.ghostdag_store.update_batch(&mut batch, kept, &Arc::new(mutable_ghostdag.into())).unwrap();
                 }
             }
+            let ops = batch.len();
+            let bytes = batch.size_in_bytes();
+            let commit_start = Instant::now();
             self.db.write(batch).unwrap();
+            metrics.record_commit("ghostdag_adjust", ops, bytes, commit_start.elapsed());
             info!("Header and Block pruning: updated ghostdag data for {} blocks", counter);
         }
 
         // No need to hold the prune guard while we continue populating keep_relations
+        metrics.record_lock_yield(lock_acquire_time.elapsed());
         drop(prune_guard);
 
         // Add additional levels only after filtering GHOSTDAG data via level 0
@@ -390,7 +497,8 @@ impl PruningProcessor {
         }
 
         prune_guard = self.pruning_lock.blocking_write();
-        let mut lock_acquire_time = Instant::now();
+        lock_acquire_time = Instant::now();
+        metrics.record_lock_reacquire();
         let mut reachability_read = self.reachability_store.upgradable_read();
 
         {
@@ -431,7 +539,11 @@ impl PruningProcessor {
             }
 
             // Flush the batch to the DB
+            let ops = batch.len();
+            let bytes = batch.size_in_bytes();
+            let commit_start = Instant::now();
             self.db.write(batch).unwrap();
+            metrics.record_commit("tips_and_selected_chain", ops, bytes, commit_start.elapsed());
 
             // Calling the drops explicitly after the batch is written in order to avoid possible errors.
             drop(selected_chain_write);
@@ -453,6 +565,7 @@ impl PruningProcessor {
 
             // If we have the lock for more than a few milliseconds, release and recapture to allow consensus progress during pruning
             if lock_acquire_time.elapsed() > Duration::from_millis(5) {
+                metrics.record_lock_yield(lock_acquire_time.elapsed());
                 drop(reachability_read);
                 // An exit signal was received. Exit from this long running process.
                 if self.is_consensus_exiting.load(Ordering::Relaxed) {
@@ -463,6 +576,7 @@ impl PruningProcessor {
                 prune_guard.blocking_yield();
                 lock_acquire_time = Instant::now();
                 reachability_read = self.reachability_store.upgradable_read();
+                metrics.record_lock_reacquire();
             }
 
             if traversed % 1000 == 0 {
@@ -547,7 +661,11 @@ impl PruningProcessor {
                 staging_reachability_relations.commit(&mut batch).unwrap();
 
                 // Flush the batch to the DB
+                let ops = batch.len();
+                let bytes = batch.size_in_bytes();
+                let commit_start = Instant::now();
                 self.db.write(batch).unwrap();
+                metrics.record_commit("per_block", ops, bytes, commit_start.elapsed());
 
                 // Calling the drops explicitly after the batch is written in order to avoid possible errors.
                 drop(reachability_write);
@@ -560,6 +678,7 @@ impl PruningProcessor {
         }
 
         drop(reachability_read);
+        metrics.finalize_lock_hold(lock_acquire_time.elapsed());
         drop(prune_guard);
 
         info!("Header and Block pruning completed: traversed: {}, pruned {}", traversed, counter);
@@ -581,9 +700,16 @@ impl PruningProcessor {
             let mut pruning_point_write = self.pruning_point_store.write();
             let mut batch = WriteBatch::default();
             pruning_point_write.set_retention_checkpoint(&mut batch, retention_period_root).unwrap();
+            let ops = batch.len();
+            let bytes = batch.size_in_bytes();
+            let commit_start = Instant::now();
             self.db.write(batch).unwrap();
+            metrics.record_commit("retention_checkpoint", ops, bytes, commit_start.elapsed());
             drop(pruning_point_write);
         }
+
+        metrics.set_traversed(traversed, counter);
+        metrics.log_summary();
     }
 
     /// Adjusts the retention period root to latest pruning point sample that covers the retention period.
