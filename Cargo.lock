@@ -3177,6 +3177,7 @@ dependencies = [
  "hexplay",
  "indexmap 2.6.0",
  "itertools 0.13.0",
+ "js-sys",
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-hashes",

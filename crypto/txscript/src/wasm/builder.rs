@@ -1,6 +1,8 @@
-use super::viewer::WasmScriptViewerOptions;
 use crate::result::Result;
+use crate::viewer::ScriptViewerOptions;
+use crate::wasm::IScriptViewerOptions;
 use crate::{script_builder as native, standard};
+use js_sys::Object;
 use kaspa_consensus_core::{
     hashing::sighash::SigHashReusedValuesSync,
     tx::{ScriptPublicKey, ValidatedTransaction},
@@ -11,6 +13,7 @@ use kaspa_wasm_core::types::{BinaryT, HexString};
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::JsValue;
 use workflow_wasm::prelude::*;
 
 /// ScriptBuilder provides a facility for building custom scripts. It allows
@@ -182,7 +185,9 @@ impl ScriptBuilder {
     }
 
     #[wasm_bindgen(js_name = "stringView")]
-    pub fn string_view(&self, options: &WasmScriptViewerOptions) -> String {
-        self.inner().string_view::<ValidatedTransaction, SigHashReusedValuesSync>(options.into())
+    pub fn string_view(&self, options: Option<IScriptViewerOptions>) -> Result<String> {
+        let options = options.map(ScriptViewerOptions::try_from).transpose()?.unwrap_or_default();
+
+        Ok(self.inner().string_view::<ValidatedTransaction, SigHashReusedValuesSync>(options))
     }
 }

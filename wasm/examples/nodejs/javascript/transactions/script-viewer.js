@@ -3,7 +3,6 @@
 globalThis.WebSocket = require("websocket").w3cwebsocket;
 
 const {
-  WasmScriptViewerOptions,
   ScriptBuilder,
   initConsolePanicHook,
 } = require("../../../../nodejs/kaspa");
@@ -20,5 +19,9 @@ initConsolePanicHook();
   console.log(scriptBuilder.hexView());
 
   // print the human readable form
-  console.log(scriptBuilder.stringView(new WasmScriptViewerOptions(true)));
+  console.log(
+    scriptBuilder.stringView({
+      contains_redeem_script: false,
+    }),
+  );
 })();

@@ -47,6 +47,7 @@ smallvec.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
+js-sys.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

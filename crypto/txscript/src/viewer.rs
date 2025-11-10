@@ -5,7 +5,7 @@ use std::{
     marker::PhantomData,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ScriptViewerOptions {
     /// if true, viewer tries to dissassemble a sub-script
     pub contains_redeem_script: bool,
@@ -46,23 +46,23 @@ where
                 let data = opcode.get_data();
                 s.push(' ');
                 s.push_str(&faster_hex::hex_string(data));
-            } else if (value == codes::OpPushData1 || value == codes::OpPushData2 || value == codes::OpPushData4)
-                && self.options.contains_redeem_script
-            {
+            } else if value == codes::OpPushData1 || value == codes::OpPushData2 || value == codes::OpPushData4 {
                 let data = opcode.get_data();
                 s.push(' ');
                 s.push_str(&data.len().to_string());
                 s.push(' ');
                 s.push_str(&faster_hex::hex_string(data));
 
-                // try to disassemble the data as a script
-                let sub_viewer = ScriptViewer::<T, Reused>::new(data, ScriptViewerOptions { contains_redeem_script: false });
-                if let Ok(sub_disassembly) = sub_viewer.try_to_string() {
-                    if sub_disassembly.contains("OP_") {
-                        s.push_str("\n    -- Begin Redeem Script --\n");
-                        let indented = sub_disassembly.lines().map(|line| line.to_string()).collect::<Vec<_>>().join("\n");
-                        s.push_str(&indented);
-                        s.push_str("\n    -- End Redeem Script --");
+                if self.options.contains_redeem_script {
+                    // try to disassemble the data as a script
+                    let sub_viewer = ScriptViewer::<T, Reused>::new(data, ScriptViewerOptions { contains_redeem_script: false });
+                    if let Ok(sub_disassembly) = sub_viewer.try_to_string() {
+                        if sub_disassembly.contains("OP_") {
+                            s.push_str("\n    -- Begin Redeem Script --\n");
+                            let indented = sub_disassembly.lines().map(|line| line.to_string()).collect::<Vec<_>>().join("\n");
+                            s.push_str(&indented);
+                            s.push_str("\n    -- End Redeem Script --");
+                        }
                     }
                 }
             } else if value == codes::OpCheckMultiSig || value == codes::OpCheckMultiSigVerify {
