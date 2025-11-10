@@ -428,12 +428,12 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_missing_block_body_hashes(high)).await
     }
 
-    pub async fn async_get_disembodied_anticone(&self) -> Vec<Hash> {
-        self.clone().spawn_blocking(move |c| c.get_disembodied_anticone()).await
+    pub async fn async_get_body_missing_anticone(&self) -> Vec<Hash> {
+        self.clone().spawn_blocking(move |c| c.get_body_missing_anticone()).await
     }
 
-    pub async fn async_clear_disembodied_anticone_cache(&self) {
-        self.clone().spawn_blocking(move |c| c.clear_disembodied_anticone_cache()).await
+    pub async fn async_clear_body_missing_anticone_cache(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_body_missing_anticone_cache()).await
     }
 
     pub async fn async_pruning_point(&self) -> Hash {

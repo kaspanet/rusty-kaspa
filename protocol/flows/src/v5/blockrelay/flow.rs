@@ -88,9 +88,6 @@ impl HandleRelayInvsFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
-        // If utxo is not synced, we should sync it as soon as possible.
-        let session = self.ctx.consensus().unguarded_session();
-        drop(session);
         loop {
             // Loop over incoming block inv messages
             let inv = self.invs_route.dequeue().await?;

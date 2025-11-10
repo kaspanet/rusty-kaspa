@@ -122,7 +122,7 @@ impl IbdFlow {
                 // Following IBD catchup a new pruning point is designated and finalized in consensus. Blocks from its anticone (including itself)
                 // have undergone normal header verification, but contain no body yet. Processing of new blocks in the pruning point's future cannot proceed
                 // since these blocks' parents are missing block data.
-                // Hence we explicitly process bodies of the yet disembodied anticone blocks as trusted blocks
+                // Hence we explicitly process bodies of the currently body missing anticone blocks as trusted blocks
                 // Notice that this is degenerate following sync_with_headers_proof
                 // but not necessarily so after sync_headers -
                 // as it might sync following a previous pruning_catch_up that crashed before this stage concluded
@@ -310,7 +310,7 @@ impl IbdFlow {
             // The relayed block has sufficient blue score and blue work over the current header selected tip
             Ok(IbdType::DownloadHeadersProof)
         } else {
-            return Err(ProtocolError::Other("peer has no known block but conditions for requesting headers proof are not met"));
+            Err(ProtocolError::Other("peer has no known block but conditions for requesting headers proof are not met"))
         }
     }
 
@@ -501,7 +501,7 @@ impl IbdFlow {
             // TODO (relaxed): queue and join in batches
             staging.validate_and_insert_trusted_block(tb).virtual_state_task.await?;
         }
-        staging.async_clear_disembodied_anticone_cache().await;
+        staging.async_clear_body_missing_anticone_cache().await;
         info!("Done processing trusted blocks");
         Ok(proof_pruning_point)
     }
@@ -669,13 +669,13 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
     }
     async fn sync_missing_trusted_bodies(&mut self, consensus: &ConsensusProxy) -> Result<(), ProtocolError> {
         info!("downloading pruning point anticone missing block data");
-        let diesembodied_hashes = consensus.async_get_disembodied_anticone().await;
+        let diesembodied_hashes = consensus.async_get_body_missing_anticone().await;
         if self.body_only_ibd_permitted {
             self.sync_missing_trusted_bodies_no_headers(consensus, diesembodied_hashes).await?
         } else {
             self.sync_missing_trusted_bodies_full_blocks(consensus, diesembodied_hashes).await?;
         }
-        consensus.async_clear_disembodied_anticone_cache().await;
+        consensus.async_clear_body_missing_anticone_cache().await;
         Ok(())
     }
     async fn sync_missing_trusted_bodies_no_headers(

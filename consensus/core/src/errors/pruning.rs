@@ -38,6 +38,7 @@ pub enum PruningImportError {
 
     #[error("block {0} already appeared in the proof headers for level {1}")]
     PruningProofDuplicateHeaderAtLevel(Hash, BlockLevel),
+
     #[error("trusted block {0} is in the anticone of the pruning point but does not have block body")]
     PruningPointAnticoneMissingBody(Hash),
 

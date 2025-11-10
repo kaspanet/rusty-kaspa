@@ -217,7 +217,7 @@ impl ConsensusStorage {
         // Write to some internal storage  so they will remain in cache
         let mut batch = rocksdb::WriteBatch::default();
         if pruning_meta_stores.read().is_anticone_fully_synced() {
-            pruning_meta_stores.write().set_disembodied_anticone(&mut batch, vec![]).unwrap();
+            pruning_meta_stores.write().set_body_missing_anticone(&mut batch, vec![]).unwrap();
         }
         if pruning_meta_stores.read().pruning_utxoset_stable_flag() {
             pruning_meta_stores.write().set_pruning_utxoset_stable(&mut batch, true).unwrap();

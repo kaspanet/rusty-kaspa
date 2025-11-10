@@ -491,6 +491,7 @@ impl Consensus {
             .collect_vec()
     }
 
+    /// See: intrusive_pruning_point_update implementation below for details
     pub fn intrusive_pruning_point_store_writes(
         &self,
         new_pruning_point: Hash,
@@ -535,7 +536,7 @@ impl Consensus {
         let mut anticone = self.services.dag_traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
         // Add the pruning point itself which is also missing a body
         anticone.push(new_pruning_point);
-        self.pruning_meta_stores.write().set_disembodied_anticone(&mut batch, anticone).unwrap();
+        self.pruning_meta_stores.write().set_body_missing_anticone(&mut batch, anticone).unwrap();
         self.db.write(batch).unwrap();
         drop(pruning_point_write);
         Ok(())
@@ -543,7 +544,7 @@ impl Consensus {
 
     /// Verify that the new pruning point can be safely imported
     /// and return all new pruning point on path to it that needs to be updated in consensus
-    fn get_and_verify_novel_pruning_points(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<VecDeque<Hash>> {
+    fn get_and_verify_path_to_new_pruning_point(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<VecDeque<Hash>> {
         // Let B.sp denote the selected parent of a block B, let f be the finality depth, and let p be the pruning depth.
         // The new pruning point P can be "finalized" into consensus if:
         // 1) P satisfies P.blue_score>Nf and selected_parent(P).blue_score<=NF
@@ -1189,14 +1190,14 @@ impl ConsensusApi for Consensus {
     /// Returns the set of blocks in the anticone of the current pruning point
     /// which (may) lack a block body due to being in a transitional state
     /// If not in a transitional state this list is supposed to be empty
-    fn get_disembodied_anticone(&self) -> Vec<Hash> {
-        self.pruning_meta_stores.read().get_disembodied_anticone().unwrap_option().unwrap_or_default()
+    fn get_body_missing_anticone(&self) -> Vec<Hash> {
+        self.pruning_meta_stores.read().get_body_missing_anticone().unwrap_option().unwrap_or_default()
     }
 
-    fn clear_disembodied_anticone_cache(&self) {
+    fn clear_body_missing_anticone_cache(&self) {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
         let mut batch = rocksdb::WriteBatch::default();
-        pruning_meta_write.set_disembodied_anticone(&mut batch, vec![]).unwrap();
+        pruning_meta_write.set_body_missing_anticone(&mut batch, vec![]).unwrap();
         self.db.write(batch).unwrap();
     }
 
@@ -1320,7 +1321,7 @@ impl ConsensusApi for Consensus {
     /// During pruning catchup, we need to manually update the pruning point and
     /// make sure that consensus looks "as if" it has just moved to a new pruning point.
     fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
-        let pruning_points_to_add = self.get_and_verify_novel_pruning_points(new_pruning_point, syncer_sink)?;
+        let pruning_points_to_add = self.get_and_verify_path_to_new_pruning_point(new_pruning_point, syncer_sink)?;
 
         // If all has gone well, we can finally update pruning point and other stores.
         self.intrusive_pruning_point_store_writes(new_pruning_point, syncer_sink, pruning_points_to_add)

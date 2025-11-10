@@ -16,7 +16,7 @@ pub struct PruningMetaStores {
     pub utxo_set: DbUtxoSetStore,
     utxoset_position_access: CachedDbItem<Hash>,
     utxoset_stable_flag_access: CachedDbItem<bool>,
-    disembodied_anticone_blocks: CachedDbItem<Vec<Hash>>,
+    body_missing_anticone_blocks: CachedDbItem<Vec<Hash>>,
 }
 
 impl PruningMetaStores {
@@ -25,7 +25,7 @@ impl PruningMetaStores {
             utxo_set: DbUtxoSetStore::new(db.clone(), utxoset_cache_policy, DatabaseStorePrefixes::PruningUtxoset.into()),
             utxoset_position_access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::PruningUtxosetPosition.into()),
             utxoset_stable_flag_access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::PruningUtxosetSyncFlag.into()),
-            disembodied_anticone_blocks: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::DisembodiedAnticoneBlocks.into()),
+            body_missing_anticone_blocks: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::BodyMissingAnticone.into()),
         }
     }
 
@@ -53,17 +53,17 @@ impl PruningMetaStores {
     /// Represents blocks in the anticone of the current pruning point which may lack a block body
     /// These blocks need to be kept track of as they require trusted validation,
     /// so that downloading of further blocks on top of them could resume
-    pub fn set_disembodied_anticone(&mut self, batch: &mut WriteBatch, disembodied_anticone: Vec<Hash>) -> StoreResult<()> {
-        self.disembodied_anticone_blocks.write(BatchDbWriter::new(batch), &disembodied_anticone)
+    pub fn set_body_missing_anticone(&mut self, batch: &mut WriteBatch, body_missing_anticone: Vec<Hash>) -> StoreResult<()> {
+        self.body_missing_anticone_blocks.write(BatchDbWriter::new(batch), &body_missing_anticone)
     }
 
-    pub fn get_disembodied_anticone(&self) -> StoreResult<Vec<Hash>> {
-        self.disembodied_anticone_blocks.read()
+    pub fn get_body_missing_anticone(&self) -> StoreResult<Vec<Hash>> {
+        self.body_missing_anticone_blocks.read()
     }
 
-    // check if there are any disembodied blocks remanining in the anticone of the current pruning point
+    // check if there are any body missing blocks remaining in the anticone of the current pruning point
     pub fn is_anticone_fully_synced(&self) -> bool {
-        self.disembodied_anticone_blocks.read().unwrap_or_default().is_empty()
+        self.body_missing_anticone_blocks.read().unwrap_or_default().is_empty()
     }
 
     pub fn is_in_transitional_ibd_state(&self) -> bool {
