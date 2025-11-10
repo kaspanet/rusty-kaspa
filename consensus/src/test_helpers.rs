@@ -94,7 +94,7 @@ pub fn generate_random_block(
 pub fn generate_random_header(rng: &mut SmallRng, parent_amount: usize) -> Header {
     Header::new_finalized(
         rng.gen(),
-        vec![generate_random_hashes(rng, parent_amount)].into(),
+        vec![generate_random_hashes(rng, parent_amount)].try_into().unwrap(),
         generate_random_hash(rng),
         generate_random_hash(rng),
         generate_random_hash(rng),

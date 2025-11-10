@@ -5,60 +5,43 @@ use kaspa_utils::{
     iter::{IterExtensions, IterExtensionsRle},
     mem_size::MemSizeEstimator,
 };
-use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::mem::size_of;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+
 pub struct CompressedParents(Vec<(u8, Vec<Hash>)>);
 
-impl From<Vec<Vec<Hash>>> for CompressedParents {
-    fn from(parents: Vec<Vec<Hash>>) -> Self {
-        Self::from_vec(parents)
+impl From<Vec<(u8, Vec<Hash>)>> for CompressedParents {
+    fn from(value: Vec<(u8, Vec<Hash>)>) -> Self {
+        CompressedParents(value)
     }
 }
 
-impl CompressedParents {
-    fn compress(parents: Vec<Vec<Hash>>) -> Result<Vec<(u8, Vec<Hash>)>, &'static str> {
+impl TryFrom<Vec<Vec<Hash>>> for CompressedParents {
+    type Error = &'static str;
+
+    fn try_from(parents: Vec<Vec<Hash>>) -> Result<Self, Self::Error> {
         if parents.len() > u8::MAX as usize {
             return Err("Parents by level exceeds maximum levels of 255");
         }
 
         if parents.is_empty() {
-            return Ok(Vec::new());
+            return Ok(Self(Vec::new()));
         }
 
         // Casting count from usize to u8 is safe because of the check above
-        Ok(parents.into_iter().rle_cumulative().map(|(count, level)| (count as u8, level)).collect())
+        Ok(Self(parents.into_iter().rle_cumulative().map(|(count, level)| (count as u8, level)).collect()))
     }
+}
 
-    pub fn try_from_vec(parents: Vec<Vec<Hash>>) -> Result<Self, &'static str> {
-        Self::compress(parents).map(Self)
+impl From<CompressedParents> for Vec<Vec<Hash>> {
+    fn from(value: CompressedParents) -> Self {
+        value.iter().cloned().collect()
     }
+}
 
-    pub fn from_vec(parents: Vec<Vec<Hash>>) -> Self {
-        Self::try_from_vec(parents).expect("Parents by level exceeds maximum levels of 255")
-    }
-    fn from_cumulative_runs(runs: Vec<(u8, Vec<Hash>)>) -> Self {
-        if runs.is_empty() {
-            return Self(Vec::new());
-        }
-
-        let mut prev = 0u8;
-        let mut storage = Vec::with_capacity(runs.len());
-
-        for (cum, level_parents) in runs {
-            assert!(cum > prev, "non-monotonic cumulative parents_by_level");
-            storage.push((cum, level_parents));
-            prev = cum;
-        }
-
-        Self(storage)
-    }
-
-    pub fn to_vec(&self) -> Vec<Vec<Hash>> {
-        self.0.iter().map(|(count, v)| (*count as usize, v)).expand_rle().cloned().collect()
-    }
-
+impl CompressedParents {
     pub fn len(&self) -> usize {
         self.0.last().map(|(cum, _)| *cum as usize).unwrap_or(0)
     }
@@ -79,82 +62,14 @@ impl CompressedParents {
         Some(&self.0[i].1)
     }
 
-    pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Vec<Hash>> + 'a> {
-        Box::new(self.0.iter().map(|(cum, v)| (*cum as usize, v)).expand_rle())
-    }
-}
-
-impl<'a> IntoIterator for &'a CompressedParents {
-    type Item = &'a Vec<Hash>;
-    type IntoIter = Box<dyn Iterator<Item = &'a Vec<Hash>> + 'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
-impl From<CompressedParents> for Vec<Vec<Hash>> {
-    fn from(value: CompressedParents) -> Self {
-        value.to_vec()
+    pub fn iter(&self) -> impl Iterator<Item = &'_ Vec<Hash>> {
+        self.0.iter().map(|(cum, v)| (*cum as usize, v)).expand_rle()
     }
 }
 
 impl From<&CompressedParents> for Vec<Vec<Hash>> {
     fn from(value: &CompressedParents) -> Self {
-        value.to_vec()
-    }
-}
-
-impl std::ops::Index<usize> for CompressedParents {
-    type Output = Vec<Hash>;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        self.get(index).expect("index out of bounds")
-    }
-}
-
-impl Serialize for CompressedParents {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        if serializer.is_human_readable() {
-            return serde::Serialize::serialize(&self.to_vec(), serializer);
-        }
-
-        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
-        for (cum, vec) in &self.0 {
-            seq.serialize_element(&(cum, vec))?;
-        }
-        seq.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for CompressedParents {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        if deserializer.is_human_readable() {
-            let parents: Vec<Vec<Hash>> = <Vec<Vec<Hash>> as Deserialize>::deserialize(deserializer)?;
-            return Ok(Self::from_vec(parents));
-        }
-
-        let runs: Vec<(u8, Vec<Hash>)> = <Vec<(u8, Vec<Hash>)> as Deserialize>::deserialize(deserializer)?;
-        Ok(Self::from_cumulative_runs(runs))
-    }
-}
-
-impl BorshSerialize for CompressedParents {
-    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        BorshSerialize::serialize(&self.to_vec(), writer)
-    }
-}
-
-impl BorshDeserialize for CompressedParents {
-    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let parents = Vec::<Vec<Hash>>::deserialize_reader(reader)?;
-        Self::try_from_vec(parents).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+        value.iter().cloned().collect()
     }
 }
 
@@ -235,11 +150,11 @@ impl Header {
     }
 
     pub fn parents_by_level_vec(&self) -> Vec<Vec<Hash>> {
-        Vec::from(&self.parents_by_level)
+        self.parents_by_level.clone().into()
     }
 
     pub fn set_parents_by_level_vec(&mut self, parents: Vec<Vec<Hash>>) {
-        self.parents_by_level = parents.into();
+        self.parents_by_level = parents.try_into().unwrap();
     }
 
     /// WARNING: To be used for test purposes only
@@ -247,7 +162,7 @@ impl Header {
         Header {
             version: crate::constants::BLOCK_VERSION,
             hash,
-            parents_by_level: CompressedParents::from_vec(vec![parents]),
+            parents_by_level: vec![parents].try_into().unwrap(),
             hash_merkle_root: Default::default(),
             accepted_id_merkle_root: Default::default(),
             utxo_commitment: Default::default(),
@@ -289,29 +204,20 @@ mod tests {
     }
 
     fn serialize_parents(parents: &[Vec<Hash>]) -> Vec<u8> {
-        let compressed = CompressedParents::from_vec(parents.to_vec());
+        let compressed: CompressedParents = (parents.to_vec()).try_into().unwrap();
         bincode::serialize(&compressed).unwrap()
     }
 
     fn deserialize_parents(bytes: &[u8]) -> bincode::Result<Vec<Vec<Hash>>> {
         let parents: CompressedParents = bincode::deserialize(bytes)?;
-        Ok(parents.to_vec())
-    }
-
-    fn json_value(parents: &[Vec<Hash>]) -> serde_json::Value {
-        #[derive(Serialize)]
-        struct Wrapper {
-            parents: CompressedParents,
-        }
-
-        serde_json::to_value(Wrapper { parents: CompressedParents::from_vec(parents.to_vec()) }).unwrap()
+        Ok(parents.into())
     }
 
     #[test]
     fn test_header_ser() {
         let header = Header::new_finalized(
             1,
-            vec![vec![1.into()]].into(),
+            vec![vec![1.into()]].try_into().unwrap(),
             Default::default(),
             Default::default(),
             Default::default(),
@@ -372,30 +278,13 @@ mod tests {
     }
 
     #[test]
-    fn parents_vrle_preserves_human_readable_json() {
-        let parents = vec![vec_from(&[1, 2]), vec_from(&[3, 4])];
-
-        let json = json_value(&parents);
-        let expected = serde_json::json!({ "parents": parents });
-        assert_eq!(json, expected);
-
-        #[derive(Deserialize)]
-        struct Wrapper {
-            parents: CompressedParents,
-        }
-
-        let decoded: Wrapper = serde_json::from_value(json).unwrap();
-        assert_eq!(decoded.parents.to_vec(), parents);
-    }
-
-    #[test]
     fn compressed_parents_len_and_get() {
         // Test with multiple runs of different lengths
         let first = vec_from(&[1]);
         let second = vec_from(&[2, 3]);
         let third = vec_from(&[4]);
         let parents = vec![first.clone(), first.clone(), second.clone(), second.clone(), third.clone()];
-        let compressed = CompressedParents::from_vec(parents.clone());
+        let compressed = CompressedParents::try_from(parents.clone()).unwrap();
 
         assert_eq!(compressed.len(), parents.len());
         assert!(!compressed.is_empty());
@@ -415,14 +304,14 @@ mod tests {
 
         // Test with an empty vec
         let parents_empty: Vec<Vec<Hash>> = vec![];
-        let compressed_empty = CompressedParents::from_vec(parents_empty.clone());
+        let compressed_empty: CompressedParents = parents_empty.try_into().unwrap();
         assert_eq!(compressed_empty.len(), 0);
         assert!(compressed_empty.is_empty());
         assert_eq!(compressed_empty.get(0), None);
 
         // Test with a single run
         let parents_single_run = vec![first.clone(), first.clone(), first.clone()];
-        let compressed_single_run = CompressedParents::from_vec(parents_single_run.clone());
+        let compressed_single_run: CompressedParents = parents_single_run.try_into().unwrap();
         assert_eq!(compressed_single_run.len(), 3);
         assert_eq!(compressed_single_run.get(0), Some(&first));
         assert_eq!(compressed_single_run.get(1), Some(&first));
@@ -433,7 +322,7 @@ mod tests {
     #[test]
     fn compressed_parents_binary_format_matches_runs() {
         let parents = vec![vec_from(&[1, 2, 3]), vec_from(&[1, 2, 3]), vec_from(&[4])];
-        let compressed = CompressedParents::from_vec(parents);
+        let compressed: CompressedParents = parents.try_into().unwrap();
 
         let encoded = bincode::serialize(&compressed).unwrap();
         let expected = bincode::serialize(&compressed.0).unwrap();

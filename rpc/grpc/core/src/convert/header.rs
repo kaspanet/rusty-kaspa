@@ -52,7 +52,7 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
     // We re-hash the block to remain as most trustless as possible
     let header = Header::new_finalized(
         item.version.try_into()?,
-        item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?.into(),
+        item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?.try_into().unwrap(),
         RpcHash::from_str(&item.hash_merkle_root)?,
         RpcHash::from_str(&item.accepted_id_merkle_root)?,
         RpcHash::from_str(&item.utxo_commitment)?,
@@ -71,7 +71,7 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
 try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcRawHeader, {
     Self {
         version: item.version.try_into()?,
-        parents_by_level: item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?.into(),
+        parents_by_level: item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?,
         hash_merkle_root: RpcHash::from_str(&item.hash_merkle_root)?,
         accepted_id_merkle_root: RpcHash::from_str(&item.accepted_id_merkle_root)?,
         utxo_commitment: RpcHash::from_str(&item.utxo_commitment)?,
@@ -146,7 +146,9 @@ mod tests {
     fn test_rpc_header() {
         let header = Header::new_finalized(
             0,
-            vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]].into(),
+            vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]]
+                .try_into()
+                .unwrap(),
             new_unique(),
             new_unique(),
             new_unique(),
@@ -178,7 +180,9 @@ mod tests {
     fn test_rpc_block() {
         let header = Header::new_finalized(
             0,
-            vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]].into(),
+            vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]]
+                .try_into()
+                .unwrap(),
             new_unique(),
             new_unique(),
             new_unique(),

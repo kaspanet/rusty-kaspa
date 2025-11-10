@@ -55,7 +55,9 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point);
 
         let mut origin_children_headers = None;
-        let mut parents = Vec::with_capacity(self.max_block_level as usize);
+        let mut compressed_parents: Vec<(u8, Vec<Hash>)> = vec![];
+        let mut prev_parents_at_level: Vec<Hash> = vec![];
+        let mut last_block_level: u8 = 0;
 
         for block_level in 0..=self.max_block_level {
             // Direct parents are guaranteed to be in one another's anticones so add them all to
@@ -174,13 +176,25 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             };
 
             if block_level > 0 && parents_at_level.as_slice() == std::slice::from_ref(&self.genesis_hash) {
+                last_block_level = block_level;
                 break;
             }
 
-            parents.push(parents_at_level);
+            if prev_parents_at_level != parents_at_level {
+                // Initialize prev_parents_at_level on first iteration
+                if block_level == 0 {
+                    last_block_level = 1;
+                    prev_parents_at_level = parents_at_level;
+                } else {
+                    compressed_parents.push((block_level, prev_parents_at_level));
+                    prev_parents_at_level = parents_at_level;
+                }
+            }
         }
 
-        parents.into()
+        last_block_level = std::cmp::min(last_block_level, self.max_block_level);
+        compressed_parents.push((last_block_level, prev_parents_at_level));
+        CompressedParents::from(compressed_parents)
     }
 
     pub fn parents_at_level<'a>(&'a self, header: &'a Header, level: u8) -> &'a [Hash] {
@@ -315,7 +329,8 @@ mod tests {
                         vec![1001.into()],
                         vec![1002.into()],
                     ]
-                    .into(),
+                    .try_into()
+                    .unwrap(),
                     hash_merkle_root: 1.into(),
                     accepted_id_merkle_root: 1.into(),
                     utxo_commitment: 1.into(),
@@ -345,7 +360,8 @@ mod tests {
                         vec![2001.into()],
                         vec![2001.into()],
                     ]
-                    .into(),
+                    .try_into()
+                    .unwrap(),
                     hash_merkle_root: 1.into(),
                     accepted_id_merkle_root: 1.into(),
                     utxo_commitment: 1.into(),
@@ -375,7 +391,8 @@ mod tests {
                         vec![2001.into()],
                         vec![2001.into()],
                     ]
-                    .into(),
+                    .try_into()
+                    .unwrap(),
                     hash_merkle_root: 1.into(),
                     accepted_id_merkle_root: 1.into(),
                     utxo_commitment: 1.into(),
@@ -477,7 +494,7 @@ mod tests {
                     header: Arc::new(Header {
                         hash,
                         version: 0,
-                        parents_by_level: expected_parents.into(),
+                        parents_by_level: expected_parents.try_into().unwrap(),
                         hash_merkle_root: 1.into(),
                         accepted_id_merkle_root: 1.into(),
                         utxo_commitment: 1.into(),
@@ -539,7 +556,7 @@ mod tests {
                 header: Arc::new(Header {
                     hash: pruning_point,
                     version: 0,
-                    parents_by_level: vec![vec![1001.into(), 1002.into()], vec![1001.into(), 1002.into()]].into(),
+                    parents_by_level: vec![vec![1001.into(), 1002.into()], vec![1001.into(), 1002.into()]].try_into().unwrap(),
                     hash_merkle_root: 1.into(),
                     accepted_id_merkle_root: 1.into(),
                     utxo_commitment: 1.into(),
@@ -580,7 +597,7 @@ mod tests {
                     header: Arc::new(Header {
                         hash,
                         version: 0,
-                        parents_by_level: expected_parents.into(),
+                        parents_by_level: expected_parents.try_into().unwrap(),
                         hash_merkle_root: 1.into(),
                         accepted_id_merkle_root: 1.into(),
                         utxo_commitment: 1.into(),

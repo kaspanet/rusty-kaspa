@@ -247,7 +247,7 @@ impl Header {
                 panic!("{}", err);
             });
 
-        self.inner_mut().parents_by_level = parents.into();
+        self.inner_mut().parents_by_level = parents.try_into().unwrap();
     }
 
     #[wasm_bindgen(getter = blueWork)]
@@ -286,7 +286,7 @@ impl TryCastFromJs for Header {
                     })
                     .collect::<std::result::Result<Vec<Vec<Hash>>, Error>>()?;
 
-                let parents_by_level = parents_by_level_vec.into();
+                let parents_by_level = parents_by_level_vec.try_into().unwrap();
 
                 let header = native::Header {
                     hash: object.get_value("hash")?.try_into_owned().unwrap_or_default(),

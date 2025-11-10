@@ -1137,7 +1137,8 @@ fn rpc_header_to_header(rpc_header: &RPCBlockHeader) -> Header {
             .iter()
             .map(|item| item.ParentHashes.iter().map(|parent| Hash::from_str(parent).unwrap()).collect::<Vec<Hash>>())
             .collect::<Vec<Vec<Hash>>>()
-            .into(),
+            .try_into()
+            .unwrap(),
         Hash::from_str(&rpc_header.HashMerkleRoot).unwrap(),
         Hash::from_str(&rpc_header.AcceptedIDMerkleRoot).unwrap(),
         Hash::from_str(&rpc_header.UTXOCommitment).unwrap(),
@@ -1471,7 +1472,7 @@ async fn difficulty_test() {
         let fake_genesis = Header {
             hash: test.config.genesis.hash,
             version: 0,
-            parents_by_level: Vec::<Vec<Hash>>::new().into(),
+            parents_by_level: Vec::<Vec<Hash>>::new().try_into().unwrap(),
             hash_merkle_root: 0.into(),
             accepted_id_merkle_root: 0.into(),
             utxo_commitment: 0.into(),

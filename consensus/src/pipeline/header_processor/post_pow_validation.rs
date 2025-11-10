@@ -77,7 +77,7 @@ impl HeaderProcessor {
             )
         {
             return Err(RuleError::UnexpectedIndirectParents(
-                TwoDimVecDisplay(expected_block_parents.to_vec()),
+                TwoDimVecDisplay(expected_block_parents.into()),
                 TwoDimVecDisplay(Vec::from(&header.parents_by_level)),
             ));
         };
