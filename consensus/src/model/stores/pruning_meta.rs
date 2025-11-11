@@ -45,7 +45,8 @@ impl PruningMetaStores {
         self.utxoset_stable_flag_access.write(BatchDbWriter::new(batch), &stable)
     }
 
-    /// Read the flag; default to true if missing, which corresponds to a new consensus
+    /// Read the flag; default to true if missing - this is important because a node upgrading should have this value true
+    /// as all non staging consensuses had a stable utxoset previously
     pub fn pruning_utxoset_stable_flag(&self) -> bool {
         self.utxoset_stable_flag_access.read().unwrap_option().unwrap_or(true)
     }
