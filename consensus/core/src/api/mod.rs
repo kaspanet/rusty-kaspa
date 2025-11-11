@@ -386,7 +386,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn set_pruning_utxoset_stable(&self, val: bool) {
+    fn set_pruning_utxoset_stable_flag(&self, val: bool) {
         unimplemented!()
     }
 

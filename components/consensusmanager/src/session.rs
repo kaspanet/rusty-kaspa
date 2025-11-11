@@ -484,10 +484,10 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.is_consensus_in_transitional_ibd_state()).await
     }
     pub async fn async_set_pruning_utxoset_unstable(&self) {
-        self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable(false)).await
+        self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable_flag(false)).await
     }
     pub async fn async_set_pruning_utxoset_stable(&self) {
-        self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable(true)).await
+        self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable_flag(true)).await
     }
     pub async fn async_verify_is_pruning_sample(&self, candidate_hash: Hash) -> ConsensusResult<()> {
         self.clone().spawn_blocking(move |c| c.verify_is_pruning_sample(candidate_hash)).await

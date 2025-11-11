@@ -531,7 +531,7 @@ impl Consensus {
         // Update selected_chain
         self.selected_chain_store.write().init_with_pruning_point(&mut batch, new_pruning_point).unwrap();
         // It is important to set this flag to false together with writing the batch, in case the node crashes suddenly before syncing of new utxo starts
-        self.pruning_meta_stores.write().set_pruning_utxoset_stable(&mut batch, false).unwrap();
+        self.pruning_meta_stores.write().set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
         // Store the currently bodyless anticone from the POV of the syncer, for trusted body validation at a later stage.
         let mut anticone = self.services.dag_traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
         // Add the pruning point itself which is also missing a body
@@ -1290,8 +1290,9 @@ impl ConsensusApi for Consensus {
     fn clear_pruning_utxo_set(&self) {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
         let mut batch = rocksdb::WriteBatch::default();
-
-        pruning_meta_write.set_pruning_utxoset_stable(&mut batch, false).unwrap();
+        // Currently under the conditions in which this function is called, this flag should already be false.
+        // We lower it down regardless as it is conceptually true to do so.
+        pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
         self.db.write(batch).unwrap();
         pruning_meta_write.utxo_set.clear().unwrap();
     }
@@ -1327,11 +1328,11 @@ impl ConsensusApi for Consensus {
         self.intrusive_pruning_point_store_writes(new_pruning_point, syncer_sink, pruning_points_to_add)
     }
 
-    fn set_pruning_utxoset_stable(&self, val: bool) {
+    fn set_pruning_utxoset_stable_flag(&self, val: bool) {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
         let mut batch = rocksdb::WriteBatch::default();
 
-        pruning_meta_write.set_pruning_utxoset_stable(&mut batch, val).unwrap();
+        pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, val).unwrap();
         self.db.write(batch).unwrap();
     }
 
