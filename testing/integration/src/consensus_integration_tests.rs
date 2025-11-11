@@ -77,6 +77,7 @@ use std::cmp::{max, Ordering};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{
     collections::HashMap,
     fs::File,
@@ -2184,4 +2185,85 @@ async fn runtime_sig_op_counting_test() {
     // Test 2: After activation, tx should be accepted as runtime counting only sees 1 executed sig op
     let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+}
+
+// Checks that pruning works and that we do not allow attaching a body to a pruned block
+#[tokio::test]
+async fn pruning_test() {
+    init_allocator_with_default_settings();
+    let config = ConfigBuilder::new(MAINNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| {
+            p.prior_finality_depth = 2;
+            p.prior_mergeset_size_limit = 2;
+            p.prior_ghostdag_k = 2;
+            p.prior_merge_depth = 3;
+            p.prior_pruning_depth = 100;
+
+            p.crescendo.finality_depth = 2;
+            p.crescendo.mergeset_size_limit = 2;
+            p.crescendo.ghostdag_k = 2;
+            p.crescendo.merge_depth = 3;
+            p.crescendo.pruning_depth = 100;
+        })
+        .build();
+
+    assert!((config.prior_ghostdag_k as u64) < config.prior_merge_depth, "K must be smaller than merge depth for this test to run");
+
+    let consensus = TestConsensus::new(&config);
+    let wait_handles = consensus.init();
+
+    let mut selected_chain = vec![config.genesis.hash];
+
+    let genesis_child = 1.into();
+    consensus.add_empty_utxo_valid_block_with_parents(genesis_child, vec![*selected_chain.last().unwrap()]).await.unwrap();
+    selected_chain.push(genesis_child);
+    let genesis_child_block = consensus.get_block(genesis_child).unwrap();
+
+    let genesis_child_child = 2.into();
+    consensus.add_empty_utxo_valid_block_with_parents(genesis_child_child, vec![*selected_chain.last().unwrap()]).await.unwrap();
+    selected_chain.push(genesis_child_child);
+    let genesis_child_child_block = consensus.get_block(genesis_child_child).unwrap();
+
+    for i in 3..config.prior_pruning_depth + config.prior_finality_depth + 100 {
+        let hash: Hash = i.into();
+        consensus.add_empty_utxo_valid_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
+        selected_chain.push(hash);
+    }
+
+    // Waiting for genesis_child to get pruned
+    while consensus.get_block_status(genesis_child).unwrap() == BlockStatus::StatusUTXOValid {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    assert!(consensus.validate_and_insert_block(genesis_child_block).virtual_state_task.await.is_err());
+    assert!(consensus.validate_and_insert_block(genesis_child_child_block).virtual_state_task.await.is_err());
+
+    consensus.shutdown(wait_handles);
+}
+
+// Checks that consensus can handle blocks from multiple levels
+#[tokio::test]
+async fn indirect_parents_test() {
+    init_allocator_with_default_settings();
+    let config = ConfigBuilder::new(DEVNET_PARAMS).skip_proof_of_work().build();
+    let consensus = TestConsensus::new(&config);
+    let wait_handles = consensus.init();
+
+    let mut level_3_count = 3;
+    let mut selected_chain = vec![config.genesis.hash];
+    for i in 1.. {
+        let hash: Hash = i.into();
+        consensus.add_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
+        selected_chain.push(hash);
+        if consensus.get_header(*selected_chain.last().unwrap()).unwrap().parents_by_level.len() >= 3 {
+            level_3_count += 1;
+        }
+
+        if level_3_count > 5 {
+            break;
+        }
+    }
+
+    consensus.shutdown(wait_handles);
 }
