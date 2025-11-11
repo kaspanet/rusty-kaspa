@@ -130,7 +130,11 @@ impl PruningPhaseMetrics {
     fn log_summary(&self) {
         let elapsed_ms = self.started.elapsed().as_millis();
         info!(
-            "[PRUNING METRICS] duration_ms={} traversed={} pruned={} lock_hold_ms={} lock_yields={} lock_reacquires={}",
+            "[PRUNING METRICS] config_lock_max_ms={} config_batch_max_ms={} config_batch_max_ops={} config_batch_max_bytes={} duration_ms={} traversed={} pruned={} lock_hold_ms={} lock_yields={} lock_reacquires={}",
+            PRUNE_LOCK_MAX_DURATION_MS,
+            PRUNE_BATCH_MAX_DURATION_MS,
+            PRUNE_BATCH_MAX_OPS,
+            PRUNE_BATCH_MAX_BYTES,
             elapsed_ms,
             self.total_traversed,
             self.total_pruned,
