@@ -343,7 +343,7 @@ pub trait ConsensusApi: Send + Sync {
     fn get_body_missing_anticone(&self) -> Vec<Hash> {
         unimplemented!()
     }
-    fn clear_body_missing_anticone_cache(&self) {
+    fn clear_body_missing_anticone_set(&self) {
         unimplemented!()
     }
 

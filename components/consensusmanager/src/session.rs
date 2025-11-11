@@ -432,8 +432,8 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_body_missing_anticone()).await
     }
 
-    pub async fn async_clear_body_missing_anticone_cache(&self) {
-        self.clone().spawn_blocking(move |c| c.clear_body_missing_anticone_cache()).await
+    pub async fn async_clear_body_missing_anticone_set(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_body_missing_anticone_set()).await
     }
 
     pub async fn async_pruning_point(&self) -> Hash {

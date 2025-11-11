@@ -501,7 +501,7 @@ impl IbdFlow {
             // TODO (relaxed): queue and join in batches
             staging.validate_and_insert_trusted_block(tb).virtual_state_task.await?;
         }
-        staging.async_clear_body_missing_anticone_cache().await;
+        staging.async_clear_body_missing_anticone_set().await;
         info!("Done processing trusted blocks");
         Ok(proof_pruning_point)
     }
@@ -675,7 +675,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         } else {
             self.sync_missing_trusted_bodies_full_blocks(consensus, diesembodied_hashes).await?;
         }
-        consensus.async_clear_body_missing_anticone_cache().await;
+        consensus.async_clear_body_missing_anticone_set().await;
         Ok(())
     }
     async fn sync_missing_trusted_bodies_no_headers(

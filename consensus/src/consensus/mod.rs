@@ -1209,7 +1209,7 @@ impl ConsensusApi for Consensus {
         self.pruning_meta_stores.read().get_body_missing_anticone()
     }
 
-    fn clear_body_missing_anticone_cache(&self) {
+    fn clear_body_missing_anticone_set(&self) {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
         let mut batch = rocksdb::WriteBatch::default();
         pruning_meta_write.set_body_missing_anticone(&mut batch, vec![]).unwrap();
