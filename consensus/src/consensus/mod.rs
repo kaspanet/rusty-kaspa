@@ -328,6 +328,7 @@ impl Consensus {
         // TODO (post HF): remove this upgrade
         // Database upgrade to include pruning samples
         self.pruning_samples_database_upgrade();
+        self.consensus_transitional_flags_update();
     }
 
     fn retention_root_database_upgrade(&self) {
@@ -345,6 +346,20 @@ impl Consensus {
             }
             self.db.write(batch).unwrap();
         }
+    }
+
+    fn consensus_transitional_flags_update(&self) {
+        // Write the defaults to the internal storage so they will remain in cache
+        // *For a new staging consensus these flags will be updated again explicitly*
+        let mut batch = rocksdb::WriteBatch::default();
+        let mut pruning_meta_write = self.storage.pruning_meta_stores.write();
+        if pruning_meta_write.is_anticone_fully_synced() {
+            pruning_meta_write.set_body_missing_anticone(&mut batch, vec![]).unwrap();
+        }
+        if pruning_meta_write.pruning_utxoset_stable_flag() {
+            pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, true).unwrap();
+        }
+        self.db.write(batch).unwrap();
     }
 
     fn pruning_samples_database_upgrade(&self) {
