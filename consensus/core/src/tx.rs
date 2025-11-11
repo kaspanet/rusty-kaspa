@@ -94,10 +94,6 @@ pub struct TransactionInput {
     #[serde(with = "serde_bytes")]
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
-
-    // TODO: Since this field is used for calculating mass context free, and we already commit
-    // to the mass in a dedicated field (on the tx level), it follows that this field is no longer
-    // needed, and can be removed if we ever implement a v2 transaction
     pub sig_op_count: u8,
 }
 
@@ -233,8 +229,8 @@ impl Transaction {
         self.id
     }
 
-    /// Set the storage mass commitment field of this transaction. This field is expected to be activated on mainnet
-    /// as part of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
+    /// Set the storage mass commitment field of this transaction. This field has been activated on mainnet as part
+    /// of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
     pub fn set_mass(&self, mass: u64) {
         self.mass.0.store(mass, SeqCst)
     }

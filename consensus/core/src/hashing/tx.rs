@@ -2,33 +2,47 @@ use super::HasherExtensions;
 use crate::tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_hashes::{Hash, Hasher};
 
-/// A bitmask defining which transaction fields we
-/// want to encode and which to ignore.
-type TxEncodingFlags = u8;
-
-pub const TX_ENCODING_FULL: TxEncodingFlags = 0;
-pub const TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT: TxEncodingFlags = 1;
+bitflags::bitflags! {
+    /// A bitmask defining which transaction fields we want to encode and which to ignore.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct TxEncodingFlags: u8 {
+        const FULL = 0;
+        const EXCLUDE_SIGNATURE_SCRIPT = 1 << 0;
+        const EXCLUDE_MASS_COMMIT = 1 << 1;
+    }
+}
 
 /// Returns the transaction hash. Note that this is different than the transaction ID.
-pub fn hash(tx: &Transaction, include_mass_field: bool) -> Hash {
+pub fn hash(tx: &Transaction) -> Hash {
     let mut hasher = kaspa_hashes::TransactionHash::new();
-    write_transaction(&mut hasher, tx, TX_ENCODING_FULL, include_mass_field);
+    write_transaction(&mut hasher, tx, TxEncodingFlags::FULL);
+    hasher.finalize()
+}
+
+/// Returns the transaction hash pre-crescendo (which excludes the mass commitment)
+pub fn hash_pre_crescendo(tx: &Transaction) -> Hash {
+    let mut hasher = kaspa_hashes::TransactionHash::new();
+    write_transaction(&mut hasher, tx, TxEncodingFlags::EXCLUDE_MASS_COMMIT);
     hasher.finalize()
 }
 
 /// Not intended for direct use by clients. Instead use `tx.id()`
 pub(crate) fn id(tx: &Transaction) -> TransactionId {
     // Encode the transaction, replace signature script with an empty array, skip
-    // sigop counts and mass and hash the result.
+    // sigop counts and mass commitment and hash the result.
 
-    let encoding_flags = if tx.is_coinbase() { TX_ENCODING_FULL } else { TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT };
+    let encoding_flags = if tx.is_coinbase() {
+        TxEncodingFlags::FULL
+    } else {
+        TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT
+    };
     let mut hasher = kaspa_hashes::TransactionID::new();
-    write_transaction(&mut hasher, tx, encoding_flags, false);
+    write_transaction(&mut hasher, tx, encoding_flags);
     hasher.finalize()
 }
 
 /// Write the transaction into the provided hasher according to the encoding flags
-fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags: TxEncodingFlags, include_mass_field: bool) {
+fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags: TxEncodingFlags) {
     hasher.update(tx.version.to_le_bytes()).write_len(tx.inputs.len());
     for input in tx.inputs.iter() {
         // Write the tx input
@@ -47,7 +61,7 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
        Design principles (mostly related to the new mass commitment field; see KIP-0009):
            1. The new mass field should not modify tx::id (since it is essentially a commitment by the miner re block space usage
               so there is no need to modify the id definition which will require wide-spread changes in ecosystem software).
-           2. Coinbase tx hash and id should ideally remain equal
+           2. Coinbase tx hash should ideally remain unchanged
 
        Solution:
            1. Hash the mass field only for tx::hash
@@ -57,13 +71,10 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
        This way we have:
            - Unique commitment for tx::hash per any possible mass value (with only zero being a no-op)
            - tx::id remains unmodified
-           - Coinbase tx hash and id remain the same and equal
+           - Coinbase tx hash remains unchanged
     */
 
-    // TODO (post HF):
-    //      1. Avoid passing a boolean
-    //      2. Use TxEncodingFlags to avoid including the mass for tx ID
-    if include_mass_field {
+    if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) {
         let mass = tx.mass();
         if mass > 0 {
             hasher.update(mass.to_le_bytes());
@@ -74,7 +85,7 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
 #[inline(always)]
 fn write_input<T: Hasher>(hasher: &mut T, input: &TransactionInput, encoding_flags: TxEncodingFlags) {
     write_outpoint(hasher, &input.previous_outpoint);
-    if encoding_flags & TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT != TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT {
+    if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT) {
         hasher.write_var_bytes(input.signature_script.as_slice()).update([input.sig_op_count]);
     } else {
         hasher.write_var_bytes(&[]);
@@ -183,12 +194,7 @@ mod tests {
 
         for (i, test) in tests.iter().enumerate() {
             assert_eq!(test.tx.id(), Hash::from_str(test.expected_id).unwrap(), "transaction id failed for test {}", i + 1);
-            assert_eq!(
-                hash(&test.tx, false),
-                Hash::from_str(test.expected_hash).unwrap(),
-                "transaction hash failed for test {}",
-                i + 1
-            );
+            assert_eq!(hash(&test.tx), Hash::from_str(test.expected_hash).unwrap(), "transaction hash failed for test {}", i + 1);
         }
 
         // Avoid compiler warnings on the last clone
