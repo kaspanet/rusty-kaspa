@@ -43,6 +43,10 @@ impl TransactionValidator {
             return Err(TxRuleError::CoinbaseHasInputs(tx.inputs.len()));
         }
 
+        if tx.mass() > 0 {
+            return Err(TxRuleError::CoinbaseNonZeroMassCommitment);
+        }
+
         let outputs_limit = self.ghostdag_k as u64 + 2;
         if tx.outputs.len() as u64 > outputs_limit {
             return Err(TxRuleError::CoinbaseTooManyOutputs(tx.outputs.len(), outputs_limit));

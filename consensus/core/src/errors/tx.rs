@@ -42,6 +42,9 @@ pub enum TxRuleError {
     #[error("script public key of coinbase output #{0} is too long")]
     CoinbaseScriptPublicKeyTooLong(usize),
 
+    #[error("coinbase mass commitment field is not zero")]
+    CoinbaseNonZeroMassCommitment,
+
     #[error(
         "transaction input #{0} tried to spend coinbase outpoint {1} with daa score of {2} 
     while the merging block daa score is {3} and the coinbase maturity period of {4} hasn't passed yet"
