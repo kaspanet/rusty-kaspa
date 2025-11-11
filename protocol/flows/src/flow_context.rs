@@ -509,34 +509,10 @@ impl FlowContext {
         // Broadcast as soon as the block has been validated and inserted into the DAG
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
 
-        let daa_score = block.header.daa_score;
         self.on_new_block(consensus, Default::default(), block, virtual_state_task).await;
-        self.log_new_block_event(BlockLogEvent::Submit(hash), daa_score);
+        self.log_block_event(BlockLogEvent::Submit(hash));
 
         Ok(())
-    }
-
-    /// [Crescendo] temp crescendo countdown logging
-    pub(super) fn log_new_block_event(&self, event: BlockLogEvent, daa_score: u64) {
-        if self.config.bps().before() == 1 && !self.config.crescendo_activation.is_active(daa_score) {
-            if let Some(dist) = self.config.crescendo_activation.is_within_range_before_activation(daa_score, 3600) {
-                match event {
-                    BlockLogEvent::Relay(hash) => info!("Accepted block {} via relay \t [Crescendo countdown: -{}]", hash, dist),
-                    BlockLogEvent::Submit(hash) => {
-                        info!("Accepted block {} via submit block \t [Crescendo countdown: -{}]", hash, dist)
-                    }
-                    _ => {}
-                }
-            } else {
-                match event {
-                    BlockLogEvent::Relay(hash) => info!("Accepted block {} via relay", hash),
-                    BlockLogEvent::Submit(hash) => info!("Accepted block {} via submit block", hash),
-                    _ => {}
-                }
-            }
-        } else {
-            self.log_block_event(event);
-        }
     }
 
     pub fn log_block_event(&self, event: BlockLogEvent) {
