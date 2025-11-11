@@ -1282,6 +1282,12 @@ mod mockery {
 
     test!(GetVirtualChainFromBlockV2Request);
 
+    impl Mock for RpcChainBlockAcceptedTransactions {
+        fn mock() -> Self {
+            RpcChainBlockAcceptedTransactions { chain_block_header: mock(), accepted_transactions: mock() }
+        }
+    }
+
     impl Mock for GetVirtualChainFromBlockV2Response {
         fn mock() -> Self {
             GetVirtualChainFromBlockV2Response {
