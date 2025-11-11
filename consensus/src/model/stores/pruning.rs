@@ -5,38 +5,34 @@ use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
+use kaspa_hashes::ZERO_HASH;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
-pub struct PruningPointInfo {
-    pub pruning_point: Hash,
-    pub candidate: Hash,
-    pub index: u64,
+struct PruningPointInfo {
+    pruning_point: Hash,
+    _candidate: Hash, // Obsolete field. Kept only for avoiding the DB upgrade logic. TODO: remove all together
+    index: u64,
 }
 
 impl PruningPointInfo {
-    pub fn new(pruning_point: Hash, candidate: Hash, index: u64) -> Self {
-        Self { pruning_point, candidate, index }
+    pub fn new(pruning_point: Hash, index: u64) -> Self {
+        Self { pruning_point, _candidate: ZERO_HASH, index }
     }
 
-    pub fn from_genesis(genesis_hash: Hash) -> Self {
-        Self { pruning_point: genesis_hash, candidate: genesis_hash, index: 0 }
-    }
-
-    pub fn decompose(self) -> (Hash, Hash, u64) {
-        (self.pruning_point, self.candidate, self.index)
+    pub fn decompose(self) -> (Hash, u64) {
+        (self.pruning_point, self.index)
     }
 }
 
 /// Reader API for `PruningStore`.
 pub trait PruningStoreReader {
     fn pruning_point(&self) -> StoreResult<Hash>;
-    fn pruning_point_candidate(&self) -> StoreResult<Hash>;
     fn pruning_point_index(&self) -> StoreResult<u64>;
 
-    /// Returns full pruning point info, including its index and the next pruning point candidate
-    fn get(&self) -> StoreResult<PruningPointInfo>;
+    /// Returns the pruning point and its index
+    fn pruning_point_and_index(&self) -> StoreResult<(Hash, u64)>;
 
     /// Represent the point after which data is fully held (i.e., history is consecutive from this point and up to virtual).
     /// This is usually a pruning point that is at or below the retention period requirement (and for archival
@@ -52,7 +48,7 @@ pub trait PruningStoreReader {
 }
 
 pub trait PruningStore: PruningStoreReader {
-    fn set(&mut self, pruning_point: Hash, candidate: Hash, index: u64) -> StoreResult<()>;
+    fn set(&mut self, pruning_point: Hash, index: u64) -> StoreResult<()>;
 }
 
 /// A DB + cache implementation of `PruningStore` trait, with concurrent readers support.
@@ -78,8 +74,8 @@ impl DbPruningStore {
         Self::new(Arc::clone(&self.db))
     }
 
-    pub fn set_batch(&mut self, batch: &mut WriteBatch, pruning_point: Hash, candidate: Hash, index: u64) -> StoreResult<()> {
-        self.access.write(BatchDbWriter::new(batch), &PruningPointInfo { pruning_point, candidate, index })
+    pub fn set_batch(&mut self, batch: &mut WriteBatch, pruning_point: Hash, index: u64) -> StoreResult<()> {
+        self.access.write(BatchDbWriter::new(batch), &PruningPointInfo::new(pruning_point, index))
     }
 
     pub fn set_retention_checkpoint(&mut self, batch: &mut WriteBatch, retention_checkpoint: Hash) -> StoreResult<()> {
@@ -96,16 +92,12 @@ impl PruningStoreReader for DbPruningStore {
         Ok(self.access.read()?.pruning_point)
     }
 
-    fn pruning_point_candidate(&self) -> StoreResult<Hash> {
-        Ok(self.access.read()?.candidate)
-    }
-
     fn pruning_point_index(&self) -> StoreResult<u64> {
         Ok(self.access.read()?.index)
     }
 
-    fn get(&self) -> StoreResult<PruningPointInfo> {
-        self.access.read()
+    fn pruning_point_and_index(&self) -> StoreResult<(Hash, u64)> {
+        Ok(self.access.read()?.decompose())
     }
 
     fn retention_checkpoint(&self) -> StoreResult<Hash> {
@@ -118,7 +110,7 @@ impl PruningStoreReader for DbPruningStore {
 }
 
 impl PruningStore for DbPruningStore {
-    fn set(&mut self, pruning_point: Hash, candidate: Hash, index: u64) -> StoreResult<()> {
-        self.access.write(DirectDbWriter::new(&self.db), &PruningPointInfo::new(pruning_point, candidate, index))
+    fn set(&mut self, pruning_point: Hash, index: u64) -> StoreResult<()> {
+        self.access.write(DirectDbWriter::new(&self.db), &PruningPointInfo::new(pruning_point, index))
     }
 }

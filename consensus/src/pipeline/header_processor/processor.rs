@@ -14,9 +14,9 @@ use crate::{
             daa::DbDaaStore,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
-            headers::{DbHeadersStore, HeaderStoreReader},
+            headers::DbHeadersStore,
             headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
-            pruning::{DbPruningStore, PruningPointInfo, PruningStoreReader},
+            pruning::{DbPruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreReader},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
@@ -53,13 +53,12 @@ use super::super::ProcessingCounters;
 pub struct HeaderProcessingContext {
     pub hash: Hash,
     pub header: Arc<Header>,
-    pub pruning_info: PruningPointInfo,
+    pub pruning_point: Hash,
     pub block_level: BlockLevel,
     pub known_parents: Vec<BlockHashes>,
 
     // Staging data
     pub ghostdag_data: Option<Arc<GhostdagData>>,
-    pub selected_parent_daa_score: Option<u64>, // [Crescendo]
     pub block_window_for_difficulty: Option<Arc<BlockWindowHeap>>,
     pub block_window_for_past_median_time: Option<Arc<BlockWindowHeap>>,
     pub mergeset_non_daa: Option<BlockHashSet>,
@@ -72,17 +71,16 @@ impl HeaderProcessingContext {
         hash: Hash,
         header: Arc<Header>,
         block_level: BlockLevel,
-        pruning_info: PruningPointInfo,
+        pruning_point: Hash,
         known_parents: Vec<BlockHashes>,
     ) -> Self {
         Self {
             hash,
             header,
             block_level,
-            pruning_info,
+            pruning_point,
             known_parents,
             ghostdag_data: None,
-            selected_parent_daa_score: None,
             block_window_for_difficulty: None,
             mergeset_non_daa: None,
             block_window_for_past_median_time: None,
@@ -96,19 +94,10 @@ impl HeaderProcessingContext {
         &self.known_parents[0]
     }
 
-    /// Returns the pruning point at the time this header began processing
-    pub fn pruning_point(&self) -> Hash {
-        self.pruning_info.pruning_point
-    }
-
     /// Returns the primary (level 0) GHOSTDAG data of this header.
-    /// NOTE: is expected to be called only after GHOSTDAG computation was pushed into the context
+    /// NOTE: expected to be called only after GHOSTDAG computation was pushed into the context
     pub fn ghostdag_data(&self) -> &Arc<GhostdagData> {
         self.ghostdag_data.as_ref().unwrap()
-    }
-
-    pub fn selected_parent_daa_score(&self) -> u64 {
-        self.selected_parent_daa_score.unwrap()
     }
 }
 
@@ -307,8 +296,6 @@ impl HeaderProcessor {
         self.validate_parent_relations(header)?;
         let mut ctx = self.build_processing_context(header, block_level);
         self.ghostdag(&mut ctx);
-        // [Crescendo]: persist the selected parent DAA score to be used for activation checks
-        ctx.selected_parent_daa_score = Some(self.headers_store.get_daa_score(ctx.ghostdag_data().selected_parent).unwrap());
         self.pre_pow_validation(&mut ctx, header)?;
         if let Err(e) = self.post_pow_validation(&mut ctx, header) {
             self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
@@ -330,7 +317,7 @@ impl HeaderProcessor {
             header.hash,
             header.clone(),
             block_level,
-            self.pruning_point_store.read().get().unwrap(),
+            self.pruning_point_store.read().pruning_point().unwrap(),
             self.collect_known_parents(header, block_level),
         )
     }
@@ -368,7 +355,6 @@ impl HeaderProcessor {
 
     fn commit_header(&self, ctx: HeaderProcessingContext, header: &Header) {
         let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
-        let pp = ctx.pruning_point();
 
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
@@ -407,7 +393,7 @@ impl HeaderProcessor {
         let mut hst_write = self.headers_selected_tip_store.write();
         let prev_hst = hst_write.get().unwrap();
         if SortableBlock::new(ctx.hash, header.blue_work) > prev_hst
-            && reachability::is_chain_ancestor_of(&staging, pp, ctx.hash).unwrap()
+            && reachability::is_chain_ancestor_of(&staging, ctx.pruning_point, ctx.hash).unwrap()
         {
             // Hint reachability about the new tip.
             reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
@@ -491,7 +477,7 @@ impl HeaderProcessor {
             self.genesis.hash,
             genesis_header.clone(),
             self.max_block_level,
-            PruningPointInfo::from_genesis(self.genesis.hash),
+            self.genesis.hash,
             (0..=self.max_block_level).map(|_| BlockHashes::new(vec![ORIGIN])).collect(),
         );
         ctx.ghostdag_data = Some(Arc::new(self.ghostdag_manager.genesis_ghostdag_data()));

@@ -105,8 +105,7 @@ impl BlockTemplateBuilder {
             coinbase_tx.outputs.last_mut().unwrap().script_public_key = new_miner_data.script_public_key.clone();
         }
         // Update the hash merkle root according to the modified transactions
-        block_template.block.header.hash_merkle_root =
-            consensus.calc_transaction_hash_merkle_root(&block_template.block.transactions, block_template.block.header.daa_score);
+        block_template.block.header.hash_merkle_root = consensus.calc_transaction_hash_merkle_root(&block_template.block.transactions);
         let new_timestamp = unix_now();
         if new_timestamp > block_template.block.header.timestamp {
             // Only if new time stamp is later than current, update the header. Otherwise,
