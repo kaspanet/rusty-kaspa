@@ -34,7 +34,7 @@ impl BlockBodyProcessor {
                 // We only evaluate the pmt calculation when actually needed
                 LockTimeType::Time => LockTimeArg::MedianTime((*lazy_pmt_res).clone()?),
             };
-            if let Err(e) = self.transaction_validator.validate_tx_in_header_context(tx, block.header.daa_score, lock_time_arg) {
+            if let Err(e) = self.transaction_validator.validate_tx_in_header_context(tx, lock_time_arg) {
                 return Err(RuleError::TxInContextFailed(tx.id(), e));
             };
         }
