@@ -56,7 +56,8 @@ mod mockery {
     where
         T: Mock,
     {
-        Mock::mock()
+        // forward to the type's Mock implementation
+        T::mock()
     }
 
     // this function tests serialization and deserialization of a type
@@ -1286,7 +1287,7 @@ mod mockery {
             GetVirtualChainFromBlockV2Response {
                 removed_chain_block_hashes: mock(),
                 added_chain_block_hashes: mock(),
-                added_acceptance_data: mock(),
+                chain_block_accepted_transactions: mock(),
             }
         }
     }

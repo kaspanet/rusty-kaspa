@@ -60,31 +60,22 @@ async fn get_vcc_v2() -> Result<()> {
         )
         .await?;
 
-    let mut count_mergeset = 0;
-    let mut count_block = 0;
     let mut seen_tx = HashSet::<RpcHash>::with_capacity(30_000);
     let mut count_duplicated_tx = 0;
 
     println!("{:#?}", response);
-    response.added_acceptance_data.iter().for_each(|acd| {
+    response.chain_block_accepted_transactions.iter().for_each(|acd| {
         // println!("mergeset of {}", acd.accepting_chain_header.as_ref().unwrap().hash.unwrap());
 
-        count_mergeset += 1;
-        acd.mergeset_block_acceptance_data.iter().for_each(|bad| {
-            // println!("block {}", bad.merged_header.as_ref().unwrap().hash.unwrap());
-            count_block += 1;
-
-            bad.accepted_transactions.iter().for_each(|tx| {
-                let id = tx.verbose_data.as_ref().unwrap().transaction_id.unwrap();
-                if seen_tx.contains(&id) {
-                    count_duplicated_tx += 1;
-                }
-                seen_tx.insert(id);
-            });
-        })
+        acd.accepted_transactions.iter().for_each(|tx| {
+            let id = tx.verbose_data.as_ref().unwrap().transaction_id.unwrap();
+            if seen_tx.contains(&id) {
+                count_duplicated_tx += 1;
+            }
+            seen_tx.insert(id);
+        });
     });
 
-    println!("ms: {}, b: {}", count_mergeset, count_block);
     println!("duplicated tx {}", count_duplicated_tx);
     // Disconnect client from Kaspa node
     client.disconnect().await?;

@@ -121,6 +121,11 @@ message RpcTransactionOutputVerboseData{
   string scriptPublicKeyAddress = 6;
 }
 
+message RpcChainBlockAcceptedTransactions {
+  RpcBlockHeader chainBlockHeader = 1;
+  repeated RpcTransaction acceptedTransactions = 2;
+}
+
 enum RpcNotifyCommand {
   NOTIFY_START = 0;
   NOTIFY_STOP = 1;
@@ -1029,7 +1034,7 @@ message GetVirtualChainFromBlockV2ResponseMessage{
 
   // The mergeset data accepted by each block in addedChainBlockHashes.
   // Will be filled dependent on the supplied RpcAcceptanceDataVerbosity.
-  repeated RpcAcceptanceData addedAcceptanceData = 3;
+  repeated RpcChainBlockAcceptedTransactions chainBlockAcceptedTransactions = 3;
 
   RPCError error = 1000;
 }
