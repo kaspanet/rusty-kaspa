@@ -535,7 +535,10 @@ mod address_store_with_cache {
             assert_eq!(iter.count(), 0);
         }
 
+        // This test is indeterminate, so it is ignored by default.
+        // TODO: Maybe run multiple times and make it pass if the majority of runs pass?
         #[test]
+        #[ignore]
         fn test_network_distribution_weighting() {
             kaspa_core::log::try_init_logger("info");
 

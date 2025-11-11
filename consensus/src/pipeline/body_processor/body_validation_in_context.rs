@@ -73,9 +73,7 @@ impl BlockBodyProcessor {
         //
         // Note that body validation in context is not called for trusted blocks, so we can safely assume
         // the selected parent exists and its daa score is accessible
-        let selected_parent = self.ghostdag_store.get_selected_parent(block.hash()).unwrap();
-        let selected_parent_daa_score = self.headers_store.get_daa_score(selected_parent).unwrap();
-        let coinbase_outputs_limit = self.ghostdag_k.get(selected_parent_daa_score) as u64 + 2;
+        let coinbase_outputs_limit = self.ghostdag_k.after() as u64 + 2;
 
         let tx = &block.transactions[0];
         if tx.outputs.len() as u64 > coinbase_outputs_limit {
