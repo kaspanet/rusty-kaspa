@@ -64,16 +64,15 @@ impl MiningRuleEngine {
 
             if elapsed_time.as_secs() > 0 {
                 let session = self.consensus_manager.consensus().unguarded_session();
-                let sink_daa_timestamp = session.async_get_sink_daa_score_timestamp().await;
 
                 let finality_point = session.async_finality_point().await;
                 let finality_point_timestamp = session.async_get_header(finality_point).await.unwrap().timestamp;
 
                 let extra_data = ExtraData {
                     finality_point_timestamp,
-                    target_time_per_block: self.config.target_time_per_block().get(sink_daa_timestamp.daa_score),
+                    target_time_per_block: self.config.target_time_per_block().after(),
                     has_sufficient_peer_connectivity: self.has_sufficient_peer_connectivity(),
-                    finality_duration: self.config.finality_duration_in_milliseconds().get(sink_daa_timestamp.daa_score),
+                    finality_duration: self.config.finality_duration_in_milliseconds().after(),
                     elapsed_time,
                 };
 
@@ -131,8 +130,7 @@ impl MiningRuleEngine {
         // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
         //
         // [Crescendo]: both durations are nearly equal so this decision is negligible
-        let synced_threshold =
-            self.config.expected_difficulty_window_duration_in_milliseconds().get(sink_daa_score_timestamp.daa_score) / 4;
+        let synced_threshold = self.config.expected_difficulty_window_duration_in_milliseconds().after() / 4;
 
         // Roughly 10mins in all networks
         unix_now() < sink_timestamp + synced_threshold

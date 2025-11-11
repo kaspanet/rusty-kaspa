@@ -378,14 +378,7 @@ impl RpcApi for RpcCoreService {
         if !request.allow_non_daa_blocks {
             let virtual_daa_score = session.get_virtual_daa_score();
 
-            // A simple heuristic check which signals that the mined block is out of date
-            // and should not be accepted unless user explicitly requests
-            //
-            // [Crescendo]: switch to the larger duration only after a full window with the new duration is reached post activation
-            let difficulty_window_duration = self
-                .config
-                .difficulty_window_duration_in_block_units()
-                .get(virtual_daa_score.saturating_sub(self.config.difficulty_window_duration_in_block_units().after()));
+            let difficulty_window_duration = self.config.difficulty_window_duration_in_block_units().after();
             if virtual_daa_score > difficulty_window_duration
                 && block.header.daa_score < virtual_daa_score - difficulty_window_duration
             {
@@ -864,7 +857,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 // For daa_score later than the last header, we estimate in milliseconds based on the difference
                 let time_adjustment = if header_idx == 0 {
                     // estimate milliseconds = (daa_score * target_time_per_block)
-                    (curr_daa_score - header.daa_score).saturating_mul(self.config.target_time_per_block().get(header.daa_score))
+                    (curr_daa_score - header.daa_score).saturating_mul(self.config.target_time_per_block().after())
                 } else {
                     // "next" header is the one that we processed last iteration
                     let next_header = &headers[header_idx - 1];
@@ -898,16 +891,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _request: GetFeeEstimateRequest,
     ) -> RpcResult<GetFeeEstimateResponse> {
         let mining_manager = self.mining_manager.clone();
-        let consensus_manager = self.consensus_manager.clone();
-        let estimate = self
-            .fee_estimate_cache
-            .get(async move {
-                mining_manager
-                    .get_realtime_feerate_estimations(consensus_manager.consensus().unguarded_session().get_virtual_daa_score())
-                    .await
-                    .into_rpc()
-            })
-            .await;
+        let estimate =
+            self.fee_estimate_cache.get(async move { mining_manager.get_realtime_feerate_estimations().await.into_rpc() }).await;
         Ok(GetFeeEstimateResponse { estimate })
     }
 
