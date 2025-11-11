@@ -17,7 +17,6 @@ impl TransactionValidator {
         self.check_transaction_inputs_in_isolation(tx)?;
         self.check_transaction_outputs_in_isolation(tx)?;
         self.check_coinbase_in_isolation(tx)?;
-        self.check_transaction_payload(tx)?;
 
         check_transaction_output_value_ranges(tx)?;
         check_duplicate_transaction_inputs(tx)?;
@@ -98,11 +97,6 @@ impl TransactionValidator {
             return Err(TxRuleError::TooBigScriptPublicKey(i, self.max_script_public_key_len.after()));
         }
 
-        Ok(())
-    }
-
-    fn check_transaction_payload(&self, tx: &Transaction) -> TxResult<()> {
-        // TODO: Remove function
         Ok(())
     }
 }
