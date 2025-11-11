@@ -43,15 +43,11 @@ impl TransactionValidator {
             return Err(TxRuleError::CoinbaseHasInputs(tx.inputs.len()));
         }
 
-        /*
-        [Crescendo]: moved this specific check to body_validation_in_context since it depends on fork activation
-                     TODO (post HF): move back here
-
         let outputs_limit = self.ghostdag_k as u64 + 2;
         if tx.outputs.len() as u64 > outputs_limit {
             return Err(TxRuleError::CoinbaseTooManyOutputs(tx.outputs.len(), outputs_limit));
         }
-        */
+
         for (i, output) in tx.outputs.iter().enumerate() {
             if output.script_public_key.script().len() > self.coinbase_payload_script_public_key_max_len as usize {
                 return Err(TxRuleError::CoinbaseScriptPublicKeyTooLong(i));
@@ -194,6 +190,7 @@ mod tests {
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.prior_coinbase_maturity,
+            params.ghostdag_k().after(),
             Default::default(),
         );
 

@@ -1,7 +1,7 @@
 use super::BlockBodyProcessor;
 use crate::{
     errors::{BlockProcessResult, RuleError},
-    model::stores::{ghostdag::GhostdagStoreReader, headers::HeaderStoreReader, statuses::StatusesStoreReader},
+    model::stores::statuses::StatusesStoreReader,
     processes::{
         transaction_validator::{
             tx_validation_in_header_context::{LockTimeArg, LockTimeType},
@@ -10,7 +10,7 @@ use crate::{
         window::WindowManager,
     },
 };
-use kaspa_consensus_core::{block::Block, errors::tx::TxRuleError};
+use kaspa_consensus_core::block::Block;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use once_cell::unsync::Lazy;
@@ -19,7 +19,6 @@ use std::sync::Arc;
 impl BlockBodyProcessor {
     pub fn validate_body_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
         self.check_parent_bodies_exist(block)?;
-        self.check_coinbase_outputs_limit(block)?;
         self.check_coinbase_blue_score_and_subsidy(block)?;
         self.check_block_transactions_in_context(block)
     }
@@ -58,30 +57,6 @@ impl BlockBodyProcessor {
             return Err(RuleError::MissingParents(missing));
         }
 
-        Ok(())
-    }
-
-    fn check_coinbase_outputs_limit(&self, block: &Block) -> BlockProcessResult<()> {
-        // [Crescendo]: coinbase_outputs_limit depends on ghostdag k and thus depends on fork activation
-        // which makes it header contextual.
-        //
-        // TODO (post HF): move this check back to transaction in isolation validation
-
-        // [Crescendo]: Ghostdag k activation is decided based on selected parent DAA score
-        // so we follow the same methodology for coinbase output limit (which is driven from the
-        // actual bound on the number of blue blocks in the mergeset).
-        //
-        // Note that body validation in context is not called for trusted blocks, so we can safely assume
-        // the selected parent exists and its daa score is accessible
-        let coinbase_outputs_limit = self.ghostdag_k.after() as u64 + 2;
-
-        let tx = &block.transactions[0];
-        if tx.outputs.len() as u64 > coinbase_outputs_limit {
-            return Err(RuleError::TxInIsolationValidationFailed(
-                tx.id(),
-                TxRuleError::CoinbaseTooManyOutputs(tx.outputs.len(), coinbase_outputs_limit),
-            ));
-        }
         Ok(())
     }
 

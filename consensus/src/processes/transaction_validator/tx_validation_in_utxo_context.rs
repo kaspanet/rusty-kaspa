@@ -282,6 +282,7 @@ mod tests {
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.prior_coinbase_maturity,
+            params.ghostdag_k().after(),
             Default::default(),
         );
 
@@ -350,6 +351,7 @@ mod tests {
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.prior_coinbase_maturity,
+            params.ghostdag_k().after(),
             Default::default(),
         );
 
@@ -422,6 +424,7 @@ mod tests {
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.prior_coinbase_maturity,
+            params.ghostdag_k().after(),
             Default::default(),
         );
 
@@ -491,6 +494,7 @@ mod tests {
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.prior_coinbase_maturity,
+            params.ghostdag_k().after(),
             Default::default(),
         );
 
@@ -560,6 +564,7 @@ mod tests {
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.prior_coinbase_maturity,
+            params.ghostdag_k().after(),
             Default::default(),
         );
 
@@ -629,6 +634,7 @@ mod tests {
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.prior_coinbase_maturity,
+            params.ghostdag_k().after(),
             Default::default(),
         );
 
@@ -697,6 +703,7 @@ mod tests {
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.prior_coinbase_maturity,
+            params.ghostdag_k().after(),
             Default::default(),
         );
 
@@ -759,6 +766,7 @@ mod tests {
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.prior_coinbase_maturity,
+            params.ghostdag_k().after(),
             Default::default(),
         );
 
