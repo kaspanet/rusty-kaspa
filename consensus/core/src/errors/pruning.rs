@@ -81,8 +81,8 @@ pub enum PruningImportError {
     #[error("a past pruning point has not been pointed at")]
     UnpointedPruningPoint,
 
-    #[error("got trusted block {0} in the future of the pruning point")]
-    TrustedBlockInPruningPointFuture(Hash),
+    #[error("got trusted block {0} in the future of the pruning point {1}")]
+    TrustedBlockInPruningPointFuture(Hash, Hash),
 }
 
 pub type PruningImportResult<T> = std::result::Result<T, PruningImportError>;

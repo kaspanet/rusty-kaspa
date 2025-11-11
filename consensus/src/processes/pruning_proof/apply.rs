@@ -80,8 +80,8 @@ impl PruningProofManager {
                 }
 
                 // Trusted blocks are expected to be in the pruning point anti-future.
-                if reachability_read.is_dag_ancestor_of(pruning_point, tb.block.hash()) {
-                    return Err(PruningImportError::TrustedBlockInPruningPointFuture(tb.block.hash()));
+                if tb.block.hash() != pruning_point && reachability_read.is_dag_ancestor_of(pruning_point, tb.block.hash()) {
+                    return Err(PruningImportError::TrustedBlockInPruningPointFuture(tb.block.hash(), pruning_point));
                 }
             }
         }
