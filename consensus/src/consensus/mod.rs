@@ -328,7 +328,8 @@ impl Consensus {
         // TODO (post HF): remove this upgrade
         // Database upgrade to include pruning samples
         self.pruning_samples_database_upgrade();
-        self.consensus_transitional_flags_update();
+
+        self.consensus_transitional_flags_upgrade();
     }
 
     fn retention_root_database_upgrade(&self) {
@@ -348,7 +349,7 @@ impl Consensus {
         }
     }
 
-    fn consensus_transitional_flags_update(&self) {
+    fn consensus_transitional_flags_upgrade(&self) {
         // Write the defaults to the internal storage so they will remain in cache
         // *For a new staging consensus these flags will be updated again explicitly*
         let mut batch = rocksdb::WriteBatch::default();
