@@ -117,9 +117,8 @@ impl<
         // store entry, se we only use these stores here (and specifically do not use the ghostdag store)
         //
 
-        let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
-        let pruning_depth = self.pruning_depth.get(selected_parent_daa_score);
-        let finality_depth = self.finality_depth.get(selected_parent_daa_score);
+        let pruning_depth = self.pruning_depth.after();
+        let finality_depth = self.finality_depth.after();
 
         let selected_parent_blue_score = self.headers_store.get_blue_score(ghostdag_data.selected_parent).unwrap();
 
@@ -234,7 +233,7 @@ impl<
         // new pruning depth is expected, so we use the DAA score of the pruning point itself as an indicator.
         // This means that in the first few days following the fork we err on the side of a shorter period which is
         // a weaker requirement
-        let pruning_depth = self.pruning_depth.get(self.headers_store.get_daa_score(pp_candidate).unwrap());
+        let pruning_depth = self.pruning_depth.after();
         self.is_pruning_point_in_pruning_depth(tip_bs, pp_candidate, pruning_depth)
     }
 
