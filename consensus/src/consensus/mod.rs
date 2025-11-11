@@ -1191,7 +1191,7 @@ impl ConsensusApi for Consensus {
     /// which (may) lack a block body due to being in a transitional state
     /// If not in a transitional state this list is supposed to be empty
     fn get_body_missing_anticone(&self) -> Vec<Hash> {
-        self.pruning_meta_stores.read().get_body_missing_anticone().unwrap_option().unwrap_or_default()
+        self.pruning_meta_stores.read().get_body_missing_anticone()
     }
 
     fn clear_body_missing_anticone_cache(&self) {

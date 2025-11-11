@@ -57,13 +57,15 @@ impl PruningMetaStores {
         self.body_missing_anticone_blocks.write(BatchDbWriter::new(batch), &body_missing_anticone)
     }
 
-    pub fn get_body_missing_anticone(&self) -> StoreResult<Vec<Hash>> {
-        self.body_missing_anticone_blocks.read()
+    /// Default to empty if missing - this is important because a node upgrading should have this value empty
+    /// since all non staging consensuses had no missing body anticone previously
+    pub fn get_body_missing_anticone(&self) -> Vec<Hash> {
+        self.body_missing_anticone_blocks.read().unwrap_option().unwrap_or(vec![])
     }
 
     // check if there are any body missing blocks remaining in the anticone of the current pruning point
     pub fn is_anticone_fully_synced(&self) -> bool {
-        self.body_missing_anticone_blocks.read().unwrap_or_default().is_empty()
+        self.get_body_missing_anticone().is_empty()
     }
 
     pub fn is_in_transitional_ibd_state(&self) -> bool {
