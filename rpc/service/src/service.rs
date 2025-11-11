@@ -934,8 +934,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         if !self.config.unsafe_rpc && request.window_size > MAX_SAFE_WINDOW_SIZE {
             return Err(RpcError::WindowSizeExceedingMaximum(request.window_size, MAX_SAFE_WINDOW_SIZE));
         }
-        if request.window_size as u64 > self.config.pruning_depth().lower_bound() {
-            return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.prior_pruning_depth));
+        if request.window_size as u64 > self.config.pruning_depth().after() {
+            return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.pruning_depth().after()));
         }
 
         // In the previous golang implementation the convention for virtual was the following const.

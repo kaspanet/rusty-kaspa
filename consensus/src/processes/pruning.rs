@@ -79,14 +79,7 @@ impl<
         header_selected_tip_store: Arc<RwLock<W>>,
         pruning_samples_store: Arc<Y>,
     ) -> Self {
-        // [Crescendo]: These conditions ensure that blue score points with the same finality score before
-        // the fork will remain with the same finality score post the fork. See below for the usage.
-        assert!(finality_depth.before() <= finality_depth.after());
-        assert!(finality_depth.after() % finality_depth.before() == 0);
-        assert!(pruning_depth.before() <= pruning_depth.after());
-
-        let pruning_samples_steps = pruning_depth.before().div_ceil(finality_depth.before());
-        assert_eq!(pruning_samples_steps, pruning_depth.after().div_ceil(finality_depth.after()));
+        let pruning_samples_steps = pruning_depth.after().div_ceil(finality_depth.after());
 
         Self {
             pruning_depth,
