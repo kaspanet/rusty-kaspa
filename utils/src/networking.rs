@@ -1,10 +1,14 @@
 // #![allow(dead_code)]
 use borsh::{BorshDeserialize, BorshSerialize};
+use data_encoding::BASE32_NOPAD;
 use ipnet::IpNet;
-use serde::{Deserialize, Serialize};
+use serde::{de::Error as SerdeDeError, Deserialize, Deserializer, Serialize, Serializer};
 use std::{
-    fmt::Display,
+    convert::TryInto,
+    error::Error as StdError,
+    fmt::{Display, Formatter},
     net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    num::ParseIntError,
     ops::Deref,
     str::FromStr,
 };
@@ -218,20 +222,283 @@ impl BorshDeserialize for IpAddress {
     }
 }
 
+const ONION_HOST_SUFFIX: &str = ".onion";
+const ONION_HOST_LENGTH: usize = 56;
+const ONION_RAW_LENGTH: usize = 35;
+
+#[derive(Debug, Clone)]
+pub enum NetAddressError {
+    InvalidSyntax(String),
+    Addr(AddrParseError),
+    InvalidPort(ParseIntError),
+    MissingPort,
+    InvalidOnion(String),
+    NonIpAddress,
+}
+
+impl Display for NetAddressError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NetAddressError::InvalidSyntax(value) => write!(f, "invalid address syntax: {value}"),
+            NetAddressError::Addr(err) => err.fmt(f),
+            NetAddressError::InvalidPort(err) => write!(f, "invalid port: {err}"),
+            NetAddressError::MissingPort => write!(f, "missing port"),
+            NetAddressError::InvalidOnion(value) => write!(f, "invalid onion address: {value}"),
+            NetAddressError::NonIpAddress => write!(f, "address does not represent an IP endpoint"),
+        }
+    }
+}
+
+impl StdError for NetAddressError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            NetAddressError::Addr(err) => Some(err),
+            NetAddressError::InvalidPort(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<AddrParseError> for NetAddressError {
+    fn from(value: AddrParseError) -> Self {
+        NetAddressError::Addr(value)
+    }
+}
+
+impl From<ParseIntError> for NetAddressError {
+    fn from(value: ParseIntError) -> Self {
+        NetAddressError::InvalidPort(value)
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
+pub struct OnionAddress {
+    raw: [u8; ONION_RAW_LENGTH],
+}
+
+impl OnionAddress {
+    pub fn raw(&self) -> &[u8; ONION_RAW_LENGTH] {
+        &self.raw
+    }
+
+    pub fn from_raw(raw: [u8; ONION_RAW_LENGTH]) -> Self {
+        Self { raw }
+    }
+
+    fn host_part(&self) -> String {
+        let mut host = BASE32_NOPAD.encode(&self.raw);
+        host.make_ascii_lowercase();
+        host
+    }
+}
+
+impl Display for OnionAddress {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{ONION_HOST_SUFFIX}", self.host_part())
+    }
+}
+
+impl TryFrom<&str> for OnionAddress {
+    type Error = NetAddressError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let lower = value.to_ascii_lowercase();
+        if !lower.ends_with(ONION_HOST_SUFFIX) {
+            return Err(NetAddressError::InvalidOnion(value.to_string()));
+        }
+        let host = &lower[..lower.len() - ONION_HOST_SUFFIX.len()];
+        if host.len() != ONION_HOST_LENGTH {
+            return Err(NetAddressError::InvalidOnion(value.to_string()));
+        }
+        let upper = host.to_ascii_uppercase();
+        let decoded = BASE32_NOPAD.decode(upper.as_bytes()).map_err(|_| NetAddressError::InvalidOnion(value.to_string()))?;
+        let raw: [u8; ONION_RAW_LENGTH] = decoded.try_into().map_err(|_| NetAddressError::InvalidOnion(value.to_string()))?;
+        Ok(Self { raw })
+    }
+}
+
+impl TryFrom<String> for OnionAddress {
+    type Error = NetAddressError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        OnionAddress::try_from(value.as_str())
+    }
+}
+
+impl Serialize for OnionAddress {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value = self.to_string();
+        serializer.serialize_str(&value)
+    }
+}
+
+impl<'de> Deserialize<'de> for OnionAddress {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = <String as Deserialize>::deserialize(deserializer)?;
+        OnionAddress::try_from(value.as_str()).map_err(SerdeDeError::custom)
+    }
+}
+
+impl BorshSerialize for OnionAddress {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> ::core::result::Result<(), std::io::Error> {
+        borsh::BorshSerialize::serialize(&self.raw, writer)
+    }
+}
+
+impl BorshDeserialize for OnionAddress {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> ::core::result::Result<Self, borsh::io::Error> {
+        let raw: [u8; ONION_RAW_LENGTH] = BorshDeserialize::deserialize_reader(reader)?;
+        Ok(Self { raw })
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
+pub enum AddressKind {
+    Ip(IpAddress),
+    Onion(OnionAddress),
+}
+
+impl AddressKind {
+    pub fn is_ip(&self) -> bool {
+        matches!(self, AddressKind::Ip(_))
+    }
+
+    pub fn as_ip(&self) -> Option<IpAddress> {
+        match self {
+            AddressKind::Ip(ip) => Some(*ip),
+            _ => None,
+        }
+    }
+
+    pub fn as_onion(&self) -> Option<OnionAddress> {
+        match self {
+            AddressKind::Onion(addr) => Some(*addr),
+            _ => None,
+        }
+    }
+}
+
+impl From<IpAddress> for AddressKind {
+    fn from(value: IpAddress) -> Self {
+        AddressKind::Ip(value)
+    }
+}
+
+impl From<OnionAddress> for AddressKind {
+    fn from(value: OnionAddress) -> Self {
+        AddressKind::Onion(value)
+    }
+}
+
+impl Display for AddressKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AddressKind::Ip(ip) => Display::fmt(ip, f),
+            AddressKind::Onion(addr) => Display::fmt(addr, f),
+        }
+    }
+}
+
+impl Serialize for AddressKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value = self.to_string();
+        serializer.serialize_str(&value)
+    }
+}
+
+impl<'de> Deserialize<'de> for AddressKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = <String as Deserialize>::deserialize(deserializer)?;
+        if value.to_ascii_lowercase().ends_with(ONION_HOST_SUFFIX) {
+            OnionAddress::try_from(value.as_str()).map(AddressKind::Onion).map_err(SerdeDeError::custom)
+        } else {
+            IpAddress::from_str(&value).map(AddressKind::Ip).map_err(SerdeDeError::custom)
+        }
+    }
+}
+
+impl BorshSerialize for AddressKind {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> ::core::result::Result<(), std::io::Error> {
+        match self {
+            AddressKind::Ip(ip) => {
+                writer.write_all(&[0])?;
+                BorshSerialize::serialize(&ip, writer)
+            }
+            AddressKind::Onion(addr) => {
+                writer.write_all(&[1])?;
+                BorshSerialize::serialize(&addr, writer)
+            }
+        }
+    }
+}
+
+impl BorshDeserialize for AddressKind {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> ::core::result::Result<Self, borsh::io::Error> {
+        let variant_idx: u8 = BorshDeserialize::deserialize_reader(reader)?;
+        match variant_idx {
+            0 => Ok(AddressKind::Ip(BorshDeserialize::deserialize_reader(reader)?)),
+            1 => Ok(AddressKind::Onion(BorshDeserialize::deserialize_reader(reader)?)),
+            _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid address kind variant").into()),
+        }
+    }
+}
+
+impl From<&AddressKind> for PrefixBucket {
+    fn from(kind: &AddressKind) -> Self {
+        match kind {
+            AddressKind::Ip(ip) => PrefixBucket::from(ip),
+            AddressKind::Onion(onion) => {
+                let mut bytes = [0u8; 8];
+                bytes.copy_from_slice(&onion.raw()[..8]);
+                PrefixBucket(u64::from_be_bytes(bytes))
+            }
+        }
+    }
+}
+
 /// A network address, equivalent of a [SocketAddr].
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug, BorshSerialize, BorshDeserialize)]
 pub struct NetAddress {
-    pub ip: IpAddress,
+    pub ip: AddressKind,
     pub port: u16,
 }
 
 impl NetAddress {
     pub fn new(ip: IpAddress, port: u16) -> Self {
-        Self { ip, port }
+        Self { ip: AddressKind::Ip(ip), port }
+    }
+
+    pub fn new_onion(address: OnionAddress, port: u16) -> Self {
+        Self { ip: AddressKind::Onion(address), port }
+    }
+
+    pub fn from_kind(kind: AddressKind, port: u16) -> Self {
+        Self { ip: kind, port }
+    }
+
+    pub fn is_ip(&self) -> bool {
+        self.ip.is_ip()
+    }
+
+    pub fn as_ip(&self) -> Option<IpAddress> {
+        self.ip.as_ip()
+    }
+
+    pub fn as_onion(&self) -> Option<OnionAddress> {
+        self.ip.as_onion()
+    }
+
+    pub fn kind(&self) -> AddressKind {
+        self.ip
     }
 
     pub fn prefix_bucket(&self) -> PrefixBucket {
         PrefixBucket::from(self)
+    }
+
+    pub fn to_socket_addr(&self) -> Result<SocketAddr, NetAddressError> {
+        let ip = self.as_ip().ok_or(NetAddressError::NonIpAddress)?;
+        Ok(SocketAddr::new(ip.into(), self.port))
     }
 }
 
@@ -241,23 +508,38 @@ impl From<SocketAddr> for NetAddress {
     }
 }
 
-impl From<NetAddress> for SocketAddr {
-    fn from(value: NetAddress) -> Self {
-        Self::new(value.ip.0, value.port)
+impl TryFrom<NetAddress> for SocketAddr {
+    type Error = NetAddressError;
+
+    fn try_from(value: NetAddress) -> Result<Self, Self::Error> {
+        value.to_socket_addr()
+    }
+}
+
+impl TryFrom<&NetAddress> for SocketAddr {
+    type Error = NetAddressError;
+
+    fn try_from(value: &NetAddress) -> Result<Self, Self::Error> {
+        value.to_socket_addr()
     }
 }
 
 impl FromStr for NetAddress {
-    type Err = AddrParseError;
+    type Err = NetAddressError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        SocketAddr::from_str(s).map(NetAddress::from)
+        let contextual = ContextualNetAddress::from_str(s)?;
+        let port = contextual.port.ok_or(NetAddressError::MissingPort)?;
+        Ok(Self { ip: contextual.ip, port })
     }
 }
 
 impl Display for NetAddress {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        SocketAddr::from(self.to_owned()).fmt(f)
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.ip {
+            AddressKind::Ip(ip) => SocketAddr::new(ip.into(), self.port).fmt(f),
+            AddressKind::Onion(addr) => write!(f, "{}:{}", addr, self.port),
+        }
     }
 }
 
@@ -266,29 +548,57 @@ impl Display for NetAddress {
 /// Use `normalize` to get a fully determined address.
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug, BorshSerialize, BorshDeserialize)]
 pub struct ContextualNetAddress {
-    ip: IpAddress,
+    ip: AddressKind,
     port: Option<u16>,
 }
 
 impl ContextualNetAddress {
     pub fn new(ip: IpAddress, port: Option<u16>) -> Self {
-        Self { ip, port }
+        Self { ip: AddressKind::Ip(ip), port }
+    }
+
+    pub fn new_onion(address: OnionAddress, port: Option<u16>) -> Self {
+        Self { ip: AddressKind::Onion(address), port }
+    }
+
+    pub fn from_kind(kind: AddressKind, port: Option<u16>) -> Self {
+        Self { ip: kind, port }
     }
 
     pub fn has_port(&self) -> bool {
         self.port.is_some()
     }
 
+    pub fn is_ip(&self) -> bool {
+        self.ip.is_ip()
+    }
+
+    pub fn as_ip(&self) -> Option<IpAddress> {
+        self.ip.as_ip()
+    }
+
+    pub fn as_onion(&self) -> Option<OnionAddress> {
+        self.ip.as_onion()
+    }
+
+    pub fn kind(&self) -> AddressKind {
+        self.ip
+    }
+
+    pub fn port(&self) -> Option<u16> {
+        self.port
+    }
+
     pub fn normalize(&self, default_port: u16) -> NetAddress {
-        NetAddress::new(self.ip, self.port.unwrap_or(default_port))
+        NetAddress::from_kind(self.ip, self.port.unwrap_or(default_port))
     }
 
     pub fn unspecified() -> Self {
-        Self { ip: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)).into(), port: None }
+        Self::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)).into(), None)
     }
 
     pub fn loopback() -> Self {
-        Self { ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)).into(), port: None }
+        Self::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)).into(), None)
     }
 
     pub fn port_not_specified(&self) -> bool {
@@ -298,27 +608,52 @@ impl ContextualNetAddress {
     pub fn with_port(&self, port: u16) -> Self {
         Self { ip: self.ip, port: Some(port) }
     }
+
+    pub fn into_parts(self) -> (AddressKind, Option<u16>) {
+        (self.ip, self.port)
+    }
+
+    pub fn to_socket_addr(&self) -> Result<SocketAddr, NetAddressError> {
+        let ip = self.as_ip().ok_or(NetAddressError::NonIpAddress)?;
+        let port = self.port.ok_or(NetAddressError::MissingPort)?;
+        Ok(SocketAddr::new(ip.into(), port))
+    }
 }
 
 impl From<NetAddress> for ContextualNetAddress {
     fn from(value: NetAddress) -> Self {
-        Self::new(value.ip, Some(value.port))
+        Self { ip: value.ip, port: Some(value.port) }
     }
 }
 
 impl FromStr for ContextualNetAddress {
-    type Err = AddrParseError;
+    type Err = NetAddressError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match SocketAddr::from_str(s) {
-            Ok(socket) => Ok(Self::new(socket.ip().into(), Some(socket.port()))),
-            Err(_) => Ok(Self::new(IpAddress::from_str(s)?, None)),
+        if let Ok(socket) = SocketAddr::from_str(s) {
+            return Ok(Self::new(socket.ip().into(), Some(socket.port())));
         }
+
+        if let Ok(ip) = IpAddress::from_str(s) {
+            return Ok(Self::new(ip, None));
+        }
+
+        if let Some((host, port_str)) = s.rsplit_once(':') {
+            if !host.contains(':') {
+                if let Ok(onion) = OnionAddress::try_from(host) {
+                    let port = port_str.parse::<u16>()?;
+                    return Ok(Self::new_onion(onion, Some(port)));
+                }
+            }
+        }
+
+        let onion = OnionAddress::try_from(s)?;
+        Ok(Self::new_onion(onion, None))
     }
 }
 
 impl TryFrom<&str> for ContextualNetAddress {
-    type Error = AddrParseError;
+    type Error = NetAddressError;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         ContextualNetAddress::from_str(s)
@@ -326,7 +661,7 @@ impl TryFrom<&str> for ContextualNetAddress {
 }
 
 impl TryFrom<String> for ContextualNetAddress {
-    type Error = AddrParseError;
+    type Error = NetAddressError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         ContextualNetAddress::from_str(&s)
@@ -334,10 +669,12 @@ impl TryFrom<String> for ContextualNetAddress {
 }
 
 impl Display for ContextualNetAddress {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.port {
-            Some(port) => SocketAddr::new(self.ip.into(), port).fmt(f),
-            None => self.ip.fmt(f),
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match (self.ip, self.port) {
+            (AddressKind::Ip(ip), Some(port)) => SocketAddr::new(ip.into(), port).fmt(f),
+            (AddressKind::Ip(ip), None) => Display::fmt(&ip, f),
+            (AddressKind::Onion(addr), Some(port)) => write!(f, "{}:{}", addr, port),
+            (AddressKind::Onion(addr), None) => Display::fmt(&addr, f),
         }
     }
 }
@@ -445,6 +782,9 @@ mod tests {
         assert!(addr_v4.is_ok());
         let addr_v6 = NetAddress::from_str("[2a01:4f8:191:1143::2]:5678");
         assert!(addr_v6.is_ok());
+        let onion_host: String = std::iter::repeat('a').take(ONION_HOST_LENGTH).collect();
+        let addr_onion = NetAddress::from_str(&format!("{}{}:9735", onion_host, ONION_HOST_SUFFIX));
+        assert!(addr_onion.is_ok());
     }
 
     #[test]
@@ -461,6 +801,13 @@ mod tests {
         let net_addr = ContextualNetAddress::new(addr, port);
         let s = serde_json::to_string(&net_addr).unwrap();
         assert_eq!(s, r#"{"ip":"127.0.0.1","port":1234}"#);
+
+        let onion_host: String = std::iter::repeat('b').take(ONION_HOST_LENGTH).collect();
+        let onion_addr = ContextualNetAddress::from_str(&format!("{}{}", onion_host, ONION_HOST_SUFFIX)).unwrap();
+        assert!(onion_addr.as_onion().is_some());
+        assert!(onion_addr.port().is_none());
+        let serialized = serde_json::to_string(&onion_addr).unwrap();
+        assert_eq!(serialized, format!(r#"{{"ip":"{}{}","port":null}}"#, onion_host, ONION_HOST_SUFFIX));
     }
 
     #[test]

@@ -23,6 +23,7 @@ kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensus.workspace = true
 kaspa-consensusmanager.workspace = true
+kaspa-connectionmanager.workspace = true
 kaspa-core.workspace = true
 kaspa-database.workspace = true
 kaspa-grpc-server.workspace = true
@@ -60,6 +61,8 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 workflow-log.workspace = true
 serde_json.workspace = true
+tor-interface = { version = "0.6.0", features = ["legacy-tor-provider"] }
+hex = "0.4"
 
 toml = "0.8.10"
 serde_with = "3.7.0"

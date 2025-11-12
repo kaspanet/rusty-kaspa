@@ -132,6 +132,7 @@ impl ConnectionHandler {
         let bytes_rx = self.counters.bytes_rx.clone();
 
         // Spawn server task
+        let serve_socket = serve_address.to_socket_addr().expect("gRPC server must bind to an IP address");
         let server_handle = tokio::spawn(async move {
             let protowire_server = RpcServer::new(connection_handler)
                 .accept_compressed(CompressionEncoding::Gzip)
@@ -148,7 +149,7 @@ impl ConnectionHandler {
                 .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, bytes_tx.clone())))
                 .add_service(protowire_server)
                 .serve_with_shutdown(
-                    serve_address.into(),
+                    serve_socket,
                     signal_receiver.map(|_| {
                         debug!("GRPC, Server received the shutdown signal");
                     }),

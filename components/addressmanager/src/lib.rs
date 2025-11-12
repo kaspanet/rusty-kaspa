@@ -56,18 +56,41 @@ pub struct AddressManager {
     address_store: address_store_with_cache::Store,
     config: Arc<Config>,
     local_net_addresses: Vec<NetAddress>,
+    allow_ipv4: bool,
+    allow_ipv6: bool,
+    allow_onion: bool,
 }
 
 impl AddressManager {
-    pub fn new(config: Arc<Config>, db: Arc<DB>, tick_service: Arc<TickService>) -> (Arc<Mutex<Self>>, Option<Extender>) {
+    pub fn new(
+        config: Arc<Config>,
+        db: Arc<DB>,
+        tick_service: Arc<TickService>,
+        allow_ipv4: bool,
+        allow_ipv6: bool,
+        allow_onion: bool,
+    ) -> (Arc<Mutex<Self>>, Option<Extender>) {
         let mut instance = Self {
             banned_address_store: DbBannedAddressesStore::new(db.clone(), CachePolicy::Count(MAX_ADDRESSES)),
             address_store: address_store_with_cache::new(db),
             local_net_addresses: Vec::new(),
             config,
+            allow_ipv4,
+            allow_ipv6,
+            allow_onion,
         };
 
         let extender = instance.init_local_addresses(tick_service);
+
+        if !instance.allow_onion {
+            instance.prune_onion_addresses();
+        }
+        if !instance.allow_ipv4 {
+            instance.prune_ipv4_addresses();
+        }
+        if !instance.allow_ipv6 {
+            instance.prune_ipv6_addresses();
+        }
 
         (Arc::new(Mutex::new(instance)), extender)
     }
@@ -115,7 +138,7 @@ impl AddressManager {
     fn local_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
         match self.config.externalip {
             // An external IP was passed, we will try to bind that if it's valid
-            Some(local_net_address) if local_net_address.ip.is_publicly_routable() => {
+            Some(local_net_address) if local_net_address.as_ip().map_or(false, |ip| ip.is_publicly_routable()) => {
                 info!("External address is publicly routable {}", local_net_address);
                 return Left(iter::once(local_net_address));
             }
@@ -132,10 +155,10 @@ impl AddressManager {
         // check whatever was passed as listen address (if routable)
         // otherwise(listen_address === 0.0.0.0) check all interfaces
         let listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
-        if listen_address.ip.is_publicly_routable() {
-            info!("Publicly routable local address found: {}", listen_address.ip);
+        if listen_address.as_ip().map_or(false, |ip| ip.is_publicly_routable()) {
+            info!("Publicly routable local address found: {}", listen_address);
             Left(Left(iter::once(listen_address)))
-        } else if listen_address.ip.is_unspecified() {
+        } else if listen_address.as_ip().map_or(false, |ip| ip.is_unspecified()) {
             let network_interfaces = list_afinet_netifas();
             let Ok(network_interfaces) = network_interfaces else {
                 warn!("Error getting network interfaces: {:?}", network_interfaces);
@@ -164,10 +187,10 @@ impl AddressManager {
         info!("[UPnP] Got external ip from gateway using upnp: {ip}");
 
         let normalized_p2p_listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
-        let local_addr = if normalized_p2p_listen_address.ip.is_unspecified() {
+        let local_addr = if normalized_p2p_listen_address.as_ip().map_or(false, |ip| ip.is_unspecified()) {
             SocketAddr::new(local_ip_address::local_ip().unwrap(), normalized_p2p_listen_address.port)
         } else {
-            normalized_p2p_listen_address.into()
+            normalized_p2p_listen_address.to_socket_addr().expect("expected listen address to be IP-based")
         };
 
         // If an operator runs a node and specifies a non-standard local port, it implies that they also wish to use a non-standard public address. The variable 'desired_external_port' is set to the port number from the normalized peer-to-peer listening address.
@@ -210,7 +233,7 @@ impl AddressManager {
             let port =
                 gateway.add_any_port(igd::PortMappingProtocol::TCP, local_addr, UPNP_DEADLINE_SEC as u32, UPNP_REGISTRATION_NAME)?;
             info!("[UPnP] Added port mapping to random external port: {ip}:{port}");
-            return Ok(Some((NetAddress { ip, port }, ExtendHelper { gateway, local_addr, external_port: port })));
+            return Ok(Some((NetAddress::new(ip, port), ExtendHelper { gateway, local_addr, external_port: port })));
         }
 
         match gateway.add_port(
@@ -223,7 +246,7 @@ impl AddressManager {
             Ok(_) => {
                 info!("[UPnP] Added port mapping to default external port: {ip}:{desired_external_port}");
                 Ok(Some((
-                    NetAddress { ip, port: desired_external_port },
+                    NetAddress::new(ip, desired_external_port),
                     ExtendHelper { gateway, local_addr, external_port: desired_external_port },
                 )))
             }
@@ -235,7 +258,7 @@ impl AddressManager {
                     UPNP_REGISTRATION_NAME,
                 )?;
                 info!("[UPnP] Added port mapping to random external port: {ip}:{port}");
-                Ok(Some((NetAddress { ip, port }, ExtendHelper { gateway, local_addr, external_port: port })))
+                Ok(Some((NetAddress::new(ip, port), ExtendHelper { gateway, local_addr, external_port: port })))
             }
             Err(err) => Err(err.into()),
         }
@@ -252,11 +275,24 @@ impl AddressManager {
     }
 
     pub fn add_address(&mut self, address: NetAddress) {
-        if address.ip.is_loopback() || address.ip.is_unspecified() {
-            debug!("[Address manager] skipping local address {}", address.ip);
+        if !self.allow_onion && address.as_onion().is_some() {
+            debug!("[Address manager] skipping onion address {} (onion disabled)", address);
             return;
         }
-
+        if !self.allow_ipv4 && address.as_ip().map_or(false, |ip| ip.is_ipv4()) {
+            debug!("[Address manager] skipping IPv4 address {} (ipv4 disabled)", address);
+            return;
+        }
+        if !self.allow_ipv6 && address.as_ip().map_or(false, |ip| ip.is_ipv6()) {
+            debug!("[Address manager] skipping IPv6 address {} (ipv6 disabled)", address);
+            return;
+        }
+        if let Some(ip) = address.as_ip() {
+            if ip.is_loopback() || ip.is_unspecified() {
+                debug!("[Address manager] skipping local address {}", address);
+                return;
+            }
+        }
         if self.address_store.has(address) {
             return;
         }
@@ -284,6 +320,29 @@ impl AddressManager {
         }
 
         self.address_store.set(address, 0);
+    }
+
+    fn prune_onion_addresses(&mut self) {
+        let to_remove: Vec<_> = self.address_store.iterate_addresses().filter(|addr| addr.as_onion().is_some()).collect();
+        for addr in to_remove {
+            self.address_store.remove(addr);
+        }
+    }
+
+    fn prune_ipv4_addresses(&mut self) {
+        let to_remove: Vec<_> =
+            self.address_store.iterate_addresses().filter(|addr| addr.as_ip().map_or(false, |ip| ip.is_ipv4())).collect();
+        for addr in to_remove {
+            self.address_store.remove(addr);
+        }
+    }
+
+    fn prune_ipv6_addresses(&mut self) {
+        let to_remove: Vec<_> =
+            self.address_store.iterate_addresses().filter(|addr| addr.as_ip().map_or(false, |ip| ip.is_ipv6())).collect();
+        for addr in to_remove {
+            self.address_store.remove(addr);
+        }
     }
 
     pub fn iterate_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
@@ -337,6 +396,7 @@ mod address_store_with_cache {
     };
 
     use itertools::Itertools;
+    use kaspa_core::warn;
     use kaspa_database::prelude::{CachePolicy, DB};
     use kaspa_utils::networking::PrefixBucket;
     use rand::{
@@ -362,8 +422,15 @@ mod address_store_with_cache {
             // We manage the cache ourselves on this level, so we disable the inner builtin cache
             let db_store = DbAddressesStore::new(db, CachePolicy::Empty);
             let mut addresses = HashMap::new();
-            for (key, entry) in db_store.iterator().map(|res| res.unwrap()) {
-                addresses.insert(key, entry);
+            for result in db_store.iterator() {
+                match result {
+                    Ok((key, entry)) => {
+                        addresses.insert(key, entry);
+                    }
+                    Err(err) => {
+                        warn!("Failed to load address entry from store: {err}");
+                    }
+                }
             }
 
             Self { db_store, addresses }
@@ -548,7 +615,7 @@ mod address_store_with_cache {
 
             let db = create_temp_db!(ConnBuilder::default().with_files_limit(10));
             let config = Config::new(SIMNET_PARAMS);
-            let (am, _) = AddressManager::new(Arc::new(config), db.1, Arc::new(TickService::default()));
+            let (am, _) = AddressManager::new(Arc::new(config), db.1, Arc::new(TickService::default()), false, false);
 
             let mut am_guard = am.lock();
 

@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use kaspa_addressmanager::NetAddress;
-use kaspa_connectionmanager::ConnectionManager;
+use kaspa_connectionmanager::{AllowedNetworks, ConnectionManager};
 use kaspa_core::{
+    info,
     task::service::{AsyncService, AsyncServiceFuture},
-    trace,
+    trace, warn,
 };
-use kaspa_p2p_lib::Adaptor;
+use kaspa_p2p_lib::{Adaptor, SocksProxyConfig};
 use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 
@@ -25,6 +26,7 @@ pub struct P2pService {
     default_port: u16,
     shutdown: SingleTrigger,
     counters: Arc<TowerConnectionCounters>,
+    allowed_networks: AllowedNetworks,
 }
 
 impl P2pService {
@@ -38,6 +40,7 @@ impl P2pService {
         dns_seeders: &'static [&'static str],
         default_port: u16,
         counters: Arc<TowerConnectionCounters>,
+        allowed_networks: AllowedNetworks,
     ) -> Self {
         Self {
             flow_context,
@@ -50,6 +53,7 @@ impl P2pService {
             dns_seeders,
             default_port,
             counters,
+            allowed_networks,
         }
     }
 }
@@ -65,11 +69,27 @@ impl AsyncService for P2pService {
         // Prepare a shutdown signal receiver
         let shutdown_signal = self.shutdown.listener.clone();
 
-        let p2p_adaptor = if self.inbound_limit == 0 {
-            Adaptor::client_only(self.flow_context.hub().clone(), self.flow_context.clone(), self.counters.clone())
+        let default_proxy = self.flow_context.proxy();
+        let ipv4_proxy = self.flow_context.proxy_ipv4();
+        let ipv6_proxy = self.flow_context.proxy_ipv6();
+        let tor_proxy = self.flow_context.tor_proxy();
+        let socks_proxy = if default_proxy.is_some() || ipv4_proxy.is_some() || ipv6_proxy.is_some() || tor_proxy.is_some() {
+            Some(SocksProxyConfig { default: default_proxy, ipv4: ipv4_proxy, ipv6: ipv6_proxy, onion: tor_proxy })
         } else {
-            Adaptor::bidirectional(self.listen, self.flow_context.hub().clone(), self.flow_context.clone(), self.counters.clone())
-                .unwrap()
+            None
+        };
+
+        let p2p_adaptor = if self.inbound_limit == 0 {
+            Adaptor::client_only(self.flow_context.hub().clone(), self.flow_context.clone(), self.counters.clone(), socks_proxy)
+        } else {
+            Adaptor::bidirectional(
+                self.listen,
+                self.flow_context.hub().clone(),
+                self.flow_context.clone(),
+                self.counters.clone(),
+                socks_proxy,
+            )
+            .unwrap()
         };
         let connection_manager = ConnectionManager::new(
             p2p_adaptor.clone(),
@@ -78,6 +98,7 @@ impl AsyncService for P2pService {
             self.dns_seeders,
             self.default_port,
             self.flow_context.address_manager.clone(),
+            self.allowed_networks,
         );
 
         self.flow_context.set_connection_manager(connection_manager.clone());
@@ -85,8 +106,22 @@ impl AsyncService for P2pService {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
+            if let Some(mut bootstrap_rx) = self.flow_context.tor_bootstrap_receiver() {
+                if !*bootstrap_rx.borrow() {
+                    info!("P2P service waiting for Tor bootstrap to complete before enabling networking");
+                }
+                while !*bootstrap_rx.borrow() {
+                    if bootstrap_rx.changed().await.is_err() {
+                        warn!("Tor bootstrap signal dropped before completion; continuing with P2P startup");
+                        break;
+                    }
+                }
+                if *bootstrap_rx.borrow() {
+                    trace!("Tor bootstrap complete; starting P2P networking");
+                }
+            }
             for peer_address in self.connect_peers.iter().cloned().chain(self.add_peers.iter().cloned()) {
-                connection_manager.add_connection_request(peer_address.into(), true).await;
+                connection_manager.add_connection_request(peer_address, true).await;
             }
 
             // Keep the P2P server running until a service shutdown signal is received

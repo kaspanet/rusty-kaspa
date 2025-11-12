@@ -5,11 +5,11 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::kaspad_env::version;
 use kaspa_notify::address::tracker::Tracker;
-use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
 use kaspa_wrpc_server::address::WrpcNetAddress;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
-use std::{ffi::OsString, fs};
+use std::{ffi::OsString, fmt, fs, net::SocketAddr, path::PathBuf, str::FromStr};
 use toml::from_str;
 
 #[cfg(feature = "devnet-prealloc")]
@@ -50,6 +50,25 @@ pub struct Args {
     pub add_peers: Vec<ContextualNetAddress>,
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub listen: Option<ContextualNetAddress>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub proxy: Option<ContextualNetAddress>,
+    #[serde_as(as = "Vec<DisplayFromStr>")]
+    #[serde(default)]
+    pub proxy_net: Vec<ProxyRule>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub tor_proxy: Option<ContextualNetAddress>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub tor_control: Option<ContextualNetAddress>,
+    pub tor_password: Option<String>,
+    pub tor_cookie: Option<PathBuf>,
+    pub tor_bootstrap_timeout_sec: u64,
+    pub listen_onion: bool,
+    pub tor_onion_port: Option<u16>,
+    pub tor_onion_key: Option<PathBuf>,
+    pub tor_only: bool,
+    #[serde_as(as = "Vec<DisplayFromStr>")]
+    #[serde(default)]
+    pub onlynet: Vec<OnlyNet>,
     #[serde(rename = "uacomment")]
     pub user_agent_comments: Vec<String>,
     pub utxoindex: bool,
@@ -125,6 +144,18 @@ impl Default for Args {
             connect_peers: vec![],
             add_peers: vec![],
             listen: None,
+            proxy: None,
+            proxy_net: vec![],
+            tor_proxy: None,
+            tor_control: None,
+            tor_password: None,
+            tor_cookie: None,
+            tor_bootstrap_timeout_sec: 60,
+            listen_onion: false,
+            tor_onion_port: None,
+            tor_onion_key: None,
+            tor_only: false,
+            onlynet: vec![],
             user_agent_comments: vec![],
             yes: false,
             perf_metrics: false,
@@ -150,9 +181,49 @@ impl Default for Args {
 }
 
 impl Args {
+    pub fn proxy_settings(&self) -> ProxySettings {
+        let mut settings = ProxySettings::default();
+        settings.default = self.proxy.clone();
+        for rule in &self.proxy_net {
+            match rule.network {
+                ProxyNetwork::Ipv4 => settings.ipv4 = Some(rule.address.clone()),
+                ProxyNetwork::Ipv6 => settings.ipv6 = Some(rule.address.clone()),
+                ProxyNetwork::Onion => settings.onion = Some(rule.address.clone()),
+            }
+        }
+        if let Some(tor_specific) = self.tor_proxy.clone() {
+            settings.onion = Some(tor_specific);
+        }
+        settings
+    }
+
+    pub fn allowed_networks(&self) -> AllowedNetworksChoice {
+        let mut allow_ipv4 = false;
+        let mut allow_ipv6 = false;
+        let mut allow_onion = false;
+
+        if self.onlynet.is_empty() {
+            if self.tor_only {
+                allow_onion = true;
+            } else {
+                return AllowedNetworksChoice::All;
+            }
+        } else {
+            for net in &self.onlynet {
+                match net {
+                    OnlyNet::Ipv4 => allow_ipv4 = true,
+                    OnlyNet::Ipv6 => allow_ipv6 = true,
+                    OnlyNet::Onion => allow_onion = true,
+                }
+            }
+        }
+
+        AllowedNetworksChoice::Custom { allow_ipv4, allow_ipv6, allow_onion }
+    }
+
     pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
-        config.disable_upnp = self.disable_upnp;
+        config.disable_upnp = self.disable_upnp || self.tor_only;
         config.unsafe_rpc = self.unsafe_rpc;
         config.enable_unsynced_mining = self.enable_unsynced_mining;
         config.enable_mainnet_mining = self.enable_mainnet_mining;
@@ -161,8 +232,19 @@ impl Args {
         config.enable_sanity_checks = true;
         config.user_agent_comments.clone_from(&self.user_agent_comments);
         config.block_template_cache_lifetime = self.block_template_cache_lifetime;
-        config.p2p_listen_address = self.listen.unwrap_or(ContextualNetAddress::unspecified());
-        config.externalip = self.externalip.map(|v| v.normalize(config.default_p2p_port()));
+        let listen_addr = self.listen.unwrap_or_else(|| {
+            if self.tor_only {
+                ContextualNetAddress::loopback()
+            } else {
+                ContextualNetAddress::unspecified()
+            }
+        });
+        config.p2p_listen_address = listen_addr;
+        if self.tor_only {
+            config.externalip = None;
+        } else {
+            config.externalip = self.externalip.map(|v| v.normalize(config.default_p2p_port()));
+        }
         config.ram_scale = self.ram_scale;
         config.retention_period_days = self.retention_period_days;
 
@@ -282,6 +364,98 @@ pub fn cli() -> Command {
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Add an interface:port to listen for connections (default all interfaces port: 16111, testnet: 16211)."),
+        )
+        .arg(
+            Arg::new("proxy")
+                .long("proxy")
+                .value_name("IP[:PORT]")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
+                .help("Route outbound clearnet P2P connections through the provided SOCKS5 proxy (default port: 9050)."),
+        )
+        .arg(
+            Arg::new("proxy-net")
+                .long("proxy-net")
+                .value_name("NETWORK=IP[:PORT]")
+                .require_equals(true)
+                .action(ArgAction::Append)
+                .value_parser(clap::value_parser!(ProxyRule))
+                .help("Override the SOCKS5 proxy for a specific network (ipv4|ipv6|onion). May be provided multiple times."),
+        )
+        .arg(
+            Arg::new("tor-proxy")
+                .long("tor-proxy")
+                .value_name("IP[:PORT]")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
+                .help("Route outbound P2P connections through the provided SOCKS5 proxy (default port: 9050)."),
+        )
+        .arg(
+            Arg::new("tor-control")
+                .long("tor-control")
+                .value_name("IP[:PORT]")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
+                .help("Tor control host:port used for hidden-service management (default port: 9051)."),
+        )
+        .arg(
+            Arg::new("tor-password")
+                .long("tor-password")
+                .value_name("PASSWORD")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(String))
+                .help("Authenticate to the Tor control port using the provided password."),
+        )
+        .arg(
+            Arg::new("tor-cookie")
+                .long("tor-cookie")
+                .value_name("PATH")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(PathBuf))
+                .help("Authenticate to the Tor control port using the cookie file at PATH."),
+        )
+        .arg(
+            Arg::new("tor-bootstrap-timeout-sec")
+                .long("tor-bootstrap-timeout-sec")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(u64))
+                .help("Seconds to wait for Tor bootstrap completion before aborting (default: 60)."),
+        )
+        .arg(
+            Arg::new("listen-onion")
+                .long("listen-onion")
+                .action(ArgAction::SetTrue)
+                .help("Publish a Tor hidden service for the P2P listener (requires --tor-control)."),
+        )
+        .arg(
+            Arg::new("tor-only")
+                .long("tor-only")
+                .action(ArgAction::SetTrue)
+                .help("Disable clearnet peers and operate exclusively over Tor."),
+        )
+        .arg(
+            Arg::new("onlynet")
+                .long("onlynet")
+                .value_name("NETWORK")
+                .require_equals(true)
+                .action(ArgAction::Append)
+                .value_parser(clap::value_parser!(OnlyNet))
+                .help("Limit connections to the specified network (ipv4|ipv6|onion). May be passed multiple times."),
+        )
+        .arg(
+            Arg::new("tor-onion-port")
+                .long("tor-onion-port")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(u16))
+                .help("Virtual port to expose via the Tor hidden service (defaults to the P2P port)."),
+        )
+        .arg(
+            Arg::new("tor-onion-key")
+                .long("tor-onion-key")
+                .value_name("PATH")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(PathBuf))
+                .help("Path to a persistent v3 onion private key (will be created if missing)."),
         )
         .arg(
             Arg::new("outpeers")
@@ -443,6 +617,24 @@ impl Args {
             connect_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "connect-peers", defaults.connect_peers),
             add_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "add-peers", defaults.add_peers),
             listen: m.get_one::<ContextualNetAddress>("listen").cloned().or(defaults.listen),
+            proxy: m.get_one::<ContextualNetAddress>("proxy").cloned().or(defaults.proxy.clone()),
+            proxy_net: m
+                .get_many::<ProxyRule>("proxy-net")
+                .map(|values| values.cloned().collect())
+                .unwrap_or_else(|| defaults.proxy_net.clone()),
+            tor_proxy: m.get_one::<ContextualNetAddress>("tor-proxy").cloned().or(defaults.tor_proxy),
+            tor_control: m.get_one::<ContextualNetAddress>("tor-control").cloned().or(defaults.tor_control),
+            tor_password: m.get_one::<String>("tor-password").cloned().or(defaults.tor_password),
+            tor_cookie: m.get_one::<PathBuf>("tor-cookie").cloned().or(defaults.tor_cookie),
+            tor_bootstrap_timeout_sec: arg_match_unwrap_or::<u64>(&m, "tor-bootstrap-timeout-sec", defaults.tor_bootstrap_timeout_sec),
+            listen_onion: arg_match_unwrap_or::<bool>(&m, "listen-onion", defaults.listen_onion),
+            tor_onion_port: m.get_one::<u16>("tor-onion-port").cloned().or(defaults.tor_onion_port),
+            tor_onion_key: m.get_one::<PathBuf>("tor-onion-key").cloned().or(defaults.tor_onion_key),
+            tor_only: arg_match_unwrap_or::<bool>(&m, "tor-only", defaults.tor_only),
+            onlynet: m
+                .get_many::<OnlyNet>("onlynet")
+                .map(|values| values.cloned().collect())
+                .unwrap_or_else(|| defaults.onlynet.clone()),
             outbound_target: arg_match_unwrap_or::<usize>(&m, "outpeers", defaults.outbound_target),
             inbound_limit: arg_match_unwrap_or::<usize>(&m, "maxinpeers", defaults.inbound_limit),
             rpc_max_clients: arg_match_unwrap_or::<usize>(&m, "rpcmaxclients", defaults.rpc_max_clients),
@@ -583,3 +775,149 @@ fn arg_match_many_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatch
   -s, --service=                            Service command {install, remove, start, stop}
       --nogrpc                              Don't initialize the gRPC server
 */
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProxyNetwork {
+    Ipv4,
+    Ipv6,
+    Onion,
+}
+
+impl fmt::Display for ProxyNetwork {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            ProxyNetwork::Ipv4 => "ipv4",
+            ProxyNetwork::Ipv6 => "ipv6",
+            ProxyNetwork::Onion => "onion",
+        };
+        f.write_str(name)
+    }
+}
+
+impl FromStr for ProxyNetwork {
+    type Err = ProxyRuleParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "ipv4" => Ok(ProxyNetwork::Ipv4),
+            "ipv6" => Ok(ProxyNetwork::Ipv6),
+            "onion" => Ok(ProxyNetwork::Onion),
+            other => Err(ProxyRuleParseError(format!("unknown proxy network '{other}'"))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProxyRule {
+    pub network: ProxyNetwork,
+    pub address: ContextualNetAddress,
+}
+
+impl fmt::Display for ProxyRule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}={}", self.network, self.address)
+    }
+}
+
+impl FromStr for ProxyRule {
+    type Err = ProxyRuleParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (net, addr) = s.split_once('=').ok_or_else(|| ProxyRuleParseError("expected NETWORK=ADDRESS".into()))?;
+        let network = ProxyNetwork::from_str(net.trim())?;
+        let address =
+            ContextualNetAddress::from_str(addr.trim()).map_err(|err| ProxyRuleParseError(format!("invalid proxy address: {err}")))?;
+        Ok(Self { network, address })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProxyRuleParseError(String);
+
+impl fmt::Display for ProxyRuleParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ProxyRuleParseError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OnlyNet {
+    Ipv4,
+    Ipv6,
+    Onion,
+}
+
+impl fmt::Display for OnlyNet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        ProxyNetwork::from(*self).fmt(f)
+    }
+}
+
+impl FromStr for OnlyNet {
+    type Err = ProxyRuleParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        ProxyNetwork::from_str(s).map(Into::into)
+    }
+}
+
+impl From<ProxyNetwork> for OnlyNet {
+    fn from(value: ProxyNetwork) -> Self {
+        match value {
+            ProxyNetwork::Ipv4 => OnlyNet::Ipv4,
+            ProxyNetwork::Ipv6 => OnlyNet::Ipv6,
+            ProxyNetwork::Onion => OnlyNet::Onion,
+        }
+    }
+}
+
+impl From<OnlyNet> for ProxyNetwork {
+    fn from(value: OnlyNet) -> Self {
+        match value {
+            OnlyNet::Ipv4 => ProxyNetwork::Ipv4,
+            OnlyNet::Ipv6 => ProxyNetwork::Ipv6,
+            OnlyNet::Onion => ProxyNetwork::Onion,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ProxySettings {
+    pub default: Option<ContextualNetAddress>,
+    pub ipv4: Option<ContextualNetAddress>,
+    pub ipv6: Option<ContextualNetAddress>,
+    pub onion: Option<ContextualNetAddress>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ResolvedProxySettings {
+    pub default: Option<SocketAddr>,
+    pub ipv4: Option<SocketAddr>,
+    pub ipv6: Option<SocketAddr>,
+    pub onion: Option<SocketAddr>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AllowedNetworksChoice {
+    All,
+    Custom { allow_ipv4: bool, allow_ipv6: bool, allow_onion: bool },
+}
+
+impl ProxySettings {
+    pub fn resolve(&self, default_port: u16) -> ResolvedProxySettings {
+        fn normalize(addr: &ContextualNetAddress, default_port: u16) -> SocketAddr {
+            let net_addr: NetAddress = addr.clone().normalize(default_port);
+            net_addr.to_socket_addr().expect("expected IP address")
+        }
+
+        ResolvedProxySettings {
+            default: self.default.as_ref().map(|addr| normalize(addr, default_port)),
+            ipv4: self.ipv4.as_ref().map(|addr| normalize(addr, default_port)),
+            ipv6: self.ipv6.as_ref().map(|addr| normalize(addr, default_port)),
+            onion: self.onion.as_ref().map(|addr| normalize(addr, default_port)),
+        }
+    }
+}

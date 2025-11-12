@@ -59,6 +59,7 @@ members = [
     "metrics/core",
     "metrics/perf_monitor",
     "utils/alloc",
+    "research/tor-integration/tor-prototype",
 ]
 
 [workspace.package]
@@ -177,6 +178,7 @@ enum-primitive-derive = "0.3.0"
 event-listener = "2.5.3" # TODO "3.0.1"
 evpkdf = "0.2.0"
 faster-hex = "0.9.0"
+data-encoding = "2.5.0"
 fixedstr = { version = "0.5.4", features = ["serde"] }
 flate2 = "1.0.28"
 futures = { version = "0.3.29" }

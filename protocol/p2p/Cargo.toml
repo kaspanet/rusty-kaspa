@@ -45,6 +45,9 @@ tokio = { workspace = true, features = [ "rt-multi-thread", "macros", "signal" ]
 tokio-stream = { workspace = true, features = ["net"] }
 tonic = { workspace = true, features = ["tls", "gzip"] }
 uuid.workspace = true
+tokio-socks = "0.5.2"
+tower = "0.5.1"
+hyper-util = { version = "0.1", features = ["tokio"] }
 
 [build-dependencies]
 tonic-build = { workspace = true, features = ["prost"] }

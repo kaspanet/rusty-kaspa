@@ -5,29 +5,32 @@ use crate::pb::{
 };
 use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
+use hyper_util::rt::TokioIo;
 use kaspa_core::{debug, info};
-use kaspa_utils::networking::NetAddress;
+use kaspa_utils::networking::{NetAddress, NetAddressError};
 use kaspa_utils_tower::{
     counters::TowerConnectionCounters,
     middleware::{BodyExt, CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
 };
-use std::net::ToSocketAddrs;
+use rand::{distributions::Alphanumeric, Rng};
+use std::io;
+use std::net::{IpAddr, SocketAddr};
 use std::pin::Pin;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::mpsc::{channel as mpsc_channel, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
+use tokio_socks::tcp::socks5::Socks5Stream;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
-use tonic::transport::{Error as TonicError, Server as TonicServer};
+use tonic::transport::{Error as TonicError, Server as TonicServer, Uri};
 use tonic::{Request, Response, Status as TonicStatus, Streaming};
+use tower::service_fn;
 
 #[derive(Error, Debug)]
 pub enum ConnectionError {
-    #[error("missing socket address")]
-    NoAddress,
-
     #[error("{0}")]
     IoError(#[from] std::io::Error),
 
@@ -39,6 +42,9 @@ pub enum ConnectionError {
 
     #[error("{0}")]
     ProtocolError(#[from] ProtocolError),
+
+    #[error(transparent)]
+    AddressParsingError(#[from] NetAddressError),
 }
 
 /// Maximum P2P decoded gRPC message size to send and receive
@@ -51,6 +57,15 @@ pub struct ConnectionHandler {
     hub_sender: MpscSender<HubEvent>,
     initializer: Arc<dyn ConnectionInitializer>,
     counters: Arc<TowerConnectionCounters>,
+    socks_proxy: Option<SocksProxyConfig>,
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct SocksProxyConfig {
+    pub default: Option<SocketAddr>,
+    pub ipv4: Option<SocketAddr>,
+    pub ipv6: Option<SocketAddr>,
+    pub onion: Option<SocketAddr>,
 }
 
 impl ConnectionHandler {
@@ -58,8 +73,9 @@ impl ConnectionHandler {
         hub_sender: MpscSender<HubEvent>,
         initializer: Arc<dyn ConnectionInitializer>,
         counters: Arc<TowerConnectionCounters>,
+        socks_proxy: Option<SocksProxyConfig>,
     ) -> Self {
-        Self { hub_sender, initializer, counters }
+        Self { hub_sender, initializer, counters, socks_proxy }
     }
 
     /// Launches a P2P server listener loop
@@ -70,6 +86,7 @@ impl ConnectionHandler {
 
         let bytes_tx = self.counters.bytes_tx.clone();
         let bytes_rx = self.counters.bytes_rx.clone();
+        let serve_socket = serve_address.to_socket_addr().expect("server must bind to an IP address");
 
         tokio::spawn(async move {
             let proto_server = ProtoP2pServer::new(connection_handler)
@@ -82,7 +99,7 @@ impl ConnectionHandler {
                 .layer(MapRequestBodyLayer::new(move |body| CountBytesBody::new(body, bytes_rx.clone()).boxed_unsync()))
                 .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, bytes_tx.clone())))
                 .add_service(proto_server)
-                .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
+                .serve_with_shutdown(serve_socket, termination_receiver.map(drop))
                 .await;
 
             match serve_result {
@@ -95,17 +112,44 @@ impl ConnectionHandler {
 
     /// Connect to a new peer
     pub(crate) async fn connect(&self, peer_address: String) -> Result<Arc<Router>, ConnectionError> {
-        let Some(socket_address) = peer_address.to_socket_addrs()?.next() else {
-            return Err(ConnectionError::NoAddress);
-        };
+        let peer_net_address = NetAddress::from_str(&peer_address)?;
         let peer_address = format!("http://{}", peer_address); // Add scheme prefix as required by Tonic
 
-        let channel = tonic::transport::Endpoint::new(peer_address)?
+        let endpoint = tonic::transport::Endpoint::new(peer_address)?
             .timeout(Duration::from_millis(Self::communication_timeout()))
             .connect_timeout(Duration::from_millis(Self::connect_timeout()))
-            .tcp_keepalive(Some(Duration::from_millis(Self::keep_alive())))
-            .connect()
-            .await?;
+            .tcp_keepalive(Some(Duration::from_millis(Self::keep_alive())));
+
+        let channel = if let Some(proxy_addr) = self.socks_proxy.and_then(|cfg| {
+            if peer_net_address.as_onion().is_some() {
+                cfg.onion.or(cfg.default)
+            } else if let Some(ip) = peer_net_address.as_ip() {
+                match IpAddr::from(ip) {
+                    IpAddr::V4(_) => cfg.ipv4.or(cfg.default),
+                    IpAddr::V6(_) => cfg.ipv6.or(cfg.default),
+                }
+            } else {
+                cfg.default
+            }
+        }) {
+            let connector = service_fn(move |uri: Uri| {
+                let proxy_addr = proxy_addr;
+                async move {
+                    let host =
+                        uri.host().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing host in URI"))?.to_string();
+                    let port = uri.port_u16().unwrap_or(80);
+                    let target = format!("{}:{}", host, port);
+                    let (username, password) = generate_socks_credentials();
+                    let stream = Socks5Stream::connect_with_password(proxy_addr, target, &username, &password)
+                        .await
+                        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+                    Ok::<_, io::Error>(TokioIo::new(stream.into_inner()))
+                }
+            });
+            endpoint.connect_with_connector(connector).await?
+        } else {
+            endpoint.connect().await?
+        };
 
         let channel = ServiceBuilder::new()
             .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, self.counters.bytes_rx.clone())))
@@ -120,7 +164,7 @@ impl ConnectionHandler {
         let (outgoing_route, outgoing_receiver) = mpsc_channel(Self::outgoing_network_channel_size());
         let incoming_stream = client.message_stream(ReceiverStream::new(outgoing_receiver)).await?.into_inner();
 
-        let router = Router::new(socket_address, true, self.hub_sender.clone(), incoming_stream, outgoing_route).await;
+        let router = Router::new(peer_net_address, true, self.hub_sender.clone(), incoming_stream, outgoing_route).await;
 
         // For outbound peers, we perform the initialization as part of the connect logic
         match self.initializer.initialize_connection(router.clone()).await {
@@ -194,6 +238,14 @@ impl ConnectionHandler {
     }
 }
 
+fn generate_socks_credentials() -> (String, String) {
+    const USERNAME_PREFIX: &str = "kaspa";
+    let mut rng = rand::thread_rng();
+    let suffix: String = (&mut rng).sample_iter(&Alphanumeric).take(16).map(char::from).collect();
+    let password: String = (&mut rng).sample_iter(&Alphanumeric).take(32).map(char::from).collect();
+    (format!("{USERNAME_PREFIX}-{suffix}"), password)
+}
+
 #[tonic::async_trait]
 impl ProtoP2p for ConnectionHandler {
     type MessageStreamStream = Pin<Box<dyn futures::Stream<Item = Result<KaspadMessage, TonicStatus>> + Send + 'static>>;
@@ -212,7 +264,7 @@ impl ProtoP2p for ConnectionHandler {
         let incoming_stream = request.into_inner();
 
         // Build the router object
-        let router = Router::new(remote_address, false, self.hub_sender.clone(), incoming_stream, outgoing_route).await;
+        let router = Router::new(remote_address.into(), false, self.hub_sender.clone(), incoming_stream, outgoing_route).await;
 
         // Notify the central Hub about the new peer
         self.hub_sender.send(HubEvent::NewPeer(router)).await.expect("hub receiver should never drop before senders");

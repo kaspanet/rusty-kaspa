@@ -17,7 +17,7 @@ impl ProtocolConverter {
         let properties = peer.properties();
         RpcPeerInfo {
             id: peer.identity(),
-            address: peer.net_address().into(),
+            address: peer.net_address(),
             is_outbound: peer.is_outbound(),
             is_ibd_peer: ibd_peer_key.is_some() && peer.key() == *ibd_peer_key.as_ref().unwrap(),
             last_ping_duration: peer.last_ping_duration(),

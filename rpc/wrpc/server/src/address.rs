@@ -1,8 +1,8 @@
 use crate::service::WrpcEncoding;
 use kaspa_consensus_core::network::NetworkType;
-use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utils::networking::{ContextualNetAddress, NetAddressError};
 use serde::Deserialize;
-use std::{net::AddrParseError, str::FromStr};
+use std::str::FromStr;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename = "lowercase")]
@@ -44,7 +44,7 @@ impl WrpcNetAddress {
     }
 }
 impl FromStr for WrpcNetAddress {
-    type Err = AddrParseError;
+    type Err = NetAddressError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "default" => Ok(WrpcNetAddress::Default),
@@ -58,7 +58,7 @@ impl FromStr for WrpcNetAddress {
 }
 
 impl TryFrom<&str> for WrpcNetAddress {
-    type Error = AddrParseError;
+    type Error = NetAddressError;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         WrpcNetAddress::from_str(s)
@@ -66,7 +66,7 @@ impl TryFrom<&str> for WrpcNetAddress {
 }
 
 impl TryFrom<String> for WrpcNetAddress {
-    type Error = AddrParseError;
+    type Error = NetAddressError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         WrpcNetAddress::from_str(&s)

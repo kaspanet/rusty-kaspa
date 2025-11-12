@@ -1,6 +1,7 @@
 use crate::imports::*;
 use convert_case::{Case, Casing};
 use kaspa_rpc_core::api::ops::RpcApiOps;
+use kaspa_utils::networking::NetAddressError;
 
 #[derive(Default, Handler)]
 #[help("Execute RPC commands against the connected Kaspa node")]
@@ -200,7 +201,7 @@ impl Rpc {
                 if argv.is_empty() {
                     return Err(Error::custom("Please specify peer IP address"));
                 }
-                let ip: RpcIpAddress = argv.remove(0).parse()?;
+                let ip: RpcIpAddress = argv.remove(0).parse().map_err(NetAddressError::from)?;
                 let result = rpc.ban_call(None, BanRequest { ip }).await?;
                 self.println(&ctx, result);
             }
@@ -208,7 +209,7 @@ impl Rpc {
                 if argv.is_empty() {
                     return Err(Error::custom("Please specify peer IP address"));
                 }
-                let ip: RpcIpAddress = argv.remove(0).parse()?;
+                let ip: RpcIpAddress = argv.remove(0).parse().map_err(NetAddressError::from)?;
                 let result = rpc.unban_call(None, UnbanRequest { ip }).await?;
                 self.println(&ctx, result);
             }

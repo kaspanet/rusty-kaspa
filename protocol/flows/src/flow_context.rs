@@ -36,13 +36,16 @@ use kaspa_p2p_lib::{
     convert::model::version::Version,
     make_message,
     pb::{kaspad_message::Payload, InvRelayBlockMessage},
-    ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
+    service_flags, ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
 };
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
-use kaspa_utils::iter::IterExtensions;
-use kaspa_utils::networking::PeerId;
+use kaspa_utils::{
+    iter::IterExtensions,
+    networking::{NetAddress, OnionAddress, PeerId},
+};
 use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::time::Instant;
 use std::{collections::hash_map::Entry, fmt::Display};
 use std::{
@@ -56,9 +59,10 @@ use std::{
 };
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-    RwLock as AsyncRwLock,
+    watch, RwLock as AsyncRwLock,
 };
 use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
+use tor_interface::tor_crypto::V3OnionServiceId;
 use uuid::Uuid;
 
 /// The P2P protocol version.
@@ -241,6 +245,13 @@ pub struct FlowContextInner {
 
     // Mining rule engine
     mining_rule_engine: Arc<MiningRuleEngine>,
+    proxy: Option<SocketAddr>,
+    proxy_ipv4: Option<SocketAddr>,
+    proxy_ipv6: Option<SocketAddr>,
+    tor_proxy: Option<SocketAddr>,
+    tor_only: bool,
+    onion_service: Option<(V3OnionServiceId, NetAddress)>,
+    tor_bootstrap_rx: Mutex<Option<watch::Receiver<bool>>>,
 }
 
 #[derive(Clone)]
@@ -315,9 +326,31 @@ impl FlowContext {
         notification_root: Arc<ConsensusNotificationRoot>,
         hub: Hub,
         mining_rule_engine: Arc<MiningRuleEngine>,
+        proxy_default: Option<SocketAddr>,
+        proxy_ipv4: Option<SocketAddr>,
+        proxy_ipv6: Option<SocketAddr>,
+        tor_proxy: Option<SocketAddr>,
+        tor_only: bool,
+        onion_service: Option<(V3OnionServiceId, u16)>,
+        tor_bootstrap_rx: Option<watch::Receiver<bool>>,
     ) -> Self {
         let bps_upper_bound = config.bps().upper_bound() as usize;
         let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps_upper_bound as f64).log2().ceil() as u32;
+
+        let onion_service = onion_service.and_then(|(id, port)| {
+            let onion_host = format!("{}.onion", id);
+            match OnionAddress::try_from(onion_host.as_str()) {
+                Ok(onion) => Some((id, NetAddress::new_onion(onion, port))),
+                Err(err) => {
+                    warn!("Failed to construct onion address {}: {}", onion_host, err);
+                    None
+                }
+            }
+        });
+
+        if let Some((_, address)) = onion_service.as_ref() {
+            address_manager.lock().add_address(*address);
+        }
 
         // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
         // of how many orphans there can possibly be on average bounded by an upper bound.
@@ -345,6 +378,13 @@ impl FlowContext {
                 max_orphans,
                 config,
                 mining_rule_engine,
+                proxy: proxy_default,
+                proxy_ipv4,
+                proxy_ipv6,
+                tor_proxy,
+                tor_only,
+                onion_service,
+                tor_bootstrap_rx: Mutex::new(tor_bootstrap_rx),
             }),
         }
     }
@@ -355,6 +395,38 @@ impl FlowContext {
 
     pub fn orphan_resolution_range(&self) -> u32 {
         self.orphan_resolution_range
+    }
+
+    pub fn tor_proxy(&self) -> Option<SocketAddr> {
+        self.tor_proxy
+    }
+
+    pub fn proxy(&self) -> Option<SocketAddr> {
+        self.proxy
+    }
+
+    pub fn proxy_ipv4(&self) -> Option<SocketAddr> {
+        self.proxy_ipv4
+    }
+
+    pub fn proxy_ipv6(&self) -> Option<SocketAddr> {
+        self.proxy_ipv6
+    }
+
+    pub fn tor_only(&self) -> bool {
+        self.tor_only
+    }
+
+    pub fn onion_service_id(&self) -> Option<V3OnionServiceId> {
+        self.onion_service.as_ref().map(|(id, _)| id.clone())
+    }
+
+    pub fn onion_service_address(&self) -> Option<NetAddress> {
+        self.onion_service.as_ref().map(|(_, addr)| *addr)
+    }
+
+    pub fn tor_bootstrap_receiver(&self) -> Option<watch::Receiver<bool>> {
+        self.tor_bootstrap_rx.lock().clone()
     }
 
     pub fn max_orphans(&self) -> usize {
@@ -751,7 +823,10 @@ impl ConnectionInitializer for FlowContext {
 
         // Build the local version message
         // Subnets are not currently supported
+        // NOTE: We currently avoid advertising onion addresses in the handshake since legacy peers
+        // do not understand them. When Tor-only, we intentionally fall back to `None`.
         let mut self_version_message = Version::new(local_address, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
+        self_version_message.services |= service_flags::ADDR_V2;
         self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
         // TODO: get number of live services
         // TODO: disable_relay_tx from config/cmd
@@ -762,6 +837,8 @@ impl ConnectionInitializer for FlowContext {
         let time_offset = unix_now() as i64 - peer_version_message.timestamp;
 
         let peer_version: Version = peer_version_message.try_into()?;
+        let peer_services = peer_version.services;
+        let peer_supports_addrv2 = (peer_services & service_flags::ADDR_V2) != 0;
         router.set_identity(peer_version.id);
         // Avoid duplicate connections
         if self.hub.has_peer(router.key()) {
@@ -800,11 +877,13 @@ impl ConnectionInitializer for FlowContext {
         // Build and register the peer properties
         let peer_properties = Arc::new(PeerProperties {
             user_agent: peer_version.user_agent.to_owned(),
+            services: peer_services,
             advertised_protocol_version: peer_version.protocol_version,
             protocol_version: applied_protocol_version,
             disable_relay_tx: peer_version.disable_relay_tx,
             subnetwork_id: peer_version.subnetwork_id.to_owned(),
             time_offset,
+            supports_addrv2: peer_supports_addrv2,
         });
         router.set_properties(peer_properties);
 
@@ -818,15 +897,29 @@ impl ConnectionInitializer for FlowContext {
             flow.launch();
         }
 
+        let tor_active = self.tor_proxy.is_some() || self.onion_service.is_some() || self.tor_only;
+
         if router.is_outbound() || peer_version.address.is_some() {
             let mut address_manager = self.address_manager.lock();
 
             if router.is_outbound() {
-                address_manager.add_address(router.net_address().into());
+                let net_addr = router.net_address();
+                if net_addr.as_onion().is_some() && !tor_active {
+                    debug!("Skipping outbound onion address {} (tor inactive)", net_addr);
+                } else {
+                    address_manager.add_address(net_addr);
+                }
             }
 
             if let Some(peer_ip_address) = peer_version.address {
-                address_manager.add_address(peer_ip_address);
+                if peer_ip_address.as_onion().is_some() && !(tor_active && peer_supports_addrv2) {
+                    debug!(
+                        "Skipping peer-advertised onion address {} from {} (tor_active={}, addr_v2={})",
+                        peer_ip_address, router, tor_active, peer_supports_addrv2
+                    );
+                } else {
+                    address_manager.add_address(peer_ip_address);
+                }
             }
         }
 

@@ -4,11 +4,10 @@ use crate::pb::{kaspad_message::Payload as KaspadMessagePayload, KaspadMessage};
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
 use crate::{make_message, Peer};
 use kaspa_core::{debug, error, info, trace, warn};
-use kaspa_utils::networking::PeerId;
+use kaspa_utils::networking::{NetAddress, PeerId};
 use parking_lot::{Mutex, RwLock};
 use seqlock::SeqLock;
 use std::fmt::{Debug, Display};
-use std::net::SocketAddr;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
@@ -117,8 +116,8 @@ pub struct Router {
     /// Internal identity of this peer
     identity: SeqLock<PeerId>,
 
-    /// The socket address of this peer
-    net_address: SocketAddr,
+    /// The advertised network address of this peer
+    net_address: NetAddress,
 
     /// Indicates whether this connection is an outbound connection
     is_outbound: bool,
@@ -149,7 +148,7 @@ impl Display for Router {
 
 impl From<&Router> for PeerKey {
     fn from(value: &Router) -> Self {
-        Self::new(value.identity.read(), value.net_address.ip().into())
+        Self::new(value.identity.read(), value.net_address.kind())
     }
 }
 
@@ -174,7 +173,7 @@ fn message_summary(msg: &KaspadMessage) -> impl Debug {
 
 impl Router {
     pub(crate) async fn new(
-        net_address: SocketAddr,
+        net_address: NetAddress,
         is_outbound: bool,
         hub_sender: MpscSender<HubEvent>,
         mut incoming_stream: Streaming<KaspadMessage>,
@@ -255,8 +254,8 @@ impl Router {
         *self.identity.lock_write() = identity;
     }
 
-    /// The socket address of this peer
-    pub fn net_address(&self) -> SocketAddr {
+    /// The advertised network address of this peer
+    pub fn net_address(&self) -> NetAddress {
         self.net_address
     }
 

@@ -33,6 +33,7 @@ thiserror.workspace = true
 triggered.workspace = true
 uuid.workspace = true
 wasm-bindgen.workspace = true
+data-encoding.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 mac_address.workspace = true
