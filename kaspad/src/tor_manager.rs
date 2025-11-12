@@ -9,7 +9,7 @@ use std::{
 };
 
 use hex::encode as hex_encode;
-use kaspa_core::{debug, info, warn};
+use kaspa_core::{debug, info};
 use thiserror::Error;
 use tor_interface::{
     legacy_tor_client::{LegacyTorClient, LegacyTorClientConfig, TorAuth},
