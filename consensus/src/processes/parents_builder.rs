@@ -55,9 +55,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point);
 
         let mut origin_children_headers = None;
-        let mut compressed_parents: Vec<(u8, Vec<Hash>)> = vec![];
-        let mut prev_parents_at_level: Vec<Hash> = vec![];
-        let mut last_block_level: u8 = 0;
+        let mut parents = CompressedParents::default();
 
         for block_level in 0..=self.max_block_level {
             // Direct parents are guaranteed to be in one another's anticones so add them all to
@@ -176,25 +174,13 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             };
 
             if block_level > 0 && parents_at_level.as_slice() == std::slice::from_ref(&self.genesis_hash) {
-                last_block_level = block_level;
                 break;
             }
 
-            if prev_parents_at_level != parents_at_level {
-                // Initialize prev_parents_at_level on first iteration
-                if block_level == 0 {
-                    last_block_level = 1;
-                    prev_parents_at_level = parents_at_level;
-                } else {
-                    compressed_parents.push((block_level, prev_parents_at_level));
-                    prev_parents_at_level = parents_at_level;
-                }
-            }
+            parents.push(parents_at_level);
         }
 
-        last_block_level = std::cmp::min(last_block_level, self.max_block_level);
-        compressed_parents.push((last_block_level, prev_parents_at_level));
-        CompressedParents::from(compressed_parents)
+        parents
     }
 
     pub fn parents_at_level<'a>(&'a self, header: &'a Header, level: u8) -> &'a [Hash] {

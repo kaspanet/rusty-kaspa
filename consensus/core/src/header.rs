@@ -12,12 +12,6 @@ use std::mem::size_of;
 
 pub struct CompressedParents(Vec<(u8, Vec<Hash>)>);
 
-impl From<Vec<(u8, Vec<Hash>)>> for CompressedParents {
-    fn from(value: Vec<(u8, Vec<Hash>)>) -> Self {
-        CompressedParents(value)
-    }
-}
-
 impl TryFrom<Vec<Vec<Hash>>> for CompressedParents {
     type Error = &'static str;
 
@@ -64,6 +58,21 @@ impl CompressedParents {
 
     pub fn iter(&self) -> impl Iterator<Item = &'_ Vec<Hash>> {
         self.0.iter().map(|(cum, v)| (*cum as usize, v)).expand_rle()
+    }
+
+    pub fn push(&mut self, parents_at_level: Vec<Hash>) {
+        match self.0.last_mut() {
+            Some((count, last_parents)) if *last_parents == parents_at_level => {
+                *count = count.checked_add(1).expect("Exceeded maximum parents levels of 255");
+            }
+            Some((count, _)) => {
+                let next_cum = count.checked_add(1).expect("Exceeded maximum parents levels of 255");
+                self.0.push((next_cum, parents_at_level));
+            }
+            None => {
+                self.0.push((1, parents_at_level));
+            }
+        }
     }
 }
 
@@ -317,6 +326,28 @@ mod tests {
         assert_eq!(compressed_single_run.get(1), Some(&first));
         assert_eq!(compressed_single_run.get(2), Some(&first));
         assert_eq!(compressed_single_run.get(3), None);
+    }
+
+    #[test]
+    fn test_compressed_parents_push() {
+        let mut compressed = CompressedParents(Vec::new());
+        let level1 = vec_from(&[1, 2]);
+        let level2 = vec_from(&[3, 4]);
+
+        // 1. Push to empty
+        compressed.push(level1.clone());
+        assert_eq!(compressed.len(), 1);
+        assert_eq!(compressed.0, vec![(1, level1.clone())]);
+
+        // 2. Push same (extend run)
+        compressed.push(level1.clone());
+        assert_eq!(compressed.len(), 2);
+        assert_eq!(compressed.0, vec![(2, level1.clone())]);
+
+        // 3. Push different (new run)
+        compressed.push(level2.clone());
+        assert_eq!(compressed.len(), 3);
+        assert_eq!(compressed.0, vec![(2, level1), (3, level2)]);
     }
 
     #[test]
