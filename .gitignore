@@ -14,4 +14,3 @@ testing/integration/perflogs*
 Servers.toml
 release
 package-sizes.js
-pruning-optimisation/
