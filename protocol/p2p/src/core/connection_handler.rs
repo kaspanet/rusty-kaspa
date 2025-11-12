@@ -12,7 +12,6 @@ use kaspa_utils_tower::{
     counters::TowerConnectionCounters,
     middleware::{BodyExt, CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
 };
-use rand::{distributions::Alphanumeric, Rng};
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::pin::Pin;
@@ -139,10 +138,8 @@ impl ConnectionHandler {
                         uri.host().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing host in URI"))?.to_string();
                     let port = uri.port_u16().unwrap_or(80);
                     let target = format!("{}:{}", host, port);
-                    let (username, password) = generate_socks_credentials();
-                    let stream = Socks5Stream::connect_with_password(proxy_addr, target, &username, &password)
-                        .await
-                        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+                    let stream =
+                        Socks5Stream::connect(proxy_addr, target).await.map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
                     Ok::<_, io::Error>(TokioIo::new(stream.into_inner()))
                 }
             });
@@ -236,14 +233,6 @@ impl ConnectionHandler {
     fn connect_timeout() -> u64 {
         1_000
     }
-}
-
-fn generate_socks_credentials() -> (String, String) {
-    const USERNAME_PREFIX: &str = "kaspa";
-    let mut rng = rand::thread_rng();
-    let suffix: String = (&mut rng).sample_iter(&Alphanumeric).take(16).map(char::from).collect();
-    let password: String = (&mut rng).sample_iter(&Alphanumeric).take(32).map(char::from).collect();
-    (format!("{USERNAME_PREFIX}-{suffix}"), password)
 }
 
 #[tonic::async_trait]

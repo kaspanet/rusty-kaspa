@@ -9,7 +9,7 @@ use std::{
 };
 
 use hex::encode as hex_encode;
-use kaspa_core::{info, warn};
+use kaspa_core::{debug, info, warn};
 use thiserror::Error;
 use tor_interface::{
     legacy_tor_client::{LegacyTorClient, LegacyTorClientConfig, TorAuth},
@@ -227,8 +227,7 @@ fn wait_for_bootstrap(client: &mut LegacyTorClient, timeout: Duration) -> Result
                     return Ok(());
                 }
                 TorEvent::LogReceived { line } => {
-                    // Tor can be quite chatty; downgrade to debug once we have more granular logging controls.
-                    warn!("tor: {}", line);
+                    debug!("tor: {}", line);
                 }
                 _ => {}
             }

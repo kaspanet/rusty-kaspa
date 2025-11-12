@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::kaspad_env::version;
 use kaspa_notify::address::tracker::Tracker;
-use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
+use kaspa_utils::networking::{ContextualNetAddress, NetAddress, NetAddressError};
 use kaspa_wrpc_server::address::WrpcNetAddress;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
@@ -907,17 +907,17 @@ pub enum AllowedNetworksChoice {
 }
 
 impl ProxySettings {
-    pub fn resolve(&self, default_port: u16) -> ResolvedProxySettings {
-        fn normalize(addr: &ContextualNetAddress, default_port: u16) -> SocketAddr {
+    pub fn resolve(&self, default_port: u16) -> Result<ResolvedProxySettings, NetAddressError> {
+        fn normalize(addr: &ContextualNetAddress, default_port: u16) -> Result<SocketAddr, NetAddressError> {
             let net_addr: NetAddress = addr.clone().normalize(default_port);
-            net_addr.to_socket_addr().expect("expected IP address")
+            net_addr.to_socket_addr()
         }
 
-        ResolvedProxySettings {
-            default: self.default.as_ref().map(|addr| normalize(addr, default_port)),
-            ipv4: self.ipv4.as_ref().map(|addr| normalize(addr, default_port)),
-            ipv6: self.ipv6.as_ref().map(|addr| normalize(addr, default_port)),
-            onion: self.onion.as_ref().map(|addr| normalize(addr, default_port)),
-        }
+        Ok(ResolvedProxySettings {
+            default: self.default.as_ref().map(|addr| normalize(addr, default_port)).transpose()?,
+            ipv4: self.ipv4.as_ref().map(|addr| normalize(addr, default_port)).transpose()?,
+            ipv6: self.ipv6.as_ref().map(|addr| normalize(addr, default_port)).transpose()?,
+            onion: self.onion.as_ref().map(|addr| normalize(addr, default_port)).transpose()?,
+        })
     }
 }
