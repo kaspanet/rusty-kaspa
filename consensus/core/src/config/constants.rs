@@ -166,7 +166,7 @@ pub mod perf {
     impl PerfParams {
         pub fn adjust_to_consensus_params(&mut self, consensus_params: &Params) {
             // Allow caching up to 10x over the baseline
-            self.block_data_cache_size *= consensus_params.bps().upper_bound().clamp(1, 10) as usize;
+            self.block_data_cache_size *= consensus_params.bps().after().clamp(1, 10) as usize;
         }
     }
 }

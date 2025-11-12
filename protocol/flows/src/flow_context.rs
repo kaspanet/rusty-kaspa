@@ -233,7 +233,7 @@ pub struct FlowContextInner {
     block_event_logger: Option<BlockEventLogger>,
 
     // Bps upper bound
-    bps_upper_bound: usize,
+    bps: usize,
 
     // Orphan parameters
     orphan_resolution_range: u32,
@@ -316,13 +316,13 @@ impl FlowContext {
         hub: Hub,
         mining_rule_engine: Arc<MiningRuleEngine>,
     ) -> Self {
-        let bps_upper_bound = config.bps().upper_bound() as usize;
-        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps_upper_bound as f64).log2().ceil() as u32;
+        let bps = config.bps().after() as usize;
+        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps as f64).log2().ceil() as u32;
 
         // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
         // of how many orphans there can possibly be on average bounded by an upper bound.
         let max_orphans =
-            (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k().upper_bound() as usize).min(MAX_ORPHANS_UPPER_BOUND);
+            (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k().after() as usize).min(MAX_ORPHANS_UPPER_BOUND);
         Self {
             inner: Arc::new(FlowContextInner {
                 node_id: Uuid::new_v4().into(),
@@ -339,8 +339,8 @@ impl FlowContext {
                 mining_manager,
                 tick_service,
                 notification_root,
-                block_event_logger: if bps_upper_bound > 1 { Some(BlockEventLogger::new(bps_upper_bound)) } else { None },
-                bps_upper_bound,
+                block_event_logger: Some(BlockEventLogger::new(bps)),
+                bps,
                 orphan_resolution_range,
                 max_orphans,
                 config,
@@ -350,7 +350,7 @@ impl FlowContext {
     }
 
     pub fn block_invs_channel_size(&self) -> usize {
-        self.bps_upper_bound * Router::incoming_flow_baseline_channel_size()
+        self.bps * Router::incoming_flow_baseline_channel_size()
     }
 
     pub fn orphan_resolution_range(&self) -> u32 {

@@ -66,7 +66,7 @@ impl TransactionValidator {
             return Ok(());
         }
         if tx.outputs.len() > self.max_tx_outputs.after() {
-            return Err(TxRuleError::TooManyOutputs(tx.outputs.len(), self.max_tx_inputs.upper_bound()));
+            return Err(TxRuleError::TooManyOutputs(tx.outputs.len(), self.max_tx_inputs.after()));
         }
 
         Ok(())

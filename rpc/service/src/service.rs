@@ -447,7 +447,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         // We use +1 because low_hash is also returned
         // max_blocks MUST be >= mergeset_size_limit + 1
-        let max_blocks = self.config.mergeset_size_limit().upper_bound() as usize + 1;
+        let max_blocks = self.config.mergeset_size_limit().after() as usize + 1;
         let (block_hashes, high_hash) = session.async_get_hashes_between(low_hash, sink_hash, max_blocks).await?;
 
         // If the high hash is equal to sink it means get_hashes_between didn't skip any hashes, and
@@ -630,7 +630,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         // this bounds by number of merged blocks, if include_accepted_transactions = true
         // else it returns the batch_size amount on pure chain blocks.
         // Note: batch_size does not bound removed chain blocks, only added chain blocks.
-        let batch_size = (self.config.mergeset_size_limit().upper_bound() * 10) as usize;
+        let batch_size = (self.config.mergeset_size_limit().after() * 10) as usize;
         let mut virtual_chain_batch = session.async_get_virtual_chain_from_block(request.start_hash, Some(batch_size)).await?;
 
         if let Some(min_confirmation_count) = request.min_confirmation_count {
