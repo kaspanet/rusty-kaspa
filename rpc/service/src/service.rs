@@ -1267,7 +1267,28 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let data_verbosity_level = request.data_verbosity_level;
         let verbosity: RpcAcceptanceDataVerbosity = data_verbosity_level.map(RpcAcceptanceDataVerbosity::from).unwrap_or_default();
         let batch_size = (self.config.mergeset_size_limit().upper_bound() * 10) as usize;
+
         let mut chain_path = session.async_get_virtual_chain_from_block(request.start_hash, Some(batch_size)).await?;
+
+        if let Some(min_confirmation_count) = request.min_confirmation_count {
+            if min_confirmation_count > 0 {
+                let sink_blue_score = session.async_get_sink_blue_score().await;
+
+                while !chain_path.added.is_empty() {
+                    let vc_last_accepted_block_hash = chain_path.added.last().unwrap();
+                    let vc_last_accepted_block = session.async_get_block(*vc_last_accepted_block_hash).await?;
+
+                    let distance = sink_blue_score.saturating_sub(vc_last_accepted_block.header.blue_score);
+
+                    if distance > min_confirmation_count {
+                        break;
+                    }
+
+                    chain_path.added.pop();
+                }
+            }
+        }
+
         let added_acceptance_data =
             self.consensus_converter.get_acceptance_data_with_verbosity(&session, &verbosity, &chain_path, Some(batch_size)).await?;
 

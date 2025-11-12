@@ -304,7 +304,11 @@ impl Rpc {
                 let result = rpc
                     .get_virtual_chain_from_block_v2_call(
                         None,
-                        GetVirtualChainFromBlockV2Request { start_hash, data_verbosity_level: Some(verbosity_level) },
+                        GetVirtualChainFromBlockV2Request {
+                            start_hash,
+                            data_verbosity_level: Some(verbosity_level),
+                            min_confirmation_count: None,
+                        },
                     )
                     .await;
 

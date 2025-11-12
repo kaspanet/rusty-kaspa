@@ -2738,11 +2738,12 @@ impl Deserializer for GetUtxoReturnAddressResponse {
 pub struct GetVirtualChainFromBlockV2Request {
     pub start_hash: RpcHash,
     pub data_verbosity_level: Option<RpcDataVerbosityLevel>,
+    pub min_confirmation_count: Option<u64>,
 }
 
 impl GetVirtualChainFromBlockV2Request {
-    pub fn new(start_hash: RpcHash, data_verbosity_level: Option<RpcDataVerbosityLevel>) -> Self {
-        Self { start_hash, data_verbosity_level }
+    pub fn new(start_hash: RpcHash, data_verbosity_level: Option<RpcDataVerbosityLevel>, min_confirmation_count: Option<u64>) -> Self {
+        Self { start_hash, data_verbosity_level, min_confirmation_count }
     }
 }
 
@@ -2751,6 +2752,7 @@ impl Serializer for GetVirtualChainFromBlockV2Request {
         store!(u16, &1, writer)?;
         store!(RpcHash, &self.start_hash, writer)?;
         serialize!(Option<RpcDataVerbosityLevel>, &self.data_verbosity_level, writer)?;
+        store!(Option<u64>, &self.min_confirmation_count, writer)?;
 
         Ok(())
     }
@@ -2761,8 +2763,9 @@ impl Deserializer for GetVirtualChainFromBlockV2Request {
         let _version = load!(u16, reader)?;
         let start_hash = load!(RpcHash, reader)?;
         let data_verbosity_level = deserialize!(Option<RpcDataVerbosityLevel>, reader)?;
+        let min_confirmation_count = load!(Option<u64>, reader)?;
 
-        Ok(Self { start_hash, data_verbosity_level })
+        Ok(Self { start_hash, data_verbosity_level, min_confirmation_count })
     }
 }
 

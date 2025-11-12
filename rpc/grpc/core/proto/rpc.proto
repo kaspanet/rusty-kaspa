@@ -1023,6 +1023,7 @@ message GetVirtualChainFromBlockV2RequestMessage{
   /// Note: where fields are switched to false, default values of the type will be used to fill the assosicated response fields.
   /// it is therefore the client's responsibility to ensure to ignore the fields in the response.
   optional RpcDataVerbosityLevel dataVerbosityLevel = 2;
+  optional uint64 minConfirmationCount = 3;
 }
 
 message GetVirtualChainFromBlockV2ResponseMessage{

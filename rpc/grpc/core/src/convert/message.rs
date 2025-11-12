@@ -520,6 +520,7 @@ from!(item: &kaspa_rpc_core::GetVirtualChainFromBlockV2Request, protowire::GetVi
     Self {
         start_hash: item.start_hash.to_string(),
         data_verbosity_level: item.data_verbosity_level.map(|v| v as i32),
+        min_confirmation_count: item.min_confirmation_count
     }
 });
 
@@ -789,6 +790,7 @@ try_from!(item: &protowire::GetVirtualChainFromBlockV2RequestMessage, kaspa_rpc_
     Self {
         start_hash: RpcHash::from_str(&item.start_hash)?,
         data_verbosity_level: item.data_verbosity_level.map(RpcDataVerbosityLevel::try_from).transpose()?,
+        min_confirmation_count: item.min_confirmation_count
     }
 });
 try_from!(item: &protowire::GetVirtualChainFromBlockV2ResponseMessage, RpcResult<kaspa_rpc_core::GetVirtualChainFromBlockV2Response>, {
