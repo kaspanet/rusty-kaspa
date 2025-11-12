@@ -374,9 +374,6 @@ impl AsyncService for TorRuntimeService {
     fn start(self: Arc<Self>) -> AsyncServiceFuture {
         Box::pin(async move {
             trace!("{} starting event loop", Self::IDENT);
-            if let Some(tx) = &self.bootstrap_tx {
-                let _ = tx.send(true);
-            }
             let shutdown = self.shutdown.listener.clone();
             tokio::pin!(shutdown);
             let mut ticker = tokio::time::interval(Self::POLL_INTERVAL);

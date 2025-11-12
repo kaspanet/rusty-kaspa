@@ -59,7 +59,6 @@ members = [
     "metrics/core",
     "metrics/perf_monitor",
     "utils/alloc",
-    "research/tor-integration/tor-prototype",
 ]
 
 [workspace.package]
