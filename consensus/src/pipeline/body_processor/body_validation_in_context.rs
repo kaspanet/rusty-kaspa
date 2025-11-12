@@ -121,16 +121,12 @@ mod tests {
     };
     use kaspa_consensus_core::{
         api::ConsensusApi,
-        merkle::calc_hash_merkle_root as calc_hash_merkle_root_with_options,
+        merkle::calc_hash_merkle_root,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
     };
     use kaspa_core::assert_match;
     use kaspa_hashes::Hash;
-
-    fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
-        calc_hash_merkle_root_with_options(txs, false)
-    }
 
     #[tokio::test]
     async fn validate_body_in_context_test() {
@@ -142,7 +138,7 @@ mod tests {
         let wait_handles = consensus.init();
         let body_processor = consensus.block_body_processor();
 
-        consensus.add_block_with_parents(1.into(), vec![config.genesis.hash]).await.unwrap();
+        consensus.add_header_only_block_with_parents(1.into(), vec![config.genesis.hash]).await.unwrap();
 
         {
             let block = consensus.build_block_with_parents_and_transactions(2.into(), vec![1.into()], vec![]);
