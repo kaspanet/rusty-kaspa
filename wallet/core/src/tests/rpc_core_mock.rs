@@ -387,7 +387,7 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_virtual_chain_from_block_v_2_call(
+    async fn get_virtual_chain_from_block_v2_call(
         &self,
         _connection: Option<&DynRpcConnection>,
         _request: GetVirtualChainFromBlockV2Request,

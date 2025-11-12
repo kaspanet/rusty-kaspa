@@ -302,7 +302,7 @@ impl Rpc {
                 let verbosity_level = RpcDataVerbosityLevel::try_from(verbosity_level_i32)?;
 
                 let result = rpc
-                    .get_virtual_chain_from_block_v_2_call(
+                    .get_virtual_chain_from_block_v2_call(
                         None,
                         GetVirtualChainFromBlockV2Request { start_hash, data_verbosity_level: Some(verbosity_level) },
                     )

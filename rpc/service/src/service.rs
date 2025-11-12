@@ -1258,7 +1258,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetSyncStatusResponse { is_synced })
     }
 
-    async fn get_virtual_chain_from_block_v_2_call(
+    async fn get_virtual_chain_from_block_v2_call(
         &self,
         _connection: Option<&DynRpcConnection>,
         request: GetVirtualChainFromBlockV2Request,

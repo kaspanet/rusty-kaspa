@@ -693,7 +693,7 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let response = rpc_client
-                        .get_virtual_chain_from_block_v_2_call(
+                        .get_virtual_chain_from_block_v2_call(
                             None,
                             GetVirtualChainFromBlockV2Request { start_hash: SIMNET_GENESIS.hash, data_verbosity_level: None },
                         )
