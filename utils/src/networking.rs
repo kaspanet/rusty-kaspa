@@ -438,7 +438,7 @@ impl BorshDeserialize for AddressKind {
         match variant_idx {
             0 => Ok(AddressKind::Ip(BorshDeserialize::deserialize_reader(reader)?)),
             1 => Ok(AddressKind::Onion(BorshDeserialize::deserialize_reader(reader)?)),
-            _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid address kind variant").into()),
+            _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid address kind variant")),
         }
     }
 }

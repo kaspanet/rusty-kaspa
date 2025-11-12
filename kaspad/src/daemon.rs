@@ -64,7 +64,10 @@ use kaspa_mining::{
     monitor::MiningMonitor,
     MiningCounters,
 };
-use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
+use kaspa_p2p_flows::{
+    flow_context::{FlowContext, ProxyEndpoints, TorConfig},
+    service::P2pService,
+};
 
 use itertools::Itertools;
 use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
@@ -204,8 +207,8 @@ fn compute_tor_system_config(args: &Args) -> Option<TorSystemConfig> {
     let socks_source = proxy_settings
         .onion
         .as_ref()
-        .or_else(|| proxy_settings.default.as_ref())
-        .map(|entry| entry.address.clone())
+        .or(proxy_settings.default.as_ref())
+        .map(|entry| entry.address)
         .unwrap_or_else(|| ContextualNetAddress::loopback().with_port(9050));
     let socks_addr = contextual_to_socket(socks_source, 9050);
 
@@ -592,7 +595,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     let effective_tor_proxy = tor_proxy_from_manager
         .clone()
         .or_else(|| tor_proxy_override_addr.clone())
-        .or_else(|| default_proxy_addr.as_ref().map(|entry| promote_tor_proxy(entry)));
+        .or_else(|| default_proxy_addr.as_ref().map(promote_tor_proxy));
     if let Some(proxy) = effective_tor_proxy.as_ref() {
         info!("Effective Tor proxy: {}", proxy.address);
         if default_proxy_addr.is_none() {
@@ -1032,6 +1035,14 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         (None, None)
     };
 
+    let proxy_endpoints = ProxyEndpoints::new(default_proxy_addr.clone(), proxy_ipv4_addr.clone(), proxy_ipv6_addr.clone());
+    let tor_config = TorConfig {
+        proxy: effective_tor_proxy.clone(),
+        tor_only: args.tor_only,
+        onion_service: onion_service_info.as_ref().map(|info| (info.id.clone(), info.virt_port)),
+        bootstrap_rx: tor_bootstrap_rx,
+    };
+
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
         address_manager,
@@ -1041,13 +1052,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         notification_root,
         hub.clone(),
         mining_rule_engine.clone(),
-        default_proxy_addr,
-        proxy_ipv4_addr,
-        proxy_ipv6_addr,
-        effective_tor_proxy,
-        args.tor_only,
-        onion_service_info.as_ref().map(|info| (info.id.clone(), info.virt_port)),
-        tor_bootstrap_rx,
+        proxy_endpoints,
+        tor_config,
     ));
     let tor_async_service = tor_manager.as_ref().map(|manager| {
         Arc::new(TorRuntimeService::new(

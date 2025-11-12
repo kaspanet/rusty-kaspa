@@ -215,6 +215,27 @@ impl BlockEventLogger {
     }
 }
 
+#[derive(Clone, Default)]
+pub struct ProxyEndpoints {
+    pub default: Option<SocksProxyParams>,
+    pub ipv4: Option<SocksProxyParams>,
+    pub ipv6: Option<SocksProxyParams>,
+}
+
+impl ProxyEndpoints {
+    pub fn new(default: Option<SocksProxyParams>, ipv4: Option<SocksProxyParams>, ipv6: Option<SocksProxyParams>) -> Self {
+        Self { default, ipv4, ipv6 }
+    }
+}
+
+#[derive(Clone)]
+pub struct TorConfig {
+    pub proxy: Option<SocksProxyParams>,
+    pub tor_only: bool,
+    pub onion_service: Option<(V3OnionServiceId, u16)>,
+    pub bootstrap_rx: Option<watch::Receiver<bool>>,
+}
+
 pub struct FlowContextInner {
     pub node_id: PeerId,
     pub consensus_manager: Arc<ConsensusManager>,
@@ -244,9 +265,7 @@ pub struct FlowContextInner {
 
     // Mining rule engine
     mining_rule_engine: Arc<MiningRuleEngine>,
-    proxy: Option<SocksProxyParams>,
-    proxy_ipv4: Option<SocksProxyParams>,
-    proxy_ipv6: Option<SocksProxyParams>,
+    proxy_endpoints: ProxyEndpoints,
     tor_proxy: Option<SocksProxyParams>,
     tor_only: bool,
     onion_service: Option<(V3OnionServiceId, NetAddress)>,
@@ -325,16 +344,13 @@ impl FlowContext {
         notification_root: Arc<ConsensusNotificationRoot>,
         hub: Hub,
         mining_rule_engine: Arc<MiningRuleEngine>,
-        proxy_default: Option<SocksProxyParams>,
-        proxy_ipv4: Option<SocksProxyParams>,
-        proxy_ipv6: Option<SocksProxyParams>,
-        tor_proxy: Option<SocksProxyParams>,
-        tor_only: bool,
-        onion_service: Option<(V3OnionServiceId, u16)>,
-        tor_bootstrap_rx: Option<watch::Receiver<bool>>,
+        proxy_endpoints: ProxyEndpoints,
+        tor_config: TorConfig,
     ) -> Self {
         let bps_upper_bound = config.bps().upper_bound() as usize;
         let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps_upper_bound as f64).log2().ceil() as u32;
+
+        let TorConfig { proxy: tor_proxy, tor_only, onion_service, bootstrap_rx } = tor_config;
 
         let onion_service = onion_service.and_then(|(id, port)| {
             let onion_host = format!("{}.onion", id);
@@ -377,13 +393,11 @@ impl FlowContext {
                 max_orphans,
                 config,
                 mining_rule_engine,
-                proxy: proxy_default,
-                proxy_ipv4,
-                proxy_ipv6,
+                proxy_endpoints,
                 tor_proxy,
                 tor_only,
                 onion_service,
-                tor_bootstrap_rx: Mutex::new(tor_bootstrap_rx),
+                tor_bootstrap_rx: Mutex::new(bootstrap_rx),
             }),
         }
     }
@@ -401,15 +415,15 @@ impl FlowContext {
     }
 
     pub fn proxy(&self) -> Option<SocksProxyParams> {
-        self.proxy.clone()
+        self.proxy_endpoints.default.clone()
     }
 
     pub fn proxy_ipv4(&self) -> Option<SocksProxyParams> {
-        self.proxy_ipv4.clone()
+        self.proxy_endpoints.ipv4.clone()
     }
 
     pub fn proxy_ipv6(&self) -> Option<SocksProxyParams> {
-        self.proxy_ipv6.clone()
+        self.proxy_endpoints.ipv6.clone()
     }
 
     pub fn tor_only(&self) -> bool {

@@ -138,7 +138,7 @@ impl AddressManager {
     fn local_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
         match self.config.externalip {
             // An external IP was passed, we will try to bind that if it's valid
-            Some(local_net_address) if local_net_address.as_ip().map_or(false, |ip| ip.is_publicly_routable()) => {
+            Some(local_net_address) if local_net_address.as_ip().is_some_and(|ip| ip.is_publicly_routable()) => {
                 info!("External address is publicly routable {}", local_net_address);
                 return Left(iter::once(local_net_address));
             }
@@ -155,10 +155,10 @@ impl AddressManager {
         // check whatever was passed as listen address (if routable)
         // otherwise(listen_address === 0.0.0.0) check all interfaces
         let listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
-        if listen_address.as_ip().map_or(false, |ip| ip.is_publicly_routable()) {
+        if listen_address.as_ip().is_some_and(|ip| ip.is_publicly_routable()) {
             info!("Publicly routable local address found: {}", listen_address);
             Left(Left(iter::once(listen_address)))
-        } else if listen_address.as_ip().map_or(false, |ip| ip.is_unspecified()) {
+        } else if listen_address.as_ip().is_some_and(|ip| ip.is_unspecified()) {
             let network_interfaces = list_afinet_netifas();
             let Ok(network_interfaces) = network_interfaces else {
                 warn!("Error getting network interfaces: {:?}", network_interfaces);
@@ -187,7 +187,7 @@ impl AddressManager {
         info!("[UPnP] Got external ip from gateway using upnp: {ip}");
 
         let normalized_p2p_listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
-        let local_addr = if normalized_p2p_listen_address.as_ip().map_or(false, |ip| ip.is_unspecified()) {
+        let local_addr = if normalized_p2p_listen_address.as_ip().is_some_and(|ip| ip.is_unspecified()) {
             SocketAddr::new(local_ip_address::local_ip().unwrap(), normalized_p2p_listen_address.port)
         } else {
             normalized_p2p_listen_address.to_socket_addr().expect("expected listen address to be IP-based")
@@ -279,11 +279,11 @@ impl AddressManager {
             debug!("[Address manager] skipping onion address {} (onion disabled)", address);
             return;
         }
-        if !self.allow_ipv4 && address.as_ip().map_or(false, |ip| ip.is_ipv4()) {
+        if !self.allow_ipv4 && address.as_ip().is_some_and(|ip| ip.is_ipv4()) {
             debug!("[Address manager] skipping IPv4 address {} (ipv4 disabled)", address);
             return;
         }
-        if !self.allow_ipv6 && address.as_ip().map_or(false, |ip| ip.is_ipv6()) {
+        if !self.allow_ipv6 && address.as_ip().is_some_and(|ip| ip.is_ipv6()) {
             debug!("[Address manager] skipping IPv6 address {} (ipv6 disabled)", address);
             return;
         }
@@ -331,7 +331,7 @@ impl AddressManager {
 
     fn prune_ipv4_addresses(&mut self) {
         let to_remove: Vec<_> =
-            self.address_store.iterate_addresses().filter(|addr| addr.as_ip().map_or(false, |ip| ip.is_ipv4())).collect();
+            self.address_store.iterate_addresses().filter(|addr| addr.as_ip().is_some_and(|ip| ip.is_ipv4())).collect();
         for addr in to_remove {
             self.address_store.remove(addr);
         }
@@ -339,7 +339,7 @@ impl AddressManager {
 
     fn prune_ipv6_addresses(&mut self) {
         let to_remove: Vec<_> =
-            self.address_store.iterate_addresses().filter(|addr| addr.as_ip().map_or(false, |ip| ip.is_ipv6())).collect();
+            self.address_store.iterate_addresses().filter(|addr| addr.as_ip().is_some_and(|ip| ip.is_ipv6())).collect();
         for addr in to_remove {
             self.address_store.remove(addr);
         }

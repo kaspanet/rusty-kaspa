@@ -389,6 +389,6 @@ impl ConnectionManager {
             .lock()
             .await
             .iter()
-            .any(|(address, request)| request.is_permanent && address.as_ip().map_or(false, |addr_ip| IpAddr::from(addr_ip) == ip))
+            .any(|(address, request)| request.is_permanent && address.as_ip().is_some_and(|addr_ip| IpAddr::from(addr_ip) == ip))
     }
 }

@@ -320,5 +320,5 @@ async fn connect_via_socks(params: SocksProxyParams, target: String) -> io::Resu
             Socks5Stream::connect_with_password(address, target, username.as_str(), password.as_str()).await
         }
     };
-    result.map_err(|err| io::Error::new(io::ErrorKind::Other, err))
+    result.map_err(io::Error::other)
 }

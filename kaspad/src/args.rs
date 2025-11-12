@@ -188,19 +188,18 @@ impl Default for Args {
 impl Args {
     pub fn proxy_settings(&self) -> ProxySettings {
         let mut settings = ProxySettings::default();
-        if let Some(default_proxy) = self.proxy.clone() {
+        if let Some(default_proxy) = self.proxy {
             settings.default = Some(ProxyConfigEntry { address: default_proxy, auth: self.proxy_auth(false) });
         }
         for rule in &self.proxy_net {
-            let entry =
-                ProxyConfigEntry { address: rule.address.clone(), auth: self.proxy_auth(matches!(rule.network, ProxyNetwork::Onion)) };
+            let entry = ProxyConfigEntry { address: rule.address, auth: self.proxy_auth(matches!(rule.network, ProxyNetwork::Onion)) };
             match rule.network {
                 ProxyNetwork::Ipv4 => settings.ipv4 = Some(entry),
                 ProxyNetwork::Ipv6 => settings.ipv6 = Some(entry),
                 ProxyNetwork::Onion => settings.onion = Some(entry),
             }
         }
-        if let Some(tor_specific) = self.tor_proxy.clone() {
+        if let Some(tor_specific) = self.tor_proxy {
             settings.onion = Some(ProxyConfigEntry { address: tor_specific, auth: self.proxy_auth(true) });
         }
         settings
@@ -655,7 +654,7 @@ impl Args {
             connect_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "connect-peers", defaults.connect_peers),
             add_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "add-peers", defaults.add_peers),
             listen: m.get_one::<ContextualNetAddress>("listen").cloned().or(defaults.listen),
-            proxy: m.get_one::<ContextualNetAddress>("proxy").cloned().or(defaults.proxy.clone()),
+            proxy: m.get_one::<ContextualNetAddress>("proxy").cloned().or(defaults.proxy),
             proxy_user: m.get_one::<String>("proxy-user").cloned().or(defaults.proxy_user.clone()),
             proxy_pass: m.get_one::<String>("proxy-pass").cloned().or(defaults.proxy_pass.clone()),
             proxy_net: m

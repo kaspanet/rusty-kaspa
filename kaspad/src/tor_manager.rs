@@ -176,8 +176,8 @@ impl TorManager {
                 return Err(TorManagerError::Control("unexpected EOF while waiting for ADD_ONION response".into()));
             }
             let trimmed = line.trim();
-            if trimmed.starts_with("250-ServiceID=") {
-                service_id = Some(trimmed["250-ServiceID=".len()..].to_string());
+            if let Some(stripped) = trimmed.strip_prefix("250-ServiceID=") {
+                service_id = Some(stripped.to_string());
             } else if trimmed.starts_with("250 ") {
                 break;
             } else if trimmed.starts_with('5') {
