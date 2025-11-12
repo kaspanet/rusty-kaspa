@@ -32,7 +32,7 @@ use kaspa_database::{
 };
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
-use kaspa_p2p_lib::Hub;
+use kaspa_p2p_lib::{Hub, SocksAuth, SocksProxyParams};
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
@@ -140,6 +140,9 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
     if args.max_tracked_addresses > Tracker::MAX_ADDRESS_UPPER_BOUND {
         return Err(ConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
     }
+    if args.proxy_user.is_some() ^ args.proxy_pass.is_some() {
+        return Err(ConfigError::IncompleteProxyAuth);
+    }
     Ok(())
 }
 
@@ -200,8 +203,9 @@ fn compute_tor_system_config(args: &Args) -> Option<TorSystemConfig> {
     let proxy_settings = args.proxy_settings();
     let socks_source = proxy_settings
         .onion
-        .clone()
-        .or_else(|| proxy_settings.default.clone())
+        .as_ref()
+        .or_else(|| proxy_settings.default.as_ref())
+        .map(|entry| entry.address.clone())
         .unwrap_or_else(|| ContextualNetAddress::loopback().with_port(9050));
     let socks_addr = contextual_to_socket(socks_source, 9050);
 
@@ -564,46 +568,54 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     let tor_proxy_override_addr = resolved_proxies.onion;
 
     let mut proxy_descriptions = Vec::new();
-    if let Some(addr) = default_proxy_addr {
-        proxy_descriptions.push(format!("default={addr}"));
+    if let Some(entry) = default_proxy_addr.as_ref() {
+        proxy_descriptions.push(format!("default={}", entry.address));
     }
-    if let Some(addr) = proxy_ipv4_addr {
-        proxy_descriptions.push(format!("ipv4={addr}"));
+    if let Some(entry) = proxy_ipv4_addr.as_ref() {
+        proxy_descriptions.push(format!("ipv4={}", entry.address));
     }
-    if let Some(addr) = proxy_ipv6_addr {
-        proxy_descriptions.push(format!("ipv6={addr}"));
+    if let Some(entry) = proxy_ipv6_addr.as_ref() {
+        proxy_descriptions.push(format!("ipv6={}", entry.address));
     }
-    if let Some(addr) = tor_proxy_override_addr {
-        proxy_descriptions.push(format!("onion={addr}"));
+    if let Some(entry) = tor_proxy_override_addr.as_ref() {
+        proxy_descriptions.push(format!("onion={}", entry.address));
     }
     if !proxy_descriptions.is_empty() {
         info!("Configured SOCKS proxies: {}", proxy_descriptions.join(", "));
     }
-    let tor_proxy_from_manager = tor_manager.as_ref().map(|mgr| mgr.socks_addr());
-    let effective_tor_proxy = tor_proxy_from_manager.or(tor_proxy_override_addr).or(default_proxy_addr);
-    if let Some(proxy) = effective_tor_proxy {
-        info!("Effective Tor proxy: {proxy}");
+    let tor_proxy_from_manager =
+        tor_manager.as_ref().map(|mgr| SocksProxyParams { address: mgr.socks_addr(), auth: SocksAuth::Randomized });
+    let promote_tor_proxy = |entry: &SocksProxyParams| match entry.auth {
+        SocksAuth::None => SocksProxyParams { address: entry.address, auth: SocksAuth::Randomized },
+        _ => entry.clone(),
+    };
+    let effective_tor_proxy = tor_proxy_from_manager
+        .clone()
+        .or_else(|| tor_proxy_override_addr.clone())
+        .or_else(|| default_proxy_addr.as_ref().map(|entry| promote_tor_proxy(entry)));
+    if let Some(proxy) = effective_tor_proxy.as_ref() {
+        info!("Effective Tor proxy: {}", proxy.address);
         if default_proxy_addr.is_none() {
-            default_proxy_addr = Some(proxy);
+            default_proxy_addr = Some(proxy.clone());
         }
         if proxy_ipv4_addr.is_none() {
-            proxy_ipv4_addr = default_proxy_addr;
+            proxy_ipv4_addr = default_proxy_addr.clone();
         }
         if proxy_ipv6_addr.is_none() {
-            proxy_ipv6_addr = default_proxy_addr;
+            proxy_ipv6_addr = default_proxy_addr.clone();
         }
         let mut effective_descriptions = Vec::new();
-        if let Some(addr) = default_proxy_addr {
-            effective_descriptions.push(format!("default={addr}"));
+        if let Some(entry) = default_proxy_addr.as_ref() {
+            effective_descriptions.push(format!("default={}", entry.address));
         }
-        if let Some(addr) = proxy_ipv4_addr {
-            effective_descriptions.push(format!("ipv4={addr}"));
+        if let Some(entry) = proxy_ipv4_addr.as_ref() {
+            effective_descriptions.push(format!("ipv4={}", entry.address));
         }
-        if let Some(addr) = proxy_ipv6_addr {
-            effective_descriptions.push(format!("ipv6={addr}"));
+        if let Some(entry) = proxy_ipv6_addr.as_ref() {
+            effective_descriptions.push(format!("ipv6={}", entry.address));
         }
-        if let Some(addr) = tor_proxy_override_addr {
-            effective_descriptions.push(format!("onion={addr}"));
+        if let Some(entry) = tor_proxy_override_addr.as_ref() {
+            effective_descriptions.push(format!("onion={}", entry.address));
         }
         if !effective_descriptions.is_empty() {
             info!("Effective SOCKS routing: {}", effective_descriptions.join(", "));

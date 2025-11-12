@@ -73,11 +73,8 @@ impl AsyncService for P2pService {
         let ipv4_proxy = self.flow_context.proxy_ipv4();
         let ipv6_proxy = self.flow_context.proxy_ipv6();
         let tor_proxy = self.flow_context.tor_proxy();
-        let socks_proxy = if default_proxy.is_some() || ipv4_proxy.is_some() || ipv6_proxy.is_some() || tor_proxy.is_some() {
-            Some(SocksProxyConfig { default: default_proxy, ipv4: ipv4_proxy, ipv6: ipv6_proxy, onion: tor_proxy })
-        } else {
-            None
-        };
+        let proxy_config = SocksProxyConfig { default: default_proxy, ipv4: ipv4_proxy, ipv6: ipv6_proxy, onion: tor_proxy };
+        let socks_proxy = if proxy_config.is_empty() { None } else { Some(proxy_config) };
 
         let p2p_adaptor = if self.inbound_limit == 0 {
             Adaptor::client_only(self.flow_context.hub().clone(), self.flow_context.clone(), self.counters.clone(), socks_proxy)

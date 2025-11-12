@@ -422,15 +422,30 @@ mod address_store_with_cache {
             // We manage the cache ourselves on this level, so we disable the inner builtin cache
             let db_store = DbAddressesStore::new(db, CachePolicy::Empty);
             let mut addresses = HashMap::new();
+            let mut error_count = 0usize;
             for result in db_store.iterator() {
                 match result {
                     Ok((key, entry)) => {
                         addresses.insert(key, entry);
                     }
                     Err(err) => {
-                        warn!("Failed to load address entry from store: {err}");
+                        error_count += 1;
+                        if error_count <= 5 {
+                            warn!("Failed to load address entry from store: {err}");
+                        }
                     }
                 }
+            }
+
+            if error_count > 0 {
+                if error_count > 5 {
+                    warn!("Additional {} address entries failed to load", error_count - 5);
+                }
+                match db_store.clear() {
+                    Ok(_) => warn!("Address store reset due to incompatible entries; it will repopulate automatically"),
+                    Err(err) => warn!("Failed to reset address store after load errors: {err}"),
+                }
+                addresses.clear();
             }
 
             Self { db_store, addresses }

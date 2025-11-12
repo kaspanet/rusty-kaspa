@@ -24,6 +24,9 @@ pub enum ConfigError {
     #[cfg(feature = "devnet-prealloc")]
     #[error("--num-prealloc-utxos has to appear with --prealloc-address and vice versa")]
     MissingPreallocNumOrAddress,
+
+    #[error("Configuration: specify both --proxyuser and --proxypass")]
+    IncompleteProxyAuth,
 }
 
 pub type ConfigResult<T> = std::result::Result<T, ConfigError>;

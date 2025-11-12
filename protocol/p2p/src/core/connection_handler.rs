@@ -12,13 +12,19 @@ use kaspa_utils_tower::{
     counters::TowerConnectionCounters,
     middleware::{BodyExt, CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
 };
+use rand::{rngs::OsRng, RngCore};
+use std::fmt::Write;
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::pin::Pin;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, OnceLock,
+};
 use std::time::Duration;
 use thiserror::Error;
+use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel as mpsc_channel, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use tokio_socks::tcp::socks5::Socks5Stream;
@@ -59,13 +65,48 @@ pub struct ConnectionHandler {
     socks_proxy: Option<SocksProxyConfig>,
 }
 
-#[derive(Clone, Copy, Default)]
-pub struct SocksProxyConfig {
-    pub default: Option<SocketAddr>,
-    pub ipv4: Option<SocketAddr>,
-    pub ipv6: Option<SocketAddr>,
-    pub onion: Option<SocketAddr>,
+#[derive(Clone, Debug)]
+pub enum SocksAuth {
+    None,
+    Static { username: Arc<str>, password: Arc<str> },
+    Randomized,
 }
+
+#[derive(Clone, Debug)]
+pub struct SocksProxyParams {
+    pub address: SocketAddr,
+    pub auth: SocksAuth,
+}
+
+#[derive(Clone, Default)]
+pub struct SocksProxyConfig {
+    pub default: Option<SocksProxyParams>,
+    pub ipv4: Option<SocksProxyParams>,
+    pub ipv6: Option<SocksProxyParams>,
+    pub onion: Option<SocksProxyParams>,
+}
+
+impl SocksProxyConfig {
+    pub fn is_empty(&self) -> bool {
+        self.default.is_none() && self.ipv4.is_none() && self.ipv6.is_none() && self.onion.is_none()
+    }
+
+    pub fn entry_for(&self, address: &NetAddress) -> Option<SocksProxyParams> {
+        if address.as_onion().is_some() {
+            return self.onion.clone().or_else(|| self.default.clone());
+        }
+        if let Some(ip) = address.as_ip() {
+            return match IpAddr::from(ip) {
+                IpAddr::V4(_) => self.ipv4.clone().or_else(|| self.default.clone()),
+                IpAddr::V6(_) => self.ipv6.clone().or_else(|| self.default.clone()),
+            };
+        }
+        self.default.clone()
+    }
+}
+
+static STREAM_ISOLATION_PREFIX: OnceLock<String> = OnceLock::new();
+static STREAM_ISOLATION_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 impl ConnectionHandler {
     pub(crate) fn new(
@@ -119,27 +160,15 @@ impl ConnectionHandler {
             .connect_timeout(Duration::from_millis(Self::connect_timeout()))
             .tcp_keepalive(Some(Duration::from_millis(Self::keep_alive())));
 
-        let channel = if let Some(proxy_addr) = self.socks_proxy.and_then(|cfg| {
-            if peer_net_address.as_onion().is_some() {
-                cfg.onion.or(cfg.default)
-            } else if let Some(ip) = peer_net_address.as_ip() {
-                match IpAddr::from(ip) {
-                    IpAddr::V4(_) => cfg.ipv4.or(cfg.default),
-                    IpAddr::V6(_) => cfg.ipv6.or(cfg.default),
-                }
-            } else {
-                cfg.default
-            }
-        }) {
+        let channel = if let Some(proxy_params) = self.socks_proxy.as_ref().and_then(|cfg| cfg.entry_for(&peer_net_address)) {
             let connector = service_fn(move |uri: Uri| {
-                let proxy_addr = proxy_addr;
+                let proxy_params = proxy_params.clone();
                 async move {
                     let host =
                         uri.host().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing host in URI"))?.to_string();
                     let port = uri.port_u16().unwrap_or(80);
                     let target = format!("{}:{}", host, port);
-                    let stream =
-                        Socks5Stream::connect(proxy_addr, target).await.map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+                    let stream = connect_via_socks(proxy_params, target).await?;
                     Ok::<_, io::Error>(TokioIo::new(stream.into_inner()))
                 }
             });
@@ -261,4 +290,35 @@ impl ProtoP2p for ConnectionHandler {
         // Give tonic a receiver stream (messages sent to it will be forwarded to the network peer)
         Ok(Response::new(Box::pin(ReceiverStream::new(outgoing_receiver).map(Ok)) as Self::MessageStreamStream))
     }
+}
+
+fn random_isolation_prefix() -> String {
+    let mut bytes = [0u8; 8];
+    OsRng.fill_bytes(&mut bytes);
+    let mut prefix = String::with_capacity(bytes.len() * 2 + 1);
+    for byte in &bytes {
+        let _ = write!(&mut prefix, "{:02x}", byte);
+    }
+    prefix.push('-');
+    prefix
+}
+
+fn next_stream_isolation_credentials() -> (String, String) {
+    let prefix = STREAM_ISOLATION_PREFIX.get_or_init(random_isolation_prefix);
+    let counter = STREAM_ISOLATION_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let value = format!("{prefix}{counter}");
+    (value.clone(), value)
+}
+
+async fn connect_via_socks(params: SocksProxyParams, target: String) -> io::Result<Socks5Stream<TcpStream>> {
+    let address = params.address;
+    let result = match params.auth {
+        SocksAuth::None => Socks5Stream::connect(address, target).await,
+        SocksAuth::Static { username, password } => Socks5Stream::connect_with_password(address, target, &username, &password).await,
+        SocksAuth::Randomized => {
+            let (username, password) = next_stream_isolation_credentials();
+            Socks5Stream::connect_with_password(address, target, username.as_str(), password.as_str()).await
+        }
+    };
+    result.map_err(|err| io::Error::new(io::ErrorKind::Other, err))
 }

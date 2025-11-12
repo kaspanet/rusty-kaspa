@@ -36,7 +36,7 @@ use kaspa_p2p_lib::{
     convert::model::version::Version,
     make_message,
     pb::{kaspad_message::Payload, InvRelayBlockMessage},
-    service_flags, ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
+    service_flags, ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router, SocksProxyParams,
 };
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_utils::{
@@ -45,7 +45,6 @@ use kaspa_utils::{
 };
 use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::time::Instant;
 use std::{collections::hash_map::Entry, fmt::Display};
 use std::{
@@ -245,10 +244,10 @@ pub struct FlowContextInner {
 
     // Mining rule engine
     mining_rule_engine: Arc<MiningRuleEngine>,
-    proxy: Option<SocketAddr>,
-    proxy_ipv4: Option<SocketAddr>,
-    proxy_ipv6: Option<SocketAddr>,
-    tor_proxy: Option<SocketAddr>,
+    proxy: Option<SocksProxyParams>,
+    proxy_ipv4: Option<SocksProxyParams>,
+    proxy_ipv6: Option<SocksProxyParams>,
+    tor_proxy: Option<SocksProxyParams>,
     tor_only: bool,
     onion_service: Option<(V3OnionServiceId, NetAddress)>,
     tor_bootstrap_rx: Mutex<Option<watch::Receiver<bool>>>,
@@ -326,10 +325,10 @@ impl FlowContext {
         notification_root: Arc<ConsensusNotificationRoot>,
         hub: Hub,
         mining_rule_engine: Arc<MiningRuleEngine>,
-        proxy_default: Option<SocketAddr>,
-        proxy_ipv4: Option<SocketAddr>,
-        proxy_ipv6: Option<SocketAddr>,
-        tor_proxy: Option<SocketAddr>,
+        proxy_default: Option<SocksProxyParams>,
+        proxy_ipv4: Option<SocksProxyParams>,
+        proxy_ipv6: Option<SocksProxyParams>,
+        tor_proxy: Option<SocksProxyParams>,
         tor_only: bool,
         onion_service: Option<(V3OnionServiceId, u16)>,
         tor_bootstrap_rx: Option<watch::Receiver<bool>>,
@@ -397,20 +396,20 @@ impl FlowContext {
         self.orphan_resolution_range
     }
 
-    pub fn tor_proxy(&self) -> Option<SocketAddr> {
-        self.tor_proxy
+    pub fn tor_proxy(&self) -> Option<SocksProxyParams> {
+        self.tor_proxy.clone()
     }
 
-    pub fn proxy(&self) -> Option<SocketAddr> {
-        self.proxy
+    pub fn proxy(&self) -> Option<SocksProxyParams> {
+        self.proxy.clone()
     }
 
-    pub fn proxy_ipv4(&self) -> Option<SocketAddr> {
-        self.proxy_ipv4
+    pub fn proxy_ipv4(&self) -> Option<SocksProxyParams> {
+        self.proxy_ipv4.clone()
     }
 
-    pub fn proxy_ipv6(&self) -> Option<SocketAddr> {
-        self.proxy_ipv6
+    pub fn proxy_ipv6(&self) -> Option<SocksProxyParams> {
+        self.proxy_ipv6.clone()
     }
 
     pub fn tor_only(&self) -> bool {

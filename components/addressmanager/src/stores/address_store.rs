@@ -168,3 +168,9 @@ impl AddressesStore for DbAddressesStore {
         self.set(key, Entry { connection_failed_count, address: entry.address })
     }
 }
+
+impl DbAddressesStore {
+    pub fn clear(&self) -> StoreResult<()> {
+        self.access.delete_all(DirectDbWriter::new(&self.db))
+    }
+}

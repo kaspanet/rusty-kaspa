@@ -5,11 +5,12 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::kaspad_env::version;
 use kaspa_notify::address::tracker::Tracker;
+use kaspa_p2p_lib::{SocksAuth, SocksProxyParams};
 use kaspa_utils::networking::{ContextualNetAddress, NetAddress, NetAddressError};
 use kaspa_wrpc_server::address::WrpcNetAddress;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
-use std::{ffi::OsString, fmt, fs, net::SocketAddr, path::PathBuf, str::FromStr};
+use std::{ffi::OsString, fmt, fs, path::PathBuf, str::FromStr, sync::Arc};
 use toml::from_str;
 
 #[cfg(feature = "devnet-prealloc")]
@@ -52,6 +53,8 @@ pub struct Args {
     pub listen: Option<ContextualNetAddress>,
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub proxy: Option<ContextualNetAddress>,
+    pub proxy_user: Option<String>,
+    pub proxy_pass: Option<String>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     #[serde(default)]
     pub proxy_net: Vec<ProxyRule>,
@@ -145,6 +148,8 @@ impl Default for Args {
             add_peers: vec![],
             listen: None,
             proxy: None,
+            proxy_user: None,
+            proxy_pass: None,
             proxy_net: vec![],
             tor_proxy: None,
             tor_control: None,
@@ -183,16 +188,20 @@ impl Default for Args {
 impl Args {
     pub fn proxy_settings(&self) -> ProxySettings {
         let mut settings = ProxySettings::default();
-        settings.default = self.proxy.clone();
+        if let Some(default_proxy) = self.proxy.clone() {
+            settings.default = Some(ProxyConfigEntry { address: default_proxy, auth: self.proxy_auth(false) });
+        }
         for rule in &self.proxy_net {
+            let entry =
+                ProxyConfigEntry { address: rule.address.clone(), auth: self.proxy_auth(matches!(rule.network, ProxyNetwork::Onion)) };
             match rule.network {
-                ProxyNetwork::Ipv4 => settings.ipv4 = Some(rule.address.clone()),
-                ProxyNetwork::Ipv6 => settings.ipv6 = Some(rule.address.clone()),
-                ProxyNetwork::Onion => settings.onion = Some(rule.address.clone()),
+                ProxyNetwork::Ipv4 => settings.ipv4 = Some(entry),
+                ProxyNetwork::Ipv6 => settings.ipv6 = Some(entry),
+                ProxyNetwork::Onion => settings.onion = Some(entry),
             }
         }
         if let Some(tor_specific) = self.tor_proxy.clone() {
-            settings.onion = Some(tor_specific);
+            settings.onion = Some(ProxyConfigEntry { address: tor_specific, auth: self.proxy_auth(true) });
         }
         settings
     }
@@ -219,6 +228,19 @@ impl Args {
         }
 
         AllowedNetworksChoice::Custom { allow_ipv4, allow_ipv6, allow_onion }
+    }
+
+    fn proxy_auth(&self, requires_isolation: bool) -> SocksAuth {
+        match (&self.proxy_user, &self.proxy_pass) {
+            (Some(user), Some(pass)) => SocksAuth::Static { username: Arc::from(user.as_str()), password: Arc::from(pass.as_str()) },
+            _ => {
+                if requires_isolation {
+                    SocksAuth::Randomized
+                } else {
+                    SocksAuth::None
+                }
+            }
+        }
     }
 
     pub fn apply_to_config(&self, config: &mut Config) {
@@ -372,6 +394,22 @@ pub fn cli() -> Command {
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Route outbound clearnet P2P connections through the provided SOCKS5 proxy (default port: 9050)."),
+        )
+        .arg(
+            Arg::new("proxy-user")
+                .long("proxyuser")
+                .require_equals(true)
+                .value_name("USER")
+                .value_parser(clap::value_parser!(String))
+                .help("Username for the default SOCKS proxy (applies to --proxy and network-specific overrides)."),
+        )
+        .arg(
+            Arg::new("proxy-pass")
+                .long("proxypass")
+                .require_equals(true)
+                .value_name("PASSWORD")
+                .value_parser(clap::value_parser!(String))
+                .help("Password for the default SOCKS proxy (requires --proxyuser)."),
         )
         .arg(
             Arg::new("proxy-net")
@@ -618,6 +656,8 @@ impl Args {
             add_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "add-peers", defaults.add_peers),
             listen: m.get_one::<ContextualNetAddress>("listen").cloned().or(defaults.listen),
             proxy: m.get_one::<ContextualNetAddress>("proxy").cloned().or(defaults.proxy.clone()),
+            proxy_user: m.get_one::<String>("proxy-user").cloned().or(defaults.proxy_user.clone()),
+            proxy_pass: m.get_one::<String>("proxy-pass").cloned().or(defaults.proxy_pass.clone()),
             proxy_net: m
                 .get_many::<ProxyRule>("proxy-net")
                 .map(|values| values.cloned().collect())
@@ -884,20 +924,26 @@ impl From<OnlyNet> for ProxyNetwork {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct ProxySettings {
-    pub default: Option<ContextualNetAddress>,
-    pub ipv4: Option<ContextualNetAddress>,
-    pub ipv6: Option<ContextualNetAddress>,
-    pub onion: Option<ContextualNetAddress>,
+#[derive(Debug, Clone)]
+pub struct ProxyConfigEntry {
+    pub address: ContextualNetAddress,
+    pub auth: SocksAuth,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
+pub struct ProxySettings {
+    pub default: Option<ProxyConfigEntry>,
+    pub ipv4: Option<ProxyConfigEntry>,
+    pub ipv6: Option<ProxyConfigEntry>,
+    pub onion: Option<ProxyConfigEntry>,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct ResolvedProxySettings {
-    pub default: Option<SocketAddr>,
-    pub ipv4: Option<SocketAddr>,
-    pub ipv6: Option<SocketAddr>,
-    pub onion: Option<SocketAddr>,
+    pub default: Option<SocksProxyParams>,
+    pub ipv4: Option<SocksProxyParams>,
+    pub ipv6: Option<SocksProxyParams>,
+    pub onion: Option<SocksProxyParams>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -908,16 +954,17 @@ pub enum AllowedNetworksChoice {
 
 impl ProxySettings {
     pub fn resolve(&self, default_port: u16) -> Result<ResolvedProxySettings, NetAddressError> {
-        fn normalize(addr: &ContextualNetAddress, default_port: u16) -> Result<SocketAddr, NetAddressError> {
-            let net_addr: NetAddress = addr.clone().normalize(default_port);
-            net_addr.to_socket_addr()
+        fn normalize(entry: &ProxyConfigEntry, default_port: u16) -> Result<SocksProxyParams, NetAddressError> {
+            let net_addr: NetAddress = entry.address.clone().normalize(default_port);
+            let addr = net_addr.to_socket_addr()?;
+            Ok(SocksProxyParams { address: addr, auth: entry.auth.clone() })
         }
 
         Ok(ResolvedProxySettings {
-            default: self.default.as_ref().map(|addr| normalize(addr, default_port)).transpose()?,
-            ipv4: self.ipv4.as_ref().map(|addr| normalize(addr, default_port)).transpose()?,
-            ipv6: self.ipv6.as_ref().map(|addr| normalize(addr, default_port)).transpose()?,
-            onion: self.onion.as_ref().map(|addr| normalize(addr, default_port)).transpose()?,
+            default: self.default.as_ref().map(|entry| normalize(entry, default_port)).transpose()?,
+            ipv4: self.ipv4.as_ref().map(|entry| normalize(entry, default_port)).transpose()?,
+            ipv6: self.ipv6.as_ref().map(|entry| normalize(entry, default_port)).transpose()?,
+            onion: self.onion.as_ref().map(|entry| normalize(entry, default_port)).transpose()?,
         })
     }
 }
