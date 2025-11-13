@@ -84,6 +84,11 @@ impl PruningProofManager {
                 if tb.block.is_header_only() && !reachability_read.is_dag_ancestor_of(tb.block.hash(), pruning_point) {
                     return Err(PruningImportError::PruningPointAnticoneMissingBody(tb.block.hash()));
                 }
+
+                // Trusted blocks are expected to be in the pruning point anti-future.
+                if tb.block.hash() != pruning_point && reachability_read.is_dag_ancestor_of(pruning_point, tb.block.hash()) {
+                    return Err(PruningImportError::TrustedBlockInPruningPointFuture(tb.block.hash(), pruning_point));
+                }
             }
         }
         // Populate ghostdag_store and relation store (on a per level basis) for every block in the proof
