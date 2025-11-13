@@ -77,7 +77,7 @@ use std::cmp::{max, Ordering};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{
     collections::HashMap,
     fs::File,
@@ -2237,7 +2237,12 @@ async fn pruning_test() {
     }
 
     // Waiting for genesis_child_child to get pruned
+    let start = Instant::now();
     while consensus.get_block_status(genesis_child_child).unwrap() == BlockStatus::StatusUTXOValid {
+        if start.elapsed() > Duration::from_secs(10) {
+            panic!("Timed out waiting 10 seconds for pruning to occur");
+        }
+
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
