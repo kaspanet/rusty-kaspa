@@ -21,8 +21,6 @@ use crate::{
             headers_selected_tip::HeadersSelectedTipStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::PruningStoreReader,
-            pruning_samples::{PruningSamplesStore, PruningSamplesStoreReader},
-            reachability::ReachabilityStoreReader,
             relations::RelationsStoreReader,
             selected_chain::SelectedChainStore,
             statuses::StatusesStoreReader,
@@ -85,7 +83,7 @@ use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
 use kaspa_core::info;
-use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
@@ -93,15 +91,15 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rocksdb::WriteBatch;
 
 use std::{
-    cmp::Reverse,
+    cmp::{self, Reverse},
     collections::{BinaryHeap, VecDeque},
     future::Future,
     iter::once,
     ops::Deref,
-    sync::{atomic::Ordering, Arc},
-};
-use std::{
-    sync::atomic::AtomicBool,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     thread::{self, JoinHandle},
 };
 use tokio::sync::oneshot;
@@ -109,8 +107,6 @@ use tokio::sync::oneshot;
 use self::{services::ConsensusServices, storage::ConsensusStorage};
 
 use crate::model::stores::selected_chain::SelectedChainStoreReader;
-
-use std::cmp;
 
 pub struct Consensus {
     // DB
@@ -324,11 +320,6 @@ impl Consensus {
     fn run_database_upgrades(&self) {
         // Upgrade to initialize the new retention root field correctly
         self.retention_root_database_upgrade();
-
-        // TODO (post HF): remove this upgrade
-        // Database upgrade to include pruning samples
-        self.pruning_samples_database_upgrade();
-
         self.consensus_transitional_flags_upgrade();
     }
 
@@ -342,7 +333,7 @@ impl Consensus {
                 pruning_point_store.set_retention_period_root(&mut batch, retention_checkpoint).unwrap();
             } else {
                 // For non-archival nodes the retention root was the pruning point
-                let pruning_point = pruning_point_store.get().unwrap().pruning_point;
+                let pruning_point = pruning_point_store.pruning_point().unwrap();
                 pruning_point_store.set_retention_period_root(&mut batch, pruning_point).unwrap();
             }
             self.db.write(batch).unwrap();
@@ -361,55 +352,6 @@ impl Consensus {
             pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, true).unwrap();
         }
         self.db.write(batch).unwrap();
-    }
-
-    fn pruning_samples_database_upgrade(&self) {
-        //
-        // For the first time this version runs, make sure we populate pruning samples
-        // from pov for all qualified chain blocks in the pruning point future
-        //
-
-        let sink = self.get_sink();
-        if self.storage.pruning_samples_store.pruning_sample_from_pov(sink).unwrap_option().is_some() {
-            // Sink is populated so we assume the database is upgraded
-            return;
-        }
-
-        // Populate past pruning points (including current one)
-        for (p1, p2) in (0..=self.pruning_point_store.read().get().unwrap().index)
-            .map(|index| self.past_pruning_points_store.get(index).unwrap())
-            .tuple_windows()
-        {
-            // Set p[i] to point at p[i-1]
-            self.pruning_samples_store.insert(p2, p1).unwrap_or_exists();
-        }
-
-        let pruning_point = self.pruning_point();
-        let reachability = self.reachability_store.read();
-
-        // We walk up via reachability tree children so that we only iterate blocks B s.t. pruning point ∈ chain(B)
-        let mut queue = VecDeque::<Hash>::from_iter(reachability.get_children(pruning_point).unwrap().iter().copied());
-        let mut processed = 0;
-        kaspa_core::info!("Upgrading database to include and populate the pruning samples store");
-        while let Some(current) = queue.pop_front() {
-            if !self.get_block_status(current).is_some_and(|s| s == BlockStatus::StatusUTXOValid) {
-                // Skip branches of the tree which are not chain qualified.
-                // This is sufficient since we will only assume this field exists
-                // for such chain qualified blocks
-                continue;
-            }
-            queue.extend(reachability.get_children(current).unwrap().iter());
-
-            processed += 1;
-
-            // Populate the data
-            let ghostdag_data = self.ghostdag_store.get_compact_data(current).unwrap();
-            let pruning_sample_from_pov =
-                self.services.pruning_point_manager.expected_header_pruning_point_v2(ghostdag_data).pruning_sample;
-            self.pruning_samples_store.insert(current, pruning_sample_from_pov).unwrap_or_exists();
-        }
-
-        kaspa_core::info!("Done upgrading database (populated {} entries)", processed);
     }
 
     pub fn run_processors(&self) -> Vec<JoinHandle<()>> {
@@ -499,10 +441,10 @@ impl Consensus {
 
     fn pruning_point_compact_headers(&self) -> Vec<(Hash, CompactHeaderData)> {
         // PRUNE SAFETY: index is monotonic and past pruning point headers are expected permanently
-        let current_pp_info = self.pruning_point_store.read().get().unwrap();
-        (0..current_pp_info.index)
+        let (pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
+        (0..pruning_index)
             .map(|index| self.past_pruning_points_store.get(index).unwrap())
-            .chain(once(current_pp_info.pruning_point))
+            .chain(once(pruning_point))
             .map(|hash| (hash, self.headers_store.get_compact_header_data(hash).unwrap()))
             .collect_vec()
     }
@@ -516,13 +458,13 @@ impl Consensus {
     ) -> ConsensusResult<()> {
         let mut batch = WriteBatch::default();
         let mut pruning_point_write = self.pruning_point_store.write();
-        let old_pruning_info = pruning_point_write.get().unwrap();
+        let old_pp_index = pruning_point_write.pruning_point_index().unwrap();
         let retention_period_root = pruning_point_write.retention_period_root().unwrap();
 
-        let new_pp_index = old_pruning_info.index + pruning_points_to_add.len() as u64;
-        pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pruning_point, new_pp_index).unwrap();
+        let new_pp_index = old_pp_index + pruning_points_to_add.len() as u64;
+        pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pp_index).unwrap();
         for (i, &past_pp) in pruning_points_to_add.iter().rev().enumerate() {
-            self.past_pruning_points_store.insert_batch(&mut batch, old_pruning_info.index + i as u64 + 1, past_pp).unwrap();
+            self.past_pruning_points_store.insert_batch(&mut batch, old_pp_index + i as u64 + 1, past_pp).unwrap();
         }
 
         // For archival nodes, keep the retention root in place
@@ -582,14 +524,14 @@ impl Consensus {
         info!("Setting {new_pruning_point} as the pruning point");
         // 4) The pruning points declared on headers on that path must be consistent with those already known by the node:
         let pruning_point_read = self.pruning_point_store.read();
-        let old_pruning_info = pruning_point_read.get().unwrap();
+        let old_pruning_point = pruning_point_read.pruning_point().unwrap();
 
         // Note that the function below also updates the pruning samples,
         // and implicitly confirms any pruning point pointed at en route to virtual is a pruning sample.
         // it is emphasized that updating pruning samples for individual blocks is not harmful
         // even if the verification ultimately does not succeed.
         let mut pruning_points_to_add =
-            self.services.pruning_point_manager.pruning_points_on_path_to_syncer_sink(old_pruning_info, syncer_sink).map_err(
+            self.services.pruning_point_manager.pruning_points_on_path_to_syncer_sink(old_pruning_point, syncer_sink).map_err(
                 |e: PruningImportError| {
                     ConsensusError::GeneralOwned(format!("pruning points en route to syncer sink do not form a valid chain: {}", e))
                 },
@@ -598,7 +540,7 @@ impl Consensus {
 
         // Remove the excess pruning points before the old pruning point
         while let Some(past_pp) = pruning_points_to_add.pop_back() {
-            if past_pp == old_pruning_info.pruning_point {
+            if past_pp == old_pruning_point {
                 break;
             }
         }
@@ -965,9 +907,8 @@ impl ConsensusApi for Consensus {
         self.services.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }
 
-    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], pov_daa_score: u64) -> Hash {
-        let storage_mass_activated = self.config.crescendo_activation.is_active(pov_daa_score);
-        calc_hash_merkle_root(txs.iter(), storage_mass_activated)
+    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction]) -> Hash {
+        calc_hash_merkle_root(txs.iter())
     }
 
     fn validate_pruning_proof(
@@ -1007,16 +948,17 @@ impl ConsensusApi for Consensus {
 
     fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         let hst = self.storage.headers_selected_tip_store.read().get().unwrap().hash;
-        let synced_pp_info = self.pruning_point_store.read().get().unwrap();
-        if !self.services.pruning_point_manager.is_valid_pruning_point(synced_pp_info.pruning_point, hst) {
+        let (synced_pruning_point, synced_pp_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
+        if !self.services.pruning_point_manager.is_valid_pruning_point(synced_pruning_point, hst) {
             return Err(ConsensusError::General("pruning point does not coincide with the synced header selected tip"));
         }
-        if !self.services.pruning_point_manager.is_valid_pruning_point(synced_pp_info.pruning_point, syncer_virtual_selected_parent) {
+        if !self.services.pruning_point_manager.is_valid_pruning_point(synced_pruning_point, syncer_virtual_selected_parent) {
             return Err(ConsensusError::General("pruning point does not coincide with the syncer's sink (virtual selected parent)"));
         }
-        self.services.pruning_point_manager.are_pruning_points_in_valid_chain(synced_pp_info, syncer_virtual_selected_parent).map_err(
-            |e: PruningImportError| ConsensusError::GeneralOwned(format!("past pruning points do not form a valid chain: {}", e)),
-        )
+        self.services
+            .pruning_point_manager
+            .are_pruning_points_in_valid_chain(synced_pruning_point, synced_pp_index, syncer_virtual_selected_parent)
+            .map_err(|e| ConsensusError::GeneralOwned(format!("past pruning points do not form a valid chain: {}", e)))
     }
 
     fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
@@ -1079,10 +1021,10 @@ impl ConsensusApi for Consensus {
 
     fn pruning_point_headers(&self) -> Vec<Arc<Header>> {
         // PRUNE SAFETY: index is monotonic and past pruning point headers are expected permanently
-        let current_pp_info = self.pruning_point_store.read().get().unwrap();
-        (0..current_pp_info.index)
+        let (pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
+        (0..pruning_index)
             .map(|index| self.past_pruning_points_store.get(index).unwrap())
-            .chain(once(current_pp_info.pruning_point))
+            .chain(once(pruning_point))
             .map(|hash| self.headers_store.get_header(hash).unwrap())
             .collect_vec()
     }

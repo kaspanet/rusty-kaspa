@@ -75,7 +75,7 @@ impl PruningProofManager {
 
         let pruning_read = self.pruning_point_store.read();
         let relations_read = self.relations_stores.read();
-        let current_pp = pruning_read.get().unwrap().pruning_point;
+        let current_pp = pruning_read.pruning_point().unwrap();
         let current_pp_header = self.headers_store.get_header(current_pp).unwrap();
 
         // The accumulated blue work of current consensus from the pruning point onward
