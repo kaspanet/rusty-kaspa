@@ -19,11 +19,11 @@ use std::{
     sync::{Arc, Weak},
 };
 
-const RESYNC_CHUNK_SIZE: usize = 2048; //Increased from 1k (used in go-kaspad), for quicker resets, while still having a low memory footprint.
+const RESYNC_CHUNK_SIZE: usize = 2048; // Increased from 1k (used in go-kaspad), for quicker resets, while still having a low memory footprint.
 
 /// UtxoIndex indexes `CompactUtxoEntryCollections` by [`ScriptPublicKey`](kaspa_consensus_core::tx::ScriptPublicKey),
 /// commits them to its owns store, and emits changes.
-/// Note: The UtxoIndex struct by itself is not thread save, only correct usage of the supplied RwLock via `new` makes it so.
+/// Note: The UtxoIndex struct by itself is not thread safe, only correct usage of the supplied RwLock via `new` makes it so.
 /// please follow guidelines found in the comments under `utxoindex::core::api::UtxoIndexApi` for proper thread safety.
 pub struct UtxoIndex {
     consensus_manager: Arc<ConsensusManager>,

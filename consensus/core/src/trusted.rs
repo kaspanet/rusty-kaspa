@@ -17,6 +17,7 @@ pub struct ExternalGhostdagData {
 /// Represents an externally provided block with associated Ghostdag data which
 /// is only partially validated by the consensus layer. Note there is no actual trust
 /// but rather these blocks are indirectly validated through the PoW mined over them
+#[derive(Clone)]
 pub struct TrustedBlock {
     pub block: Block,
     pub ghostdag: ExternalGhostdagData,

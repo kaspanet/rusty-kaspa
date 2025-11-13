@@ -92,6 +92,7 @@ impl HandleRelayInvsFlow {
             // Loop over incoming block inv messages
             let inv = self.invs_route.dequeue().await?;
             let session = self.ctx.consensus().unguarded_session();
+            let is_ibd_in_transitional_state = session.async_is_consensus_in_transitional_ibd_state().await;
 
             match session.async_get_block_status(inv.hash).await {
                 None | Some(BlockStatus::StatusHeaderOnly) => {} // Continue processing this missing inv
@@ -147,6 +148,11 @@ impl HandleRelayInvsFlow {
                     "Relay block {} has lower blue work than virtual's merge depth root ({} <= {}), hence we are skipping it",
                     inv.hash, block.header.blue_work, blue_work_threshold
                 );
+                continue;
+            }
+            // if in a transitional ibd state, do not wait, sync immediately
+            if is_ibd_in_transitional_state {
+                self.try_trigger_ibd(block)?;
                 continue;
             }
 
@@ -290,12 +296,7 @@ impl HandleRelayInvsFlow {
                 None | Some(OrphanOutput::Unknown) => {}
             }
         } else {
-            // Send the block to IBD flow via the dedicated job channel. If the channel has a pending job, we prefer
-            // the block with higher blue work, since it is usually more recent
-            match self.ibd_sender.try_send(block, |b, c| if b.header.blue_work > c.header.blue_work { b } else { c }) {
-                Ok(_) | Err(TrySendError::Full(_)) => {}
-                Err(TrySendError::Closed(_)) => return Err(ProtocolError::ConnectionClosed), // This indicates that IBD flow has exited
-            }
+            self.try_trigger_ibd(block)?;
         }
         Ok(None)
     }
@@ -355,5 +356,14 @@ impl HandleRelayInvsFlow {
             }
         }
         Ok(false)
+    }
+
+    // Send the block to IBD flow via the dedicated job channel. If the channel has a pending job, we prefer
+    // the block with higher blue work, since it is usually more recent
+    fn try_trigger_ibd(&self, block: Block) -> Result<(), ProtocolError> {
+        match self.ibd_sender.try_send(block.clone(), |b, c| if b.header.blue_work > c.header.blue_work { b } else { c }) {
+            Ok(_) | Err(TrySendError::Full(_)) => Ok(()),
+            Err(TrySendError::Closed(_)) => Err(ProtocolError::ConnectionClosed), // This indicates that IBD flow has exited
+        }
     }
 }
