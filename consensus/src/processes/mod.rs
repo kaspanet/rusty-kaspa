@@ -1,3 +1,4 @@
+pub mod archival;
 pub mod block_depth;
 pub mod coinbase;
 pub mod difficulty;

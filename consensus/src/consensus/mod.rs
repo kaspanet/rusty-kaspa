@@ -37,6 +37,7 @@ use crate::{
         ProcessingCounters,
     },
     processes::{
+        archival::ArchivalManager,
         ghostdag::ordering::SortableBlock,
         window::{WindowManager, WindowType},
     },
@@ -70,7 +71,7 @@ use kaspa_consensus_core::{
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     utxo::utxo_inquirer::UtxoInquirerError,
-    BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
+    ArchivalBlock, BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 
@@ -115,6 +116,8 @@ pub struct Consensus {
     pub(super) body_processor: Arc<BlockBodyProcessor>,
     pub(super) virtual_processor: Arc<VirtualStateProcessor>,
     pub(super) pruning_processor: Arc<PruningProcessor>,
+
+    archival_manager: ArchivalManager,
 
     // Storage
     pub(super) storage: Arc<ConsensusStorage>,
@@ -288,6 +291,24 @@ impl Consensus {
             virtual_processor.process_genesis();
         }
 
+        let archival_manager = ArchivalManager::new(
+            params.max_block_level,
+            config.params.genesis.hash,
+            config.is_archival,
+            config.params.crescendo_activation,
+            storage.clone(),
+            Arc::new(rayon::ThreadPoolBuilder::new()
+                    .num_threads(0) // TODO: set the number of threads
+                    .thread_name(|i| format!("archival-pool-{i}"))
+                    .build()
+                    .unwrap()),
+        );
+
+        // TODO: Don't run this unless we pass some compile or runtime flag.
+        if std::env::var("CHECK_PRUNING_WINDOW_ROOTS_CONSISTENCY").is_ok() {
+            archival_manager.check_pruning_window_roots_consistency();
+        }
+
         let this = Self {
             db,
             block_sender: sender,
@@ -303,6 +324,7 @@ impl Consensus {
             config,
             creation_timestamp,
             is_consensus_exiting,
+            archival_manager,
         };
 
         // Run database upgrades if any
@@ -1092,5 +1114,13 @@ impl ConsensusApi for Consensus {
 
     fn finality_point(&self) -> Hash {
         self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
+    }
+
+    fn get_pruning_window_roots(&self) -> Vec<(u64, Vec<Hash>)> {
+        self.archival_manager.get_pruning_window_roots()
+    }
+
+    fn add_archival_blocks(&self, blocks: Vec<ArchivalBlock>) -> ConsensusResult<()> {
+        Ok(self.archival_manager.add_archival_blocks(blocks)?)
     }
 }

@@ -15,7 +15,7 @@ use kaspa_consensus_core::{
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     utxo::utxo_inquirer::UtxoInquirerError,
-    BlockHashSet, BlueWorkType, ChainPath, Hash,
+    ArchivalBlock, BlockHashSet, BlueWorkType, ChainPath, Hash,
 };
 use kaspa_utils::sync::rwlock::*;
 use std::{ops::Deref, sync::Arc};
@@ -462,6 +462,14 @@ impl ConsensusSessionOwned {
 
     pub async fn async_finality_point(&self) -> Hash {
         self.clone().spawn_blocking(move |c| c.finality_point()).await
+    }
+
+    pub async fn async_get_pruning_window_roots(&self) -> Vec<(u64, Vec<Hash>)> {
+        self.clone().spawn_blocking(move |c| c.get_pruning_window_roots()).await
+    }
+
+    pub async fn async_add_archival_blocks(&self, blocks: Vec<ArchivalBlock>) -> ConsensusResult<()> {
+        self.clone().spawn_blocking(move |c| c.add_archival_blocks(blocks)).await
     }
 }
 

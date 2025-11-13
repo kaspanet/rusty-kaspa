@@ -502,6 +502,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     }
 
     if !args.archival && MultiConsensusManagementStore::new(meta_db.clone()).is_archival_node().unwrap() {
+        // TODO: Consider removing pruning window roots to avoid future inconsistencies in case re-launch as archival
         get_user_approval_or_exit("--archival is set to false although the node was previously archival. Proceeding may delete archived data. Do you confirm? (y/n)", args.yes);
     }
 

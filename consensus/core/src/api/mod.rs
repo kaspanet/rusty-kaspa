@@ -22,7 +22,7 @@ use crate::{
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     utxo::utxo_inquirer::UtxoInquirerError,
-    BlockHashSet, BlueWorkType, ChainPath,
+    ArchivalBlock, BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
 
@@ -373,6 +373,14 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn finality_point(&self) -> Hash {
+        unimplemented!()
+    }
+
+    fn get_pruning_window_roots(&self) -> Vec<(u64, Vec<Hash>)> {
+        unimplemented!()
+    }
+
+    fn add_archival_blocks(&self, blocks: Vec<ArchivalBlock>) -> ConsensusResult<()> {
         unimplemented!()
     }
 }

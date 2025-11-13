@@ -470,10 +470,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let session = self.consensus_manager.consensus().session().await;
         let block = session.async_get_block_even_if_header_only(request.hash).await?;
         Ok(GetBlockResponse {
-            block: self
-                .consensus_converter
-                .get_block(&session, &block, request.include_transactions, request.include_transactions)
-                .await?,
+            block: self.consensus_converter.get_block(&session, &block, request.include_transactions, false).await?, // TODO: Pass include_verbose_data to GetBlockRequest
         })
     }
 
@@ -1244,6 +1241,65 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             self.consensus_manager.consensus().unguarded_session().async_get_sink_daa_score_timestamp().await;
         let is_synced: bool = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp);
         Ok(GetSyncStatusResponse { is_synced })
+    }
+
+    async fn get_pruning_window_roots_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetPruningWindowRootsRequest,
+    ) -> RpcResult<GetPruningWindowRootsResponse> {
+        let session = self.consensus_manager.consensus().unguarded_session();
+        let roots = session.async_get_pruning_window_roots().await;
+        Ok(GetPruningWindowRootsResponse {
+            roots: roots.into_iter().map(|(pp_index, pp_roots)| PruningWindowRoots { pp_index, pp_roots }).collect(),
+        })
+    }
+
+    async fn add_archival_blocks_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: AddArchivalBlocksRequest,
+    ) -> RpcResult<AddArchivalBlocksResponse> {
+        let session = self.consensus_manager.consensus().unguarded_session();
+
+        let archival_blocks = request
+            .blocks
+            .into_iter()
+            .map(|archival_block| match archival_block.block.try_into() {
+                Ok(block) => Ok(kaspa_consensus_core::ArchivalBlock {
+                    block,
+                    child: archival_block.child,
+
+                    acceptance_data: archival_block.selected_parent.map(|sp| {
+                        let acceptance_data = archival_block
+                            .acceptance_data
+                            .into_iter()
+                            .map(|block_data| kaspa_consensus_core::acceptance_data::MergesetBlockAcceptanceData {
+                                block_hash: block_data.block_hash,
+                                accepted_transactions: block_data
+                                    .accepted_txs
+                                    .into_iter()
+                                    .map(|entry| {
+                                        let tx_id = entry.transaction_id;
+                                        let index_within_block = entry.index_within_block;
+                                        kaspa_consensus_core::acceptance_data::AcceptedTxEntry {
+                                            transaction_id: tx_id,
+                                            index_within_block,
+                                        }
+                                    })
+                                    .collect(),
+                            })
+                            .collect();
+                        (sp, acceptance_data)
+                    }),
+                }),
+                Err(err) => Err(RpcError::General(format!("Failed to parse block: {err}"))),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        session.async_add_archival_blocks(archival_blocks).await?;
+
+        Ok(AddArchivalBlocksResponse {})
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
