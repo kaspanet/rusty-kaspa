@@ -340,6 +340,12 @@ pub trait ConsensusApi: Send + Sync {
     fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
+    fn get_body_missing_anticone(&self) -> Vec<Hash> {
+        unimplemented!()
+    }
+    fn clear_body_missing_anticone_set(&self) {
+        unimplemented!()
+    }
 
     fn pruning_point(&self) -> Hash {
         unimplemented!()
@@ -373,6 +379,34 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn finality_point(&self) -> Hash {
+        unimplemented!()
+    }
+
+    fn clear_pruning_utxo_set(&self) {
+        unimplemented!()
+    }
+
+    fn set_pruning_utxoset_stable_flag(&self, val: bool) {
+        unimplemented!()
+    }
+
+    fn is_pruning_utxoset_stable(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn is_pruning_point_anticone_fully_synced(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn is_consensus_in_transitional_ibd_state(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn verify_is_pruning_sample(&self, candidate_hash: Hash) -> ConsensusResult<()> {
+        unimplemented!()
+    }
+
+    fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
         unimplemented!()
     }
 }
