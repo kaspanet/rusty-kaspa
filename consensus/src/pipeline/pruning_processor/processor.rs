@@ -661,7 +661,18 @@ impl PruningProcessor {
                     continue 'staging;
                 }
 
-                if staging_reachability.is_dag_ancestor_of_result(retention_period_root, current).unwrap() {
+                let skip_due_to_retention = match staging_reachability.is_dag_ancestor_of_result(retention_period_root, current) {
+                    Ok(result) => result,
+                    Err(err) if err.is_key_not_found() => {
+                        // A keyed block might already be staged for deletion in the current batch.
+                        // The underlying store still contains it until the batch is flushed, so consult
+                        // a fresh read guard to answer the reachability query.
+                        let reachability_read_only = self.reachability_store.read();
+                        reachability_read_only.is_dag_ancestor_of_result(retention_period_root, current).unwrap()
+                    }
+                    Err(err) => panic!("Unexpected reachability error while checking retention ancestry: {err:?}"),
+                };
+                if skip_due_to_retention {
                     continue;
                 }
                 traversed += 1;
