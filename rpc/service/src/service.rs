@@ -1346,8 +1346,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             .map(|data| {
                 let chain_block_header = data.accepting_chain_header.as_ref().unwrap().clone();
                 // Flatten all accepted transactions from mergeset blocks into a single vec
-                let accepted_transactions: Vec<RpcOptionalTransaction> =
-                    data.mergeset_block_acceptance_data.iter().flat_map(|tx| tx.accepted_transactions.clone()).collect();
+                let accepted_transactions: Vec<RpcOptionalTransaction> = data
+                    .mergeset_block_acceptance_data
+                    .iter()
+                    .flat_map(|msb_acceptance_data| msb_acceptance_data.accepted_transactions.clone())
+                    .collect();
 
                 RpcChainBlockAcceptedTransactions { chain_block_header, accepted_transactions }
             })
