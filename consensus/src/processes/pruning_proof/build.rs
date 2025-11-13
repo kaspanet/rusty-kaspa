@@ -101,7 +101,7 @@ impl PruningProofManager {
                         .unwrap();
 
                     self.find_latest_common_ancestor_in_store(
-                        &*ghostdag_stores[level],
+                        &ghostdag_stores[level],
                         block_at_depth_m_at_next_level,
                         block_at_depth_2m,
                     )
@@ -334,7 +334,7 @@ impl PruningProofManager {
 
                     root = self
                         .find_latest_common_ancestor_in_store(
-                            &*ghostdag_store,
+                            &ghostdag_store,
                             block_at_depth_m_at_next_level,
                             block_at_depth_2m_buffered,
                         )
