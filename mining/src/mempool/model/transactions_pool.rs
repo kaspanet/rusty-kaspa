@@ -81,12 +81,14 @@ pub(crate) struct TransactionsPool {
 
 impl TransactionsPool {
     pub(crate) fn new(config: Arc<Config>) -> Self {
+        // [Crescendo] Delete `after()` after cleanup.
+        let target_time_per_block = 1.0 / (config.network_blocks_per_second.after() as f64);
         Self {
             config,
             all_transactions: MempoolTransactionCollection::default(),
             parent_transactions: TransactionsEdges::default(),
             chained_transactions: TransactionsEdges::default(),
-            ready_transactions: Default::default(),
+            ready_transactions: Frontier::new(target_time_per_block),
             last_expire_scan_daa_score: 0,
             last_expire_scan_time: unix_now(),
             utxo_set: MempoolUtxoSet::new(),

@@ -143,6 +143,9 @@ pub enum RpcError {
 
     #[error("consensus converter required {0} - but was not found")]
     ConsensusConverterNotFound(String),
+
+    #[error("consensus is currently in a transitional ibd state")]
+    ConsensusInTransitionalIbdState,
 }
 
 impl From<String> for RpcError {
