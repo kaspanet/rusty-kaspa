@@ -75,7 +75,7 @@ impl PruningProofManager {
 
         let pruning_read = self.pruning_point_store.read();
         let relations_read = self.relations_stores.read();
-        let current_pp = pruning_read.get().unwrap().pruning_point;
+        let current_pp = pruning_read.pruning_point().unwrap();
         let current_pp_header = self.headers_store.get_header(current_pp).unwrap();
 
         // The accumulated blue work of current consensus from the pruning point onward
@@ -270,6 +270,7 @@ impl PruningProofManager {
 
                 headers_store.insert(header.hash, header.clone(), header_level).unwrap_or_exists();
 
+                // filter out parents that do not appear at the pruning proof:
                 let parents = self
                     .parents_manager
                     .parents_at_level(header, level)
@@ -352,7 +353,7 @@ impl PruningProofManager {
         proof_pp: Hash,
         proof_pp_header: &Header,
     ) -> PruningImportResult<()> {
-        // A proof selected tip of some level has to be the proof suggested prunint point itself if its level
+        // A proof selected tip of some level has to be the proof suggested pruning point itself if its level
         // is lower or equal to the pruning point level, or a parent of the pruning point on the relevant level
         // otherwise.
         if level <= proof_pp_level {

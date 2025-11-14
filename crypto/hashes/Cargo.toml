@@ -10,6 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [features]
+default = ["keccak?/asm"]
 no-asm = ["keccak"]
 py-sdk = ["pyo3"]
 
@@ -27,7 +28,7 @@ sha2.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
 
-[target.'cfg(any(target_os = "windows", not(target_arch = "x86_64")))'.dependencies]
+[target.'cfg(not(target_arch = "x86_64"))'.dependencies]
 keccak.workspace = true
 
 [dev-dependencies]
