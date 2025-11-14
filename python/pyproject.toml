@@ -4,9 +4,9 @@ build-backend = "maturin"
 
 [project]
 name = "kaspa"
-version = "1.0.1.post1"
+version = "1.0.1.post2"
 description = "Kaspa Python SDK"
-requires-python = ">=3.8"
+requires-python = ">=3.9,<=3.14"
 readme = "README.md"
 license = "ISC"
 classifiers = [

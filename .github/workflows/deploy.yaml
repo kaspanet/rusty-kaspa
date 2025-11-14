@@ -66,10 +66,8 @@ jobs:
           cp target/x86_64-unknown-linux-musl/release/rothschild bin/
           cp target/x86_64-unknown-linux-musl/release/kaspa-wallet bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-amd64.zip"
-          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux-amd64.zip"
           zip -r "${archive}" ./bin/*
           echo "archive=${archive}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
       - name: Build on Windows
         if: runner.os == 'Windows'
@@ -83,10 +81,8 @@ jobs:
           cp target/release/rothschild.exe bin/
           cp target/release/kaspa-wallet.exe bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
-          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
           powershell "Compress-Archive bin/* \"${archive}\""
           echo "archive=${archive}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
       - name: Build on MacOS
         if: runner.os == 'macOS'
@@ -99,20 +95,15 @@ jobs:
           cp target/release/rothschild bin/
           cp target/release/kaspa-wallet bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
-          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
           zip -r "${archive}" ./bin/*
           echo "archive=${archive}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
       - name: Upload release asset
-        uses: actions/upload-release-asset@v1
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./${{ env.archive }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: "./${{ env.archive }}"
-          asset_name: "${{ env.asset_name }}"
-          asset_content_type: application/zip
 
   build-wasm:
     runs-on: ubuntu-latest
@@ -182,27 +173,23 @@ jobs:
         run: |
           cd wasm
           bash build-release
-          mv release/kaspa-wasm32-sdk.zip ../kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip
-
-          archive="kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip"
-          asset_name="kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip"
+          cd release
+          zip -q -r kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip kaspa-wasm32-sdk
+          archive="wasm/release/kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip"
           echo "archive=${archive}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
-      - name: Upload WASM32 SDK
-        uses: actions/upload-release-asset@v1
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./${{ env.archive }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: "./${{ env.archive }}"
-          asset_name: "${{ env.asset_name }}"
-          asset_content_type: application/zip
-  
-  build-python-sdk-wheels:
-    name: Building Python SDK Wheels
-    runs-on: ${{ matrix.platform.runner }}
+
+  build-python-sdk:
+    name: Building Python SDK (${{ matrix.platform.runner }} ${{ matrix.platform.target }})
+
     strategy:
+      fail-fast: false
       matrix:
         platform:
           - runner: ubuntu-latest
@@ -213,20 +200,24 @@ jobs:
             # ring crate 0.17 fails to build for aarch64 using manylinux: auto, hence manylinux_2_28
             manylinux: manylinux_2_28
           - runner: macos-latest
-            target: x86_64
+            target: x86_64-apple-darwin
           - runner: macos-latest
             target: aarch64
           - runner: windows-latest
             target: x86_64
           # - runner: windows-latest
-          #   target: x86
+          #   target: aarch64
+
+    runs-on: ${{ matrix.platform.runner }}
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
-          python-version: '>=3.10 <=3.13'
+          python-version: "3.14"
+          # architecture: ${{ matrix.python-architecture || 'x64' }}  # Ensure x64 default for x86_64 targets
       
       - name: Install cross-compilation tools (Linux only)
         if: runner.os == 'Linux' && matrix.platform.target != 'x86_64'
@@ -245,46 +236,19 @@ jobs:
         with:
           working-directory: python
           target: ${{ matrix.platform.target }}
-          args: --release --strip --out target/dist --interpreter python3.10 python3.11 python3.12 python3.13
+          args: --release --strip --out target/dist --features py-sdk --interpreter 3.9 3.10 3.11 3.12 3.13 3.14
           sccache: 'true'
           manylinux: ${{ matrix.platform.manylinux || '' }}
-
+      
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ runner.os }}-${{ matrix.platform.target }}
           path: python/target/dist/
 
-  build-python-sdk-sdist:
-    name: Build Python SDK sdist
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '>=3.10 <=3.13'
-
-      - name: Build sdist
-        uses: PyO3/maturin-action@v1
-        with:
-          working-directory: python
-          command: sdist
-          args: --out target/dist
-          sccache: 'true'
-        
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: sdist
-          path: python/target/dist/kaspa-*.tar.gz
-
   collect-python-sdk-artifacts:
     name: Collect Python SDK Artifacts
-    needs:
-      - build-python-sdk-wheels
-      - build-python-sdk-sdist
+    needs: build-python-sdk
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -295,7 +259,7 @@ jobs:
       - name: Zip artifacts
         run: |
           cd artifacts
-          zip -r ../kaspa-python-sdk.zip .
+          sudo zip -r ../kaspa-python-sdk.zip .
       
       - name: Upload consolidated release asset
         uses: actions/upload-release-asset@v1
@@ -306,4 +270,3 @@ jobs:
           asset_path: ./kaspa-python-sdk.zip
           asset_name: "kaspa-python-sdk-${{ github.event.release.tag_name }}.zip"
           asset_content_type: application/zip
-

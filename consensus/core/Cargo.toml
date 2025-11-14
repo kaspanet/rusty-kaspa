@@ -22,6 +22,7 @@ py-sdk = [
 arc-swap.workspace = true
 async-trait.workspace = true
 borsh.workspace = true
+bitflags.workspace = true
 cfg-if.workspace = true
 faster-hex.workspace = true
 futures-util.workspace = true

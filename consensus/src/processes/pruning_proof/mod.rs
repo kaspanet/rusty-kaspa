@@ -46,6 +46,7 @@ use crate::{
             headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
             pruning::{DbPruningStore, PruningStoreReader},
+            pruning_meta::PruningMetaStores,
             pruning_samples::{DbPruningSamplesStore, PruningSamplesStore},
             reachability::DbReachabilityStore,
             relations::{DbRelationsStore, RelationsStoreReader},
@@ -115,6 +116,7 @@ pub struct PruningProofManager {
     depth_store: Arc<DbDepthStore>,
     selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
     pruning_samples_store: Arc<DbPruningSamplesStore>,
+    pruning_meta_stores: Arc<RwLock<PruningMetaStores>>,
 
     ghostdag_manager: DbGhostdagManager,
     traversal_manager: DbDagTraversalManager,
@@ -159,6 +161,7 @@ impl PruningProofManager {
             ghostdag_store: storage.ghostdag_store.clone(),
             relations_stores: storage.relations_stores.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
+            pruning_meta_stores: storage.pruning_meta_stores.clone(),
             past_pruning_points_store: storage.past_pruning_points_store.clone(),
             virtual_stores: storage.virtual_stores.clone(),
             body_tips_store: storage.body_tips_store.clone(),
@@ -223,7 +226,7 @@ impl PruningProofManager {
 
         let mut pruning_point_write = self.pruning_point_store.write();
         let mut batch = WriteBatch::default();
-        pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pruning_point, (pruning_points.len() - 1) as u64).unwrap();
+        pruning_point_write.set_batch(&mut batch, new_pruning_point, (pruning_points.len() - 1) as u64).unwrap();
         pruning_point_write.set_retention_checkpoint(&mut batch, new_pruning_point).unwrap();
         pruning_point_write.set_retention_period_root(&mut batch, new_pruning_point).unwrap();
         self.db.write(batch).unwrap();

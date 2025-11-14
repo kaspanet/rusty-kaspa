@@ -586,11 +586,11 @@ impl TryFrom<&Bound<'_, PyDict>> for UtxoEntryReference {
         )?;
 
         let outpoint = TransactionOutpoint::try_from(
-            dict.get_item("outpoint")?.ok_or_else(|| PyKeyError::new_err("Key `outpoint` not present"))?.downcast::<PyDict>()?,
+            dict.get_item("outpoint")?.ok_or_else(|| PyKeyError::new_err("Key `outpoint` not present"))?.cast::<PyDict>()?,
         )?;
 
         let utxo_entry_value = dict.get_item("utxoEntry")?.ok_or_else(|| PyKeyError::new_err("Key `utxoEntry` not present"))?;
-        let utxo_entry = utxo_entry_value.downcast::<PyDict>()?;
+        let utxo_entry = utxo_entry_value.cast::<PyDict>()?;
 
         let amount: u64 = utxo_entry.get_item("amount")?.ok_or_else(|| PyKeyError::new_err("Key `amount` not present"))?.extract()?;
 

@@ -72,7 +72,7 @@ impl Notification {
     }
 
     #[cfg(feature = "py-sdk")]
-    pub fn to_pyobject(&self, py: Python) -> PyResult<PyObject> {
+    pub fn to_pyobject(&self, py: Python) -> PyResult<Py<PyAny>> {
         let bound_obj = match self {
             Notification::BlockAdded(v) => to_pyobject(py, &v),
             Notification::FinalityConflict(v) => to_pyobject(py, &v),

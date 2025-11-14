@@ -127,7 +127,7 @@ fn extract_ops(input: &Bound<PyAny>) -> PyResult<Vec<u8>> {
     if let Ok(opcode) = extract_op(&input) {
         // Single u8 or Opcodes variant
         Ok(vec![opcode])
-    } else if let Ok(list) = input.downcast::<pyo3::types::PyList>() {
+    } else if let Ok(list) = input.cast::<pyo3::types::PyList>() {
         // List of u8 or Opcodes variants
         list.iter().map(|item| extract_op(&item)).collect::<PyResult<Vec<u8>>>()
     } else {

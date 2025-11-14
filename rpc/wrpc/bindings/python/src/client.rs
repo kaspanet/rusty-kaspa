@@ -52,7 +52,7 @@ impl FromStr for NotificationEvent {
 
 #[derive(Clone)]
 struct PyCallback {
-    callback: Arc<PyObject>,
+    callback: Arc<Py<PyAny>>,
     args: Option<Arc<Py<PyTuple>>>,
     kwargs: Option<Arc<Py<PyDict>>>,
 }
@@ -63,7 +63,7 @@ impl PyCallback {
             Some(existing_args) => {
                 let tuple_ref = existing_args.bind(py);
 
-                let mut new_args: Vec<PyObject> = tuple_ref.iter().map(|arg| arg.unbind()).collect();
+                let mut new_args: Vec<Py<PyAny>> = tuple_ref.iter().map(|arg| arg.unbind()).collect();
                 new_args.push(event.into());
 
                 Ok(Py::from(PyTuple::new(py, new_args)?))
@@ -72,7 +72,7 @@ impl PyCallback {
         }
     }
 
-    fn execute(&self, py: Python, event: Bound<PyDict>) -> PyResult<PyObject> {
+    fn execute(&self, py: Python, event: Bound<PyDict>) -> PyResult<Py<PyAny>> {
         let args = self.add_event_to_args(py, event)?;
         let kwargs = self.kwargs.as_ref().map(|kw| kw.bind(py));
 
@@ -278,7 +278,7 @@ impl RpcClient {
         &self,
         py: Python,
         event: String,
-        callback: PyObject,
+        callback: Py<PyAny>,
         args: &Bound<'_, PyTuple>,
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
@@ -298,7 +298,7 @@ impl RpcClient {
     }
 
     #[pyo3(signature = (event, callback=None))]
-    fn remove_event_listener(&self, py: Python, event: String, callback: Option<PyObject>) -> PyResult<()> {
+    fn remove_event_listener(&self, event: String, callback: Option<Py<PyAny>>) -> PyResult<()> {
         let event = NotificationEvent::from_str(event.as_str())?;
         let mut callbacks = self.inner.callbacks.lock().unwrap();
 
@@ -310,11 +310,12 @@ impl RpcClient {
             (NotificationEvent::All, Some(callback)) => {
                 // Remove given callback from "all" events
                 for callbacks in callbacks.values_mut() {
-                    callbacks.retain(|c| {
-                        let cb_ref = c.callback.bind(py);
-                        let callback_ref = callback.bind(py);
-                        cb_ref.as_ref().ne(callback_ref.as_ref()).unwrap_or(true)
-                    });
+                    // callbacks.retain(|c| {
+                    //     let cb_ref = c.callback.bind(py);
+                    //     let callback_ref = callback.bind(py);
+                    //     cb_ref.as_ref().ne(callback_ref.as_ref()).unwrap_or(true)
+                    // });
+                    callbacks.retain(|entry| entry.callback.as_ref().as_ptr() != callback.as_ptr());
                 }
             }
             (_, None) => {
@@ -324,11 +325,12 @@ impl RpcClient {
             (_, Some(callback)) => {
                 // Remove given callback from given event
                 if let Some(callbacks) = callbacks.get_mut(&event) {
-                    callbacks.retain(|c| {
-                        let cb_ref = c.callback.bind(py);
-                        let callback_ref = callback.bind(py);
-                        cb_ref.as_ref().ne(callback_ref.as_ref()).unwrap_or(true)
-                    });
+                    // callbacks.retain(|c| {
+                    //     let cb_ref = c.callback.bind(py);
+                    //     let callback_ref = callback.bind(py);
+                    //     cb_ref.as_ref().ne(callback_ref.as_ref()).unwrap_or(true)
+                    // });
+                    callbacks.retain(|entry| entry.callback.as_ref().as_ptr() != callback.as_ptr());
                 }
             }
         }
@@ -412,7 +414,7 @@ impl RpcClient {
                             let event = NotificationEvent::RpcCtl(ctl);
                             if let Some(handlers) = this.inner.notification_callbacks(event) {
                                 for handler in handlers.into_iter() {
-                                    Python::with_gil(|py| {
+                                    Python::attach(|py| {
                                         let event = PyDict::new(py);
                                         event.set_item("type", ctl.to_string()).unwrap();
                                         event.set_item("rpc", this.url()).unwrap();
@@ -433,7 +435,7 @@ impl RpcClient {
                                         let UtxosChangedNotification { added, removed } = utxos_changed_notification;
 
                                         for handler in handlers.into_iter() {
-                                            Python::with_gil(|py| {
+                                            Python::attach(|py| {
                                                 let added = serde_pyobject::to_pyobject(py, added).unwrap();
                                                 let removed = serde_pyobject::to_pyobject(py, removed).unwrap();
 
@@ -452,7 +454,7 @@ impl RpcClient {
                                     let notification_event = NotificationEvent::Notification(event_type);
                                     if let Some(handlers) = this.inner.notification_callbacks(notification_event) {
                                         for handler in handlers.into_iter() {
-                                            Python::with_gil(|py| {
+                                            Python::attach(|py| {
                                                 let event = PyDict::new(py);
                                                 event.set_item("type", event_type.to_string()).unwrap();
                                                 event.set_item("data", notification.to_pyobject(py).unwrap()).unwrap();
@@ -481,7 +483,7 @@ impl RpcClient {
 
             ctl_sender.send(()).await.ok();
 
-            Python::with_gil(|_| Ok(()))
+            Python::attach(|_| Ok(()))
         });
 
         Ok(())

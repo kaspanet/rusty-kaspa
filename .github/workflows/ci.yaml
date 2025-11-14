@@ -356,13 +356,12 @@ jobs:
           cd wasm
           bash build-release
           popd
-          mv wasm/release/kaspa-wasm32-sdk.zip wasm/release/kaspa-wasm32-sdk-${{ env.SHORT_SHA }}.zip
 
       - name: Upload WASM build to GitHub 
         uses: actions/upload-artifact@v4
         with: 
-          name: kaspa-wasm32-sdk-${{ env.SHORT_SHA }}.zip
-          path: wasm/release/kaspa-wasm32-sdk-${{ env.SHORT_SHA }}.zip
+          name: kaspa-wasm32-sdk-${{ env.SHORT_SHA }}
+          path: wasm/release/
   build-release:
     name: Build Linux Release
     runs-on: ubuntu-latest

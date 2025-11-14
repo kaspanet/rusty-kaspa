@@ -48,6 +48,9 @@ pub enum DatabaseStorePrefixes {
 
     // ---- Retention Period Root ----
     RetentionPeriodRoot = 50,
+    // ---- pruning metadata ----
+    PruningUtxosetSyncFlag = 60,
+    BodyMissingAnticone = 61,
 
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
