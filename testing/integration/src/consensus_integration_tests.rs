@@ -77,7 +77,7 @@ use std::cmp::{max, Ordering};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{
     collections::HashMap,
     fs::File,
@@ -2236,13 +2236,26 @@ async fn pruning_test() {
         selected_chain.push(hash);
     }
 
-    // Waiting for genesis_child to get pruned
-    while consensus.get_block_status(genesis_child).unwrap() == BlockStatus::StatusUTXOValid {
+    // Waiting for genesis_child_child to get pruned
+    let start = Instant::now();
+    while consensus.get_block_status(genesis_child_child).unwrap() == BlockStatus::StatusUTXOValid {
+        if start.elapsed() > Duration::from_secs(10) {
+            panic!("Timed out waiting 10 seconds for pruning to occur");
+        }
+
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
-    assert!(consensus.validate_and_insert_block(genesis_child_block).virtual_state_task.await.is_err());
-    assert!(consensus.validate_and_insert_block(genesis_child_child_block).virtual_state_task.await.is_err());
+    // Since pruning happens topologically from older to later blocks, we expect both blocks to be pruned at this point
+    assert_match!(
+        consensus.validate_and_insert_block(genesis_child_block).virtual_state_task.await,
+        Err(RuleError::MissingParents(_))
+    );
+
+    assert_match!(
+        consensus.validate_and_insert_block(genesis_child_child_block).virtual_state_task.await,
+        Err(RuleError::MissingParents(_))
+    );
 
     consensus.shutdown(wait_handles);
 }
