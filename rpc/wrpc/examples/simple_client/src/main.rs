@@ -97,15 +97,6 @@ async fn check_node_status() -> Result<()> {
     println!("Virtual DAA score: {virtual_daa_score}");
     println!("Sink: {sink}");
 
-    let res = client
-        .get_utxo_return_address(
-            RpcHash::from_str("602721c7650b219224794c4a23365d657ee78808ee1c9e48e0143f40b0b6777f").unwrap(),
-            1762365192139,
-        )
-        .await?;
-
-    println!("res: {:?}", res);
-
     // Disconnect client from Kaspa node
     client.disconnect().await?;
 
