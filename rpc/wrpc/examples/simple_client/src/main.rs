@@ -1,15 +1,13 @@
 // Example of simple client to connect with Kaspa node using wRPC connection and collect some node and network basic data
 
-use kaspa_rpc_core::{api::rpc::RpcApi, GetBlockDagInfoResponse, GetServerInfoResponse, RpcHash};
+use kaspa_rpc_core::{api::rpc::RpcApi, GetBlockDagInfoResponse, GetServerInfoResponse};
 use kaspa_wrpc_client::{
     client::{ConnectOptions, ConnectStrategy},
-    prelude::NetworkId,
-    prelude::NetworkType,
+    prelude::{NetworkId, NetworkType},
     result::Result,
-    KaspaRpcClient, WrpcEncoding,
+    KaspaRpcClient, Resolver, WrpcEncoding,
 };
 use std::process::ExitCode;
-use std::str::FromStr;
 use std::time::Duration;
 
 #[tokio::main]
