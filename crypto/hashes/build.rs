@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder.flag("-c");
         match target_os.as_str() {
             "macos" => builder.file("src/asm/keccakf1600_x86-64-osx.s"),
-            "linux" => builder.file("src/asm/keccakf1600_x86-64-elf.s"),
+            "linux" | "android" => builder.file("src/asm/keccakf1600_x86-64-elf.s"),
             "windows" if target_env == "gnu" => builder.file("src/asm/keccakf1600_x86-64-mingw64.s"),
             "windows" if target_env == "msvc" => builder.file("src/asm/keccakf1600_x86-64-msvc.asm"),
             _ => unimplemented!("Unsupported OS"),
