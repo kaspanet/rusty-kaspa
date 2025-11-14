@@ -1,5 +1,8 @@
+use kaspa_hashes::Hash;
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
+
+use crate::RpcHash;
 
 use super::{RpcOptionalHeader, RpcOptionalTransaction};
 
@@ -44,14 +47,14 @@ impl Deserializer for RpcAcceptanceData {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcMergesetBlockAcceptanceData {
-    pub merged_header: Option<RpcOptionalHeader>,
+    pub merged_block_hash: RpcHash,
     pub accepted_transactions: Vec<RpcOptionalTransaction>,
 }
 
 impl RpcMergesetBlockAcceptanceData {
     #[inline(always)]
-    pub fn new(merged_header: Option<RpcOptionalHeader>, accepted_transactions: Vec<RpcOptionalTransaction>) -> Self {
-        Self { merged_header, accepted_transactions }
+    pub fn new(merged_block_hash: RpcHash, accepted_transactions: Vec<RpcOptionalTransaction>) -> Self {
+        Self { merged_block_hash, accepted_transactions }
     }
 }
 
@@ -59,7 +62,7 @@ impl Serializer for RpcMergesetBlockAcceptanceData {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u8, &1, writer)?;
 
-        store!(Option<RpcOptionalHeader>, &self.merged_header, writer)?;
+        store!(Hash, &self.merged_block_hash, writer)?;
         serialize!(Vec<RpcOptionalTransaction>, &self.accepted_transactions, writer)?;
 
         Ok(())
@@ -70,9 +73,9 @@ impl Deserializer for RpcMergesetBlockAcceptanceData {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader);
 
-        let merged_header = load!(Option<RpcOptionalHeader>, reader)?;
+        let merged_block_hash = load!(RpcHash, reader)?;
         let accepted_transactions = deserialize!(Vec<RpcOptionalTransaction>, reader)?;
 
-        Ok(Self { merged_header, accepted_transactions })
+        Ok(Self { merged_block_hash, accepted_transactions })
     }
 }

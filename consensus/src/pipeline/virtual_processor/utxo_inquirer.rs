@@ -1,7 +1,7 @@
 use std::{cmp, collections::HashSet, sync::Arc};
 
 use kaspa_consensus_core::{
-    acceptance_data::AcceptanceData,
+    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     tx::{SignableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, UtxoEntry},
     utxo::{
         utxo_diff::ImmutableUtxoDiff,
@@ -143,6 +143,58 @@ impl VirtualStateProcessor {
         let utxo_entry =
             UtxoEntry::new(output.value, output.script_public_key.clone(), accepting_block_daa_score, other_tx.is_coinbase());
         Ok(utxo_entry)
+    }
+
+    pub fn get_populated_transactions_by_block_acceptance_data(
+        &self,
+        tx_ids: Option<Vec<TransactionId>>,
+        block_acceptance_data: MergesetBlockAcceptanceData,
+        accepting_block: Hash,
+    ) -> UtxoInquirerResult<Vec<SignableTransaction>> {
+        let accepting_daa_score = self
+            .headers_store
+            .get_daa_score(accepting_block)
+            .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(accepting_block))?;
+
+        let utxo_diff = self
+            .utxo_diffs_store
+            .get(accepting_block)
+            .map_err(|_| UtxoInquirerError::MissingUtxoDiffForChainBlock(accepting_block))?;
+
+        let acceptance_data_for_this_block = vec![block_acceptance_data];
+
+        let txs = self.find_txs_from_acceptance_data(tx_ids, &acceptance_data_for_this_block)?;
+
+        let mut populated_txs = Vec::<SignableTransaction>::with_capacity(txs.len());
+
+        for tx in txs.iter() {
+            let mut entries = Vec::with_capacity(tx.inputs.len());
+            for input in tx.inputs.iter() {
+                let filled_utxo = if let Some(utxo) = utxo_diff.removed().get(&input.previous_outpoint).cloned() {
+                    Some(utxo)
+                } else if let Some(utxo) = populated_txs.iter().map(|ptx| &ptx.tx).chain(txs.iter()).find_map(|tx| {
+                    if tx.id() == input.previous_outpoint.transaction_id {
+                        let output = &tx.outputs[input.previous_outpoint.index as usize];
+                        Some(UtxoEntry::new(output.value, output.script_public_key.clone(), accepting_daa_score, tx.is_coinbase()))
+                    } else {
+                        None
+                    }
+                }) {
+                    Some(utxo)
+                } else {
+                    Some(self.resolve_missing_outpoint(
+                        &input.previous_outpoint,
+                        &acceptance_data_for_this_block,
+                        accepting_daa_score,
+                    )?)
+                };
+
+                entries.push(filled_utxo.ok_or(UtxoInquirerError::MissingUtxoEntryForOutpoint(input.previous_outpoint))?);
+            }
+            populated_txs.push(SignableTransaction::with_entries(tx.clone(), entries));
+        }
+
+        Ok(populated_txs)
     }
 
     pub fn get_populated_transactions_by_accepting_block(

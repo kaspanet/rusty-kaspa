@@ -1,14 +1,15 @@
 // Example of simple client to connect with Kaspa node using wRPC connection and collect some node and network basic data
 
-use kaspa_rpc_core::{api::rpc::RpcApi, GetBlockDagInfoResponse, GetServerInfoResponse};
+use kaspa_rpc_core::{api::rpc::RpcApi, GetBlockDagInfoResponse, GetServerInfoResponse, RpcHash};
 use kaspa_wrpc_client::{
     client::{ConnectOptions, ConnectStrategy},
     prelude::NetworkId,
     prelude::NetworkType,
     result::Result,
-    KaspaRpcClient, Resolver, WrpcEncoding,
+    KaspaRpcClient, WrpcEncoding,
 };
 use std::process::ExitCode;
+use std::str::FromStr;
 use std::time::Duration;
 
 #[tokio::main]
@@ -32,8 +33,8 @@ async fn check_node_status() -> Result<()> {
     // If you want to connect to your own node, define your node address and wRPC port using let url = Some("ws://0.0.0.0:17110")
     // Verify your Kaspa node is runnning with --rpclisten-borsh=0.0.0.0:17110 parameter
     // In this example we don't use a specific node but we connect through the resolver, which use a pool of public nodes
-    let url = None;
-    let resolver = Some(Resolver::default());
+    let url = Some("ws://0.0.0.0:17110");
+    let resolver = None;
 
     // Define the network your Kaspa node is connected to
     // You can select NetworkType::Mainnet, NetworkType::Testnet, NetworkType::Devnet, NetworkType::Simnet
@@ -95,6 +96,15 @@ async fn check_node_status() -> Result<()> {
     println!("Pruning point hash: {pruning_point_hash}");
     println!("Virtual DAA score: {virtual_daa_score}");
     println!("Sink: {sink}");
+
+    let res = client
+        .get_utxo_return_address(
+            RpcHash::from_str("602721c7650b219224794c4a23365d657ee78808ee1c9e48e0143f40b0b6777f").unwrap(),
+            1762365192139,
+        )
+        .await?;
+
+    println!("res: {:?}", res);
 
     // Disconnect client from Kaspa node
     client.disconnect().await?;

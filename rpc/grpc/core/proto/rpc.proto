@@ -1005,7 +1005,7 @@ message RpcAcceptanceData {
 }
 
 message RpcMergesetBlockAcceptanceData {
-  optional RpcBlockHeader mergedHeader = 2;
+  string mergedBlockHash = 2;
   repeated RpcTransaction acceptedTransactions = 3;
 }
 

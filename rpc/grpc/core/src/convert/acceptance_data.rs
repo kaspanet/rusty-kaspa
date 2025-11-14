@@ -1,6 +1,7 @@
 use crate::protowire::{self};
 use crate::{from, try_from};
-use kaspa_rpc_core::{RpcError, RpcMergesetBlockAcceptanceData};
+use kaspa_rpc_core::{RpcError, RpcHash, RpcMergesetBlockAcceptanceData};
+use std::str::FromStr;
 
 // ----------------------------------------------------------------------------
 // rpc_core to protowire
@@ -19,7 +20,7 @@ from!(item: &kaspa_rpc_core::RpcAcceptanceData,  protowire::RpcAcceptanceData, {
 
 from!(item: &kaspa_rpc_core::RpcMergesetBlockAcceptanceData, protowire::RpcMergesetBlockAcceptanceData, {
     Self {
-        merged_header: item.merged_header.as_ref().map(protowire::RpcBlockHeader::from),
+        merged_block_hash: item.merged_block_hash.to_string(),
         accepted_transactions: item.accepted_transactions.iter().map(protowire::RpcTransaction::from).collect(),
     }
 });
@@ -54,7 +55,7 @@ try_from!(item: &protowire::RpcAcceptanceData, kaspa_rpc_core::RpcAcceptanceData
 
 try_from!(item: &protowire::RpcMergesetBlockAcceptanceData, kaspa_rpc_core::RpcMergesetBlockAcceptanceData, {
     Self {
-        merged_header: item.merged_header.as_ref().map(kaspa_rpc_core::RpcOptionalHeader::try_from).transpose()?,
+        merged_block_hash: RpcHash::from_str(&item.merged_block_hash)?,
         accepted_transactions: item.accepted_transactions.iter().map(kaspa_rpc_core::RpcOptionalTransaction::try_from).collect::<Result<_, _>>()?,
     }
 });

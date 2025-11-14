@@ -512,15 +512,16 @@ impl ConsensusConverter {
     pub async fn get_accepted_transactions_with_verbosity(
         &self,
         consensus: &ConsensusProxy,
-        accepting_block_hash: RpcHash,
         tx_ids: Option<Vec<TransactionId>>,
-        mergeset_block_acceptance: &MergesetBlockAcceptanceData,
+        accepting_block: Hash,
+        merged_block_data: &MergesetBlockAcceptanceData,
         block_time: Option<u64>,
         verbosity: &RpcTransactionVerbosity,
     ) -> RpcResult<Vec<RpcOptionalTransaction>> {
         let txs = consensus
-            .async_get_transactions_by_accepting_block(
-                accepting_block_hash,
+            .async_get_transactions_by_block_acceptance_data(
+                accepting_block,
+                merged_block_data.clone(),
                 tx_ids,
                 if verbosity.requires_populated_transaction() {
                     TransactionType::SignableTransaction
@@ -540,7 +541,7 @@ impl ConsensusConverter {
                             .convert_transaction_with_verbosity(
                                 consensus,
                                 tx,
-                                Some(mergeset_block_acceptance.block_hash),
+                                Some(merged_block_data.block_hash),
                                 block_time,
                                 verbosity,
                             )
@@ -565,7 +566,7 @@ impl ConsensusConverter {
                             .convert_signable_transaction_with_verbosity(
                                 consensus,
                                 tx,
-                                Some(mergeset_block_acceptance.block_hash),
+                                Some(merged_block_data.block_hash),
                                 block_time,
                                 verbosity,
                             )
@@ -584,16 +585,16 @@ impl ConsensusConverter {
         })
     }
 
-    async fn get_mergeset_block_acceptance_data_with_verbosity(
+    async fn get_merged_block_data_with_verbosity(
         &self,
         consensus: &ConsensusProxy,
-        accepting_chain_block: Hash,
-        mergeset_block_acceptance: &MergesetBlockAcceptanceData,
+        accepting_block: Hash,
+        merged_block_data: &MergesetBlockAcceptanceData,
         verbosity: &RpcMergesetBlockAcceptanceDataVerbosity,
     ) -> RpcResult<RpcMergesetBlockAcceptanceData> {
         let merged_header = if let Some(merged_header_verbosity) = verbosity.merged_header_verbosity.as_ref() {
             let merged_header =
-                self.get_header_with_verbosity(consensus, merged_header_verbosity, mergeset_block_acceptance.block_hash).await?;
+                self.get_header_with_verbosity(consensus, merged_header_verbosity, merged_block_data.block_hash).await?;
             if merged_header.is_empty() {
                 Default::default()
             } else {
@@ -606,9 +607,9 @@ impl ConsensusConverter {
         let accepted_txs = if let Some(accepted_transaction_verbosity) = verbosity.accepted_transactions_verbosity.as_ref() {
             self.get_accepted_transactions_with_verbosity(
                 consensus,
-                accepting_chain_block,
                 None,
-                mergeset_block_acceptance,
+                accepting_block,
+                merged_block_data,
                 merged_header.as_ref().and_then(|x| x.timestamp.as_ref().map(|ts| *ts)),
                 accepted_transaction_verbosity,
             )
@@ -617,7 +618,7 @@ impl ConsensusConverter {
             Vec::new()
         };
 
-        Ok(RpcMergesetBlockAcceptanceData { merged_header, accepted_transactions: accepted_txs })
+        Ok(RpcMergesetBlockAcceptanceData { merged_block_hash: merged_block_data.block_hash, accepted_transactions: accepted_txs })
     }
 
     pub async fn get_acceptance_data_with_verbosity(
@@ -632,10 +633,14 @@ impl ConsensusConverter {
             return Ok(Vec::new());
         }
 
-        let acceptance_data = consensus.async_get_blocks_acceptance_data(chain_path.added.clone(), merged_blocks_limit).await.unwrap();
-        let mut rpc_acceptance_data = Vec::<RpcAcceptanceData>::with_capacity(acceptance_data.len());
+        let chain_block_mergeset_acceptance_data_vec =
+            consensus.async_get_blocks_acceptance_data(chain_path.added.clone(), merged_blocks_limit).await.unwrap();
+        let mut rpc_acceptance_data = Vec::<RpcAcceptanceData>::with_capacity(chain_block_mergeset_acceptance_data_vec.len());
 
-        for (accepting_chain_hash, acceptance_data) in chain_path.added.iter().zip(acceptance_data.iter()) {
+        // for each chain block
+        for (accepting_chain_hash, chain_block_mergeset_acceptance_data) in
+            chain_path.added.iter().zip(chain_block_mergeset_acceptance_data_vec.iter())
+        {
             let accepting_chain_header = if let Some(verbosity) = verbosity.accepting_chain_header_verbosity.as_ref() {
                 let header = self.get_header_with_verbosity(consensus, verbosity, *accepting_chain_hash).await?;
                 if header.is_empty() {
@@ -648,11 +653,12 @@ impl ConsensusConverter {
             };
 
             if let Some(mergeset_block_acceptance_data_verbosity) = verbosity.mergeset_block_acceptance_data_verbosity.as_ref() {
-                let mut rpc_mergeset_block_acceptance_data = Vec::with_capacity(acceptance_data.len());
+                let mut rpc_mergeset_block_acceptance_data = Vec::with_capacity(chain_block_mergeset_acceptance_data.len());
 
-                for mergeset_block_acceptance in acceptance_data.iter() {
+                // for each of its merged block
+                for mergeset_block_acceptance in chain_block_mergeset_acceptance_data.iter() {
                     rpc_mergeset_block_acceptance_data.push(
-                        self.get_mergeset_block_acceptance_data_with_verbosity(
+                        self.get_merged_block_data_with_verbosity(
                             consensus,
                             *accepting_chain_hash,
                             mergeset_block_acceptance,

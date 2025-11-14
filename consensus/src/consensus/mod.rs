@@ -44,7 +44,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
-    acceptance_data::AcceptanceData,
+    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     api::{
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         stats::BlockCount,
@@ -861,6 +861,57 @@ impl ConsensusApi for Consensus {
             .virtual_processor
             .find_accepting_chain_block_hash_at_daa_score(accepting_daa_score, self.get_retention_period_root())?;
         self.get_transactions_by_accepting_block(accepting_block, tx_ids, tx_type)
+    }
+
+    fn get_transactions_by_block_acceptance_data(
+        &self,
+        accepting_block: Hash,
+        block_acceptance_data: MergesetBlockAcceptanceData,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        // We need consistency between the acceptance store and the block transaction store,
+        let _guard = self.pruning_lock.blocking_read();
+
+        match tx_type {
+            TransactionType::Transaction => {
+                if let Some(tx_ids) = tx_ids {
+                    let mut tx_ids_filter = HashSet::with_capacity(tx_ids.len());
+                    tx_ids_filter.extend(tx_ids);
+
+                    Ok(TransactionQueryResult::Transaction(Arc::new(
+                        self.get_block_transactions(
+                            block_acceptance_data.block_hash,
+                            Some(
+                                block_acceptance_data
+                                    .accepted_transactions
+                                    .into_iter()
+                                    .filter_map(|atx| {
+                                        if tx_ids_filter.contains(&atx.transaction_id) {
+                                            Some(atx.index_within_block)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect(),
+                            ),
+                        )?,
+                    )))
+                } else {
+                    Ok(TransactionQueryResult::Transaction(Arc::new(self.get_block_transactions(
+                        block_acceptance_data.block_hash,
+                        Some(block_acceptance_data.accepted_transactions.iter().map(|atx| atx.index_within_block).collect()),
+                    )?)))
+                }
+            }
+            TransactionType::SignableTransaction => Ok(TransactionQueryResult::SignableTransaction(Arc::new(
+                self.virtual_processor.get_populated_transactions_by_block_acceptance_data(
+                    tx_ids,
+                    block_acceptance_data,
+                    accepting_block,
+                )?,
+            ))),
+        }
     }
 
     fn get_transactions_by_accepting_block(

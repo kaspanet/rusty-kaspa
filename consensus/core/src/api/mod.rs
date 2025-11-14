@@ -3,7 +3,7 @@ use kaspa_muhash::MuHash;
 use std::sync::Arc;
 
 use crate::{
-    acceptance_data::AcceptanceData,
+    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     blockstatus::BlockStatus,
@@ -181,6 +181,16 @@ pub trait ConsensusApi: Send + Sync {
     fn get_transactions_by_accepting_daa_score(
         &self,
         accepting_daa_score: u64,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        unimplemented!()
+    }
+
+    fn get_transactions_by_block_acceptance_data(
+        &self,
+        accepting_block: Hash,
+        block_acceptance_data: MergesetBlockAcceptanceData,
         tx_ids: Option<Vec<TransactionId>>,
         tx_type: TransactionType,
     ) -> ConsensusResult<TransactionQueryResult> {

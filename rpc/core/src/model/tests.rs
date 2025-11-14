@@ -408,7 +408,7 @@ mod mockery {
 
     impl Mock for RpcMergesetBlockAcceptanceData {
         fn mock() -> Self {
-            RpcMergesetBlockAcceptanceData { merged_header: mock(), accepted_transactions: mock() }
+            RpcMergesetBlockAcceptanceData { merged_block_hash: mock(), accepted_transactions: mock() }
         }
     }
 

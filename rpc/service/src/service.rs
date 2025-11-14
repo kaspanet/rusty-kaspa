@@ -1338,15 +1338,15 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             }
         }
 
-        let added_acceptance_data =
+        let chain_blocks_acceptance_data =
             self.consensus_converter.get_acceptance_data_with_verbosity(&session, &verbosity, &chain_path, Some(batch_size)).await?;
 
-        let chain_block_accepted_transactions: Vec<_> = added_acceptance_data
+        let chain_block_accepted_transactions: Vec<_> = chain_blocks_acceptance_data
             .iter()
-            .map(|data| {
-                let chain_block_header = data.accepting_chain_header.as_ref().unwrap().clone();
+            .map(|chain_block_acceptance_data| {
+                let chain_block_header = chain_block_acceptance_data.accepting_chain_header.as_ref().unwrap().clone();
                 // Flatten all accepted transactions from mergeset blocks into a single vec
-                let accepted_transactions: Vec<RpcOptionalTransaction> = data
+                let accepted_transactions: Vec<RpcOptionalTransaction> = chain_block_acceptance_data
                     .mergeset_block_acceptance_data
                     .iter()
                     .flat_map(|msb_acceptance_data| msb_acceptance_data.accepted_transactions.clone())
@@ -1355,7 +1355,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 RpcChainBlockAcceptedTransactions { chain_block_header, accepted_transactions }
             })
             .collect();
-        chain_path.added.truncate(added_acceptance_data.len());
+        chain_path.added.truncate(chain_blocks_acceptance_data.len());
 
         Ok(GetVirtualChainFromBlockV2Response {
             removed_chain_block_hashes: chain_path.removed.into(),

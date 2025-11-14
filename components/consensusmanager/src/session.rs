@@ -3,7 +3,7 @@
 //! We use newtypes in order to simplify changing the underlying lock in the future
 
 use kaspa_consensus_core::{
-    acceptance_data::AcceptanceData,
+    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus},
     block::Block,
     blockstatus::BlockStatus,
@@ -261,7 +261,7 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_current_block_color(hash)).await
     }
 
-    /// retention period root refers to the earliest block from which the current node has full header & block data  
+    /// retention period root refers to the earliest block from which the current node has full header & block data
     pub async fn async_get_retention_period_root(&self) -> Hash {
         self.clone().spawn_blocking(|c| c.get_retention_period_root()).await
     }
@@ -324,13 +324,18 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_transactions_by_accepting_daa_score(accepting_daa_score, tx_ids, tx_type)).await
     }
 
-    pub async fn async_get_transactions_by_accepting_block(
+    pub async fn async_get_transactions_by_block_acceptance_data(
         &self,
         accepting_block: Hash,
+        block_acceptance_data: MergesetBlockAcceptanceData,
         tx_ids: Option<Vec<TransactionId>>,
         tx_type: TransactionType,
     ) -> ConsensusResult<TransactionQueryResult> {
-        self.clone().spawn_blocking(move |c| c.get_transactions_by_accepting_block(accepting_block, tx_ids, tx_type)).await
+        self.clone()
+            .spawn_blocking(move |c| {
+                c.get_transactions_by_block_acceptance_data(accepting_block, block_acceptance_data, tx_ids, tx_type)
+            })
+            .await
     }
 
     /// Returns the antipast of block `hash` from the POV of `context`, i.e. `antipast(hash) ∩ past(context)`.
