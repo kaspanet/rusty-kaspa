@@ -42,7 +42,7 @@ impl Resolver {
         let resolver = self.resolver.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let node = resolver.get_node(encoding, network_id).await?;
-            Python::with_gil(|py| Ok(serde_pyobject::to_pyobject(py, &node)?.unbind()))
+            Python::attach(|py| Ok(serde_pyobject::to_pyobject(py, &node)?.unbind()))
         })
     }
 

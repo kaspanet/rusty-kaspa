@@ -7,17 +7,19 @@ pub struct PyUtxoEntries {
     pub entries: Vec<UtxoEntryReference>,
 }
 
-impl FromPyObject<'_> for PyUtxoEntries {
-    fn extract_bound(ob: &Bound<'_, PyAny>) -> PyResult<Self> {
+impl<'py> FromPyObject<'_, 'py> for PyUtxoEntries {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'_, 'py, PyAny>) -> Result<Self, Self::Error> {
         // Must be list
-        let list = ob.downcast::<PyList>()?;
+        let list = obj.cast::<PyList>()?;
 
         let entries = list
             .iter()
             .map(|item| {
                 if let Ok(entry) = item.extract::<UtxoEntryReference>() {
                     Ok(entry)
-                } else if let Ok(entry) = item.downcast::<PyDict>() {
+                } else if let Ok(entry) = item.cast::<PyDict>() {
                     UtxoEntryReference::try_from(entry)
                 } else {
                     Err(PyException::new_err("All entries must be UtxoEntryReference instance or compatible dict"))
@@ -33,17 +35,19 @@ pub struct PyOutputs {
     pub outputs: Vec<PaymentOutput>,
 }
 
-impl FromPyObject<'_> for PyOutputs {
-    fn extract_bound(ob: &Bound<'_, PyAny>) -> PyResult<Self> {
+impl<'py> FromPyObject<'_, 'py> for PyOutputs {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'_, 'py, PyAny>) -> Result<Self, Self::Error> {
         // Must be list
-        let list = ob.downcast::<PyList>()?;
+        let list = obj.cast::<PyList>()?;
 
         let outputs = list
             .iter()
             .map(|item| {
                 if let Ok(output) = item.extract::<PaymentOutput>() {
                     Ok(output)
-                } else if let Ok(output) = item.downcast::<PyDict>() {
+                } else if let Ok(output) = item.cast::<PyDict>() {
                     PaymentOutput::try_from(output)
                 } else {
                     Err(PyException::new_err("All outputs must be PaymentOutput instance or compatible dict"))

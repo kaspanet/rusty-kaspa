@@ -44,7 +44,7 @@ impl ToTokens for PyAsync {
         quote! {
             let __fut__ = #block;
             let __py_fut__ = pyo3_async_runtimes::tokio::future_into_py(#py, __fut__)?;
-            pyo3::prelude::Python::with_gil(|py| Ok(__py_fut__.into_py(#py)))
+            pyo3::prelude::Python::attach(|py| Ok(__py_fut__.into_py(#py)))
         }
         .to_tokens(tokens);
     }

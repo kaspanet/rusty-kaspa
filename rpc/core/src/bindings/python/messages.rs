@@ -91,7 +91,7 @@ try_from_args! ( dict : GetBalancesByAddressesRequest, {
     let items = dict.get_item("addresses")?
         .ok_or_else(|| PyKeyError::new_err("Key `addresses` not present"))?;
 
-    let list = items.downcast::<PyList>()
+    let list = items.cast::<PyList>()
         .map_err(|_| PyException::new_err("`addresses` should be a list"))?;
 
     let addresses = list.iter().map(|item| {
@@ -149,7 +149,7 @@ try_from_args! ( dict : GetMempoolEntriesByAddressesRequest, {
     let items = dict.get_item("addresses")?
         .ok_or_else(|| PyKeyError::new_err("Key `addresses` not present"))?;
 
-    let list = items.downcast::<PyList>()
+    let list = items.cast::<PyList>()
         .map_err(|_| PyException::new_err("`addresses` should be a list"))?;
 
     let addresses = list.iter().map(|item| {
@@ -190,7 +190,7 @@ try_from_args! ( dict : GetSubnetworkRequest, {
 try_from_args! ( dict : GetUtxosByAddressesRequest, {
     let items = dict.get_item("addresses")?
         .ok_or_else(|| PyKeyError::new_err("Key `addresses` not present"))?;
-    let list = items.downcast::<PyList>()
+    let list = items.cast::<PyList>()
         .map_err(|_| PyException::new_err("`addresses` should be a list"))?;
 
     let addresses = list.iter().map(|item| {

@@ -6,8 +6,10 @@ pub struct PyBinary {
     pub data: Vec<u8>,
 }
 
-impl<'a> FromPyObject<'a> for PyBinary {
-    fn extract_bound(value: &Bound<PyAny>) -> PyResult<Self> {
+impl<'py> FromPyObject<'_, 'py> for PyBinary {
+    type Error = PyErr;
+
+    fn extract(value: Borrowed<'_, 'py, PyAny>) -> Result<Self, Self::Error> {
         if let Ok(str) = value.extract::<String>() {
             // Python `str` (of valid hex)
             let mut data = vec![0u8; str.len() / 2];
@@ -15,10 +17,10 @@ impl<'a> FromPyObject<'a> for PyBinary {
                 Ok(()) => Ok(PyBinary { data }),
                 Err(_) => Err(PyException::new_err("Invalid hex string")),
             }
-        } else if let Ok(py_bytes) = value.downcast::<PyBytes>() {
+        } else if let Ok(py_bytes) = value.cast::<PyBytes>() {
             // Python `bytes` type
             Ok(PyBinary { data: py_bytes.as_bytes().to_vec() })
-        } else if let Ok(op_list) = value.downcast::<PyList>() {
+        } else if let Ok(op_list) = value.cast::<PyList>() {
             // Python `[int]` (list of bytes)
             let data = op_list.iter().map(|item| item.extract::<u8>()).collect::<PyResult<Vec<u8>>>()?;
             Ok(PyBinary { data })
@@ -38,10 +40,10 @@ impl TryFrom<&Bound<'_, PyAny>> for PyBinary {
                 Ok(()) => Ok(PyBinary { data }), // Hex string
                 Err(_) => Err(PyException::new_err("Invalid hex string")),
             }
-        } else if let Ok(py_bytes) = value.downcast::<PyBytes>() {
+        } else if let Ok(py_bytes) = value.cast::<PyBytes>() {
             // Python `bytes` type
             Ok(PyBinary { data: py_bytes.as_bytes().to_vec() })
-        } else if let Ok(op_list) = value.downcast::<PyList>() {
+        } else if let Ok(op_list) = value.cast::<PyList>() {
             // Python `[int]` (list of bytes)
             let data = op_list.iter().map(|item| item.extract::<u8>().unwrap()).collect();
             Ok(PyBinary { data })

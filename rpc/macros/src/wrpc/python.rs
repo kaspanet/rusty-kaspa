@@ -60,7 +60,7 @@ impl ToTokens for RpcHandlers {
                             log::debug!("Received RPC response");
 
                             log::debug!("Acquiring GIL...");
-                            Python::with_gil(|py| {
+                            Python::attach(|py| {
                                 log::debug!("GIL acquired, converting Rust response struct to Python object...");
                                 Ok(serde_pyobject::to_pyobject(py, &response)?.unbind())
                             })
@@ -88,7 +88,7 @@ impl ToTokens for RpcHandlers {
                             log::debug!("Received RPC response");
 
                             log::debug!("Acquiring GIL...");
-                            Python::with_gil(|py| {
+                            Python::attach(|py| {
                                 log::debug!("GIL acquired, converting Rust response struct to Python object...");
                                 Ok(serde_pyobject::to_pyobject(py, &response)?.unbind())
                             })
