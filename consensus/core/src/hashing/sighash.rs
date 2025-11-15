@@ -15,6 +15,7 @@ pub struct SigHashReusedValuesUnsync {
     previous_outputs_hash: Cell<Option<Hash>>,
     sequences_hash: Cell<Option<Hash>>,
     sig_op_counts_hash: Cell<Option<Hash>>,
+    sig_op_falcon_counts_hash: Cell<Option<Hash>>,
     outputs_hash: Cell<Option<Hash>>,
     payload_hash: Cell<Option<Hash>>,
 }
@@ -30,6 +31,7 @@ pub struct SigHashReusedValuesSync {
     previous_outputs_hash: ArcSwapOption<Hash>,
     sequences_hash: ArcSwapOption<Hash>,
     sig_op_counts_hash: ArcSwapOption<Hash>,
+    sig_op_falcon_counts_hash: ArcSwapOption<Hash>,
     outputs_hash: ArcSwapOption<Hash>,
     payload_hash: ArcSwapOption<Hash>,
 }
@@ -46,6 +48,8 @@ pub trait SigHashReusedValues {
     fn sig_op_counts_hash(&self, set: impl Fn() -> Hash) -> Hash;
     fn outputs_hash(&self, set: impl Fn() -> Hash) -> Hash;
     fn payload_hash(&self, set: impl Fn() -> Hash) -> Hash;
+
+    fn sig_op_falcon_counts_hash(&self, set: impl Fn() -> Hash) -> Hash;
 }
 
 impl SigHashReusedValues for SigHashReusedValuesUnsync {
@@ -85,6 +89,14 @@ impl SigHashReusedValues for SigHashReusedValuesUnsync {
         self.payload_hash.get().unwrap_or_else(|| {
             let hash = set();
             self.payload_hash.set(Some(hash));
+            hash
+        })
+    }
+
+    fn sig_op_falcon_counts_hash(&self, set: impl Fn() -> Hash) -> Hash {
+        self.sig_op_falcon_counts_hash.get().unwrap_or_else(|| {
+            let hash = set();
+            self.sig_op_falcon_counts_hash.set(Some(hash));
             hash
         })
     }
@@ -135,6 +147,15 @@ impl SigHashReusedValues for SigHashReusedValuesSync {
         self.payload_hash.rcu(|_| Arc::new(hash));
         hash
     }
+
+    fn sig_op_falcon_counts_hash(&self, set: impl Fn() -> Hash) -> Hash {
+        if let Some(value) = self.sig_op_falcon_counts_hash.load().as_ref() {
+            return **value;
+        }
+        let hash = set();
+        self.sig_op_falcon_counts_hash.rcu(|_| Arc::new(hash));
+        hash
+    }
 }
 
 pub fn previous_outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &impl SigHashReusedValues) -> Hash {
@@ -179,6 +200,21 @@ pub fn sig_op_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_value
         hasher.finalize()
     };
     reused_values.sig_op_counts_hash(hash)
+}
+
+pub fn sig_op_falcon_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &impl SigHashReusedValues) -> Hash {
+    if hash_type.is_sighash_anyone_can_pay() {
+        return ZERO_HASH;
+    }
+
+    let hash = || {
+        let mut hasher = TransactionSigningHash::new();
+        for input in tx.inputs.iter() {
+            hasher.write_u8(input.optional_falcon_sig_op_count.0);
+        }
+        hasher.finalize()
+    };
+    reused_values.sig_op_falcon_counts_hash(hash)
 }
 
 pub fn payload_hash(tx: &Transaction, reused_values: &impl SigHashReusedValues) -> Hash {
@@ -235,22 +271,22 @@ pub fn hash_script_public_key(hasher: &mut impl Hasher, script_public_key: &Scri
     hasher.write_var_bytes(script_public_key.script());
 }
 
-pub fn calc_schnorr_signature_hash(
+pub fn schnorr_hash_input_fields(
+    hasher: &mut impl Hasher,
     verifiable_tx: &impl VerifiableTransaction,
     input_index: usize,
     hash_type: SigHashType,
     reused_values: &impl SigHashReusedValues,
-) -> Hash {
+) {
     let input = verifiable_tx.populated_input(input_index);
     let tx = verifiable_tx.tx();
-    let mut hasher = TransactionSigningHash::new();
     hasher
         .write_u16(tx.version)
         .update(previous_outputs_hash(tx, hash_type, reused_values))
         .update(sequences_hash(tx, hash_type, reused_values))
         .update(sig_op_counts_hash(tx, hash_type, reused_values));
-    hash_outpoint(&mut hasher, input.0.previous_outpoint);
-    hash_script_public_key(&mut hasher, &input.1.script_public_key);
+    hash_outpoint(hasher, input.0.previous_outpoint);
+    hash_script_public_key(hasher, &input.1.script_public_key);
     hasher
         .write_u64(input.1.amount)
         .write_u64(input.0.sequence)
@@ -261,6 +297,16 @@ pub fn calc_schnorr_signature_hash(
         .write_u64(tx.gas)
         .update(payload_hash(tx, reused_values))
         .write_u8(hash_type.to_u8());
+}
+
+pub fn calc_schnorr_signature_hash(
+    verifiable_tx: &impl VerifiableTransaction,
+    input_index: usize,
+    hash_type: SigHashType,
+    reused_values: &impl SigHashReusedValues,
+) -> Hash {
+    let mut hasher = TransactionSigningHash::new();
+    schnorr_hash_input_fields(&mut hasher, verifiable_tx, input_index, hash_type, reused_values);
     hasher.finalize()
 }
 
@@ -273,6 +319,18 @@ pub fn calc_ecdsa_signature_hash(
     let hash = calc_schnorr_signature_hash(tx, input_index, hash_type, reused_values);
     let mut hasher = TransactionSigningHashECDSA::new();
     hasher.update(hash);
+    hasher.finalize()
+}
+
+pub fn calc_falcon_signature_hash(
+    tx: &impl VerifiableTransaction,
+    input_index: usize,
+    hash_type: SigHashType,
+    reused_values: &impl SigHashReusedValues,
+) -> Hash {
+    let mut hasher = TransactionSigningHash::new();
+    schnorr_hash_input_fields(&mut hasher, tx, input_index, hash_type, reused_values);
+    hasher.update(sig_op_falcon_counts_hash(tx.tx(), hash_type, reused_values));
     hasher.finalize()
 }
 

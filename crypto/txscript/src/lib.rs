@@ -14,17 +14,20 @@ pub mod wasm;
 
 pub mod runtime_sig_op_counter;
 
+use std::hash::{Hash, Hasher};
+use std::ops::Deref;
+use std::sync::Arc;
 use crate::caches::Cache;
 use crate::data_stack::{DataStack, Stack};
 use crate::opcodes::{deserialize_next_opcode, OpCodeImplementation};
 use itertools::Itertools;
-use kaspa_consensus_core::hashing::sighash::{
-    calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues, SigHashReusedValuesUnsync,
-};
+use kaspa_consensus_core::hashing::sighash::{calc_ecdsa_signature_hash, calc_falcon_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues, SigHashReusedValuesUnsync};
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_txscript_errors::TxScriptError;
 use log::trace;
+use pqcrypto::sign::{falconpadded512};
+use pqcrypto::traits::sign::{DetachedSignature, PublicKey as _};
 use opcodes::codes::OpReturn;
 use opcodes::{codes, to_small_int, OpCond};
 use script_class::ScriptClass;
@@ -52,16 +55,87 @@ pub const NO_COST_OPCODE: u8 = 0x60;
 
 type DynOpcodeImplementation<Tx, Reused> = Box<dyn OpCodeImplementation<Tx, Reused>>;
 
+#[derive(Clone)]
+#[repr(transparent)]
+pub struct FalconSignature(Arc<falconpadded512::DetachedSignature>);
+
+impl FalconSignature {
+    pub fn new(signature: Arc<falconpadded512::DetachedSignature>) -> Self {
+        Self(signature)
+    }
+}
+impl From<falconpadded512::DetachedSignature> for FalconSignature {
+    fn from(value: falconpadded512::DetachedSignature) -> Self {
+        Self(Arc::new(value))
+    }
+}
+
+impl Hash for FalconSignature {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write(self.0.as_bytes())
+    }
+}
+
+impl PartialEq for FalconSignature {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_bytes() == other.0.as_bytes()
+    }
+}
+
+impl Eq for FalconSignature {}
+
+impl Deref for FalconSignature {
+    type Target = falconpadded512::DetachedSignature;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Clone)]
+#[repr(transparent)]
+pub struct FalconPublicKey(Arc<falconpadded512::PublicKey>);
+
+impl From<falconpadded512::PublicKey> for FalconPublicKey {
+    fn from(value: falconpadded512::PublicKey) -> Self {
+        Self(Arc::new(value))
+    }
+}
+
+impl Hash for FalconPublicKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write(self.0.as_bytes())
+    }
+}
+
+impl PartialEq for FalconPublicKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_bytes() == other.0.as_bytes()
+    }
+}
+
+impl Eq for FalconPublicKey {}
+
+impl Deref for FalconPublicKey {
+    type Target = falconpadded512::PublicKey;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 #[derive(Clone, Hash, PartialEq, Eq)]
 enum Signature {
     Secp256k1(secp256k1::schnorr::Signature),
     Ecdsa(secp256k1::ecdsa::Signature),
+    Falcon(FalconSignature),
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 enum PublicKey {
     Schnorr(secp256k1::XOnlyPublicKey),
     Ecdsa(secp256k1::PublicKey),
+    Falcon(FalconPublicKey),
 }
 
 // TODO: Make it pub(crate)
@@ -92,6 +166,8 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
     num_ops: i32,
     kip10_enabled: bool,
     runtime_sig_op_counter: Option<RuntimeSigOpCounter>,
+    runtime_sig_op_counter_falcon: Option<RuntimeSigOpCounter>,
+    falcon_enabled: bool,
 }
 
 fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
@@ -127,11 +203,12 @@ fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
 /// * `tx` - The transaction containing the input to analyze
 /// * `input_idx` - Index of the input to analyze
 /// * `kip10_enabled` - Whether KIP-10 features are enabled
+/// * `falcon_enabled` - Whether falcon signatures are enabled
 ///
 /// # Returns
-/// * `Ok(u8)` - The exact number of signature operations executed
+/// * `Ok((u8, u8))` - The exact number of signature operations executed
 /// * `Err(TxScriptError)` - If script execution fails or input index is invalid
-pub fn get_sig_op_count<T: VerifiableTransaction>(tx: &T, input_idx: usize, kip10_enabled: bool) -> Result<u8, TxScriptError> {
+pub fn get_sig_op_count<T: VerifiableTransaction>(tx: &T, input_idx: usize, kip10_enabled: bool, falcon_enabled:bool) -> Result<(u8, u8), TxScriptError> {
     let sig_cache = Cache::new(0);
     let reused_values = SigHashReusedValuesUnsync::new();
     let mut vm = TxScriptEngine::from_transaction_input(
@@ -143,9 +220,11 @@ pub fn get_sig_op_count<T: VerifiableTransaction>(tx: &T, input_idx: usize, kip1
         &sig_cache,
         kip10_enabled,
         true,
+        falcon_enabled,
+        true,
     );
     vm.execute()?;
-    Ok(vm.used_sig_ops().unwrap())
+    Ok((vm.used_sig_ops().unwrap(), vm.used_sig_ops_falcon().unwrap()))
 }
 
 /// Calculates an upper bound of signature operations in a script without executing it.
@@ -225,7 +304,7 @@ pub fn is_unspendable<T: VerifiableTransaction, Reused: SigHashReusedValues>(scr
 }
 
 impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'a, T, Reused> {
-    pub fn new(reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>, kip10_enabled: bool) -> Self {
+    pub fn new(reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>, kip10_enabled: bool, falcon_enabled: bool) -> Self {
         Self {
             dstack: vec![],
             astack: vec![],
@@ -236,6 +315,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             num_ops: 0,
             kip10_enabled,
             runtime_sig_op_counter: None,
+            runtime_sig_op_counter_falcon: None,
+            falcon_enabled,
         }
     }
 
@@ -244,6 +325,10 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     /// Returns None if runtime signature operation counting is disabled.
     pub fn used_sig_ops(&self) -> Option<u8> {
         self.runtime_sig_op_counter.as_ref().map(|counter| counter.used_sig_ops())
+    }
+
+    pub fn used_sig_ops_falcon(&self) -> Option<u8> {
+        self.runtime_sig_op_counter_falcon.as_ref().map(|counter| counter.used_sig_ops())
     }
 
     /// Creates a new Script Engine for validating transaction input.
@@ -271,6 +356,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         sig_cache: &'a Cache<SigCacheKey, bool>,
         kip10_enabled: bool,
         runtime_sig_op_counting: bool,
+        falcon_enabled: bool,
+        falcon_sig_op_counting: bool,
     ) -> Self {
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
@@ -287,6 +374,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             num_ops: 0,
             kip10_enabled,
             runtime_sig_op_counter: runtime_sig_op_counting.then_some(RuntimeSigOpCounter::new(input.sig_op_count)),
+            falcon_enabled,
+            runtime_sig_op_counter_falcon: falcon_sig_op_counting.then_some(RuntimeSigOpCounter::new(input.optional_falcon_sig_op_count.0)),
         }
     }
 
@@ -295,6 +384,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         reused_values: &'a Reused,
         sig_cache: &'a Cache<SigCacheKey, bool>,
         kip10_enabled: bool,
+        falcon_enabled: bool,
     ) -> Self {
         Self {
             dstack: Default::default(),
@@ -307,6 +397,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             kip10_enabled,
             // Runtime sig op counting is not needed for standalone scripts, only inputs have sig op count value
             runtime_sig_op_counter: None,
+            runtime_sig_op_counter_falcon: None,
+            falcon_enabled,
         }
     }
 
@@ -584,6 +676,38 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         }
     }
 
+    #[inline]
+    fn check_falcon_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
+        self.runtime_sig_op_counter_falcon.consume_sig_op()?;
+        match self.script_source {
+            ScriptSource::TxInput { tx, idx, .. } => {
+                let sig = FalconSignature::from(falconpadded512::DetachedSignature::from_bytes(sig).map_err(|_| TxScriptError::SigLength(sig.len()))?);
+                let pk = FalconPublicKey::from(falconpadded512::PublicKey::from_bytes(key).map_err(|_| TxScriptError::PubKeyFormat)?);
+                let sig_hash = calc_falcon_signature_hash(tx, idx, hash_type, self.reused_values); // should it use different domain? should the function be renamed
+                let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
+
+                let sig_cache_key =
+                    SigCacheKey { signature: Signature::Falcon(sig.clone()), pub_key: PublicKey::Falcon(pk.clone()), message: msg };
+
+                match self.sig_cache.get(&sig_cache_key) {
+                    Some(valid) => Ok(valid),
+                    None => {
+                        match falconpadded512::verify_detached_signature(&sig, msg.as_ref(), &pk) {
+                            Ok(()) => {
+                                self.sig_cache.insert(sig_cache_key, true);
+                                Ok(true)
+                            }
+                            Err(_) => {
+                                self.sig_cache.insert(sig_cache_key, false);
+                                Ok(false)
+                            }
+                        }
+                    }
+                }
+            }
+            _ => Err(TxScriptError::NotATransactionInput),
+        }
+    }
     fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         self.runtime_sig_op_counter.consume_sig_op()?;
         match self.script_source {
