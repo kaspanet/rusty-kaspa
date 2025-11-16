@@ -43,6 +43,13 @@ impl RuntimeSigOpCounter {
         Ok(())
     }
 
+    pub fn consume_sig_ops(&mut self, count: u8) -> Result<(), TxScriptError> {
+        self.sig_op_remaining =
+            self.sig_op_remaining.checked_sub(count).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit))?;
+
+        Ok(())
+    }
+
     pub fn sig_op_remaining(&self) -> u8 {
         self.sig_op_remaining
     }
@@ -56,11 +63,16 @@ impl RuntimeSigOpCounter {
 
 pub trait SigOpConsumer {
     fn consume_sig_op(&mut self) -> Result<(), TxScriptError>;
+    fn consume_sig_ops(&mut self, count: u8) -> Result<(), TxScriptError>;
+
 }
 
 impl SigOpConsumer for RuntimeSigOpCounter {
     fn consume_sig_op(&mut self) -> Result<(), TxScriptError> {
         RuntimeSigOpCounter::consume_sig_op(self)
+    }
+    fn consume_sig_ops(&mut self, count: u8) -> Result<(), TxScriptError> {
+        RuntimeSigOpCounter::consume_sig_ops(self, count)
     }
 }
 impl SigOpConsumer for Option<RuntimeSigOpCounter> {
@@ -71,4 +83,12 @@ impl SigOpConsumer for Option<RuntimeSigOpCounter> {
             Ok(())
         }
     }
+    fn consume_sig_ops(&mut self, count: u8) -> Result<(), TxScriptError> {
+        if let Some(consumer) = self {
+            consumer.consume_sig_ops(count)
+        } else {
+            Ok(())
+        }
+    }
 }
+

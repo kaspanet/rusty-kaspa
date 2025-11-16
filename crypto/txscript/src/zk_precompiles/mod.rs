@@ -21,15 +21,13 @@ impl ZkPrecompile {
     /// Format: [tag: u8][data: remaining bytes]
     /// - tag 0x00: R0Groth16
     /// - tag 0x01: R0Succinct
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, kaspa_txscript_errors::TxScriptError> {
-        let tag = bytes[0];
-        let data = &bytes[1..];
+    pub fn from_bytes(data: &[u8],tag:u8) -> Result<Self, kaspa_txscript_errors::TxScriptError> {
         match tag {
-            0x00 => {
+            0x20 => {
                 let receipt: Groth16Receipt = borsh::from_slice(data).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))?;
                 Ok(ZkPrecompile::R0Groth16(receipt))
             }
-            0x01 => {
+            0x21 => {
                 let receipt: SuccinctReceipt =  borsh::from_slice(data).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))?;
                 Ok(ZkPrecompile::R0Succinct(receipt))
             }
@@ -46,5 +44,14 @@ impl ZkPrecompile {
             ZkPrecompile::R0Groth16(receipt) => receipt.verify_integrity().map_err(|e| TxScriptError::ZkIntegrity(e.to_string())),
             ZkPrecompile::R0Succinct(receipt) =>  receipt.verify_integrity().map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))
         }
+    }
+}
+
+pub fn compute_zk_sigop_cost(tag:u8) -> u8 {
+    // Match first byte to determine type
+    match tag {
+        0x20 => 5,
+        0x21 => 10,
+        _ => 20,
     }
 }

@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 
 use alloc::{collections::VecDeque, string::String, vec::Vec};
 use borsh::{BorshDeserialize, BorshSerialize};
-use risc0_binfmt::{read_sha_halfs, Digestible};
+use risc0_binfmt::read_sha_halfs;
 use risc0_circuit_recursion::{control_id::ALLOWED_CONTROL_ROOT, CircuitImpl, CIRCUIT};
 use risc0_core::field::baby_bear::BabyBearElem;
 use risc0_zkp::core::hash::{blake2b::Blake2bCpuHashSuite, poseidon2::Poseidon2HashSuite, sha::Sha256HashSuite, HashSuite};

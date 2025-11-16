@@ -17,6 +17,7 @@ pub mod runtime_sig_op_counter;
 use crate::caches::Cache;
 use crate::data_stack::{DataStack, Stack};
 use crate::opcodes::{deserialize_next_opcode, OpCodeImplementation};
+use crate::zk_precompiles::compute_zk_sigop_cost;
 use itertools::Itertools;
 use kaspa_consensus_core::hashing::sighash::{
     calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues, SigHashReusedValuesUnsync,
@@ -38,7 +39,7 @@ pub use standard::*;
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 pub const MAX_STACK_SIZE: usize = 244;
 pub const MAX_SCRIPTS_SIZE: usize = 300_000;
-pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 300_000;
+pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 250_000;
 pub const MAX_OPS_PER_SCRIPT: i32 = 201;
 pub const MAX_TX_IN_SEQUENCE_NUM: u64 = u64::MAX;
 pub const SEQUENCE_LOCK_TIME_DISABLED: u64 = 1 << 63;
@@ -182,6 +183,7 @@ pub fn get_sig_op_count_upper_bound<T: VerifiableTransaction, Reused: SigHashReu
 
     let p2sh_script = signature_script_ops.last().expect("checked if empty above").as_ref().expect("checked if err above").get_data();
     let p2sh_ops = parse_script::<T, Reused>(p2sh_script).collect_vec();
+
     get_sig_op_count_by_opcodes(&p2sh_ops)
 }
 
@@ -207,6 +209,18 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
                         } else {
                             num_sigs += MAX_PUB_KEYS_PER_MUTLTISIG as u64;
                         }
+                    }
+                    codes::OpZkPrecompile => {
+                       let tag= if let Ok(zk_tag) = opcodes[i + 1].as_ref() {
+                        println!("opcode after ZK precompile: {:?}", zk_tag.value());
+                        println!("ZK precompile tag data: {:?}", zk_tag.get_data());
+                           zk_tag.get_data().first().unwrap_or(&u8::MAX)
+                        } else {
+                            println!("ZK precompile tag could not be read, defaulting to max");
+                            &u8::MAX
+                        };
+                        num_sigs += compute_zk_sigop_cost(*tag) as u64;
+
                     }
                     _ => {} // If the opcode is not a sigop, no need to increase the count
                 }

@@ -58,7 +58,7 @@ impl ZkIntegrityVerifier for Groth16Receipt {
             .map_err(|_| VerificationError::ReceiptFormatError)?
             .verify()
             .map_err(|_| VerificationError::InvalidProof)?;
-
+        
         // Everything passed
         Ok(())
     }
