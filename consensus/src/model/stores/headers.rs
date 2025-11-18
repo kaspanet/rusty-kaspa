@@ -130,7 +130,7 @@ impl DbHeadersStore {
     }
 
     pub fn has(&self, hash: Hash) -> StoreResult<bool> {
-        self.headers_access.has(hash)
+        self.headers_access.has_with_fallback(self.fallback_prefix.as_ref(), hash)
     }
 
     pub fn insert_batch(
