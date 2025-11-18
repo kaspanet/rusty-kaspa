@@ -60,13 +60,15 @@ impl CompressedParents {
         self.0.iter().map(|(cum, v)| (*cum as usize, v)).expand_rle()
     }
 
+    /// Adds a new level of parents. This extends the last run if parents_at_level
+    /// is identical to the last level, otherwise it starts a new run
     pub fn push(&mut self, parents_at_level: Vec<Hash>) {
         match self.0.last_mut() {
             Some((count, last_parents)) if *last_parents == parents_at_level => {
-                *count = count.checked_add(1).expect("Exceeded maximum parents levels of 255");
+                *count = count.checked_add(1).expect("Exceeded maximum parent levels of 255");
             }
             Some((count, _)) => {
-                let next_cum = count.checked_add(1).expect("Exceeded maximum parents levels of 255");
+                let next_cum = count.checked_add(1).expect("Exceeded maximum parent levels of 255");
                 self.0.push((next_cum, parents_at_level));
             }
             None => {
