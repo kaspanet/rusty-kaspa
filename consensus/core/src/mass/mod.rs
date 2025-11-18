@@ -1,10 +1,10 @@
-use borsh::{BorshDeserialize, BorshSerialize};
 use crate::{
     config::params::Params,
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
     subnets::SUBNETWORK_ID_SIZE,
     tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutput, UtxoEntry, VerifiableTransaction},
 };
+use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_hashes::HASH_SIZE;
 
 // transaction_estimated_serialized_size is the estimated size of a transaction in some

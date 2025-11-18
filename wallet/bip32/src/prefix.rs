@@ -117,7 +117,6 @@ impl Prefix {
         str::from_utf8(&self.chars).expect("prefix encoding error")
     }
 
-
     /// Is this a public key?
     pub fn is_public(self) -> bool {
         let last_3_chars = &self.chars[1..].try_into().expect("prefix with incorrect length");

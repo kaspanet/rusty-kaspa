@@ -5,10 +5,10 @@ use crate::{
     },
     tx::{SignableTransaction, VerifiableTransaction},
 };
+use borsh::{BorshDeserialize, BorshSerialize};
 use itertools::Itertools;
 use std::collections::BTreeMap;
 use std::iter::once;
-use borsh::{BorshDeserialize, BorshSerialize};
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]
@@ -78,7 +78,6 @@ impl Signed {
             Signed::Partially(tx) => tx,
         }
     }
-
 
     /// Returns the transaction regardless of whether it is fully or partially signed
     pub fn unwrap_ref(&self) -> &SignableTransaction {
