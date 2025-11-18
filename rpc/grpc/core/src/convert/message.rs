@@ -27,7 +27,7 @@ use kaspa_rpc_core::{
     RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
     SubmitBlockRejectReason, SubmitBlockReport,
 };
-use kaspa_utils::hex::*;
+use kaspa_utils::{hex::*, networking::NetAddressError};
 use std::str::FromStr;
 
 macro_rules! from {
@@ -848,10 +848,14 @@ try_from!(item: &protowire::GetSinkBlueScoreResponseMessage, RpcResult<kaspa_rpc
     Self { blue_score: item.blue_score }
 });
 
-try_from!(item: &protowire::BanRequestMessage, kaspa_rpc_core::BanRequest, { Self { ip: RpcIpAddress::from_str(&item.ip)? } });
+try_from!(item: &protowire::BanRequestMessage, kaspa_rpc_core::BanRequest, {
+    Self { ip: RpcIpAddress::from_str(&item.ip).map_err(NetAddressError::from)? }
+});
 try_from!(&protowire::BanResponseMessage, RpcResult<kaspa_rpc_core::BanResponse>);
 
-try_from!(item: &protowire::UnbanRequestMessage, kaspa_rpc_core::UnbanRequest, { Self { ip: RpcIpAddress::from_str(&item.ip)? } });
+try_from!(item: &protowire::UnbanRequestMessage, kaspa_rpc_core::UnbanRequest, {
+    Self { ip: RpcIpAddress::from_str(&item.ip).map_err(NetAddressError::from)? }
+});
 try_from!(&protowire::UnbanResponseMessage, RpcResult<kaspa_rpc_core::UnbanResponse>);
 
 try_from!(item: &protowire::EstimateNetworkHashesPerSecondRequestMessage, kaspa_rpc_core::EstimateNetworkHashesPerSecondRequest, {

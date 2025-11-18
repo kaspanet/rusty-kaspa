@@ -22,7 +22,7 @@ pub enum ConversionError {
     IntCastingError(#[from] std::num::TryFromIntError),
 
     #[error(transparent)]
-    AddressParsingError(#[from] std::net::AddrParseError),
+    AddressParsingError(#[from] kaspa_utils::networking::NetAddressError),
 
     #[error(transparent)]
     IdentityError(#[from] uuid::Error),

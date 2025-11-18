@@ -5,29 +5,37 @@ use crate::pb::{
 };
 use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
+use hyper_util::rt::TokioIo;
 use kaspa_core::{debug, info};
-use kaspa_utils::networking::NetAddress;
+use kaspa_utils::networking::{NetAddress, NetAddressError};
 use kaspa_utils_tower::{
     counters::TowerConnectionCounters,
     middleware::{BodyExt, CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
 };
-use std::net::ToSocketAddrs;
+use rand::{rngs::OsRng, RngCore};
+use std::fmt::Write;
+use std::io;
+use std::net::{IpAddr, SocketAddr};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::str::FromStr;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, OnceLock,
+};
 use std::time::Duration;
 use thiserror::Error;
+use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel as mpsc_channel, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
+use tokio_socks::tcp::socks5::Socks5Stream;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
-use tonic::transport::{Error as TonicError, Server as TonicServer};
+use tonic::transport::{Error as TonicError, Server as TonicServer, Uri};
 use tonic::{Request, Response, Status as TonicStatus, Streaming};
+use tower::service_fn;
 
 #[derive(Error, Debug)]
 pub enum ConnectionError {
-    #[error("missing socket address")]
-    NoAddress,
-
     #[error("{0}")]
     IoError(#[from] std::io::Error),
 
@@ -39,6 +47,9 @@ pub enum ConnectionError {
 
     #[error("{0}")]
     ProtocolError(#[from] ProtocolError),
+
+    #[error(transparent)]
+    AddressParsingError(#[from] NetAddressError),
 }
 
 /// Maximum P2P decoded gRPC message size to send and receive
@@ -51,15 +62,60 @@ pub struct ConnectionHandler {
     hub_sender: MpscSender<HubEvent>,
     initializer: Arc<dyn ConnectionInitializer>,
     counters: Arc<TowerConnectionCounters>,
+    socks_proxy: Option<SocksProxyConfig>,
 }
+
+#[derive(Clone, Debug)]
+pub enum SocksAuth {
+    None,
+    Static { username: Arc<str>, password: Arc<str> },
+    Randomized,
+}
+
+#[derive(Clone, Debug)]
+pub struct SocksProxyParams {
+    pub address: SocketAddr,
+    pub auth: SocksAuth,
+}
+
+#[derive(Clone, Default)]
+pub struct SocksProxyConfig {
+    pub default: Option<SocksProxyParams>,
+    pub ipv4: Option<SocksProxyParams>,
+    pub ipv6: Option<SocksProxyParams>,
+    pub onion: Option<SocksProxyParams>,
+}
+
+impl SocksProxyConfig {
+    pub fn is_empty(&self) -> bool {
+        self.default.is_none() && self.ipv4.is_none() && self.ipv6.is_none() && self.onion.is_none()
+    }
+
+    pub fn entry_for(&self, address: &NetAddress) -> Option<SocksProxyParams> {
+        if address.as_onion().is_some() {
+            return self.onion.clone().or_else(|| self.default.clone());
+        }
+        if let Some(ip) = address.as_ip() {
+            return match IpAddr::from(ip) {
+                IpAddr::V4(_) => self.ipv4.clone().or_else(|| self.default.clone()),
+                IpAddr::V6(_) => self.ipv6.clone().or_else(|| self.default.clone()),
+            };
+        }
+        self.default.clone()
+    }
+}
+
+static STREAM_ISOLATION_PREFIX: OnceLock<String> = OnceLock::new();
+static STREAM_ISOLATION_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 impl ConnectionHandler {
     pub(crate) fn new(
         hub_sender: MpscSender<HubEvent>,
         initializer: Arc<dyn ConnectionInitializer>,
         counters: Arc<TowerConnectionCounters>,
+        socks_proxy: Option<SocksProxyConfig>,
     ) -> Self {
-        Self { hub_sender, initializer, counters }
+        Self { hub_sender, initializer, counters, socks_proxy }
     }
 
     /// Launches a P2P server listener loop
@@ -70,6 +126,7 @@ impl ConnectionHandler {
 
         let bytes_tx = self.counters.bytes_tx.clone();
         let bytes_rx = self.counters.bytes_rx.clone();
+        let serve_socket = serve_address.to_socket_addr().expect("server must bind to an IP address");
 
         tokio::spawn(async move {
             let proto_server = ProtoP2pServer::new(connection_handler)
@@ -82,7 +139,7 @@ impl ConnectionHandler {
                 .layer(MapRequestBodyLayer::new(move |body| CountBytesBody::new(body, bytes_rx.clone()).boxed_unsync()))
                 .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, bytes_tx.clone())))
                 .add_service(proto_server)
-                .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
+                .serve_with_shutdown(serve_socket, termination_receiver.map(drop))
                 .await;
 
             match serve_result {
@@ -95,17 +152,30 @@ impl ConnectionHandler {
 
     /// Connect to a new peer
     pub(crate) async fn connect(&self, peer_address: String) -> Result<Arc<Router>, ConnectionError> {
-        let Some(socket_address) = peer_address.to_socket_addrs()?.next() else {
-            return Err(ConnectionError::NoAddress);
-        };
+        let peer_net_address = NetAddress::from_str(&peer_address)?;
         let peer_address = format!("http://{}", peer_address); // Add scheme prefix as required by Tonic
 
-        let channel = tonic::transport::Endpoint::new(peer_address)?
+        let endpoint = tonic::transport::Endpoint::new(peer_address)?
             .timeout(Duration::from_millis(Self::communication_timeout()))
             .connect_timeout(Duration::from_millis(Self::connect_timeout()))
-            .tcp_keepalive(Some(Duration::from_millis(Self::keep_alive())))
-            .connect()
-            .await?;
+            .tcp_keepalive(Some(Duration::from_millis(Self::keep_alive())));
+
+        let channel = if let Some(proxy_params) = self.socks_proxy.as_ref().and_then(|cfg| cfg.entry_for(&peer_net_address)) {
+            let connector = service_fn(move |uri: Uri| {
+                let proxy_params = proxy_params.clone();
+                async move {
+                    let host =
+                        uri.host().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing host in URI"))?.to_string();
+                    let port = uri.port_u16().unwrap_or(80);
+                    let target = format!("{}:{}", host, port);
+                    let stream = connect_via_socks(proxy_params, target).await?;
+                    Ok::<_, io::Error>(TokioIo::new(stream.into_inner()))
+                }
+            });
+            endpoint.connect_with_connector(connector).await?
+        } else {
+            endpoint.connect().await?
+        };
 
         let channel = ServiceBuilder::new()
             .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, self.counters.bytes_rx.clone())))
@@ -120,7 +190,7 @@ impl ConnectionHandler {
         let (outgoing_route, outgoing_receiver) = mpsc_channel(Self::outgoing_network_channel_size());
         let incoming_stream = client.message_stream(ReceiverStream::new(outgoing_receiver)).await?.into_inner();
 
-        let router = Router::new(socket_address, true, self.hub_sender.clone(), incoming_stream, outgoing_route).await;
+        let router = Router::new(peer_net_address, true, self.hub_sender.clone(), incoming_stream, outgoing_route).await;
 
         // For outbound peers, we perform the initialization as part of the connect logic
         match self.initializer.initialize_connection(router.clone()).await {
@@ -212,7 +282,7 @@ impl ProtoP2p for ConnectionHandler {
         let incoming_stream = request.into_inner();
 
         // Build the router object
-        let router = Router::new(remote_address, false, self.hub_sender.clone(), incoming_stream, outgoing_route).await;
+        let router = Router::new(remote_address.into(), false, self.hub_sender.clone(), incoming_stream, outgoing_route).await;
 
         // Notify the central Hub about the new peer
         self.hub_sender.send(HubEvent::NewPeer(router)).await.expect("hub receiver should never drop before senders");
@@ -220,4 +290,35 @@ impl ProtoP2p for ConnectionHandler {
         // Give tonic a receiver stream (messages sent to it will be forwarded to the network peer)
         Ok(Response::new(Box::pin(ReceiverStream::new(outgoing_receiver).map(Ok)) as Self::MessageStreamStream))
     }
+}
+
+fn random_isolation_prefix() -> String {
+    let mut bytes = [0u8; 8];
+    OsRng.fill_bytes(&mut bytes);
+    let mut prefix = String::with_capacity(bytes.len() * 2 + 1);
+    for byte in &bytes {
+        let _ = write!(&mut prefix, "{:02x}", byte);
+    }
+    prefix.push('-');
+    prefix
+}
+
+fn next_stream_isolation_credentials() -> (String, String) {
+    let prefix = STREAM_ISOLATION_PREFIX.get_or_init(random_isolation_prefix);
+    let counter = STREAM_ISOLATION_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let value = format!("{prefix}{counter}");
+    (value.clone(), value)
+}
+
+async fn connect_via_socks(params: SocksProxyParams, target: String) -> io::Result<Socks5Stream<TcpStream>> {
+    let address = params.address;
+    let result = match params.auth {
+        SocksAuth::None => Socks5Stream::connect(address, target).await,
+        SocksAuth::Static { username, password } => Socks5Stream::connect_with_password(address, target, &username, &password).await,
+        SocksAuth::Randomized => {
+            let (username, password) = next_stream_isolation_credentials();
+            Socks5Stream::connect_with_password(address, target, username.as_str(), password.as_str()).await
+        }
+    };
+    result.map_err(io::Error::other)
 }

@@ -3,6 +3,7 @@ use std::str::FromStr;
 use crate::protowire;
 use crate::{from, try_from};
 use kaspa_rpc_core::{RpcError, RpcNodeId, RpcPeerAddress};
+use kaspa_utils::networking::NetAddressError;
 
 // ----------------------------------------------------------------------------
 // rpc_core to protowire
@@ -43,5 +44,9 @@ try_from!(item: &protowire::GetConnectedPeerInfoMessage, kaspa_rpc_core::RpcPeer
     }
 });
 
-try_from!(item: &protowire::GetPeerAddressesKnownAddressMessage, kaspa_rpc_core::RpcPeerAddress, { Self::from_str(&item.addr)? });
-try_from!(item: &protowire::GetPeerAddressesKnownAddressMessage, kaspa_rpc_core::RpcIpAddress, { Self::from_str(&item.addr)? });
+try_from!(item: &protowire::GetPeerAddressesKnownAddressMessage, kaspa_rpc_core::RpcPeerAddress, {
+    Self::from_str(&item.addr).map_err(RpcError::from)?
+});
+try_from!(item: &protowire::GetPeerAddressesKnownAddressMessage, kaspa_rpc_core::RpcIpAddress, {
+    Self::from_str(&item.addr).map_err(|err| RpcError::from(NetAddressError::from(err)))?
+});

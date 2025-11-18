@@ -1,6 +1,5 @@
-use std::net::AddrParseError;
-
 use downcast::DowncastError;
+use kaspa_utils::networking::NetAddressError;
 use kaspa_wallet_core::error::Error as WalletError;
 use workflow_core::channel::ChannelError;
 use workflow_terminal::error::Error as TerminalError;
@@ -46,7 +45,7 @@ pub enum Error {
     ParseHexError(#[from] faster_hex::Error),
 
     #[error(transparent)]
-    AddrParseError(#[from] AddrParseError),
+    NetAddressError(#[from] NetAddressError),
 
     #[error("account '{0}' not found")]
     AccountNotFound(String),

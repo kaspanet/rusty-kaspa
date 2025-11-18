@@ -1,22 +1,23 @@
 use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_utils::networking::{IpAddress, PeerId};
-use std::{fmt::Display, net::SocketAddr, sync::Arc, time::Instant};
+use kaspa_utils::networking::{AddressKind, NetAddress, PeerId};
+use std::{fmt::Display, sync::Arc, time::Instant};
 
 #[derive(Debug, Clone, Default)]
 pub struct PeerProperties {
     pub user_agent: String,
-    // TODO: add services
+    pub services: u64,
     pub advertised_protocol_version: u32,
     pub protocol_version: u32,
     pub disable_relay_tx: bool,
     pub subnetwork_id: Option<SubnetworkId>,
     pub time_offset: i64,
+    pub supports_addrv2: bool,
 }
 
 #[derive(Debug)]
 pub struct Peer {
     identity: PeerId,
-    net_address: SocketAddr,
+    net_address: NetAddress,
     is_outbound: bool,
     connection_started: Instant,
     properties: Arc<PeerProperties>,
@@ -26,7 +27,7 @@ pub struct Peer {
 impl Peer {
     pub fn new(
         identity: PeerId,
-        net_address: SocketAddr,
+        net_address: NetAddress,
         is_outbound: bool,
         connection_started: Instant,
         properties: Arc<PeerProperties>,
@@ -41,7 +42,7 @@ impl Peer {
     }
 
     /// The socket address of this peer
-    pub fn net_address(&self) -> SocketAddr {
+    pub fn net_address(&self) -> NetAddress {
         self.net_address
     }
 
@@ -70,23 +71,23 @@ impl Peer {
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub struct PeerKey {
     identity: PeerId,
-    ip: IpAddress,
+    address: AddressKind,
 }
 
 impl PeerKey {
-    pub fn new(identity: PeerId, ip: IpAddress) -> Self {
-        Self { identity, ip }
+    pub fn new(identity: PeerId, address: AddressKind) -> Self {
+        Self { identity, address }
     }
 }
 
 impl From<&Peer> for PeerKey {
     fn from(value: &Peer) -> Self {
-        Self::new(value.identity, value.net_address.ip().into())
+        Self::new(value.identity, value.net_address.kind())
     }
 }
 
 impl Display for PeerKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}+{}", self.identity, self.ip)
+        write!(f, "{}+{}", self.identity, self.address)
     }
 }

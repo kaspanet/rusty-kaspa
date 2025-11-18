@@ -14,7 +14,10 @@ message AddressesMessage{
 
 message NetAddress{
   int64 timestamp = 1;
-  bytes ip = 3;
+  oneof address {
+    bytes ip = 3;
+    string onion = 5;
+  }
   uint32 port = 4;
 }
 

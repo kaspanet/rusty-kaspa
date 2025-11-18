@@ -3,8 +3,8 @@
 //!
 
 use kaspa_consensus_core::{subnets::SubnetworkConversionError, tx::TransactionId, utxo::utxo_inquirer::UtxoInquirerError};
-use kaspa_utils::networking::IpAddress;
-use std::{net::AddrParseError, num::TryFromIntError};
+use kaspa_utils::networking::{IpAddress, NetAddressError};
+use std::num::TryFromIntError;
 use thiserror::Error;
 use workflow_core::channel::ChannelError;
 
@@ -27,8 +27,8 @@ pub enum RpcError {
     #[error("Integer parsing error: {0}")]
     ParseIntError(#[from] std::num::ParseIntError),
 
-    #[error("Ip address parsing error {0}")]
-    ParseIpAddressError(#[from] AddrParseError),
+    #[error("Network address parsing error {0}")]
+    ParseIpAddressError(#[from] NetAddressError),
 
     #[error("Wrong rpc api version format")]
     RpcApiVersionFormatError,
