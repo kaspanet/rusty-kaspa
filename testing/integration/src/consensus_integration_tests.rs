@@ -53,6 +53,7 @@ use crate::common;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
+use kaspa_consensus_core::config::params::PRE_CRESCENDO_DEVNET_PARAMS;
 use kaspa_consensus_core::errors::tx::TxRuleError;
 use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
 use kaspa_consensus_core::merkle::calc_hash_merkle_root;
@@ -933,13 +934,13 @@ async fn json_test(file_path: &str, concurrency: bool) {
         if !proof_exists {
             let second_line = lines.next().unwrap();
             let genesis_block = json_line_to_block(second_line);
-            params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
+            params.genesis = (genesis_block.header.as_ref(), PRE_CRESCENDO_DEVNET_PARAMS.genesis.coinbase_payload).into();
         }
         params.min_difficulty_window_size = params.prior_difficulty_window_size;
         params
     } else {
         let genesis_block = json_line_to_block(first_line);
-        let mut params = DEVNET_PARAMS;
+        let mut params = PRE_CRESCENDO_DEVNET_PARAMS;
         params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
         params.min_difficulty_window_size = params.prior_difficulty_window_size;
         params
@@ -1264,7 +1265,7 @@ fn hex_decode(src: &str) -> Vec<u8> {
 #[tokio::test]
 async fn bounded_merge_depth_test() {
     init_allocator_with_default_settings();
-    let config = ConfigBuilder::new(DEVNET_PARAMS)
+    let config = ConfigBuilder::new(PRE_CRESCENDO_DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.prior_ghostdag_k = 5;

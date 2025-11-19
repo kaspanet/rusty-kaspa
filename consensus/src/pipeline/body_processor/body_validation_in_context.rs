@@ -109,7 +109,6 @@ impl BlockBodyProcessor {
 
 #[cfg(test)]
 mod tests {
-
     use crate::{
         config::ConfigBuilder,
         consensus::test_consensus::TestConsensus,
@@ -153,8 +152,8 @@ mod tests {
             block.transactions[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
 
-            assert_match!(
-                consensus.validate_and_insert_block(block.clone().to_immutable()).virtual_state_task.await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 50000000000);
+            assert_match!(  // Pre-deflationary emission is 50_000_000_000 per second. At 10 bps block subsidy is 5_000_000_000.
+                consensus.validate_and_insert_block(block.clone().to_immutable()).virtual_state_task.await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 5_000_000_000);
 
             // The second time we send an invalid block we expect it to be a known invalid.
             assert_match!(
@@ -192,7 +191,8 @@ mod tests {
             let mut block = consensus.build_block_with_parents_and_transactions(7.into(), vec![6.into()], vec![]);
             block.transactions[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-            assert_match!(consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 44000000000);
+            // Post-deflationary emission is 44_000_000_000 per second. At 10 bps block subsidy is 4_400_000_000.
+            assert_match!(consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 4_400_000_000);
         }
 
         {
