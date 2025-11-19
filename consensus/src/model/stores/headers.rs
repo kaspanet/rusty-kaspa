@@ -207,7 +207,7 @@ impl HeaderStore for DbHeadersStore {
         if self.compact_headers_access.has(hash)? {
             return Err(StoreError::DataInconsistency(format!("store has compact data for {} but is missing full data", hash)));
         }
-        let mut batch: rocksdb::WriteBatchWithTransaction<false> = WriteBatch::default();
+        let mut batch = WriteBatch::default();
         self.compact_headers_access.write(BatchDbWriter::new(&mut batch), hash, header.as_ref().into())?;
         self.headers_access.write(BatchDbWriter::new(&mut batch), hash, HeaderWithBlockLevel { header, block_level })?;
         self.db.write(batch)?;
