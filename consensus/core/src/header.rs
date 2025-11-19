@@ -196,7 +196,9 @@ impl AsRef<Header> for Header {
 
 impl MemSizeEstimator for Header {
     fn estimate_mem_bytes(&self) -> usize {
-        size_of::<Self>() - size_of::<CompressedParents>() + self.parents_by_level.estimate_mem_bytes()
+        size_of::<Self>()
+            + self.parents_by_level.0.iter().map(|(_, l)| l.len()).sum::<usize>() * size_of::<Hash>()
+            + self.parents_by_level.0.len() * size_of::<(u8, Vec<Hash>)>()
     }
 }
 
