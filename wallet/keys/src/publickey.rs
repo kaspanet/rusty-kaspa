@@ -27,6 +27,7 @@ use sha2::Sha256;
 /// Only supports Schnorr-based addresses.
 /// @category Wallet SDK
 #[derive(Clone, Debug, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(js_name = PublicKey)]
 pub struct PublicKey {
     #[wasm_bindgen(skip)]
@@ -75,6 +76,52 @@ impl PublicKey {
     /// Compute a 4-byte key fingerprint for this public key as a hex string.
     /// Default implementation uses `RIPEMD160(SHA256(public_key))`.
     pub fn fingerprint(&self) -> Option<HexString> {
+        if let Some(public_key) = self.public_key.as_ref() {
+            let digest = Ripemd160::digest(Sha256::digest(public_key.serialize().as_slice()));
+            Some(digest[..4].as_ref().to_hex().into())
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl PublicKey {
+    #[new]
+    pub fn try_new_py(key: &str) -> PyResult<PublicKey> {
+        match secp256k1::PublicKey::from_str(key) {
+            Ok(public_key) => Ok((&public_key).into()),
+            Err(_) => {
+                let xonly_public_key =
+                    secp256k1::XOnlyPublicKey::from_str(key).map_err(|err| PyException::new_err(format!("{}", err)))?;
+                Ok(Self { xonly_public_key, public_key: None })
+            }
+        }
+    }
+
+    #[pyo3(name = "to_string")]
+    pub fn to_string_impl_py(&self) -> String {
+        self.public_key.as_ref().map(|pk| pk.to_string()).unwrap_or_else(|| self.xonly_public_key.to_string())
+    }
+
+    #[pyo3(name = "to_address")]
+    pub fn to_address_py(&self, network: &str) -> PyResult<Address> {
+        Ok(self.to_address(NetworkType::from_str(network)?)?)
+    }
+
+    #[pyo3(name = "to_address_ecdsa")]
+    pub fn to_address_ecdsa_py(&self, network: &str) -> PyResult<Address> {
+        Ok(self.to_address_ecdsa(NetworkType::from_str(network)?)?)
+    }
+
+    #[pyo3(name = "to_x_only_public_key")]
+    pub fn to_x_only_public_key_py(&self) -> XOnlyPublicKey {
+        self.xonly_public_key.into()
+    }
+
+    #[pyo3(name = "fingerprint")]
+    pub fn fingerprint_py(&self) -> Option<String> {
         if let Some(public_key) = self.public_key.as_ref() {
             let digest = Ripemd160::digest(Sha256::digest(public_key.serialize().as_slice()));
             Some(digest[..4].as_ref().to_hex().into())
@@ -191,6 +238,7 @@ impl TryFrom<&PublicKeyArrayT> for Vec<secp256k1::PublicKey> {
 /// @see {@link PublicKey}
 /// @category Wallet SDK
 #[wasm_bindgen]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[derive(Clone, Debug, CastFromJs)]
 pub struct XOnlyPublicKey {
     #[wasm_bindgen(skip)]
@@ -238,6 +286,43 @@ impl XOnlyPublicKey {
     #[wasm_bindgen(js_name = fromAddress)]
     pub fn from_address(address: &Address) -> Result<XOnlyPublicKey> {
         Ok(secp256k1::XOnlyPublicKey::from_slice(&address.payload)?.into())
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl XOnlyPublicKey {
+    #[new]
+    pub fn try_new_py(key: &str) -> PyResult<XOnlyPublicKey> {
+        let xonly_public_key = secp256k1::XOnlyPublicKey::from_str(key).map_err(|err| PyException::new_err(format!("{}", err)))?;
+        Ok(xonly_public_key.into())
+    }
+
+    #[pyo3(name = "to_string")]
+    pub fn to_string_impl_py(&self) -> String {
+        self.inner.to_string()
+    }
+
+    #[pyo3(name = "to_address")]
+    pub fn to_address_py(&self, network: &str) -> PyResult<Address> {
+        let payload = &self.inner.serialize();
+        let address = Address::new(NetworkType::from_str(network)?.try_into()?, AddressVersion::PubKey, payload);
+        Ok(address)
+    }
+
+    #[pyo3(name = "to_address_ecdsa")]
+    pub fn to_address_ecdsa_py(&self, network: &str) -> PyResult<Address> {
+        let payload = &self.inner.serialize();
+        let address = Address::new(NetworkType::from_str(network)?.try_into()?, AddressVersion::PubKeyECDSA, payload);
+        Ok(address)
+    }
+
+    #[pyo3(name = "from_address")]
+    #[staticmethod]
+    pub fn from_address_py(address: &Address) -> PyResult<XOnlyPublicKey> {
+        let xonly_public_key =
+            secp256k1::XOnlyPublicKey::from_slice(&address.payload).map_err(|err| PyException::new_err(format!("{}", err)))?;
+        Ok(xonly_public_key.into())
     }
 }
 

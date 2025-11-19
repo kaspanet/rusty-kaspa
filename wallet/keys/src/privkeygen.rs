@@ -15,12 +15,13 @@ use crate::imports::*;
 ///
 /// @see {@link PublicKeyGenerator}, {@link XPub}, {@link XPrv}, {@link Mnemonic}
 /// @category Wallet SDK
-///
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen]
 pub struct PrivateKeyGenerator {
     receive: ExtendedPrivateKey<SecretKey>,
     change: ExtendedPrivateKey<SecretKey>,
 }
+
 #[wasm_bindgen]
 impl PrivateKeyGenerator {
     #[wasm_bindgen(constructor)]
@@ -42,7 +43,11 @@ impl PrivateKeyGenerator {
 
         Ok(Self { receive, change })
     }
+}
 
+#[cfg_attr(feature = "py-sdk", pymethods)]
+#[wasm_bindgen]
+impl PrivateKeyGenerator {
     #[wasm_bindgen(js_name=receiveKey)]
     pub fn receive_key(&self, index: u32) -> Result<PrivateKey> {
         let xkey = self.receive.derive_child(ChildNumber::new(index, false)?)?;
@@ -53,5 +58,30 @@ impl PrivateKeyGenerator {
     pub fn change_key(&self, index: u32) -> Result<PrivateKey> {
         let xkey = self.change.derive_child(ChildNumber::new(index, false)?)?;
         Ok(PrivateKey::from(xkey.private_key()))
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl PrivateKeyGenerator {
+    #[new]
+    #[pyo3(signature = (xprv, is_multisig, account_index, cosigner_index=None))]
+    pub fn new_py(xprv: String, is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> PyResult<PrivateKeyGenerator> {
+        let xprv = XPrv::from_xprv_str(xprv)?;
+        let xprv = xprv.inner();
+        let receive = xprv.clone().derive_path(&WalletDerivationManager::build_derivate_path(
+            is_multisig,
+            account_index,
+            cosigner_index,
+            Some(kaspa_bip32::AddressType::Receive),
+        )?)?;
+        let change = xprv.clone().derive_path(&WalletDerivationManager::build_derivate_path(
+            is_multisig,
+            account_index,
+            cosigner_index,
+            Some(kaspa_bip32::AddressType::Change),
+        )?)?;
+
+        Ok(Self { receive, change })
     }
 }
