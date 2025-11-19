@@ -84,11 +84,11 @@ where
         }
     }
 
-    pub fn read_with_fallback<TDeser: Into<TData>>(&self, fallback_prefix: &[u8], key: TKey) -> Result<TData, StoreError>
+    pub fn read_with_fallback<TDeser>(&self, fallback_prefix: &[u8], key: TKey) -> Result<TData, StoreError>
     where
         TKey: Clone + AsRef<[u8]> + ToString,
         TData: DeserializeOwned,
-        TDeser: DeserializeOwned,
+        TDeser: DeserializeOwned + Into<TData>,
     {
         if let Some(data) = self.cache.get(&key) {
             Ok(data)
