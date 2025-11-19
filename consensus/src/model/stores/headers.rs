@@ -140,7 +140,7 @@ impl DbHeadersStore {
         header: Arc<Header>,
         block_level: BlockLevel,
     ) -> Result<(), StoreError> {
-        if self.headers_access.has(hash)? {
+        if self.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
         }
         self.headers_access.write(BatchDbWriter::new(batch), hash, HeaderWithBlockLevel { header: header.clone(), block_level })?;
@@ -201,7 +201,7 @@ impl HeaderStoreReader for DbHeadersStore {
 
 impl HeaderStore for DbHeadersStore {
     fn insert(&self, hash: Hash, header: Arc<Header>, block_level: u8) -> Result<(), StoreError> {
-        if self.headers_access.has(hash)? {
+        if self.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
         }
         if self.compact_headers_access.has(hash)? {
