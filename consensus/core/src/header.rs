@@ -11,6 +11,7 @@ pub struct Header {
     /// Cached hash
     pub hash: Hash,
     pub version: u16,
+    #[serde(with = "parents_by_level_format")]
     pub parents_by_level: Vec<Vec<Hash>>,
     pub hash_merkle_root: Hash,
     pub accepted_id_merkle_root: Hash,
@@ -105,11 +106,149 @@ impl MemSizeEstimator for Header {
     }
 }
 
+pub mod parents_by_level_format {
+    use kaspa_hashes::Hash;
+    use serde::{
+        self,
+        de::Error,
+        ser::{Error as SerErr, SerializeSeq},
+        Deserialize, Deserializer, Serializer,
+    };
+
+    type Count = u32;
+
+    pub fn serialize<S>(parents: &[Vec<Hash>], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            return <&[Vec<Hash>] as serde::Serialize>::serialize(&parents, serializer);
+        }
+
+        struct Run<'a> {
+            cumulative: Count,
+            vec: &'a Vec<Hash>,
+        }
+
+        if parents.is_empty() {
+            let seq = serializer.serialize_seq(Some(0))?;
+            return seq.end();
+        }
+
+        let mut runs: Vec<Run> = Vec::new();
+        let mut cumulative: Count = 0;
+        let mut current_vec = &parents[0];
+        let mut current_len: Count = 1;
+
+        for vec in &parents[1..] {
+            if vec == current_vec {
+                current_len = current_len.checked_add(1).ok_or_else(|| S::Error::custom("run length overflow"))?;
+            } else {
+                cumulative = cumulative.checked_add(current_len).ok_or_else(|| S::Error::custom("cumulative length overflow"))?;
+                runs.push(Run { cumulative, vec: current_vec });
+
+                current_vec = vec;
+                current_len = 1;
+            }
+        }
+
+        cumulative = cumulative.checked_add(current_len).ok_or_else(|| S::Error::custom("cumulative length overflow"))?;
+        runs.push(Run { cumulative, vec: current_vec });
+
+        let mut seq = serializer.serialize_seq(Some(runs.len()))?;
+        for run in &runs {
+            let elem = (run.cumulative, run.vec);
+            seq.serialize_element(&elem)?;
+        }
+        seq.end()
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Vec<Hash>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            return <Vec<Vec<Hash>>>::deserialize(deserializer);
+        }
+
+        type Pair = (Count, Vec<Hash>);
+        let pairs: Vec<Pair> = <Vec<Pair> as Deserialize>::deserialize(deserializer)?;
+
+        let mut out: Vec<Vec<Hash>> = Vec::new();
+        let mut prev_cum: Count = 0;
+        let mut last_vec: Option<&[Hash]> = None;
+
+        for (cum, v) in pairs.iter() {
+            if *cum < prev_cum {
+                return Err(D::Error::custom("non-monotonic cumulative count in VRLE stream"));
+            }
+            let run_len = (*cum).checked_sub(prev_cum).ok_or_else(|| D::Error::custom("invalid cumulative count (underflow)"))?;
+
+            if run_len == 0 {
+                return Err(D::Error::custom("zero-length run in VRLE stream"));
+            }
+            if let Some(prev) = last_vec {
+                if prev == v.as_slice() {
+                    return Err(D::Error::custom("adjacent runs contain identical vectors (should be merged)"));
+                }
+            }
+
+            for _ in 0..run_len {
+                out.push(v.clone());
+            }
+
+            prev_cum = *cum;
+            last_vec = Some(v.as_slice());
+        }
+
+        Ok(out)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use kaspa_math::Uint192;
     use serde_json::Value;
+
+    fn hash(val: u8) -> Hash {
+        Hash::from(val as u64)
+    }
+
+    fn vec_from(slice: &[u8]) -> Vec<Hash> {
+        slice.iter().map(|&v| hash(v)).collect()
+    }
+
+    fn serialize_parents(parents: &[Vec<Hash>]) -> Vec<u8> {
+        #[derive(serde::Serialize)]
+        struct Wrapper<'a> {
+            #[serde(with = "parents_by_level_format")]
+            parents: &'a [Vec<Hash>],
+        }
+
+        bincode::serialize(&Wrapper { parents }).unwrap()
+    }
+
+    fn deserialize_parents(bytes: &[u8]) -> bincode::Result<Vec<Vec<Hash>>> {
+        #[derive(serde::Deserialize)]
+        struct Wrapper {
+            #[serde(with = "parents_by_level_format")]
+            parents: Vec<Vec<Hash>>,
+        }
+
+        let wrapper: Wrapper = bincode::deserialize(bytes)?;
+        Ok(wrapper.parents)
+    }
+
+    fn json_value(parents: &[Vec<Hash>]) -> serde_json::Value {
+        #[derive(serde::Serialize)]
+        struct Wrapper<'a> {
+            #[serde(with = "parents_by_level_format")]
+            parents: &'a [Vec<Hash>],
+        }
+
+        serde_json::to_value(Wrapper { parents }).unwrap()
+    }
 
     #[test]
     fn test_header_ser() {
@@ -140,5 +279,56 @@ mod tests {
 
         let h = serde_json::from_str::<Header>(&json).unwrap();
         assert!(h.blue_score == header.blue_score && h.blue_work == header.blue_work);
+    }
+
+    #[test]
+    fn parents_vrle_round_trip_multiple_runs() {
+        let parents = vec![
+            vec_from(&[1, 2, 3]),
+            vec_from(&[1, 2, 3]),
+            vec_from(&[1, 2, 3]),
+            vec_from(&[4, 5]),
+            vec_from(&[4, 5]),
+            vec_from(&[6]),
+        ];
+
+        let bytes = serialize_parents(&parents);
+        let decoded = deserialize_parents(&bytes).unwrap();
+        assert_eq!(decoded, parents);
+    }
+
+    #[test]
+    fn parents_vrle_round_trip_single_run() {
+        let repeated = vec_from(&[9, 8, 7]);
+        let parents = vec![repeated.clone(), repeated.clone(), repeated.clone()];
+
+        let bytes = serialize_parents(&parents);
+        let decoded = deserialize_parents(&bytes).unwrap();
+        assert_eq!(decoded, parents);
+    }
+
+    #[test]
+    fn parents_vrle_round_trip_empty() {
+        let bytes = serialize_parents(&[]);
+        let decoded = deserialize_parents(&bytes).unwrap();
+        assert!(decoded.is_empty());
+    }
+
+    #[test]
+    fn parents_vrle_preserves_human_readable_json() {
+        let parents = vec![vec_from(&[1, 2]), vec_from(&[3, 4])];
+
+        let json = json_value(&parents);
+        let expected = serde_json::json!({ "parents": parents });
+        assert_eq!(json, expected);
+
+        #[derive(serde::Deserialize)]
+        struct Wrapper {
+            #[serde(with = "parents_by_level_format")]
+            parents: Vec<Vec<Hash>>,
+        }
+
+        let decoded: Wrapper = serde_json::from_value(json).unwrap();
+        assert_eq!(decoded.parents, parents);
     }
 }
