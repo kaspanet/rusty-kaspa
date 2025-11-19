@@ -84,14 +84,6 @@ impl From<&CompressedParents> for Vec<Vec<Hash>> {
     }
 }
 
-impl MemSizeEstimator for CompressedParents {
-    fn estimate_mem_bytes(&self) -> usize {
-        let runs_overhead = self.0.capacity() * size_of::<(u8, Vec<Hash>)>();
-        let vectors_bytes: usize = self.0.iter().map(|(_, vec)| vec.capacity() * size_of::<Hash>()).sum();
-        size_of::<Self>() + runs_overhead + vectors_bytes
-    }
-}
-
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
