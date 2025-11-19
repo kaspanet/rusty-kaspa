@@ -14,7 +14,7 @@ impl BlockBodyProcessor {
         let crescendo_activated = self.crescendo_activation.is_active(block.header.daa_score);
 
         Self::check_has_transactions(block)?;
-        Self::check_hash_merkle_root(block, crescendo_activated)?;
+        Self::check_hash_merkle_root(block)?;
         Self::check_only_one_coinbase(block)?;
         self.check_transactions_in_isolation(block)?;
         self.check_coinbase_has_zero_mass(block, crescendo_activated)?;
@@ -34,8 +34,8 @@ impl BlockBodyProcessor {
         Ok(())
     }
 
-    fn check_hash_merkle_root(block: &Block, crescendo_activated: bool) -> BlockProcessResult<()> {
-        let calculated = calc_hash_merkle_root(block.transactions.iter(), crescendo_activated);
+    fn check_hash_merkle_root(block: &Block) -> BlockProcessResult<()> {
+        let calculated = calc_hash_merkle_root(block.transactions.iter());
         if calculated != block.header.hash_merkle_root {
             return Err(RuleError::BadMerkleRoot(block.header.hash_merkle_root, calculated));
         }
@@ -165,16 +165,12 @@ mod tests {
         api::{BlockValidationFutures, ConsensusApi},
         block::MutableBlock,
         header::Header,
-        merkle::calc_hash_merkle_root as calc_hash_merkle_root_with_options,
+        merkle::calc_hash_merkle_root,
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
         tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
     use kaspa_core::assert_match;
     use kaspa_hashes::Hash;
-
-    fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
-        calc_hash_merkle_root_with_options(txs, false)
-    }
 
     #[test]
     fn validate_body_in_isolation_test() {

@@ -3,7 +3,7 @@ use super::utxo_set_override::{set_genesis_utxo_commitment_from_config, set_init
 use super::{ctl::Ctl, Consensus};
 use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
 use itertools::Itertools;
-use kaspa_consensus_core::{config::Config, mining_rules::MiningRules};
+use kaspa_consensus_core::{api::ConsensusApi, config::Config, mining_rules::MiningRules};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
 use kaspa_core::{debug, time::unix_now, warn};
@@ -365,6 +365,10 @@ impl ConsensusFactory for Factory {
             entry.creation_timestamp,
             self.mining_rules.clone(),
         ));
+
+        // The default for the body_missing_anticone_set is an empty vector, which corresponds precisely to the state before a consensus commit
+        // But The default value for the pruning_utxoset_stable_flag is true, but a staging consensus does not have a utxo and hence the flag is dropped explicitly
+        consensus.set_pruning_utxoset_stable_flag(false);
 
         (ConsensusInstance::new(session_lock, consensus.clone()), Arc::new(Ctl::new(self.management_store.clone(), db, consensus)))
     }
