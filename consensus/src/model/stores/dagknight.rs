@@ -30,16 +30,46 @@ pub trait DagknightStoreReader {
     fn get_data(&self, dk_key: DagknightKey) -> Result<Arc<GhostdagData>, StoreError>;
 }
 
-#[derive(Eq, Hash, Clone)]
+#[derive(Clone)]
 pub struct DagknightKey {
     pub pov_hash: Hash,
     pub root_hash: Hash,
     pub k: KType,
+    // Precomputed bytes in order: root_hash || k || pov_hash
+    bytes: [u8; kaspa_hashes::HASH_SIZE * 2 + 1],
+}
+
+impl DagknightKey {
+    pub fn new(root_hash: Hash, pov_hash: Hash, k: KType) -> Self {
+        let mut bytes = [0u8; kaspa_hashes::HASH_SIZE * 2 + 1];
+        bytes[..kaspa_hashes::HASH_SIZE].copy_from_slice(root_hash.as_ref());
+        bytes[kaspa_hashes::HASH_SIZE] = k as u8;
+        bytes[kaspa_hashes::HASH_SIZE + 1..].copy_from_slice(pov_hash.as_ref());
+
+        Self { pov_hash, root_hash, k, bytes }
+    }
+}
+
+impl AsRef<[u8]> for DagknightKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+impl Eq for DagknightKey {}
+
+impl std::hash::Hash for DagknightKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Hash based on the logical key fields
+        self.root_hash.hash(state);
+        self.k.hash(state);
+        self.pov_hash.hash(state);
+    }
 }
 
 impl PartialEq for DagknightKey {
     fn eq(&self, other: &Self) -> bool {
-        return self.pov_hash == other.pov_hash && self.root_hash == other.root_hash && self.k == other.k;
+        self.pov_hash == other.pov_hash && self.root_hash == other.root_hash && self.k == other.k
     }
 }
 
@@ -61,11 +91,10 @@ impl DagknightStoreReader for MemoryDagknightStore {
 
     fn get_data(&self, key: DagknightKey) -> Result<Arc<GhostdagData>, StoreError> {
         if let Some(pov_block_dk_data) = self.dk_map.borrow().get(&key) {
-            return Ok(pov_block_dk_data.clone());
+            Ok(pov_block_dk_data.clone())
         } else {
-            // FIXME: for DagKnight prefix
-            return Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Ghostdag.as_ref(), "fixme")));
-        };
+            Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::DagKnight.as_ref(), key)))
+        }
     }
 }
 
