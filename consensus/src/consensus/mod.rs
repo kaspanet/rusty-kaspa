@@ -971,7 +971,7 @@ impl ConsensusApi for Consensus {
     // max_blocks has to be greater than the merge set size limit
     fn get_hashes_between(&self, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
         let _guard = self.pruning_lock.blocking_read();
-        assert!(max_blocks as u64 > self.config.mergeset_size_limit().upper_bound());
+        assert!(max_blocks as u64 > self.config.mergeset_size_limit().after());
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
 
@@ -1187,9 +1187,7 @@ impl ConsensusApi for Consensus {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
 
-        // [Crescendo]: get ghostdag k based on the pruning point's DAA score. The off-by-one of not going by selected parent
-        // DAA score is not important here as we simply increase K one block earlier which is more conservative (saving/sending more data)
-        let ghostdag_k = self.config.ghostdag_k().get(self.headers_store.get_daa_score(pruning_point).unwrap());
+        let ghostdag_k = self.config.ghostdag_k().after();
 
         // Note: the method `get_ghostdag_chain_k_depth` might return a partial chain if data is missing.
         // Ideally this node when synced would validate it got all of the associated data up to k blocks

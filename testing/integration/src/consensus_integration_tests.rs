@@ -53,7 +53,6 @@ use crate::common;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
-use kaspa_consensus_core::errors::tx::TxRuleError;
 use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
 use kaspa_consensus_core::merkle::calc_hash_merkle_root;
 use kaspa_consensus_core::muhash::MuHashExtensions;
@@ -1949,11 +1948,8 @@ async fn payload_test() {
 }
 
 #[tokio::test]
-async fn payload_activation_test() {
+async fn payload_for_native_tx_test() {
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-
-    // Set payload activation at DAA score 3 for this test
-    const PAYLOAD_ACTIVATION_DAA_SCORE: u64 = 3;
 
     init_allocator_with_default_settings();
 
@@ -1980,9 +1976,6 @@ async fn payload_activation_test() {
             let genesis_header: Header = (&cfg.params.genesis).into();
             cfg.params.genesis.hash = genesis_header.hash;
         })
-        .edit_consensus_params(|p| {
-            p.crescendo_activation = ForkActivation::new(PAYLOAD_ACTIVATION_DAA_SCORE);
-        })
         .build();
 
     let consensus = TestConsensus::new(&config);
@@ -1990,15 +1983,6 @@ async fn payload_activation_test() {
     consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
     consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
     consensus.init();
-
-    // Build blockchain up to one block before activation
-    let mut index = 0;
-    for _ in 0..PAYLOAD_ACTIVATION_DAA_SCORE - 1 {
-        let parent = if index == 0 { config.genesis.hash } else { index.into() };
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).await.unwrap();
-        index += 1;
-    }
-    assert_eq!(consensus.get_virtual_daa_score(), index);
 
     // Create transaction with large payload
     let large_payload = vec![0u8; (config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
@@ -2019,39 +2003,12 @@ async fn payload_activation_test() {
     tx_with_payload.finalize();
     let tx_id = tx_with_payload.id();
 
-    // Test 1: Build empty block, then manually insert invalid tx and verify consensus rejects it
-    {
-        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-
-        // First build block without transactions
-        let mut block =
-            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
-
-        let mut tx = MutableTransaction::from_tx(tx_with_payload.clone());
-        // This triggers storage mass population
-        let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
-
-        // Insert our test transaction and recalculate block hashes
-        block.transactions.push(tx.tx.unwrap_or_clone());
-
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
-        assert!(matches!(block_status, Err(RuleError::TxInContextFailed(tx, TxRuleError::NonCoinbaseTxHasPayload)) if tx == tx_id));
-        assert_eq!(consensus.lkg_virtual_state.load().daa_score, PAYLOAD_ACTIVATION_DAA_SCORE - 1);
-        index += 1;
-    }
-
-    // Add one more block to reach activation score
-    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
-    index += 1;
-
     let mut tx = MutableTransaction::from_tx(tx_with_payload.clone());
     // This triggers storage mass population
     let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
 
     // Test 2: Verify the same transaction is accepted after activation
-    let status =
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx.tx.unwrap_or_clone()]).await;
+    let status = consensus.add_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], vec![tx.tx.unwrap_or_clone()]).await;
 
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));

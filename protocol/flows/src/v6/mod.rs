@@ -128,7 +128,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     let invs_route = router.subscribe_with_capacity(vec![KaspadMessagePayloadType::InvRelayBlock], ctx.block_invs_channel_size());
     let shared_invs_route = SharedIncomingRoute::new(invs_route);
 
-    let num_relay_flows = (ctx.config.bps().upper_bound() as usize / 2).max(1);
+    let num_relay_flows = (ctx.config.bps().after() as usize / 2).max(1);
     flows.extend((0..num_relay_flows).map(|_| {
         Box::new(HandleRelayInvsFlow::new(
             ctx.clone(),

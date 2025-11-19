@@ -12,6 +12,7 @@ use kaspa_txscript::{
 use kaspa_consensus_core::{
     config::params::{ForkActivation, ForkedParam},
     mass::MassCalculator,
+    KType,
 };
 
 #[derive(Clone)]
@@ -22,6 +23,7 @@ pub struct TransactionValidator {
     max_script_public_key_len: ForkedParam<usize>,
     coinbase_payload_script_public_key_max_len: u8,
     coinbase_maturity: ForkedParam<u64>,
+    ghostdag_k: KType,
     sig_cache: Cache<SigCacheKey, bool>,
 
     pub(crate) mass_calculator: MassCalculator,
@@ -38,6 +40,7 @@ impl TransactionValidator {
         max_script_public_key_len: ForkedParam<usize>,
         coinbase_payload_script_public_key_max_len: u8,
         coinbase_maturity: ForkedParam<u64>,
+        ghostdag_k: KType,
         counters: Arc<TxScriptCacheCounters>,
         mass_calculator: MassCalculator,
         crescendo_activation: ForkActivation,
@@ -49,6 +52,7 @@ impl TransactionValidator {
             max_script_public_key_len,
             coinbase_payload_script_public_key_max_len,
             coinbase_maturity,
+            ghostdag_k,
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator,
             crescendo_activation,
@@ -62,6 +66,7 @@ impl TransactionValidator {
         max_script_public_key_len: usize,
         coinbase_payload_script_public_key_max_len: u8,
         coinbase_maturity: u64,
+        ghostdag_k: KType,
         counters: Arc<TxScriptCacheCounters>,
     ) -> Self {
         Self {
@@ -71,6 +76,7 @@ impl TransactionValidator {
             max_script_public_key_len: ForkedParam::new_const(max_script_public_key_len),
             coinbase_payload_script_public_key_max_len,
             coinbase_maturity: ForkedParam::new_const(coinbase_maturity),
+            ghostdag_k,
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator: MassCalculator::new(0, 0, 0, 0),
             crescendo_activation: ForkActivation::never(),

@@ -591,13 +591,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         config.block_template_cache_lifetime,
         mining_counters.clone(),
     )));
-    let mining_monitor = Arc::new(MiningMonitor::new(
-        mining_manager.clone(),
-        consensus_manager.clone(),
-        mining_counters,
-        tx_script_cache_counters.clone(),
-        tick_service.clone(),
-    ));
+    let mining_monitor =
+        Arc::new(MiningMonitor::new(mining_manager.clone(), mining_counters, tx_script_cache_counters.clone(), tick_service.clone()));
 
     let hub = Hub::new();
     let mining_rule_engine = Arc::new(MiningRuleEngine::new(

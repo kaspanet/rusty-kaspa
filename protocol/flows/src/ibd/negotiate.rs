@@ -133,7 +133,7 @@ impl IbdFlow {
                         self.router, negotiation_restart_counter
                     )));
                 }
-                if negotiation_restart_counter > self.ctx.config.bps().upper_bound() {
+                if negotiation_restart_counter > self.ctx.config.bps().after() {
                     // bps is just an intuitive threshold here
                     warn!("IBD chain negotiation with syncer {} restarted {} times", self.router, negotiation_restart_counter);
                 } else {
