@@ -62,6 +62,9 @@ pub enum DatabaseStorePrefixes {
     PruningUtxosetSyncFlag = 60,
     BodyMissingAnticone = 61,
 
+    // ---- DagKnight ----
+    DagKnight = 70,
+
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
     ConsensusEntries = 125,
