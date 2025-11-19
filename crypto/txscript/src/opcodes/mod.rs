@@ -996,7 +996,32 @@ opcode_list! {
         }
     }
     // Undefined opcodes
-    opcode OpUnknown196<0xc4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpCheckSigFalcon512<0xc4, 1>(self, vm) {
+        if !vm.falcon_enabled {
+            return Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+
+        let [mut sig, key] = vm.dstack.pop_raw()?;
+        // Hash type
+        match sig.pop() {
+            Some(typ) => {
+                let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
+                match vm.check_falcon_signature(hash_type, key.as_slice(), sig.as_slice()) {
+                    Ok(valid) => {
+                        vm.dstack.push_item(valid)?;
+                        Ok(())
+                    },
+                    Err(e) => {
+                        Err(e)
+                    }
+                }
+            }
+            None => {
+                vm.dstack.push_item(false)?;
+                Ok(())
+            }
+        }
+    }
     opcode OpUnknown197<0xc5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown198<0xc6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown199<0xc7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
