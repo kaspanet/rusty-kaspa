@@ -11,6 +11,47 @@ pub trait IterExtensions: Iterator {
     {
         ReusableIterFormat::new(self.format(sep))
     }
+
+    /// Provides a run-length-encoding iterator that yields the cumulative count
+    /// of elements seen so far, along with the value of the element. Useful for creating
+    /// compressed representations of sequences with repeating elements
+    fn rle_cumulative(self) -> impl Iterator<Item = (usize, Self::Item)>
+    where
+        Self: Sized,
+        Self::Item: PartialEq,
+    {
+        let mut cumulative: usize = 0;
+        self.dedup_with_count().map(move |(count, value)| {
+            cumulative += count;
+            (cumulative, value)
+        })
+    }
+}
+
+pub trait IterExtensionsRle<T>: Iterator<Item = (usize, T)>
+where
+    T: Clone,
+{
+    /// Expands a run-length encoded iterator back into its original sequence of elements.
+    /// It takes an iterator of (cumulative_count, item) tuples and yields the repeated items
+    fn expand_rle(self) -> impl Iterator<Item = T>
+    where
+        Self: Sized,
+    {
+        self.scan(0usize, |prev, (cum, level)| {
+            let count = cum.checked_sub(*prev).expect("expecting cumulative counts");
+            *prev = cum;
+            Some((count, level))
+        })
+        .flat_map(|(count, level)| std::iter::repeat_n(level, count))
+    }
+}
+
+impl<I, T> IterExtensionsRle<T> for I
+where
+    I: Iterator<Item = (usize, T)>,
+    T: Clone,
+{
 }
 
 impl<T: ?Sized> IterExtensions for T where T: Iterator {}

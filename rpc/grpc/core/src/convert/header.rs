@@ -52,7 +52,7 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
     // We re-hash the block to remain as most trustless as possible
     let header = Header::new_finalized(
         item.version.try_into()?,
-        item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?,
+        item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?.try_into().unwrap(),
         RpcHash::from_str(&item.hash_merkle_root)?,
         RpcHash::from_str(&item.accepted_id_merkle_root)?,
         RpcHash::from_str(&item.utxo_commitment)?,
@@ -146,7 +146,9 @@ mod tests {
     fn test_rpc_header() {
         let header = Header::new_finalized(
             0,
-            vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]],
+            vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]]
+                .try_into()
+                .unwrap(),
             new_unique(),
             new_unique(),
             new_unique(),
@@ -164,7 +166,7 @@ mod tests {
         let reconverted_proto_header: protowire::RpcBlockHeader = (&reconverted_rpc_header).into();
 
         assert_eq!(rpc_header.parents_by_level, reconverted_rpc_header.parents_by_level);
-        assert_eq!(proto_header.parents, reconverted_proto_header.parents);
+        assert_eq!(proto_header.parents, reconverted_proto_header.parents.to_vec());
         test_parents_by_level_rxr(&rpc_header.parents_by_level, &reconverted_rpc_header.parents_by_level);
         test_parents_by_level_rxp(&rpc_header.parents_by_level, &proto_header.parents);
         test_parents_by_level_rxp(&rpc_header.parents_by_level, &reconverted_proto_header.parents);
@@ -178,7 +180,9 @@ mod tests {
     fn test_rpc_block() {
         let header = Header::new_finalized(
             0,
-            vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]],
+            vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]]
+                .try_into()
+                .unwrap(),
             new_unique(),
             new_unique(),
             new_unique(),
@@ -197,13 +201,15 @@ mod tests {
         let consensus_block_reconverted: Block = rpc_block_converted_from_proto.clone().try_into().unwrap();
         let rpc_block_reconverted_from_consensus: RpcBlock = (&consensus_block_reconverted).into();
         let proto_block_reconverted: protowire::RpcBlock = (&rpc_block_reconverted_from_consensus).into();
+        let consensus_parents = Vec::from(&consensus_block.header.parents_by_level);
+        let consensus_reconverted_parents = Vec::from(&consensus_block_reconverted.header.parents_by_level);
 
         assert_eq!(rpc_block.header.parents_by_level, rpc_block_converted_from_proto.header.parents_by_level);
         assert_eq!(proto_block.header.as_ref().unwrap().parents, proto_block_reconverted.header.as_ref().unwrap().parents);
         test_parents_by_level_rxr(&rpc_block.header.parents_by_level, &rpc_block_converted_from_proto.header.parents_by_level);
         test_parents_by_level_rxr(&rpc_block.header.parents_by_level, &rpc_block_reconverted_from_consensus.header.parents_by_level);
-        test_parents_by_level_rxr(&consensus_block.header.parents_by_level, &rpc_block_converted_from_proto.header.parents_by_level);
-        test_parents_by_level_rxr(&consensus_block.header.parents_by_level, &consensus_block_reconverted.header.parents_by_level);
+        test_parents_by_level_rxr(&consensus_parents, &rpc_block_converted_from_proto.header.parents_by_level);
+        test_parents_by_level_rxr(&consensus_parents, &consensus_reconverted_parents);
         test_parents_by_level_rxp(&rpc_block.header.parents_by_level, &proto_block.header.as_ref().unwrap().parents);
         test_parents_by_level_rxp(&rpc_block.header.parents_by_level, &proto_block_reconverted.header.as_ref().unwrap().parents);
         test_parents_by_level_rxp(
