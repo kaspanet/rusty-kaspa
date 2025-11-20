@@ -446,7 +446,11 @@ async fn header_in_isolation_validation_test() {
     }
 
     {
-        let block = consensus.build_header_only_block_with_parents(3.into(), vec![]);
+        let mut block = block.clone();
+        block.header.hash = 3.into();
+        let mut parents = block.header.parents_by_level_vec();
+        parents[0] = vec![];
+        block.header.set_parents_by_level_vec(parents);
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::NoParents) => {}
             res => {
@@ -487,7 +491,11 @@ async fn incest_test() {
     block_task.await.unwrap(); // Assert that block task completes as well
     virtual_state_task.await.unwrap();
 
-    let block = consensus.build_header_only_block_with_parents(2.into(), vec![1.into(), config.genesis.hash]);
+    let mut block = consensus.build_header_only_block_with_parents(2.into(), vec![config.genesis.hash]);
+    let mut parents = block.header.parents_by_level_vec();
+    parents[0] = vec![1.into(), config.genesis.hash];
+    block.header.set_parents_by_level_vec(parents);
+
     let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
     match virtual_state_task.await {
         Err(RuleError::InvalidParentsRelation(a, b)) => {
@@ -510,7 +518,11 @@ async fn missing_parents_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
-    let block = consensus.build_header_only_block_with_parents(1.into(), vec![0.into()]);
+    let mut block = consensus.build_header_only_block_with_parents(1.into(), vec![config.genesis.hash]);
+    let mut parents = block.header.parents_by_level_vec();
+    parents[0] = vec![0.into()];
+    block.header.set_parents_by_level_vec(parents);
+
     let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
     match virtual_state_task.await {
         Err(RuleError::MissingParents(missing)) => {
