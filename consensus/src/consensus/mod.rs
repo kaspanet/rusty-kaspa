@@ -870,7 +870,7 @@ impl ConsensusApi for Consensus {
         tx_ids: Option<Vec<TransactionId>>,
         tx_type: TransactionType,
     ) -> ConsensusResult<TransactionQueryResult> {
-        // We need consistency between the acceptance store and the block transaction store,
+        // Need consistency between the acceptance store and the block transaction store.
         let _guard = self.pruning_lock.blocking_read();
 
         match tx_type {
