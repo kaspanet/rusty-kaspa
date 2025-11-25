@@ -40,14 +40,14 @@ impl RuntimeSigOpCounter {
     /// counter.consume_sig_op().unwrap_err(); // Err(ExceededSigOpLimit)
     /// ```
     pub fn consume_sig_op(&mut self) -> Result<(), TxScriptError> {
-        self.sig_op_remaining =
-            self.sig_op_remaining.checked_sub(FALCON_FACTOR).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit))?;
+        self.sig_op_remaining = self.sig_op_remaining.checked_sub(1).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit))?;
 
         Ok(())
     }
 
     pub fn consume_falcon_sig_ops(&mut self) -> Result<(), TxScriptError> {
-        self.sig_op_remaining = self.sig_op_remaining.checked_sub(1).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit))?;
+        self.sig_op_remaining =
+            self.sig_op_remaining.checked_sub(FALCON_FACTOR).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit))?;
 
         Ok(())
     }
