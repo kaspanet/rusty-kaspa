@@ -3202,7 +3202,8 @@ dependencies = [
  "kaspa-wasm-core",
  "log",
  "parking_lot",
- "pqcrypto",
+ "pqcrypto-falcon",
+ "pqcrypto-traits",
  "rand",
  "secp256k1",
  "serde",
@@ -4628,16 +4629,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77957b295656769bb8ad2b6a6b09d897d94f05c41b069aede1fcdaa675eaea04"
 dependencies = [
  "zerocopy",
-]
-
-[[package]]
-name = "pqcrypto"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d68436754ef6cd65bc7e8c050a05f429efce86b5107cd71b5a4aa81171c69bc"
-dependencies = [
- "pqcrypto-falcon",
- "pqcrypto-traits",
 ]
 
 [[package]]

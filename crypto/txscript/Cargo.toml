@@ -31,7 +31,8 @@ kaspa-utils.workspace = true
 kaspa-wasm-core.workspace = true
 log.workspace = true
 parking_lot.workspace = true
-pqcrypto = { workspace = true, features = ["pqcrypto-falcon"] }
+pqcrypto-falcon = { workspace = true }
+pqcrypto-traits.workspace = true
 rand.workspace = true
 secp256k1.workspace = true
 serde_json.workspace = true
