@@ -6,7 +6,7 @@ use kaspa_hashes::{Hash, HasherBase};
 #[inline]
 pub fn hash_override_nonce_time(header: &Header, nonce: u64, timestamp: u64) -> Hash {
     let mut hasher = kaspa_hashes::BlockHash::new();
-    hasher.update(header.version.to_le_bytes()).write_len(header.parents_by_level.len()); // Write the number of parent levels
+    hasher.update(header.version.to_le_bytes()).write_len(header.parents_by_level.expanded_len()); // Write the number of parent levels
 
     // Write parents at each level
     header.parents_by_level.iter().for_each(|level| {

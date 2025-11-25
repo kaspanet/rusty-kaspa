@@ -11,7 +11,7 @@ use std::str::FromStr;
 from!(item: &kaspa_rpc_core::RpcHeader, protowire::RpcBlockHeader, {
     Self {
         version: item.version.into(),
-        parents: item.parents_by_level.iter().map(protowire::RpcBlockLevelParents::from).collect(),
+        parents: item.parents_by_level.iter().map(|x| x.as_slice().into()).collect(),
         hash_merkle_root: item.hash_merkle_root.to_string(),
         accepted_id_merkle_root: item.accepted_id_merkle_root.to_string(),
         utxo_commitment: item.utxo_commitment.to_string(),
@@ -28,7 +28,7 @@ from!(item: &kaspa_rpc_core::RpcHeader, protowire::RpcBlockHeader, {
 from!(item: &kaspa_rpc_core::RpcRawHeader, protowire::RpcBlockHeader, {
     Self {
         version: item.version.into(),
-        parents: item.parents_by_level.iter().map(protowire::RpcBlockLevelParents::from).collect(),
+        parents: item.parents_by_level.iter().map(|x| x.as_slice().into()).collect(),
         hash_merkle_root: item.hash_merkle_root.to_string(),
         accepted_id_merkle_root: item.accepted_id_merkle_root.to_string(),
         utxo_commitment: item.utxo_commitment.to_string(),
@@ -42,7 +42,7 @@ from!(item: &kaspa_rpc_core::RpcRawHeader, protowire::RpcBlockHeader, {
     }
 });
 
-from!(item: &Vec<RpcHash>, protowire::RpcBlockLevelParents, { Self { parent_hashes: item.iter().map(|x| x.to_string()).collect() } });
+from!(item: &[RpcHash], protowire::RpcBlockLevelParents, { Self { parent_hashes: item.iter().map(|x| x.to_string()).collect() } });
 
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
@@ -52,7 +52,7 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
     // We re-hash the block to remain as most trustless as possible
     let header = Header::new_finalized(
         item.version.try_into()?,
-        item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?.try_into().unwrap(),
+        item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?.try_into()?,
         RpcHash::from_str(&item.hash_merkle_root)?,
         RpcHash::from_str(&item.accepted_id_merkle_root)?,
         RpcHash::from_str(&item.utxo_commitment)?,
@@ -120,7 +120,7 @@ mod tests {
             parent_hashes: vec![new_unique().to_string(), new_unique().to_string(), new_unique().to_string()],
         };
         let rpc_block_level_parents: Vec<RpcHash> = (&proto_block_level_parents).try_into().unwrap();
-        let proto_block_level_parents_reconverted: protowire::RpcBlockLevelParents = (&rpc_block_level_parents).into();
+        let proto_block_level_parents_reconverted: protowire::RpcBlockLevelParents = rpc_block_level_parents.as_slice().into();
         for (i, _) in rpc_block_level_parents.iter().enumerate() {
             assert_eq!(proto_block_level_parents.parent_hashes[i], rpc_block_level_parents[i].to_string());
             assert_eq!(proto_block_level_parents_reconverted.parent_hashes[i], rpc_block_level_parents[i].to_string());
@@ -129,7 +129,7 @@ mod tests {
         assert_eq!(proto_block_level_parents, proto_block_level_parents_reconverted);
 
         let rpc_block_level_parents: Vec<RpcHash> = vec![new_unique(), new_unique()];
-        let proto_block_level_parents: protowire::RpcBlockLevelParents = (&rpc_block_level_parents).into();
+        let proto_block_level_parents: protowire::RpcBlockLevelParents = rpc_block_level_parents.as_slice().into();
         let rpc_block_level_parents_reconverted: Vec<RpcHash> = (&proto_block_level_parents).try_into().unwrap();
 
         assert_eq!(rpc_block_level_parents, rpc_block_level_parents_reconverted);

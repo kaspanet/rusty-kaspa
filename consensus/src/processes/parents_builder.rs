@@ -184,8 +184,9 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
     }
 
     pub fn parents_at_level<'a>(&'a self, header: &'a Header, level: u8) -> &'a [Hash] {
-        header.parents_by_level.get(level as usize).map(Vec::as_slice).unwrap_or_else(|| {
+        header.parents_by_level.get(level as usize).unwrap_or_else(|| {
             if header.parents_by_level.is_empty() {
+                // If is genesis
                 &[]
             } else {
                 std::slice::from_ref(&self.genesis_hash)

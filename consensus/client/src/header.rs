@@ -286,7 +286,7 @@ impl TryCastFromJs for Header {
                     })
                     .collect::<std::result::Result<Vec<Vec<Hash>>, Error>>()?;
 
-                let parents_by_level = parents_by_level_vec.try_into().unwrap();
+                let parents_by_level = parents_by_level_vec.try_into()?;
 
                 let header = native::Header {
                     hash: object.get_value("hash")?.try_into_owned().unwrap_or_default(),

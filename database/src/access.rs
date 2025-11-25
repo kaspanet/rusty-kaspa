@@ -84,11 +84,11 @@ where
         }
     }
 
-    pub fn read_with_fallback<TDeser>(&self, fallback_prefix: &[u8], key: TKey) -> Result<TData, StoreError>
+    pub fn read_with_fallback<TFallbackDeser>(&self, fallback_prefix: &[u8], key: TKey) -> Result<TData, StoreError>
     where
         TKey: Clone + AsRef<[u8]> + ToString,
         TData: DeserializeOwned,
-        TDeser: DeserializeOwned + Into<TData>,
+        TFallbackDeser: DeserializeOwned + Into<TData>,
     {
         if let Some(data) = self.cache.get(&key) {
             Ok(data)
@@ -101,7 +101,7 @@ where
             } else {
                 let db_key = DbKey::new(fallback_prefix, key.clone());
                 if let Some(slice) = self.db.get_pinned(&db_key)? {
-                    let data: TDeser = bincode::deserialize(&slice)?;
+                    let data: TFallbackDeser = bincode::deserialize(&slice)?;
                     let data: TData = data.into();
                     self.cache.insert(key, data.clone());
                     Ok(data)

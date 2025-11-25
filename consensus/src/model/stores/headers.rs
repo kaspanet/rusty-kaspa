@@ -41,7 +41,7 @@ pub trait HeaderStore: HeaderStoreReader {
 /// A temporary struct for backward compatibility. This struct is used to deserialize old header data with
 /// parents_by_level as Vec<Vec<Hash>>.
 #[derive(Clone, Debug, Deserialize)]
-pub struct Header2 {
+struct Header2 {
     pub hash: Hash,
     pub version: u16,
     pub parents_by_level: Vec<Vec<Hash>>,
@@ -58,9 +58,9 @@ pub struct Header2 {
 }
 
 #[derive(Clone, Deserialize)]
-pub struct HeaderWithBlockLevel2 {
-    pub header: Header2,
-    pub block_level: BlockLevel,
+struct HeaderWithBlockLevel2 {
+    header: Header2,
+    block_level: BlockLevel,
 }
 impl From<HeaderWithBlockLevel2> for HeaderWithBlockLevel {
     fn from(value: HeaderWithBlockLevel2) -> Self {

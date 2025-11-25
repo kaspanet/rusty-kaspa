@@ -2286,7 +2286,7 @@ async fn indirect_parents_test() {
         let hash: Hash = i.into();
         consensus.add_header_only_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
-        if consensus.get_header(*selected_chain.last().unwrap()).unwrap().parents_by_level.len() >= 3 {
+        if consensus.get_header(*selected_chain.last().unwrap()).unwrap().parents_by_level.expanded_len() >= 3 {
             level_3_count += 1;
         }
 
