@@ -204,9 +204,19 @@ pub fn check_scripts_sequential(
 ) -> TxResult<()> {
     let reused_values = SigHashReusedValuesUnsync::new();
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-        TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache, kip10_enabled, runtime_sig_op_counting)
-            .execute()
-            .map_err(|err| map_script_err(err, input))?;
+        TxScriptEngine::from_transaction_input(
+            tx,
+            input,
+            i,
+            entry,
+            &reused_values,
+            sig_cache,
+            kip10_enabled,
+            runtime_sig_op_counting,
+            false,
+        ) // todo falcon
+        .execute()
+        .map_err(|err| map_script_err(err, input))?;
     }
     Ok(())
 }
@@ -220,9 +230,19 @@ pub fn check_scripts_par_iter(
     let reused_values = SigHashReusedValuesSync::new();
     (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
         let (input, utxo) = tx.populated_input(idx);
-        TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache, kip10_enabled, runtime_sig_op_counting)
-            .execute()
-            .map_err(|err| map_script_err(err, input))
+        TxScriptEngine::from_transaction_input(
+            tx,
+            input,
+            idx,
+            utxo,
+            &reused_values,
+            sig_cache,
+            kip10_enabled,
+            runtime_sig_op_counting,
+            false,
+        ) // todo falcon
+        .execute()
+        .map_err(|err| map_script_err(err, input))
     })
 }
 

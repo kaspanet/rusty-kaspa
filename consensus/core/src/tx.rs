@@ -24,8 +24,6 @@ use std::{
     ops::Range,
     str::{self},
 };
-use std::io::{Write};
-use std::ops::{Deref, DerefMut};
 use wasm_bindgen::prelude::*;
 
 use crate::mass::{ContextualMasses, NonContextualMasses};
@@ -97,57 +95,11 @@ pub struct TransactionInput {
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
     pub sig_op_count: u8,
-    #[serde(default = "OptionalFalconSigOpCount::default")]
-    pub optional_falcon_sig_op_count: OptionalFalconSigOpCount,
-}
-
-#[derive(Copy, Clone, Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct OptionalFalconSigOpCount(pub u8);
-
-impl From<u8> for OptionalFalconSigOpCount {
-    fn from(value: u8) -> Self {
-        Self(value)
-    }
-}
-
-impl Deref for OptionalFalconSigOpCount {
-    type Target = u8;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for OptionalFalconSigOpCount {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl BorshSerialize for OptionalFalconSigOpCount {
-    fn serialize<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        if self.0 != 0 {
-            BorshSerialize::serialize(&self.0, writer)?;
-        }
-        Ok(())
-    }
-}
-
-impl BorshDeserialize for OptionalFalconSigOpCount {
-    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let mut buf = [0u8; 1];
-        match  reader.read_exact(&mut buf){
-            Ok(_) => Ok(Self(buf[0])),
-            Err(err) if err.kind() == std::io::ErrorKind::UnexpectedEof => Ok(Self(0)),
-            Err(err) => Err(err)
-        }
-    }
 }
 
 impl TransactionInput {
-    pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8, falcon_sig_op_count: u8) -> Self {
-        Self { previous_outpoint, signature_script, sequence, sig_op_count, optional_falcon_sig_op_count: OptionalFalconSigOpCount(falcon_sig_op_count) }
+    pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
+        Self { previous_outpoint, signature_script, sequence, sig_op_count }
     }
 }
 
@@ -617,7 +569,6 @@ mod tests {
                     ],
                     sequence: 2,
                     sig_op_count: 3,
-                    optional_falcon_sig_op_count: 0.into(),
                 },
                 TransactionInput {
                     previous_outpoint: TransactionOutpoint {
@@ -633,7 +584,6 @@ mod tests {
                     ],
                     sequence: 4,
                     sig_op_count: 5,
-                    optional_falcon_sig_op_count: 0.into()
                 },
             ],
             vec![
@@ -734,7 +684,7 @@ mod tests {
         let vec = (0..SCRIPT_VECTOR_SIZE as u8).collect::<Vec<_>>();
         let spk = ScriptPublicKey::from_vec(0xc0de, vec.clone());
         let hex: String = serde_json::to_string(&spk).unwrap();
-        assert_eq!("\"c0de000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223\"", hex);
+        assert_eq!("\"c0de000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122\"", hex);
         let spk = serde_json::from_str::<ScriptPublicKey>(&hex).unwrap();
         assert_eq!(spk.version, 0xc0de);
         assert_eq!(spk.script.as_slice(), vec.as_slice());

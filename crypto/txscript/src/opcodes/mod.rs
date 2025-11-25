@@ -1128,7 +1128,7 @@ mod test {
         let reused_values = SigHashReusedValuesUnsync::new();
         for TestCase { init, code, dstack } in tests {
             [false, true].into_iter().for_each(|kip10_enabled| {
-                let mut vm = TxScriptEngine::new(&reused_values, &cache, kip10_enabled);
+                let mut vm = TxScriptEngine::new(&reused_values, &cache, kip10_enabled, false); // todo check falcon
                 vm.dstack = init.clone();
                 code.execute(&mut vm).unwrap_or_else(|_| panic!("Opcode {} should not fail", code.value()));
                 assert_eq!(*vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
@@ -1141,7 +1141,7 @@ mod test {
         let reused_values = SigHashReusedValuesUnsync::new();
         for ErrorTestCase { init, code, error } in tests {
             [false, true].into_iter().for_each(|kip10_enabled| {
-                let mut vm = TxScriptEngine::new(&reused_values, &cache, kip10_enabled);
+                let mut vm = TxScriptEngine::new(&reused_values, &cache, kip10_enabled, false); // todo falcon
                 vm.dstack.clone_from(&init);
                 assert_eq!(
                     code.execute(&mut vm)
@@ -1177,7 +1177,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false, false); // todo falcon
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1211,7 +1211,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false, false); // todo falcon
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1226,7 +1226,7 @@ mod test {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpUnknown166::empty().expect("Should accept empty"),
             opcodes::OpUnknown167::empty().expect("Should accept empty"),
-            opcodes::OpUnknown196::empty().expect("Should accept empty"),
+            // opcodes::OpUnknown196::empty().expect("Should accept empty"), todo
             opcodes::OpUnknown197::empty().expect("Should accept empty"),
             opcodes::OpUnknown198::empty().expect("Should accept empty"),
             opcodes::OpUnknown199::empty().expect("Should accept empty"),
@@ -1284,7 +1284,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false, false); // todo falcon
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -2879,7 +2879,8 @@ mod test {
         ] {
             let mut tx = base_tx.clone();
             tx.0.lock_time = tx_lock_time;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false, false);
+            let mut vm =
+                TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false, false, false); // todo falcon
             vm.dstack = vec![lock_time.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -2921,7 +2922,8 @@ mod test {
         ] {
             let mut input = base_input.clone();
             input.sequence = tx_sequence;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false, false);
+            let mut vm =
+                TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false, false, false); // todo falcon
             vm.dstack = vec![sequence.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -3116,7 +3118,8 @@ mod test {
                     &sig_cache,
                     group.kip10_enabled,
                     false,
-                );
+                    false,
+                ); // todo falcon
 
                 // Check input index opcode first
                 let op_input_idx = opcodes::OpTxInputIndex::empty().expect("Should accept empty");
@@ -3386,7 +3389,8 @@ mod test {
                             &sig_cache,
                             kip10_enabled,
                             runtime_sig_op_counting,
-                        );
+                            false,
+                        ); // todo falcon
 
                         let op_input_count = opcodes::OpTxInputCount::empty().expect("Should accept empty");
                         let op_output_count = opcodes::OpTxOutputCount::empty().expect("Should accept empty");
@@ -3468,8 +3472,8 @@ mod test {
                     &sig_cache,
                     true,
                     false,
-                );
-
+                    false,
+                ); // todo falcon
                 assert_eq!(vm.execute(), Ok(()));
             }
 
@@ -3493,7 +3497,8 @@ mod test {
                     &sig_cache,
                     true,
                     false,
-                );
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
@@ -3534,7 +3539,8 @@ mod test {
                     &sig_cache,
                     true,
                     false,
-                );
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3561,8 +3567,8 @@ mod test {
                     &sig_cache,
                     true,
                     false,
-                );
-
+                    false,
+                ); // todo falcon
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
         }
@@ -3591,9 +3597,9 @@ mod test {
                 &sig_cache,
                 true,
                 false,
-            );
-
-            // OpInputSpk should push input's SPK onto stack, making it non-empty
+                false,
+            ); // todo falcon
+               // OpInputSpk should push input's SPK onto stack, making it non-empty
             assert_eq!(vm.execute(), Ok(()));
         }
 
@@ -3623,9 +3629,9 @@ mod test {
                 &sig_cache,
                 true,
                 false,
-            );
-
-            // Should succeed because the SPKs are different
+                false,
+            ); // todo falcon
+               // Should succeed because the SPKs are different
             assert_eq!(vm.execute(), Ok(()));
         }
 
@@ -3656,9 +3662,9 @@ mod test {
                 &sig_cache,
                 true,
                 false,
-            );
-
-            // Should succeed because both SPKs are identical
+                false,
+            ); // todo falcon
+               // Should succeed because both SPKs are identical
             assert_eq!(vm.execute(), Ok(()));
         }
 
@@ -3702,7 +3708,8 @@ mod test {
                     &sig_cache,
                     true,
                     false,
-                );
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3729,7 +3736,8 @@ mod test {
                     &sig_cache,
                     true,
                     false,
-                );
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
@@ -3763,7 +3771,8 @@ mod test {
                     &sig_cache,
                     true,
                     false,
-                );
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3788,7 +3797,8 @@ mod test {
                     &sig_cache,
                     true,
                     false,
-                );
+                    false,
+                ); // todo falcon
 
                 // Should fail because script expects index 0 but we're at index 1
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
@@ -3835,8 +3845,8 @@ mod test {
                     &sig_cache,
                     true,
                     false,
-                );
-
+                    false,
+                ); // todo falcon
                 assert_eq!(vm.execute(), Ok(()));
             }
 
@@ -3855,8 +3865,8 @@ mod test {
                     &sig_cache,
                     true,
                     false,
-                );
-
+                    false,
+                ); // todo falcon
                 assert_eq!(vm.execute(), Ok(()));
             }
 
@@ -3879,8 +3889,8 @@ mod test {
                     &sig_cache,
                     true,
                     false,
-                );
-
+                    false,
+                ); // todo falcon
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
 
@@ -3902,8 +3912,8 @@ mod test {
                     &sig_cache,
                     true,
                     false,
-                );
-
+                    false,
+                ); // todo falcon
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
         }
