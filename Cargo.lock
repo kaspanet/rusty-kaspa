@@ -1680,9 +1680,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
 dependencies = [
  "cfg-if 1.0.0",
+ "js-sys",
  "libc",
  "r-efi",
  "wasip2",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -4634,33 +4636,32 @@ dependencies = [
 [[package]]
 name = "pqcrypto-falcon"
 version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01a0e72acca23e8bc9886f26396adbc1a2c71fc0b841723415ee245cdc5b395c"
+source = "git+https://github.com/biryukovmaxim/pqcrypto.git?branch=poc-falcon-in-wasm-unknown-unknown#f1df4edaf10afabecb6e2042ca81dff82fd05d07"
 dependencies = [
  "cc",
  "glob",
  "libc",
  "pqcrypto-internals",
  "pqcrypto-traits",
+ "wasm32-unknown-unknown-openbsd-libc",
 ]
 
 [[package]]
 name = "pqcrypto-internals"
 version = "0.2.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4a326caf27cbf2ac291ca7fd56300497ba9e76a8cc6a7d95b7a18b57f22b61d"
+source = "git+https://github.com/biryukovmaxim/pqcrypto.git?branch=poc-falcon-in-wasm-unknown-unknown#f1df4edaf10afabecb6e2042ca81dff82fd05d07"
 dependencies = [
  "cc",
  "dunce",
  "getrandom 0.3.4",
  "libc",
+ "wasm32-unknown-unknown-openbsd-libc",
 ]
 
 [[package]]
 name = "pqcrypto-traits"
 version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94e851c7654eed9e68d7d27164c454961a616cf8c203d500607ef22c737b51bb"
+source = "git+https://github.com/biryukovmaxim/pqcrypto.git?branch=poc-falcon-in-wasm-unknown-unknown#f1df4edaf10afabecb6e2042ca81dff82fd05d07"
 
 [[package]]
 name = "prettyplease"
@@ -6384,6 +6385,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.79",
+]
+
+[[package]]
+name = "wasm32-unknown-unknown-openbsd-libc"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6abee48844f5d109794276675f8f63c2ecdc21a1b941b45dd346e606fca3a8c"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

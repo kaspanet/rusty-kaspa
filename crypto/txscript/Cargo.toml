@@ -31,7 +31,7 @@ kaspa-utils.workspace = true
 kaspa-wasm-core.workspace = true
 log.workspace = true
 parking_lot.workspace = true
-pqcrypto-falcon = { workspace = true }
+pqcrypto-falcon = { workspace = true, features = ["getrandom_wasm_js"] } # todo should only be included if needed
 pqcrypto-traits.workspace = true
 rand.workspace = true
 secp256k1.workspace = true

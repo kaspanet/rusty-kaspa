@@ -342,3 +342,13 @@ strip = false
 [workspace.lints.clippy]
 empty_docs = "allow"
 uninlined_format_args = "allow"
+
+[patch.crates-io.pqcrypto-falcon]
+git = "https://github.com/biryukovmaxim/pqcrypto.git"
+package = "pqcrypto-falcon"
+branch = "poc-falcon-in-wasm-unknown-unknown"
+
+[patch.crates-io.pqcrypto-traits]
+git = "https://github.com/biryukovmaxim/pqcrypto.git"
+package = "pqcrypto-traits"
+branch = "poc-falcon-in-wasm-unknown-unknown"
