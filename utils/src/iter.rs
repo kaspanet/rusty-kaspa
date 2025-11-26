@@ -39,7 +39,7 @@ where
         Self: Sized,
     {
         self.scan(0usize, |prev, (cum, level)| {
-            let count = cum.checked_sub(*prev).expect("expecting cumulative counts");
+            let count = cum.checked_sub(*prev).filter(|&c| c > 0).expect("cumulative counts must be strictly increasing");
             *prev = cum;
             Some((count, level))
         })
