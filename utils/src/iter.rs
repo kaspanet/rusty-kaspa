@@ -38,12 +38,12 @@ where
     where
         Self: Sized,
     {
-        self.scan(0usize, |prev, (cum, level)| {
+        self.scan(0usize, |prev, (cum, item)| {
             let count = cum.checked_sub(*prev).filter(|&c| c > 0).expect("cumulative counts must be strictly increasing");
             *prev = cum;
-            Some((count, level))
+            Some((count, item))
         })
-        .flat_map(|(count, level)| std::iter::repeat_n(level, count))
+        .flat_map(|(count, item)| std::iter::repeat_n(item, count))
     }
 }
 

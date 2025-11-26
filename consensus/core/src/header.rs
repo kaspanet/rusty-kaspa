@@ -9,13 +9,72 @@ use serde::{Deserialize, Serialize};
 use std::mem::size_of;
 
 /// An efficient run-length encoding for the parent-by-level vector in the block header.
-/// Each tuple `(cumulative_level_count, parents_at_level)` indicates that levels
-/// up to `cumulative_level_count - 1` share the `parents_at_level` list.
+/// The i-th run `(cum_count, parents)` indicates that for all levels in the range `prev_cum_count..cum_count`,
+/// the parents are `parents`.
 ///
 /// Example: `[(3, [A]), (5, [B])]` means levels 0-2 have parents `[A]`,
 /// and levels 3-4 have parents `[B]`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct CompressedParents(Vec<(u8, Vec<Hash>)>);
+
+impl CompressedParents {
+    pub fn expanded_len(&self) -> usize {
+        self.0.last().map(|(cum, _)| *cum as usize).unwrap_or(0)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn get(&self, index: usize) -> Option<&[Hash]> {
+        if index >= self.expanded_len() {
+            return None;
+        }
+        if index == 0 {
+            // Fast path for the common case of getting the first level (direct parents)
+            return Some(&self.0[0].1);
+        }
+        // `partition_point` returns the index of the first element for which the predicate is false.
+        // The predicate `cum - 1 < index` checks if a run is before the desired `index`.
+        // The first run for which this is false is the one that contains our index.
+        let i = self.0.partition_point(|(cum, _)| (*cum as usize) - 1 < index);
+        Some(&self.0[i].1)
+    }
+
+    pub fn expanded_iter(&self) -> impl Iterator<Item = &'_ [Hash]> {
+        self.0.iter().map(|(cum, v)| (*cum as usize, v.as_slice())).expand_rle()
+    }
+
+    /// Adds a new level of parents. This extends the last run if parents_at_level
+    /// is identical to the last level, otherwise it starts a new run
+    pub fn push(&mut self, parents_at_level: Vec<Hash>) {
+        match self.0.last_mut() {
+            Some((count, last_parents)) if *last_parents == parents_at_level => {
+                *count = count.checked_add(1).expect("exceeded max levels of 255");
+            }
+            Some((count, _)) => {
+                let next_cum = count.checked_add(1).expect("exceeded max levels of 255");
+                self.0.push((next_cum, parents_at_level));
+            }
+            None => {
+                self.0.push((1, parents_at_level));
+            }
+        }
+    }
+
+    /// Sets the direct parents (level 0) to the given value, preserving all other levels.
+    ///
+    /// NOTE: inefficient implementation, should be used for testing purposes only.
+    pub fn set_direct_parents(&mut self, direct_parents: Vec<Hash>) {
+        if self.0.is_empty() {
+            self.0.push((1, direct_parents));
+            return;
+        }
+        let mut parents: Vec<Vec<Hash>> = std::mem::take(self).into();
+        parents[0] = direct_parents;
+        *self = parents.try_into().unwrap();
+    }
+}
 
 use crate::errors::header::CompressedParentsError;
 
@@ -34,55 +93,13 @@ impl TryFrom<Vec<Vec<Hash>>> for CompressedParents {
 
 impl From<CompressedParents> for Vec<Vec<Hash>> {
     fn from(value: CompressedParents) -> Self {
-        value.expended_iter().map(|x| x.to_vec()).collect()
-    }
-}
-
-impl CompressedParents {
-    pub fn expanded_len(&self) -> usize {
-        self.0.last().map(|(cum, _)| *cum as usize).unwrap_or(0)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn get(&self, index: usize) -> Option<&[Hash]> {
-        if index >= self.expanded_len() {
-            return None;
-        }
-        // `partition_point` returns the index of the first element for which the predicate is false.
-        // The predicate `cum - 1 < index` checks if a run is before the desired `index`.
-        // The first run for which this is false is the one that contains our index.
-        let i = self.0.partition_point(|(cum, _)| (*cum as usize) - 1 < index);
-        Some(&self.0[i].1)
-    }
-
-    pub fn expended_iter(&self) -> impl Iterator<Item = &'_ [Hash]> {
-        self.0.iter().map(|(cum, v)| (*cum as usize, v.as_slice())).expand_rle()
-    }
-
-    /// Adds a new level of parents. This extends the last run if parents_at_level
-    /// is identical to the last level, otherwise it starts a new run
-    pub fn push(&mut self, parents_at_level: Vec<Hash>) {
-        match self.0.last_mut() {
-            Some((count, last_parents)) if *last_parents == parents_at_level => {
-                *count = count.checked_add(1).expect("Exceeded maximum parent levels of 255");
-            }
-            Some((count, _)) => {
-                let next_cum = count.checked_add(1).expect("Exceeded maximum parent levels of 255");
-                self.0.push((next_cum, parents_at_level));
-            }
-            None => {
-                self.0.push((1, parents_at_level));
-            }
-        }
+        value.0.into_iter().map(|(cum, v)| (cum as usize, v)).expand_rle().collect()
     }
 }
 
 impl From<&CompressedParents> for Vec<Vec<Hash>> {
     fn from(value: &CompressedParents) -> Self {
-        value.expended_iter().map(|x| x.to_vec()).collect()
+        value.expanded_iter().map(|x| x.to_vec()).collect()
     }
 }
 
@@ -152,14 +169,6 @@ impl Header {
             Some(parents) => parents,
             None => &[],
         }
-    }
-
-    pub fn parents_by_level_vec(&self) -> Vec<Vec<Hash>> {
-        self.parents_by_level.clone().into()
-    }
-
-    pub fn set_parents_by_level_vec(&mut self, parents: Vec<Vec<Hash>>) {
-        self.parents_by_level = parents.try_into().unwrap();
     }
 
     /// WARNING: To be used for test purposes only
@@ -305,7 +314,7 @@ mod tests {
         assert_eq!(compressed.get(5), None, "get out of bounds (just over)");
         assert_eq!(compressed.get(10), None, "get out of bounds (far over)");
 
-        let collected: Vec<&[Hash]> = compressed.expended_iter().collect();
+        let collected: Vec<&[Hash]> = compressed.expanded_iter().collect();
         let expected: Vec<&[Hash]> = parents.iter().map(|v| v.as_slice()).collect();
         assert_eq!(collected, expected);
 

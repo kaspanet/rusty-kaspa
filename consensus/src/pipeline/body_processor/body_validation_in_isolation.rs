@@ -508,9 +508,7 @@ mod tests {
         );
 
         let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![config.genesis.hash], vec![]);
-        let mut parents = block.header.parents_by_level_vec();
-        parents[0][0] = 0.into();
-        block.header.set_parents_by_level_vec(parents);
+        block.header.parents_by_level.set_direct_parents(vec![0.into()]);
 
         assert_match!(
             consensus.validate_and_insert_block(block.clone().to_immutable()).virtual_state_task.await,
