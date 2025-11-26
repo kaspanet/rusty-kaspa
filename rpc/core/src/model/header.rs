@@ -86,7 +86,7 @@ impl From<&Header> for RpcHeader {
         Self {
             hash: header.hash,
             version: header.version,
-            parents_by_level: header.parents_by_level.clone().into(),
+            parents_by_level: (&header.parents_by_level).into(),
             hash_merkle_root: header.hash_merkle_root,
             accepted_id_merkle_root: header.accepted_id_merkle_root,
             utxo_commitment: header.utxo_commitment,

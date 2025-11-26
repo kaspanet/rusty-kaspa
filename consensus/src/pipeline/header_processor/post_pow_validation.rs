@@ -70,7 +70,7 @@ impl HeaderProcessor {
         {
             return Err(RuleError::UnexpectedIndirectParents(
                 TwoDimVecDisplay(expected_block_parents.into()),
-                TwoDimVecDisplay(Vec::from(&header.parents_by_level)),
+                TwoDimVecDisplay((&header.parents_by_level).into()),
             ));
         };
         Ok(())
