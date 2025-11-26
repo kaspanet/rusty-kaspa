@@ -67,6 +67,51 @@ where
         }
     }
 
+    pub fn has_with_fallback(&self, fallback_prefix: &[u8], key: TKey) -> Result<bool, StoreError>
+    where
+        TKey: Clone + AsRef<[u8]>,
+    {
+        if self.cache.contains_key(&key) {
+            Ok(true)
+        } else {
+            let db_key = DbKey::new(&self.prefix, key.clone());
+            if self.db.get_pinned(&db_key)?.is_some() {
+                Ok(true)
+            } else {
+                let db_key = DbKey::new(fallback_prefix, key.clone());
+                Ok(self.db.get_pinned(&db_key)?.is_some())
+            }
+        }
+    }
+
+    pub fn read_with_fallback<TFallbackDeser>(&self, fallback_prefix: &[u8], key: TKey) -> Result<TData, StoreError>
+    where
+        TKey: Clone + AsRef<[u8]> + ToString,
+        TData: DeserializeOwned,
+        TFallbackDeser: DeserializeOwned + Into<TData>,
+    {
+        if let Some(data) = self.cache.get(&key) {
+            Ok(data)
+        } else {
+            let db_key = DbKey::new(&self.prefix, key.clone());
+            if let Some(slice) = self.db.get_pinned(&db_key)? {
+                let data: TData = bincode::deserialize(&slice)?;
+                self.cache.insert(key, data.clone());
+                Ok(data)
+            } else {
+                let db_key = DbKey::new(fallback_prefix, key.clone());
+                if let Some(slice) = self.db.get_pinned(&db_key)? {
+                    let data: TFallbackDeser = bincode::deserialize(&slice)?;
+                    let data: TData = data.into();
+                    self.cache.insert(key, data.clone());
+                    Ok(data)
+                } else {
+                    Err(StoreError::KeyNotFound(db_key))
+                }
+            }
+        }
+    }
+
     pub fn iterator(&self) -> impl Iterator<Item = KeyDataResult<TData>> + '_
     where
         TKey: Clone + AsRef<[u8]>,
@@ -244,5 +289,48 @@ mod tests {
         assert_eq!(16, access.iterator().count());
         db.write(batch).unwrap();
         assert_eq!(0, access.iterator().count());
+    }
+
+    #[test]
+    fn test_read_with_fallback() {
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let primary_prefix = vec![1];
+        let fallback_prefix = vec![2];
+        let access = CachedDbAccess::<Hash, u64>::new(db.clone(), CachePolicy::Count(10), primary_prefix);
+        let fallback_access = CachedDbAccess::<Hash, u64>::new(db.clone(), CachePolicy::Count(10), fallback_prefix.clone());
+
+        let key: Hash = 1.into();
+        let value = 100;
+
+        // Write to fallback
+        fallback_access.write(DirectDbWriter::new(&db), key, value).unwrap();
+
+        // Read with fallback, should succeed
+        let result = access.read_with_fallback::<u64>(&fallback_prefix, key).unwrap();
+        assert_eq!(result, value);
+
+        // Key should now be in the primary cache
+        assert_eq!(access.read_from_cache(key).unwrap(), value);
+    }
+
+    #[test]
+    fn test_has_with_fallback() {
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let primary_prefix = vec![1];
+        let fallback_prefix = vec![2];
+        let access = CachedDbAccess::<Hash, u64>::new(db.clone(), CachePolicy::Count(10), primary_prefix);
+        let fallback_access = CachedDbAccess::<Hash, u64>::new(db.clone(), CachePolicy::Count(10), fallback_prefix.clone());
+
+        let key_in_fallback: Hash = 1.into();
+        let key_not_found: Hash = 2.into();
+
+        // Write to fallback
+        fallback_access.write(DirectDbWriter::new(&db), key_in_fallback, 100).unwrap();
+
+        // Check for key in fallback, should exist
+        assert!(access.has_with_fallback(&fallback_prefix, key_in_fallback).unwrap());
+
+        // Check for key that doesn't exist, should not be found
+        assert!(!access.has_with_fallback(&fallback_prefix, key_not_found).unwrap());
     }
 }

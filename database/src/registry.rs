@@ -15,6 +15,7 @@ pub enum DatabaseStorePrefixes {
     Ghostdag = 5,
     GhostdagCompact = 6,
     HeadersSelectedTip = 7,
+    // Legacy headers store prefix. CompressedHeaders is used instead
     Headers = 8,
     HeadersCompact = 9,
     PastPruningPoints = 10,
@@ -41,6 +42,9 @@ pub enum DatabaseStorePrefixes {
     // ---- Decomposed reachability stores ----
     ReachabilityTreeChildren = 30,
     ReachabilityFutureCoveringSet = 31,
+
+    // Stores headers with run-length encoded parents
+    CompressedHeaders = 32,
 
     // ---- Ghostdag Proof
     TempGhostdag = 40,

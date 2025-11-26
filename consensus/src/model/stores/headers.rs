@@ -38,6 +38,54 @@ pub trait HeaderStore: HeaderStoreReader {
     fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
+/// A temporary struct for backward compatibility. This struct is used to deserialize old header data with
+/// parents_by_level as Vec<Vec<Hash>>.
+#[derive(Clone, Debug, Deserialize)]
+struct Header2 {
+    pub hash: Hash,
+    pub version: u16,
+    pub parents_by_level: Vec<Vec<Hash>>,
+    pub hash_merkle_root: Hash,
+    pub accepted_id_merkle_root: Hash,
+    pub utxo_commitment: Hash,
+    pub timestamp: u64,
+    pub bits: u32,
+    pub nonce: u64,
+    pub daa_score: u64,
+    pub blue_work: kaspa_consensus_core::BlueWorkType,
+    pub blue_score: u64,
+    pub pruning_point: Hash,
+}
+
+#[derive(Clone, Deserialize)]
+struct HeaderWithBlockLevel2 {
+    header: Header2,
+    block_level: BlockLevel,
+}
+impl From<HeaderWithBlockLevel2> for HeaderWithBlockLevel {
+    fn from(value: HeaderWithBlockLevel2) -> Self {
+        Self {
+            header: Header {
+                hash: value.header.hash,
+                version: value.header.version,
+                parents_by_level: value.header.parents_by_level.try_into().unwrap(),
+                hash_merkle_root: value.header.hash_merkle_root,
+                accepted_id_merkle_root: value.header.accepted_id_merkle_root,
+                utxo_commitment: value.header.utxo_commitment,
+                timestamp: value.header.timestamp,
+                bits: value.header.bits,
+                nonce: value.header.nonce,
+                daa_score: value.header.daa_score,
+                blue_work: value.header.blue_work,
+                blue_score: value.header.blue_score,
+                pruning_point: value.header.pruning_point,
+            }
+            .into(),
+            block_level: value.block_level,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct CompactHeaderData {
     pub daa_score: u64,
@@ -60,6 +108,7 @@ pub struct DbHeadersStore {
     db: Arc<DB>,
     compact_headers_access: CachedDbAccess<Hash, CompactHeaderData, BlockHasher>,
     headers_access: CachedDbAccess<Hash, HeaderWithBlockLevel, BlockHasher>,
+    fallback_prefix: Vec<u8>,
 }
 
 impl DbHeadersStore {
@@ -71,7 +120,8 @@ impl DbHeadersStore {
                 compact_cache_policy,
                 DatabaseStorePrefixes::HeadersCompact.into(),
             ),
-            headers_access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::Headers.into()),
+            headers_access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::CompressedHeaders.into()),
+            fallback_prefix: DatabaseStorePrefixes::Headers.into(),
         }
     }
 
@@ -80,7 +130,7 @@ impl DbHeadersStore {
     }
 
     pub fn has(&self, hash: Hash) -> StoreResult<bool> {
-        self.headers_access.has(hash)
+        self.headers_access.has_with_fallback(self.fallback_prefix.as_ref(), hash)
     }
 
     pub fn insert_batch(
@@ -90,7 +140,7 @@ impl DbHeadersStore {
         header: Arc<Header>,
         block_level: BlockLevel,
     ) -> Result<(), StoreError> {
-        if self.headers_access.has(hash)? {
+        if self.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
         }
         self.headers_access.write(BatchDbWriter::new(batch), hash, HeaderWithBlockLevel { header: header.clone(), block_level })?;
@@ -134,11 +184,11 @@ impl HeaderStoreReader for DbHeadersStore {
     }
 
     fn get_header(&self, hash: Hash) -> Result<Arc<Header>, StoreError> {
-        Ok(self.headers_access.read(hash)?.header)
+        Ok(self.headers_access.read_with_fallback::<HeaderWithBlockLevel2>(self.fallback_prefix.as_ref(), hash)?.header)
     }
 
     fn get_header_with_block_level(&self, hash: Hash) -> Result<HeaderWithBlockLevel, StoreError> {
-        self.headers_access.read(hash)
+        self.headers_access.read_with_fallback::<HeaderWithBlockLevel2>(self.fallback_prefix.as_ref(), hash)
     }
 
     fn get_compact_header_data(&self, hash: Hash) -> Result<CompactHeaderData, StoreError> {
@@ -151,7 +201,7 @@ impl HeaderStoreReader for DbHeadersStore {
 
 impl HeaderStore for DbHeadersStore {
     fn insert(&self, hash: Hash, header: Arc<Header>, block_level: u8) -> Result<(), StoreError> {
-        if self.headers_access.has(hash)? {
+        if self.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
         }
         if self.compact_headers_access.has(hash)? {

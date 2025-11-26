@@ -1,4 +1,9 @@
-use crate::{block::Block, header::Header, subnets::SUBNETWORK_ID_COINBASE, tx::Transaction};
+use crate::{
+    block::Block,
+    header::{CompressedParents, Header},
+    subnets::SUBNETWORK_ID_COINBASE,
+    tx::Transaction,
+};
 use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::EMPTY_MUHASH;
 
@@ -26,7 +31,7 @@ impl From<&GenesisBlock> for Header {
     fn from(genesis: &GenesisBlock) -> Self {
         Header::new_finalized(
             genesis.version,
-            Vec::new(),
+            CompressedParents::default(),
             genesis.hash_merkle_root,
             ZERO_HASH,
             genesis.utxo_commitment,
