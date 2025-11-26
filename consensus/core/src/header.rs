@@ -34,7 +34,7 @@ impl TryFrom<Vec<Vec<Hash>>> for CompressedParents {
 
 impl From<CompressedParents> for Vec<Vec<Hash>> {
     fn from(value: CompressedParents) -> Self {
-        value.iter().map(|x| x.to_vec()).collect()
+        value.expended_iter().map(|x| x.to_vec()).collect()
     }
 }
 
@@ -58,7 +58,7 @@ impl CompressedParents {
         Some(&self.0[i].1)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &'_ [Hash]> {
+    pub fn expended_iter(&self) -> impl Iterator<Item = &'_ [Hash]> {
         self.0.iter().map(|(cum, v)| (*cum as usize, v.as_slice())).expand_rle()
     }
 
@@ -82,7 +82,7 @@ impl CompressedParents {
 
 impl From<&CompressedParents> for Vec<Vec<Hash>> {
     fn from(value: &CompressedParents) -> Self {
-        value.iter().map(|x| x.to_vec()).collect()
+        value.expended_iter().map(|x| x.to_vec()).collect()
     }
 }
 
@@ -305,7 +305,7 @@ mod tests {
         assert_eq!(compressed.get(5), None, "get out of bounds (just over)");
         assert_eq!(compressed.get(10), None, "get out of bounds (far over)");
 
-        let collected: Vec<&[Hash]> = compressed.iter().collect();
+        let collected: Vec<&[Hash]> = compressed.expended_iter().collect();
         let expected: Vec<&[Hash]> = parents.iter().map(|v| v.as_slice()).collect();
         assert_eq!(collected, expected);
 

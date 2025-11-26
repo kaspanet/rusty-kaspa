@@ -9,7 +9,7 @@ pub fn hash_override_nonce_time(header: &Header, nonce: u64, timestamp: u64) -> 
     hasher.update(header.version.to_le_bytes()).write_len(header.parents_by_level.expanded_len()); // Write the number of parent levels
 
     // Write parents at each level
-    header.parents_by_level.iter().for_each(|level| {
+    header.parents_by_level.expended_iter().for_each(|level| {
         hasher.write_var_array(level);
     });
 

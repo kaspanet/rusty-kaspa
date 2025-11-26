@@ -55,7 +55,7 @@ impl HeaderProcessor {
     pub fn check_indirect_parents(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
         let expected_block_parents = self.parents_manager.calc_block_parents(ctx.pruning_point, header.direct_parents());
         if header.parents_by_level.expanded_len() != expected_block_parents.expanded_len()
-            || !expected_block_parents.iter().zip(header.parents_by_level.iter()).all(
+            || !expected_block_parents.expended_iter().zip(header.parents_by_level.expended_iter()).all(
                 |(expected_level_parents, header_level_parents)| {
                     if header_level_parents.len() != expected_level_parents.len() {
                         return false;

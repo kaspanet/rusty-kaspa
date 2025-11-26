@@ -507,7 +507,7 @@ mod tests {
         for test_block in test_blocks {
             let direct_parents = test_block.direct_parents.iter().map(|parent| Hash::from_u64_word(*parent)).collect_vec();
             let parents = parents_manager.calc_block_parents(pruning_point, &direct_parents);
-            let actual_parents = parents.iter().map(|parents| BlockHashSet::from_iter(parents.iter().copied())).collect_vec();
+            let actual_parents = parents.expended_iter().map(|parents| BlockHashSet::from_iter(parents.iter().copied())).collect_vec();
             let expected_parents = test_block
                 .expected_parents
                 .iter()
@@ -609,7 +609,7 @@ mod tests {
         for test_block in test_blocks {
             let direct_parents = test_block.direct_parents.iter().map(|parent| Hash::from_u64_word(*parent)).collect_vec();
             let parents = parents_manager.calc_block_parents(pruning_point, &direct_parents);
-            let actual_parents = parents.iter().map(|parents| BlockHashSet::from_iter(parents.iter().copied())).collect_vec();
+            let actual_parents = parents.expended_iter().map(|parents| BlockHashSet::from_iter(parents.iter().copied())).collect_vec();
             let expected_parents = test_block
                 .expected_parents
                 .iter()

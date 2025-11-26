@@ -13,7 +13,7 @@ impl From<&Header> for protowire::BlockHeader {
     fn from(item: &Header) -> Self {
         Self {
             version: item.version.into(),
-            parents: item.parents_by_level.iter().map(protowire::BlockLevelParents::from).collect(),
+            parents: item.parents_by_level.expended_iter().map(protowire::BlockLevelParents::from).collect(),
             hash_merkle_root: Some(item.hash_merkle_root.into()),
             accepted_id_merkle_root: Some(item.accepted_id_merkle_root.into()),
             utxo_commitment: Some(item.utxo_commitment.into()),
