@@ -377,6 +377,10 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         // If I'm at version 3 and latest version is 7, I need to be able to upgrade to that version following the intermediate
         // steps without having to delete the DB
         if version == 4 {
+            let msg = "NOTE: Node database is from an older version. Proceeding with the upgrade is instant and safe.
+However, downgrading to an older node version later will require deleting the database.
+Do you confirm? (y/n)";
+            get_user_approval_or_exit(msg, args.yes);
             mcms.set_version(kaspa_consensus::consensus::factory::LATEST_DB_VERSION).unwrap();
         } else {
             let msg =
