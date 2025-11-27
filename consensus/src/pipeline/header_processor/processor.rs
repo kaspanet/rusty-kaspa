@@ -32,10 +32,7 @@ use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::{BlockHashes, ORIGIN},
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-    config::{
-        genesis::GenesisBlock,
-        params::{ForkActivation, ForkedParam},
-    },
+    config::{genesis::GenesisBlock, params::ForkedParam},
     header::Header,
     BlockHashSet, BlockLevel,
 };
@@ -116,7 +113,6 @@ pub struct HeaderProcessor {
     pub(super) mergeset_size_limit: ForkedParam<u64>,
     pub(super) skip_proof_of_work: bool,
     pub(super) max_block_level: BlockLevel,
-    pub(super) crescendo_activation: ForkActivation,
 
     // DB
     db: Arc<DB>,
@@ -203,7 +199,6 @@ impl HeaderProcessor {
             mergeset_size_limit: params.mergeset_size_limit(),
             skip_proof_of_work: params.skip_proof_of_work,
             max_block_level: params.max_block_level,
-            crescendo_activation: params.crescendo_activation,
         }
     }
 
