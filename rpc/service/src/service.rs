@@ -321,6 +321,8 @@ impl RpcApi for RpcCoreService {
         if !request.allow_non_daa_blocks {
             let virtual_daa_score = session.get_virtual_daa_score();
 
+            // A simple heuristic check which signals that the mined block is out of date
+            // and should not be accepted unless user explicitly requests.
             let difficulty_window_duration = self.config.difficulty_window_duration_in_block_units().after();
             if virtual_daa_score > difficulty_window_duration
                 && block.header.daa_score < virtual_daa_score - difficulty_window_duration

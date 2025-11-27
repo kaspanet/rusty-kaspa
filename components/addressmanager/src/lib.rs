@@ -536,7 +536,8 @@ mod address_store_with_cache {
         }
 
         // This test is indeterminate, so it is ignored by default.
-        // TODO: Maybe run multiple times and make it pass if the majority of runs pass?
+        // Every developer that changes the logic of the address manager should run this test locally before sending a PR.
+        // TODO: Maybe change statistical parameters to reduce the failure rate?
         #[test]
         #[ignore]
         fn test_network_distribution_weighting() {

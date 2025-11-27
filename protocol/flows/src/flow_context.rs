@@ -232,7 +232,6 @@ pub struct FlowContextInner {
     // Special sampling logger used only for high-bps networks where logs must be throttled
     block_event_logger: Option<BlockEventLogger>,
 
-    // Bps upper bound
     bps: usize,
 
     // Orphan parameters
