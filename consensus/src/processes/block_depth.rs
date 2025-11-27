@@ -55,10 +55,9 @@ impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader, T:
         if ghostdag_data.selected_parent.is_origin() {
             return ORIGIN;
         }
-        let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
         let depth = match depth_type {
-            BlockDepthType::MergeRoot => self.merge_depth.get(selected_parent_daa_score),
-            BlockDepthType::Finality => self.finality_depth.get(selected_parent_daa_score),
+            BlockDepthType::MergeRoot => self.merge_depth.after(),
+            BlockDepthType::Finality => self.finality_depth.after(),
         };
         if ghostdag_data.blue_score < depth {
             return self.genesis_hash;

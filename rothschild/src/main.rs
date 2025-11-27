@@ -233,7 +233,7 @@ async fn main() {
 
     let coinbase_maturity = match info.network.suffix {
         Some(11) => panic!("TN11 is not supported on this version"),
-        None | Some(_) => TESTNET_PARAMS.coinbase_maturity().upper_bound(),
+        None | Some(_) => TESTNET_PARAMS.coinbase_maturity().after(),
     };
     info!(
         "Node block-DAG info: \n\tNetwork: {}, \n\tBlock count: {}, \n\tHeader count: {}, \n\tDifficulty: {}, 

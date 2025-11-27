@@ -43,15 +43,15 @@ impl TransactionValidator {
             return Err(TxRuleError::CoinbaseHasInputs(tx.inputs.len()));
         }
 
-        /*
-        [Crescendo]: moved this specific check to body_validation_in_context since it depends on fork activation
-                     TODO (post HF): move back here
+        if tx.mass() > 0 {
+            return Err(TxRuleError::CoinbaseNonZeroMassCommitment);
+        }
 
         let outputs_limit = self.ghostdag_k as u64 + 2;
         if tx.outputs.len() as u64 > outputs_limit {
             return Err(TxRuleError::CoinbaseTooManyOutputs(tx.outputs.len(), outputs_limit));
         }
-        */
+
         for (i, output) in tx.outputs.iter().enumerate() {
             if output.script_public_key.script().len() > self.coinbase_payload_script_public_key_max_len as usize {
                 return Err(TxRuleError::CoinbaseScriptPublicKeyTooLong(i));
@@ -65,9 +65,8 @@ impl TransactionValidator {
             // We already check coinbase outputs count vs. Ghostdag K + 2
             return Ok(());
         }
-        // [Crescendo]: keep the check here over the upper limit. Add a tight check to in_header_context validation
-        if tx.outputs.len() > self.max_tx_outputs.upper_bound() {
-            return Err(TxRuleError::TooManyOutputs(tx.outputs.len(), self.max_tx_inputs.upper_bound()));
+        if tx.outputs.len() > self.max_tx_outputs.after() {
+            return Err(TxRuleError::TooManyOutputs(tx.outputs.len(), self.max_tx_inputs.after()));
         }
 
         Ok(())
@@ -78,9 +77,8 @@ impl TransactionValidator {
             return Err(TxRuleError::NoTxInputs);
         }
 
-        // [Crescendo]: keep the check here over the upper limit. Add a tight check to in_header_context validation
-        if tx.inputs.len() > self.max_tx_inputs.upper_bound() {
-            return Err(TxRuleError::TooManyInputs(tx.inputs.len(), self.max_tx_inputs.upper_bound()));
+        if tx.inputs.len() > self.max_tx_inputs.after() {
+            return Err(TxRuleError::TooManyInputs(tx.inputs.len(), self.max_tx_inputs.after()));
         }
 
         Ok(())
@@ -88,10 +86,8 @@ impl TransactionValidator {
 
     // The main purpose of this check is to avoid overflows when calculating transaction mass later.
     fn check_transaction_signature_scripts(&self, tx: &Transaction) -> TxResult<()> {
-        // [Crescendo]: keep the check here over the upper limit. Add a tight check to in_header_context validation
-        if let Some(i) = tx.inputs.iter().position(|input| input.signature_script.len() > self.max_signature_script_len.upper_bound())
-        {
-            return Err(TxRuleError::TooBigSignatureScript(i, self.max_signature_script_len.upper_bound()));
+        if let Some(i) = tx.inputs.iter().position(|input| input.signature_script.len() > self.max_signature_script_len.after()) {
+            return Err(TxRuleError::TooBigSignatureScript(i, self.max_signature_script_len.after()));
         }
 
         Ok(())
@@ -99,11 +95,10 @@ impl TransactionValidator {
 
     // The main purpose of this check is to avoid overflows when calculating transaction mass later.
     fn check_transaction_script_public_keys(&self, tx: &Transaction) -> TxResult<()> {
-        // [Crescendo]: keep the check here over the upper limit. Add a tight check to in_header_context validation
         if let Some(i) =
-            tx.outputs.iter().position(|out| out.script_public_key.script().len() > self.max_script_public_key_len.upper_bound())
+            tx.outputs.iter().position(|out| out.script_public_key.script().len() > self.max_script_public_key_len.after())
         {
-            return Err(TxRuleError::TooBigScriptPublicKey(i, self.max_script_public_key_len.upper_bound()));
+            return Err(TxRuleError::TooBigScriptPublicKey(i, self.max_script_public_key_len.after()));
         }
 
         Ok(())
@@ -194,6 +189,7 @@ mod tests {
             params.prior_max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.prior_coinbase_maturity,
+            params.ghostdag_k().after(),
             Default::default(),
         );
 

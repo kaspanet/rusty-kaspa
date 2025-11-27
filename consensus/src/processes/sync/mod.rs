@@ -78,7 +78,7 @@ impl<
     /// because it returns blocks with MergeSet granularity, so if MergeSet > max_blocks, the function will return nothing which is undesired behavior.
     pub fn antipast_hashes_between(&self, low: Hash, high: Hash, max_blocks: Option<usize>) -> (Vec<Hash>, Hash) {
         let max_blocks = max_blocks.unwrap_or(usize::MAX);
-        assert!(max_blocks >= self.mergeset_size_limit.upper_bound() as usize);
+        assert!(max_blocks >= self.mergeset_size_limit.after() as usize);
 
         // If low is not in the chain of high - forward_chain_iterator will fail.
         // Therefore, we traverse down low's chain until we reach a block that is in

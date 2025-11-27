@@ -709,9 +709,8 @@ impl VirtualStateProcessor {
         // we might touch such data prior to validating the bounded merge rule. All in all, this function is short
         // enough so we avoid making further optimizations
         let _prune_guard = self.pruning_lock.blocking_read();
-        let selected_parent_daa_score = self.headers_store.get_daa_score(selected_parent).unwrap();
-        let max_block_parents = self.max_block_parents.get(selected_parent_daa_score) as usize;
-        let mergeset_size_limit = self.mergeset_size_limit.get(selected_parent_daa_score);
+        let max_block_parents = self.max_block_parents.after() as usize;
+        let mergeset_size_limit = self.mergeset_size_limit.after();
         let max_candidates = self.max_virtual_parent_candidates(max_block_parents);
 
         // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes

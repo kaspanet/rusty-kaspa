@@ -433,7 +433,7 @@ mod tests {
         */
         for net in NetworkType::iter() {
             let params: Params = net.into();
-            let max_spk_len = (params.max_script_public_key_len().upper_bound() as u64)
+            let max_spk_len = (params.max_script_public_key_len().after() as u64)
                 .min(params.max_block_mass.div_ceil(params.mass_per_script_pub_key_byte));
             let max_plurality = (UTXO_CONST_STORAGE + max_spk_len).div_ceil(UTXO_UNIT_SIZE); // see utxo_plurality
             let product = params.storage_mass_parameter.checked_mul(max_plurality).and_then(|x| x.checked_mul(max_plurality));
