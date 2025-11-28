@@ -246,7 +246,7 @@ sha1 = "0.10.6"
 sha2 = "0.10.8"
 sha3 = "0.10.8"
 slugify-rs = "0.0.3"
-smallvec = { version = "1.11.1", features = ["serde"] }
+smallvec = { version = "1.11.1", features = ["serde", "const_generics"] }
 sorted-insert = "0.2.3"
 subtle = { version = "2.5.0", default-features = false }
 sysinfo = "0.31.2"

@@ -198,7 +198,7 @@ impl ConsensusConverter {
             hash: if verbosity.include_hash.unwrap_or(false) { Some(header.hash) } else { Default::default() },
             version: if verbosity.include_version.unwrap_or(false) { Some(header.version) } else { Default::default() },
             parents_by_level: if verbosity.include_parents_by_level.unwrap_or(false) {
-                header.parents_by_level.to_owned()
+                header.parents_by_level.to_owned().into()
             } else {
                 Default::default()
             },

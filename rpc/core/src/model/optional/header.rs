@@ -73,7 +73,7 @@ impl From<Header> for RpcOptionalHeader {
         Self {
             hash: Some(header.hash),
             version: Some(header.version),
-            parents_by_level: header.parents_by_level,
+            parents_by_level: header.parents_by_level.into(),
             hash_merkle_root: Some(header.hash_merkle_root),
             accepted_id_merkle_root: Some(header.accepted_id_merkle_root),
             utxo_commitment: Some(header.utxo_commitment),
@@ -93,7 +93,7 @@ impl From<&Header> for RpcOptionalHeader {
         Self {
             hash: Some(header.hash),
             version: Some(header.version),
-            parents_by_level: header.parents_by_level.clone(),
+            parents_by_level: header.parents_by_level.clone().into(),
             hash_merkle_root: Some(header.hash_merkle_root),
             accepted_id_merkle_root: Some(header.accepted_id_merkle_root),
             utxo_commitment: Some(header.utxo_commitment),
@@ -115,7 +115,7 @@ impl TryFrom<RpcOptionalHeader> for Header {
         Ok(Self {
             hash: header.hash.ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "hash".to_owned()))?,
             version: header.version.ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "version".to_owned()))?,
-            parents_by_level: header.parents_by_level,
+            parents_by_level: header.parents_by_level.try_into()?,
             hash_merkle_root: header
                 .hash_merkle_root
                 .ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "hash_merkle_root".to_owned()))?,
@@ -145,7 +145,7 @@ impl TryFrom<&RpcOptionalHeader> for Header {
         Ok(Self {
             hash: header.hash.ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "hash".to_owned()))?,
             version: header.version.ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "version".to_owned()))?,
-            parents_by_level: header.parents_by_level.clone(),
+            parents_by_level: header.parents_by_level.clone().try_into()?,
             hash_merkle_root: header
                 .hash_merkle_root
                 .ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "hash_merkle_root".to_owned()))?,

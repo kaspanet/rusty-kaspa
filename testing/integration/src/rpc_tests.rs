@@ -117,7 +117,7 @@ async fn sanity_test() {
                     assert!(!is_synced);
 
                     // Compute the expected block hash for the received block
-                    let header: Header = (&block.header).into();
+                    let header: Header = (&block.header).try_into().unwrap();
                     let block_hash = header.hash;
 
                     // Submit the template (no mining, in simnet PoW is skipped)

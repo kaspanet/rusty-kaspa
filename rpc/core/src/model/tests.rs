@@ -498,7 +498,7 @@ mod mockery {
 
     impl Mock for ScriptPublicKey {
         fn mock() -> Self {
-            let mut bytes: [u8; 36] = [0; 36];
+            let mut bytes: [u8; 35] = [0; 35];
             rand::thread_rng().fill(&mut bytes[..]);
             ScriptPublicKey::from_vec(0, bytes.to_vec())
         }

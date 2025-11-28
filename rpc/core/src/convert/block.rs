@@ -56,7 +56,7 @@ impl TryFrom<RpcBlock> for Block {
     type Error = RpcError;
     fn try_from(item: RpcBlock) -> RpcResult<Self> {
         Ok(Self {
-            header: Arc::new(item.header.into()),
+            header: Arc::new(item.header.try_into()?),
             transactions: Arc::new(
                 item.transactions
                     .into_iter()
@@ -71,7 +71,7 @@ impl TryFrom<RpcRawBlock> for Block {
     type Error = RpcError;
     fn try_from(item: RpcRawBlock) -> RpcResult<Self> {
         Ok(Self {
-            header: Arc::new(item.header.into()),
+            header: Arc::new(item.header.try_into()?),
             transactions: Arc::new(
                 item.transactions
                     .into_iter()
