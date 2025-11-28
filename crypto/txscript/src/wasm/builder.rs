@@ -1,6 +1,11 @@
 use crate::result::Result;
+use crate::viewer::ScriptViewerOptions;
+use crate::wasm::IScriptViewerOptions;
 use crate::{script_builder as native, standard};
-use kaspa_consensus_core::tx::ScriptPublicKey;
+use kaspa_consensus_core::{
+    hashing::sighash::SigHashReusedValuesSync,
+    tx::{ScriptPublicKey, ValidatedTransaction},
+};
 use kaspa_utils::hex::ToHex;
 use kaspa_wasm_core::hex::{HexViewConfig, HexViewConfigT};
 use kaspa_wasm_core::types::{BinaryT, HexString};
@@ -175,5 +180,12 @@ impl ScriptBuilder {
 
         let config = args.map(HexViewConfig::try_from).transpose()?.unwrap_or_default();
         Ok(config.build(script).to_string())
+    }
+
+    #[wasm_bindgen(js_name = "stringView")]
+    pub fn string_view(&self, options: Option<IScriptViewerOptions>) -> Result<String> {
+        let options = options.map(ScriptViewerOptions::try_from).transpose()?.unwrap_or_default();
+
+        Ok(self.inner().string_view::<ValidatedTransaction, SigHashReusedValuesSync>(options))
     }
 }
