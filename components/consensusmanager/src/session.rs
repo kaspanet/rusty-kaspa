@@ -369,6 +369,10 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_block(hash)).await
     }
 
+    pub async fn async_get_block_body(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
+        self.clone().spawn_blocking(move |c| c.get_block_body(hash)).await
+    }
+
     pub async fn async_get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
         self.clone().spawn_blocking(move |c| c.get_block_even_if_header_only(hash)).await
     }
@@ -424,6 +428,14 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_missing_block_body_hashes(high)).await
     }
 
+    pub async fn async_get_body_missing_anticone(&self) -> Vec<Hash> {
+        self.clone().spawn_blocking(move |c| c.get_body_missing_anticone()).await
+    }
+
+    pub async fn async_clear_body_missing_anticone_set(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_body_missing_anticone_set()).await
+    }
+
     pub async fn async_pruning_point(&self) -> Hash {
         self.clone().spawn_blocking(|c| c.pruning_point()).await
     }
@@ -458,6 +470,30 @@ impl ConsensusSessionOwned {
 
     pub async fn async_finality_point(&self) -> Hash {
         self.clone().spawn_blocking(move |c| c.finality_point()).await
+    }
+    pub async fn async_clear_pruning_utxo_set(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_pruning_utxo_set()).await
+    }
+    pub async fn async_is_pruning_utxoset_stable(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_pruning_utxoset_stable()).await
+    }
+    pub async fn async_is_pruning_point_anticone_fully_synced(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_pruning_point_anticone_fully_synced()).await
+    }
+    pub async fn async_is_consensus_in_transitional_ibd_state(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_consensus_in_transitional_ibd_state()).await
+    }
+    pub async fn async_set_pruning_utxoset_unstable(&self) {
+        self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable_flag(false)).await
+    }
+    pub async fn async_set_pruning_utxoset_stable(&self) {
+        self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable_flag(true)).await
+    }
+    pub async fn async_verify_is_pruning_sample(&self, candidate_hash: Hash) -> ConsensusResult<()> {
+        self.clone().spawn_blocking(move |c| c.verify_is_pruning_sample(candidate_hash)).await
+    }
+    pub async fn async_intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
+        self.clone().spawn_blocking(move |c| c.intrusive_pruning_point_update(new_pruning_point, syncer_sink)).await
     }
 }
 

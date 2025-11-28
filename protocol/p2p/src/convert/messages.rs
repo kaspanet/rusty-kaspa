@@ -182,6 +182,13 @@ impl TryFrom<protowire::RequestIbdBlocksMessage> for Vec<Hash> {
         msg.hashes.into_iter().map(|v| v.try_into()).collect()
     }
 }
+impl TryFrom<protowire::RequestBlockBodiesMessage> for Vec<Hash> {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::RequestBlockBodiesMessage) -> Result<Self, Self::Error> {
+        msg.hashes.into_iter().map(|v| v.try_into()).collect()
+    }
+}
 
 impl TryFrom<protowire::BlockLocatorMessage> for Vec<Hash> {
     type Error = ConversionError;

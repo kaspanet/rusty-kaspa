@@ -44,7 +44,7 @@ impl AcceptedTransactions {
     pub(crate) fn expire(&mut self, virtual_daa_score: u64) {
         let now = unix_now();
         if virtual_daa_score
-            < self.last_expire_scan_daa_score + self.config.accepted_transaction_expire_scan_interval_daa_score.get(virtual_daa_score)
+            < self.last_expire_scan_daa_score + self.config.accepted_transaction_expire_scan_interval_daa_score.after()
             || now < self.last_expire_scan_time + self.config.accepted_transaction_expire_scan_interval_milliseconds
         {
             return;
@@ -54,7 +54,7 @@ impl AcceptedTransactions {
             .transactions
             .iter()
             .filter_map(|(transaction_id, daa_score)| {
-                if virtual_daa_score > daa_score + self.config.accepted_transaction_expire_interval_daa_score.get(virtual_daa_score) {
+                if virtual_daa_score > daa_score + self.config.accepted_transaction_expire_interval_daa_score.after() {
                     Some(*transaction_id)
                 } else {
                     None

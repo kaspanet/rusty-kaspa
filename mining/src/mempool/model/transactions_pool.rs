@@ -81,12 +81,14 @@ pub(crate) struct TransactionsPool {
 
 impl TransactionsPool {
     pub(crate) fn new(config: Arc<Config>) -> Self {
+        // [Crescendo] Delete `after()` after cleanup.
+        let target_time_per_block = 1.0 / (config.network_blocks_per_second.after() as f64);
         Self {
             config,
             all_transactions: MempoolTransactionCollection::default(),
             parent_transactions: TransactionsEdges::default(),
             chained_transactions: TransactionsEdges::default(),
-            ready_transactions: Default::default(),
+            ready_transactions: Frontier::new(target_time_per_block),
             last_expire_scan_daa_score: 0,
             last_expire_scan_time: unix_now(),
             utxo_set: MempoolUtxoSet::new(),
@@ -314,8 +316,7 @@ impl TransactionsPool {
 
     pub(crate) fn collect_expired_low_priority_transactions(&mut self, virtual_daa_score: u64) -> Vec<TransactionId> {
         let now = unix_now();
-        if virtual_daa_score
-            < self.last_expire_scan_daa_score + self.config.transaction_expire_scan_interval_daa_score.get(virtual_daa_score)
+        if virtual_daa_score < self.last_expire_scan_daa_score + self.config.transaction_expire_scan_interval_daa_score.after()
             || now < self.last_expire_scan_time + self.config.transaction_expire_scan_interval_milliseconds
         {
             return vec![];
@@ -330,8 +331,7 @@ impl TransactionsPool {
             .values()
             .filter_map(|x| {
                 if (x.priority == Priority::Low)
-                    && virtual_daa_score
-                        > x.added_at_daa_score + self.config.transaction_expire_interval_daa_score.get(virtual_daa_score)
+                    && virtual_daa_score > x.added_at_daa_score + self.config.transaction_expire_interval_daa_score.after()
                 {
                     Some(x.id())
                 } else {

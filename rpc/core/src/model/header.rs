@@ -1,3 +1,4 @@
+use crate::RpcError;
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_consensus_core::{header::Header, BlueWorkType};
 use kaspa_hashes::Hash;
@@ -65,7 +66,7 @@ impl From<Header> for RpcHeader {
         Self {
             hash: header.hash,
             version: header.version,
-            parents_by_level: header.parents_by_level,
+            parents_by_level: header.parents_by_level.into(),
             hash_merkle_root: header.hash_merkle_root,
             accepted_id_merkle_root: header.accepted_id_merkle_root,
             utxo_commitment: header.utxo_commitment,
@@ -85,7 +86,7 @@ impl From<&Header> for RpcHeader {
         Self {
             hash: header.hash,
             version: header.version,
-            parents_by_level: header.parents_by_level.clone(),
+            parents_by_level: (&header.parents_by_level).into(),
             hash_merkle_root: header.hash_merkle_root,
             accepted_id_merkle_root: header.accepted_id_merkle_root,
             utxo_commitment: header.utxo_commitment,
@@ -100,12 +101,13 @@ impl From<&Header> for RpcHeader {
     }
 }
 
-impl From<RpcHeader> for Header {
-    fn from(header: RpcHeader) -> Self {
-        Self {
+impl TryFrom<RpcHeader> for Header {
+    type Error = RpcError;
+    fn try_from(header: RpcHeader) -> Result<Self, Self::Error> {
+        Ok(Self {
             hash: header.hash,
             version: header.version,
-            parents_by_level: header.parents_by_level,
+            parents_by_level: header.parents_by_level.try_into()?,
             hash_merkle_root: header.hash_merkle_root,
             accepted_id_merkle_root: header.accepted_id_merkle_root,
             utxo_commitment: header.utxo_commitment,
@@ -116,16 +118,18 @@ impl From<RpcHeader> for Header {
             blue_work: header.blue_work,
             blue_score: header.blue_score,
             pruning_point: header.pruning_point,
-        }
+        })
     }
 }
 
-impl From<&RpcHeader> for Header {
-    fn from(header: &RpcHeader) -> Self {
-        Self {
+impl TryFrom<&RpcHeader> for Header {
+    type Error = RpcError;
+
+    fn try_from(header: &RpcHeader) -> Result<Self, Self::Error> {
+        Ok(Self {
             hash: header.hash,
             version: header.version,
-            parents_by_level: header.parents_by_level.clone(),
+            parents_by_level: header.parents_by_level.clone().try_into()?,
             hash_merkle_root: header.hash_merkle_root,
             accepted_id_merkle_root: header.accepted_id_merkle_root,
             utxo_commitment: header.utxo_commitment,
@@ -136,7 +140,7 @@ impl From<&RpcHeader> for Header {
             blue_work: header.blue_work,
             blue_score: header.blue_score,
             pruning_point: header.pruning_point,
-        }
+        })
     }
 }
 
@@ -198,11 +202,13 @@ impl Deserializer for RpcHeader {
     }
 }
 
-impl From<RpcRawHeader> for Header {
-    fn from(header: RpcRawHeader) -> Self {
-        Self::new_finalized(
+impl TryFrom<RpcRawHeader> for Header {
+    type Error = RpcError;
+
+    fn try_from(header: RpcRawHeader) -> Result<Self, Self::Error> {
+        Ok(Self::new_finalized(
             header.version,
-            header.parents_by_level,
+            header.parents_by_level.try_into()?,
             header.hash_merkle_root,
             header.accepted_id_merkle_root,
             header.utxo_commitment,
@@ -213,15 +219,17 @@ impl From<RpcRawHeader> for Header {
             header.blue_work,
             header.blue_score,
             header.pruning_point,
-        )
+        ))
     }
 }
 
-impl From<&RpcRawHeader> for Header {
-    fn from(header: &RpcRawHeader) -> Self {
-        Self::new_finalized(
+impl TryFrom<&RpcRawHeader> for Header {
+    type Error = RpcError;
+
+    fn try_from(header: &RpcRawHeader) -> Result<Self, Self::Error> {
+        Ok(Self::new_finalized(
             header.version,
-            header.parents_by_level.clone(),
+            header.parents_by_level.clone().try_into()?,
             header.hash_merkle_root,
             header.accepted_id_merkle_root,
             header.utxo_commitment,
@@ -232,7 +240,7 @@ impl From<&RpcRawHeader> for Header {
             header.blue_work,
             header.blue_score,
             header.pruning_point,
-        )
+        ))
     }
 }
 
@@ -240,7 +248,7 @@ impl From<&Header> for RpcRawHeader {
     fn from(header: &Header) -> Self {
         Self {
             version: header.version,
-            parents_by_level: header.parents_by_level.clone(),
+            parents_by_level: header.parents_by_level.clone().into(),
             hash_merkle_root: header.hash_merkle_root,
             accepted_id_merkle_root: header.accepted_id_merkle_root,
             utxo_commitment: header.utxo_commitment,
@@ -259,7 +267,7 @@ impl From<Header> for RpcRawHeader {
     fn from(header: Header) -> Self {
         Self {
             version: header.version,
-            parents_by_level: header.parents_by_level,
+            parents_by_level: header.parents_by_level.into(),
             hash_merkle_root: header.hash_merkle_root,
             accepted_id_merkle_root: header.accepted_id_merkle_root,
             utxo_commitment: header.utxo_commitment,

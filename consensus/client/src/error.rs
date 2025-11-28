@@ -42,6 +42,9 @@ pub enum Error {
     #[error(transparent)]
     NetworkType(#[from] kaspa_consensus_core::network::NetworkTypeError),
 
+    #[error(transparent)]
+    CompressedParents(#[from] kaspa_consensus_core::errors::header::CompressedParentsError),
+
     #[error("Error converting property `{0}`: {1}")]
     Convert(&'static str, String),
 

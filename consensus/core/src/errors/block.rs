@@ -97,9 +97,6 @@ pub enum RuleError {
     #[error("coinbase blue score of {0} is not the expected value of {1}")]
     BadCoinbasePayloadBlueScore(u64, u64),
 
-    #[error("coinbase mass commitment field is not zero")]
-    CoinbaseNonZeroMassCommitment,
-
     #[error("transaction in isolation validation failed for tx {0}: {1}")]
     TxInIsolationValidationFailed(TransactionId, TxRuleError),
 

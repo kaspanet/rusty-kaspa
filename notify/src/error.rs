@@ -1,7 +1,7 @@
 use async_channel::{RecvError, SendError, TrySendError};
 use thiserror::Error;
 
-pub type BoxedStdError = Box<(dyn std::error::Error + Sync + std::marker::Send + 'static)>;
+pub type BoxedStdError = Box<dyn std::error::Error + Sync + std::marker::Send + 'static>;
 
 #[derive(Clone, Debug, Error)]
 pub enum Error {

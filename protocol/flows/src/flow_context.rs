@@ -1,12 +1,9 @@
-use crate::{
-    flowcontext::{
-        orphans::{OrphanBlocksPool, OrphanOutput},
-        process_queue::ProcessQueue,
-        transactions::TransactionsSpread,
-    },
-    v7,
+use crate::flowcontext::{
+    orphans::{OrphanBlocksPool, OrphanOutput},
+    process_queue::ProcessQueue,
+    transactions::TransactionsSpread,
 };
-use crate::{v5, v6};
+use crate::{v5, v6, v7, v8};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
@@ -65,7 +62,7 @@ use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 use uuid::Uuid;
 
 /// The P2P protocol version.
-const PROTOCOL_VERSION: u32 = 7;
+const PROTOCOL_VERSION: u32 = 8;
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
@@ -235,8 +232,7 @@ pub struct FlowContextInner {
     // Special sampling logger used only for high-bps networks where logs must be throttled
     block_event_logger: Option<BlockEventLogger>,
 
-    // Bps upper bound
-    bps_upper_bound: usize,
+    bps: usize,
 
     // Orphan parameters
     orphan_resolution_range: u32,
@@ -319,13 +315,13 @@ impl FlowContext {
         hub: Hub,
         mining_rule_engine: Arc<MiningRuleEngine>,
     ) -> Self {
-        let bps_upper_bound = config.bps().upper_bound() as usize;
-        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps_upper_bound as f64).log2().ceil() as u32;
+        let bps = config.bps().after() as usize;
+        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps as f64).log2().ceil() as u32;
 
         // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
         // of how many orphans there can possibly be on average bounded by an upper bound.
         let max_orphans =
-            (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k().upper_bound() as usize).min(MAX_ORPHANS_UPPER_BOUND);
+            (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k().after() as usize).min(MAX_ORPHANS_UPPER_BOUND);
         Self {
             inner: Arc::new(FlowContextInner {
                 node_id: Uuid::new_v4().into(),
@@ -342,8 +338,8 @@ impl FlowContext {
                 mining_manager,
                 tick_service,
                 notification_root,
-                block_event_logger: if bps_upper_bound > 1 { Some(BlockEventLogger::new(bps_upper_bound)) } else { None },
-                bps_upper_bound,
+                block_event_logger: Some(BlockEventLogger::new(bps)),
+                bps,
                 orphan_resolution_range,
                 max_orphans,
                 config,
@@ -353,7 +349,7 @@ impl FlowContext {
     }
 
     pub fn block_invs_channel_size(&self) -> usize {
-        self.bps_upper_bound * Router::incoming_flow_baseline_channel_size()
+        self.bps * Router::incoming_flow_baseline_channel_size()
     }
 
     pub fn orphan_resolution_range(&self) -> u32 {
@@ -512,34 +508,10 @@ impl FlowContext {
         // Broadcast as soon as the block has been validated and inserted into the DAG
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
 
-        let daa_score = block.header.daa_score;
         self.on_new_block(consensus, Default::default(), block, virtual_state_task).await;
-        self.log_new_block_event(BlockLogEvent::Submit(hash), daa_score);
+        self.log_block_event(BlockLogEvent::Submit(hash));
 
         Ok(())
-    }
-
-    /// [Crescendo] temp crescendo countdown logging
-    pub(super) fn log_new_block_event(&self, event: BlockLogEvent, daa_score: u64) {
-        if self.config.bps().before() == 1 && !self.config.crescendo_activation.is_active(daa_score) {
-            if let Some(dist) = self.config.crescendo_activation.is_within_range_before_activation(daa_score, 3600) {
-                match event {
-                    BlockLogEvent::Relay(hash) => info!("Accepted block {} via relay \t [Crescendo countdown: -{}]", hash, dist),
-                    BlockLogEvent::Submit(hash) => {
-                        info!("Accepted block {} via submit block \t [Crescendo countdown: -{}]", hash, dist)
-                    }
-                    _ => {}
-                }
-            } else {
-                match event {
-                    BlockLogEvent::Relay(hash) => info!("Accepted block {} via relay", hash),
-                    BlockLogEvent::Submit(hash) => info!("Accepted block {} via submit block", hash),
-                    _ => {}
-                }
-            }
-        } else {
-            self.log_block_event(event);
-        }
     }
 
     pub fn log_block_event(&self, event: BlockLogEvent) {
@@ -786,12 +758,14 @@ impl ConnectionInitializer for FlowContext {
 
         let (flows, applied_protocol_version) = if connect_only_new_versions {
             match peer_version.protocol_version {
-                v if v >= PROTOCOL_VERSION => (v7::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+                v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+                7 => (v7::register(self.clone(), router.clone()), 7),
                 v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
             }
         } else {
             match peer_version.protocol_version {
-                v if v >= PROTOCOL_VERSION => (v7::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+                v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+                7 => (v7::register(self.clone(), router.clone()), 7),
                 6 => (v6::register(self.clone(), router.clone()), 6),
                 5 => (v5::register(self.clone(), router.clone()), 5),
                 v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),

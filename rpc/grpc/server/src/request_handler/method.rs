@@ -33,7 +33,7 @@ pub type MethodFn<ServerContext, ConnectionContext, Request, Response> =
     Arc<Box<dyn Send + Sync + Fn(ServerContext, ConnectionContext, Request) -> MethodFnReturn<Response> + 'static>>;
 
 /// RPC method function return type
-pub type MethodFnReturn<T> = Pin<Box<(dyn Send + 'static + Future<Output = GrpcServerResult<T>>)>>;
+pub type MethodFnReturn<T> = Pin<Box<dyn Send + 'static + Future<Output = GrpcServerResult<T>>>>;
 
 /// RPC drop function type
 pub type DropFn<Request, Response> = Arc<Box<dyn Send + Sync + Fn(&Request) -> GrpcServerResult<Response>>>;

@@ -66,10 +66,8 @@ jobs:
           cp target/x86_64-unknown-linux-musl/release/rothschild bin/
           cp target/x86_64-unknown-linux-musl/release/kaspa-wallet bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-amd64.zip"
-          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux-amd64.zip"
           zip -r "${archive}" ./bin/*
           echo "archive=${archive}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
       - name: Build on Windows
         if: runner.os == 'Windows'
@@ -83,10 +81,8 @@ jobs:
           cp target/release/rothschild.exe bin/
           cp target/release/kaspa-wallet.exe bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
-          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
           powershell "Compress-Archive bin/* \"${archive}\""
           echo "archive=${archive}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
       - name: Build on MacOS
         if: runner.os == 'macOS'
@@ -99,20 +95,15 @@ jobs:
           cp target/release/rothschild bin/
           cp target/release/kaspa-wallet bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
-          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
           zip -r "${archive}" ./bin/*
           echo "archive=${archive}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
       - name: Upload release asset
-        uses: actions/upload-release-asset@v1
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./${{ env.archive }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: "./${{ env.archive }}"
-          asset_name: "${{ env.asset_name }}"
-          asset_content_type: application/zip
 
   build-wasm:
     runs-on: ubuntu-latest
@@ -182,19 +173,14 @@ jobs:
         run: |
           cd wasm
           bash build-release
-          mv release/kaspa-wasm32-sdk.zip ../kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip
-
-          archive="kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip"
-          asset_name="kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip"
+          cd release
+          zip -q -r kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip kaspa-wasm32-sdk
+          archive="wasm/release/kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip"
           echo "archive=${archive}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
-      - name: Upload WASM32 SDK
-        uses: actions/upload-release-asset@v1
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./${{ env.archive }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: "./${{ env.archive }}"
-          asset_name: "${{ env.asset_name }}"
-          asset_content_type: application/zip

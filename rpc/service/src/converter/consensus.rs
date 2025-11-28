@@ -124,7 +124,7 @@ impl ConsensusConverter {
         if include_verbose_data {
             let verbose_data = Some(RpcTransactionVerboseData {
                 transaction_id: transaction.id(),
-                hash: hash(transaction, false),
+                hash: hash(transaction),
                 compute_mass: consensus.calculate_transaction_non_contextual_masses(transaction).compute_mass,
                 // TODO: make block_hash an option
                 block_hash: header.map_or_else(RpcHash::default, |x| x.hash),

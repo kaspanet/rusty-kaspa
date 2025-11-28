@@ -2,13 +2,17 @@ use crate::{hashing, tx::Transaction};
 use kaspa_hashes::Hash;
 use kaspa_merkle::calc_merkle_root;
 
-pub fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>, include_mass_field: bool) -> Hash {
-    calc_merkle_root(txs.map(|tx| hashing::tx::hash(tx, include_mass_field)))
+pub fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
+    calc_merkle_root(txs.map(hashing::tx::hash))
+}
+
+pub fn calc_hash_merkle_root_pre_crescendo<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
+    calc_merkle_root(txs.map(hashing::tx::hash_pre_crescendo))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::merkle::calc_hash_merkle_root;
+    use crate::merkle::{calc_hash_merkle_root, calc_hash_merkle_root_pre_crescendo};
     use crate::{
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
         tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
@@ -17,7 +21,7 @@ mod tests {
 
     #[test]
     fn merkle_root_test() {
-        let txs = vec![
+        let txs = [
             Transaction::new(
                 0,
                 vec![],
@@ -238,7 +242,27 @@ mod tests {
             ),
         ];
         assert_eq!(
-            calc_hash_merkle_root(txs.iter(), false),
+            calc_hash_merkle_root(txs.iter()),
+            Hash::from_slice(&[
+                0x46, 0xec, 0xf4, 0x5b, 0xe3, 0xba, 0xca, 0x34, 0x9d, 0xfe, 0x8a, 0x78, 0xde, 0xaf, 0x05, 0x3b, 0x0a, 0xa6, 0xd5,
+                0x38, 0x97, 0x4d, 0xa5, 0x0f, 0xd6, 0xef, 0xb4, 0xd2, 0x66, 0xbc, 0x8d, 0x21,
+            ])
+        );
+
+        // Test a tx with storage mass commitment > 0
+        txs[0].set_mass(7);
+
+        assert_eq!(
+            calc_hash_merkle_root(txs.iter()),
+            Hash::from_slice(&[
+                0x75, 0x4a, 0x1, 0x59, 0xdc, 0x4b, 0x3d, 0xaa, 0x16, 0x95, 0x28, 0x4d, 0x96, 0xc8, 0x2a, 0xba, 0x27, 0x2a, 0x11, 0x43,
+                0xe4, 0x2e, 0x60, 0x4, 0xaf, 0x2b, 0xaa, 0x1e, 0x3c, 0xed, 0x23, 0x7,
+            ])
+        );
+
+        // Make sure that pre-crescendo hash is unaffected by the mass set
+        assert_eq!(
+            calc_hash_merkle_root_pre_crescendo(txs.iter()),
             Hash::from_slice(&[
                 0x46, 0xec, 0xf4, 0x5b, 0xe3, 0xba, 0xca, 0x34, 0x9d, 0xfe, 0x8a, 0x78, 0xde, 0xaf, 0x05, 0x3b, 0x0a, 0xa6, 0xd5,
                 0x38, 0x97, 0x4d, 0xa5, 0x0f, 0xd6, 0xef, 0xb4, 0xd2, 0x66, 0xbc, 0x8d, 0x21,

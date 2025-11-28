@@ -78,7 +78,7 @@ async fn daemon_mining_test() {
             .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
             .await
             .unwrap();
-        let header: Header = (&template.block.header).into();
+        let header: Header = (&template.block.header).try_into().unwrap();
         last_block_hash = Some(header.hash);
         rpc_client1.submit_block(template.block, false).await.unwrap();
 
@@ -189,7 +189,7 @@ async fn daemon_utxos_propagation_test() {
     let mut last_block_hash = None;
     for i in 0..initial_blocks {
         let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
-        let header: Header = (&template.block.header).into();
+        let header: Header = (&template.block.header).try_into().unwrap();
         last_block_hash = Some(header.hash);
         rpc_client1.submit_block(template.block, false).await.unwrap();
 

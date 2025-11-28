@@ -115,13 +115,13 @@ mod tests {
 
     #[test]
     fn test_smallvec_hex_convert() {
-        type TestVec = SmallVec<[u8; 36]>;
+        type TestVec = SmallVec<[u8; 35]>;
 
         let v: TestVec = smallvec![0x0, 0xab, 0x55, 0x30, 0x1f, 0x63];
         let k = "00ab55301f63";
         assert_eq!(k.len(), v.len() * 2);
         assert_eq!(k.to_string(), v.to_rpc_hex());
-        assert_eq!(SmallVec::<[u8; 36]>::from_rpc_hex(k).unwrap(), v);
+        assert_eq!(SmallVec::<[u8; 35]>::from_rpc_hex(k).unwrap(), v);
 
         assert!(TestVec::from_rpc_hex("not a number").is_err());
         assert!(TestVec::from_rpc_hex("ab01").is_ok());

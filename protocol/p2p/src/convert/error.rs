@@ -29,4 +29,7 @@ pub enum ConversionError {
 
     #[error(transparent)]
     SubnetParsingError(#[from] SubnetworkConversionError),
+
+    #[error(transparent)]
+    CompressedParentsError(#[from] kaspa_consensus_core::errors::header::CompressedParentsError),
 }

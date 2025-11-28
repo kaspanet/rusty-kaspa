@@ -52,6 +52,8 @@ message KaspadMessage {
     IbdChainBlockLocatorMessage ibdChainBlockLocator = 54;
     RequestAntipastMessage requestAntipast = 55;
     RequestNextPruningPointAndItsAnticoneBlocksMessage requestNextPruningPointAndItsAnticoneBlocks = 56;
+    BlockBodyMessage blockBody = 57;
+    RequestBlockBodiesMessage requestBlockBodies = 58;
   }
 }
 
