@@ -33,8 +33,9 @@ message RpcBlockHeader {
   uint64 nonce = 8;
   uint64 daaScore = 9;
   string blueWork = 10;
-  string pruningPoint = 14;
   uint64 blueScore = 13;
+  string pruningPoint = 14;
+  string hash = 15;
 }
 
 message RpcBlockLevelParents {
@@ -66,12 +67,37 @@ message RpcTransaction {
   uint64 mass = 10;
 }
 
+message RpcTransactionVerboseData{
+  string transactionId = 1;
+  string hash = 2;
+  uint64 computeMass = 4;
+  string blockHash = 12;
+  uint64 blockTime = 14;
+}
+
 message RpcTransactionInput {
   RpcOutpoint previousOutpoint = 1;
   string signatureScript = 2;
   uint64 sequence = 3;
   uint32 sigOpCount = 5;
   RpcTransactionInputVerboseData verboseData = 4;
+}
+
+message RpcTransactionInputVerboseData {
+  RpcUtxoEntry utxoEntry = 1; // this field is new, if this is null, the utxo cannot be found, or is coinbase.
+}
+
+message RpcUtxoEntry {
+  uint64 amount = 1;
+  RpcScriptPublicKey scriptPublicKey = 2;
+  uint64 blockDaaScore = 3;
+  bool isCoinbase = 4;
+  RpcUtxoEntryVerboseData verboseData = 5;
+}
+
+message RpcUtxoEntryVerboseData {
+  string scriptPublicKeyType = 5;
+  string scriptPublicKeyAddress = 6;
 }
 
 message RpcScriptPublicKey {
@@ -90,27 +116,14 @@ message RpcOutpoint {
   uint32 index = 2;
 }
 
-message RpcUtxoEntry {
-  uint64 amount = 1;
-  RpcScriptPublicKey scriptPublicKey = 2;
-  uint64 blockDaaScore = 3;
-  bool isCoinbase = 4;
-}
-
-message RpcTransactionVerboseData{
-  string transactionId = 1;
-  string hash = 2;
-  uint64 computeMass = 4;
-  string blockHash = 12;
-  uint64 blockTime = 14;
-}
-
-message RpcTransactionInputVerboseData{
-}
-
 message RpcTransactionOutputVerboseData{
   string scriptPublicKeyType = 5;
   string scriptPublicKeyAddress = 6;
+}
+
+message RpcChainBlockAcceptedTransactions {
+  RpcBlockHeader chainBlockHeader = 1;
+  repeated RpcTransaction acceptedTransactions = 2;
 }
 
 enum RpcNotifyCommand {
@@ -557,7 +570,7 @@ message GetUtxosByAddressesResponseMessage {
 }
 
 // GetBalanceByAddressRequest returns the total balance in unspent transactions towards a given address
-// 
+//
 // This call is only available when this kaspad was started with `--utxoindex`
 message GetBalanceByAddressRequestMessage {
   string address = 1;
@@ -792,7 +805,7 @@ message ConnectionMetrics {
   uint32 jsonLiveConnections = 41;
   uint64 jsonConnectionAttempts = 42;
   uint64 jsonHandshakeFailures = 43;
-  
+
   uint32 activePeers = 51;
 }
 
@@ -815,7 +828,7 @@ message ConsensusMetrics{
   uint64 txsCounts = 5;
   uint64 chainBlockCounts = 6;
   uint64 massCounts = 7;
-  
+
   uint64 blockCount = 11;
   uint64 headerCount = 12;
   uint64 mempoolSize = 13;
@@ -917,7 +930,7 @@ message RpcFeerateBucket {
 }
 
 // Data required for making fee estimates.
-// 
+//
 // Feerate values represent fee/mass of a transaction in `sompi/gram` units.
 // Given a feerate value recommendation, calculate the required fee by
 // taking the transaction mass and multiplying it by feerate: `fee = feerate * mass(tx)`
@@ -966,16 +979,6 @@ message GetFeeEstimateExperimentalResponseMessage {
   RPCError error = 1000;
 }
 
-message GetCurrentBlockColorRequestMessage {
-  string hash = 1;
-}
-
-message GetCurrentBlockColorResponseMessage {
-  bool blue = 1;
-
-  RPCError error = 1000;
-}
-
 message GetUtxoReturnAddressRequestMessage {
   string txid = 1;
   uint64 accepting_block_daa_score = 2;
@@ -983,5 +986,66 @@ message GetUtxoReturnAddressRequestMessage {
 
 message GetUtxoReturnAddressResponseMessage {
   string return_address = 1;
+  RPCError error = 1000;
+}
+
+// ### messages for vspcn v2 ###
+
+enum RpcDataVerbosityLevel {
+  NONE = 0;
+  LOW = 1;
+  HIGH = 2;
+  FULL = 3;
+}
+
+// new base messages for vspcn v2
+message RpcAcceptanceData {
+  optional RpcBlockHeader acceptingChainHeader = 1;
+  repeated RpcMergesetBlockAcceptanceData mergesetBlockAcceptanceData = 20;
+}
+
+message RpcMergesetBlockAcceptanceData {
+  string mergedBlockHash = 2;
+  repeated RpcTransaction acceptedTransactions = 3;
+}
+
+/// GetVirtualChainFromBlockV2RequestMessage requests the virtual selected
+/// parent chain from some startHash to this kaspad's current virtual
+/// Note:
+///     this call batches the response to:
+///         a. the network's `mergeset size limit * 10` amount of added chain blocks, if `RpcAcceptanceDataVerbosity is nullified`
+///         b. or `mergeset size limit * 10` amount of merged blocks, if `RpcAcceptanceDataVerbosity is not nullified`
+///         TODO: perhaps find new limit based on expected size of the response, via the `RpcAcceptanceDataVerbosity` switches.
+///         c. it does not batch the removed chain blocks, only the added ones.
+message GetVirtualChainFromBlockV2RequestMessage{
+  string startHash = 1;
+
+  /// Note: where fields are switched to false, default values of the type will be used to fill the assosicated response fields.
+  /// it is therefore the client's responsibility to ensure to ignore the fields in the response.
+  optional RpcDataVerbosityLevel dataVerbosityLevel = 2;
+  optional uint64 minConfirmationCount = 3;
+}
+
+message GetVirtualChainFromBlockV2ResponseMessage{
+  // The chain blocks that were removed, in high-to-low order
+  repeated string removedChainBlockHashes = 1;
+
+  // The chain blocks that were added, in low-to-high order
+  repeated string addedChainBlockHashes = 2;
+
+  // The mergeset data accepted by each block in addedChainBlockHashes.
+  // Will be filled dependent on the supplied RpcAcceptanceDataVerbosity.
+  repeated RpcChainBlockAcceptedTransactions chainBlockAcceptedTransactions = 3;
+
+  RPCError error = 1000;
+}
+
+message GetCurrentBlockColorRequestMessage {
+  string hash = 1;
+}
+
+message GetCurrentBlockColorResponseMessage {
+  bool blue = 1;
+
   RPCError error = 1000;
 }

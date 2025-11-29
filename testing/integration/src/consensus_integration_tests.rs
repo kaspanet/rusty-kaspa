@@ -673,7 +673,7 @@ async fn mergeset_size_limit_test() {
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
 struct RPCBlock {
-    Header: RPCBlockHeader,
+    Header: RpcHeader,
     Transactions: Vec<RPCTransaction>,
     VerboseData: RPCBlockVerboseData,
 }
@@ -722,7 +722,7 @@ struct RPCOutpoint {
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
-struct RPCBlockHeader {
+struct RpcHeader {
     Version: u16,
     Parents: Vec<RPCBlockLevelParents>,
     HashMerkleRoot: String,
@@ -986,7 +986,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
         let proof_lines = gzip_file_lines(&main_path.join("proof.json.gz"));
         let proof = proof_lines
             .map(|line| {
-                let rpc_headers: Vec<RPCBlockHeader> = serde_json::from_str(&line).unwrap();
+                let rpc_headers: Vec<RpcHeader> = serde_json::from_str(&line).unwrap();
                 rpc_headers.iter().map(|rh| Arc::new(rpc_header_to_header(rh))).collect_vec()
             })
             .collect_vec();
@@ -1127,7 +1127,7 @@ fn submit_body_chunk(
     futures
 }
 
-fn rpc_header_to_header(rpc_header: &RPCBlockHeader) -> Header {
+fn rpc_header_to_header(rpc_header: &RpcHeader) -> Header {
     Header::new_finalized(
         rpc_header.Version,
         rpc_header
