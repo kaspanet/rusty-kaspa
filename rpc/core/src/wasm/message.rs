@@ -65,12 +65,7 @@ const TS_DATA_VERBOSITY_LEVEL: &'static str = r#"
      * 
      * @category Node RPC
      */
-    export enum DataVerbosityLevel {
-        None = "None",
-        Low = "Low",
-        High = "High",
-        Full = "Full",
-    }
+    export type DataVerbosityLevel = "None" | "Low" | "High" | "Full";
 "#;
 
 // ---
@@ -1302,7 +1297,12 @@ declare! {
      */
     export interface IGetVirtualChainFromBlockV2Request {
         startHash : HexString;
-        dataVerbosityLevel?: string;
+        dataVerbosityLevel?: DataVerbosityLevel;
+        /**
+         * If passed, this request will only return blocks that have at least minConfirmationCount number of confirmations. Confirmation is counted through the distance from virtual chain tip.
+         * If not passed, it will be interpreted as 0.
+         */
+        minConfirmationCount?: number;
     }
     "#,
 }
