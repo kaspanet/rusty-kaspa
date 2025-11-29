@@ -470,7 +470,8 @@ impl PSKT<Extractor> {
             let reused_values = SigHashReusedValuesUnsync::new();
 
             tx.populated_inputs().enumerate().try_for_each(|(idx, (input, entry))| {
-                TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &reused_values, &cache, false, false).execute()?;
+                TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &reused_values, &cache, false, false, false) // todo falcon
+                    .execute()?;
                 <Result<(), ExtractError>>::Ok(())
             })?;
         }
