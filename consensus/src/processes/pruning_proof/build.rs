@@ -471,7 +471,7 @@ impl PruningProofManager {
         let direct_parents = BlockHashSet::from_iter(pp_header.direct_parents().iter().copied());
         pp_header
             .parents_by_level
-            .iter()
+            .expanded_iter()
             .enumerate()
             .skip(1) // skip checking direct parents
             .find_map(|(level, parents)| {

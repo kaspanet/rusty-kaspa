@@ -305,9 +305,7 @@ impl PruningProofManager {
         let mut daa_window_blocks = BlockHashMap::new();
         let mut ghostdag_blocks = BlockHashMap::new();
 
-        // [Crescendo]: get ghostdag k based on the pruning point's DAA score. The off-by-one of not going by selected parent
-        // DAA score is not important here as we simply increase K one block earlier which is more conservative (saving/sending more data)
-        let ghostdag_k = self.ghostdag_k.get(self.headers_store.get_daa_score(pruning_point).unwrap());
+        let ghostdag_k = self.ghostdag_k.after();
 
         // PRUNE SAFETY: called either via consensus under the prune guard or by the pruning processor (hence no pruning in parallel)
 
@@ -408,12 +406,8 @@ impl PruningProofManager {
         let virtual_state = self.virtual_stores.read().state.get().unwrap();
         let pp_bs = self.headers_store.get_blue_score(pp).unwrap();
 
-        // [Crescendo]: use pruning point DAA score for activation. This means that only after sufficient time
-        // post activation we will require the increased finalization depth
-        let pruning_point_daa_score = self.headers_store.get_daa_score(pp).unwrap();
-
         // The anticone is considered final only if the pruning point is at sufficient depth from virtual
-        if virtual_state.ghostdag_data.blue_score >= pp_bs + self.anticone_finalization_depth.get(pruning_point_daa_score) {
+        if virtual_state.ghostdag_data.blue_score >= pp_bs + self.anticone_finalization_depth.after() {
             let anticone = Arc::new(self.calculate_pruning_point_anticone_and_trusted_data(pp, virtual_state.parents.iter().copied()));
             cache_lock.replace(CachedPruningPointData { pruning_point: pp, data: anticone.clone() });
             Ok(anticone)

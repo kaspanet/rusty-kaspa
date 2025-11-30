@@ -54,22 +54,23 @@ impl HeaderProcessor {
 
     pub fn check_indirect_parents(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
         let expected_block_parents = self.parents_manager.calc_block_parents(ctx.pruning_point, header.direct_parents());
-        if header.parents_by_level.len() != expected_block_parents.len()
-            || !expected_block_parents.iter().enumerate().all(|(block_level, expected_level_parents)| {
-                let header_level_parents = &header.parents_by_level[block_level];
-                if header_level_parents.len() != expected_level_parents.len() {
-                    return false;
-                }
-                // Optimistic path where both arrays are identical also in terms of order
-                if header_level_parents == expected_level_parents {
-                    return true;
-                }
-                HashSet::<&Hash>::from_iter(header_level_parents) == HashSet::<&Hash>::from_iter(expected_level_parents)
-            })
+        if header.parents_by_level.expanded_len() != expected_block_parents.expanded_len()
+            || !expected_block_parents.expanded_iter().zip(header.parents_by_level.expanded_iter()).all(
+                |(expected_level_parents, header_level_parents)| {
+                    if header_level_parents.len() != expected_level_parents.len() {
+                        return false;
+                    }
+                    // Optimistic path where both arrays are identical also in terms of order
+                    if header_level_parents == expected_level_parents {
+                        return true;
+                    }
+                    HashSet::<&Hash>::from_iter(header_level_parents) == HashSet::<&Hash>::from_iter(expected_level_parents)
+                },
+            )
         {
             return Err(RuleError::UnexpectedIndirectParents(
-                TwoDimVecDisplay(expected_block_parents),
-                TwoDimVecDisplay(header.parents_by_level.clone()),
+                TwoDimVecDisplay(expected_block_parents.into()),
+                TwoDimVecDisplay((&header.parents_by_level).into()),
             ));
         };
         Ok(())
