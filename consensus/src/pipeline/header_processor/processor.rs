@@ -438,10 +438,12 @@ impl HeaderProcessor {
         self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).unwrap_or_exists();
 
         let mut relations_write = self.relations_stores.write();
-        ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
-            // This data might have been already written when applying the pruning proof.
-            relations_write[level].insert_batch(&mut batch, ctx.hash, parents_by_level).unwrap_or_exists();
-        });
+        relations_write[0].insert_batch(&mut batch, ctx.hash, ctx.direct_known_parents().to_vec().into()).unwrap_or_exists();
+
+        // ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
+        //     // This data might have been already written when applying the pruning proof.
+        //     relations_write[level].insert_batch(&mut batch, ctx.hash, parents_by_level).unwrap_or_exists();
+        // });
 
         let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
