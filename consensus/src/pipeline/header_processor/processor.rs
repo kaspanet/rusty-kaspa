@@ -402,9 +402,11 @@ impl HeaderProcessor {
         let reachability_parents = ctx.known_parents[0].clone();
 
         let mut relations_write = self.relations_stores.write();
-        ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
-            relations_write[level].insert_batch(&mut batch, header.hash, parents_by_level).unwrap();
-        });
+        relations_write[0].insert_batch(&mut batch, ctx.hash, ctx.known_parents[0].clone().to_vec().into()).unwrap_or_exists();
+
+        // ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
+        //     relations_write[level].insert_batch(&mut batch, header.hash, parents_by_level).unwrap();
+        // });
 
         // Write reachability relations. These relations are only needed during header pruning
         let mut reachability_relations_write = self.reachability_relations_store.write();
@@ -492,8 +494,7 @@ impl HeaderProcessor {
 
         let mut batch = WriteBatch::default();
         let mut relations_write = self.relations_stores.write();
-        (0..=self.max_block_level)
-            .for_each(|level| relations_write[level as usize].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap());
+        relations_write[0].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
         let mut hst_write = self.headers_selected_tip_store.write();
         hst_write.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
         self.db.write(batch).unwrap();
