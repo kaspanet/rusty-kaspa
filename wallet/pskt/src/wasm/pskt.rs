@@ -486,11 +486,6 @@ impl PSKT {
 
 #[cfg(test)]
 mod tests {
-    #[wasm_bindgen_test::wasm_bindgen_test]
-    fn sanity_check() {
-        assert_eq!(1, 1);
-    }
-
     use js_sys::Array;
     use kaspa_addresses::Version;
     use kaspa_consensus_core::{
@@ -550,7 +545,7 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
-    fn test_pskt_sign() {
+    fn _test_pskt_sign() {
         let sk = secp256k1::SecretKey::new(&mut secp256k1::rand::thread_rng());
         let pk: PrivateKey = PrivateKey::from(&sk);
 
@@ -579,7 +574,7 @@ mod tests {
                 assert_eq!(signed_inner.inputs[0].partial_sigs.len(), 1);
                 let (pub_key, _signature) = signed_inner.inputs[0].partial_sigs.iter().next().unwrap();
 
-                let wasm_pk: PublicKey = pub_key.try_into().unwrap();
+                let wasm_pk: PublicKey = pub_key.into();
                 assert_eq!(wasm_pk.to_string(), pk.to_public_key().unwrap().to_string());
             }
             _ => panic!("PSKT is not in Signer state after signing"),
