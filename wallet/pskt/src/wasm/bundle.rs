@@ -1,12 +1,21 @@
+use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
 use super::error::*;
 use super::result::*;
 use crate::bundle::Bundle as Inner;
-use crate::pskt::Inner as PSKTInner;
+use crate::prelude::Signature;
+use crate::pskt::{Inner as PSKTInner, PSKT as NativePSKT};
+use crate::role::Signer;
 use crate::wasm::pskt::*;
+use crate::wasm::signer::PrivateKeyArrayT;
 use crate::wasm::utils::sompi_to_kaspa_string_with_suffix;
-use kaspa_consensus_core::network::{NetworkId, NetworkIdT};
+use kaspa_addresses::{Address, Prefix};
+use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
+use kaspa_consensus_core::network::{NetworkId, NetworkIdT, NetworkTypeT};
+use kaspa_txscript::extract_script_pub_key_address;
+use kaspa_wallet_keys::privatekey::PrivateKey;
+use secp256k1::Message;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::convert::TryCastFromJs;
 
@@ -105,6 +114,84 @@ impl PSKB {
     #[wasm_bindgen]
     pub fn merge(&mut self, other: &PSKB) {
         self.0.merge(other.clone().0);
+    }
+
+    /// Extracts all unique input addresses from all PSKTs in the bundle.
+    /// This is useful for figuring out which private keys are required for signing.
+    #[wasm_bindgen]
+    pub fn addresses(&self, network_id: &NetworkIdT) -> Result<Vec<Address>> {
+        let network_id = NetworkId::try_cast_from(network_id).map_err(|err| Error::Custom(err.to_string()))?.into_owned();
+        let prefix: Prefix = network_id.into();
+
+        let mut addresses = HashSet::new();
+
+        for inner in self.0.iter() {
+            for input in &inner.inputs {
+                if let Some(utxo_entry) = &input.utxo_entry {
+                    if let Ok(addr) = extract_script_pub_key_address(&utxo_entry.script_public_key, prefix) {
+                        addresses.insert(addr);
+                    }
+                }
+            }
+        }
+
+        let addresses = Vec::from_iter(addresses);
+
+        Ok(addresses)
+    }
+
+    /// Sign the PSKTS in the bundle with the provided private keys.
+    /// The method will find the inputs corresponding to the private keys and sign them.
+    /// This method performs partial signing, so if no private keys are provided, it will
+    /// return an unmodified PSKB.
+    #[wasm_bindgen]
+    pub fn sign(&self, private_keys: PrivateKeyArrayT, network_type: &NetworkTypeT) -> Result<PSKB> {
+        let prefix: Prefix = network_type.try_into()?;
+
+        let private_keys: Vec<PrivateKey> =
+            private_keys.try_into().map_err(|e| Error::Custom(format!("Invalid private keys: {:?}", e)))?;
+
+        let mut key_map: HashMap<Address, PrivateKey> = HashMap::new();
+        for pk in private_keys {
+            // todo: find a better way to convert to address
+            // here we unwrap because we checked network type -> prefix didn't produce error
+            // but this isn't future proof (if internal implementation change)
+            key_map.insert(pk.to_address(network_type).unwrap(), pk);
+        }
+
+        let mut new_inners = Vec::new();
+
+        for inner in self.0.iter() {
+            let mut new_inner = inner.clone();
+
+            let temp_pskt: NativePSKT<Signer> = new_inner.clone().into();
+            let unsigned_tx = temp_pskt.unsigned_tx();
+            let verifiable_tx = unsigned_tx.as_verifiable();
+            let sighash_types: Vec<_> = temp_pskt.inputs.iter().map(|input| input.sighash_type).collect();
+            let reused_values = SigHashReusedValuesUnsync::new();
+
+            for (idx, input) in new_inner.inputs.iter_mut().enumerate() {
+                if let Some(utxo_entry) = &input.utxo_entry {
+                    if let Ok(address) = extract_script_pub_key_address(&utxo_entry.script_public_key, prefix) {
+                        if let Some(private_key) = key_map.get(&address) {
+                            let hash = calc_schnorr_signature_hash(&verifiable_tx, idx, sighash_types[idx], &reused_values);
+                            let msg =
+                                Message::from_digest_slice(hash.as_bytes().as_slice()).map_err(|e| Error::Custom(e.to_string()))?;
+
+                            let keypair = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &private_key.secret_bytes())
+                                .map_err(|e| Error::Custom(e.to_string()))?;
+
+                            let signature = keypair.sign_schnorr(msg);
+
+                            input.partial_sigs.insert(keypair.public_key(), Signature::Schnorr(signature));
+                        }
+                    }
+                }
+            }
+            new_inners.push(new_inner);
+        }
+
+        Ok(PSKB(Inner(new_inners)))
     }
 }
 

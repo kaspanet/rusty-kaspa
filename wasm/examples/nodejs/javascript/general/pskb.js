@@ -12,6 +12,7 @@ const {
   TransactionOutput,
   ScriptPublicKey,
   Address,
+  NetworkId,
 } = kaspa;
 
 kaspa.initConsolePanicHook();
@@ -26,7 +27,7 @@ kaspa.initConsolePanicHook();
     },
     amount: 9799885899n,
     scriptPublicKey: new ScriptPublicKey(
-      0,
+      0xc0de,
       "0000202d8a1414e62e081fb6bcf644e648c18061c2855575cac722f86324cad91dd0faac",
     ),
     blockDaaScore: 84746196n,
@@ -130,15 +131,21 @@ kaspa.initConsolePanicHook();
   );
 
   // Create single PSKB with both transactions
-  let pskb = new PSKB();
+  const pskb = new PSKB();
   pskb.add(commitPskt);
   pskb.add(revealPskt);
 
-  // console.log("Combined PSKB:", pskb.serialize());
+  console.log("Combined PSKB:", pskb.serialize());
 
   for (let i = 0; i < pskb.length; i++) {
-    console.log(`pskt ${i}/${pskb.length}`, pskb.get(i));
+    const pskt = pskb.get(i);
+    console.log(`pskt ${i}/${pskb.length - 1}`, JSON.stringify(pskt, null, 2));
+
+    const _addresses = pskt.addresses(new NetworkId("testnet-10"));
+    console.log({ _addresses });
   }
+
+  console.log("addresses used:", pskb.addresses(new NetworkId("testnet-10")));
 
   console.log("bye!");
 })();

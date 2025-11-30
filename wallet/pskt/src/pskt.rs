@@ -131,7 +131,7 @@ impl<ROLE> Deref for PSKT<ROLE> {
 }
 
 impl<R> PSKT<R> {
-    fn unsigned_tx(&self) -> SignableTransaction {
+    pub fn unsigned_tx(&self) -> SignableTransaction {
         let tx = Transaction::new(
             self.global.tx_version,
             self.inputs

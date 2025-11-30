@@ -1,12 +1,21 @@
 use crate::pskt::{Input, PSKT as Native};
 use crate::role::*;
-use kaspa_consensus_core::network::NetworkType;
+use crate::wasm::signer::PrivateKeyArrayT;
+use kaspa_consensus_core::network::{NetworkId, NetworkIdT, NetworkType, NetworkTypeT};
 use kaspa_consensus_core::tx::TransactionId;
 use wasm_bindgen::prelude::*;
 // use js_sys::Object;
+use crate::prelude::Signature;
 use crate::pskt::Inner;
+use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_client::{Transaction, TransactionInput, TransactionInputT, TransactionOutput, TransactionOutputT};
+use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
+use kaspa_txscript::extract_script_pub_key_address;
+use kaspa_wallet_keys::privatekey::PrivateKey;
+use secp256k1::Message;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::MutexGuard;
 use std::sync::{Arc, Mutex};
@@ -383,5 +392,197 @@ impl PSKT {
             .extract_tx_unchecked(&network_id.into())
             .map_err(|e| Error::custom(format!("Failed to extract transaction: {e}")))?;
         Ok(tx.tx.mass())
+    }
+
+    /// Extracts all input addresses from the PSKT.
+    /// This is useful for figuring out which private keys are required for signing.
+    #[wasm_bindgen]
+    pub fn addresses(&self, network_id: &NetworkIdT) -> Result<Vec<Address>> {
+        let network_id = NetworkId::try_cast_from(network_id).map_err(|err| Error::Custom(err.to_string()))?.into_owned();
+        let prefix: Prefix = network_id.into();
+
+        let state_guard = self.state();
+        let inner = match state_guard.as_ref().unwrap() {
+            State::NoOp(Some(inner)) => inner,
+            State::Creator(pskt) => pskt.deref(),
+            State::Constructor(pskt) => pskt.deref(),
+            State::Updater(pskt) => pskt.deref(),
+            State::Signer(pskt) => pskt.deref(),
+            State::Combiner(pskt) => pskt.deref(),
+            State::Finalizer(pskt) => pskt.deref(),
+            State::Extractor(pskt) => pskt.deref(),
+            _ => return Err(Error::Custom("PSKT is not initialized".to_string())),
+        };
+
+        let addresses = inner
+            .inputs
+            .iter()
+            .filter_map(|input| input.utxo_entry.as_ref())
+            .filter_map(|utxo_entry| extract_script_pub_key_address(&utxo_entry.script_public_key, prefix).ok())
+            .collect::<Vec<_>>();
+
+        Ok(addresses)
+    }
+
+    /// Sign the PSKT with the provided private keys.
+    /// The method will find the inputs corresponding to the private keys and sign them.
+    /// This method performs partial signing, so if no private keys are provided, it will
+    /// return an unmodified PSKT.
+    #[wasm_bindgen]
+    pub fn sign(&self, private_keys: PrivateKeyArrayT, network_type: &NetworkTypeT) -> Result<PSKT> {
+        let prefix: Prefix = network_type.try_into()?;
+
+        let private_keys: Vec<PrivateKey> =
+            private_keys.try_into().map_err(|e| Error::Custom(format!("Invalid private keys: {:?}", e)))?;
+
+        let mut key_map: HashMap<Address, PrivateKey> = HashMap::new();
+        for pk in private_keys {
+            // todo: find a better way to convert to address
+            // here we unwrap because we checked network type -> prefix didn't produce error
+            // but this isn't future proof (if internal implementation change)
+            key_map.insert(pk.to_address(network_type).unwrap(), pk);
+        }
+
+        let current_state = self.take();
+        let mut inner_pskt = match current_state {
+            State::NoOp(Some(inner)) => inner,
+            State::Creator(pskt) => pskt.deref().clone(),
+            State::Constructor(pskt) => pskt.deref().clone(),
+            State::Updater(pskt) => pskt.deref().clone(),
+            State::Signer(pskt) => pskt.deref().clone(),
+            State::Combiner(pskt) => pskt.deref().clone(),
+            State::Finalizer(pskt) => pskt.deref().clone(),
+            State::Extractor(pskt) => pskt.deref().clone(),
+            _ => return Err(Error::state(current_state))?,
+        };
+
+        let temp_pskt: Native<Signer> = inner_pskt.clone().into();
+        let unsigned_tx = temp_pskt.unsigned_tx();
+        let verifiable_tx = unsigned_tx.as_verifiable();
+        let sighash_types: Vec<_> = temp_pskt.inputs.iter().map(|input| input.sighash_type).collect();
+        let reused_values = SigHashReusedValuesUnsync::new();
+
+        for (idx, input) in inner_pskt.inputs.iter_mut().enumerate() {
+            if let Some(utxo_entry) = &input.utxo_entry {
+                if let Ok(address) = extract_script_pub_key_address(&utxo_entry.script_public_key, prefix) {
+                    if let Some(private_key) = key_map.get(&address) {
+                        let hash = calc_schnorr_signature_hash(&verifiable_tx, idx, sighash_types[idx], &reused_values);
+                        let msg = Message::from_digest_slice(hash.as_bytes().as_slice()).map_err(|e| Error::Custom(e.to_string()))?;
+
+                        let keypair = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &private_key.secret_bytes())
+                            .map_err(|e| Error::Custom(e.to_string()))?;
+
+                        let signature = keypair.sign_schnorr(msg);
+
+                        input.partial_sigs.insert(keypair.public_key(), Signature::Schnorr(signature));
+                    }
+                }
+            }
+        }
+        let signed_pskt: Native<Signer> = inner_pskt.into();
+        self.replace(State::Signer(signed_pskt))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[wasm_bindgen_test::wasm_bindgen_test]
+    fn sanity_check() {
+        assert_eq!(1, 1);
+    }
+
+    use js_sys::Array;
+    use kaspa_addresses::Version;
+    use kaspa_consensus_core::{
+        tx::{TransactionOutpoint, UtxoEntry},
+        Hash,
+    };
+    use kaspa_txscript::pay_to_address_script;
+    use kaspa_wallet_keys::prelude::PublicKey;
+    use wasm_bindgen_test::*;
+
+    use crate::pskt::{Global, Inner as PSKTInner, InputBuilder};
+
+    use super::*;
+
+    fn _address_from_private_key(private_key: &PrivateKey) -> Address {
+        let public_key = secp256k1::PublicKey::from_secret_key(
+            secp256k1::SECP256K1,
+            &secp256k1::SecretKey::from_slice(private_key.secret_bytes().as_slice()).unwrap(),
+        );
+        let (x_only_public_key, _) = public_key.x_only_public_key();
+        let payload = x_only_public_key.serialize();
+        Address::new(Prefix::Testnet, Version::PubKey, &payload)
+    }
+
+    fn _mock_pskt_inner(private_key: &PrivateKey) -> PSKTInner {
+        let script_public_key = pay_to_address_script(&_address_from_private_key(private_key));
+
+        let utxo_entry = UtxoEntry { amount: 1000, script_public_key, block_daa_score: 0, is_coinbase: false };
+
+        let input = InputBuilder::default()
+            .previous_outpoint(TransactionOutpoint::new(
+                Hash::from_str("4bb07535dfd58e0b3cd64fd7155280872a0471bcf83095526ace0e38c6000000").unwrap(),
+                4294967291,
+            ))
+            .utxo_entry(utxo_entry)
+            .build()
+            .unwrap();
+
+        PSKTInner { global: Global::default(), inputs: vec![input], outputs: vec![] }
+    }
+
+    #[wasm_bindgen_test]
+    fn _test_pskt_addresses() {
+        let sk = secp256k1::SecretKey::new(&mut secp256k1::rand::thread_rng());
+        let pk: PrivateKey = PrivateKey::from(&sk);
+        let inner = _mock_pskt_inner(&pk);
+        let address = _address_from_private_key(&pk);
+
+        let pskt = PSKT::from(State::NoOp(Some(inner)));
+
+        let network_id_t: NetworkIdT = JsValue::from_str("testnet-10").into();
+
+        let addresses = pskt.addresses(&network_id_t).unwrap();
+
+        assert_eq!(addresses.len(), 1);
+        assert_eq!(addresses[0], address);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_pskt_sign() {
+        let sk = secp256k1::SecretKey::new(&mut secp256k1::rand::thread_rng());
+        let pk: PrivateKey = PrivateKey::from(&sk);
+
+        let inner = _mock_pskt_inner(&pk);
+        let pskt = PSKT::from(State::NoOp(Some(inner)));
+
+        // Check that there are no partial sigs initially
+        let state: State = serde_wasm_bindgen::from_value(pskt.payload_getter()).unwrap();
+        if let State::NoOp(Some(inner_before_sign)) = state {
+            assert!(inner_before_sign.inputs[0].partial_sigs.is_empty());
+        } else {
+            panic!("Unexpected initial state");
+        }
+
+        let keys = Array::new();
+        keys.push(&JsValue::from(pk.clone()));
+        let keys_t: PrivateKeyArrayT = JsValue::from(keys).into();
+
+        let signed_pskt = pskt.sign(keys_t, &JsValue::from_str("testnet-10").into()).unwrap();
+
+        let signed_state: State = serde_wasm_bindgen::from_value(signed_pskt.payload_getter()).unwrap();
+
+        match signed_state {
+            State::Signer(native_pskt) => {
+                let signed_inner = native_pskt.deref();
+                assert_eq!(signed_inner.inputs[0].partial_sigs.len(), 1);
+                let (pub_key, _signature) = signed_inner.inputs[0].partial_sigs.iter().next().unwrap();
+
+                let wasm_pk: PublicKey = pub_key.try_into().unwrap();
+                assert_eq!(wasm_pk.to_string(), pk.to_public_key().unwrap().to_string());
+            }
+            _ => panic!("PSKT is not in Signer state after signing"),
+        }
     }
 }

@@ -26,6 +26,7 @@ kaspa-consensus-core.workspace = true
 kaspa-txscript-errors.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
+kaspa-wallet-keys.workspace = true
 
 bincode.workspace = true
 derive_builder.workspace = true
