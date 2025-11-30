@@ -74,7 +74,6 @@ impl PruningProofManager {
         let current_consensus_ghostdag_stores = current_consensus_stores_and_processes.ghostdag_stores;
 
         let pruning_read = self.pruning_point_store.read();
-        let relations_read = self.relations_stores.read();
         let current_pp = pruning_read.pruning_point().unwrap();
         let current_pp_header = self.headers_store.get_header(current_pp).unwrap();
 
@@ -145,23 +144,23 @@ impl PruningProofManager {
                 continue;
             }
 
-            match relations_read[level_idx].get_parents(current_pp).unwrap_option() {
-                Some(parents) => {
-                    if parents.iter().copied().any(|parent| {
-                        current_consensus_ghostdag_stores[level_idx].get_blue_score(parent).unwrap() < 2 * self.pruning_proof_m
-                    }) {
-                        return Ok(());
-                    }
-                }
-                None => {
-                    // If the current pruning point doesn't have a parent at this level, we consider the proof state to be better.
-                    return Ok(());
-                }
+            let parents_at_level = self.parents_manager.parents_at_level(&current_pp_header, level);
+            if parents_at_level
+                .iter()
+                .copied()
+                .filter_map(|parent| current_consensus_ghostdag_stores[level_idx].get_blue_score(parent).unwrap_option())
+                .any(|parent_bscore| parent_bscore < 2 * self.pruning_proof_m)
+            {
+                return Ok(());
+            }
+
+            if parents_at_level.is_empty() {
+                // If the current pruning point doesn't have a parent at this level, we consider the proof state to be better.
+                return Ok(());
             }
         }
 
         drop(pruning_read);
-        drop(relations_read);
         drop(proof_stores_and_processes.db_lifetime);
         drop(current_consensus_stores_and_processes.db_lifetime);
 

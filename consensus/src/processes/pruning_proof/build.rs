@@ -1,15 +1,21 @@
-use std::{cmp::Reverse, collections::BinaryHeap, sync::Arc};
+use std::{
+    cmp::Reverse,
+    collections::{BinaryHeap, VecDeque},
+    sync::Arc,
+};
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    blockhash::{BlockHashExtensions, BlockHashes},
+    blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     header::Header,
     pruning::PruningPointProof,
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
-use kaspa_core::debug;
+use kaspa_core::{debug, info};
 use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
+use kaspa_utils::vec::VecExtensions;
+use parking_lot::RwLock;
 
 use crate::{
     model::{
@@ -17,12 +23,13 @@ use crate::{
         stores::{
             ghostdag::{DbGhostdagStore, GhostdagStore, GhostdagStoreReader},
             headers::{HeaderStoreReader, HeaderWithBlockLevel},
-            relations::RelationsStoreReader,
+            relations::{DbRelationsStore, RelationsStoreReader},
         },
     },
     processes::{
         ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
         pruning_proof::PruningProofManagerInternalError,
+        relations::RelationsStoreExtensions,
     },
 };
 
@@ -69,7 +76,8 @@ impl PruningProofManager {
 
         let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
-        let (ghostdag_stores, selected_tip_by_level, roots_by_level) = self.calc_gd_for_all_levels(&pp_header, temp_db);
+        let (ghostdag_stores, relations_stores, selected_tip_by_level, roots_by_level) =
+            self.calc_gd_for_all_levels(&pp_header, temp_db);
 
         // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
         // to make sure we hold a single Arc per header
@@ -136,7 +144,8 @@ impl PruningProofManager {
                     }
 
                     headers.push(get_header(current));
-                    for child in self.relations_stores.read()[level].get_children(current).unwrap().read().iter().copied() {
+                    info!("level is {}, current is {}", level, current);
+                    for child in relations_stores[level].read().get_children(current).unwrap().read().iter().copied() {
                         queue.push(Reverse(SortableBlock::new(child, get_header(child).blue_work)));
                     }
                 }
@@ -177,11 +186,12 @@ impl PruningProofManager {
         &self,
         pp_header: &HeaderWithBlockLevel,
         temp_db: Arc<DB>,
-    ) -> (Vec<Arc<DbGhostdagStore>>, Vec<Hash>, Vec<Hash>) {
+    ) -> (Vec<Arc<DbGhostdagStore>>, Vec<Arc<RwLock<DbRelationsStore>>>, Vec<Hash>, Vec<Hash>) {
         // TODO: Uncomment line and send as argument to find_sufficiently_deep_level_root
         // once full fix to minimize proof sizes comes
         // let current_dag_level = self.find_current_dag_level(&pp_header.header);
         let mut ghostdag_stores: Vec<Option<Arc<DbGhostdagStore>>> = vec![None; self.max_block_level as usize + 1];
+        let mut relations_by_level = vec![None; self.max_block_level as usize + 1];
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         let mut root_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
@@ -199,16 +209,69 @@ impl PruningProofManager {
             let (store, selected_tip, root) = self
                 .find_sufficiently_deep_level_root(pp_header, level, required_block, temp_db.clone())
                 .unwrap_or_else(|_| panic!("find_sufficient_root failed for level {level}"));
+            let rel_store = self.populate_relation_store_at_level(temp_db.clone(), selected_tip, root, level);
             ghostdag_stores[level_usize] = Some(store);
+            relations_by_level[level_usize] = Some(rel_store);
             selected_tip_by_level[level_usize] = Some(selected_tip);
             root_by_level[level_usize] = Some(root);
         }
 
         (
             ghostdag_stores.into_iter().map(Option::unwrap).collect_vec(),
+            relations_by_level.into_iter().map(Option::unwrap).collect_vec(),
             selected_tip_by_level.into_iter().map(Option::unwrap).collect_vec(),
             root_by_level.into_iter().map(Option::unwrap).collect_vec(),
         )
+    }
+
+    fn populate_relation_store_at_level(
+        &self,
+        temp_db: Arc<DB>,
+        tip: Hash,
+        root: Hash,
+        level: BlockLevel,
+    ) -> Arc<RwLock<DbRelationsStore>> {
+        if level == 0 {
+            return Arc::new(RwLock::new(self.relations_stores.read()[0].clone()));
+        }
+        let mut queue = VecDeque::new();
+        let mut visited = BlockHashSet::new();
+        queue.push_back(tip);
+        let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
+
+        let level_rel_store = Arc::new(RwLock::new(DbRelationsStore::new(temp_db.clone(), level, cache_policy, cache_policy)));
+
+        while let Some(h) = queue.pop_front() {
+            if !visited.insert(h) {
+                continue;
+            }
+            if h == ORIGIN {
+                continue;
+            }
+            let header = self.headers_store.get_header(h).unwrap();
+            let parents = Arc::new(
+                self.parents_manager
+                    .parents_at_level(&header, level)
+                    .iter()
+                    .copied()
+                    .filter(|&p| self.headers_store.has(p).unwrap_or(false))
+                    .collect::<Vec<_>>()
+                    .push_if_empty(ORIGIN),
+            );
+
+            // Write parents to the relations store
+            let mut relations_write = level_rel_store.write();
+            relations_write.insert(h, parents.clone()).unwrap();
+
+            if h == root {
+                continue;
+            }
+            // Enqueue parents to fill full upper chain
+            for &p in parents.iter() {
+                queue.push_back(p);
+            }
+        }
+        level_rel_store.clone()
     }
 
     /// Find a sufficient root at a given level by going through the headers store and looking
