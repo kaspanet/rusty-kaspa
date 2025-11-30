@@ -50,6 +50,15 @@ impl PSKB {
         self.0 .0.len()
     }
 
+    #[wasm_bindgen(js_name = "get")]
+    pub fn get(&self, index: usize) -> Result<PSKT> {
+        let inner: &PSKTInner = self.0 .0.get(index).ok_or_else(|| Error::Custom(format!("Index out of bounds: {index}")))?;
+
+        let inner_clone: PSKTInner = inner.clone();
+
+        Ok(PSKT::from(State::NoOp(Some(inner_clone))))
+    }
+
     pub fn add(&mut self, pskt: &PSKT) -> Result<()> {
         let payload = pskt.payload_getter();
 
