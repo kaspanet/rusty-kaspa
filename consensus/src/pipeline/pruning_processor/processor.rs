@@ -140,7 +140,7 @@ impl PruningProcessor {
     }
 
     fn recover_pruning_workflows_if_needed(&self) -> bool {
-        // returns true if recorvery was completed successfully or was not needed
+        // returns true if recovery was completed successfully or was not needed
         let pruning_point_read = self.pruning_point_store.read();
         let pruning_point = pruning_point_read.pruning_point().unwrap();
         let retention_checkpoint = pruning_point_read.retention_checkpoint().unwrap();
@@ -163,7 +163,7 @@ impl PruningProcessor {
                 return false;
             }
         }
-        // The following two chekcs are implicitly checked in advance_pruning_utxoset, and hence can theoretically
+        // The following two checks are implicitly checked in advance_pruning_utxoset, and hence can theoretically
         // be skipped if that function was called. As these checks are cheap, we  perform them regardless
         // as to not complicate the logic.
 
