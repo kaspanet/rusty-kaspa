@@ -96,7 +96,7 @@ impl PruningProofManager {
             trace!("Applying level {} from the pruning point proof", level);
             // We are only interested in those level ancestors that belong to the pruning proof at that level,
             // so other level parents are filtered out.
-            // Since each level is topologically sorted, we can construct the level ancesstors
+            // Since each level is topologically sorted, we can construct the level ancestors
             // on the fly rather than constructing it ahead of time
             let mut level_ancestors: HashSet<Hash> = HashSet::new();
             level_ancestors.insert(ORIGIN);
