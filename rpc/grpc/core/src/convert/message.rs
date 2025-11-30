@@ -559,6 +559,10 @@ from!(item: &kaspa_rpc_core::NotifySinkBlueScoreChangedRequest, protowire::Notif
     Self { command: item.command.into() }
 });
 from!(RpcResult<&kaspa_rpc_core::NotifySinkBlueScoreChangedResponse>, protowire::NotifySinkBlueScoreChangedResponseMessage);
+from!(item: &kaspa_rpc_core::NotifyMempoolSizeChangedRequest, protowire::NotifyMempoolSizeChangedRequestMessage, {
+    Self { command: item.command.into() }
+});
+from!(RpcResult<&kaspa_rpc_core::NotifyMempoolSizeChangedResponse>, protowire::NotifyMempoolSizeChangedResponseMessage);
 
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
@@ -1060,6 +1064,10 @@ try_from!(item: &protowire::NotifySinkBlueScoreChangedRequestMessage, kaspa_rpc_
     Self { command: item.command.into() }
 });
 try_from!(&protowire::NotifySinkBlueScoreChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifySinkBlueScoreChangedResponse>);
+try_from!(item: &protowire::NotifyMempoolSizeChangedRequestMessage, kaspa_rpc_core::NotifyMempoolSizeChangedRequest, {
+    Self { command: item.command.into() }
+});
+try_from!(&protowire::NotifyMempoolSizeChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifyMempoolSizeChangedResponse>);
 
 // ----------------------------------------------------------------------------
 // Unit tests
