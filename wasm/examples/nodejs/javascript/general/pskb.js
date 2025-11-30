@@ -136,8 +136,8 @@ kaspa.initConsolePanicHook();
 
   // console.log("Combined PSKB:", pskb.serialize());
 
-  for (const test of pskb) {
-    console.log({ test: test.toJSON() });
+  for (let i = 0; i < pskb.length; i++) {
+    console.log(`pskt ${i}/${pskb.length}`, pskb.get(i));
   }
 
   console.log("bye!");
