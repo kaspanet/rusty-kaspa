@@ -398,7 +398,7 @@ impl PSKT {
     /// This is useful for figuring out which private keys are required for signing.
     #[wasm_bindgen]
     pub fn addresses(&self, network_id: &NetworkIdT) -> Result<Vec<Address>> {
-        let network_id = NetworkId::try_cast_from(network_id).map_err(|err| Error::Custom(err.to_string()))?.into_owned();
+        let network_id = NetworkId::try_cast_from(network_id)?.into_owned();
         let prefix: Prefix = network_id.into();
 
         let state_guard = self.state();
