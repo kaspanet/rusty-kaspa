@@ -1,5 +1,5 @@
 use crate::ibd::IbdFlow;
-use crate::v5::{
+use crate::v6::{
     address::{ReceiveAddressesFlow, SendAddressesFlow},
     blockrelay::{flow::HandleRelayInvsFlow, handle_requests::HandleRelayBlockRequests},
     ping::{ReceivePingsFlow, SendPingsFlow},
@@ -9,6 +9,7 @@ use crate::v5::{
     request_ibd_blocks::HandleIbdBlockRequests,
     request_ibd_chain_block_locator::RequestIbdChainBlockLocatorFlow,
     request_pp_proof::RequestPruningPointProofFlow,
+    request_pruning_point_and_anticone::PruningPointAndItsAnticoneRequestsFlow,
     request_pruning_point_utxo_set::RequestPruningPointUtxoSetFlow,
     txrelay::flow::{RelayTransactionsFlow, RequestTransactionsFlow},
 };
@@ -17,9 +18,18 @@ use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
 use kaspa_utils::channel;
 use std::sync::Arc;
 
-use crate::v6::request_pruning_point_and_anticone::PruningPointAndItsAnticoneRequestsFlow;
-
+pub(crate) mod address;
+pub(crate) mod blockrelay;
+pub(crate) mod ping;
+pub(crate) mod request_antipast;
+pub(crate) mod request_block_locator;
+pub(crate) mod request_headers;
+pub(crate) mod request_ibd_blocks;
+pub(crate) mod request_ibd_chain_block_locator;
+pub(crate) mod request_pp_proof;
 pub(crate) mod request_pruning_point_and_anticone;
+pub(crate) mod request_pruning_point_utxo_set;
+pub(crate) mod txrelay;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // IBD flow <-> invs flow communication uses a job channel in order to always
