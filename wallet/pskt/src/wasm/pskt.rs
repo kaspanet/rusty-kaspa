@@ -1,8 +1,8 @@
-use crate::pskt::{Input, PSKT as Native};
+use crate::pskt::{Input, SignInputOk, PSKT as Native};
 use crate::role::*;
 use crate::wasm::signer::PrivateKeyArrayT;
 use kaspa_consensus_core::network::{NetworkId, NetworkIdT, NetworkType, NetworkTypeT};
-use kaspa_consensus_core::tx::TransactionId;
+use kaspa_consensus_core::tx::{TransactionId, VerifiableTransaction};
 use wasm_bindgen::prelude::*;
 // use js_sys::Object;
 use crate::prelude::Signature;
@@ -144,7 +144,7 @@ impl PSKT {
         serde_json::to_string(state.as_ref().unwrap()).unwrap()
     }
 
-    fn state(&self) -> MutexGuard<'_, Option<State>> {
+    pub(crate) fn state(&self) -> MutexGuard<'_, Option<State>> {
         self.state.lock().unwrap()
     }
 
@@ -437,15 +437,60 @@ impl PSKT {
 
         let mut key_map: HashMap<Address, PrivateKey> = HashMap::new();
         for pk in private_keys {
-            // todo: find a better way to convert to address
-            // here we unwrap because we checked network type -> prefix didn't produce error
-            // but this isn't future proof (if internal implementation change)
+            // TODO: address this unwrap
             key_map.insert(pk.to_address(network_type).unwrap(), pk);
         }
 
-        let current_state = self.take();
-        let mut inner_pskt = match current_state {
-            State::NoOp(Some(inner)) => inner,
+        let signer_pskt: Native<Signer> = match self.take() {
+            State::NoOp(inner) => inner.ok_or(Error::NotInitialized)?.into(),
+            State::Creator(pskt) => pskt.constructor().signer(),
+            State::Constructor(pskt) => pskt.signer(),
+            State::Updater(pskt) => pskt.signer(),
+            State::Signer(pskt) => pskt,
+            State::Combiner(pskt) => pskt.signer(),
+            state => return Err(Error::state(state))?,
+        };
+
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let signed_pskt = signer_pskt.pass_signature_sync::<_, Error>(|tx, sighash| {
+            let signatures = tx
+                .as_verifiable()
+                .populated_inputs()
+                .enumerate()
+                .filter_map(|(idx, (_, utxo_entry))| {
+                    extract_script_pub_key_address(&utxo_entry.script_public_key, prefix).ok().and_then(|address| {
+                        key_map.get(&address).map(|private_key| {
+                            let hash = calc_schnorr_signature_hash(&tx.as_verifiable(), idx, sighash[idx], &reused_values);
+                            let msg =
+                                Message::from_digest_slice(hash.as_bytes().as_slice()).map_err(|e| Error::Custom(e.to_string()))?;
+
+                            let keypair = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &private_key.secret_bytes())
+                                .map_err(|e| Error::Custom(e.to_string()))?;
+
+                            Ok(SignInputOk {
+                                signature: Signature::Schnorr(keypair.sign_schnorr(msg)),
+                                pub_key: keypair.public_key(),
+                                key_source: None,
+                            })
+                        })
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            Ok(signatures)
+        })?;
+
+        self.replace(State::Signer(signed_pskt))
+    }
+}
+
+impl PSKT {
+    pub fn inner(&self) -> Result<Inner> {
+        let state_guard = self.state();
+        let state = state_guard.as_ref().ok_or(Error::NotInitialized)?;
+
+        let inner_clone = match state {
+            State::NoOp(Some(inner)) => inner.clone(),
             State::Creator(pskt) => pskt.deref().clone(),
             State::Constructor(pskt) => pskt.deref().clone(),
             State::Updater(pskt) => pskt.deref().clone(),
@@ -453,34 +498,9 @@ impl PSKT {
             State::Combiner(pskt) => pskt.deref().clone(),
             State::Finalizer(pskt) => pskt.deref().clone(),
             State::Extractor(pskt) => pskt.deref().clone(),
-            _ => return Err(Error::state(current_state))?,
+            State::NoOp(None) => return Err(Error::NotInitialized),
         };
-
-        let temp_pskt: Native<Signer> = inner_pskt.clone().into();
-        let unsigned_tx = temp_pskt.unsigned_tx();
-        let verifiable_tx = unsigned_tx.as_verifiable();
-        let sighash_types: Vec<_> = temp_pskt.inputs.iter().map(|input| input.sighash_type).collect();
-        let reused_values = SigHashReusedValuesUnsync::new();
-
-        for (idx, input) in inner_pskt.inputs.iter_mut().enumerate() {
-            if let Some(utxo_entry) = &input.utxo_entry {
-                if let Ok(address) = extract_script_pub_key_address(&utxo_entry.script_public_key, prefix) {
-                    if let Some(private_key) = key_map.get(&address) {
-                        let hash = calc_schnorr_signature_hash(&verifiable_tx, idx, sighash_types[idx], &reused_values);
-                        let msg = Message::from_digest_slice(hash.as_bytes().as_slice()).map_err(|e| Error::Custom(e.to_string()))?;
-
-                        let keypair = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &private_key.secret_bytes())
-                            .map_err(|e| Error::Custom(e.to_string()))?;
-
-                        let signature = keypair.sign_schnorr(msg);
-
-                        input.partial_sigs.insert(keypair.public_key(), Signature::Schnorr(signature));
-                    }
-                }
-            }
-        }
-        let signed_pskt: Native<Signer> = inner_pskt.into();
-        self.replace(State::Signer(signed_pskt))
+        Ok(inner_clone)
     }
 }
 
