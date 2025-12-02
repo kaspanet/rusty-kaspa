@@ -3,7 +3,7 @@ use crate::flowcontext::{
     process_queue::ProcessQueue,
     transactions::TransactionsSpread,
 };
-use crate::{v5, v6, v7, v8};
+use crate::{v6, v7, v8};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
@@ -767,7 +767,6 @@ impl ConnectionInitializer for FlowContext {
                 v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone()), PROTOCOL_VERSION),
                 7 => (v7::register(self.clone(), router.clone()), 7),
                 6 => (v6::register(self.clone(), router.clone()), 6),
-                5 => (v5::register(self.clone(), router.clone()), 5),
                 v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
             }
         };
