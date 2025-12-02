@@ -14,7 +14,7 @@ use crate::{
             daa::DbDaaStore,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
-            headers::DbHeadersStore,
+            headers::{DbHeadersStore, HeaderStoreReader},
             headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
             pruning::{DbPruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
@@ -327,7 +327,8 @@ impl HeaderProcessor {
                         .parents_at_level(header, level)
                         .iter()
                         .copied()
-                        .filter(|parent| relations_read[level as usize].has(*parent).unwrap())
+                        // .filter(|parent| relations_read[level as usize].has(*parent).unwrap())
+                        .filter(|&parent| self.headers_store.get_header(parent).unwrap_option().is_some())
                         .collect_vec()
                         // This kicks-in only for trusted blocks or for level > 0. If an ordinary block is 
                         // missing direct parents it will fail validation.

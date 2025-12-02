@@ -241,17 +241,20 @@ impl PruningProofManager {
         let prefix = lvl_bytes.into_iter().chain(temp_index_bytes).collect_vec();
         let level_relation_store =
             Arc::new(RwLock::new(DbRelationsStore::with_prefix(temp_db.clone(), &prefix, cache_policy, cache_policy)));
-        while let Some(h) = queue.pop_front() {
-            if !self.reachability_service.is_dag_ancestor_of(root, h) {
+
+        level_relation_store.write().insert(ORIGIN, BlockHashes::new(vec![])).unwrap();
+
+        while let Some(hash) = queue.pop_front() {
+            if !self.reachability_service.is_dag_ancestor_of_result(root, hash).unwrap_or(false) {
                 continue;
             }
-            if !visited.insert(h) {
+            if !visited.insert(hash) {
                 continue;
             }
-            if h == ORIGIN {
+            if hash == ORIGIN {
                 continue;
             }
-            let header = self.headers_store.get_header(h).unwrap();
+            let header = self.headers_store.get_header(hash).unwrap();
             let parents = Arc::new(
                 self.parents_manager
                     .parents_at_level(&header, level)
@@ -264,7 +267,7 @@ impl PruningProofManager {
 
             // Write parents to the relations store
             let mut relations_write = level_relation_store.write();
-            relations_write.insert(h, parents.clone()).unwrap();
+            relations_write.insert(hash, parents.clone()).unwrap();
 
             // Enqueue parents to fill full upper chain
             for &p in parents.iter() {
@@ -348,8 +351,7 @@ impl PruningProofManager {
             };
 
             if level == 0 {
-                let relation_store: Arc<parking_lot::lock_api::RwLock<parking_lot::RawRwLock, DbRelationsStore>> =
-                    Arc::new(RwLock::new(self.relations_stores.read()[0].clone()));
+                let relation_store = Arc::new(RwLock::new(self.relations_stores.read()[0].clone()));
 
                 return Ok((self.ghostdag_store.clone(), relation_store, selected_tip, root));
             }
@@ -358,7 +360,7 @@ impl PruningProofManager {
             //
             // First, derive the relevant relations down to the candidate root.
             let relation_store = self.populate_relation_store_at_level(temp_db.clone(), selected_tip, root, level, tries);
-            
+
             let ghostdag_store = Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, tries));
             let has_required_block = self.fill_level_proof_ghostdag_data(
                 root,
