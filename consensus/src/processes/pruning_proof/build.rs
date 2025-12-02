@@ -334,7 +334,6 @@ impl PruningProofManager {
             } else {
                 // find common ancestor of block_at_depth_m_at_next_level and block_at_depth_2m in chain of block_at_depth_m_at_next_level
                 let mut common_ancestor = self.headers_store.get_header(block_at_depth_m_at_next_level).unwrap();
-                // let rel_store = self.populate_relation_store_at_level(temp_db.clone(), selected_tip, common_ancestor.hash, level);
                 while !self.reachability_service.is_dag_ancestor_of(common_ancestor.hash, block_at_depth_2m) {
                     common_ancestor = match self.find_selected_parent_header_at_level(&common_ancestor, level) {
                         Ok(header) => header,
@@ -348,22 +347,22 @@ impl PruningProofManager {
             };
 
             if level == 0 {
-                let rel_store: Arc<parking_lot::lock_api::RwLock<parking_lot::RawRwLock, DbRelationsStore>> =
+                let relation_store: Arc<parking_lot::lock_api::RwLock<parking_lot::RawRwLock, DbRelationsStore>> =
                     Arc::new(RwLock::new(self.relations_stores.read()[0].clone()));
 
-                return Ok((self.ghostdag_store.clone(), rel_store, selected_tip, root));
+                return Ok((self.ghostdag_store.clone(), relation_store, selected_tip, root));
             }
 
             // Step 3 - Fill the ghostdag data from root to tip
             let ghostdag_store = Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, tries));
-            let rel_store = self.populate_relation_store_at_level(temp_db.clone(), selected_tip, root, level, tries);
+            let relation_store = self.populate_relation_store_at_level(temp_db.clone(), selected_tip, root, level, tries);
             let has_required_block = self.fill_level_proof_ghostdag_data(
                 root,
                 pp_header.header.hash,
                 &ghostdag_store,
                 Some(block_at_depth_m_at_next_level),
                 level,
-                &rel_store,
+                &relation_store,
                 self.ghostdag_k.get(pp_header.header.daa_score),
             );
 
@@ -372,7 +371,7 @@ impl PruningProofManager {
             if has_required_block
                 && (root == self.genesis_hash || ghostdag_store.get_blue_score(selected_tip).unwrap() >= required_level_depth)
             {
-                break Ok((ghostdag_store, rel_store, selected_tip, root));
+                break Ok((ghostdag_store, relation_store, selected_tip, root));
             }
 
             tries += 1;
@@ -383,7 +382,7 @@ impl PruningProofManager {
                     // try to find 2500 depth worth of headers at a level, but the proof only contains about 2000 headers. To be able to sync
                     // with such an older node. As long as we found the required block, we can still proceed.
                     debug!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_base_level_depth} are already pruned. Required block found so trying anyway.");
-                    break Ok((ghostdag_store, rel_store, selected_tip, root));
+                    break Ok((ghostdag_store, relation_store, selected_tip, root));
                 } else {
                     panic!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_base_level_depth} are already pruned");
                 }
