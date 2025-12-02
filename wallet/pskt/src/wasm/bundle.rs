@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ops::Deref;
 
 use super::error::*;
@@ -5,8 +6,11 @@ use super::result::*;
 use crate::bundle::Bundle as Inner;
 use crate::pskt::Inner as PSKTInner;
 use crate::wasm::pskt::*;
+use crate::wasm::signer::PrivateKeyArrayT;
 use crate::wasm::utils::sompi_to_kaspa_string_with_suffix;
-use kaspa_consensus_core::network::{NetworkId, NetworkIdT};
+use kaspa_addresses::Address;
+use kaspa_consensus_client::Transaction;
+use kaspa_consensus_core::network::{NetworkId, NetworkIdT, NetworkTypeT};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::convert::TryCastFromJs;
 
@@ -48,6 +52,15 @@ impl PSKB {
     #[wasm_bindgen(getter, js_name = "length")]
     pub fn length(&self) -> usize {
         self.0 .0.len()
+    }
+
+    #[wasm_bindgen(js_name = "get")]
+    pub fn get(&self, index: usize) -> Result<PSKT> {
+        let inner: &PSKTInner = self.0 .0.get(index).ok_or_else(|| Error::Custom(format!("Index out of bounds: {index}")))?;
+
+        let inner_clone: PSKTInner = inner.clone();
+
+        Ok(PSKT::from(State::NoOp(Some(inner_clone))))
     }
 
     pub fn add(&mut self, pskt: &PSKT) -> Result<()> {
@@ -96,6 +109,45 @@ impl PSKB {
     #[wasm_bindgen]
     pub fn merge(&mut self, other: &PSKB) {
         self.0.merge(other.clone().0);
+    }
+
+    /// Extracts all unique input addresses from all PSKTs in the bundle.
+    /// This is useful for figuring out which private keys are required for signing.
+    #[wasm_bindgen]
+    pub fn addresses(&self, network_id: &NetworkIdT) -> Result<Vec<Address>> {
+        let mut addresses = HashSet::with_capacity(self.length());
+
+        for i in 0..self.length() {
+            let pskt = self.get(i)?;
+            let pskt_addresses = pskt.addresses(network_id)?;
+            addresses.extend(pskt_addresses);
+        }
+
+        Ok(Vec::from_iter(addresses))
+    }
+
+    #[wasm_bindgen]
+    pub fn sign(&self, private_keys: PrivateKeyArrayT, network_type: &NetworkTypeT) -> Result<PSKB> {
+        let mut new_bundle_inner = Inner::new();
+        for i in 0..self.length() {
+            let pskt_wasm = self.get(i)?;
+            let signed_pskt_wasm = pskt_wasm.sign(private_keys.clone(), network_type)?;
+            let inner_pskt = signed_pskt_wasm.inner()?;
+            new_bundle_inner.add_inner(inner_pskt);
+        }
+
+        Ok(PSKB(new_bundle_inner))
+    }
+
+    #[wasm_bindgen(js_name = "finalizeAndExtractTransactions")]
+    pub fn finalize_and_extract_transactions(&self, network_type: &NetworkTypeT) -> Result<Vec<Transaction>> {
+        let mut transactions = Vec::with_capacity(self.length());
+        for i in 0..self.length() {
+            let pskt = self.get(i)?;
+            let transaction = pskt.finalize_and_extract_transaction(network_type)?;
+            transactions.push(transaction);
+        }
+        Ok(transactions)
     }
 }
 
