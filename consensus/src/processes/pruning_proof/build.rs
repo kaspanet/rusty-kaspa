@@ -231,6 +231,8 @@ impl PruningProofManager {
         level: BlockLevel,
         try_number: u8,
     ) -> Arc<RwLock<DbRelationsStore>> {
+        //TODO(relaxed): currently we rebuild the relation store in its entirety for each try.
+        // A more efficient implementation could instead extend the store constructed in the previous try
         let mut queue = VecDeque::new();
         let mut visited = BlockHashSet::new();
         queue.push_back(tip);
@@ -238,7 +240,7 @@ impl PruningProofManager {
         let lvl_bytes = level.to_le_bytes();
         let temp_index_bytes = try_number.to_le_bytes();
         let prefix = lvl_bytes.into_iter().chain(temp_index_bytes).collect_vec();
-        let level_rel_store =
+        let level_relation_store =
             Arc::new(RwLock::new(DbRelationsStore::with_prefix(temp_db.clone(), &prefix, cache_policy, cache_policy)));
         while let Some(h) = queue.pop_front() {
             if !self.reachability_service.is_dag_ancestor_of(root, h) {
@@ -262,7 +264,7 @@ impl PruningProofManager {
             );
 
             // Write parents to the relations store
-            let mut relations_write = level_rel_store.write();
+            let mut relations_write = level_relation_store.write();
             relations_write.insert(h, parents.clone()).unwrap();
 
             // Enqueue parents to fill full upper chain
@@ -270,7 +272,7 @@ impl PruningProofManager {
                 queue.push_back(p);
             }
         }
-        level_rel_store.clone()
+        level_relation_store.clone()
     }
 
     /// Find a sufficient root at a given level by going through the headers store and looking
