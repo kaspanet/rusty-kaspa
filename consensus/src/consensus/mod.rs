@@ -1163,40 +1163,6 @@ impl ConsensusApi for Consensus {
         self.pruning_point_store.read().pruning_point().unwrap()
     }
 
-    fn get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
-        let _guard = self.pruning_lock.blocking_read();
-        self.validate_block_exists(hash)?;
-        Ok(self
-            .services
-            .window_manager
-            .block_window(&self.ghostdag_store.get_data(hash).unwrap(), WindowType::DifficultyWindow)
-            .unwrap()
-            .deref()
-            .iter()
-            .map(|block| block.0.hash)
-            .collect())
-    }
-
-    fn get_trusted_block_associated_ghostdag_data_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
-        let _guard = self.pruning_lock.blocking_read();
-        self.validate_block_exists(hash)?;
-
-        // In order to guarantee the chain height is at least k, we check that the pruning point is not genesis.
-        let pruning_point = self.pruning_point();
-        if pruning_point == self.config.genesis.hash {
-            return Err(ConsensusError::UnexpectedPruningPoint);
-        }
-
-        let ghostdag_k = self.config.ghostdag_k().after();
-
-        // Note: the method `get_ghostdag_chain_k_depth` might return a partial chain if data is missing.
-        // Ideally this node when synced would validate it got all of the associated data up to k blocks
-        // back and then we would be able to assert we actually got `k + 1` blocks, however we choose to
-        // simply ignore, since if the data was truly missing we wouldn't accept the staging consensus in
-        // the first place
-        Ok(self.services.pruning_proof_manager.get_ghostdag_chain_k_depth(hash, ghostdag_k))
-    }
-
     fn create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
         let _guard = self.pruning_lock.blocking_read();
         self.validate_block_exists(high)?;
