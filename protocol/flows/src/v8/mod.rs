@@ -1,4 +1,4 @@
-use crate::v6::{
+use crate::v7::{
     address::{ReceiveAddressesFlow, SendAddressesFlow},
     blockrelay::{flow::HandleRelayInvsFlow, handle_requests::HandleRelayBlockRequests},
     ping::{ReceivePingsFlow, SendPingsFlow},
