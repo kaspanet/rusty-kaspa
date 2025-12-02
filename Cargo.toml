@@ -344,11 +344,11 @@ empty_docs = "allow"
 uninlined_format_args = "allow"
 
 [patch.crates-io.pqcrypto-falcon]
-git = "https://github.com/biryukovmaxim/pqcrypto.git"
+git = "https://github.com/rustpq/pqcrypto"
 package = "pqcrypto-falcon"
-branch = "poc-falcon-in-wasm-unknown-unknown"
+rev = "4d95901b90512bc5c38a4c72642af2309e46d8a1"
 
 [patch.crates-io.pqcrypto-traits]
-git = "https://github.com/biryukovmaxim/pqcrypto.git"
+git = "https://github.com/rustpq/pqcrypto"
 package = "pqcrypto-traits"
-branch = "poc-falcon-in-wasm-unknown-unknown"
+rev = "4d95901b90512bc5c38a4c72642af2309e46d8a1"
