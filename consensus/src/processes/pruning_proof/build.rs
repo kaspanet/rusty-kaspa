@@ -11,7 +11,7 @@ use kaspa_consensus_core::{
     pruning::PruningPointProof,
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
-use kaspa_core::{debug, info};
+use kaspa_core::debug;
 use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_utils::vec::VecExtensions;
@@ -77,7 +77,7 @@ impl PruningProofManager {
         let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
         let (ghostdag_stores, relations_stores, selected_tip_by_level, roots_by_level) =
-            self.calc_gd_for_all_levels(&pp_header, temp_db);
+            self.calc_ghostdag_and_relations_for_all_levels(&pp_header, temp_db);
 
         // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
         // to make sure we hold a single Arc per header
@@ -144,7 +144,6 @@ impl PruningProofManager {
                     }
 
                     headers.push(get_header(current));
-                    info!("level is {}, current is {}", level, current);
                     for child in relations_stores[level].read().get_children(current).unwrap().read().iter().copied() {
                         queue.push(Reverse(SortableBlock::new(child, get_header(child).blue_work)));
                     }
@@ -182,7 +181,7 @@ impl PruningProofManager {
             .collect_vec()
     }
 
-    fn calc_gd_for_all_levels(
+    fn calc_ghostdag_and_relations_for_all_levels(
         &self,
         pp_header: &HeaderWithBlockLevel,
         temp_db: Arc<DB>,
@@ -294,7 +293,7 @@ impl PruningProofManager {
         let selected_tip = if pp_header.block_level >= level {
             pp_header.header.hash
         } else {
-            self.find_selected_parent_header_at_level(&pp_header.header, level)?.hash
+            self.find_approximate_selected_parent_header_at_level(&pp_header.header, level)?.hash
         };
 
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
@@ -337,7 +336,7 @@ impl PruningProofManager {
                 // find common ancestor of block_at_depth_m_at_next_level and block_at_depth_2m in chain of block_at_depth_m_at_next_level
                 let mut common_ancestor = self.headers_store.get_header(block_at_depth_m_at_next_level).unwrap();
                 while !self.reachability_service.is_dag_ancestor_of(common_ancestor.hash, block_at_depth_2m) {
-                    common_ancestor = match self.find_selected_parent_header_at_level(&common_ancestor, level) {
+                    common_ancestor = match self.find_approximate_selected_parent_header_at_level(&common_ancestor, level) {
                         Ok(header) => header,
                         // Try to give this last header a chance at being root
                         Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => break,
@@ -355,9 +354,12 @@ impl PruningProofManager {
                 return Ok((self.ghostdag_store.clone(), relation_store, selected_tip, root));
             }
 
-            // Step 3 - Fill the ghostdag data from root to tip
-            let ghostdag_store = Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, tries));
+            // Step 3 - Fill the ghostdag data from root to tip.
+            //
+            // First, derive the relevant relations down to the candidate root.
             let relation_store = self.populate_relation_store_at_level(temp_db.clone(), selected_tip, root, level, tries);
+            
+            let ghostdag_store = Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, tries));
             let has_required_block = self.fill_level_proof_ghostdag_data(
                 root,
                 pp_header.header.hash,
@@ -496,26 +498,26 @@ impl PruningProofManager {
 
     /// selected parent at level = the parent of the header at the level
     /// with the highest blue_work
-    fn find_selected_parent_header_at_level(
+    fn find_approximate_selected_parent_header_at_level(
         &self,
         header: &Header,
         level: BlockLevel,
     ) -> PruningProofManagerInternalResult<Arc<Header>> {
-        // Parents manager parents_at_level may return parents that aren't in relations_service, so it's important
-        // to filter to include only parents that are in relations_service.
+        // Parents manager parents_at_level may return parents that aren't currently in database and those are filtered out.
+        // This is ok because this function is called in the context of deriving a root deep enough for a proof at this level,
+        // not to find the "best" such proof
         let sp = self
             .parents_manager
             .parents_at_level(header, level)
             .iter()
             .copied()
-            // .filter(|p| relations_store_at_level.read().has(*p).unwrap())
             .filter_map(|p| self.headers_store.get_header(p).unwrap_option().map(|h| SortableBlock::new(p, h.blue_work)))
             .max()
             .ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof("no parents with header".to_string()))?;
         Ok(self.headers_store.get_header(sp.hash).expect("unwrapped above"))
     }
 
-    /// Finds the block on a given level that is at base_depth deep from it.
+    /// Finds a block on a given level that is at base_depth deep from it.
     /// Also returns if the block was the last one in the level
     /// base_depth = the blue score depth at level 0
     fn level_block_at_base_depth(
@@ -539,7 +541,7 @@ impl PruningProofManager {
                 break;
             }
 
-            current_header = match self.find_selected_parent_header_at_level(&current_header, level) {
+            current_header = match self.find_approximate_selected_parent_header_at_level(&current_header, level) {
                 Ok(header) => header,
                 Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => {
                     // We want to give this root a shot if all its past is pruned
