@@ -57,7 +57,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e89da841a80418a9b391ebaea17f5c112ffaaa96f621d2c285b5174da76b9011"
 dependencies = [
  "cfg-if 1.0.0",
- "getrandom",
+ "getrandom 0.2.15",
  "once_cell",
  "version_check",
  "zerocopy",
@@ -1354,6 +1354,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dunce"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
+
+[[package]]
 name = "duration-string"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1664,6 +1670,20 @@ dependencies = [
  "js-sys",
  "libc",
  "wasi",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "getrandom"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
+dependencies = [
+ "cfg-if 1.0.0",
+ "js-sys",
+ "libc",
+ "r-efi",
+ "wasip2",
  "wasm-bindgen",
 ]
 
@@ -2296,7 +2316,7 @@ dependencies = [
  "borsh",
  "bs58",
  "faster-hex",
- "getrandom",
+ "getrandom 0.2.15",
  "hmac",
  "js-sys",
  "kaspa-consensus-core",
@@ -2465,7 +2485,7 @@ dependencies = [
  "criterion",
  "faster-hex",
  "futures-util",
- "getrandom",
+ "getrandom 0.2.15",
  "itertools 0.13.0",
  "js-sys",
  "kaspa-addresses",
@@ -3184,6 +3204,8 @@ dependencies = [
  "kaspa-wasm-core",
  "log",
  "parking_lot",
+ "pqcrypto-falcon",
+ "pqcrypto-traits",
  "rand",
  "secp256k1",
  "serde",
@@ -4612,6 +4634,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "pqcrypto-falcon"
+version = "0.4.1"
+source = "git+https://github.com/rustpq/pqcrypto?rev=4d95901b90512bc5c38a4c72642af2309e46d8a1#4d95901b90512bc5c38a4c72642af2309e46d8a1"
+dependencies = [
+ "cc",
+ "glob",
+ "pqcrypto-internals",
+ "pqcrypto-traits",
+ "wasm32-unknown-unknown-openbsd-libc",
+]
+
+[[package]]
+name = "pqcrypto-internals"
+version = "0.2.11"
+source = "git+https://github.com/rustpq/pqcrypto?rev=4d95901b90512bc5c38a4c72642af2309e46d8a1#4d95901b90512bc5c38a4c72642af2309e46d8a1"
+dependencies = [
+ "cc",
+ "dunce",
+ "getrandom 0.3.4",
+ "wasm32-unknown-unknown-openbsd-libc",
+]
+
+[[package]]
+name = "pqcrypto-traits"
+version = "0.3.5"
+source = "git+https://github.com/rustpq/pqcrypto?rev=4d95901b90512bc5c38a4c72642af2309e46d8a1#4d95901b90512bc5c38a4c72642af2309e46d8a1"
+
+[[package]]
 name = "prettyplease"
 version = "0.2.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4779,6 +4829,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "r-efi"
+version = "5.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
+
+[[package]]
 name = "rand"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4805,7 +4861,7 @@ version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
- "getrandom",
+ "getrandom 0.2.15",
 ]
 
 [[package]]
@@ -4859,7 +4915,7 @@ version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
 dependencies = [
- "getrandom",
+ "getrandom 0.2.15",
  "libredox",
  "thiserror",
 ]
@@ -4946,7 +5002,7 @@ checksum = "c17fa4cb658e3583423e915b9f3acc01cceaee1860e33d59ebae66adc3a2dc0d"
 dependencies = [
  "cc",
  "cfg-if 1.0.0",
- "getrandom",
+ "getrandom 0.2.15",
  "libc",
  "spin",
  "untrusted",
@@ -6144,7 +6200,7 @@ version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
- "getrandom",
+ "getrandom 0.2.15",
 ]
 
 [[package]]
@@ -6153,7 +6209,7 @@ version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81dfa00651efa65069b0b6b651f4aaa31ba9e3c3ce0137aaad053604ee7e0314"
 dependencies = [
- "getrandom",
+ "getrandom 0.2.15",
  "rand",
  "serde",
  "wasm-bindgen",
@@ -6222,6 +6278,15 @@ name = "wasi"
 version = "0.11.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
+
+[[package]]
+name = "wasip2"
+version = "1.0.1+wasi-0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0562428422c63773dad2c345a1882263bbf4d65cf3f42e90921f787ef5ad58e7"
+dependencies = [
+ "wit-bindgen",
+]
 
 [[package]]
 name = "wasm-bindgen"
@@ -6318,6 +6383,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.79",
+]
+
+[[package]]
+name = "wasm32-unknown-unknown-openbsd-libc"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6abee48844f5d109794276675f8f63c2ecdc21a1b941b45dd346e606fca3a8c"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -6632,6 +6706,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "wit-bindgen"
+version = "0.46.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
+
+[[package]]
 name = "workflow-chrome"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6661,7 +6741,7 @@ dependencies = [
  "dirs",
  "faster-hex",
  "futures",
- "getrandom",
+ "getrandom 0.2.15",
  "instant",
  "js-sys",
  "rand",
@@ -6842,7 +6922,7 @@ dependencies = [
  "downcast-rs",
  "futures",
  "futures-util",
- "getrandom",
+ "getrandom 0.2.15",
  "manual_future",
  "rand",
  "serde",

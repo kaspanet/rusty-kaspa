@@ -235,22 +235,22 @@ pub fn hash_script_public_key(hasher: &mut impl Hasher, script_public_key: &Scri
     hasher.write_var_bytes(script_public_key.script());
 }
 
-pub fn calc_schnorr_signature_hash(
+pub fn schnorr_hash_input_fields(
+    hasher: &mut impl Hasher,
     verifiable_tx: &impl VerifiableTransaction,
     input_index: usize,
     hash_type: SigHashType,
     reused_values: &impl SigHashReusedValues,
-) -> Hash {
+) {
     let input = verifiable_tx.populated_input(input_index);
     let tx = verifiable_tx.tx();
-    let mut hasher = TransactionSigningHash::new();
     hasher
         .write_u16(tx.version)
         .update(previous_outputs_hash(tx, hash_type, reused_values))
         .update(sequences_hash(tx, hash_type, reused_values))
         .update(sig_op_counts_hash(tx, hash_type, reused_values));
-    hash_outpoint(&mut hasher, input.0.previous_outpoint);
-    hash_script_public_key(&mut hasher, &input.1.script_public_key);
+    hash_outpoint(hasher, input.0.previous_outpoint);
+    hash_script_public_key(hasher, &input.1.script_public_key);
     hasher
         .write_u64(input.1.amount)
         .write_u64(input.0.sequence)
@@ -261,6 +261,16 @@ pub fn calc_schnorr_signature_hash(
         .write_u64(tx.gas)
         .update(payload_hash(tx, reused_values))
         .write_u8(hash_type.to_u8());
+}
+
+pub fn calc_schnorr_signature_hash(
+    verifiable_tx: &impl VerifiableTransaction,
+    input_index: usize,
+    hash_type: SigHashType,
+    reused_values: &impl SigHashReusedValues,
+) -> Hash {
+    let mut hasher = TransactionSigningHash::new();
+    schnorr_hash_input_fields(&mut hasher, verifiable_tx, input_index, hash_type, reused_values);
     hasher.finalize()
 }
 
@@ -273,6 +283,17 @@ pub fn calc_ecdsa_signature_hash(
     let hash = calc_schnorr_signature_hash(tx, input_index, hash_type, reused_values);
     let mut hasher = TransactionSigningHashECDSA::new();
     hasher.update(hash);
+    hasher.finalize()
+}
+
+pub fn calc_falcon_signature_hash(
+    tx: &impl VerifiableTransaction,
+    input_index: usize,
+    hash_type: SigHashType,
+    reused_values: &impl SigHashReusedValues,
+) -> Hash {
+    let mut hasher = TransactionSigningHash::new();
+    schnorr_hash_input_fields(&mut hasher, tx, input_index, hash_type, reused_values);
     hasher.finalize()
 }
 
