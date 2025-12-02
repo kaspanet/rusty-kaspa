@@ -9,6 +9,7 @@ use crate::wasm::pskt::*;
 use crate::wasm::signer::PrivateKeyArrayT;
 use crate::wasm::utils::sompi_to_kaspa_string_with_suffix;
 use kaspa_addresses::Address;
+use kaspa_consensus_client::Transaction;
 use kaspa_consensus_core::network::{NetworkId, NetworkIdT, NetworkTypeT};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::convert::TryCastFromJs;
@@ -114,7 +115,7 @@ impl PSKB {
     /// This is useful for figuring out which private keys are required for signing.
     #[wasm_bindgen]
     pub fn addresses(&self, network_id: &NetworkIdT) -> Result<Vec<Address>> {
-        let mut addresses = HashSet::new();
+        let mut addresses = HashSet::with_capacity(self.length());
 
         for i in 0..self.length() {
             let pskt = self.get(i)?;
@@ -136,6 +137,17 @@ impl PSKB {
         }
 
         Ok(PSKB(new_bundle_inner))
+    }
+
+    #[wasm_bindgen(js_name = "finalizeAndExtractTransactions")]
+    pub fn finalize_and_extract_transactions(&self, network_type: &NetworkTypeT) -> Result<Vec<Transaction>> {
+        let mut transactions = Vec::with_capacity(self.length());
+        for i in 0..self.length() {
+            let pskt = self.get(i)?;
+            let transaction = pskt.finalize_and_extract_transaction(network_type)?;
+            transactions.push(transaction);
+        }
+        Ok(transactions)
     }
 }
 

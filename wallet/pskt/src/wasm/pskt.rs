@@ -3,6 +3,8 @@ use crate::role::*;
 use crate::wasm::signer::PrivateKeyArrayT;
 use kaspa_consensus_core::network::{NetworkId, NetworkIdT, NetworkType, NetworkTypeT};
 use kaspa_consensus_core::tx::{TransactionId, VerifiableTransaction};
+use kaspa_txscript::opcodes::codes::OpData65;
+use kaspa_txscript::script_builder::ScriptBuilder;
 use wasm_bindgen::prelude::*;
 // use js_sys::Object;
 use crate::prelude::Signature;
@@ -15,6 +17,7 @@ use kaspa_wallet_keys::privatekey::PrivateKey;
 use secp256k1::Message;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::iter;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::MutexGuard;
@@ -482,6 +485,64 @@ impl PSKT {
 
         self.replace(State::Signer(signed_pskt))
     }
+
+    /// Get `Transaction` from a PSKT, by first finalizing it.
+    /// This method is useful to broadcast PSKT to the Kaspa Network, using `RpcClient.submitTransaction`.
+    #[wasm_bindgen(js_name = "finalizeAndExtractTransaction")]
+    pub fn finalize_and_extract_transaction(&self, network_type: &NetworkTypeT) -> Result<Transaction> {
+        let network_type: NetworkType = network_type.try_into()?;
+
+        let pskt_finalizer: Native<Finalizer> = match self.take() {
+            State::NoOp(inner) => inner.ok_or(Error::NotInitialized)?.into(),
+            State::Creator(pskt) => pskt.constructor().signer().finalizer(),
+            State::Constructor(pskt) => pskt.signer().finalizer(),
+            State::Updater(pskt) => pskt.signer().finalizer(),
+            State::Signer(pskt) => pskt.finalizer(),
+            State::Combiner(pskt) => pskt.signer().finalizer(),
+            State::Finalizer(pskt) => pskt,
+            state => return Err(Error::state(state))?,
+        };
+
+        let result = pskt_finalizer.finalize_sync(|inner: &Inner| -> Result<Vec<Vec<u8>>> {
+            Ok(inner
+                .inputs
+                .iter()
+                .map(|input| -> Vec<u8> {
+                    let signatures: Vec<_> = input
+                        .partial_sigs
+                        .clone()
+                        .into_iter()
+                        .flat_map(|(_, signature)| {
+                            iter::once(OpData65).chain(signature.into_bytes()).chain([input.sighash_type.to_u8()])
+                        })
+                        .collect();
+
+                    signatures
+                        .into_iter()
+                        .chain(
+                            input
+                                .redeem_script
+                                .as_ref()
+                                .map(|redeem_script| ScriptBuilder::new().add_data(redeem_script.as_slice()).unwrap().drain().to_vec())
+                                .unwrap_or_default(),
+                        )
+                        .collect()
+                })
+                .collect())
+        });
+
+        let finalized_pskt = match result {
+            Ok(finalized_pskt) => finalized_pskt,
+            Err(e) => return Err(Error::from(e.to_string())),
+        };
+
+        let mutable_transaction = finalized_pskt
+            .extractor()?
+            .extract_tx(&network_type.into())
+            .map_err(|e| Error::custom(format!("Failed to extract transaction: {e}")))?;
+
+        Ok(mutable_transaction.tx.into())
+    }
 }
 
 impl PSKT {
@@ -509,6 +570,7 @@ mod tests {
     use js_sys::Array;
     use kaspa_addresses::Version;
     use kaspa_consensus_core::{
+        hashing::sighash_type::SIG_HASH_ALL,
         tx::{TransactionOutpoint, UtxoEntry},
         Hash,
     };
@@ -599,5 +661,31 @@ mod tests {
             }
             _ => panic!("PSKT is not in Signer state after signing"),
         }
+    }
+
+    #[wasm_bindgen_test]
+    fn _test_finalize_and_extract_transaction() {
+        let sk = secp256k1::SecretKey::new(&mut secp256k1::rand::thread_rng());
+        let pk: PrivateKey = PrivateKey::from(&sk);
+
+        let inner = _mock_pskt_inner(&pk);
+        let pskt = PSKT::from(State::NoOp(Some(inner)));
+
+        let keys = Array::new();
+        keys.push(&JsValue::from(pk.clone()));
+        let keys_t: PrivateKeyArrayT = JsValue::from(keys).into();
+        let network_type_t: NetworkTypeT = JsValue::from_str("testnet-10").into();
+
+        let signed_pskt = pskt.sign(keys_t, &network_type_t).unwrap();
+
+        let transaction = signed_pskt.finalize_and_extract_transaction(&network_type_t).unwrap();
+
+        assert_eq!(transaction.inputs().len(), 1);
+        let script_sig = transaction.inputs()[0].signature_script.clone();
+        // 1 (opcode) + 65 (data) = 66 bytes.
+        assert_eq!(script_sig.len(), 66);
+        assert_eq!(script_sig[0], kaspa_txscript::opcodes::codes::OpData65);
+        assert_eq!(script_sig[65], SIG_HASH_ALL.to_u8());
+        assert_eq!(transaction.outputs().len(), 0);
     }
 }

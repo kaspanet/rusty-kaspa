@@ -470,6 +470,7 @@ impl PSKT<Extractor> {
             let reused_values = SigHashReusedValuesUnsync::new();
 
             tx.populated_inputs().enumerate().try_for_each(|(idx, (input, entry))| {
+                // TODO: should kip10_enabled flag be enabled by default, or should we at least let the caller the ability to control it?
                 TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &reused_values, &cache, false, false).execute()?;
                 <Result<(), ExtractError>>::Ok(())
             })?;

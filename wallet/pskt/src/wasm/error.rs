@@ -39,6 +39,9 @@ pub enum Error {
 
     #[error(transparent)]
     NetworkIdError(#[from] kaspa_consensus_core::network::NetworkIdError),
+
+    #[error(transparent)]
+    NetworkTypeError(#[from] kaspa_consensus_core::network::NetworkTypeError),
 }
 
 impl Error {
