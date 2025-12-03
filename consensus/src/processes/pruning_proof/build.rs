@@ -45,7 +45,13 @@ struct RelationsStoreInFutureOfRoot<T: RelationsStoreReader, U: ReachabilityServ
 impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for RelationsStoreInFutureOfRoot<T, U> {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, kaspa_database::prelude::StoreError> {
         self.relations_store.get_parents(hash).map(|hashes| {
-            Arc::new(hashes.iter().copied().filter(|h| self.reachability_service.is_dag_ancestor_of(self.root, *h)).collect_vec())
+            Arc::new(
+                hashes
+                    .iter()
+                    .copied()
+                    .filter(|h| self.reachability_service.is_dag_ancestor_of_result(self.root, *h).unwrap_or(false))
+                    .collect_vec(),
+            )
         })
     }
 
@@ -349,12 +355,6 @@ impl PruningProofManager {
 
                 common_ancestor.hash
             };
-
-            if level == 0 {
-                let relation_store = Arc::new(RwLock::new(self.relations_stores.read()[0].clone()));
-
-                return Ok((self.ghostdag_store.clone(), relation_store, selected_tip, root));
-            }
 
             // Step 3 - Fill the ghostdag data from root to tip.
             //

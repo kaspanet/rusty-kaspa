@@ -107,7 +107,6 @@ pub struct PruningProofManager {
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     ghostdag_store: Arc<DbGhostdagStore>,
     relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
-    level_relations_services: Vec<MTRelationsService<DbRelationsStore>>,
     pruning_point_store: Arc<RwLock<DbPruningStore>>,
     past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     virtual_stores: Arc<RwLock<VirtualStores>>,
@@ -185,10 +184,6 @@ impl PruningProofManager {
             ghostdag_manager,
 
             is_consensus_exiting,
-
-            level_relations_services: (0..=max_block_level)
-                .map(|level| MTRelationsService::new(storage.relations_stores.clone().clone(), level))
-                .collect_vec(),
         }
     }
 
