@@ -93,6 +93,9 @@ pub struct Args {
     pub retention_period_days: Option<f64>,
 
     pub override_params_file: Option<String>,
+
+    pub rocksdb_preset: Option<String>,
+    pub rocksdb_wal_dir: Option<String>,
 }
 
 impl Default for Args {
@@ -145,6 +148,8 @@ impl Default for Args {
             ram_scale: 1.0,
             retention_period_days: None,
             override_params_file: None,
+            rocksdb_preset: None,
+            rocksdb_wal_dir: None,
         }
     }
 }
@@ -407,6 +412,24 @@ a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance
                 .value_parser(clap::value_parser!(String))
                 .help("Path to a JSON file containing override parameters.")
         )
+        .arg(
+            Arg::new("rocksdb-preset")
+                .long("rocksdb-preset")
+                .env("KASPAD_ROCKSDB_PRESET")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(String))
+                .help("RocksDB configuration preset: 'default' (SSD/NVMe) or 'archive' (HDD with BlobDB, compression, rate limiting). \
+                       Archive preset optimized for archival nodes on HDD storage (see docs/archival.md).")
+        )
+        .arg(
+            Arg::new("rocksdb-wal-dir")
+                .long("rocksdb-wal-dir")
+                .env("KASPAD_ROCKSDB_WAL_DIR")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(String))
+                .help("Custom WAL (Write-Ahead Log) directory for RocksDB. Useful for hybrid setups: database on HDD, WAL on fast NVMe SSD. \
+                       Example: --rocksdb-wal-dir=/mnt/nvme/kaspa-wal")
+        )
         ;
 
     #[cfg(feature = "devnet-prealloc")]
@@ -495,6 +518,8 @@ impl Args {
             #[cfg(feature = "devnet-prealloc")]
             prealloc_amount: arg_match_unwrap_or::<u64>(&m, "prealloc-amount", defaults.prealloc_amount),
             override_params_file: m.get_one::<String>("override-params-file").cloned(),
+            rocksdb_preset: m.get_one::<String>("rocksdb-preset").cloned().or(defaults.rocksdb_preset),
+            rocksdb_wal_dir: m.get_one::<String>("rocksdb-wal-dir").cloned().or(defaults.rocksdb_wal_dir),
         };
 
         if arg_match_unwrap_or::<bool>(&m, "enable-mainnet-mining", false) {
