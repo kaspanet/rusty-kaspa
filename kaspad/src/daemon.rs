@@ -10,7 +10,7 @@ use kaspa_consensus_core::{
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
 use kaspa_core::{core::Core, debug, info};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
-use kaspa_database::prelude::CachePolicy;
+use kaspa_database::prelude::{CachePolicy, RocksDbPreset};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
 use kaspa_p2p_lib::Hub;
@@ -229,6 +229,36 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     } else {
         0
     };
+
+    // Parse RocksDB preset configuration
+    let rocksdb_preset = if let Some(preset_str) = &args.rocksdb_preset {
+        match preset_str.parse::<RocksDbPreset>() {
+            Ok(preset) => {
+                info!("Using RocksDB preset: {} - {}", preset, preset.description());
+                info!("  Use case: {}", preset.use_case());
+                info!("  Memory requirements: {}", preset.memory_requirements());
+                preset
+            }
+            Err(err) => {
+                println!("Invalid RocksDB preset: {}", err);
+                exit(1);
+            }
+        }
+    } else {
+        RocksDbPreset::Default
+    };
+
+    // Setup WAL directory if specified
+    let wal_dir = if let Some(custom_wal_dir) = &args.rocksdb_wal_dir {
+        // Custom WAL directory (e.g., NVMe for hybrid setups)
+        let wal_path = PathBuf::from(custom_wal_dir);
+        info!("Custom WAL directory: {}", wal_path.display());
+        Some(wal_path)
+    } else {
+        // No custom WAL - use default (same directory as database)
+        None
+    };
+
     // Make sure args forms a valid set of properties
     if let Err(err) = validate_args(args) {
         println!("{}", err);
@@ -329,6 +359,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let mut meta_db = kaspa_database::prelude::ConnBuilder::default()
         .with_db_path(meta_db_dir.clone())
         .with_files_limit(META_DB_FILE_LIMIT)
+        .with_preset(rocksdb_preset)
+        .with_wal_dir(wal_dir.clone())
         .build()
         .unwrap();
 
@@ -344,6 +376,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                 let consensus_db = kaspa_database::prelude::ConnBuilder::default()
                     .with_db_path(consensus_db_dir.clone().join(dir_name))
                     .with_files_limit(1)
+                    .with_preset(rocksdb_preset)
+                    .with_wal_dir(wal_dir.clone())
                     .build()
                     .unwrap();
 
@@ -414,6 +448,8 @@ Do you confirm? (y/n)";
         meta_db = kaspa_database::prelude::ConnBuilder::default()
             .with_db_path(meta_db_dir)
             .with_files_limit(META_DB_FILE_LIMIT)
+            .with_preset(rocksdb_preset)
+            .with_wal_dir(wal_dir.clone())
             .build()
             .unwrap();
     }
@@ -462,6 +498,8 @@ Do you confirm? (y/n)";
         tx_script_cache_counters.clone(),
         fd_remaining,
         mining_rules.clone(),
+        rocksdb_preset,
+        wal_dir.clone(),
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
     let consensus_monitor = Arc::new(ConsensusMonitor::new(processing_counters.clone(), tick_service.clone()));
@@ -489,6 +527,8 @@ Do you confirm? (y/n)";
         let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
             .with_db_path(utxoindex_db_dir)
             .with_files_limit(utxo_files_limit)
+            .with_preset(rocksdb_preset)
+            .with_wal_dir(wal_dir.clone())
             .build()
             .unwrap();
         let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());

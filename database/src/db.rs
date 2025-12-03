@@ -4,8 +4,10 @@ use std::path::PathBuf;
 
 pub use conn_builder::ConnBuilder;
 use kaspa_utils::fd_budget::FDGuard;
+pub use rocksdb_preset::RocksDbPreset;
 
 mod conn_builder;
+mod rocksdb_preset;
 
 /// The DB type used for Kaspad stores
 pub struct DB {
