@@ -3,19 +3,16 @@ use crate::flowcontext::{
     process_queue::ProcessQueue,
     transactions::TransactionsSpread,
 };
-use crate::{v5, v6, v7, v8};
+use crate::{v7, v8};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
+use kaspa_consensus_core::api::{BlockValidationFuture, BlockValidationFutures};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
-use kaspa_consensus_core::{
-    api::{BlockValidationFuture, BlockValidationFutures},
-    network::NetworkType,
-};
 use kaspa_consensus_notify::{
     notification::{Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
@@ -754,22 +751,10 @@ impl ConnectionInitializer for FlowContext {
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
         // Register all flows according to version
-        let connect_only_new_versions = self.config.net.network_type() != NetworkType::Testnet;
-
-        let (flows, applied_protocol_version) = if connect_only_new_versions {
-            match peer_version.protocol_version {
-                v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone()), PROTOCOL_VERSION),
-                7 => (v7::register(self.clone(), router.clone()), 7),
-                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
-            }
-        } else {
-            match peer_version.protocol_version {
-                v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone()), PROTOCOL_VERSION),
-                7 => (v7::register(self.clone(), router.clone()), 7),
-                6 => (v6::register(self.clone(), router.clone()), 6),
-                5 => (v5::register(self.clone(), router.clone()), 5),
-                v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
-            }
+        let (flows, applied_protocol_version) = match peer_version.protocol_version {
+            v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+            7 => (v7::register(self.clone(), router.clone()), 7),
+            v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };
 
         // Build and register the peer properties
