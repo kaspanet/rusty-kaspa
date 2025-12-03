@@ -498,16 +498,12 @@ impl PruningProcessor {
                         statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
                     }
 
-                    // Delete level-x relations for blocks which only belong to higher-than-x proof levels.
-                    // This preserves the semantic that for each level, relations represent a contiguous DAG area in that level
-                    for lower_level in 0..(1.min(affiliated_proof_level)) as usize {
-                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[lower_level]);
+                    // delete level 0 relations and ghostdag only unless those are in the 0 level of the pruning proof
+                    if affiliated_proof_level > 0 {
+                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[0]);
                         relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
                         staging_level_relations.commit(&mut batch).unwrap();
-
-                        if lower_level == 0 {
-                            self.ghostdag_store.delete_batch(&mut batch, current).unwrap_option();
-                        }
+                        self.ghostdag_store.delete_batch(&mut batch, current).unwrap_option();
                     }
                     // while we keep headers for keep relation blocks regardless,
                     // some of those relations blocks may accidentally have a pruning sample stored,
@@ -526,13 +522,9 @@ impl PruningProcessor {
                         current,
                     );
                     reachability::delete_block(&mut staging_reachability, current, &mut mergeset.iter().copied()).unwrap();
-                    // TODO: consider adding block level to compact header data
-                    let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
-                    (0..=0 as usize).for_each(|level| {
-                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[level]);
-                        relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
-                        staging_level_relations.commit(&mut batch).unwrap();
-                    });
+                    let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[0]);
+                    relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
+                    staging_level_relations.commit(&mut batch).unwrap();
 
                     self.ghostdag_store.delete_batch(&mut batch, current).unwrap_option();
 
