@@ -269,7 +269,6 @@ impl PruningProofManager {
 
             // Write parents to the relations store
             let mut relations_write = level_relation_store.write();
-
             relations_write.insert(hash, parents.clone()).unwrap();
 
             // Enqueue parents to fill full upper chain

@@ -38,7 +38,7 @@ use crate::{
         storage::ConsensusStorage,
     },
     model::{
-        services::{reachability::MTReachabilityService, relations::MTRelationsService},
+        services::reachability::MTReachabilityService,
         stores::{
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagStoreReader},
