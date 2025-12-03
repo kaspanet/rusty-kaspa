@@ -242,12 +242,8 @@ impl PruningProofManager {
         let mut visited = BlockHashSet::new();
         queue.push_back(tip);
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
-        let lvl_bytes = level.to_le_bytes();
-        let temp_index_bytes = try_number.to_le_bytes();
-        let prefix = lvl_bytes.into_iter().chain(temp_index_bytes).collect_vec();
         let level_relation_store =
-            Arc::new(RwLock::new(DbRelationsStore::with_prefix(temp_db.clone(), &prefix, cache_policy, cache_policy)));
-
+            Arc::new(RwLock::new(DbRelationsStore::new_temp(temp_db.clone(), level, try_number, cache_policy, cache_policy)));
         level_relation_store.write().insert(ORIGIN, BlockHashes::new(vec![])).unwrap();
 
         while let Some(hash) = queue.pop_front() {
@@ -273,6 +269,7 @@ impl PruningProofManager {
 
             // Write parents to the relations store
             let mut relations_write = level_relation_store.write();
+
             relations_write.insert(hash, parents.clone()).unwrap();
 
             // Enqueue parents to fill full upper chain
