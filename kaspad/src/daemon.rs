@@ -392,11 +392,7 @@ However, downgrading to an older node version later will require deleting the da
 Do you confirm? (y/n)";
             get_user_approval_or_exit(msg, args.yes);
             mcms.set_version(5).unwrap();
-        } else {
-            is_db_reset_needed = request_database_deletion_approval(args.yes);
-            continue 'db_upgrade;
         }
-
         if version <= 5 {
             let active_consensus_dir_name = mcms.active_consensus_dir_name().unwrap();
 
@@ -451,7 +447,7 @@ Do you confirm? (y/n)";
                     );
 
                     let msg =
-                        "Node database currently at version below version 5. Upgrade process to version 6 needs to be applied. Continue? (y/n)";
+                        "Node database currently at or below version 5. Upgrade process to version 6 needs to be applied. Continue? (y/n)";
                     get_user_approval_or_exit(msg, args.yes);
 
                     // Actual delete only happens after user consents to the upgrade:
