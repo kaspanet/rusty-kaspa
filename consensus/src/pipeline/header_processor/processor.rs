@@ -113,7 +113,7 @@ pub struct HeaderProcessor {
     db: Arc<DB>,
 
     // Stores
-    pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
+    pub(super) relations_store: Arc<RwLock<DbRelationsStore>>,
     pub(super) reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub(super) reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     pub(super) ghostdag_store: Arc<DbGhostdagStore>,
@@ -164,7 +164,7 @@ impl HeaderProcessor {
             genesis: params.genesis.clone(),
             db,
 
-            relations_stores: storage.relations_stores.clone(),
+            relations_store: storage.relations_store.clone(),
             reachability_store: storage.reachability_store.clone(),
             reachability_relations_store: storage.reachability_relations_store.clone(),
             ghostdag_store: storage.ghostdag_store.clone(),
@@ -388,8 +388,8 @@ impl HeaderProcessor {
         // Relations and statuses
         //
 
-        let mut relations_write = self.relations_stores.write();
-        relations_write[0].insert_batch(&mut batch, ctx.hash, ctx.known_direct_parents.clone()).unwrap_or_exists();
+        let mut relations_write = self.relations_store.write();
+        relations_write.insert_batch(&mut batch, ctx.hash, ctx.known_direct_parents.clone()).unwrap_or_exists();
 
         // Write reachability relations. These relations are only needed during header pruning
         let mut reachability_relations_write = self.reachability_relations_store.write();
@@ -422,8 +422,8 @@ impl HeaderProcessor {
         // This data might have been already written when applying the pruning proof.
         self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).unwrap_or_exists();
 
-        let mut relations_write = self.relations_stores.write();
-        relations_write[0].insert_batch(&mut batch, ctx.hash, ctx.known_direct_parents.to_vec().into()).unwrap_or_exists();
+        let mut relations_write = self.relations_store.write();
+        relations_write.insert_batch(&mut batch, ctx.hash, ctx.known_direct_parents.to_vec().into()).unwrap_or_exists();
 
         let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
@@ -466,13 +466,13 @@ impl HeaderProcessor {
     }
 
     pub fn init(&self) {
-        if self.relations_stores.read()[0].has(ORIGIN).unwrap() {
+        if self.relations_store.read().has(ORIGIN).unwrap() {
             return;
         }
 
         let mut batch = WriteBatch::default();
-        let mut relations_write = self.relations_stores.write();
-        relations_write[0].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
+        let mut relations_write = self.relations_store.write();
+        relations_write.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
         let mut hst_write = self.headers_selected_tip_store.write();
         hst_write.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
         self.db.write(batch).unwrap();

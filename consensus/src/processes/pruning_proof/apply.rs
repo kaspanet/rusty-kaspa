@@ -113,7 +113,7 @@ impl PruningProofManager {
                 );
 
                 if level == 0 {
-                    self.relations_stores.write()[0].insert(header.hash, parents.clone()).unwrap();
+                    self.relations_stores.write().insert(header.hash, parents.clone()).unwrap();
                     let gd = if let Some(gd) = trusted_gd_map.get(&header.hash) {
                         gd.clone()
                     } else {
