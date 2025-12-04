@@ -1,0 +1,29 @@
+#!/bin/bash
+
+set -e
+
+VENV_DIR="env"
+
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Creating virtual environment in '$VENV_DIR'"
+    python3 -m venv $VENV_DIR
+else
+    echo "Virtual environment already exists, using '$VENV_DIR'"
+fi
+
+echo "Activating virtual environment '$VENV_DIR'"
+source $VENV_DIR/bin/activate
+
+if ! command -v maturin &> /dev/null; then
+    echo "Maturin not found in '$VENV_DIR', installing Maturin"
+    pip install maturin
+else
+    echo "Maturin is already installed in '$VENV_DIR'"
+    maturin --version
+fi
+
+BUILD_CMD="maturin develop --target-dir target"
+echo "Building with command '$BUILD_CMD'"
+$BUILD_CMD
+
+echo "Build complete."

@@ -10,6 +10,7 @@ use workflow_wasm::prelude::*;
 ///
 /// @category Wallet SDK
 #[derive(Clone, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen]
 pub struct DerivationPath {
     inner: kaspa_bip32::DerivationPath,
@@ -51,6 +52,44 @@ impl DerivationPath {
 
     #[wasm_bindgen(js_name = toString)]
     pub fn to_str(&self) -> String {
+        self.inner.to_string()
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl DerivationPath {
+    #[new]
+    pub fn new_py(path: &str) -> PyResult<DerivationPath> {
+        let inner = kaspa_bip32::DerivationPath::from_str(path)?;
+        Ok(Self { inner })
+    }
+
+    #[pyo3(name = "is_empty")]
+    pub fn is_empty_py(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    #[pyo3(name = "length")]
+    pub fn len_py(&self) -> usize {
+        self.inner.len()
+    }
+
+    #[pyo3(name = "parent")]
+    pub fn parent_py(&self) -> Option<DerivationPath> {
+        self.inner.parent().map(|inner| Self { inner })
+    }
+
+    #[pyo3(name = "push")]
+    #[pyo3(signature = (child_number, hardened=None))]
+    pub fn push_py(&mut self, child_number: u32, hardened: Option<bool>) -> PyResult<()> {
+        let child = ChildNumber::new(child_number, hardened.unwrap_or(false))?;
+        self.inner.push(child);
+        Ok(())
+    }
+
+    #[pyo3(name = "to_string")]
+    pub fn to_str_py(&self) -> String {
         self.inner.to_string()
     }
 }
