@@ -106,7 +106,7 @@ pub struct PruningProofManager {
     reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     ghostdag_store: Arc<DbGhostdagStore>,
-    relations_stores: Arc<RwLock<DbRelationsStore>>,
+    relations_store: Arc<RwLock<DbRelationsStore>>,
     pruning_point_store: Arc<RwLock<DbPruningStore>>,
     past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     virtual_stores: Arc<RwLock<VirtualStores>>,
@@ -158,7 +158,7 @@ impl PruningProofManager {
             reachability_relations_store: storage.reachability_relations_store.clone(),
             reachability_service,
             ghostdag_store: storage.ghostdag_store.clone(),
-            relations_stores: storage.relations_store.clone(),
+            relations_store: storage.relations_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
             pruning_meta_stores: storage.pruning_meta_stores.clone(),
             past_pruning_points_store: storage.past_pruning_points_store.clone(),
@@ -356,7 +356,7 @@ impl PruningProofManager {
                 let ghostdag = (&*self.ghostdag_store.get_data(current).unwrap()).into();
                 e.insert(TrustedHeader { header, ghostdag });
             }
-            let parents = self.relations_stores.read().get_parents(current).unwrap();
+            let parents = self.relations_store.read().get_parents(current).unwrap();
             for parent in parents.iter().copied() {
                 if visited.insert(parent) {
                     queue.push_back(parent);
