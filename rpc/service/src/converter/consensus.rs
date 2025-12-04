@@ -611,7 +611,7 @@ impl ConsensusConverter {
         merged_blocks_limit: Option<usize>,
     ) -> RpcResult<Vec<RpcAcceptanceData>> {
         if verbosity.accepting_chain_header_verbosity.is_none() && verbosity.mergeset_block_acceptance_data_verbosity.is_none() {
-            // early exit condition
+            // specified verbosity doesn't need acceptance data
             return Ok(Vec::new());
         }
 

@@ -920,18 +920,18 @@ impl ConsensusApi for Consensus {
         tx_ids: Option<Vec<TransactionId>>,
         tx_type: TransactionType,
     ) -> ConsensusResult<TransactionQueryResult> {
-        // We need consistency between the acceptance store and the block transaction store,
+        // need consistency between the acceptance store and the block transaction store,
         let _guard = self.pruning_lock.blocking_read();
+
+        let accepting_block_mergeset_acceptance_data_iter = self
+            .acceptance_data_store
+            .get(accepting_block)
+            .map_err(|_| ConsensusError::MissingData(accepting_block))?
+            .unwrap_or_clone()
+            .into_iter();
 
         match tx_type {
             TransactionType::Transaction => {
-                let accepting_block_mergeset_acceptance_data_iter = self
-                    .acceptance_data_store
-                    .get(accepting_block)
-                    .map_err(|_| ConsensusError::MissingData(accepting_block))?
-                    .unwrap_or_clone()
-                    .into_iter();
-
                 if let Some(tx_ids) = tx_ids {
                     let mut tx_ids_filter = HashSet::with_capacity(tx_ids.len());
                     tx_ids_filter.extend(tx_ids);

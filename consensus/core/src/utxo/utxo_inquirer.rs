@@ -45,6 +45,16 @@ pub enum UtxoInquirerError {
     StoreError,
     #[error("Utxo entry is not filled")]
     UnfilledUtxoEntry,
+    #[error(transparent)]
+    UtxoInquirerFindTxsFromAcceptanceDataError(#[from] UtxoInquirerFindTxsFromAcceptanceDataError),
+}
+
+#[derive(Error, Debug, Clone)]
+pub enum UtxoInquirerFindTxsFromAcceptanceDataError {
+    #[error("Tx ids filter is not allowed to be empty when not None.")]
+    TxIdsFilterIsEmptyError,
+    #[error("More than one tx id filter element is not supported yet.")]
+    TxIdsFilterNeedsLessOrEqualThanOneElementError,
 }
 
 pub type UtxoInquirerResult<T> = std::result::Result<T, UtxoInquirerError>;

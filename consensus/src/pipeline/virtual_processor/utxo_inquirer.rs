@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
     tx::{SignableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, UtxoEntry},
     utxo::{
         utxo_diff::ImmutableUtxoDiff,
-        utxo_inquirer::{UtxoInquirerError, UtxoInquirerResult},
+        utxo_inquirer::{UtxoInquirerError, UtxoInquirerFindTxsFromAcceptanceDataError, UtxoInquirerResult},
     },
 };
 use kaspa_core::trace;
@@ -361,123 +361,124 @@ impl VirtualStateProcessor {
         result
     }
 
-    /// Finds a transaction through the accepting block acceptance data (and using indexed info therein for
-    /// finding the tx in the block transactions store)
+    /// Finds transaction(s) through a provided accepting block acceptance data
+    ///
+    /// Arguments:
+    /// * `tx_ids`: an optional list of tx id(s) to resolve. When passing `None`, the accepted transaction ids
+    ///     contained in `acceptance_data` is used as a filter.
+    ///     This default behavior ensures only the accepted transactions by this mergeset are resolved.
+    /// * `acceptance_data`: accepting block acceptance data
+    ///
+    /// Limitations:
+    /// * `tx_ids` currently only allow filtering with exactly one transaction, not multiple
     fn find_txs_from_acceptance_data(
         &self,
-        tx_ids: Option<Vec<TransactionId>>, // specifying `None` returns all transactions in the acceptance data
+        tx_ids: Option<Vec<TransactionId>>,
         acceptance_data: &AcceptanceData,
     ) -> UtxoInquirerResult<Vec<Transaction>> {
-        if let Some(mut tx_ids) = tx_ids {
-            match tx_ids.len() {
-                // empty vec should never happen
-                0 => panic!("tx_ids should not be empty"),
-                // if we are dealing with a single tx, we optimize for this.
-                1 => {
-                    let tx_id = tx_ids.pop().unwrap();
+        match tx_ids.as_deref() {
+            None => {
+                // no filter passed, using default accepted transactions by mergeset filter
+                let mut all_txs = Vec::new();
 
-                    //sanity check
-                    assert!(tx_ids.is_empty());
+                for mbad in acceptance_data.iter() {
+                    let mut index_iter = mbad.accepted_transactions.iter().map(|tx| tx.index_within_block as usize);
 
-                    let (containing_block, index) = acceptance_data
-                        .iter()
-                        .find_map(|mbad| {
-                            let tx_arr_index = mbad
-                                .accepted_transactions
-                                .iter()
-                                .find_map(|tx| (tx.transaction_id == tx_id).then_some(tx.index_within_block as usize));
-                            tx_arr_index.map(|index| (mbad.block_hash, index))
-                        })
-                        .ok_or_else(|| UtxoInquirerError::MissingQueriedTransactions(vec![tx_id]))?;
-
-                    let tx = self
-                        .block_transactions_store
-                        .get(containing_block)
-                        .map_err(|_| UtxoInquirerError::MissingBlockFromBlockTxStore(containing_block))
-                        .and_then(|block_txs| {
-                            block_txs
-                                .get(index)
-                                .cloned()
-                                .ok_or(UtxoInquirerError::MissingTransactionIndexOfBlock(index, containing_block))
-                        })?;
-
-                    Ok(vec![tx])
-                }
-                // else we work, and optimize with sets, and iterate by block hash, as to minimize block transaction store queries.
-                _ => {
-                    panic!("we should not be here (yet)")
-                    /*
-
-                    let mut txs = HashMap::<TransactionId, Transaction, _>::new();
-                    for (containing_block, indices) in
-                        self.find_containing_blocks_and_indices_from_acceptance_data(&tx_ids, acceptance_data)
-                    {
-                        let mut indice_iter = indices.iter();
-                        let mut target_index = (*indice_iter.next().unwrap()) as usize;
-                        let cut_off_index = (*indices.last().unwrap()) as usize;
-
-                        txs.extend(
+                    if let Some(mut next_target_index) = index_iter.next() {
+                        all_txs.extend(
                             self.block_transactions_store
-                                .get(containing_block)
-                                .map_err(|_| UtxoInquirerError::MissingBlockFromBlockTxStore(containing_block))?
-                                .unwrap_or_clone()
-                                .into_iter()
+                                .get(mbad.block_hash)
+                                .map_err(|_| UtxoInquirerError::MissingBlockFromBlockTxStore(mbad.block_hash))?
+                                .iter()
                                 .enumerate()
-                                .take_while(|(i, _)| *i <= cut_off_index)
                                 .filter_map(|(i, tx)| {
-                                    if i == target_index {
-                                        target_index = (*indice_iter.next().unwrap()) as usize;
-                                        Some((tx.id(), tx))
+                                    if i == next_target_index {
+                                        next_target_index = index_iter.next().unwrap_or(usize::MAX);
+                                        Some(tx.clone())
                                     } else {
                                         None
                                     }
-                                }),
-                        );
-                    }
-
-                    /*
-                    if txs.len() < tx_ids.len() {
-                        // The query includes txs which are not in the acceptance data, we constitute this as an error.
-                        return Err(UtxoInquirerError::MissingQueriedTransactions(
-                            tx_ids.iter().filter(|tx_id| !txs.contains_key(*tx_id)).copied().collect::<Vec<_>>(),
-                        ));
+                                })
+                                .take(mbad.accepted_transactions.len()),
+                        )
+                    } else {
+                        continue;
                     };
-                    */
-
-                    return Ok(tx_ids.iter().map(|tx_id| txs.remove(tx_id).expect("expected queried tx id")).collect::<Vec<_>>())
-                                        */
                 }
+
+                Ok(all_txs)
             }
-        } else {
-            // if tx_ids is None, we return all transactions in the acceptance data
-            let mut all_txs = Vec::new();
-
-            for mbad in acceptance_data.iter() {
-                let mut index_iter = mbad.accepted_transactions.iter().map(|tx| tx.index_within_block as usize);
-
-                if let Some(mut next_target_index) = index_iter.next() {
-                    all_txs.extend(
-                        self.block_transactions_store
-                            .get(mbad.block_hash)
-                            .map_err(|_| UtxoInquirerError::MissingBlockFromBlockTxStore(mbad.block_hash))?
+            Some([]) => {
+                // empty filter -> error
+                Err(UtxoInquirerFindTxsFromAcceptanceDataError::TxIdsFilterIsEmptyError.into())
+            }
+            Some([tx_id]) => {
+                // single element filter, optimize for this case specifically
+                let (containing_block, index) = acceptance_data
+                    .iter()
+                    .find_map(|mbad| {
+                        let tx_arr_index = mbad
+                            .accepted_transactions
                             .iter()
+                            .find_map(|tx| (tx.transaction_id == *tx_id).then_some(tx.index_within_block as usize));
+                        tx_arr_index.map(|index| (mbad.block_hash, index))
+                    })
+                    .ok_or_else(|| UtxoInquirerError::MissingQueriedTransactions(vec![*tx_id]))?;
+
+                let tx = self
+                    .block_transactions_store
+                    .get(containing_block)
+                    .map_err(|_| UtxoInquirerError::MissingBlockFromBlockTxStore(containing_block))
+                    .and_then(|block_txs| {
+                        block_txs.get(index).cloned().ok_or(UtxoInquirerError::MissingTransactionIndexOfBlock(index, containing_block))
+                    })?;
+
+                Ok(vec![tx])
+            }
+            Some(_more) => {
+                Err(UtxoInquirerFindTxsFromAcceptanceDataError::TxIdsFilterNeedsLessOrEqualThanOneElementError.into())
+                // artifact implementation that has been commented, keeping it for track record as long as it's unimplemented
+                /*
+
+                let mut txs = HashMap::<TransactionId, Transaction, _>::new();
+                for (containing_block, indices) in
+                    self.find_containing_blocks_and_indices_from_acceptance_data(&tx_ids, acceptance_data)
+                {
+                    let mut indice_iter = indices.iter();
+                    let mut target_index = (*indice_iter.next().unwrap()) as usize;
+                    let cut_off_index = (*indices.last().unwrap()) as usize;
+
+                    txs.extend(
+                        self.block_transactions_store
+                            .get(containing_block)
+                            .map_err(|_| UtxoInquirerError::MissingBlockFromBlockTxStore(containing_block))?
+                            .unwrap_or_clone()
+                            .into_iter()
                             .enumerate()
+                            .take_while(|(i, _)| *i <= cut_off_index)
                             .filter_map(|(i, tx)| {
-                                if i == next_target_index {
-                                    next_target_index = index_iter.next().unwrap_or(usize::MAX);
-                                    Some(tx.clone())
+                                if i == target_index {
+                                    target_index = (*indice_iter.next().unwrap()) as usize;
+                                    Some((tx.id(), tx))
                                 } else {
                                     None
                                 }
-                            })
-                            .take(mbad.accepted_transactions.len()),
-                    )
-                } else {
-                    continue;
-                };
-            }
+                            }),
+                    );
+                }
 
-            Ok(all_txs)
+                /*
+                if txs.len() < tx_ids.len() {
+                    // The query includes txs which are not in the acceptance data, we constitute this as an error.
+                    return Err(UtxoInquirerError::MissingQueriedTransactions(
+                        tx_ids.iter().filter(|tx_id| !txs.contains_key(*tx_id)).copied().collect::<Vec<_>>(),
+                    ));
+                };
+                */
+
+                return Ok(tx_ids.iter().map(|tx_id| txs.remove(tx_id).expect("expected queried tx id")).collect::<Vec<_>>())
+                                    */
+            }
         }
     }
 }
