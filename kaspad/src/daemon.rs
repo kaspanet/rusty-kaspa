@@ -8,9 +8,12 @@ use kaspa_consensus_core::{
     mining_rules::MiningRules,
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
-use kaspa_core::{core::Core, debug, info};
+use kaspa_core::{core::Core, debug, info, trace};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
-use kaspa_database::prelude::CachePolicy;
+use kaspa_database::{
+    prelude::{CachePolicy, DbWriter, DirectDbWriter},
+    registry::DatabaseStorePrefixes,
+};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
 use kaspa_p2p_lib::Hub;
@@ -24,12 +27,12 @@ use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::{
-    consensus::factory::Factory as ConsensusFactory,
-    params::{OverrideParams, Params},
-    pipeline::ProcessingCounters,
+    consensus::factory::MultiConsensusManagementStore, model::stores::headers::DbHeadersStore, pipeline::monitor::ConsensusMonitor,
 };
 use kaspa_consensus::{
-    consensus::factory::MultiConsensusManagementStore, model::stores::headers::DbHeadersStore, pipeline::monitor::ConsensusMonitor,
+    consensus::factory::{Factory as ConsensusFactory, LATEST_DB_VERSION},
+    params::{OverrideParams, Params},
+    pipeline::ProcessingCounters,
 };
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::runtime::AsyncRuntime;
@@ -113,6 +116,12 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
     Ok(())
 }
 
+fn request_database_deletion_approval(approve: bool) -> bool {
+    let msg = "Node database is from a different Kaspad *DB* version and needs to be fully deleted, do you confirm the delete? (y/n)";
+    get_user_approval_or_exit(msg, approve);
+    info!("Deleting databases from previous Kaspad version");
+    true // if consensus not exited, always return true
+}
 fn get_user_approval_or_exit(message: &str, approve: bool) {
     if approve {
         return;
@@ -366,31 +375,120 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     // Reset Condition: Need to reset if we're upgrading from kaspad DB version
     // TEMP: upgrade from Alpha version or any version before this one
-    if !is_db_reset_needed
+    'db_upgrade: while !is_db_reset_needed
         && (meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some())
             || MultiConsensusManagementStore::new(meta_db.clone()).should_upgrade().unwrap())
     {
         let mut mcms = MultiConsensusManagementStore::new(meta_db.clone());
         let version = mcms.version().unwrap();
 
-        // TODO: Update this entire section to a more robust implementation that allows applying multiple upgrade strategies.
-        // If I'm at version 3 and latest version is 7, I need to be able to upgrade to that version following the intermediate
-        // steps without having to delete the DB
-        if version == 4 {
+        if version <= 3 {
+            is_db_reset_needed = request_database_deletion_approval(args.yes);
+            continue 'db_upgrade;
+        }
+        if version <= 4 {
             let msg = "NOTE: Node database is from an older version. Proceeding with the upgrade is instant and safe.
 However, downgrading to an older node version later will require deleting the database.
 Do you confirm? (y/n)";
             get_user_approval_or_exit(msg, args.yes);
-            mcms.set_version(kaspa_consensus::consensus::factory::LATEST_DB_VERSION).unwrap();
+            mcms.set_version(5).unwrap();
         } else {
-            let msg =
-                "Node database is from a different Kaspad *DB* version and needs to be fully deleted, do you confirm the delete? (y/n)";
-            get_user_approval_or_exit(msg, args.yes);
-
-            info!("Deleting databases from previous Kaspad version");
-
-            is_db_reset_needed = true;
+            is_db_reset_needed = request_database_deletion_approval(args.yes);
+            continue 'db_upgrade;
         }
+
+        if version <= 5 {
+            let active_consensus_dir_name = mcms.active_consensus_dir_name().unwrap();
+
+            match active_consensus_dir_name {
+                Some(current_consensus_db) => {
+                    // Apply soft upgrade logic: delete GD data from higher levels
+                    // and then update DB version to 4
+                    let consensus_db = kaspa_database::prelude::ConnBuilder::default()
+                        .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
+                        .with_files_limit(1)
+                        .build()
+                        .unwrap();
+                    info!("Scanning for deprecated records to cleanup");
+
+                    let mut parent_relations_record_count: u32 = 0;
+                    let mut children_relations_record_count: u32 = 0;
+
+                    let start_level: u8 = 1;
+                    let start_level_bytes = start_level.to_le_bytes();
+                    let parent_prefix_vec: Vec<_> =
+                        DatabaseStorePrefixes::RelationsParents.into_iter().chain(start_level_bytes).collect();
+                    let parent_prefix = parent_prefix_vec.as_slice();
+
+                    // This section is used to count the records to be deleted. It's not used for the actual delete.
+                    for result in consensus_db.iterator(rocksdb::IteratorMode::From(parent_prefix, rocksdb::Direction::Forward)) {
+                        let (key, _) = result.unwrap();
+                        if !key.starts_with(&[DatabaseStorePrefixes::RelationsParents.into()]) {
+                            break;
+                        }
+
+                        parent_relations_record_count += 1;
+                    }
+
+                    let children_prefix_vec: Vec<_> =
+                        DatabaseStorePrefixes::RelationsChildren.into_iter().chain(start_level_bytes).collect();
+                    let children_prefix = children_prefix_vec.as_slice();
+
+                    for result in consensus_db.iterator(rocksdb::IteratorMode::From(children_prefix, rocksdb::Direction::Forward)) {
+                        let (key, _) = result.unwrap();
+                        if !key.starts_with(&[DatabaseStorePrefixes::RelationsChildren.into()]) {
+                            break;
+                        }
+
+                        children_relations_record_count += 1;
+                    }
+
+                    trace!("Number of parent relations records to cleanup: {}", parent_relations_record_count);
+                    trace!("Number of children relations records to cleanup: {}", children_relations_record_count);
+                    info!(
+                        "Number of deprecated records to cleanup: {}",
+                        parent_relations_record_count + children_relations_record_count
+                    );
+
+                    let msg =
+                        "Node database currently at version below version 5. Upgrade process to version 6 needs to be applied. Continue? (y/n)";
+                    get_user_approval_or_exit(msg, args.yes);
+
+                    // Actual delete only happens after user consents to the upgrade:
+                    let mut writer = DirectDbWriter::new(&consensus_db);
+
+                    let end_level: u8 = config.max_block_level + 1;
+                    let end_level_bytes = end_level.to_le_bytes();
+
+                    let start_parents_prefix_vec: Vec<_> =
+                        DatabaseStorePrefixes::RelationsParents.into_iter().chain(start_level_bytes).collect();
+                    let end_parents_prefix_vec: Vec<_> =
+                        DatabaseStorePrefixes::RelationsParents.into_iter().chain(end_level_bytes).collect();
+
+                    let start_children_prefix_vec: Vec<_> =
+                        DatabaseStorePrefixes::RelationsChildren.into_iter().chain(start_level_bytes).collect();
+                    let end_children_prefix_vec: Vec<_> =
+                        DatabaseStorePrefixes::RelationsChildren.into_iter().chain(end_level_bytes).collect();
+
+                    // Apply delete of range from level 1 to max (+1) for Ghostdag and GhostdagCompact:
+                    writer.delete_range(start_parents_prefix_vec.clone(), end_parents_prefix_vec.clone()).unwrap();
+                    writer.delete_range(start_children_prefix_vec.clone(), end_children_prefix_vec.clone()).unwrap();
+
+                    // Compact the deleted rangeto apply the delete immediately
+                    consensus_db.compact_range(Some(start_parents_prefix_vec.as_slice()), Some(end_parents_prefix_vec.as_slice()));
+                    consensus_db.compact_range(Some(start_children_prefix_vec.as_slice()), Some(end_children_prefix_vec.as_slice()));
+
+                    // Also update the version to one higher:
+                    mcms.set_version(6).unwrap();
+                }
+                None => {
+                    is_db_reset_needed = request_database_deletion_approval(args.yes);
+                    continue 'db_upgrade;
+                }
+            }
+        }
+        // if  reached here, db should be upgraded fully and we should exit the loop next
+        assert_eq!(mcms.version().unwrap(), LATEST_DB_VERSION);
     }
 
     // Will be true if any of the other condition above except args.reset_db
