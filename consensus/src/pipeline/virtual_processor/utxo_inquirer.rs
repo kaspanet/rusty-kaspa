@@ -182,11 +182,17 @@ impl VirtualStateProcessor {
                 }) {
                     Some(utxo)
                 } else {
-                    Some(self.resolve_missing_outpoint(
-                        &input.previous_outpoint,
-                        &acceptance_data_for_this_block,
-                        accepting_daa_score,
-                    )?)
+                    // When trying to resolve the missing outpoint, the transaction data we need is going to come from the acceptance
+                    // data of some other block that was merged by this chain block. We cannot use "acceptance_data_for_this_block" as that
+                    // definitely cannot contain the missing outpoint. A single block cannot accept interdependent txs, therefore the dependency tx
+                    // must have been included by a different block.
+                    // So we need to acquire the full acceptance data here of all the blocks merged and accepted by this chain block
+                    // and pass that down to resolve_missing_outpoint.
+                    let full_acceptance_data = self
+                        .acceptance_data_store
+                        .get(accepting_block)
+                        .map_err(|_| UtxoInquirerError::MissingAcceptanceDataForChainBlock(accepting_block))?;
+                    Some(self.resolve_missing_outpoint(&input.previous_outpoint, &full_acceptance_data, accepting_daa_score)?)
                 };
 
                 entries.push(filled_utxo.ok_or(UtxoInquirerError::MissingUtxoEntryForOutpoint(input.previous_outpoint))?);
