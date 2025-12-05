@@ -49,7 +49,7 @@ use crate::{
             pruning_meta::PruningMetaStores,
             pruning_samples::{DbPruningSamplesStore, PruningSamplesStore},
             reachability::DbReachabilityStore,
-            relations::{DbRelationsStore, RelationsStoreReader},
+            relations::DbRelationsStore,
             selected_chain::DbSelectedChainStore,
             tips::DbTipsStore,
             virtual_state::{VirtualStateStoreReader, VirtualStores},
@@ -356,8 +356,16 @@ impl PruningProofManager {
                 let ghostdag = (&*self.ghostdag_store.get_data(current).unwrap()).into();
                 e.insert(TrustedHeader { header, ghostdag });
             }
-            let parents = self.relations_store.read().get_parents(current).unwrap();
-            for parent in parents.iter().copied() {
+            let known_parents: Vec<Hash> = self
+                .headers_store
+                .get_header(current)
+                .unwrap()
+                .direct_parents()
+                .iter()
+                .copied()
+                .filter(|h| self.headers_store.get_header(*h).unwrap_option().is_some())
+                .collect();
+            for parent in known_parents {
                 if visited.insert(parent) {
                     queue.push_back(parent);
                 }
