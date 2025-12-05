@@ -36,6 +36,7 @@ members = [
     "rpc/grpc/core",
     "rpc/grpc/client",
     "rpc/grpc/server",
+    "rpc/grpc/examples/simple_client",
     "rpc/wrpc/server",
     "rpc/wrpc/client",
     "rpc/wrpc/proxy",

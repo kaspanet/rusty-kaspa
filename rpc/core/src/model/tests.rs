@@ -406,12 +406,6 @@ mod mockery {
         }
     }
 
-    impl Mock for RpcMergesetBlockAcceptanceData {
-        fn mock() -> Self {
-            RpcMergesetBlockAcceptanceData { merged_block_hash: mock(), accepted_transactions: mock() }
-        }
-    }
-
     impl Mock for RpcOptionalHeader {
         fn mock() -> Self {
             RpcOptionalHeader {
@@ -429,12 +423,6 @@ mod mockery {
                 blue_work: mock(),
                 pruning_point: mock(),
             }
-        }
-    }
-
-    impl Mock for RpcAcceptanceData {
-        fn mock() -> Self {
-            RpcAcceptanceData { accepting_chain_header: mock(), mergeset_block_acceptance_data: mock() }
         }
     }
 

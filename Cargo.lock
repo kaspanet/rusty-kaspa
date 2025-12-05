@@ -2764,6 +2764,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-grpc-simple-client-example"
+version = "1.0.1"
+dependencies = [
+ "futures",
+ "kaspa-grpc-client",
+ "kaspa-rpc-core",
+ "tokio",
+]
+
+[[package]]
 name = "kaspa-hashes"
 version = "1.0.1"
 dependencies = [

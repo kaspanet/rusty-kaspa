@@ -6,7 +6,7 @@ use workflow_serializer::prelude::*;
 
 use crate::{RpcError, RpcResult};
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalHeader {
     /// Level: None - Cached hash

@@ -8,7 +8,7 @@ use kaspa_consensus_core::{
         utxo_inquirer::{UtxoInquirerError, UtxoInquirerFindTxsFromAcceptanceDataError, UtxoInquirerResult},
     },
 };
-use kaspa_core::trace;
+use kaspa_core::{info, trace};
 use kaspa_hashes::Hash;
 
 use crate::model::{
@@ -376,6 +376,7 @@ impl VirtualStateProcessor {
         tx_ids: Option<Vec<TransactionId>>,
         acceptance_data: &AcceptanceData,
     ) -> UtxoInquirerResult<Vec<Transaction>> {
+        info!("tx_ids: {:?}", tx_ids);
         match tx_ids.as_deref() {
             None => {
                 // no filter passed, using default accepted transactions by mergeset filter

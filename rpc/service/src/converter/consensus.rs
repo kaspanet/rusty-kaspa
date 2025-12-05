@@ -19,13 +19,13 @@ use kaspa_math::Uint256;
 use kaspa_mining::model::{owner_txs::OwnerTransactions, TransactionIdSet};
 use kaspa_notify::converter::Converter;
 use kaspa_rpc_core::{
-    BlockAddedNotification, Notification, RpcAcceptanceData, RpcAcceptanceDataVerbosity, RpcAcceptedTransactionIds, RpcBlock,
-    RpcBlockVerboseData, RpcError, RpcHash, RpcHeaderVerbosity, RpcMempoolEntry, RpcMempoolEntryByAddress,
-    RpcMergesetBlockAcceptanceData, RpcMergesetBlockAcceptanceDataVerbosity, RpcOptionalHeader, RpcOptionalTransaction,
-    RpcOptionalTransactionInput, RpcOptionalTransactionInputVerboseData, RpcOptionalTransactionOutput,
-    RpcOptionalTransactionOutputVerboseData, RpcOptionalTransactionVerboseData, RpcOptionalUtxoEntry, RpcOptionalUtxoEntryVerboseData,
-    RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity,
-    RpcTransactionOutput, RpcTransactionOutputVerboseData, RpcTransactionOutputVerboseDataVerbosity, RpcTransactionOutputVerbosity,
+    BlockAddedNotification, Notification, RpcAcceptanceDataVerbosity, RpcAcceptedTransactionIds, RpcBlock, RpcBlockVerboseData,
+    RpcChainBlockAcceptedTransactions, RpcError, RpcHash, RpcHeaderVerbosity, RpcMempoolEntry, RpcMempoolEntryByAddress,
+    RpcMergesetBlockAcceptanceDataVerbosity, RpcOptionalHeader, RpcOptionalTransaction, RpcOptionalTransactionInput,
+    RpcOptionalTransactionInputVerboseData, RpcOptionalTransactionOutput, RpcOptionalTransactionOutputVerboseData,
+    RpcOptionalTransactionVerboseData, RpcOptionalUtxoEntry, RpcOptionalUtxoEntryVerboseData, RpcResult, RpcTransaction,
+    RpcTransactionInput, RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity, RpcTransactionOutput,
+    RpcTransactionOutputVerboseData, RpcTransactionOutputVerboseDataVerbosity, RpcTransactionOutputVerbosity,
     RpcTransactionVerboseData, RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerboseDataVerbosity,
     RpcUtxoEntryVerbosity,
 };
@@ -570,18 +570,17 @@ impl ConsensusConverter {
         })
     }
 
-    async fn get_mergeset_blocks_data_with_verbosity(
+    async fn get_mergeset_transactions_with_verbosity(
         &self,
         consensus: &ConsensusProxy,
         accepting_block: Hash,
         mergeset_blocks_acceptance_data: &Arc<AcceptanceData>,
         verbosity: &RpcMergesetBlockAcceptanceDataVerbosity,
-    ) -> RpcResult<Vec<RpcMergesetBlockAcceptanceData>> {
-        let mut rpc_mergeset_blocks_acceptance_data: Vec<RpcMergesetBlockAcceptanceData> =
-            Vec::with_capacity(mergeset_blocks_acceptance_data.len());
+    ) -> RpcResult<Vec<RpcOptionalTransaction>> {
+        let mut mergeset_accepted_transactions: Vec<RpcOptionalTransaction> = Vec::new();
 
         for merged_block_acceptance_data in mergeset_blocks_acceptance_data.iter() {
-            let accepted_txs = if let Some(accepted_transaction_verbosity) = verbosity.accepted_transactions_verbosity.as_ref() {
+            let mut accepted_txs = if let Some(accepted_transaction_verbosity) = verbosity.accepted_transactions_verbosity.as_ref() {
                 self.get_accepted_transactions_with_verbosity(
                     consensus,
                     None,
@@ -594,22 +593,19 @@ impl ConsensusConverter {
                 Vec::new()
             };
 
-            rpc_mergeset_blocks_acceptance_data.push(RpcMergesetBlockAcceptanceData {
-                merged_block_hash: merged_block_acceptance_data.block_hash,
-                accepted_transactions: accepted_txs,
-            });
+            mergeset_accepted_transactions.append(&mut accepted_txs);
         }
 
-        Ok(rpc_mergeset_blocks_acceptance_data)
+        Ok(mergeset_accepted_transactions)
     }
 
-    pub async fn get_acceptance_data_with_verbosity(
+    pub async fn get_chain_blocks_accepted_transactions(
         &self,
         consensus: &ConsensusProxy,
         verbosity: &RpcAcceptanceDataVerbosity,
         chain_path: &ChainPath,
         merged_blocks_limit: Option<usize>,
-    ) -> RpcResult<Vec<RpcAcceptanceData>> {
+    ) -> RpcResult<Vec<RpcChainBlockAcceptedTransactions>> {
         if verbosity.accepting_chain_header_verbosity.is_none() && verbosity.mergeset_block_acceptance_data_verbosity.is_none() {
             // specified verbosity doesn't need acceptance data
             return Ok(Vec::new());
@@ -617,7 +613,8 @@ impl ConsensusConverter {
 
         let chain_block_mergeset_acceptance_data_vec =
             consensus.async_get_blocks_acceptance_data(chain_path.added.clone(), merged_blocks_limit).await.unwrap();
-        let mut rpc_acceptance_data = Vec::<RpcAcceptanceData>::with_capacity(chain_block_mergeset_acceptance_data_vec.len());
+        let mut rpc_acceptance_data =
+            Vec::<RpcChainBlockAcceptedTransactions>::with_capacity(chain_block_mergeset_acceptance_data_vec.len());
 
         // for each chain block
         for (accepting_chain_hash, chain_block_mergeset_acceptance_data) in
@@ -627,20 +624,21 @@ impl ConsensusConverter {
             let accepting_chain_header = consensus.async_get_header(*accepting_chain_hash).await?;
 
             // adapt it to fit target verbosity in response
-            let accepting_chain_header_with_verbosity = if let Some(verbosity) = verbosity.accepting_chain_header_verbosity.as_ref() {
-                let header = self.adapt_header_to_header_with_verbosity(verbosity, &accepting_chain_header)?;
-                if header.is_empty() {
-                    Default::default()
+            let accepting_chain_header_with_verbosity: RpcOptionalHeader =
+                if let Some(verbosity) = verbosity.accepting_chain_header_verbosity.as_ref() {
+                    let header = self.adapt_header_to_header_with_verbosity(verbosity, &accepting_chain_header)?;
+                    if header.is_empty() {
+                        Default::default()
+                    } else {
+                        header
+                    }
                 } else {
-                    Some(header)
-                }
-            } else {
-                Default::default()
-            };
+                    Default::default()
+                };
 
             if let Some(mergeset_block_acceptance_data_verbosity) = verbosity.mergeset_block_acceptance_data_verbosity.as_ref() {
-                let rpc_mergeset_blocks_acceptance_data_with_verbosity = self
-                    .get_mergeset_blocks_data_with_verbosity(
+                let mergeset_transactions_with_verbosity = self
+                    .get_mergeset_transactions_with_verbosity(
                         consensus,
                         *accepting_chain_hash,
                         chain_block_mergeset_acceptance_data,
@@ -648,14 +646,14 @@ impl ConsensusConverter {
                     )
                     .await?;
 
-                rpc_acceptance_data.push(RpcAcceptanceData {
-                    accepting_chain_header: accepting_chain_header_with_verbosity,
-                    mergeset_block_acceptance_data: rpc_mergeset_blocks_acceptance_data_with_verbosity,
+                rpc_acceptance_data.push(RpcChainBlockAcceptedTransactions {
+                    chain_block_header: accepting_chain_header_with_verbosity,
+                    accepted_transactions: mergeset_transactions_with_verbosity,
                 });
             } else {
-                rpc_acceptance_data.push(RpcAcceptanceData {
-                    accepting_chain_header: accepting_chain_header_with_verbosity,
-                    mergeset_block_acceptance_data: Default::default(),
+                rpc_acceptance_data.push(RpcChainBlockAcceptedTransactions {
+                    chain_block_header: accepting_chain_header_with_verbosity,
+                    accepted_transactions: Default::default(),
                 });
             };
         }

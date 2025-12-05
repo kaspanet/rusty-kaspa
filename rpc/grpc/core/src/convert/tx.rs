@@ -1,8 +1,6 @@
 use crate::protowire::{self};
 use crate::{from, try_from};
-use kaspa_rpc_core::{
-    FromRpcHex, RpcAddress, RpcError, RpcHash, RpcOptionalHeader, RpcResult, RpcScriptClass, RpcScriptVec, ToRpcHex,
-};
+use kaspa_rpc_core::{FromRpcHex, RpcAddress, RpcError, RpcHash, RpcResult, RpcScriptClass, RpcScriptVec, ToRpcHex};
 use std::str::FromStr;
 
 // ----------------------------------------------------------------------------
@@ -110,8 +108,8 @@ from!(item: &kaspa_rpc_core::RpcOptionalUtxoEntryVerboseData, protowire::RpcUtxo
 
 from!(item: &kaspa_rpc_core::RpcChainBlockAcceptedTransactions, protowire::RpcChainBlockAcceptedTransactions, {
     Self {
-        chain_block_header: Some((&item.chain_block_header).into()),
-        accepted_transactions: item.accepted_transactions.iter().map(protowire::RpcTransaction::from).collect(),
+        chain_block_header: Some(protowire::RpcOptionalHeader::from(&item.chain_block_header)),
+        accepted_transactions: item.accepted_transactions.iter().map(protowire::RpcOptionalTransaction::from).collect(),
     }
 });
 
@@ -386,7 +384,12 @@ try_from!(item: &protowire::RpcAcceptedTransactionIds, kaspa_rpc_core::RpcAccept
 
 try_from!(item: &protowire::RpcChainBlockAcceptedTransactions, kaspa_rpc_core::RpcChainBlockAcceptedTransactions, {
     Self {
-        chain_block_header: RpcOptionalHeader::try_from(item.chain_block_header.as_ref().ok_or_else(|| RpcError::MissingRpcFieldError("RpcChainBlockAcceptedTransactions".to_string(), "chain_block_header".to_string()))?)?,
+        chain_block_header: item
+            .chain_block_header
+            .as_ref()
+            .map(kaspa_rpc_core::RpcOptionalHeader::try_from)
+            .transpose()?
+            .ok_or_else(|| RpcError::MissingRpcFieldError("RpcChainBlockAcceptedTransactions".to_string(), "chain_block_header".to_string()))?,
         accepted_transactions: item.accepted_transactions.iter().map(kaspa_rpc_core::RpcOptionalTransaction::try_from).collect::<Result<_, _>>()?,
     }
 });

@@ -121,11 +121,6 @@ message RpcTransactionOutputVerboseData{
   string scriptPublicKeyAddress = 6;
 }
 
-message RpcChainBlockAcceptedTransactions {
-  RpcBlockHeader chainBlockHeader = 1;
-  repeated RpcTransaction acceptedTransactions = 2;
-}
-
 enum RpcNotifyCommand {
   NOTIFY_START = 0;
   NOTIFY_STOP = 1;
@@ -989,7 +984,7 @@ message GetUtxoReturnAddressResponseMessage {
   RPCError error = 1000;
 }
 
-// ### messages for vspcn v2 ###
+// ### messages for vspc v2 ###
 
 enum RpcDataVerbosityLevel {
   NONE = 0;
@@ -998,43 +993,105 @@ enum RpcDataVerbosityLevel {
   FULL = 3;
 }
 
-// new base messages for vspcn v2
-message RpcAcceptanceData {
-  optional RpcBlockHeader acceptingChainHeader = 1;
-  repeated RpcMergesetBlockAcceptanceData mergesetBlockAcceptanceData = 20;
+message RpcOptionalHeader {
+  optional string hash = 2;
+  optional uint32 version = 3;
+  repeated RpcBlockLevelParents parentsByLevel = 4;
+  optional string hashMerkleRoot = 5;
+  optional string acceptedIdMerkleRoot = 6;
+  optional string utxoCommitment = 7;
+  optional int64 timestamp = 8;
+  optional uint32 bits = 9;
+  optional uint64 nonce = 10;
+  optional uint64 daaScore = 11;
+  optional string blueWork = 12;
+  optional uint64 blueScore = 13;
+  optional string pruningPoint = 14;
 }
 
-message RpcMergesetBlockAcceptanceData {
-  string mergedBlockHash = 2;
-  repeated RpcTransaction acceptedTransactions = 3;
+message RpcOptionalTransactionOutpoint {
+  optional string transactionId = 2;
+  optional uint32 index = 3;
+}
+
+message RpcOptionalUtxoEntryVerboseData {
+  optional string scriptPublicKeyType = 2;
+  optional string scriptPublicKeyAddress = 3;
+}
+
+message RpcOptionalUtxoEntry {
+  optional uint64 amount = 2;
+  optional RpcScriptPublicKey scriptPublicKey = 3;
+  optional uint64 blockDaaScore = 4;
+  optional bool isCoinbase = 5;
+  optional RpcOptionalUtxoEntryVerboseData verboseData = 6;
+}
+
+message RpcOptionalTransactionInputVerboseData {
+  optional RpcOptionalUtxoEntry utxoEntry = 2;
+}
+
+message RpcOptionalTransactionInput {
+  optional RpcOptionalTransactionOutpoint previousOutpoint = 2;
+  optional string signatureScript = 3;
+  optional uint64 sequence = 4;
+  optional uint32 sigOpCount = 5;
+  optional RpcOptionalTransactionInputVerboseData verboseData = 6;
+}
+
+message RpcOptionalTransactionOutputVerboseData {
+  optional string scriptPublicKeyType = 2;
+  optional string scriptPublicKeyAddress = 3;
+}
+
+message RpcOptionalTransactionOutput {
+  optional uint64 value = 2;
+  optional RpcScriptPublicKey scriptPublicKey = 3;
+  optional RpcOptionalTransactionOutputVerboseData verboseData = 4;
+}
+
+message RpcOptionalTransactionVerboseData {
+  optional string transactionId = 2;
+  optional string hash = 3;
+  optional uint64 computeMass = 4;
+  optional string blockHash = 5;
+  optional uint64 blockTime = 6;
+}
+
+message RpcOptionalTransaction {
+  optional uint32 version = 2;
+  repeated RpcOptionalTransactionInput inputs = 3;
+  repeated RpcOptionalTransactionOutput outputs = 4;
+  optional uint64 lockTime = 5;
+  optional string subnetworkId = 6;
+  optional uint64 gas = 7;
+  optional string payload = 8;
+  optional uint64 mass = 9;
+  optional RpcOptionalTransactionVerboseData verboseData = 10;
+}
+
+message RpcChainBlockAcceptedTransactions {
+  RpcOptionalHeader chainBlockHeader = 2;
+  repeated RpcOptionalTransaction acceptedTransactions = 3;
 }
 
 /// GetVirtualChainFromBlockV2RequestMessage requests the virtual selected
 /// parent chain from some startHash to this kaspad's current virtual
-/// Note:
-///     this call batches the response to:
-///         a. the network's `mergeset size limit * 10` amount of added chain blocks, if `RpcAcceptanceDataVerbosity is nullified`
-///         b. or `mergeset size limit * 10` amount of merged blocks, if `RpcAcceptanceDataVerbosity is not nullified`
-///         TODO: perhaps find new limit based on expected size of the response, via the `RpcAcceptanceDataVerbosity` switches.
-///         c. it does not batch the removed chain blocks, only the added ones.
-message GetVirtualChainFromBlockV2RequestMessage{
+message GetVirtualChainFromBlockV2RequestMessage {
   string startHash = 1;
 
-  /// Note: where fields are switched to false, default values of the type will be used to fill the assosicated response fields.
-  /// it is therefore the client's responsibility to ensure to ignore the fields in the response.
   optional RpcDataVerbosityLevel dataVerbosityLevel = 2;
   optional uint64 minConfirmationCount = 3;
 }
 
-message GetVirtualChainFromBlockV2ResponseMessage{
+message GetVirtualChainFromBlockV2ResponseMessage {
   // The chain blocks that were removed, in high-to-low order
   repeated string removedChainBlockHashes = 1;
 
   // The chain blocks that were added, in low-to-high order
   repeated string addedChainBlockHashes = 2;
 
-  // The mergeset data accepted by each block in addedChainBlockHashes.
-  // Will be filled dependent on the supplied RpcAcceptanceDataVerbosity.
+  // Will be filled depending on the supplied RpcDataVerbosityLevel.
   repeated RpcChainBlockAcceptedTransactions chainBlockAcceptedTransactions = 3;
 
   RPCError error = 1000;

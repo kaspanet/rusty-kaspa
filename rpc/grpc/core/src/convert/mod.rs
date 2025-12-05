@@ -9,5 +9,6 @@ pub mod mempool;
 pub mod message;
 pub mod metrics;
 pub mod notification;
+pub mod optional;
 pub mod peer;
 pub mod tx;
