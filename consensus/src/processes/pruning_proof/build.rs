@@ -82,7 +82,7 @@ impl PruningProofManager {
 
         let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
-        let (transient_ghostdag_stores, tranient_relations_stores, selected_tip_by_level, roots_by_level) =
+        let (transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level) =
             self.calc_ghostdag_and_relations_for_all_levels(&pp_header, temp_db);
 
         // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
@@ -150,7 +150,7 @@ impl PruningProofManager {
                     }
 
                     headers.push(get_header(current));
-                    for child in tranient_relations_stores[level].read().get_children(current).unwrap().read().iter().copied() {
+                    for child in transient_relations_stores[level].read().get_children(current).unwrap().read().iter().copied() {
                         queue.push(Reverse(SortableBlock::new(child, get_header(child).blue_work)));
                     }
                 }
