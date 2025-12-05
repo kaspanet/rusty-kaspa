@@ -10,7 +10,7 @@ use futures_util::future::join_all;
 use kaspa_addresses::Address;
 use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_consensus::params::Params;
-use kaspa_consensus_core::{constants::SOMPI_PER_KASPA, network::NetworkType};
+use kaspa_consensus_core::network::NetworkType;
 use kaspa_core::info;
 use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspa_txscript::pay_to_address_script;
@@ -25,10 +25,10 @@ const SUBMIT_BLOCK_CLIENTS: usize = 2;
 const BLOCK_COUNT: usize = 100_000;
 
 // Constants for transaction generation and mempool pressure
-const MEMPOOL_TARGET: u64 = 20_000;
-const TX_COUNT: usize = 100_000;
+const MEMPOOL_TARGET: u64 = 10_000;
+const TX_COUNT: usize = 200_000;
 const TX_LEVEL_WIDTH: usize = 5_000;
-const TPS_PRESSURE: u64 = 10;
+const TPS_PRESSURE: u64 = 40;
 const PREALLOC_AMOUNT_SOMPI: u64 = 1;
 const SUBMIT_TX_CLIENTS: usize = 2;
 
@@ -90,23 +90,27 @@ async fn bench_rpc_high_load() {
 
     tasks.run().await;
 
-    sleep(Duration::from_secs(5)).await;
+    // todo: ideally rely on number of block required (here likely 20-ish), to avoid arbitrary wait
+    sleep(Duration::from_secs(2)).await;
 
     let main_client = client_manager.new_client().await;
     let dag_info = main_client.get_block_dag_info().await.unwrap();
     let sink = dag_info.sink;
 
-    info!("Waiting 5 seconds before starting...");
-
     sleep(Duration::from_secs(2)).await;
 
     let initial_virtual_chain = main_client.get_virtual_chain_from_block(sink, false, None).await.unwrap().added_chain_block_hashes;
 
+    // todo: here it waits `n` seconds to simulate "enough" tx and block data
+    // it could instead specify a tx number and block number targets, to avoid arbitrary wait (that may randomize the results)
+    info!("Waiting 20 seconds before starting...");
+    sleep(Duration::from_secs(20)).await;
+
     // High load RPC simulation
     info!("Starting high load RPC simulation...");
 
-    let num_clients = 100;
-    let num_requests_per_client = 100;
+    let num_clients = 20;
+    let num_requests_per_client = 20;
 
     let start_total = Instant::now();
 
@@ -116,22 +120,15 @@ async fn bench_rpc_high_load() {
         let thread_virtual_chain = initial_virtual_chain.clone();
         let handle = tokio::spawn(async move {
             let mut latencies = Vec::with_capacity(num_requests_per_client);
-            for _ in 0..num_requests_per_client {
-                let index = rand::thread_rng().gen_range(0..(thread_virtual_chain.len() - 1));
-                let start = Instant::now();
+            // get a random start hash for this client
+            let index = rand::thread_rng().gen_range(0..(thread_virtual_chain.len() - 1));
 
+            for _ in 0..num_requests_per_client {
                 let hash = thread_virtual_chain.get(index).unwrap();
 
-                let vspcv2_response = client
-                    .get_virtual_chain_from_block_v2(*hash, Some(kaspa_rpc_core::RpcDataVerbosityLevel::High), None)
-                    .await
-                    .unwrap();
-                info!(
-                    "{} - {} - {}",
-                    vspcv2_response.added_chain_block_hashes.len(),
-                    vspcv2_response.removed_chain_block_hashes.len(),
-                    vspcv2_response.chain_block_accepted_transactions.len()
-                );
+                let start = Instant::now();
+                client.get_virtual_chain_from_block_v2(*hash, Some(kaspa_rpc_core::RpcDataVerbosityLevel::High), None).await.unwrap();
+
                 latencies.push(start.elapsed());
             }
             client.disconnect().await.unwrap();

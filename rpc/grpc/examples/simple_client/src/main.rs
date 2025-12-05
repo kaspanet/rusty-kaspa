@@ -2,10 +2,9 @@
 
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::notify::mode::NotificationMode;
+use kaspa_rpc_core::RpcResult;
 use kaspa_rpc_core::{api::rpc::RpcApi, GetBlockDagInfoResponse, GetServerInfoResponse};
-use kaspa_rpc_core::{RpcDataVerbosityLevel, RpcHash, RpcResult};
 use std::process::ExitCode;
-use std::str::FromStr;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -22,7 +21,7 @@ async fn main() -> ExitCode {
 }
 
 async fn check_node_status() -> RpcResult<()> {
-    let url = format!("grpc://localhost:16110");
+    let url = "grpc://localhost:16110".to_string();
 
     let client =
         GrpcClient::connect_with_args(NotificationMode::Direct, url, None, false, None, false, Some(500_000), Default::default())
@@ -66,19 +65,6 @@ async fn check_node_status() -> RpcResult<()> {
     println!("Pruning point hash: {pruning_point_hash}");
     println!("Virtual DAA score: {virtual_daa_score}");
     println!("Sink: {sink}");
-
-    let response_v1 = client.get_virtual_chain_from_block(*virtual_parent_hashes.clone().first().unwrap(), false, None).await?;
-
-    let response_v2 = client
-        .get_virtual_chain_from_block_v2(
-            RpcHash::from_str("652fe7bed0ab14c12d342bf62465829ab30308cd387ae55e9d4008febaa08054")?,
-            Some(RpcDataVerbosityLevel::Low),
-            None,
-        )
-        .await
-        .unwrap();
-
-    println!("{:?}", response_v2);
 
     // Disconnect client from Kaspa node
     client.disconnect().await?;
