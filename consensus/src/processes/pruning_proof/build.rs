@@ -28,7 +28,7 @@ use crate::{
     },
     processes::{
         ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
-        pruning_proof::PruningProofManagerInternalError,
+        pruning_proof::{LevelProofStores, PruningProofManagerInternalError},
         relations::RelationsStoreExtensions,
     },
 };
@@ -82,8 +82,16 @@ impl PruningProofManager {
 
         let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
-        let (transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level) =
-            self.calc_ghostdag_and_relations_for_all_levels(&pp_header, temp_db);
+        let (transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level) = self
+            .calc_ghostdag_and_relations_for_all_levels(&pp_header, temp_db)
+            .into_iter()
+            .fold((vec![], vec![], vec![], vec![]), |(mut a, mut b, mut c, mut d), (x0, x1, x2, x3)| {
+                a.push(x0);
+                b.push(x1);
+                c.push(x2);
+                d.push(x3);
+                (a, b, c, d)
+            });
 
         // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
         // to make sure we hold a single Arc per header
@@ -188,45 +196,32 @@ impl PruningProofManager {
             .collect_vec()
     }
 
-    fn calc_ghostdag_and_relations_for_all_levels(
-        &self,
-        pp_header: &HeaderWithBlockLevel,
-        temp_db: Arc<DB>,
-    ) -> (Vec<Arc<DbGhostdagStore>>, Vec<Arc<RwLock<DbRelationsStore>>>, Vec<Hash>, Vec<Hash>) {
+    fn calc_ghostdag_and_relations_for_all_levels(&self, pp_header: &HeaderWithBlockLevel, temp_db: Arc<DB>) -> Vec<LevelProofStores> {
         // TODO: Uncomment line and send as argument to find_sufficiently_deep_level_root
         // once full fix to minimize proof sizes comes
         // let current_dag_level = self.find_current_dag_level(&pp_header.header);
-        let mut transient_ghostdag_stores: Vec<Option<Arc<DbGhostdagStore>>> = vec![None; self.max_block_level as usize + 1];
-        let mut transient_relation_stores = vec![None; self.max_block_level as usize + 1];
-        let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
-        let mut root_by_level = vec![None; self.max_block_level as usize + 1];
+        let mut level_proof_stores_vec: Vec<Option<LevelProofStores>> = vec![None; (self.max_block_level + 1).into()];
         for level in (0..=self.max_block_level).rev() {
             let level_usize = level as usize;
             let required_block = if level != self.max_block_level {
-                let next_level_store = transient_ghostdag_stores[level_usize + 1].as_ref().unwrap().clone();
+                let (next_level_gd_store, _relation_store_at_next_level, selected_tip_at_next_level, _root_at_next_level) =
+                    level_proof_stores_vec[level_usize + 1].as_ref().unwrap().clone();
+
                 let block_at_depth_m_at_next_level = self
-                    .block_at_depth(&*next_level_store, selected_tip_by_level[level_usize + 1].unwrap(), self.pruning_proof_m)
+                    .block_at_depth(&*next_level_gd_store, selected_tip_at_next_level, self.pruning_proof_m)
                     .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
                     .unwrap();
                 Some(block_at_depth_m_at_next_level)
             } else {
                 None
             };
-            let (gd_store, rel_store, selected_tip, root) = self
-                .find_sufficiently_deep_level_root(pp_header, level, required_block, temp_db.clone())
-                .unwrap_or_else(|_| panic!("find_sufficient_root failed for level {level}"));
-            transient_ghostdag_stores[level_usize] = Some(gd_store);
-            transient_relation_stores[level_usize] = Some(rel_store);
-            selected_tip_by_level[level_usize] = Some(selected_tip);
-            root_by_level[level_usize] = Some(root);
+            level_proof_stores_vec[level_usize] = Some(
+                self.find_sufficiently_deep_level_root(pp_header, level, required_block, temp_db.clone())
+                    .unwrap_or_else(|_| panic!("find_sufficient_root failed for level {level}")),
+            );
         }
 
-        (
-            transient_ghostdag_stores.into_iter().map(Option::unwrap).collect_vec(),
-            transient_relation_stores.into_iter().map(Option::unwrap).collect_vec(),
-            selected_tip_by_level.into_iter().map(Option::unwrap).collect_vec(),
-            root_by_level.into_iter().map(Option::unwrap).collect_vec(),
-        )
+        level_proof_stores_vec.into_iter().map(Option::unwrap).collect_vec()
     }
 
     fn populate_relation_store_at_level(
@@ -294,7 +289,7 @@ impl PruningProofManager {
         level: BlockLevel,
         required_block: Option<Hash>,
         temp_db: Arc<DB>,
-    ) -> PruningProofManagerInternalResult<(Arc<DbGhostdagStore>, Arc<RwLock<DbRelationsStore>>, Hash, Hash)> {
+    ) -> PruningProofManagerInternalResult<LevelProofStores> {
         // Step 1: Determine which selected tip to use
         let selected_tip = if pp_header.block_level >= level {
             pp_header.header.hash
