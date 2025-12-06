@@ -1478,10 +1478,9 @@ mod bitcoind_tests {
 
     #[test]
     fn test_bitcoind_tests() {
-        // Script test files are split into two versions to test behavior before and after KIP-10:
+        // Script test files are split into two versions to test behavior after KIP-10:
         //
-        // - script_tests.json: Tests basic script functionality with KIP-10 disabled (kip10_enabled=false)
-        // - script_tests-kip10.json: Tests expanded functionality with KIP-10 enabled (kip10_enabled=true)
+        // - script_tests-kip10.json: Tests expanded functionality with KIP-10 enabled
         //
         // KIP-10 introduces two major changes:
         //
