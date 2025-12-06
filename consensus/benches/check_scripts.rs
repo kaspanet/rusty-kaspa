@@ -89,7 +89,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
                     cache.clear();
-                    check_scripts_sequential(black_box(&cache), black_box(&tx.as_verifiable()), false).unwrap();
+                    check_scripts_sequential(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
                 })
             });
 
@@ -98,7 +98,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
                     cache.clear();
-                    check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable()), false).unwrap();
+                    check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
                 })
             });
 
@@ -110,8 +110,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                         let cache = Cache::new(inputs_count as u64);
                         b.iter(|| {
                             cache.clear();
-                            check_scripts_par_iter_pool(black_box(&cache), black_box(&tx.as_verifiable()), black_box(&pool), false)
-                                .unwrap();
+                            check_scripts_par_iter_pool(black_box(&cache), black_box(&tx.as_verifiable()), black_box(&pool)).unwrap();
                         })
                     });
                 }
@@ -147,7 +146,7 @@ fn benchmark_check_scripts_with_payload(c: &mut Criterion) {
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
                     cache.clear();
-                    check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable()), false).unwrap();
+                    check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
                 })
             });
         }

@@ -32,7 +32,7 @@ use script_class::ScriptClass;
 pub mod prelude {
     pub use super::standard::*;
 }
-use crate::runtime_sig_op_counter::{RuntimeSigOpCounter, SigOpConsumer};
+use crate::runtime_sig_op_counter::RuntimeSigOpCounter;
 pub use standard::*;
 
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
@@ -90,7 +90,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
     cond_stack: Vec<OpCond>, // Following if stacks, and whether it is running
 
     num_ops: i32,
-    runtime_sig_op_counter: Option<RuntimeSigOpCounter>,
+    runtime_sig_op_counter: RuntimeSigOpCounter,
 }
 
 fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
@@ -140,10 +140,9 @@ pub fn get_sig_op_count<T: VerifiableTransaction>(tx: &T, input_idx: usize) -> R
         tx.utxo(input_idx).ok_or_else(|| TxScriptError::InvalidInputIndex(input_idx as i32, tx.inputs().len()))?,
         &reused_values,
         &sig_cache,
-        true,
     );
     vm.execute()?;
-    Ok(vm.used_sig_ops().unwrap())
+    Ok(vm.used_sig_ops())
 }
 
 /// Calculates an upper bound of signature operations in a script without executing it.
@@ -232,15 +231,13 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             sig_cache,
             cond_stack: vec![],
             num_ops: 0,
-            runtime_sig_op_counter: None,
+            runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
         }
     }
 
-    /// Returns the number of signature operations used in script execution if runtime sig op counting is enabled.
-    ///
-    /// Returns None if runtime signature operation counting is disabled.
-    pub fn used_sig_ops(&self) -> Option<u8> {
-        self.runtime_sig_op_counter.as_ref().map(|counter| counter.used_sig_ops())
+    /// Returns the number of signature operations used in script execution.
+    pub fn used_sig_ops(&self) -> u8 {
+        self.runtime_sig_op_counter.used_sig_ops()
     }
 
     /// Creates a new Script Engine for validating transaction input.
@@ -266,7 +263,6 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         utxo_entry: &'a UtxoEntry,
         reused_values: &'a Reused,
         sig_cache: &'a Cache<SigCacheKey, bool>,
-        runtime_sig_op_counting: bool,
     ) -> Self {
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
@@ -281,7 +277,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             sig_cache,
             cond_stack: Default::default(),
             num_ops: 0,
-            runtime_sig_op_counter: runtime_sig_op_counting.then_some(RuntimeSigOpCounter::new(input.sig_op_count)),
+            runtime_sig_op_counter: RuntimeSigOpCounter::new(input.sig_op_count),
         }
     }
 
@@ -295,7 +291,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             // Runtime sig op counting is not needed for standalone scripts, only inputs have sig op count value
-            runtime_sig_op_counter: None,
+            runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
         }
     }
 
@@ -689,18 +685,8 @@ mod tests {
 
             let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
 
-            [false, true].into_iter().for_each(|runtime_sig_op_counting| {
-                let mut vm = TxScriptEngine::from_transaction_input(
-                    &populated_tx,
-                    &input,
-                    0,
-                    &utxo_entry,
-                    &reused_values,
-                    &sig_cache,
-                    runtime_sig_op_counting,
-                );
-                assert_eq!(vm.execute(), test.expected_result);
-            });
+            let mut vm = TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &reused_values, &sig_cache);
+            assert_eq!(vm.execute(), test.expected_result);
         }
     }
 
@@ -1258,10 +1244,9 @@ mod tests {
 
             // Execute script
             let tx = tx.as_verifiable();
-            let mut vm =
-                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &reused_values, &sig_cache, true);
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &reused_values, &sig_cache);
 
-            let result = vm.execute().map(|_| vm.used_sig_ops().unwrap());
+            let result = vm.execute().map(|_| vm.used_sig_ops());
 
             match (result, test.should_pass) {
                 (Ok(count), true) => {
@@ -1357,7 +1342,7 @@ mod bitcoind_tests {
     }
 
     impl JsonTestRow {
-        fn test_row(&self, runtime_sig_op_counting: bool) -> Result<(), TestError> {
+        fn test_row(&self) -> Result<(), TestError> {
             // Parse test to objects
             let (sig_script, script_pub_key, expected_result) = match self.clone() {
                 JsonTestRow::Test(sig_script, sig_pub_key, _, expected_result) => (sig_script, sig_pub_key, expected_result),
@@ -1369,7 +1354,7 @@ mod bitcoind_tests {
                 }
             };
 
-            let result = Self::run_test(sig_script, script_pub_key, runtime_sig_op_counting);
+            let result = Self::run_test(sig_script, script_pub_key);
 
             match Self::result_name(result.clone()).contains(&expected_result.as_str()) {
                 true => Ok(()),
@@ -1377,7 +1362,7 @@ mod bitcoind_tests {
             }
         }
 
-        fn run_test(sig_script: String, script_pub_key: String, runtime_sig_op_counting: bool) -> Result<(), UnifiedError> {
+        fn run_test(sig_script: String, script_pub_key: String) -> Result<(), UnifiedError> {
             let script_sig = opcodes::parse_short_form(sig_script).map_err(UnifiedError::ScriptBuilderError)?;
             let script_pub_key =
                 ScriptPublicKey::from_vec(0, opcodes::parse_short_form(script_pub_key).map_err(UnifiedError::ScriptBuilderError)?);
@@ -1397,7 +1382,6 @@ mod bitcoind_tests {
                 &populated_tx.entries[0],
                 &reused_values,
                 &sig_cache,
-                runtime_sig_op_counting,
             );
             vm.execute().map_err(UnifiedError::TxScriptError)
         }
@@ -1500,18 +1484,16 @@ mod bitcoind_tests {
         // When KIP-10 is disabled (pre-activation), the new opcodes will return an InvalidOpcode error
         // and arithmetic is limited to 4 bytes. When enabled, scripts gain full access to transaction
         // data and 8-byte arithmetic capabilities.
-        for runtime_sig_op_counting in [false, true] {
-            let file_name = "script_tests-kip10.json";
-            let file =
-                File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name)).expect("Could not find test file");
-            let reader = BufReader::new(file);
+        let file_name = "script_tests-kip10.json";
+        let file =
+            File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name)).expect("Could not find test file");
+        let reader = BufReader::new(file);
 
-            // Read the JSON contents of the file as an instance of `User`.
-            let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
-            for row in tests {
-                if let Err(error) = row.test_row(runtime_sig_op_counting) {
-                    panic!("Test: {:?} failed for {}: {:?}", row.clone(), file_name, error);
-                }
+        // Read the JSON contents of the file as an instance of `User`.
+        let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
+        for row in tests {
+            if let Err(error) = row.test_row() {
+                panic!("Test: {:?} failed for {}: {:?}", row.clone(), file_name, error);
             }
         }
     }

@@ -54,7 +54,6 @@ use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
 use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
-use kaspa_consensus_core::merkle::calc_hash_merkle_root;
 use kaspa_consensus_core::muhash::MuHashExtensions;
 use kaspa_core::core::Core;
 use kaspa_core::signals::Shutdown;
@@ -1994,6 +1993,19 @@ async fn payload_for_native_tx_test() {
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }
 
+/// Tests runtime signature operation counting by verifying that:
+/// 1. Transactions are validated using runtime (execution-time) sig op counting from genesis (DAA score 0)
+/// 2. Only executed signature operations are counted, not all opcodes in the script
+///
+/// Runtime sig op counting is now enabled by default from genesis. This allows scripts with
+/// multiple signature opcodes to pass validation if only a subset are actually executed
+/// (e.g., in if-branches), as opposed to static counting which counts all sig ops regardless
+/// of execution path.
+///
+/// Test scenario: A P2SH script with sig_op_count=1 contains 3 CheckSig opcodes, but only 1
+/// is executed due to conditional logic. With runtime counting enabled from genesis, this
+/// transaction is accepted because only 1 sig op is actually executed, even though static
+/// analysis would see 3 sig ops.
 #[tokio::test]
 async fn runtime_sig_op_counting_test() {
     use kaspa_consensus_core::{
@@ -2001,8 +2013,8 @@ async fn runtime_sig_op_counting_test() {
     };
     use kaspa_txscript::{opcodes::codes::*, script_builder::ScriptBuilder};
 
-    // Runtime sig op counting activates at DAA score 3
-    const RUNTIME_SIGOP_ACTIVATION_DAA_SCORE: u64 = 3;
+    // Runtime sig op counting is enabled from genesis (DAA score 0)
+    const RUNTIME_SIGOP_ACTIVATION_DAA_SCORE: u64 = 0;
 
     init_allocator_with_default_settings();
 
@@ -2061,12 +2073,7 @@ async fn runtime_sig_op_counting_test() {
     consensus.init();
 
     // Build blockchain up to one block before activation
-    let mut index = 0;
-    for _ in 0..RUNTIME_SIGOP_ACTIVATION_DAA_SCORE - 1 {
-        let parent = if index == 0 { config.genesis.hash } else { index.into() };
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).await.unwrap();
-        index += 1;
-    }
+    let index = 0;
 
     // Create transaction spending P2SH with 1 sig op limit
     let mut tx = Transaction::new(
@@ -2075,7 +2082,7 @@ async fn runtime_sig_op_counting_test() {
             initial_utxo_collection[0].0,
             vec![], // Placeholder for signature script
             0,
-            1, // Only allowing 1 sig op - important for test
+            1, // Script declares 1 sig op (will execute only 1 despite having 3 CheckSig opcodes)
         )],
         vec![TransactionOutput::new(initial_utxo_collection[0].1.amount - 5000, ScriptPublicKey::from_vec(0, vec![OpTrue]))],
         0,
@@ -2108,24 +2115,9 @@ async fn runtime_sig_op_counting_test() {
     let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
     let tx = tx.tx.unwrap_or_clone();
 
-    // Test 1: Before activation, tx should be rejected due to static sig op counting (sees 3 ops)
-    {
-        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-        let mut block =
-            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
-        block.transactions.push(tx.clone());
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
-        assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
-        index += 1;
-    }
-
-    // Add block to reach activation
-    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
-    index += 1;
-
-    // Test 2: After activation, tx should be accepted as runtime counting only sees 1 executed sig op
-    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx]).await;
+    // Verify transaction is accepted with runtime sig op counting from genesis
+    // Runtime counting sees only 1 executed sig op (in the IF branch), not the 3 total CheckSig opcodes
+    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![config.genesis.hash], vec![tx]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
 }
 
