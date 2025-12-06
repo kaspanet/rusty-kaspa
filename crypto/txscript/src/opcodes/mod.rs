@@ -216,27 +216,6 @@ fn push_number<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     Ok(())
 }
 
-/// This macro helps to avoid code duplication in numeric opcodes where the only difference
-/// between KIP10_ENABLED and disabled states is the numeric type used (Kip10I64 vs i64).
-/// KIP10I64 deserializator supports 8-byte integers
-// TODO: Remove this macro after KIP-10 activation.
-macro_rules! numeric_op {
-    ($vm: expr, $pattern: pat, $count: expr, $block: expr) => {
-        if true {
-            let $pattern: [Kip10I64; $count] = $vm.dstack.pop_items()?;
-            let r = $block;
-            $vm.dstack.push_item(r)?;
-            Ok(())
-        } else {
-            let $pattern: [i64; $count] = $vm.dstack.pop_items()?;
-            #[allow(clippy::useless_conversion)]
-            let r = $block;
-            $vm.dstack.push_item(r)?;
-            Ok(())
-        }
-    };
-}
-
 /*
 The following is the implementation and metadata of all opcodes. Each opcode has unique
 number (and template system makes it impossible to use two opcodes), length specification,
@@ -589,38 +568,62 @@ opcode_list! {
 
     // Numeric related opcodes.
     opcode Op1Add<0x8b, 1>(self, vm) {
-        numeric_op!(vm, [value], 1, value.checked_add(1).ok_or_else(|| TxScriptError::NumberTooBig("Result of addition exceeds 64-bit signed integer range".to_string()))?)
+        let [value]: [Kip10I64; 1] = vm.dstack.pop_items()?;
+        let r = value.checked_add(1).ok_or_else(|| TxScriptError::NumberTooBig("Result of addition exceeds 64-bit signed integer range".to_string()))?;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode Op1Sub<0x8c, 1>(self, vm) {
-        numeric_op!(vm, [value], 1, value.checked_sub(1).ok_or_else(|| TxScriptError::NumberTooBig("Result of subtraction exceeds 64-bit signed integer range".to_string()))?)
+        let [value]: [Kip10I64; 1] = vm.dstack.pop_items()?;
+        let r = value.checked_sub(1).ok_or_else(|| TxScriptError::NumberTooBig("Result of subtraction exceeds 64-bit signed integer range".to_string()))?;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode Op2Mul<0x8d, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
     opcode Op2Div<0x8e, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
 
     opcode OpNegate<0x8f, 1>(self, vm) {
-        numeric_op!(vm, [value], 1, value.checked_neg().ok_or_else(|| TxScriptError::NumberTooBig("Negation result exceeds 64-bit signed integer range".to_string()))?)
+        let [value]: [Kip10I64; 1] = vm.dstack.pop_items()?;
+        let r = value.checked_neg().ok_or_else(|| TxScriptError::NumberTooBig("Negation result exceeds 64-bit signed integer range".to_string()))?;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpAbs<0x90, 1>(self, vm) {
-        numeric_op!(vm, [value], 1, value.checked_abs().ok_or_else(|| TxScriptError::NumberTooBig("Absolute value exceeds 64-bit signed integer range".to_string()))?)
+        let [ value ]: [Kip10I64; 1] = vm.dstack.pop_items()?;
+        let r = value.checked_abs().ok_or_else(|| TxScriptError::NumberTooBig("Absolute value exceeds 64-bit signed integer range".to_string()))?;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpNot<0x91, 1>(self, vm) {
-        numeric_op!(vm, [m], 1, (m == 0) as i64)
+        let [ m ]: [Kip10I64; 1] = vm.dstack.pop_items()?;
+        let r = (m == 0) as i64;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode Op0NotEqual<0x92, 1>(self, vm) {
-        numeric_op!(vm, [m], 1, (m != 0) as i64)
+        let [ m ]: [Kip10I64; 1] = vm.dstack.pop_items()?;
+        let r = (m != 0) as i64;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpAdd<0x93, 1>(self, vm) {
-        numeric_op!(vm, [a,b], 2, a.checked_add(b.into()).ok_or_else(|| TxScriptError::NumberTooBig("Sum exceeds 64-bit signed integer range".to_string()))?)
+        let [ a, b ]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+        let r = a.checked_add(b.into()).ok_or_else(|| TxScriptError::NumberTooBig("Sum exceeds 64-bit signed integer range".to_string()))?;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpSub<0x94, 1>(self, vm) {
-        numeric_op!(vm, [a,b], 2, a.checked_sub(b.into()).ok_or_else(|| TxScriptError::NumberTooBig("Difference exceeds 64-bit signed integer range".to_string()))?)
+        let [ a, b ]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+        let r = a.checked_sub(b.into()).ok_or_else(|| TxScriptError::NumberTooBig("Difference exceeds 64-bit signed integer range".to_string()))?;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpMul<0x95, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
@@ -630,15 +633,24 @@ opcode_list! {
     opcode OpRShift<0x99, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
 
     opcode OpBoolAnd<0x9a, 1>(self, vm) {
-        numeric_op!(vm, [a,b], 2, ((a != 0) && (b != 0)) as i64)
+        let [ a, b ]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+        let r = ((a != 0) && (b != 0)) as i64;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpBoolOr<0x9b, 1>(self, vm) {
-        numeric_op!(vm, [a,b], 2, ((a != 0) || (b != 0)) as i64)
+        let [ a, b ]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+        let r = ((a != 0) || (b != 0)) as i64;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpNumEqual<0x9c, 1>(self, vm) {
-        numeric_op!(vm, [a,b], 2, (a == b) as i64)
+        let [ a, b ]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+        let r = (a == b) as i64;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpNumEqualVerify<0x9d, 1>(self, vm) {
@@ -650,35 +662,59 @@ opcode_list! {
     }
 
     opcode OpNumNotEqual<0x9e, 1>(self, vm) {
-        numeric_op!(vm, [a, b], 2, (a != b) as i64)
+        let [ a, b ]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+        let r = (a != b) as i64;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpLessThan<0x9f, 1>(self, vm) {
-        numeric_op!(vm, [a, b], 2, (a < b) as i64)
+        let [ a, b ]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+        let r = (a < b) as i64;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpGreaterThan<0xa0, 1>(self, vm) {
-        numeric_op!(vm, [a, b], 2, (a > b) as i64)
+        let [ a, b ]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+        let r = (a > b) as i64;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpLessThanOrEqual<0xa1, 1>(self, vm) {
-        numeric_op!(vm, [a, b], 2, (a <= b) as i64)
+        let [ a, b ]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+        let r = (a <= b) as i64;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpGreaterThanOrEqual<0xa2, 1>(self, vm) {
-        numeric_op!(vm, [a, b], 2, (a >= b) as i64)
+        let [ a, b ]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+        let r = (a >= b) as i64;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpMin<0xa3, 1>(self, vm) {
-         numeric_op!(vm, [a, b], 2, a.min(b))
+        let [ a, b ]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+        let r = a.min(b);
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpMax<0xa4, 1>(self, vm) {
-        numeric_op!(vm, [a, b], 2, a.max(b))
+        let [ a, b ]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+        let r = a.max(b);
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     opcode OpWithin<0xa5, 1>(self, vm) {
-        numeric_op!(vm, [x,l,u], 3, (x >= l && x < u) as i64)
+        let [ x, l, u ]: [Kip10I64; 3] = vm.dstack.pop_items()?;
+        let r = (x >= l && x < u) as i64;
+        vm.dstack.push_item(r)?;
+        Ok(())
     }
 
     // Undefined opcodes.
