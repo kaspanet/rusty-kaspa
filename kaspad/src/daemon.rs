@@ -1,4 +1,10 @@
-use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
+use std::{
+    fs,
+    path::PathBuf,
+    process::exit,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use async_channel::unbounded;
 use kaspa_consensus_core::{
@@ -405,6 +411,7 @@ Do you confirm? (y/n)";
                         .with_files_limit(1)
                         .build()
                         .unwrap();
+
                     info!("Scanning for deprecated records to cleanup");
 
                     let mut parent_relations_record_count: u32 = 0;
@@ -412,11 +419,16 @@ Do you confirm? (y/n)";
 
                     let start_level: u8 = 1;
                     let start_level_bytes = start_level.to_le_bytes();
+
                     let parent_prefix_vec: Vec<_> =
                         DatabaseStorePrefixes::RelationsParents.into_iter().chain(start_level_bytes).collect();
                     let parent_prefix = parent_prefix_vec.as_slice();
 
-                    // This section is used to count the records to be deleted. It's not used for the actual delete.
+                    //  Scanning would be very quick for most nodes, but can take a little while with archivals
+                    let progress_interval = Duration::from_secs(60);
+                    let mut last_log_time = Instant::now();
+
+                    // ---- PARENTS SCAN ----
                     for result in consensus_db.iterator(rocksdb::IteratorMode::From(parent_prefix, rocksdb::Direction::Forward)) {
                         let (key, _) = result.unwrap();
                         if !key.starts_with(&[DatabaseStorePrefixes::RelationsParents.into()]) {
@@ -424,12 +436,22 @@ Do you confirm? (y/n)";
                         }
 
                         parent_relations_record_count += 1;
+
+                        // Periodic progress logging
+                        if last_log_time.elapsed() >= progress_interval {
+                            info!("Scanning… processed {} parent relation records so far", parent_relations_record_count);
+                            last_log_time = Instant::now();
+                        }
                     }
+
+                    // Reset timer for children scan
+                    last_log_time = Instant::now();
 
                     let children_prefix_vec: Vec<_> =
                         DatabaseStorePrefixes::RelationsChildren.into_iter().chain(start_level_bytes).collect();
                     let children_prefix = children_prefix_vec.as_slice();
 
+                    // ---- CHILDREN SCAN ----
                     for result in consensus_db.iterator(rocksdb::IteratorMode::From(children_prefix, rocksdb::Direction::Forward)) {
                         let (key, _) = result.unwrap();
                         if !key.starts_with(&[DatabaseStorePrefixes::RelationsChildren.into()]) {
@@ -437,6 +459,12 @@ Do you confirm? (y/n)";
                         }
 
                         children_relations_record_count += 1;
+
+                        // Periodic progress logging
+                        if last_log_time.elapsed() >= progress_interval {
+                            info!("Scanning… processed {} children relation records so far", children_relations_record_count);
+                            last_log_time = Instant::now();
+                        }
                     }
 
                     trace!("Number of parent relations records to cleanup: {}", parent_relations_record_count);
