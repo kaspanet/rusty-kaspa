@@ -404,8 +404,8 @@ Do you confirm? (y/n)";
 
             match active_consensus_dir_name {
                 Some(current_consensus_db) => {
-                    // Apply soft upgrade logic: delete GD data from higher levels
-                    // and then update DB version to 4
+                    // Apply soft upgrade logic: delete relation data from higher levels
+                    // and then update DB version to 6
                     let consensus_db = kaspa_database::prelude::ConnBuilder::default()
                         .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
                         .with_files_limit(1)
