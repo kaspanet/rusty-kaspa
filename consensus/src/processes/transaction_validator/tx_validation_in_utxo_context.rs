@@ -171,37 +171,30 @@ impl TransactionValidator {
     }
 
     pub fn check_scripts(&self, tx: &(impl VerifiableTransaction + Sync), block_daa_score: u64) -> TxResult<()> {
-        check_scripts(
-            &self.sig_cache,
-            tx,
-            self.crescendo_activation.is_active(block_daa_score),
-            self.crescendo_activation.is_active(block_daa_score),
-        )
+        check_scripts(&self.sig_cache, tx, self.crescendo_activation.is_active(block_daa_score))
     }
 }
 
 pub fn check_scripts(
     sig_cache: &Cache<SigCacheKey, bool>,
     tx: &(impl VerifiableTransaction + Sync),
-    kip10_enabled: bool,
     runtime_sig_op_counting: bool,
 ) -> TxResult<()> {
     if tx.inputs().len() > CHECK_SCRIPTS_PARALLELISM_THRESHOLD {
-        check_scripts_par_iter(sig_cache, tx, kip10_enabled, runtime_sig_op_counting)
+        check_scripts_par_iter(sig_cache, tx, runtime_sig_op_counting)
     } else {
-        check_scripts_sequential(sig_cache, tx, kip10_enabled, runtime_sig_op_counting)
+        check_scripts_sequential(sig_cache, tx, runtime_sig_op_counting)
     }
 }
 
 pub fn check_scripts_sequential(
     sig_cache: &Cache<SigCacheKey, bool>,
     tx: &impl VerifiableTransaction,
-    kip10_enabled: bool,
     runtime_sig_op_counting: bool,
 ) -> TxResult<()> {
     let reused_values = SigHashReusedValuesUnsync::new();
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-        TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache, kip10_enabled, runtime_sig_op_counting)
+        TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache, runtime_sig_op_counting)
             .execute()
             .map_err(|err| map_script_err(err, input))?;
     }
@@ -211,13 +204,12 @@ pub fn check_scripts_sequential(
 pub fn check_scripts_par_iter(
     sig_cache: &Cache<SigCacheKey, bool>,
     tx: &(impl VerifiableTransaction + Sync),
-    kip10_enabled: bool,
     runtime_sig_op_counting: bool,
 ) -> TxResult<()> {
     let reused_values = SigHashReusedValuesSync::new();
     (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
         let (input, utxo) = tx.populated_input(idx);
-        TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache, kip10_enabled, runtime_sig_op_counting)
+        TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache, runtime_sig_op_counting)
             .execute()
             .map_err(|err| map_script_err(err, input))
     })
@@ -227,10 +219,9 @@ pub fn check_scripts_par_iter_pool(
     sig_cache: &Cache<SigCacheKey, bool>,
     tx: &(impl VerifiableTransaction + Sync),
     pool: &ThreadPool,
-    kip10_enabled: bool,
     runtime_sig_op_counting: bool,
 ) -> TxResult<()> {
-    pool.install(|| check_scripts_par_iter(sig_cache, tx, kip10_enabled, runtime_sig_op_counting))
+    pool.install(|| check_scripts_par_iter(sig_cache, tx, runtime_sig_op_counting))
 }
 
 fn map_script_err(script_err: TxScriptError, input: &TransactionInput) -> TxRuleError {

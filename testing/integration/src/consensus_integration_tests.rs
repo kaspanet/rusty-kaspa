@@ -1788,10 +1788,12 @@ async fn staging_consensus_test() {
     core.join(joins);
 }
 
-/// Tests the KIP-10 transaction introspection opcode activation by verifying that:
-/// 1. Transactions using these opcodes are rejected before the activation DAA score
-/// 2. The same transactions are accepted at and after the activation score
-/// Uses OpInputSpk opcode as an example
+/// Tests the KIP-10 transaction introspection opcodes by verifying that:
+/// 1. Transactions using these opcodes are accepted from genesis (DAA score 0)
+/// 2. The introspection opcodes (like OpInputSpk) function correctly in transaction validation
+///
+/// KIP-10 is now enabled by default from the genesis block, allowing scripts to access
+/// transaction data through introspection opcodes for advanced smart contract capabilities.
 #[tokio::test]
 async fn run_kip10_activation_test() {
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
@@ -1799,17 +1801,17 @@ async fn run_kip10_activation_test() {
     use kaspa_txscript::pay_to_script_hash_script;
     use kaspa_txscript::script_builder::ScriptBuilder;
 
-    // KIP-10 activates at DAA score 3 in this test
-    const KIP10_ACTIVATION_DAA_SCORE: u64 = 3;
+    // KIP-10 is enabled from genesis (DAA score 0)
+    const KIP10_ACTIVATION_DAA_SCORE: u64 = 0;
 
     init_allocator_with_default_settings();
 
     // Create P2SH script that attempts to use OpInputSpk - this will be our test subject
     // The script should fail before KIP-10 activation and succeed after
     let redeem_script = ScriptBuilder::new()
-        .add_op(Op0).unwrap() // Push 0 for input index
-        .add_op(OpTxInputSpk).unwrap() // Get the input's script pubkey
-        .drain();
+            .add_op(Op0).unwrap() // Push 0 for input index
+            .add_op(OpTxInputSpk).unwrap() // Get the input's script pubkey
+            .drain();
     let spk = pay_to_script_hash_script(&redeem_script);
 
     // Set up initial UTXO with our test script
@@ -1841,14 +1843,8 @@ async fn run_kip10_activation_test() {
     consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
     consensus.init();
 
-    // Build blockchain up to one block before activation
-    let mut index = 0;
-    for _ in 0..KIP10_ACTIVATION_DAA_SCORE - 1 {
-        let parent = if index == 0 { config.genesis.hash } else { index.into() };
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).await.unwrap();
-        index += 1;
-    }
-    assert_eq!(consensus.get_virtual_daa_score(), index);
+    // Start from genesis block
+    let index = 0;
 
     // Create transaction that attempts to use the KIP-10 opcode
     let mut tx = Transaction::new(
@@ -1872,29 +1868,8 @@ async fn run_kip10_activation_test() {
     // This triggers storage mass population
     let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
     let tx = tx.tx.unwrap_or_clone();
-
-    // Test 1: Build empty block, then manually insert invalid tx and verify consensus rejects it
-    {
-        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-
-        // First build block without transactions
-        let mut block =
-            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
-
-        // Insert our test transaction and recalculate block hashes
-        block.transactions.push(tx.clone());
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
-        assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
-        assert_eq!(consensus.lkg_virtual_state.load().daa_score, 2);
-        index += 1;
-    }
-    // // Add one more block to reach activation score
-    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
-    index += 1;
-
-    // Test 2: Verify the same transaction is accepted after activation
-    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx.clone()]).await;
+    // Verify the transaction with KIP-10 opcodes is accepted
+    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![config.genesis.hash], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }

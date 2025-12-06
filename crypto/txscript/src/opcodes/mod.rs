@@ -222,7 +222,7 @@ fn push_number<T: VerifiableTransaction, Reused: SigHashReusedValues>(
 // TODO: Remove this macro after KIP-10 activation.
 macro_rules! numeric_op {
     ($vm: expr, $pattern: pat, $count: expr, $block: expr) => {
-        if $vm.kip10_enabled {
+        if true {
             let $pattern: [Kip10I64; $count] = $vm.dstack.pop_items()?;
             let r = $block;
             $vm.dstack.push_item(r)?;
@@ -642,18 +642,10 @@ opcode_list! {
     }
 
     opcode OpNumEqualVerify<0x9d, 1>(self, vm) {
-        if vm.kip10_enabled {
-            let [a,b]: [Kip10I64; 2] = vm.dstack.pop_items()?;
-            match a == b {
-                true => Ok(()),
-                false => Err(TxScriptError::VerifyError)
-            }
-        } else {
-            let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-            match a == b {
-                true => Ok(()),
-                false => Err(TxScriptError::VerifyError)
-            }
+        let [a,b]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+        match a == b {
+            true => Ok(()),
+            false => Err(TxScriptError::VerifyError)
         }
     }
 
@@ -881,27 +873,19 @@ opcode_list! {
     // Transaction level opcodes (following Transaction struct field order)
     opcode OpTxVersion<0xb2, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
     opcode OpTxInputCount<0xb3, 1>(self, vm) {
-        if vm.kip10_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    push_number(tx.inputs().len() as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpInputCount only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                push_number(tx.inputs().len() as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpInputCount only applies to transaction inputs".to_string()))
         }
     }
     opcode OpTxOutputCount<0xb4, 1>(self, vm) {
-        if vm.kip10_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    push_number(tx.outputs().len() as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpOutputCount only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                push_number(tx.outputs().len() as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpOutputCount only applies to transaction inputs".to_string()))
         }
     }
     opcode OpTxLockTime<0xb5, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
@@ -910,15 +894,11 @@ opcode_list! {
     opcode OpTxPayload<0xb8, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
     // Input related opcodes (following TransactionInput struct field order)
     opcode OpTxInputIndex<0xb9, 1>(self, vm) {
-        if vm.kip10_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{idx, ..} => {
-                    push_number(idx as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpInputIndex only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{idx, ..} => {
+                push_number(idx as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpInputIndex only applies to transaction inputs".to_string()))
         }
     }
     opcode OpOutpointTxId<0xba, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
@@ -927,72 +907,56 @@ opcode_list! {
     opcode OpTxInputSeq<0xbd, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
     // UTXO related opcodes (following UtxoEntry struct field order)
     opcode OpTxInputAmount<0xbe, 1>(self, vm) {
-        if vm.kip10_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let utxo = usize::try_from(idx).ok()
-                        .and_then(|idx| tx.utxo(idx))
-                        .ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
-                    push_number(utxo.amount.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(e.to_string()))?, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let utxo = usize::try_from(idx).ok()
+                    .and_then(|idx| tx.utxo(idx))
+                    .ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
+                push_number(utxo.amount.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(e.to_string()))?, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
         }
     }
     opcode OpTxInputSpk<0xbf, 1>(self, vm) {
-        if vm.kip10_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let utxo = usize::try_from(idx).ok()
-                        .and_then(|idx| tx.utxo(idx))
-                        .ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
-                    vm.dstack.push(utxo.script_public_key.to_bytes());
-                    Ok(())
-                },
-                _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let utxo = usize::try_from(idx).ok()
+                    .and_then(|idx| tx.utxo(idx))
+                    .ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
+                vm.dstack.push(utxo.script_public_key.to_bytes());
+                Ok(())
+            },
+            _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
         }
     }
     opcode OpTxInputBlockDaaScore<0xc0, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
     opcode OpTxInputIsCoinbase<0xc1, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
     // Output related opcodes (following TransactionOutput struct field order)
     opcode OpTxOutputAmount<0xc2, 1>(self, vm) {
-        if vm.kip10_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let output = usize::try_from(idx).ok()
-                        .and_then(|idx| tx.outputs().get(idx))
-                        .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
-                    push_number(output.value.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(e.to_string()))?, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpOutputAmount only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let output = usize::try_from(idx).ok()
+                    .and_then(|idx| tx.outputs().get(idx))
+                    .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
+                push_number(output.value.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(e.to_string()))?, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpOutputAmount only applies to transaction inputs".to_string()))
         }
     }
     opcode OpTxOutputSpk<0xc3, 1>(self, vm) {
-        if vm.kip10_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let output = usize::try_from(idx).ok()
-                        .and_then(|idx| tx.outputs().get(idx))
-                        .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
-                    vm.dstack.push(output.script_public_key.to_bytes());
-                    Ok(())
-                },
-                _ => Err(TxScriptError::InvalidSource("OpOutputSpk only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        match vm.script_source {
+            ScriptSource::TxInput{tx, ..} => {
+                let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                let output = usize::try_from(idx).ok()
+                    .and_then(|idx| tx.outputs().get(idx))
+                    .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
+                vm.dstack.push(output.script_public_key.to_bytes());
+                Ok(())
+            },
+            _ => Err(TxScriptError::InvalidSource("OpOutputSpk only applies to transaction inputs".to_string()))
         }
     }
     // Undefined opcodes
@@ -1102,12 +1066,10 @@ mod test {
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
         for TestCase { init, code, dstack } in tests {
-            [false, true].into_iter().for_each(|kip10_enabled| {
-                let mut vm = TxScriptEngine::new(&reused_values, &cache, kip10_enabled);
-                vm.dstack = init.clone();
-                code.execute(&mut vm).unwrap_or_else(|_| panic!("Opcode {} should not fail", code.value()));
-                assert_eq!(*vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
-            });
+            let mut vm = TxScriptEngine::new(&reused_values, &cache);
+            vm.dstack = init.clone();
+            code.execute(&mut vm).unwrap_or_else(|_| panic!("Opcode {} should not fail", code.value()));
+            assert_eq!(*vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
         }
     }
 
@@ -1115,18 +1077,16 @@ mod test {
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
         for ErrorTestCase { init, code, error } in tests {
-            [false, true].into_iter().for_each(|kip10_enabled| {
-                let mut vm = TxScriptEngine::new(&reused_values, &cache, kip10_enabled);
-                vm.dstack.clone_from(&init);
-                assert_eq!(
-                    code.execute(&mut vm)
-                        .expect_err(format!("Opcode {} should have errored (init: {:?})", code.value(), init.clone()).as_str()),
-                    error,
-                    "Opcode {} returned wrong error {:?}",
-                    code.value(),
-                    init
-                );
-            });
+            let mut vm = TxScriptEngine::new(&reused_values, &cache);
+            vm.dstack.clone_from(&init);
+            assert_eq!(
+                code.execute(&mut vm)
+                    .expect_err(format!("Opcode {} should have errored (init: {:?})", code.value(), init.clone()).as_str()),
+                error,
+                "Opcode {} returned wrong error {:?}",
+                code.value(),
+                init
+            );
         }
     }
 
@@ -1152,7 +1112,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1186,7 +1146,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1259,7 +1219,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -2854,7 +2814,7 @@ mod test {
         ] {
             let mut tx = base_tx.clone();
             tx.0.lock_time = tx_lock_time;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false, false);
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false);
             vm.dstack = vec![lock_time.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -2896,7 +2856,7 @@ mod test {
         ] {
             let mut input = base_input.clone();
             input.sequence = tx_sequence;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false, false);
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false);
             vm.dstack = vec![sequence.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -3041,7 +3001,6 @@ mod test {
         #[derive(Debug)]
         struct TestGroup {
             name: &'static str,
-            kip10_enabled: bool,
             test_cases: Vec<TestCase>,
         }
 
@@ -3089,21 +3048,17 @@ mod test {
                     tx.utxo(current_idx).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    group.kip10_enabled,
                     false,
                 );
 
                 // Check input index opcode first
                 let op_input_idx = opcodes::OpTxInputIndex::empty().expect("Should accept empty");
-                if !group.kip10_enabled {
-                    assert!(matches!(op_input_idx.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))));
-                } else {
-                    let mut expected = vm.dstack.clone();
-                    expected.push_item(current_idx as i64).unwrap();
-                    op_input_idx.execute(&mut vm).unwrap();
-                    assert_eq!(vm.dstack, expected);
-                    vm.dstack.clear();
-                }
+
+                let mut expected = vm.dstack.clone();
+                expected.push_item(current_idx as i64).unwrap();
+                op_input_idx.execute(&mut vm).unwrap();
+                assert_eq!(vm.dstack, expected);
+                vm.dstack.clear();
 
                 // Prepare opcodes
                 let op_input_spk = opcodes::OpTxInputSpk::empty().expect("Should accept empty");
@@ -3159,34 +3114,7 @@ mod test {
         fn test_unary_introspection_ops() {
             let test_groups = vec![
                 TestGroup {
-                    name: "KIP-10 disabled",
-                    kip10_enabled: false,
-                    test_cases: vec![
-                        TestCase::Incorrect {
-                            operation: Operation::InputSpk,
-                            index: Some(0),
-                            expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
-                        },
-                        TestCase::Incorrect {
-                            operation: Operation::OutputSpk,
-                            index: Some(0),
-                            expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
-                        },
-                        TestCase::Incorrect {
-                            operation: Operation::InputAmount,
-                            index: Some(0),
-                            expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
-                        },
-                        TestCase::Incorrect {
-                            operation: Operation::OutputAmount,
-                            index: Some(0),
-                            expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
-                        },
-                    ],
-                },
-                TestGroup {
                     name: "Valid input indices",
-                    kip10_enabled: true,
                     test_cases: vec![
                         TestCase::Successful {
                             operation: Operation::InputSpk,
@@ -3224,7 +3152,6 @@ mod test {
                 },
                 TestGroup {
                     name: "Valid output indices",
-                    kip10_enabled: true,
                     test_cases: vec![
                         TestCase::Successful {
                             operation: Operation::OutputSpk,
@@ -3262,7 +3189,6 @@ mod test {
                 },
                 TestGroup {
                     name: "Error cases",
-                    kip10_enabled: true,
                     test_cases: vec![
                         TestCase::Incorrect {
                             operation: Operation::InputAmount,
@@ -3351,53 +3277,38 @@ mod test {
 
                 for runtime_sig_op_counting in [true, false] {
                     // Test with KIP-10 enabled and disabled
-                    for kip10_enabled in [true, false] {
-                        let mut vm = TxScriptEngine::from_transaction_input(
-                            &tx,
-                            &tx.inputs()[0], // Use first input
-                            0,
-                            tx.utxo(0).unwrap(),
-                            &reused_values,
-                            &sig_cache,
-                            kip10_enabled,
-                            runtime_sig_op_counting,
-                        );
+                    let mut vm = TxScriptEngine::from_transaction_input(
+                        &tx,
+                        &tx.inputs()[0], // Use first input
+                        0,
+                        tx.utxo(0).unwrap(),
+                        &reused_values,
+                        &sig_cache,
+                        runtime_sig_op_counting,
+                    );
 
-                        let op_input_count = opcodes::OpTxInputCount::empty().expect("Should accept empty");
-                        let op_output_count = opcodes::OpTxOutputCount::empty().expect("Should accept empty");
+                    let op_input_count = opcodes::OpTxInputCount::empty().expect("Should accept empty");
+                    let op_output_count = opcodes::OpTxOutputCount::empty().expect("Should accept empty");
 
-                        if kip10_enabled {
-                            // Test input count
-                            op_input_count.execute(&mut vm).unwrap();
-                            assert_eq!(
-                                vm.dstack,
-                                vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(input_count as i64)).unwrap()],
-                                "Input count mismatch for {} inputs",
-                                input_count
-                            );
-                            vm.dstack.clear();
+                    // Test input count
+                    op_input_count.execute(&mut vm).unwrap();
+                    assert_eq!(
+                        vm.dstack,
+                        vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(input_count as i64)).unwrap()],
+                        "Input count mismatch for {} inputs",
+                        input_count
+                    );
+                    vm.dstack.clear();
 
-                            // Test output count
-                            op_output_count.execute(&mut vm).unwrap();
-                            assert_eq!(
-                                vm.dstack,
-                                vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(output_count as i64)).unwrap()],
-                                "Output count mismatch for {} outputs",
-                                output_count
-                            );
-                            vm.dstack.clear();
-                        } else {
-                            // Test that operations fail when KIP-10 is disabled
-                            assert!(
-                                matches!(op_input_count.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))),
-                                "OpInputCount should fail when KIP-10 is disabled"
-                            );
-                            assert!(
-                                matches!(op_output_count.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))),
-                                "OpOutputCount should fail when KIP-10 is disabled"
-                            );
-                        }
-                    }
+                    // Test output count
+                    op_output_count.execute(&mut vm).unwrap();
+                    assert_eq!(
+                        vm.dstack,
+                        vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(output_count as i64)).unwrap()],
+                        "Output count mismatch for {} outputs",
+                        output_count
+                    );
+                    vm.dstack.clear();
                 }
             }
         }
@@ -3441,7 +3352,6 @@ mod test {
                     tx.utxo(0).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    true,
                     false,
                 );
 
@@ -3466,7 +3376,6 @@ mod test {
                     tx.utxo(0).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    true,
                     false,
                 );
 
@@ -3507,7 +3416,6 @@ mod test {
                     tx.utxo(0).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    true,
                     false,
                 );
 
@@ -3534,7 +3442,6 @@ mod test {
                     tx.utxo(0).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    true,
                     false,
                 );
 
@@ -3564,7 +3471,6 @@ mod test {
                 tx.utxo(0).unwrap(),
                 &reused_values,
                 &sig_cache,
-                true,
                 false,
             );
 
@@ -3596,7 +3502,6 @@ mod test {
                 tx.utxo(0).unwrap(),
                 &reused_values,
                 &sig_cache,
-                true,
                 false,
             );
 
@@ -3629,7 +3534,6 @@ mod test {
                 tx.utxo(0).unwrap(),
                 &reused_values,
                 &sig_cache,
-                true,
                 false,
             );
 
@@ -3675,7 +3579,6 @@ mod test {
                     tx.utxo(0).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    true,
                     false,
                 );
 
@@ -3702,7 +3605,6 @@ mod test {
                     tx.utxo(0).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    true,
                     false,
                 );
 
@@ -3736,7 +3638,6 @@ mod test {
                     tx.utxo(0).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    true,
                     false,
                 );
 
@@ -3761,7 +3662,6 @@ mod test {
                     tx.utxo(1).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    true,
                     false,
                 );
 
@@ -3808,7 +3708,6 @@ mod test {
                     tx.utxo(0).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    true,
                     false,
                 );
 
@@ -3828,7 +3727,6 @@ mod test {
                     tx.utxo(1).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    true,
                     false,
                 );
 
@@ -3852,7 +3750,6 @@ mod test {
                     tx.utxo(0).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    true,
                     false,
                 );
 
@@ -3875,7 +3772,6 @@ mod test {
                     tx.utxo(1).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    true,
                     false,
                 );
 
