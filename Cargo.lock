@@ -2840,6 +2840,7 @@ dependencies = [
  "arc-swap",
  "async-trait",
  "bincode",
+ "bitflags 2.9.4",
  "borsh",
  "cfg-if 1.0.0",
  "criterion",
@@ -4066,6 +4067,7 @@ dependencies = [
  "rayon",
  "rocksdb",
  "serde",
+ "serde_json",
  "serde_with",
  "tempfile",
  "thiserror 1.0.64",
@@ -6067,6 +6069,7 @@ dependencies = [
  "rand_distr",
  "rayon",
  "secp256k1",
+ "serde_json",
  "tokio",
 ]
 

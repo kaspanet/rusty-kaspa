@@ -208,7 +208,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], pov_daa_score: u64) -> Hash {
+    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction]) -> Hash {
         unimplemented!()
     }
 
@@ -340,19 +340,14 @@ pub trait ConsensusApi: Send + Sync {
     fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
+    fn get_body_missing_anticone(&self) -> Vec<Hash> {
+        unimplemented!()
+    }
+    fn clear_body_missing_anticone_set(&self) {
+        unimplemented!()
+    }
 
     fn pruning_point(&self) -> Hash {
-        unimplemented!()
-    }
-
-    // TODO: Delete this function once there's no need for go-kaspad backward compatibility.
-    fn get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
-        unimplemented!()
-    }
-
-    // TODO: Think of a better name.
-    // TODO: Delete this function once there's no need for go-kaspad backward compatibility.
-    fn get_trusted_block_associated_ghostdag_data_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
 
@@ -373,6 +368,34 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn finality_point(&self) -> Hash {
+        unimplemented!()
+    }
+
+    fn clear_pruning_utxo_set(&self) {
+        unimplemented!()
+    }
+
+    fn set_pruning_utxoset_stable_flag(&self, val: bool) {
+        unimplemented!()
+    }
+
+    fn is_pruning_utxoset_stable(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn is_pruning_point_anticone_fully_synced(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn is_consensus_in_transitional_ibd_state(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn verify_is_pruning_sample(&self, candidate_hash: Hash) -> ConsensusResult<()> {
+        unimplemented!()
+    }
+
+    fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
         unimplemented!()
     }
 }

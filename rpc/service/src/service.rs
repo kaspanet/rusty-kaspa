@@ -7,7 +7,6 @@ use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
 use kaspa_consensus_core::daa_score_timestamp::DaaScoreTimestamp;
 use kaspa_consensus_core::errors::block::RuleError;
-use kaspa_consensus_core::mass::{calc_storage_mass, UtxoCell};
 use kaspa_consensus_core::utxo::utxo_inquirer::UtxoInquirerError;
 use kaspa_consensus_core::{
     block::Block,
@@ -285,62 +284,6 @@ impl RpcCoreService {
             (false, false) => Ok(TransactionQuery::TransactionsOnly),
         }
     }
-
-    fn sanity_check_storage_mass(&self, block: Block) {
-        // [Crescendo]: warn non updated miners to upgrade their rpc flow before Crescendo activation
-        if self.config.crescendo_activation.is_active(block.header.daa_score) {
-            return;
-        }
-
-        // It is sufficient to witness a single transaction with non default mass to conclude that miner rpc flow is correct
-        if block.transactions.iter().any(|tx| tx.mass() > 0) {
-            return;
-        }
-
-        // Iterate over non-coinbase transactions and search for a transaction which is proven to have positive storage mass
-        for tx in block.transactions.iter().skip(1) {
-            /*
-                Below we apply a workaround to compute a lower bound to the storage mass even without having full UTXO context (thus lacking input amounts).
-                Notes:
-                    1. We know that plurality is always 1 for std tx ins/outs (assuming the submitted block was built via the local std mempool).
-                    2. The submitted block was accepted by consensus hence all transactions passed the basic in-isolation validity checks
-
-                |O| > |I| means that the formula used is C·|O| / H(O) - C·|I| / A(I). Additionally we know that sum(O) <= sum(I) (outs = ins minus fee).
-                Combined, we can use sum(O)/|I| as a lower bound for A(I). We simulate this by using sum(O)/|I| as the value of each (unknown) input.
-                Plugging in to the storage formula we obtain a lower bound for the real storage mass (intuitively, making inputs smaller only decreases the mass).
-            */
-            if tx.outputs.len() > tx.inputs.len() {
-                let num_ins = tx.inputs.len() as u64;
-                let sum_outs = tx.outputs.iter().map(|o| o.value).sum::<u64>();
-                if num_ins == 0 || sum_outs < num_ins {
-                    // Sanity checks
-                    continue;
-                }
-
-                let avg_ins_lower = sum_outs / num_ins; // >= 1
-                let storage_mass_lower = calc_storage_mass(
-                    tx.is_coinbase(),
-                    tx.inputs.iter().map(|_| UtxoCell { plurality: 1, amount: avg_ins_lower }),
-                    tx.outputs.iter().map(|o| o.into()),
-                    self.config.storage_mass_parameter,
-                )
-                .unwrap_or(u64::MAX);
-
-                // Despite being a lower bound, storage mass is still calculated to be positive, so we found our problem
-                if storage_mass_lower > 0 {
-                    warn!("The RPC submitted block {} contains a transaction {} with mass = 0 while it should have been strictly positive.
-This indicates that the RPC conversion flow used by the miner does not preserve the mass values received from GetBlockTemplate.
-You must upgrade your miner flow to propagate the mass field correctly prior to the Crescendo hardfork activation. 
-Failure to do so will result in your blocks being considered invalid when Crescendo activates.",
-                            block.hash(),
-                            tx.id()
-                        );
-                    // A single warning is sufficient
-                    break;
-                }
-            }
-        }
-    }
 }
 
 #[async_trait]
@@ -353,8 +296,13 @@ impl RpcApi for RpcCoreService {
         let session = self.consensus_manager.consensus().unguarded_session();
         let sink_daa_score_timestamp = session.async_get_sink_daa_score_timestamp().await;
 
+        // do not attempt to submit blocks while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
         // TODO: consider adding an error field to SubmitBlockReport to document both the report and error fields
-        let is_synced: bool = self.mining_rule_engine.should_mine(sink_daa_score_timestamp);
+        let is_synced = self.mining_rule_engine.should_mine(sink_daa_score_timestamp);
 
         if !self.config.enable_unsynced_mining && !is_synced {
             // error = "Block not submitted - node is not synced"
@@ -374,13 +322,8 @@ impl RpcApi for RpcCoreService {
             let virtual_daa_score = session.get_virtual_daa_score();
 
             // A simple heuristic check which signals that the mined block is out of date
-            // and should not be accepted unless user explicitly requests
-            //
-            // [Crescendo]: switch to the larger duration only after a full window with the new duration is reached post activation
-            let difficulty_window_duration = self
-                .config
-                .difficulty_window_duration_in_block_units()
-                .get(virtual_daa_score.saturating_sub(self.config.difficulty_window_duration_in_block_units().after()));
+            // and should not be accepted unless user explicitly requests.
+            let difficulty_window_duration = self.config.difficulty_window_duration_in_block_units().after();
             if virtual_daa_score > difficulty_window_duration
                 && block.header.daa_score < virtual_daa_score - difficulty_window_duration
             {
@@ -391,10 +334,7 @@ impl RpcApi for RpcCoreService {
 
         trace!("incoming SubmitBlockRequest for block {}", hash);
         match self.flow_context.submit_rpc_block(&session, block.clone()).await {
-            Ok(_) => {
-                self.sanity_check_storage_mass(block);
-                Ok(SubmitBlockResponse { report: SubmitBlockReport::Success })
-            }
+            Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
             Err(ProtocolError::RuleError(RuleError::BadMerkleRoot(h1, h2))) => {
                 warn!(
                     "The RPC submitted block {} triggered a {} error: {}. 
@@ -432,10 +372,15 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         }
 
         // Build block template
+        let session = self.consensus_manager.consensus().unguarded_session();
+
+        // do not attempt to mine blocks while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
         let script_public_key = kaspa_txscript::pay_to_address_script(&request.pay_address);
         let extra_data = version().as_bytes().iter().chain(once(&(b'/'))).chain(&request.extra_data).cloned().collect::<Vec<_>>();
         let miner_data: MinerData = MinerData::new(script_public_key, extra_data);
-        let session = self.consensus_manager.consensus().unguarded_session();
         let block_template = self.mining_manager.clone().get_block_template(&session, miner_data).await?;
 
         // Check coinbase tx payload length
@@ -504,7 +449,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         // We use +1 because low_hash is also returned
         // max_blocks MUST be >= mergeset_size_limit + 1
-        let max_blocks = self.config.mergeset_size_limit().upper_bound() as usize + 1;
+        let max_blocks = self.config.mergeset_size_limit().after() as usize + 1;
         let (block_hashes, high_hash) = session.async_get_hashes_between(low_hash, sink_hash, max_blocks).await?;
 
         // If the high hash is equal to sink it means get_hashes_between didn't skip any hashes, and
@@ -677,12 +622,17 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetVirtualChainFromBlockResponse> {
         let session = self.consensus_manager.consensus().session().await;
 
+        // This RPC call attempts to retrieve transactions on route from the block to the virtual
+        // These transactions may not be present during a transitional state where the sink is missing a block body
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
         // batch_size is set to 10 times the mergeset_size_limit.
         // this means batch_size is 2480 on 10 bps, and 1800 on mainnet.
         // this bounds by number of merged blocks, if include_accepted_transactions = true
         // else it returns the batch_size amount on pure chain blocks.
         // Note: batch_size does not bound removed chain blocks, only added chain blocks.
-        let batch_size = (self.config.mergeset_size_limit().upper_bound() * 10) as usize;
+        let batch_size = (self.config.mergeset_size_limit().after() * 10) as usize;
         let mut virtual_chain_batch = session.async_get_virtual_chain_from_block(request.start_hash, Some(batch_size)).await?;
 
         if let Some(min_confirmation_count) = request.min_confirmation_count {
@@ -734,6 +684,12 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
+        let session = self.consensus_manager.consensus().unguarded_session();
+        // do not retrieve utxos  while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
         // TODO: discuss if the entry order is part of the method requirements
         //       (the current impl does not retain an entry order matching the request addresses order)
         let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter()).await;
@@ -748,6 +704,13 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
+
+        let session = self.consensus_manager.consensus().unguarded_session();
+
+        // do not retrieve utxo balances while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
         let entry_map = self.get_balance_by_script_public_key(once(&request.address)).await;
         let balance = entry_map.values().sum();
         Ok(GetBalanceByAddressResponse::new(balance))
@@ -760,6 +723,12 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetBalancesByAddressesResponse> {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
+        }
+        let session = self.consensus_manager.consensus().unguarded_session();
+
+        // do not retrieve utxo balances while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
         }
         let entry_map = self.get_balance_by_script_public_key(request.addresses.iter()).await;
         let entries = request
@@ -781,6 +750,12 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetCoinSupplyResponse> {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
+        }
+        let session = self.consensus_manager.consensus().unguarded_session();
+
+        // do not retrieve supply balances while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
         }
         let circulating_sompi =
             self.utxoindex.clone().unwrap().get_circulating_supply().await.map_err(|e| RpcError::General(e.to_string()))?;
@@ -824,7 +799,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 // For daa_score later than the last header, we estimate in milliseconds based on the difference
                 let time_adjustment = if header_idx == 0 {
                     // estimate milliseconds = (daa_score * target_time_per_block)
-                    (curr_daa_score - header.daa_score).saturating_mul(self.config.target_time_per_block().get(header.daa_score))
+                    (curr_daa_score - header.daa_score).saturating_mul(self.config.target_time_per_block().after())
                 } else {
                     // "next" header is the one that we processed last iteration
                     let next_header = &headers[header_idx - 1];
@@ -858,16 +833,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _request: GetFeeEstimateRequest,
     ) -> RpcResult<GetFeeEstimateResponse> {
         let mining_manager = self.mining_manager.clone();
-        let consensus_manager = self.consensus_manager.clone();
-        let estimate = self
-            .fee_estimate_cache
-            .get(async move {
-                mining_manager
-                    .get_realtime_feerate_estimations(consensus_manager.consensus().unguarded_session().get_virtual_daa_score())
-                    .await
-                    .into_rpc()
-            })
-            .await;
+        let estimate =
+            self.fee_estimate_cache.get(async move { mining_manager.get_realtime_feerate_estimations().await.into_rpc() }).await;
         Ok(GetFeeEstimateResponse { estimate })
     }
 
@@ -901,6 +868,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         request: GetUtxoReturnAddressRequest,
     ) -> RpcResult<GetUtxoReturnAddressResponse> {
         let session = self.consensus_manager.consensus().session().await;
+
+        // do not retrieve utxos while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
 
         match session.async_get_populated_transaction(request.txid, request.accepting_block_daa_score).await {
             Ok(tx) => {
@@ -964,8 +936,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         if !self.config.unsafe_rpc && request.window_size > MAX_SAFE_WINDOW_SIZE {
             return Err(RpcError::WindowSizeExceedingMaximum(request.window_size, MAX_SAFE_WINDOW_SIZE));
         }
-        if request.window_size as u64 > self.config.pruning_depth().lower_bound() {
-            return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.prior_pruning_depth));
+        if request.window_size as u64 > self.config.pruning_depth().after() {
+            return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.pruning_depth().after()));
         }
 
         // In the previous golang implementation the convention for virtual was the following const.
@@ -1078,6 +1050,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         _request: ResolveFinalityConflictRequest,
     ) -> RpcResult<ResolveFinalityConflictResponse> {
+        // TODO(Relaxed): implement this functionality
+        // When implementing, make sure to consider transitional IBD state
         if !self.config.unsafe_rpc {
             warn!("ResolveFinalityConflict RPC command called while node in safe RPC mode -- ignoring.");
             return Err(RpcError::UnavailableInSafeMode);
@@ -1221,7 +1195,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetServerInfoResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
         let sink_daa_score_timestamp = session.async_get_sink_daa_score_timestamp().await;
-        let is_synced: bool = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp);
+        let is_synced = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp);
         let virtual_daa_score = session.get_virtual_daa_score();
 
         Ok(GetServerInfoResponse {
@@ -1240,9 +1214,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         _request: GetSyncStatusRequest,
     ) -> RpcResult<GetSyncStatusResponse> {
-        let sink_daa_score_timestamp =
-            self.consensus_manager.consensus().unguarded_session().async_get_sink_daa_score_timestamp().await;
-        let is_synced: bool = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp);
+        let session = self.consensus_manager.consensus().unguarded_session();
+
+        let sink_daa_score_timestamp = session.async_get_sink_daa_score_timestamp().await;
+        let is_synced = self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp)
+            && !session.async_is_consensus_in_transitional_ibd_state().await;
         Ok(GetSyncStatusResponse { is_synced })
     }
 

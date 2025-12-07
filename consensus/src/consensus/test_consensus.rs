@@ -25,8 +25,7 @@ use crate::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
-            ghostdag::DbGhostdagStore, headers::HeaderStoreReader, pruning::PruningStoreReader, reachability::DbReachabilityStore,
-            virtual_state::VirtualStores, DB,
+            ghostdag::DbGhostdagStore, headers::HeaderStoreReader, reachability::DbReachabilityStore, virtual_state::VirtualStores, DB,
         },
     },
     params::Params,
@@ -119,13 +118,10 @@ impl TestConsensus {
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
-        let mut header = header_from_precomputed_hash(hash, parents);
+        let mut header = header_from_precomputed_hash(hash, parents.clone());
+        let parents_by_level = self.consensus.services.parents_manager.calc_block_parents(self.pruning_point(), &parents);
+        header.parents_by_level = parents_by_level;
         let ghostdag_data = self.consensus.services.ghostdag_manager.ghostdag(header.direct_parents());
-        header.pruning_point = self
-            .consensus
-            .services
-            .pruning_point_manager
-            .expected_header_pruning_point_v1(ghostdag_data.to_compact(), self.consensus.pruning_point_store.read().get().unwrap());
         let daa_window = self.consensus.services.window_manager.block_daa_window(&ghostdag_data).unwrap();
         header.bits = self.consensus.services.window_manager.calculate_difficulty_bits(&ghostdag_data, &daa_window);
         header.daa_score = daa_window.daa_score;
@@ -136,8 +132,12 @@ impl TestConsensus {
         header
     }
 
-    pub fn add_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        self.validate_and_insert_block(self.build_block_with_parents(hash, parents).to_immutable()).virtual_state_task
+    pub fn add_header_only_block_with_parents(
+        &self,
+        hash: Hash,
+        parents: Vec<Hash>,
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+        self.validate_and_insert_block(self.build_header_only_block_with_parents(hash, parents).to_immutable()).virtual_state_task
     }
 
     /// Adds a valid block with the given transactions and parents to the consensus.
@@ -155,6 +155,14 @@ impl TestConsensus {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
         self.validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs).to_immutable())
             .virtual_state_task
+    }
+
+    pub fn add_empty_utxo_valid_block_with_parents(
+        &self,
+        hash: Hash,
+        parents: Vec<Hash>,
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+        self.add_utxo_valid_block_with_parents(hash, parents, vec![])
     }
 
     /// Builds a valid block with the given transactions, parents, and miner data.
@@ -190,11 +198,11 @@ impl TestConsensus {
 
         let cb = Transaction::new(TX_VERSION, vec![], vec![], 0, SUBNETWORK_ID_COINBASE, 0, cb_payload);
         txs.insert(0, cb);
-        header.hash_merkle_root = calc_hash_merkle_root(txs.iter(), false);
+        header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
         MutableBlock::new(header, txs)
     }
 
-    pub fn build_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> MutableBlock {
+    pub fn build_header_only_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> MutableBlock {
         MutableBlock::from_header(self.build_header_with_parents(hash, parents))
     }
 
