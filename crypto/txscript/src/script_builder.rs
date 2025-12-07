@@ -208,7 +208,7 @@ impl ScriptBuilder {
         // script that is not canonical.
         let data_len = data.len();
         if data_len > MAX_SCRIPT_ELEMENT_SIZE {
-           return Err(ScriptBuilderError::ElementExceedsMaxSize(data_len));
+            return Err(ScriptBuilderError::ElementExceedsMaxSize(data_len));
         }
 
         Ok(self.add_raw_data(data))

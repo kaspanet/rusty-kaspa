@@ -710,7 +710,7 @@ struct RPCTransactionInput {
     PreviousOutpoint: RPCOutpoint,
     SignatureScript: String,
     Sequence: u64,
-    SigOpCount: u8,
+    SigOpCount: u16,
 }
 
 #[allow(non_snake_case)]

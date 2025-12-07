@@ -1134,7 +1134,7 @@ mod test {
             });
         }
     }
-    
+
     #[test]
     fn test_opcode_disabled() {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![

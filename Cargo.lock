@@ -2840,7 +2840,7 @@ dependencies = [
  "arc-swap",
  "async-trait",
  "bincode",
- "bitflags 2.9.4",
+ "bitflags 2.10.0",
  "borsh",
  "cfg-if 1.0.0",
  "criterion",

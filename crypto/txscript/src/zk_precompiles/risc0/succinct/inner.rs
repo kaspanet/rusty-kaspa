@@ -34,7 +34,7 @@ use crate::zk_precompiles::risc0::R0IntegrityVerifier;
 /// computations, and with an arbitrary number of segments linked via composition.
 ///
 /// [STARK]: https://dev.risczero.com/terminology#stark
-/// 
+///
 /// This is a modified version of the SuccinctReceipt defined in risc0. The reason for this is to
 /// simplify it, as we are certain to only receive digests for the claim and verifier parameters.
 #[derive(Debug, Serialize, BorshSerialize, BorshDeserialize)]
@@ -87,9 +87,9 @@ impl R0IntegrityVerifier for Inner {
 
         let suite = suites.get(&self.hashfn).ok_or(VerificationError::InvalidHashSuite)?;
         let check_code = |_, control_id: &Digest| -> Result<(), VerificationError> {
-            self.control_inclusion_proof.verify(control_id, &ALLOWED_CONTROL_ROOT, suite.hashfn.as_ref()).map_err(|_| {
-                VerificationError::ControlVerificationError { control_id: *control_id }
-            })
+            self.control_inclusion_proof
+                .verify(control_id, &ALLOWED_CONTROL_ROOT, suite.hashfn.as_ref())
+                .map_err(|_| VerificationError::ControlVerificationError { control_id: *control_id })
         };
 
         // Verify the receipt itself is correct, and therefore the encoded globals are
@@ -117,7 +117,6 @@ impl R0IntegrityVerifier for Inner {
         if control_root != ALLOWED_CONTROL_ROOT {
             return Err(VerificationError::ControlVerificationError { control_id: control_root })?;
         }
-
 
         // Verify the output hash matches that data
         let output_hash = read_sha_halfs(&mut seal_claim).map_err(|_| VerificationError::ReceiptFormatError)?;
@@ -159,5 +158,4 @@ mod tests {
             digest!("ece5e9b8ae2cd6ea6b1827b464ff0348f9a7f4decd269c0087fdfd75098da013")
         );
     }
-
 }

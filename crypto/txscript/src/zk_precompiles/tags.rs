@@ -21,7 +21,7 @@ impl TryFrom<u8> for ZkTag {
 impl ZkTag {
     /// Returns the sigop cost associated with the ZK tag
     /// Prices are based on benchmarks and estimations of verification complexity
-    /// 
+    ///
     /// Since 1 sigop is priced at 1000 gram, the costs are in 1000 gram units
     pub fn sigop_cost(&self) -> u32 {
         match self {

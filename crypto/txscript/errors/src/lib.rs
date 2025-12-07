@@ -76,7 +76,7 @@ pub enum TxScriptError {
     #[error("sig op count exceeds passed limit of {0}")]
     ExceededSigOpLimit(u16),
     #[error("ZK Integrity: {0}")]
-    ZkIntegrity(String)
+    ZkIntegrity(String),
 }
 
 #[derive(Error, PartialEq, Eq, Debug, Clone, Copy)]

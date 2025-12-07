@@ -1,7 +1,9 @@
 use crate::{
     data_stack::{DataStack, Stack},
     zk_precompiles::{
-        ZkPrecompile, error::ZkIntegrityError, risc0::{R0IntegrityVerifier, receipt_claim::compute_assert_claim, succinct::inner::Inner}
+        error::ZkIntegrityError,
+        risc0::{receipt_claim::compute_assert_claim, succinct::inner::Inner, R0IntegrityVerifier},
+        ZkPrecompile,
     },
 };
 use kaspa_txscript_errors::TxScriptError;

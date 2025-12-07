@@ -16,13 +16,13 @@ pub struct R0Groth16Precompile;
 impl ZkPrecompile for R0Groth16Precompile {
     fn verify_zk(dstack: &mut Stack) -> Result<(), ZkIntegrityError> {
         // The image id is a unique identifier of the ZK program,
-        // any alterations to the program will change its image id. 
+        // any alterations to the program will change its image id.
         // Do note that the image id is not secret and can be known by anyone,
         // and that it is committed as part of the proof.
         let [image_id] = dstack.pop_raw()?;
 
         // The journal here is a digest of the public outputs of the ZK program.
-        // Do note here that the R0 precompiles are verifying the executions of the 
+        // Do note here that the R0 precompiles are verifying the executions of the
         // lift program, which verifies a previous ZK proof and outputs its public outputs as journal.
         // Rest assured, the integrity of the journal is still bound by the proof.
         let [journal] = dstack.pop_raw()?;

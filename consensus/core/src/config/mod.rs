@@ -93,7 +93,7 @@ impl Config {
             externalip: None,
             p2p_listen_address: ContextualNetAddress::unspecified(),
             block_template_cache_lifetime: None,
-            
+
             #[cfg(feature = "devnet-prealloc")]
             initial_utxo_set: Default::default(),
             disable_upnp: false,

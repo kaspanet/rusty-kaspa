@@ -14,9 +14,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use risc0_binfmt::{
-    Digestible, ExitCode, SystemState, tagged_struct
-};
+use risc0_binfmt::{tagged_struct, Digestible, ExitCode, SystemState};
 use risc0_zkp::core::{digest::Digest, hash::sha::Sha256};
 use serde::{Deserialize, Serialize};
 
@@ -41,39 +39,33 @@ struct ReceiptClaim {
     pub exit_code: ExitCode,
 
     /// Input to the guest.
-    pub input:Digest,
+    pub input: Digest,
 
     /// [Output] of the guest, including the journal and assumptions set during execution.
     pub output: Output,
 }
 
-    /// Construct a [ReceiptClaim] representing a zkVM execution that ended normally (i.e.
-    /// Halted(0)) with the given image ID and journal.
-    pub fn compute_assert_claim(
-        claim:&Digest,
-        image_id: Digest,
-        journal_hash: Digest,
-    ) -> Result<(),ZkIntegrityError>{
-        let computed_claim=ReceiptClaim {
-            pre: image_id,
-            post: SystemState {
-                pc: 0,
-                merkle_root: Digest::ZERO,
-            },
-            exit_code: ExitCode::Halted(0),
-            input: Digest::ZERO,
-            output: Output {
-                journal: journal_hash,
-                assumptions: Digest::ZERO,
-            },
-        }.digest::<risc0_zkp::core::hash::sha::Impl>();
-
-        // If the claim does not match the computed claim, return an error
-        if *claim!=computed_claim {
-            return Err(ZkIntegrityError::R0Verification(format!("Claim: {:?} does not match the computed claim digest: {:?}",claim,computed_claim)))
-        }
-        Ok(())
+/// Construct a [ReceiptClaim] representing a zkVM execution that ended normally (i.e.
+/// Halted(0)) with the given image ID and journal.
+pub fn compute_assert_claim(claim: &Digest, image_id: Digest, journal_hash: Digest) -> Result<(), ZkIntegrityError> {
+    let computed_claim = ReceiptClaim {
+        pre: image_id,
+        post: SystemState { pc: 0, merkle_root: Digest::ZERO },
+        exit_code: ExitCode::Halted(0),
+        input: Digest::ZERO,
+        output: Output { journal: journal_hash, assumptions: Digest::ZERO },
     }
+    .digest::<risc0_zkp::core::hash::sha::Impl>();
+
+    // If the claim does not match the computed claim, return an error
+    if *claim != computed_claim {
+        return Err(ZkIntegrityError::R0Verification(format!(
+            "Claim: {:?} does not match the computed claim digest: {:?}",
+            claim, computed_claim
+        )));
+    }
+    Ok(())
+}
 
 impl Digestible for ReceiptClaim {
     /// Hash the [ReceiptClaim] to get a digest of the struct.
@@ -81,12 +73,7 @@ impl Digestible for ReceiptClaim {
         let (sys_exit, user_exit) = self.exit_code.into_pair();
         tagged_struct::<S>(
             "risc0.ReceiptClaim",
-            &[
-                self.input,
-                self.pre,
-                self.post.digest::<S>(),
-                self.output.digest::<S>(),
-            ],
+            &[self.input, self.pre, self.post.digest::<S>(), self.output.digest::<S>()],
             &[sys_exit, user_exit],
         )
     }
@@ -113,10 +100,6 @@ pub struct Output {
 impl Digestible for Output {
     /// Hash the [Output] to get a digest of the struct.
     fn digest<S: Sha256>(&self) -> Digest {
-        tagged_struct::<S>(
-            "risc0.Output",
-            &[self.journal, self.assumptions],
-            &[],
-        )
+        tagged_struct::<S>("risc0.Output", &[self.journal, self.assumptions], &[])
     }
 }

@@ -211,13 +211,12 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
                         }
                     }
                     codes::OpZkPrecompile => {
-                       let tag= if let Some(Ok(zk_tag)) = opcodes.get(i-1).as_ref() {
-                           zk_tag.get_data().first().unwrap_or(&u8::MAX)
+                        let tag = if let Some(Ok(zk_tag)) = opcodes.get(i - 1).as_ref() {
+                            zk_tag.get_data().first().unwrap_or(&u8::MAX)
                         } else {
                             &u8::MAX // If we can't get the tag, assume unknown tag
                         };
                         num_sigs += compute_zk_sigop_cost(*tag) as u64;
-
                     }
                     _ => {} // If the opcode is not a sigop, no need to increase the count
                 }

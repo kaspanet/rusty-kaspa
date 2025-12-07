@@ -64,7 +64,6 @@ impl RuntimeSigOpCounter {
 pub trait SigOpConsumer {
     fn consume_sig_op(&mut self) -> Result<(), TxScriptError>;
     fn consume_sig_ops(&mut self, count: u16) -> Result<(), TxScriptError>;
-
 }
 
 impl SigOpConsumer for RuntimeSigOpCounter {
@@ -91,4 +90,3 @@ impl SigOpConsumer for Option<RuntimeSigOpCounter> {
         }
     }
 }
-
