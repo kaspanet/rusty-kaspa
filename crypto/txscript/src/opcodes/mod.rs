@@ -1,7 +1,6 @@
 #[macro_use]
 mod macros;
-use crate::runtime_sig_op_counter::SigOpConsumer;
-use crate::zk_precompiles::{compute_zk_sigop_cost, ZkPrecompile};
+use crate::zk_precompiles::verify_zk;
 use crate::{
     data_stack::{DataStack, Kip10I64, OpcodeData},
     ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE,
@@ -997,25 +996,8 @@ opcode_list! {
         }
     }
     opcode OpZkPrecompile<0xc4, 1>(self, vm) {
-        println!("Executing OpZkPrecompile");
-
-        // Pop the verifier tag (u8) from stack
-        let [tag_bytes] = vm.dstack.pop_raw()?;
-        let verifier_tag = tag_bytes[0];
-        vm.runtime_sig_op_counter.consume_sig_ops(compute_zk_sigop_cost(verifier_tag))?;
-
-        // Pop the ZK proof data from the stack
-        let [proof_bytes] = vm.dstack.pop_raw()?;
-
-        // Try to deserialize and verify
-        let is_valid = match ZkPrecompile::from_bytes(&proof_bytes,verifier_tag) {
-            Ok(zk_precompile) => zk_precompile.verify_integrity().is_ok(),
-            Err(err) =>false
-        };
-
-        // Push result onto stack (similar to OpCheckSig behavior)
-        vm.dstack.push_item(is_valid)?;
-        println!("OpZkPrecompile result pushed to stack: {}", is_valid);
+        verify_zk(&mut vm.dstack)?;
+        vm.dstack.push_item(true)?;
         Ok(())
     }
 
@@ -1152,54 +1134,7 @@ mod test {
             });
         }
     }
-
-
-    #[test]
-fn test_benchmark_verification() {
-    use std::time::{Instant, Duration};
-    use hex::decode;
-    use secp256k1::{SecretKey, PublicKey, Message, Secp256k1};
-    use rand::rngs::OsRng;
-    use secp256k1::ecdsa::Signature;
-    use crate::zk_precompiles::{ZkPrecompile};
-
-    // Load the STARK proof hex
-    let proof_hex = include_str!("succinct.proof.hex");
-    let proof_bytes = decode(proof_hex).expect("Failed to decode hex proof");
-
-    let tag = 0x21;
-
-    // Benchmark ZK verification over 10 rounds
-    let mut total_zk_time = Duration::ZERO;
-    for _ in 0..10 {
-        let start = Instant::now();
-        let zk_precompile = ZkPrecompile::from_bytes(&proof_bytes, tag).expect("Failed to deserialize ZK proof");
-        zk_precompile.verify_integrity().expect("ZK verification failed");
-        total_zk_time += start.elapsed();
-    }
-    let avg_zk_time = total_zk_time / 10;
-
-    // Benchmark signature verification over 10 rounds (ECDSA)
-    let secp = Secp256k1::new();
-    let mut total_sig_time = Duration::ZERO;
-    for _ in 0..10 {
-        // Create new keys and sign a message each time
-        let sk = SecretKey::new(&mut OsRng);
-        let pk = PublicKey::from_secret_key(&secp, &sk);
-        let msg_hash = [0u8; 32]; // Dummy message hash
-        let msg = Message::from_slice(&msg_hash).expect("Failed to create message");
-        let sig: Signature = secp.sign_ecdsa(&msg, &sk);
-
-        let start = Instant::now();
-        secp.verify_ecdsa(&msg, &sig, &pk).expect("Signature verification failed");
-        total_sig_time += start.elapsed();
-    }
-    let avg_sig_time = total_sig_time / 10;
-
-    // Output the comparison
-    println!("Average ZK verification time: {:?} over 10 rounds", avg_zk_time);
-    println!("Average signature verification time: {:?} over 10 rounds", avg_sig_time);
-}
+    
     #[test]
     fn test_opcode_disabled() {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![

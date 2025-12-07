@@ -41,16 +41,12 @@ smallvec.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
-risc0-groth16={path = "/Users/saefstroem/Documents/GitHub/risc0/risc0/groth16",default-features = false}
-risc0-circuit-recursion = {path = "/Users/saefstroem/Documents/GitHub/risc0/risc0/circuit/recursion",default-features = false}
-risc0-circuit-keccak = {path = "/Users/saefstroem/Documents/GitHub/risc0/risc0/circuit/keccak",default-features = false}
-risc0-zkp = {path = "/Users/saefstroem/Documents/GitHub/risc0/risc0/zkp",default-features = false}
-risc0-core={path = "/Users/saefstroem/Documents/GitHub/risc0/risc0/core",default-features = false}
-risc0-binfmt={path = "/Users/saefstroem/Documents/GitHub/risc0/risc0/binfmt",default-features = false}
-anyhow = "1.0.100"
-tracing = "0.1.41"
-hex.workspace = true
-bytemuck = "1.24.0"
+risc0-groth16.workspace = true
+risc0-circuit-recursion.workspace = true
+risc0-zkp.workspace = true
+risc0-core.workspace = true
+risc0-binfmt.workspace = true
+bytemuck.workspace=true
 [dev-dependencies]
 criterion.workspace = true
 smallvec.workspace = true

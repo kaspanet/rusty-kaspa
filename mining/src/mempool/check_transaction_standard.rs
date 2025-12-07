@@ -8,7 +8,7 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
 };
 use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, mass::NonContextualMasses};
-use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, opcodes::codes::{OpData1 as OP_DATA_1, OpData75 as OP_DATA_75, OpPushData1 as OP_PUSH_DATA_1, OpPushData2 as OP_PUSH_DATA_2, OpPushData4 as OP_PUSH_DATA_4, OpZkPrecompile as OP_ZK_PRECOMPILE}, script_class::ScriptClass};
+use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class::ScriptClass};
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
 /// that are considered standard in a pay-to-script-hash script.
@@ -36,11 +36,11 @@ const MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE: u64 = 300_000;
 /// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum mass allowed for transactions that
 /// are considered standard and will therefore be relayed and considered for mining.
 const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 300_000;
-const MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS: u64 = 1_000_000;
+const MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS: u64 = 600_000;
 impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
-
+        println!("checking tx");
         // The transaction must be a currently supported version.
         //
         // This check is currently mirrored in consensus.

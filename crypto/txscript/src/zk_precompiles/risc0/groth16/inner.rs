@@ -1,56 +1,42 @@
-// Copyright 2025 RISC Zero, Inc.
-//
-// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
-// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
-// http://opensource.org/licenses/MIT>, at your option. This file may not be
-// copied, modified, or distributed except according to those terms.
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-// SPDX-License-Identifier: Apache-2.0 OR MIT
-
 use alloc::vec::Vec;
 
-use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
-use risc0_binfmt::Digestible;
 use risc0_circuit_recursion::control_id::{ALLOWED_CONTROL_ROOT, BN254_IDENTITY_CONTROL_ID};
 use risc0_groth16::Verifier;
 use risc0_zkp::{core::digest::Digest, verify::VerificationError};
 use serde::{Deserialize, Serialize};
 
-use crate::zk_precompiles::{error::ZkIntegrityError, risc0::sha, ZkIntegrityVerifier};
+use crate::zk_precompiles::{error::ZkIntegrityError, risc0::R0IntegrityVerifier};
 
-/// A receipt composed of a Groth16 over the BN_254 curve
+/// A receipt composed of a Groth16 over the BN_254 curve.
+/// This struct is a modified version of the Groth16Receipt defined in
+/// risc0. The reason for this is to simplify it, as we are certain to only receive digests
+/// for the claim and verifier parameters.
 #[derive(Clone, Debug, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Groth16Receipt {
+pub struct Inner {
     /// A Groth16 proof of a zkVM execution with the associated claim.
-    pub seal: Vec<u8>,
+    seal: Vec<u8>,
 
     /// [ReceiptClaim][crate::ReceiptClaim] containing information about the execution that this
     /// receipt proves.
-    pub claim: Digest,
+    claim: Digest,
 
     /// A digest of the verifier parameters that can be used to verify this receipt.
     ///
     /// Acts as a fingerprint to identify differing proof system or circuit versions between a
     /// prover and a verifier. Is not intended to contain the full verifier parameters, which must
     /// be provided by a trusted source (e.g. packaged with the verifier code).
-    pub verifier_parameters: Digest,
+    verifier_parameters: Digest,
 }
 
-impl Groth16Receipt {
-    /// Create a [Groth16Receipt] from the given seal, claim, and verifier parameters digest.
-    pub fn new(seal: Vec<u8>, claim: Digest, verifier_parameters: Digest) -> Self {
-        Self { seal, claim, verifier_parameters }
+impl Inner {
+    pub fn claim(&self) -> &Digest {
+        &self.claim
     }
 }
-impl ZkIntegrityVerifier for Groth16Receipt {
+
+impl R0IntegrityVerifier for Inner {
     /// Verify the integrity of this receipt, ensuring the claim is attested
     /// to by the seal.
     fn verify_integrity(&self) -> Result<(), ZkIntegrityError> {
@@ -58,7 +44,7 @@ impl ZkIntegrityVerifier for Groth16Receipt {
             .map_err(|_| VerificationError::ReceiptFormatError)?
             .verify()
             .map_err(|_| VerificationError::InvalidProof)?;
-        
+
         // Everything passed
         Ok(())
     }
@@ -66,13 +52,10 @@ impl ZkIntegrityVerifier for Groth16Receipt {
 
 #[cfg(test)]
 mod tests {
-    use crate::zk_precompiles::risc0::sha::Digestible;
     use risc0_binfmt::tagged_struct;
+    use risc0_binfmt::Digestible;
     use risc0_circuit_recursion::control_id::{ALLOWED_CONTROL_ROOT, BN254_IDENTITY_CONTROL_ID};
-    use risc0_zkp::core::{
-        digest::digest,
-        hash::sha::{Impl, Sha256},
-    };
+    use risc0_zkp::core::{digest::digest, hash::sha::Impl};
 
     // Check that the verifier parameters has a stable digest (and therefore a stable value). This
     // struct encodes parameters used in verification, and so this value should be updated if and
@@ -83,10 +66,10 @@ mod tests {
         assert_eq!(
             tagged_struct::<Impl>(
                 "risc0.Groth16ReceiptVerifierParameters",
-                &[ALLOWED_CONTROL_ROOT, BN254_IDENTITY_CONTROL_ID, risc0_groth16::verifying_key().digest(),],
+                &[ALLOWED_CONTROL_ROOT, BN254_IDENTITY_CONTROL_ID, risc0_groth16::verifying_key().digest::<Impl>(),],
                 &[],
             ),
-            digest!("f74ea058bd81176a36df2a6f592e70ed5b5af13f379ada779b29eed640fc9847")
+            digest!("73c457ba541936f0d907daf0c7253a39a9c5c427c225ba7709e44702d3c6eedc")
         );
     }
 }

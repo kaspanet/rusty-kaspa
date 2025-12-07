@@ -22,11 +22,11 @@ use risc0_circuit_recursion::{control_id::ALLOWED_CONTROL_ROOT, CircuitImpl, CIR
 use risc0_core::field::baby_bear::BabyBearElem;
 use risc0_zkp::core::hash::{blake2b::Blake2bCpuHashSuite, poseidon2::Poseidon2HashSuite, sha::Sha256HashSuite, HashSuite};
 use risc0_zkp::{adapter::CircuitInfo, core::digest::Digest, verify::VerificationError};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::zk_precompiles::error::ZkIntegrityError;
 use crate::zk_precompiles::risc0::merkle::MerkleProof;
-use crate::zk_precompiles::risc0::sha;
+use crate::zk_precompiles::risc0::R0IntegrityVerifier;
 /// A succinct receipt, produced via recursion, proving the execution of the zkVM with a [STARK].
 ///
 /// Using recursion, a [CompositeReceipt][crate::CompositeReceipt] can be compressed to form a
@@ -34,66 +34,68 @@ use crate::zk_precompiles::risc0::sha;
 /// computations, and with an arbitrary number of segments linked via composition.
 ///
 /// [STARK]: https://dev.risczero.com/terminology#stark
+/// 
+/// This is a modified version of the SuccinctReceipt defined in risc0. The reason for this is to
+/// simplify it, as we are certain to only receive digests for the claim and verifier parameters.
 #[derive(Debug, Serialize, BorshSerialize, BorshDeserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[non_exhaustive]
-pub struct SuccinctReceipt {
+pub struct Inner {
     /// The cryptographic seal of this receipt. This seal is a STARK proving an execution of the
     /// recursion circuit.
-    pub seal: Vec<u32>,
+    seal: Vec<u32>,
 
     /// The control ID of this receipt, identifying the recursion program that was run (e.g. lift,
     /// join, or resolve).
-    pub control_id: Digest,
+    control_id: Digest,
 
     /// Claim containing information about the computation that this receipt proves.
     ///
     /// The standard claim type is [ReceiptClaim][crate::ReceiptClaim], which represents a RISC-V
     /// zkVM execution.
-    pub claim: Digest,
+    claim: Digest,
 
     /// Name of the hash function used to create this receipt.
-    pub hashfn: String,
+    hashfn: String,
 
     /// A digest of the verifier parameters that can be used to verify this receipt.
     ///
     /// Acts as a fingerprint to identify differing proof system or circuit versions between a
     /// prover and a verifier. It is not intended to contain the full verifier parameters, which must
     /// be provided by a trusted source (e.g. packaged with the verifier code).
-    pub verifier_parameters: Digest,
+    verifier_parameters: Digest,
 
     /// Merkle inclusion proof for control_id against the control root for this receipt.
-    pub control_inclusion_proof: MerkleProof,
+    control_inclusion_proof: MerkleProof,
 }
 
-impl SuccinctReceipt {
+impl Inner {
+    pub fn claim(&self) -> &Digest {
+        &self.claim
+    }
+}
+
+impl R0IntegrityVerifier for Inner {
     /// Verify the integrity of this receipt, ensuring the claim is attested
     /// to by the seal.
-    pub fn verify_integrity(&self) -> Result<(), ZkIntegrityError> {
+    fn verify_integrity(&self) -> Result<(), ZkIntegrityError> {
         let suites: BTreeMap<String, HashSuite<risc0_zkp::field::baby_bear::BabyBear>> = BTreeMap::from([
             ("blake2b".into(), Blake2bCpuHashSuite::new_suite()),
             ("poseidon2".into(), Poseidon2HashSuite::new_suite()),
             ("sha-256".into(), Sha256HashSuite::new_suite()),
         ]);
+
         let suite = suites.get(&self.hashfn).ok_or(VerificationError::InvalidHashSuite)?;
-        println!("Using hash suite: {}", self.hashfn);
         let check_code = |_, control_id: &Digest| -> Result<(), VerificationError> {
             self.control_inclusion_proof.verify(control_id, &ALLOWED_CONTROL_ROOT, suite.hashfn.as_ref()).map_err(|_| {
-                tracing::debug!(
-                    "failed to verify control inclusion proof for {control_id} against root {} with {}",
-                    ALLOWED_CONTROL_ROOT,
-                    suite.name,
-                );
                 VerificationError::ControlVerificationError { control_id: *control_id }
             })
         };
 
-        println!("Verifying succinct receipt with control ID: {:?}", self.control_id);
         // Verify the receipt itself is correct, and therefore the encoded globals are
         // reliable.
         risc0_zkp::verify::verify(&CIRCUIT, suite, &self.seal, check_code)?;
 
-        println!("Extracting globals from succinct receipt seal");
         // Extract the globals from the seal
         let output_elems: &[BabyBearElem] = bytemuck::checked::cast_slice(&self.seal[..CircuitImpl::OUTPUT_SIZE]);
         let mut seal_claim = VecDeque::new();
@@ -112,28 +114,17 @@ impl SuccinctReceipt {
             .collect::<Vec<_>>()
             .try_into()
             .map_err(|_| VerificationError::ReceiptFormatError)?;
-        println!("Decoded control root from succinct receipt: {:?}", control_root);
         if control_root != ALLOWED_CONTROL_ROOT {
-            tracing::debug!(
-                "succinct receipt does not match the expected control root: decoded: {:#?}, expected: {:?}",
-                control_root,
-                ALLOWED_CONTROL_ROOT,
-            );
             return Err(VerificationError::ControlVerificationError { control_id: control_root })?;
         }
 
-        println!("Verifying claim digest from succinct receipt");
 
         // Verify the output hash matches that data
         let output_hash = read_sha_halfs(&mut seal_claim).map_err(|_| VerificationError::ReceiptFormatError)?;
         if output_hash != self.claim {
-            tracing::debug!(
-                "succinct receipt claim does not match the output digest: claim: {:#?}, digest expected: {output_hash:?}",
-                self.claim,
-            );
             return Err(VerificationError::JournalDigestMismatch)?;
         }
-        println!("Succinct receipt integrity verified successfully");
+
         // Everything passed
         Ok(())
     }
@@ -165,7 +156,8 @@ mod tests {
                 ],
                 &[],
             ),
-            digest!("08bfab58d6c29162aa18e69bc4cd7e109dc87fb7319072fb8a3d2131f149abb0")
+            digest!("ece5e9b8ae2cd6ea6b1827b464ff0348f9a7f4decd269c0087fdfd75098da013")
         );
     }
+
 }

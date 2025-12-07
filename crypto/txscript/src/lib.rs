@@ -211,7 +211,7 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
                         }
                     }
                     codes::OpZkPrecompile => {
-                       let tag= if let Ok(zk_tag) = opcodes[i + 1].as_ref() {
+                       let tag= if let Ok(zk_tag) = opcodes[i - 1].as_ref() {
                         println!("opcode after ZK precompile: {:?}", zk_tag.value());
                         println!("ZK precompile tag data: {:?}", zk_tag.get_data());
                            zk_tag.get_data().first().unwrap_or(&u8::MAX)

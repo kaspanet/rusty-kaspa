@@ -14,7 +14,16 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Manages the output and cryptographic data for a proven computation.
+use crate::{
+    zk_precompiles::ZkIntegrityError,
+};
 pub mod groth16;
 mod merkle;
-mod sha;
+mod receipt_claim;
 pub mod succinct;
+mod benchmarks;
+
+pub trait R0IntegrityVerifier {
+    fn verify_integrity(&self) -> Result<(), ZkIntegrityError>;
+}
+
