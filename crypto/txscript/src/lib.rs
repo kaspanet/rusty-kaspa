@@ -335,14 +335,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             if self.num_ops > MAX_OPS_PER_SCRIPT {
                 return Err(TxScriptError::TooManyOperations(MAX_OPS_PER_SCRIPT));
             }
-        } else {
-            // TODO make this proper
-            // Skip size check for OpZkPrecompile (0xc4) or other special opcodes
-            let is_special_opcode = opcode.value() == 0xc4; // OpZkPrecompile
-
-            if !is_special_opcode && opcode.len() > MAX_SCRIPT_ELEMENT_SIZE {
-                return Err(TxScriptError::ElementTooBig(opcode.len(), MAX_SCRIPT_ELEMENT_SIZE));
-            }
+        } else if opcode.len() > MAX_SCRIPT_ELEMENT_SIZE {
+            return Err(TxScriptError::ElementTooBig(opcode.len(), MAX_SCRIPT_ELEMENT_SIZE));
         }
 
         if self.is_executing() || opcode.is_conditional() {
