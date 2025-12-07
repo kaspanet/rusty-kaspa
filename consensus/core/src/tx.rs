@@ -98,11 +98,11 @@ pub struct TransactionInput {
     // TODO: Since this field is used for calculating mass context free, and we already commit
     // to the mass in a dedicated field (on the tx level), it follows that this field is no longer
     // needed, and can be removed if we ever implement a v2 transaction
-    pub sig_op_count: u8,
+    pub sig_op_count: u16,
 }
 
 impl TransactionInput {
-    pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
+    pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u16) -> Self {
         Self { previous_outpoint, signature_script, sequence, sig_op_count }
     }
 }

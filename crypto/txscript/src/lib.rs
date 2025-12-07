@@ -132,7 +132,7 @@ fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
 /// # Returns
 /// * `Ok(u8)` - The exact number of signature operations executed
 /// * `Err(TxScriptError)` - If script execution fails or input index is invalid
-pub fn get_sig_op_count<T: VerifiableTransaction>(tx: &T, input_idx: usize, kip10_enabled: bool) -> Result<u8, TxScriptError> {
+pub fn get_sig_op_count<T: VerifiableTransaction>(tx: &T, input_idx: usize, kip10_enabled: bool) -> Result<u16, TxScriptError> {
     let sig_cache = Cache::new(0);
     let reused_values = SigHashReusedValuesUnsync::new();
     let mut vm = TxScriptEngine::from_transaction_input(
@@ -211,13 +211,10 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
                         }
                     }
                     codes::OpZkPrecompile => {
-                       let tag= if let Ok(zk_tag) = opcodes[i - 1].as_ref() {
-                        println!("opcode after ZK precompile: {:?}", zk_tag.value());
-                        println!("ZK precompile tag data: {:?}", zk_tag.get_data());
+                       let tag= if let Some(Ok(zk_tag)) = opcodes.get(i-1).as_ref() {
                            zk_tag.get_data().first().unwrap_or(&u8::MAX)
                         } else {
-                            println!("ZK precompile tag could not be read, defaulting to max");
-                            &u8::MAX
+                            &u8::MAX // If we can't get the tag, assume unknown tag
                         };
                         num_sigs += compute_zk_sigop_cost(*tag) as u64;
 
@@ -256,7 +253,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     /// Returns the number of signature operations used in script execution if runtime sig op counting is enabled.
     ///
     /// Returns None if runtime signature operation counting is disabled.
-    pub fn used_sig_ops(&self) -> Option<u8> {
+    pub fn used_sig_ops(&self) -> Option<u16> {
         self.runtime_sig_op_counter.as_ref().map(|counter| counter.used_sig_ops())
     }
 
@@ -1106,8 +1103,8 @@ mod tests {
         name: &'static str,
         script_builder: ScriptBuilderFn,
         sig_builder: SigBuilder,
-        expected_sig_ops: u8,
-        sig_op_limit: u8,
+        expected_sig_ops: u16,
+        sig_op_limit: u16,
         should_pass: bool,
     }
 
@@ -1356,7 +1353,7 @@ mod bitcoind_tests {
                 TransactionOutpoint::new(TransactionId::default(), 0xffffffffu32),
                 vec![0, 0],
                 MAX_TX_IN_SEQUENCE_NUM,
-                MAX_PUB_KEYS_PER_MUTLTISIG as u8,
+                MAX_PUB_KEYS_PER_MUTLTISIG as u16,
             )],
             vec![TransactionOutput::new(0, script_public_key)],
             Default::default(),
@@ -1371,7 +1368,7 @@ mod bitcoind_tests {
                 TransactionOutpoint::new(coinbase.id(), 0u32),
                 sig_script,
                 MAX_TX_IN_SEQUENCE_NUM,
-                MAX_PUB_KEYS_PER_MUTLTISIG as u8,
+                MAX_PUB_KEYS_PER_MUTLTISIG as u16,
             )],
             vec![TransactionOutput::new(0, Default::default())],
             Default::default(),

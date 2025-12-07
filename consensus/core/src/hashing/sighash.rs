@@ -174,7 +174,7 @@ pub fn sig_op_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_value
     let hash = || {
         let mut hasher = TransactionSigningHash::new();
         for input in tx.inputs.iter() {
-            hasher.write_u8(input.sig_op_count);
+            hasher.write_u16(input.sig_op_count);
         }
         hasher.finalize()
     };
@@ -254,7 +254,7 @@ pub fn calc_schnorr_signature_hash(
     hasher
         .write_u64(input.1.amount)
         .write_u64(input.0.sequence)
-        .write_u8(input.0.sig_op_count)
+        .write_u16(input.0.sig_op_count)
         .update(outputs_hash(tx, hash_type, reused_values, input_index))
         .write_u64(tx.lock_time)
         .update(&tx.subnetwork_id)

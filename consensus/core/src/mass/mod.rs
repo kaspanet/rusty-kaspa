@@ -251,20 +251,25 @@ impl MassCalculator {
         }
 
         let size = transaction_estimated_serialized_size(tx);
+        println!("Transaction estimated serialized size: {}", size);
         let compute_mass_for_size = size * self.mass_per_tx_byte;
+        println!("Compute mass for size component: {}", compute_mass_for_size);
         let total_script_public_key_size: u64 = tx
             .outputs
             .iter()
             .map(|output| 2 /* script public key version (u16) */ + output.script_public_key.script().len() as u64)
             .sum();
+        println!("Total script public key size: {}", total_script_public_key_size);
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
-
+        println!("Total script public key mass: {}", total_script_public_key_mass);
         let total_sigops: u64 = tx.inputs.iter().map(|input| input.sig_op_count as u64).sum();
+        println!("Total sigops: {}", total_sigops);
         let total_sigops_mass = total_sigops * self.mass_per_sig_op;
-
+        println!("Total sigops mass: {}", total_sigops_mass);
         let compute_mass = compute_mass_for_size + total_script_public_key_mass + total_sigops_mass;
+        println!("Total compute mass: {}", compute_mass);
         let transient_mass = size * TRANSIENT_BYTE_TO_MASS_FACTOR;
-
+        println!("Transient mass: {}", transient_mass);
         NonContextualMasses::new(compute_mass, transient_mass)
     }
 
