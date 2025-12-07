@@ -84,7 +84,7 @@ pub struct SerializableTransactionInput {
     pub transaction_id: TransactionId,
     pub index: SignedTransactionIndexType,
     pub sequence: u64,
-    pub sig_op_count: u8,
+    pub sig_op_count: u16,
     #[serde(with = "hex::serde")]
     // TODO - convert to Option<Vec<u8>> and use hex serialization over Option
     pub signature_script: Vec<u8>,

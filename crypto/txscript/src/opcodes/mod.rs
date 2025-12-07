@@ -1,6 +1,6 @@
 #[macro_use]
 mod macros;
-
+use crate::zk_precompiles::verify_zk;
 use crate::{
     data_stack::{DataStack, Kip10I64, OpcodeData},
     ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE,
@@ -995,8 +995,13 @@ opcode_list! {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
     }
+    opcode OpZkPrecompile<0xc4, 1>(self, vm) {
+        verify_zk(&mut vm.dstack)?;
+        vm.dstack.push_item(true)?;
+        Ok(())
+    }
+
     // Undefined opcodes
-    opcode OpUnknown196<0xc4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown197<0xc5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown198<0xc6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown199<0xc7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1201,7 +1206,6 @@ mod test {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpUnknown166::empty().expect("Should accept empty"),
             opcodes::OpUnknown167::empty().expect("Should accept empty"),
-            opcodes::OpUnknown196::empty().expect("Should accept empty"),
             opcodes::OpUnknown197::empty().expect("Should accept empty"),
             opcodes::OpUnknown198::empty().expect("Should accept empty"),
             opcodes::OpUnknown199::empty().expect("Should accept empty"),

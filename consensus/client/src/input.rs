@@ -60,7 +60,7 @@ pub struct TransactionInputInner {
     pub previous_outpoint: TransactionOutpoint,
     pub signature_script: Option<Vec<u8>>,
     pub sequence: u64,
-    pub sig_op_count: u8,
+    pub sig_op_count: u16,
     pub utxo: Option<UtxoEntryReference>,
 }
 
@@ -69,7 +69,7 @@ impl TransactionInputInner {
         previous_outpoint: TransactionOutpoint,
         signature_script: Option<Vec<u8>>,
         sequence: u64,
-        sig_op_count: u8,
+        sig_op_count: u16,
         utxo: Option<UtxoEntryReference>,
     ) -> Self {
         Self { previous_outpoint, signature_script, sequence, sig_op_count, utxo }
@@ -89,7 +89,7 @@ impl TransactionInput {
         previous_outpoint: TransactionOutpoint,
         signature_script: Option<Vec<u8>>,
         sequence: u64,
-        sig_op_count: u8,
+        sig_op_count: u16,
         utxo: Option<UtxoEntryReference>,
     ) -> Self {
         let inner = TransactionInputInner::new(previous_outpoint, signature_script, sequence, sig_op_count, utxo);
@@ -104,7 +104,7 @@ impl TransactionInput {
         self.inner.lock().unwrap()
     }
 
-    pub fn sig_op_count(&self) -> u8 {
+    pub fn sig_op_count(&self) -> u16 {
         self.inner().sig_op_count
     }
 
@@ -167,12 +167,12 @@ impl TransactionInput {
     }
 
     #[wasm_bindgen(getter = sigOpCount)]
-    pub fn get_sig_op_count(&self) -> u8 {
+    pub fn get_sig_op_count(&self) -> u16 {
         self.inner().sig_op_count
     }
 
     #[wasm_bindgen(setter = sigOpCount)]
-    pub fn set_sig_op_count(&mut self, sig_op_count: u8) {
+    pub fn set_sig_op_count(&mut self, sig_op_count: u16) {
         self.inner().sig_op_count = sig_op_count;
     }
 
@@ -209,7 +209,7 @@ impl TryCastFromJs for TransactionInput {
                 let previous_outpoint: TransactionOutpoint = object.get_value("previousOutpoint")?.as_ref().try_into()?;
                 let signature_script = object.get_vec_u8("signatureScript").ok();
                 let sequence = object.get_u64("sequence")?;
-                let sig_op_count = object.get_u8("sigOpCount")?;
+                let sig_op_count = object.get_u16("sigOpCount")?;
                 let utxo = object.try_cast_into::<UtxoEntryReference>("utxo")?;
                 Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count, utxo).into())
             } else {

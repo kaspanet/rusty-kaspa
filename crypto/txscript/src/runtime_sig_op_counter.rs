@@ -7,13 +7,13 @@ use kaspa_txscript_errors::TxScriptError;
 #[derive(Debug, Clone)]
 pub struct RuntimeSigOpCounter {
     /// Maximum number of signature operations allowed for this input
-    sig_op_limit: u8,
+    sig_op_limit: u16,
     /// Remaining signature operations that can be executed
-    sig_op_remaining: u8,
+    sig_op_remaining: u16,
 }
 
 impl RuntimeSigOpCounter {
-    pub fn new(sig_op_limit: u8) -> Self {
+    pub fn new(sig_op_limit: u16) -> Self {
         Self { sig_op_limit, sig_op_remaining: sig_op_limit }
     }
     /// Attempts to consume the specified number of signature operations.
@@ -43,30 +43,48 @@ impl RuntimeSigOpCounter {
         Ok(())
     }
 
-    pub fn sig_op_remaining(&self) -> u8 {
+    pub fn consume_sig_ops(&mut self, count: u16) -> Result<(), TxScriptError> {
+        self.sig_op_remaining =
+            self.sig_op_remaining.checked_sub(count).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit))?;
+
+        Ok(())
+    }
+
+    pub fn sig_op_remaining(&self) -> u16 {
         self.sig_op_remaining
     }
-    pub fn sig_op_limit(&self) -> u8 {
+    pub fn sig_op_limit(&self) -> u16 {
         self.sig_op_limit
     }
-    pub fn used_sig_ops(&self) -> u8 {
+    pub fn used_sig_ops(&self) -> u16 {
         self.sig_op_limit - self.sig_op_remaining
     }
 }
 
 pub trait SigOpConsumer {
     fn consume_sig_op(&mut self) -> Result<(), TxScriptError>;
+    fn consume_sig_ops(&mut self, count: u16) -> Result<(), TxScriptError>;
 }
 
 impl SigOpConsumer for RuntimeSigOpCounter {
     fn consume_sig_op(&mut self) -> Result<(), TxScriptError> {
         RuntimeSigOpCounter::consume_sig_op(self)
     }
+    fn consume_sig_ops(&mut self, count: u16) -> Result<(), TxScriptError> {
+        RuntimeSigOpCounter::consume_sig_ops(self, count)
+    }
 }
 impl SigOpConsumer for Option<RuntimeSigOpCounter> {
     fn consume_sig_op(&mut self) -> Result<(), TxScriptError> {
         if let Some(consumer) = self {
             consumer.consume_sig_op()
+        } else {
+            Ok(())
+        }
+    }
+    fn consume_sig_ops(&mut self, count: u16) -> Result<(), TxScriptError> {
+        if let Some(consumer) = self {
+            consumer.consume_sig_ops(count)
         } else {
             Ok(())
         }

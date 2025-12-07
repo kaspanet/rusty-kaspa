@@ -12,7 +12,7 @@ use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class:
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
 /// that are considered standard in a pay-to-script-hash script.
-const MAX_STANDARD_P2SH_SIG_OPS: u8 = 15;
+const MAX_STANDARD_P2SH_SIG_OPS: u16 = 1000;
 
 /// MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE is the maximum size allowed for a
 /// transaction input signature script to be considered standard. This
@@ -31,16 +31,15 @@ const MAX_STANDARD_P2SH_SIG_OPS: u8 = 15;
 /// That brings the total to 1+(15*74)+3+513 = 1627. This value also
 /// adds a few extra bytes to provide a little buffer.
 /// (1 + 15*74 + 3) + (15*34 + 3) + 23 = 1650
-const MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE: u64 = 1650;
+const MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE: u64 = 300_000;
 
 /// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum mass allowed for transactions that
 /// are considered standard and will therefore be relayed and considered for mining.
-const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 100_000;
-
+const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 1_000_000;
+const MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS: u64 = 600_000;
 impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
-
         // The transaction must be a currently supported version.
         //
         // This check is currently mirrored in consensus.
@@ -65,8 +64,12 @@ impl Mempool {
         if compute_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
             return Err(NonStandardError::RejectComputeMass(transaction_id, compute_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
         }
-        if transient_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
-            return Err(NonStandardError::RejectTransientMass(transaction_id, transient_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
+        if transient_mass > MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS {
+            return Err(NonStandardError::RejectTransientMass(
+                transaction_id,
+                transient_mass,
+                MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS,
+            ));
         }
 
         for (i, input) in transaction.tx.inputs.iter().enumerate() {

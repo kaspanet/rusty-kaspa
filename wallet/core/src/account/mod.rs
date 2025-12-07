@@ -262,7 +262,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         Ok(())
     }
 
-    fn sig_op_count(&self) -> u8;
+    fn sig_op_count(&self) -> u16;
 
     fn minimum_signatures(&self) -> u16;
 

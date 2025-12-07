@@ -94,11 +94,11 @@ pub struct TransactionInput {
     #[serde(with = "serde_bytes")]
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
-    pub sig_op_count: u8,
+    pub sig_op_count: u16,
 }
 
 impl TransactionInput {
-    pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
+    pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u16) -> Self {
         Self { previous_outpoint, signature_script, sequence, sig_op_count }
     }
 }

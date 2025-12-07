@@ -23,7 +23,7 @@ pub struct GeneratorSettings {
     // Priority utxo entries that are consumed before others
     pub priority_utxo_entries: Option<Vec<UtxoEntryReference>>,
     // typically a number of keys required to sign the transaction
-    pub sig_op_count: u8,
+    pub sig_op_count: u16,
     // number of minimum signatures required to sign the transaction
     pub minimum_signatures: u16,
     // change address
@@ -98,7 +98,7 @@ impl GeneratorSettings {
         utxo_context: UtxoContext,
         priority_utxo_entries: Option<Vec<UtxoEntryReference>>,
         change_address: Address,
-        sig_op_count: u8,
+        sig_op_count: u16,
         minimum_signatures: u16,
         final_transaction_destination: PaymentDestination,
         fee_rate: Option<f64>,
@@ -135,7 +135,7 @@ impl GeneratorSettings {
         utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
         priority_utxo_entries: Option<Vec<UtxoEntryReference>>,
         change_address: Address,
-        sig_op_count: u8,
+        sig_op_count: u16,
         minimum_signatures: u16,
         final_transaction_destination: PaymentDestination,
         fee_rate: Option<f64>,

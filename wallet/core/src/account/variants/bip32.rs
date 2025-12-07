@@ -181,7 +181,7 @@ impl Account for Bip32 {
         self
     }
 
-    fn sig_op_count(&self) -> u8 {
+    fn sig_op_count(&self) -> u16 {
         1
     }
 
