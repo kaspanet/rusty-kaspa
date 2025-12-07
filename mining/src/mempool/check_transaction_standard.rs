@@ -35,7 +35,7 @@ const MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE: u64 = 300_000;
 
 /// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum mass allowed for transactions that
 /// are considered standard and will therefore be relayed and considered for mining.
-const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 300_000;
+const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 1_000_000;
 const MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS: u64 = 600_000;
 impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
