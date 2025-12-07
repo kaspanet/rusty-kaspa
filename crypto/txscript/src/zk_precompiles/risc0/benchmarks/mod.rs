@@ -29,17 +29,10 @@ mod test {
         let stark_tag = 0x21;
         let groth16_tag = 0x20;
 
-        let mut stark_stack = Stack::new();
-        stark_stack.push(stark_proof_bytes);
-        stark_stack.push(stark_journal_bytes);
-        stark_stack.push(stark_image_id_bytes);
-        stark_stack.push([stark_tag].to_vec());
+        let stark_stack = Stack::from(vec![stark_proof_bytes, stark_journal_bytes, stark_image_id_bytes, [stark_tag].to_vec()]);
 
-        let mut groth_stack = Stack::new();
-        groth_stack.push(groth16_proof_bytes);
-        groth_stack.push(groth16_journal_bytes);
-        groth_stack.push(groth16_image_id_bytes);
-        groth_stack.push([groth16_tag].to_vec());
+        let groth_stack =
+            Stack::from(vec![groth16_proof_bytes, groth16_journal_bytes, groth16_image_id_bytes, [groth16_tag].to_vec()]);
 
         // Prepare ECDSA verification components (outside timing loop)
         let secp = Secp256k1::new();
