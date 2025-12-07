@@ -34,8 +34,8 @@ impl ZkPrecompile for R0Groth16Precompile {
         let inner: Inner = borsh::from_slice(&proof_data)?;
 
         // Convert image id and journal to Digests
-        let image_id: Digest = Digest::try_from(image_id).map_err(|digest_bytes| ZkIntegrityError::Digest(digest_bytes))?;
-        let journal: Digest = Digest::try_from(journal).map_err(|digest_bytes| ZkIntegrityError::Digest(digest_bytes))?;
+        let image_id: Digest = Digest::try_from(image_id).map_err(ZkIntegrityError::Digest)?;
+        let journal: Digest = Digest::try_from(journal).map_err(ZkIntegrityError::Digest)?;
 
         // This binds the claim of the proof, to the image id and the journal.
         compute_assert_claim(inner.claim(), image_id, journal).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))?;

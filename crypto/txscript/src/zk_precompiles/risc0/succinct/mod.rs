@@ -19,8 +19,8 @@ impl ZkPrecompile for R0SuccinctPrecompile {
         let [proof_data] = dstack.pop_raw()?;
 
         let inner: Inner = borsh::from_slice(&proof_data)?;
-        let image_id: Digest = Digest::try_from(image_id).map_err(|digest_bytes| ZkIntegrityError::Digest(digest_bytes))?;
-        let journal: Digest = Digest::try_from(journal).map_err(|digest_bytes| ZkIntegrityError::Digest(digest_bytes))?;
+        let image_id: Digest = Digest::try_from(image_id).map_err(ZkIntegrityError::Digest)?;
+        let journal: Digest = Digest::try_from(journal).map_err(ZkIntegrityError::Digest)?;
         // Verify that the claim comes from the provided image id
         compute_assert_claim(inner.claim(), image_id, journal).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))?;
         inner.verify_integrity()
