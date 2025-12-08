@@ -479,7 +479,7 @@ impl PruningProcessor {
                 let mut batch = WriteBatch::default();
                 let mut relations_write = self.relations_store.write();
                 let mut reachability_relations_write = self.reachability_relations_store.write();
-                let mut staging_relations = StagingRelationsStore::new(&mut reachability_relations_write);
+                let mut staging_reachability_relations = StagingRelationsStore::new(&mut reachability_relations_write);
                 let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
                 let mut statuses_write = self.statuses_store.write();
 
@@ -517,7 +517,7 @@ impl PruningProcessor {
                     // Prune data related to headers: relations, reachability, ghostdag
                     let mergeset = relations::delete_reachability_relations(
                         MemoryWriter, // Both stores are staging so we just pass a dummy writer
-                        &mut staging_relations,
+                        &mut staging_reachability_relations,
                         &staging_reachability,
                         current,
                     );
@@ -546,7 +546,7 @@ impl PruningProcessor {
                 }
 
                 let reachability_write = staging_reachability.commit(&mut batch).unwrap();
-                staging_relations.commit(&mut batch).unwrap();
+                staging_reachability_relations.commit(&mut batch).unwrap();
 
                 // Flush the batch to the DB
                 self.db.write(batch).unwrap();
