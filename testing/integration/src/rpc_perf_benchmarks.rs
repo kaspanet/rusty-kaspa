@@ -169,6 +169,8 @@ async fn bench_rpc_high_load() {
         info!("  p99: {:?}", p99_latency);
     }
 
-    // Fold-up
+    tasks.stop();
+
+    // Wait for tasks to shutdown
     tasks.join().await;
 }
