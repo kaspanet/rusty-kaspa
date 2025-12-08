@@ -1,0 +1,37 @@
+[package]
+name = "kaspa-stratum"
+description = "Kaspa Stratum mining protocol server"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+kaspa-consensus-core.workspace = true
+kaspa-consensusmanager.workspace = true
+kaspa-core.workspace = true
+kaspa-hashes.workspace = true
+kaspa-mining.workspace = true
+kaspa-txscript.workspace = true
+kaspa-addresses.workspace = true
+kaspa-pow.workspace = true
+kaspa-math.workspace = true
+
+async-trait.workspace = true
+borsh = { workspace = true, features = ["derive"] }
+futures-util.workspace = true
+hex.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync"] }
+
+[lints]
+workspace = true
+

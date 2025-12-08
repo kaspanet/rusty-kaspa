@@ -33,12 +33,14 @@ use kaspa_consensus::{
 };
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::runtime::AsyncRuntime;
+use kaspa_core::task::service::{AsyncService, AsyncServiceFuture};
 use kaspa_index_processor::service::IndexService;
 use kaspa_mining::{
     manager::{MiningManager, MiningManagerProxy},
     monitor::MiningMonitor,
     MiningCounters,
 };
+use kaspa_stratum::{StratumServer, StratumConfig};
 use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
 use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
@@ -508,6 +510,7 @@ Do you confirm? (y/n)";
         config.block_template_cache_lifetime,
         mining_counters.clone(),
     )));
+    let mining_manager_for_stratum = mining_manager.clone();
     let mining_monitor =
         Arc::new(MiningMonitor::new(mining_manager.clone(), mining_counters, tx_script_cache_counters.clone(), tick_service.clone()));
 
@@ -594,6 +597,66 @@ Do you confirm? (y/n)";
     async_runtime.register(mining_monitor);
     async_runtime.register(perf_monitor);
     async_runtime.register(mining_rule_engine);
+
+    // Initialize and register Stratum server if enabled
+    if args.stratum_enabled {
+        info!("Initializing Stratum server on {}:{}", args.stratum_listen_address, args.stratum_listen_port);
+        let mut stratum_config = StratumConfig::default();
+        stratum_config.listen_address = args.stratum_listen_address.clone();
+        stratum_config.listen_port = args.stratum_listen_port;
+        stratum_config.default_difficulty = args.stratum_difficulty;
+        stratum_config.enabled = true;
+        // Enable vardiff with ASIC-compatible settings (clamp to powers of 2 for IceRiver/Bitmain)
+        stratum_config.vardiff.enabled = true;
+        stratum_config.vardiff.min_difficulty = 1.0;
+        stratum_config.vardiff.max_difficulty = 1000000.0;
+        stratum_config.vardiff.target_time = 30.0; // Target 30 seconds between shares
+        stratum_config.vardiff.variance_percent = 30.0; // 30% variance tolerance
+        stratum_config.vardiff.max_change = 2.0; // Max 2x change per adjustment
+        stratum_config.vardiff.change_interval = 60; // Minimum 60 seconds between changes
+        stratum_config.vardiff.clamp_pow2 = true; // Required for IceRiver/Bitmain ASIC compatibility
+        let stratum_consensus = consensus_manager.clone();
+        let stratum_mining = mining_manager_for_stratum.clone();
+        let stratum_server = StratumServer::new(
+            stratum_config,
+            stratum_consensus,
+            stratum_mining,
+        );
+        
+        // Create a service wrapper for the Stratum server
+        struct StratumService {
+            server: StratumServer,
+        }
+        
+        impl AsyncService for StratumService {
+            fn ident(self: Arc<Self>) -> &'static str {
+                "stratum-server"
+            }
+            
+            fn start(self: Arc<Self>) -> AsyncServiceFuture {
+                Box::pin(async move {
+                    log::info!("StratumService::start() called");
+                    log::info!("Starting Stratum server...");
+                    self.server.start().await.map_err(|e| {
+                        log::error!("Stratum server error: {}", e);
+                        kaspa_core::task::service::AsyncServiceError::Service(format!("{}", e))
+                    })
+                })
+            }
+            
+            fn signal_exit(self: Arc<Self>) {
+                // Stratum server doesn't need explicit exit signaling
+            }
+            
+            fn stop(self: Arc<Self>) -> AsyncServiceFuture {
+                Box::pin(async move {
+                    Ok(())
+                })
+            }
+        }
+        
+        async_runtime.register(Arc::new(StratumService { server: stratum_server }));
+    }
 
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments

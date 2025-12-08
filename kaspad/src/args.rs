@@ -93,6 +93,12 @@ pub struct Args {
     pub retention_period_days: Option<f64>,
 
     pub override_params_file: Option<String>,
+
+    // Stratum server configuration
+    pub stratum_enabled: bool,
+    pub stratum_listen_address: String,
+    pub stratum_listen_port: u16,
+    pub stratum_difficulty: f64,
 }
 
 impl Default for Args {
@@ -145,6 +151,12 @@ impl Default for Args {
             ram_scale: 1.0,
             retention_period_days: None,
             override_params_file: None,
+
+            // Stratum defaults
+            stratum_enabled: false,
+            stratum_listen_address: "0.0.0.0".to_string(),
+            stratum_listen_port: 3333,
+            stratum_difficulty: 1.0, // Start at difficulty 1, let vardiff increase if needed
         }
     }
 }
@@ -407,6 +419,37 @@ a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance
                 .value_parser(clap::value_parser!(String))
                 .help("Path to a JSON file containing override parameters.")
         )
+        .arg(
+            arg!(--"stratum-enabled" "Enable Stratum mining protocol server")
+                .env("KASPAD_STRATUM_ENABLED")
+        )
+        .arg(
+            Arg::new("stratum-listen-address")
+                .long("stratum-listen-address")
+                .env("KASPAD_STRATUM_LISTEN_ADDRESS")
+                .value_name("IP")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(String))
+                .help("IP address to listen for Stratum connections (default: 0.0.0.0)")
+        )
+        .arg(
+            Arg::new("stratum-listen-port")
+                .long("stratum-listen-port")
+                .env("KASPAD_STRATUM_LISTEN_PORT")
+                .value_name("PORT")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(u16))
+                .help("Port to listen for Stratum connections (default: 3333)")
+        )
+        .arg(
+            Arg::new("stratum-difficulty")
+                .long("stratum-difficulty")
+                .env("KASPAD_STRATUM_DIFFICULTY")
+                .value_name("DIFFICULTY")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(f64))
+                .help("Default difficulty for Stratum miners (default: 1.0)")
+        )
         ;
 
     #[cfg(feature = "devnet-prealloc")]
@@ -485,6 +528,10 @@ impl Args {
             disable_upnp: arg_match_unwrap_or::<bool>(&m, "disable-upnp", defaults.disable_upnp),
             disable_dns_seeding: arg_match_unwrap_or::<bool>(&m, "nodnsseed", defaults.disable_dns_seeding),
             disable_grpc: arg_match_unwrap_or::<bool>(&m, "nogrpc", defaults.disable_grpc),
+            stratum_enabled: arg_match_unwrap_or::<bool>(&m, "stratum-enabled", defaults.stratum_enabled),
+            stratum_listen_address: arg_match_unwrap_or::<String>(&m, "stratum-listen-address", defaults.stratum_listen_address),
+            stratum_listen_port: arg_match_unwrap_or::<u16>(&m, "stratum-listen-port", defaults.stratum_listen_port),
+            stratum_difficulty: arg_match_unwrap_or::<f64>(&m, "stratum-difficulty", defaults.stratum_difficulty),
             ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),
             retention_period_days: m.get_one::<f64>("retention-period-days").cloned().or(defaults.retention_period_days),
 
