@@ -40,10 +40,11 @@ impl HandleRelayBlockRequests {
             let hashes: Vec<_> = msg.try_into()?;
 
             let session = self.ctx.consensus().unguarded_session();
+            let header_format = kaspa_p2p_lib::convert::header::determine_header_format(self.router.properties().protocol_version);
 
             for hash in hashes {
                 let block = session.async_get_block(hash).await?;
-                self.router.enqueue(make_response!(Payload::Block, (&block).into(), request_id)).await?;
+                self.router.enqueue(make_response!(Payload::Block, (header_format, &block).into(), request_id)).await?;
                 debug!("relayed block with hash {} to peer {}", hash, self.router);
             }
         }

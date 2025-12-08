@@ -8,7 +8,7 @@ use kaspa_p2p_lib::{
     common::ProtocolError,
     dequeue, dequeue_with_request_id, make_response,
     pb::{
-        self, kaspad_message::Payload, BlockWithTrustedDataV4Message, DoneBlocksWithTrustedDataMessage, PruningPointsMessage,
+        kaspad_message::Payload, BlockWithTrustedDataV4Message, DoneBlocksWithTrustedDataMessage, PruningPointsMessage,
         TrustedDataMessage,
     },
     IncomingRoute, Router,
@@ -49,10 +49,11 @@ impl PruningPointAndItsAnticoneRequestsFlow {
             let mut session = consensus.session().await;
 
             let pp_headers = session.async_pruning_point_headers().await;
+            let header_format = kaspa_p2p_lib::convert::header::determine_header_format(self.router.properties().protocol_version);
             self.router
                 .enqueue(make_response!(
                     Payload::PruningPoints,
-                    PruningPointsMessage { headers: pp_headers.into_iter().map(|header| <pb::BlockHeader>::from(&*header)).collect() },
+                    PruningPointsMessage { headers: pp_headers.into_iter().map(|header| (header_format, &*header).into()).collect() },
                     request_id
                 ))
                 .await?;
@@ -62,7 +63,11 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                 .enqueue(make_response!(
                     Payload::TrustedData,
                     TrustedDataMessage {
-                        daa_window: trusted_data.daa_window_blocks.iter().map(|daa_block| daa_block.into()).collect_vec(),
+                        daa_window: trusted_data
+                            .daa_window_blocks
+                            .iter()
+                            .map(|daa_block| (header_format, daa_block).into())
+                            .collect_vec(),
                         ghostdag_data: trusted_data.ghostdag_blocks.iter().map(|gd| gd.into()).collect_vec()
                     },
                     request_id
@@ -76,7 +81,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                         .enqueue(make_response!(
                             Payload::BlockWithTrustedDataV4,
                             // No need to send window indices in v6
-                            BlockWithTrustedDataV4Message { block: Some((&block).into()), ..Default::default() },
+                            BlockWithTrustedDataV4Message { block: Some((header_format, &block).into()), ..Default::default() },
                             request_id
                         ))
                         .await?;

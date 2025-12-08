@@ -1,3 +1,4 @@
+use super::header::HeaderFormat;
 use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb as protowire;
 use kaspa_consensus_core::{block::Block, tx::Transaction};
@@ -6,9 +7,13 @@ type BlockBody = Vec<Transaction>;
 // consensus_core to protowire
 // ----------------------------------------------------------------------------
 
-impl From<&Block> for protowire::BlockMessage {
-    fn from(block: &Block) -> Self {
-        Self { header: Some(block.header.as_ref().into()), transactions: block.transactions.iter().map(|tx| tx.into()).collect() }
+impl From<(HeaderFormat, &Block)> for protowire::BlockMessage {
+    fn from(value: (HeaderFormat, &Block)) -> Self {
+        let (header_format, block) = value;
+        Self {
+            header: Some((header_format, block.header.as_ref()).into()),
+            transactions: block.transactions.iter().map(|tx| tx.into()).collect(),
+        }
     }
 }
 impl From<&BlockBody> for protowire::BlockBodyMessage {

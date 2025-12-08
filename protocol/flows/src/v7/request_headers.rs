@@ -64,8 +64,9 @@ impl RequestHeadersFlow {
                 debug!("Getting block headers between {} and {}", high, low);
 
                 // We spawn the I/O-intensive operation of reading a bunch of headers as a tokio blocking task
+                let header_format = kaspa_p2p_lib::convert::header::determine_header_format(self.router.properties().protocol_version);
                 let (block_headers, last) =
-                    session.spawn_blocking(move |c| Self::get_headers_between(c, low, high, max_blocks)).await?;
+                    session.spawn_blocking(move |c| Self::get_headers_between(c, low, high, max_blocks, header_format)).await?;
                 debug!("Got {} header hashes above {}", block_headers.len(), low);
                 low = last;
                 self.router.enqueue(make_response!(Payload::BlockHeaders, BlockHeadersMessage { block_headers }, request_id)).await?;
@@ -85,13 +86,14 @@ impl RequestHeadersFlow {
         low: Hash,
         high: Hash,
         max_blocks: usize,
+        header_format: kaspa_p2p_lib::convert::header::HeaderFormat,
     ) -> Result<(Vec<pb::BlockHeader>, Hash), ProtocolError> {
         let hashes = consensus.get_hashes_between(low, high, max_blocks)?.0;
         let last = *hashes.last().expect("caller ensured that high and low are valid and different");
         debug!("obtained {} header hashes above {}", hashes.len(), low);
         let mut block_headers = Vec::with_capacity(hashes.len());
         for hash in hashes {
-            block_headers.push(<pb::BlockHeader>::from(&*consensus.get_header(hash)?));
+            block_headers.push(<pb::BlockHeader>::from((header_format, &*consensus.get_header(hash)?)));
         }
         Ok((block_headers, last))
     }

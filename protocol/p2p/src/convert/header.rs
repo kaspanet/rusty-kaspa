@@ -5,15 +5,43 @@ use kaspa_hashes::Hash;
 use super::error::ConversionError;
 use super::option::TryIntoOptionEx;
 
+#[derive(Copy, Clone)]
+pub enum HeaderFormat {
+    Legacy,
+    Compressed,
+}
+
+/// Determines the header format based on the protocol version.
+pub fn determine_header_format(version: u32) -> HeaderFormat {
+    if version >= 9 {
+        HeaderFormat::Compressed
+    } else {
+        HeaderFormat::Legacy
+    }
+}
+
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
 // ----------------------------------------------------------------------------
 
-impl From<&Header> for protowire::BlockHeader {
-    fn from(item: &Header) -> Self {
+impl From<(HeaderFormat, &Header)> for protowire::BlockHeader {
+    fn from(value: (HeaderFormat, &Header)) -> Self {
+        let (header_type, item) = value;
+
         Self {
             version: item.version.into(),
-            parents: item.parents_by_level.expanded_iter().map(protowire::BlockLevelParents::from).collect(),
+            parents: match header_type {
+                HeaderFormat::Legacy => item.parents_by_level.expanded_iter().map(protowire::BlockLevelParents::from).collect(),
+                HeaderFormat::Compressed => item
+                    .parents_by_level
+                    .inner()
+                    .iter()
+                    .map(|(cum, hashes)| protowire::BlockLevelParents {
+                        cumulative_level: (*cum).into(),
+                        parent_hashes: hashes.iter().map(|h| h.into()).collect(),
+                    })
+                    .collect(),
+            },
             hash_merkle_root: Some(item.hash_merkle_root.into()),
             accepted_id_merkle_root: Some(item.accepted_id_merkle_root.into()),
             utxo_commitment: Some(item.utxo_commitment.into()),
@@ -31,7 +59,8 @@ impl From<&Header> for protowire::BlockHeader {
 
 impl From<&[Hash]> for protowire::BlockLevelParents {
     fn from(item: &[Hash]) -> Self {
-        Self { parent_hashes: item.iter().map(|h| h.into()).collect() }
+        // When converting to legacy p2p header, cumulative_level is set to 0
+        Self { parent_hashes: item.iter().map(|h| h.into()).collect(), cumulative_level: 0 }
     }
 }
 
@@ -42,9 +71,32 @@ impl From<&[Hash]> for protowire::BlockLevelParents {
 impl TryFrom<protowire::BlockHeader> for Header {
     type Error = ConversionError;
     fn try_from(item: protowire::BlockHeader) -> Result<Self, Self::Error> {
+        // Detect header format by checking the first entry's cumulative_level:
+        // Compressed header must have a cumulative_level > 0 (indication of at least one item in the parents_by_level vector)
+        // Legacy header would have a cumulative_level == 0 (when the cumulative_level field is unused, it defaults to 0)
+        let is_compressed = item.parents.first().is_some_and(|p| p.cumulative_level > 0);
+
+        let parents_by_level = if is_compressed {
+            item.parents
+                .into_iter()
+                .map(|p| {
+                    let cum = u8::try_from(p.cumulative_level)?;
+                    let parents = p.parent_hashes.into_iter().map(Hash::try_from).collect::<Result<_, _>>()?;
+                    Ok((cum, parents))
+                })
+                .collect::<Result<Vec<(u8, Vec<Hash>)>, ConversionError>>()?
+                .try_into()?
+        } else {
+            item.parents
+                .into_iter()
+                .map(|p| p.parent_hashes.into_iter().map(Hash::try_from).collect::<Result<Vec<Hash>, ConversionError>>())
+                .collect::<Result<Vec<Vec<Hash>>, ConversionError>>()?
+                .try_into()?
+        };
+
         Ok(Self::new_finalized(
             item.version.try_into()?,
-            item.parents.into_iter().map(Vec::<Hash>::try_from).collect::<Result<Vec<Vec<Hash>>, ConversionError>>()?.try_into()?,
+            parents_by_level,
             item.hash_merkle_root.try_into_ex()?,
             item.accepted_id_merkle_root.try_into_ex()?,
             item.utxo_commitment.try_into_ex()?,

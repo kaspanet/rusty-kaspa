@@ -56,10 +56,13 @@ impl HandleAntipastRequests {
             // Sort the headers in bottom-up topological order before sending
             headers.sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
 
+            let header_format = kaspa_p2p_lib::convert::header::determine_header_format(self.router.properties().protocol_version);
             self.router
                 .enqueue(make_response!(
                     Payload::BlockHeaders,
-                    BlockHeadersMessage { block_headers: headers.into_iter().map(|header| header.as_ref().into()).collect() },
+                    BlockHeadersMessage {
+                        block_headers: headers.into_iter().map(|header| (header_format, header.as_ref()).into()).collect()
+                    },
                     request_id
                 ))
                 .await?;

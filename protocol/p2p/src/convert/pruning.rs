@@ -1,4 +1,5 @@
 use super::error::ConversionError;
+use crate::convert::header::HeaderFormat;
 use crate::pb as protowire;
 use kaspa_consensus_core::header::Header;
 use std::sync::Arc;
@@ -7,9 +8,10 @@ use std::sync::Arc;
 // consensus_core to protowire
 // ----------------------------------------------------------------------------
 
-impl From<&Vec<Arc<Header>>> for protowire::PruningPointProofHeaderArray {
-    fn from(v: &Vec<Arc<Header>>) -> Self {
-        Self { headers: v.iter().map(|header| header.as_ref().into()).collect() }
+impl From<(HeaderFormat, &Vec<Arc<Header>>)> for protowire::PruningPointProofHeaderArray {
+    fn from(value: (HeaderFormat, &Vec<Arc<Header>>)) -> Self {
+        let (header_format, v) = value;
+        Self { headers: v.iter().map(|header| (header_format, header.as_ref()).into()).collect() }
     }
 }
 

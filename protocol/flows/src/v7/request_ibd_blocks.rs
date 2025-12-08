@@ -34,10 +34,11 @@ impl HandleIbdBlockRequests {
 
             debug!("got request for {} IBD blocks", hashes.len());
             let session = self.ctx.consensus().unguarded_session();
+            let header_format = kaspa_p2p_lib::convert::header::determine_header_format(self.router.properties().protocol_version);
 
             for hash in hashes {
                 let block = session.async_get_block(hash).await?;
-                self.router.enqueue(make_response!(Payload::IbdBlock, (&block).into(), request_id)).await?;
+                self.router.enqueue(make_response!(Payload::IbdBlock, (header_format, &block).into(), request_id)).await?;
             }
         }
     }

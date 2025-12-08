@@ -62,6 +62,10 @@ impl CompressedParents {
         }
     }
 
+    pub fn inner(&self) -> &[(u8, Vec<Hash>)] {
+        &self.0
+    }
+
     /// Sets the direct parents (level 0) to the given value, preserving all other levels.
     ///
     /// NOTE: inefficient implementation, should be used for testing purposes only.
@@ -88,6 +92,25 @@ impl TryFrom<Vec<Vec<Hash>>> for CompressedParents {
 
         // Casting count from usize to u8 is safe because of the check above
         Ok(Self(parents.into_iter().rle_cumulative().map(|(count, level)| (count as u8, level)).collect()))
+    }
+}
+
+impl TryFrom<Vec<(u8, Vec<Hash>)>> for CompressedParents {
+    type Error = CompressedParentsError;
+    fn try_from(parents: Vec<(u8, Vec<Hash>)>) -> Result<Self, Self::Error> {
+        if parents.len() > u8::MAX as usize {
+            return Err(CompressedParentsError::LevelsExceeded);
+        }
+        let mut last_cum: u8 = 0;
+        for (cum, _) in &parents {
+            // Make sure any next cumulative is strictly greater than the last
+            if *cum <= last_cum {
+                return Err(CompressedParentsError::LevelsNotStrictlyIncreasing);
+            }
+            last_cum = *cum;
+        }
+
+        Ok(Self(parents))
     }
 }
 
