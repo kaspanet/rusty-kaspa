@@ -12,6 +12,7 @@ use kaspa_consensusmanager::ConsensusManager;
 use kaspa_hashes::{Hash, HasherBase};
 use kaspa_math::Uint256;
 use kaspa_mining::manager::MiningManagerProxy;
+use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_pow::State as PowState;
 use kaspa_txscript::pay_to_address_script;
 use parking_lot::{Mutex, RwLock};
@@ -111,6 +112,7 @@ pub struct StratumServer {
     config: StratumConfig,
     consensus_manager: Arc<ConsensusManager>,
     mining_manager: MiningManagerProxy,
+    flow_context: Arc<FlowContext>, // For block broadcasting and mempool updates
     clients: Arc<RwLock<HashMap<SocketAddr, mpsc::UnboundedSender<StratumNotification>>>>,
     jobs: Arc<RwLock<HashMap<String, MiningJob>>>,
     current_job: Arc<RwLock<Option<MiningJob>>>,
@@ -124,12 +126,18 @@ pub struct StratumServer {
 
 impl StratumServer {
     /// Create a new Stratum server
-    pub fn new(config: StratumConfig, consensus_manager: Arc<ConsensusManager>, mining_manager: MiningManagerProxy) -> Self {
+    pub fn new(
+        config: StratumConfig,
+        consensus_manager: Arc<ConsensusManager>,
+        mining_manager: MiningManagerProxy,
+        flow_context: Arc<FlowContext>,
+    ) -> Self {
         let (submission_tx, submission_rx) = mpsc::unbounded_channel();
         Self {
             config,
             consensus_manager,
             mining_manager,
+            flow_context,
             clients: Arc::new(RwLock::new(HashMap::new())),
             jobs: Arc::new(RwLock::new(HashMap::new())),
             current_job: Arc::new(RwLock::new(None)),
@@ -203,9 +211,11 @@ impl StratumServer {
         let vardiff_config_submit = vardiff_config.clone();
         let clients_submit = clients_for_loop.clone();
         let seen_nonces_submit = self.seen_nonces.clone();
+        let flow_context_submit = self.flow_context.clone();
         tokio::spawn(async move {
             Self::block_submission_loop(
                 consensus_submit,
+                flow_context_submit,
                 jobs_submit,
                 submission_rx,
                 vardiff_states_submit,
@@ -760,6 +770,7 @@ impl StratumServer {
     /// Handle block submissions from miners
     async fn block_submission_loop(
         consensus_manager: Arc<ConsensusManager>,
+        flow_context: Arc<FlowContext>,
         jobs: Arc<RwLock<HashMap<String, MiningJob>>>,
         mut submission_rx: mpsc::UnboundedReceiver<BlockSubmission>,
         vardiff_states: Arc<RwLock<HashMap<SocketAddr, ClientVardiffState>>>,
@@ -1230,38 +1241,31 @@ impl StratumServer {
                 pow_value
             );
 
-            // Convert mutable block to immutable block and submit via consensus API
+            // Convert mutable block to immutable block and submit via FlowContext
+            // This ensures the block is broadcast to peers and mempool is updated properly
             let block = mutable_block.to_immutable();
             let consensus_instance = consensus_manager.consensus();
             let consensus_session = consensus_instance.unguarded_session();
-            let block_validation = consensus_session.validate_and_insert_block(block);
-
-            // Spawn a task to handle the validation asynchronously
-            let client_addr = submission.client_addr;
             let block_hash_str = header_hash.to_string();
             let block_hash_short = if block_hash_str.len() >= 16 { block_hash_str[..16].to_string() } else { block_hash_str.clone() };
             let block_hash_full = block_hash_str.clone();
-            tokio::spawn(async move {
-                // Wait for both validation tasks to complete
-                let block_result = block_validation.block_task.await;
-                let virtual_state_result = block_validation.virtual_state_task.await;
+            let client_addr = submission.client_addr;
+            let flow_context_clone = flow_context.clone();
 
-                match (block_result, virtual_state_result) {
-                    (Ok(_), Ok(_)) => {
-                        // Both tasks succeeded - block was successfully accepted!
+            // Spawn a task to submit the block via FlowContext (which handles broadcasting and mempool updates)
+            tokio::spawn(async move {
+                match flow_context_clone.submit_rpc_block(&consensus_session, block).await {
+                    Ok(_) => {
+                        // Block was successfully submitted, validated, broadcast, and mempool updated!
                         log::info!("🎉 BLOCK FOUND! Hash: {}... - Mined by client {}", block_hash_short, client_addr);
                         log::info!(
-                            "✓ Block {} successfully validated and inserted into chain by client {}",
+                            "✓ Block {} successfully validated, inserted, and broadcast to network by client {}",
                             block_hash_full,
                             client_addr
                         );
                     }
-                    (Ok(_), Err(e)) => {
-                        log::warn!("Block validation succeeded but virtual state update failed for client {}: {:?}", client_addr, e);
-                        log::warn!("Block {} may not be fully processed", block_hash_full);
-                    }
-                    (Err(e), _) => {
-                        log::warn!("Block validation failed for client {}: {:?}", client_addr, e);
+                    Err(e) => {
+                        log::warn!("Block submission failed for client {}: {:?}", client_addr, e);
                         log::warn!("Block {} was rejected (may be invalid, orphaned, or duplicate)", block_hash_full);
                     }
                 }

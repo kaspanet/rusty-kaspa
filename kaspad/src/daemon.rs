@@ -550,7 +550,7 @@ Do you confirm? (y/n)";
         notify_service.notifier(),
         index_service.as_ref().map(|x| x.notifier()),
         mining_manager,
-        flow_context,
+        flow_context.clone(), // Clone so we can use it for stratum server later
         subscription_context,
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
         config.clone(),
@@ -621,7 +621,8 @@ Do you confirm? (y/n)";
         };
         let stratum_consensus = consensus_manager.clone();
         let stratum_mining = mining_manager_for_stratum.clone();
-        let stratum_server = StratumServer::new(stratum_config, stratum_consensus, stratum_mining);
+        let stratum_flow_context = flow_context.clone();
+        let stratum_server = StratumServer::new(stratum_config, stratum_consensus, stratum_mining, stratum_flow_context);
 
         // Create a service wrapper for the Stratum server
         struct StratumService {

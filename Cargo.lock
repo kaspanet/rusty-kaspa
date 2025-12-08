@@ -3119,6 +3119,7 @@ dependencies = [
  "kaspa-hashes",
  "kaspa-math",
  "kaspa-mining",
+ "kaspa-p2p-flows",
  "kaspa-pow",
  "kaspa-txscript",
  "log",

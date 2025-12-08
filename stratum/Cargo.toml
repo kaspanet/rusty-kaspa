@@ -19,6 +19,7 @@ kaspa-txscript.workspace = true
 kaspa-addresses.workspace = true
 kaspa-pow.workspace = true
 kaspa-math.workspace = true
+kaspa-p2p-flows.workspace = true
 
 async-trait.workspace = true
 borsh = { workspace = true, features = ["derive"] }
