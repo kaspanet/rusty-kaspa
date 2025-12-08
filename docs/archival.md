@@ -17,7 +17,7 @@ Normal Kaspa nodes are **pruned** and only keep recent blocks (determined by fin
 
 ### Minimum Requirements
 - **Storage:** 500GB HDD minimum (2TB+ recommended)
-- **RAM:** 8GB minimum (16GB+ recommended with `--rocksdb-preset=archive`)
+- **RAM:** 4GB minimum (8GB+ recommended with `--rocksdb-preset=archive`)
 - **CPU:** 4 cores
 - **Network:** Stable connection with sufficient bandwidth
 
@@ -51,16 +51,16 @@ kaspad --archival --rocksdb-preset=archive
 - **Aggressive compression:**
   - LZ4 for L0-L4 (fast compression for hot data)
   - ZSTD level 22 for L5+ (maximum compression for cold data)
-  - 16KB dictionary compression with 1MB training
+  - 64KB dictionary compression with 8MB training
 - **12 MB/s rate limiter** - Prevents I/O spikes
-- **2GB LRU block cache** - Better read performance
+- **256MB LRU block cache** (default, scales with --ram-scale)
 - **Level 0 compaction trigger: 1 file** - Minimizes write amplification
 - **4MB read-ahead** - Optimized for sequential HDD reads
 - **Partitioned Bloom filters** - Memory-efficient filtering
 
 **Best for:** Archive nodes on HDD storage
 
-**Memory requirements:** 8GB minimum, 16GB+ recommended
+**Memory requirements:** 4GB minimum (basic usage), 8GB+ recommended (public RPC)
 
 ## Quick Start
 
@@ -111,17 +111,48 @@ echo "4096" | sudo tee /sys/block/sda/queue/read_ahead_kb
 Adjust memory allocation based on available RAM:
 
 ```bash
-# Limited RAM (8GB system)
-kaspad --archival --rocksdb-preset=archive --ram-scale=0.3
+# Limited RAM (4GB system)
+kaspad --archival --rocksdb-preset=archive --ram-scale=0.2
 
-# Normal RAM (16GB system)
+# Normal RAM (8GB system)
 kaspad --archival --rocksdb-preset=archive --ram-scale=0.5
 
-# High RAM (32GB+ system)
+# High RAM (16GB+ system)
 kaspad --archival --rocksdb-preset=archive --ram-scale=1.0
 ```
 
-**Note:** Archive preset requires ~8GB minimum even with `--ram-scale=0.3` due to RocksDB caches.
+**Note:** Archive preset requires ~4GB minimum even with `--ram-scale=0.2`. The cache size scales with `--ram-scale` (minimum 64MB).
+
+### RocksDB Cache Configuration
+
+The archive preset uses a 256MB block cache by default, which automatically scales with `--ram-scale`:
+
+```bash
+# Default cache (256MB)
+kaspad --archival --rocksdb-preset=archive
+
+# Scaled cache with ram-scale=0.2 (~51MB cache)
+kaspad --archival --rocksdb-preset=archive --ram-scale=0.2
+
+# Custom cache size (useful for public RPC nodes)
+kaspad --archival --rocksdb-preset=archive --rocksdb-cache-size=2048  # 2GB cache
+```
+
+**Cache Sizing Guidelines:**
+
+| Node Type | Recommended Cache | Example |
+|-----------|------------------|---------|
+| Private storage-only | 64-256MB (default) | `--ram-scale=0.2` to `1.0` |
+| Private local queries | 256-512MB | `--rocksdb-cache-size=512` |
+| Public RPC (light) | 512MB-1GB | `--rocksdb-cache-size=1024` |
+| Public RPC (heavy) | 2-4GB | `--rocksdb-cache-size=2048` |
+
+**Memory Budget Example (8GB system):**
+- System: ~1GB
+- Kaspad core: ~2GB
+- RocksDB cache: 256MB (default)
+- RocksDB write buffers: 512MB (2x256MB)
+- Remaining: ~4GB (file cache, network buffers, etc.)
 
 ## Monitoring
 
@@ -274,16 +305,19 @@ sudo systemctl status kaspad-archive
 **Symptoms:** Process killed by OOM
 
 **Solutions:**
-1. Archive preset needs minimum 8GB RAM
-2. Reduce `--ram-scale`:
+1. Archive preset needs minimum 4GB RAM
+2. Reduce `--ram-scale` and cache size:
    ```bash
-   # 8GB system
-   kaspad --archival --rocksdb-preset=archive --ram-scale=0.3
+   # 4GB system
+   kaspad --archival --rocksdb-preset=archive --ram-scale=0.2
 
-   # 16GB system
+   # 8GB system
    kaspad --archival --rocksdb-preset=archive --ram-scale=0.5
+
+   # Custom cache reduction (if needed)
+   kaspad --archival --rocksdb-preset=archive --rocksdb-cache-size=64
    ```
-3. Check swap: `free -h` (should have 8GB+ swap)
+3. Check swap: `free -h` (4GB+ swap recommended for low-RAM systems)
 4. Consider default preset on SSD instead
 
 ### Slow Sync Speed
@@ -317,7 +351,7 @@ journalctl -u kaspad-archive -n 100 | grep -i rocksdb
 | Aspect | Default (SSD) | Archive (HDD) |
 |--------|---------------|---------------|
 | Write throughput | ~200 MB/s | ~100-150 MB/s |
-| Memory usage | ~4-6 GB | ~8-12 GB |
+| Memory usage | ~4-6 GB | ~4-8 GB (scales with cache) |
 | Disk usage | ~40 GB | ~35 GB (better compression) |
 | Sync time (HDD) | 2-3 days | 1-2 days |
 | Write amplification | ~20x | ~8-10x |
@@ -326,7 +360,7 @@ journalctl -u kaspad-archive -n 100 | grep -i rocksdb
 ### When NOT to Use Archive Preset
 
 - **SSD/NVMe storage** - Default preset is faster
-- **Limited RAM (<8GB)** - May cause OOM
+- **Limited RAM (<4GB)** - May cause OOM
 - **CPU-constrained** - Compression uses more CPU
 - **Low disk space** - BlobDB and caching use more temporary space
 
@@ -349,12 +383,13 @@ Based on real-world testing (Issue #681):
 - Write amplification: ~20x
 - Disk utilization: 60-80% (not bottlenecked)
 
-**After (Archive Preset on HDD):**
+**After (Archive Preset on HDD with default 256MB cache):**
 - Sync time: ~1.5-2 days
 - Minimal swap usage (<100 MB)
 - Write amplification: ~8-10x
 - Disk utilization: 95-99% (fully utilized)
 - 30-50% improvement in write throughput
+- Memory usage: ~4-6GB (reduced from 8-12GB with configurable cache)
 
 ## Additional Resources
 
@@ -375,7 +410,8 @@ This enables Callidon's HDD-optimized RocksDB configuration, providing:
 - ✅ Reduced write amplification (50-60% reduction)
 - ✅ Better disk utilization (95%+ vs 60-80%)
 - ✅ Minimal swap usage despite larger working set
-- ⚠️ Requires 8GB+ RAM
+- ✅ Configurable cache size (scales with --ram-scale, or set explicitly)
+- ⚠️ Requires 4GB+ RAM (8GB+ for public RPC)
 - ⚠️ Uses more CPU for compression
 
 For **SSD/NVMe**, the default preset is optimal.

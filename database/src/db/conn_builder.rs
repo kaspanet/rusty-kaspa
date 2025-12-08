@@ -16,6 +16,7 @@ pub struct ConnBuilder<Path, const STATS_ENABLED: bool, StatsPeriod, FDLimit> {
     stats_period: StatsPeriod,
     preset: RocksDbPreset,
     wal_dir: Option<PathBuf>,
+    cache_budget: Option<usize>,
 }
 
 impl Default for ConnBuilder<Unspecified, false, Unspecified, Unspecified> {
@@ -29,6 +30,7 @@ impl Default for ConnBuilder<Unspecified, false, Unspecified, Unspecified> {
             files_limit: Unspecified,
             preset: RocksDbPreset::Default,
             wal_dir: None,
+            cache_budget: None,
         }
     }
 }
@@ -44,6 +46,7 @@ impl<Path, const STATS_ENABLED: bool, StatsPeriod, FDLimit> ConnBuilder<Path, ST
             stats_period: self.stats_period,
             preset: self.preset,
             wal_dir: self.wal_dir,
+            cache_budget: self.cache_budget,
         }
     }
     pub fn with_create_if_missing(self, create_if_missing: bool) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod, FDLimit> {
@@ -65,6 +68,7 @@ impl<Path, const STATS_ENABLED: bool, StatsPeriod, FDLimit> ConnBuilder<Path, ST
             stats_period: self.stats_period,
             preset: self.preset,
             wal_dir: self.wal_dir,
+            cache_budget: self.cache_budget,
         }
     }
     pub fn with_preset(self, preset: RocksDbPreset) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod, FDLimit> {
@@ -72,6 +76,9 @@ impl<Path, const STATS_ENABLED: bool, StatsPeriod, FDLimit> ConnBuilder<Path, ST
     }
     pub fn with_wal_dir(self, wal_dir: Option<PathBuf>) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod, FDLimit> {
         ConnBuilder { wal_dir, ..self }
+    }
+    pub fn with_cache_budget(self, cache_budget: Option<usize>) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod, FDLimit> {
+        ConnBuilder { cache_budget, ..self }
     }
 }
 
@@ -86,6 +93,7 @@ impl<Path, FDLimit> ConnBuilder<Path, false, Unspecified, FDLimit> {
             stats_period: self.stats_period,
             preset: self.preset,
             wal_dir: self.wal_dir,
+            cache_budget: self.cache_budget,
         }
     }
 }
@@ -101,6 +109,7 @@ impl<Path, StatsPeriod, FDLimit> ConnBuilder<Path, true, StatsPeriod, FDLimit> {
             stats_period: Unspecified,
             preset: self.preset,
             wal_dir: self.wal_dir,
+            cache_budget: self.cache_budget,
         }
     }
     pub fn with_stats_period(self, stats_period: impl Into<u32>) -> ConnBuilder<Path, true, u32, FDLimit> {
@@ -113,6 +122,7 @@ impl<Path, StatsPeriod, FDLimit> ConnBuilder<Path, true, StatsPeriod, FDLimit> {
             stats_period: stats_period.into(),
             preset: self.preset,
             wal_dir: self.wal_dir,
+            cache_budget: self.cache_budget,
         }
     }
 }
@@ -122,7 +132,7 @@ macro_rules! default_opts {
         let mut opts = rocksdb::Options::default();
 
         // Apply the preset configuration (includes parallelism and compaction settings)
-        $self.preset.apply_to_options(&mut opts, $self.parallelism, $self.mem_budget);
+        $self.preset.apply_to_options(&mut opts, $self.parallelism, $self.mem_budget, $self.cache_budget);
 
         // Configure WAL directory if specified (for RAM cache / tmpfs)
         // Auto-generate unique subdirectory from database path to avoid conflicts

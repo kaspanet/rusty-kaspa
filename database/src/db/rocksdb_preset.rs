@@ -56,10 +56,10 @@ impl RocksDbPreset {
     /// * `opts` - RocksDB options to configure
     /// * `parallelism` - Number of background threads
     /// * `mem_budget` - Memory budget (only used for Default preset, Archive uses fixed 256MB)
-    pub fn apply_to_options(&self, opts: &mut Options, parallelism: usize, mem_budget: usize) {
+    pub fn apply_to_options(&self, opts: &mut Options, parallelism: usize, mem_budget: usize, cache_budget: Option<usize>) {
         match self {
             Self::Default => self.apply_default(opts, parallelism, mem_budget),
-            Self::Archive => self.apply_archive(opts, parallelism),
+            Self::Archive => self.apply_archive(opts, parallelism, cache_budget),
         }
     }
 
@@ -74,7 +74,7 @@ impl RocksDbPreset {
     }
 
     /// Apply archive preset configuration (Callidon's HDD-optimized settings)
-    fn apply_archive(&self, opts: &mut Options, parallelism: usize) {
+    fn apply_archive(&self, opts: &mut Options, parallelism: usize, cache_budget: Option<usize>) {
         if parallelism > 1 {
             opts.increase_parallelism(parallelism as i32);
         }
@@ -142,8 +142,11 @@ impl RocksDbPreset {
         // Cache index and filter blocks in block cache for faster queries
         block_opts.set_cache_index_and_filter_blocks(true);
 
-        // Block cache (2GB LRU cache for frequently accessed blocks)
-        let cache = Cache::new_lru_cache(2 * 1024 * 1024 * 1024); // 2GB
+        // Block cache: Default 256MB (safe for low-RAM systems)
+        // Can be scaled via ram-scale or overridden via --rocksdb-cache-size
+        let default_cache_size = 256 * 1024 * 1024; // 256MB
+        let cache_size = cache_budget.unwrap_or(default_cache_size);
+        let cache = Cache::new_lru_cache(cache_size);
         block_opts.set_block_cache(&cache);
 
         // Set block size (256KB - better for sequential HDD reads)
@@ -186,7 +189,7 @@ impl RocksDbPreset {
     pub fn memory_requirements(&self) -> &'static str {
         match self {
             Self::Default => "~4GB minimum, scales with --ram-scale",
-            Self::Archive => "~8GB minimum (256MB write buffer + 2GB cache + overhead), 16GB+ recommended",
+            Self::Archive => "~4GB minimum (256MB write buffer + 256MB cache + overhead), 8GB+ recommended for public RPC",
         }
     }
 }
@@ -215,9 +218,9 @@ mod tests {
         let mut opts = Options::default();
 
         // Test default preset
-        RocksDbPreset::Default.apply_to_options(&mut opts, 4, 64 * 1024 * 1024);
+        RocksDbPreset::Default.apply_to_options(&mut opts, 4, 64 * 1024 * 1024, None);
 
         // Test archive preset
-        RocksDbPreset::Archive.apply_to_options(&mut opts, 4, 64 * 1024 * 1024);
+        RocksDbPreset::Archive.apply_to_options(&mut opts, 4, 64 * 1024 * 1024, None);
     }
 }

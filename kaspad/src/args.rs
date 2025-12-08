@@ -96,6 +96,7 @@ pub struct Args {
 
     pub rocksdb_preset: Option<String>,
     pub rocksdb_wal_dir: Option<String>,
+    pub rocksdb_cache_size: Option<usize>,
 }
 
 impl Default for Args {
@@ -150,6 +151,7 @@ impl Default for Args {
             override_params_file: None,
             rocksdb_preset: None,
             rocksdb_wal_dir: None,
+            rocksdb_cache_size: None,
         }
     }
 }
@@ -430,6 +432,15 @@ a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance
                 .help("Custom WAL (Write-Ahead Log) directory for RocksDB. Useful for hybrid setups: database on HDD, WAL on fast NVMe SSD. \
                        Example: --rocksdb-wal-dir=/mnt/nvme/kaspa-wal")
         )
+        .arg(
+            Arg::new("rocksdb-cache-size")
+                .long("rocksdb-cache-size")
+                .env("KASPAD_ROCKSDB_CACHE_SIZE")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(usize))
+                .help("RocksDB block cache size in MB. Default: 256MB for archive preset (scales with --ram-scale). \
+                       Increase for public RPC nodes with heavy query loads. Example: --rocksdb-cache-size=2048 for 2GB cache.")
+        )
         ;
 
     #[cfg(feature = "devnet-prealloc")]
@@ -520,6 +531,7 @@ impl Args {
             override_params_file: m.get_one::<String>("override-params-file").cloned(),
             rocksdb_preset: m.get_one::<String>("rocksdb-preset").cloned().or(defaults.rocksdb_preset),
             rocksdb_wal_dir: m.get_one::<String>("rocksdb-wal-dir").cloned().or(defaults.rocksdb_wal_dir),
+            rocksdb_cache_size: m.get_one::<usize>("rocksdb-cache-size").cloned().or(defaults.rocksdb_cache_size),
         };
 
         if arg_match_unwrap_or::<bool>(&m, "enable-mainnet-mining", false) {
