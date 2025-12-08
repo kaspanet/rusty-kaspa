@@ -1,10 +1,4 @@
-use std::{
-    fs,
-    path::PathBuf,
-    process::exit,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
 
 use async_channel::unbounded;
 use kaspa_consensus_core::{
@@ -14,7 +8,7 @@ use kaspa_consensus_core::{
     mining_rules::MiningRules,
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
-use kaspa_core::{core::Core, debug, info, trace};
+use kaspa_core::{core::Core, debug, info};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
 use kaspa_database::{
     prelude::{CachePolicy, DbWriter, DirectDbWriter},
@@ -406,79 +400,20 @@ Do you confirm? (y/n)";
                 Some(current_consensus_db) => {
                     // Apply soft upgrade logic: delete relation data from higher levels
                     // and then update DB version to 6
+
+                    let msg =
+                        "Node database currently at or below version 5. Upgrade process to version 6 needs to be applied. Continue? (y/n)";
+                    get_user_approval_or_exit(msg, args.yes);
+
                     let consensus_db = kaspa_database::prelude::ConnBuilder::default()
                         .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
                         .with_files_limit(1)
                         .build()
                         .unwrap();
 
-                    info!("Scanning for deprecated records to cleanup");
-
-                    let mut parent_relations_record_count: u32 = 0;
-                    let mut children_relations_record_count: u32 = 0;
-
                     let start_level: u8 = 1;
                     let start_level_bytes = start_level.to_le_bytes();
 
-                    let parent_prefix_vec: Vec<_> =
-                        DatabaseStorePrefixes::RelationsParents.into_iter().chain(start_level_bytes).collect();
-                    let parent_prefix = parent_prefix_vec.as_slice();
-
-                    //  Scanning would be very quick for most nodes, but can take a little while with archivals
-                    let progress_interval = Duration::from_secs(60);
-                    let mut last_log_time = Instant::now();
-
-                    // ---- PARENTS SCAN ----
-                    for result in consensus_db.iterator(rocksdb::IteratorMode::From(parent_prefix, rocksdb::Direction::Forward)) {
-                        let (key, _) = result.unwrap();
-                        if !key.starts_with(&[DatabaseStorePrefixes::RelationsParents.into()]) {
-                            break;
-                        }
-
-                        parent_relations_record_count += 1;
-
-                        // Periodic progress logging
-                        if last_log_time.elapsed() >= progress_interval {
-                            info!("Scanning… processed {} parent relation records so far", parent_relations_record_count);
-                            last_log_time = Instant::now();
-                        }
-                    }
-
-                    // Reset timer for children scan
-                    last_log_time = Instant::now();
-
-                    let children_prefix_vec: Vec<_> =
-                        DatabaseStorePrefixes::RelationsChildren.into_iter().chain(start_level_bytes).collect();
-                    let children_prefix = children_prefix_vec.as_slice();
-
-                    // ---- CHILDREN SCAN ----
-                    for result in consensus_db.iterator(rocksdb::IteratorMode::From(children_prefix, rocksdb::Direction::Forward)) {
-                        let (key, _) = result.unwrap();
-                        if !key.starts_with(&[DatabaseStorePrefixes::RelationsChildren.into()]) {
-                            break;
-                        }
-
-                        children_relations_record_count += 1;
-
-                        // Periodic progress logging
-                        if last_log_time.elapsed() >= progress_interval {
-                            info!("Scanning… processed {} children relation records so far", children_relations_record_count);
-                            last_log_time = Instant::now();
-                        }
-                    }
-
-                    trace!("Number of parent relations records to cleanup: {}", parent_relations_record_count);
-                    trace!("Number of children relations records to cleanup: {}", children_relations_record_count);
-                    info!(
-                        "Number of deprecated records to cleanup: {}",
-                        parent_relations_record_count + children_relations_record_count
-                    );
-
-                    let msg =
-                        "Node database currently at or below version 5. Upgrade process to version 6 needs to be applied. Continue? (y/n)";
-                    get_user_approval_or_exit(msg, args.yes);
-
-                    // Actual delete only happens after user consents to the upgrade:
                     let mut writer = DirectDbWriter::new(&consensus_db);
 
                     let end_level: u8 = config.max_block_level + 1;
@@ -498,12 +433,10 @@ Do you confirm? (y/n)";
                     writer.delete_range(start_parents_prefix_vec.clone(), end_parents_prefix_vec.clone()).unwrap();
                     writer.delete_range(start_children_prefix_vec.clone(), end_children_prefix_vec.clone()).unwrap();
 
-                    // Compact the deleted rangeto apply the delete immediately
-                    consensus_db.compact_range(Some(start_parents_prefix_vec.as_slice()), Some(end_parents_prefix_vec.as_slice()));
-                    consensus_db.compact_range(Some(start_children_prefix_vec.as_slice()), Some(end_children_prefix_vec.as_slice()));
-
-                    // Also update the version to one higher:
+                    //  update the version to one higher:
                     mcms.set_version(6).unwrap();
+                    info!("deprecated stores have been removed from database, storage will be gradually cleared in due time.");
+                    info!("database is now in version 6");
                 }
                 None => {
                     is_db_reset_needed = request_database_deletion_approval(args.yes);
