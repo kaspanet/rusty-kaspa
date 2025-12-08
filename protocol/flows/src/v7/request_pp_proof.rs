@@ -33,11 +33,12 @@ impl RequestPruningPointProofFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
+        let header_format = kaspa_p2p_lib::convert::header::determine_header_format(self.router.properties().protocol_version);
+
         loop {
             let (_, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestPruningPointProof)?;
             debug!("Got pruning point proof request");
             let proof = self.ctx.consensus().unguarded_session().async_get_pruning_point_proof().await;
-            let header_format = kaspa_p2p_lib::convert::header::determine_header_format(self.router.properties().protocol_version);
             self.router
                 .enqueue(make_response!(
                     Payload::PruningPointProof,

@@ -35,12 +35,13 @@ impl HandleRelayBlockRequests {
         // state even if no new blocks arrive for some reason.
         // Note: in go-kaspad this was done via a dedicated one-time flow.
         self.send_sink().await?;
+        let header_format = kaspa_p2p_lib::convert::header::determine_header_format(self.router.properties().protocol_version);
+
         loop {
             let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestRelayBlocks)?;
             let hashes: Vec<_> = msg.try_into()?;
 
             let session = self.ctx.consensus().unguarded_session();
-            let header_format = kaspa_p2p_lib::convert::header::determine_header_format(self.router.properties().protocol_version);
 
             for hash in hashes {
                 let block = session.async_get_block(hash).await?;

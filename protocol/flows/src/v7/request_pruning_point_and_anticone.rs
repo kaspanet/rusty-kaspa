@@ -41,6 +41,8 @@ impl PruningPointAndItsAnticoneRequestsFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
+        let header_format = kaspa_p2p_lib::convert::header::determine_header_format(self.router.properties().protocol_version);
+
         loop {
             let (_, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestPruningPointAndItsAnticone)?;
             debug!("Got request for pruning point and its anticone");
@@ -49,7 +51,6 @@ impl PruningPointAndItsAnticoneRequestsFlow {
             let mut session = consensus.session().await;
 
             let pp_headers = session.async_pruning_point_headers().await;
-            let header_format = kaspa_p2p_lib::convert::header::determine_header_format(self.router.properties().protocol_version);
             self.router
                 .enqueue(make_response!(
                     Payload::PruningPoints,

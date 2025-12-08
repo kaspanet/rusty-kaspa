@@ -98,9 +98,6 @@ impl TryFrom<Vec<Vec<Hash>>> for CompressedParents {
 impl TryFrom<Vec<(u8, Vec<Hash>)>> for CompressedParents {
     type Error = CompressedParentsError;
     fn try_from(parents: Vec<(u8, Vec<Hash>)>) -> Result<Self, Self::Error> {
-        if parents.len() > u8::MAX as usize {
-            return Err(CompressedParentsError::LevelsExceeded);
-        }
         let mut last_cum: u8 = 0;
         for (cum, _) in &parents {
             // Make sure any next cumulative is strictly greater than the last
