@@ -4,16 +4,17 @@ This module provides a native Stratum protocol implementation for the Kaspa node
 
 ## Status
 
-✅ **Basic Structure Complete**
+✅ **Complete**
 - Protocol message types and parsing
 - Client connection handler
-- Server implementation skeleton
+- Server implementation
 - Integration with MiningManager
-
-🚧 **In Progress**
-- Block submission handling
-- Job distribution improvements
-- Integration with kaspad main application
+- **Block submission handling** - Full implementation with PoW validation, block reconstruction, and consensus submission
+- **Job distribution** - Automatic job distribution loop with per-client difficulty support
+- **Integration with kaspad** - Fully integrated into kaspad daemon, enabled via `--stratum-enabled` flag
+- Variable difficulty (vardiff) - Automatic difficulty adjustment per miner
+- Duplicate share detection
+- Rate limiting and connection management
 
 ## Architecture
 
@@ -69,32 +70,32 @@ To integrate into kaspad:
 3. Start server when enabled
 4. Pass ConsensusProxy and MiningManagerProxy
 
-## Next Steps
+## Features
 
-1. **Complete Block Submission**
-   - Reconstruct block header with nonce
-   - Validate share difficulty
-   - Submit valid blocks to consensus
+✅ **Implemented Features**
+- Block submission with PoW validation against network difficulty
+- Block reconstruction with nonce and consensus submission
+- Automatic job distribution to all connected miners
+- Per-client variable difficulty (vardiff) with power-of-2 clamping for ASIC compatibility
+- Duplicate share detection to prevent double-counting
+- Rate limiting and connection management
+- Full integration with kaspad consensus and mining managers
 
-2. **Job Distribution**
-   - Subscribe to new block template notifications
-   - Efficiently distribute jobs to all miners
-   - Handle job expiration
+## Future Enhancements
 
-3. **Difficulty Management**
-   - Variable difficulty (vardiff) support
-   - Per-miner difficulty adjustment
-   - Share difficulty validation
+1. **Job Distribution Optimization**
+   - Subscribe to new block template notifications (currently polls every 10 seconds)
+   - More efficient job distribution for large numbers of miners
 
-4. **Testing**
+2. **Testing**
    - Unit tests for protocol parsing
    - Integration tests with test miners
-   - Performance testing
+   - Performance testing with multiple ASICs
 
-5. **Documentation**
+3. **Documentation**
    - API documentation
-   - Configuration guide
-   - Miner setup instructions
+   - Advanced configuration guide
+   - Miner setup instructions for various ASIC models
 
 ## Safety
 
