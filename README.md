@@ -287,6 +287,30 @@ The framework is compatible with all major desktop and mobile browsers.
   ```bash
 cargo run --release --bin kaspad -- --testnet
   ```
+
+  **Start a node with Stratum mining server enabled**
+
+  ```bash
+  # Mainnet with Stratum server (default: listens on 0.0.0.0:3333)
+  cargo run --release --bin kaspad -- --stratum-enabled --utxoindex
+
+  # With custom Stratum listen address and port
+  cargo run --release --bin kaspad -- --stratum-enabled --stratum-listen-address=0.0.0.0 --stratum-listen-port=3333 --utxoindex
+
+  # With custom initial difficulty (default: 1.0)
+  cargo run --release --bin kaspad -- --stratum-enabled --stratum-difficulty=1.0 --utxoindex
+
+  # Testnet with Stratum server
+  cargo run --release --bin kaspad -- --testnet --stratum-enabled --utxoindex
+  ```
+
+  **Stratum Server Options:**
+  - `--stratum-enabled` - Enable the Stratum mining server
+  - `--stratum-listen-address=<IP>` - IP address to listen on (default: `0.0.0.0`)
+  - `--stratum-listen-port=<PORT>` - Port to listen on (default: `3333`)
+  - `--stratum-difficulty=<DIFFICULTY>` - Initial difficulty for miners (default: `1.0`)
+
+  **Note:** The Stratum server includes built-in vardiff (variable difficulty) that automatically adjusts difficulty per miner based on their hashrate. Vardiff starts at difficulty 1.0 and increases as miners submit shares faster than the target rate (~30 seconds per share).
   
 <details>
   <summary>
@@ -298,9 +322,17 @@ Start the DevNet node with the following command:
 ```bash
 cargo run --bin kaspad -- --devnet --enable-unsynced-mining --rpclisten=127.0.0.1 --rpclisten-borsh=127.0.0.1 --utxoindex
 ```
+
+**With Stratum server enabled:**
+
+```bash
+cargo run --bin kaspad -- --devnet --enable-unsynced-mining --rpclisten=127.0.0.1 --rpclisten-borsh=127.0.0.1 --utxoindex --stratum-enabled
+```
+
 * `enable-unsynced-mining` is required when the network isn't synchronized, which is the case on the first launch
 * `uxtoindex` enables the UTXO index, which is necessary for wallet functionality.
 * `rpclisten-borsh` and `rpclisten-borsh` are likely to be required by mining softwares
+* `stratum-enabled` enables the Stratum mining server for direct ASIC/miner connections
 
 note: it will take a bit of time for difficulty to adjust, so you may need to wait a bit before you see blocks being mined consistently.
 
