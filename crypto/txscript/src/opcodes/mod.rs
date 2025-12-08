@@ -3310,7 +3310,6 @@ mod test {
                 let sig_cache = Cache::new(10_000);
                 let reused_values = SigHashReusedValuesUnsync::new();
 
-                // Test with KIP-10 enabled and disabled
                 let mut vm = TxScriptEngine::from_transaction_input(
                     &tx,
                     &tx.inputs()[0], // Use first input
