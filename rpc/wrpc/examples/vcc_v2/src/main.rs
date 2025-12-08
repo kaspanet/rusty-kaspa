@@ -1,6 +1,7 @@
 // Example of VCCv2 endpoint
 
-use kaspa_rpc_core::{api::rpc::RpcApi, RpcDataVerbosityLevel, RpcHash};
+use kaspa_addresses::Address;
+use kaspa_rpc_core::{api::rpc::RpcApi, RpcDataVerbosityLevel, RpcHash, RpcOptionalTransaction};
 use kaspa_wrpc_client::{
     client::{ConnectOptions, ConnectStrategy},
     prelude::NetworkId,
@@ -8,12 +9,8 @@ use kaspa_wrpc_client::{
     result::Result,
     KaspaRpcClient, WrpcEncoding,
 };
-use std::str::FromStr;
 use std::time::Duration;
-use std::{
-    collections::{HashMap, HashSet},
-    process::ExitCode,
-};
+use std::{collections::HashSet, process::ExitCode};
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -27,6 +24,15 @@ async fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Helper to extract the sender address from the first input, if everything is present.
+fn first_input_sender_address(tx: &RpcOptionalTransaction) -> Option<&Address> {
+    let first_input = tx.inputs.first()?;
+
+    let utxo_entry = first_input.verbose_data.as_ref()?.utxo_entry.as_ref()?;
+
+    utxo_entry.verbose_data.as_ref()?.script_public_key_address.as_ref()
 }
 
 async fn get_vcc_v2() -> Result<()> {
@@ -56,53 +62,51 @@ async fn get_vcc_v2() -> Result<()> {
     // Connect to selected Kaspa node
     client.connect(Some(options)).await?;
 
-    let response = client
-        .get_virtual_chain_from_block_v2(
-            RpcHash::from_str("ef26630bd11660faaf5bdd2d49dae3b8f39519c8ea9a7b0ccbd8d18a0716d15a").unwrap(),
-            Some(RpcDataVerbosityLevel::Low),
-            None,
-        )
-        .await?;
+    let dag_info = client.get_block_dag_info().await?;
+    // using pruning point as a demonstration, in a real usage you'd probably start from a checkpoint
+    // and keep iterating checkpoints to checkpoints to get a live view (high reactivity environment)
+    let pp_hash = dag_info.pruning_point_hash;
 
+    let response = client.get_virtual_chain_from_block_v2(pp_hash.into(), Some(RpcDataVerbosityLevel::High), None).await?;
+
+    // keep track of accepted transaction ids
     let mut global_seen_tx = HashSet::<RpcHash>::with_capacity(30_000);
-    let mut tx_occurrence_counts = HashMap::<RpcHash, u64>::new();
-    let mut total_duplicates = 0;
-    let mut total_intra_mergeset_duplicates = 0;
 
-    response.chain_block_accepted_transactions.iter().for_each(|acd| {
-        let mut mergeset_seen_tx = HashSet::<RpcHash>::new();
-        let mut current_mergeset_intra_duplicates = 0;
-        let mergeset_block_hash = acd.chain_block_header.as_ref().hash.unwrap();
+    for acd in response.chain_block_accepted_transactions.iter() {
+        let header = acd.chain_block_header.clone();
 
-        acd.accepted_transactions.iter().for_each(|tx| {
-            let id = tx.verbose_data.as_ref().unwrap().transaction_id.unwrap();
+        let Some(mergeset_block_hash) = header.hash else {
+            eprintln!("chain_block_header.hash is missing");
+            continue;
+        };
 
-            *tx_occurrence_counts.entry(id).or_insert(0) += 1;
+        println!("mergeset of {} has {} accepted transactions", mergeset_block_hash, acd.accepted_transactions.len());
 
-            if !global_seen_tx.insert(id) {
-                total_duplicates += 1;
+        for tx in &acd.accepted_transactions {
+            let Some(verbose) = tx.verbose_data.as_ref() else {
+                eprintln!("transaction.verbose_data is missing");
+                continue;
+            };
+
+            let Some(id) = verbose.transaction_id else {
+                eprintln!("transaction_id is missing in verbose_data");
+                continue;
+            };
+
+            // Example: use transaction payload here (borrow instead of cloning)
+            let _payload = &tx.payload;
+
+            // Example: use first input's sender address, if available
+            if let Some(sender_address) = first_input_sender_address(tx) {
+                println!("{id} - {sender_address}");
             }
-            if !mergeset_seen_tx.insert(id) {
-                current_mergeset_intra_duplicates += 1;
-            }
-        });
 
-        println!("mergeset of {} has {} intra-duplicates", mergeset_block_hash, current_mergeset_intra_duplicates);
-        total_intra_mergeset_duplicates += current_mergeset_intra_duplicates;
-    });
-
-    let total_cross_mergeset_duplicates = total_duplicates - total_intra_mergeset_duplicates;
-    println!("total tx: {}", global_seen_tx.len());
-    println!("total duplicated tx instances: {}", total_duplicates);
-    println!("total intra-mergeset duplicated tx instances: {}", total_intra_mergeset_duplicates);
-    println!("total cross-mergeset duplicated tx instances: {}", total_cross_mergeset_duplicates);
-
-    println!("\nTransaction occurrence counts (duplicates only):");
-    for (tx_id, count) in tx_occurrence_counts.iter() {
-        if *count > 1 {
-            println!("  Tx ID: {}, Occurrences: {}", tx_id, count);
+            global_seen_tx.insert(id);
         }
     }
+
+    println!("total transactions count: {}", global_seen_tx.len());
+
     // Disconnect client from Kaspa node
     client.disconnect().await?;
 

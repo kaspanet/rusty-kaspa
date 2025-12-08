@@ -3670,6 +3670,7 @@ name = "kaspa-wrpc-vcc-v2"
 version = "1.0.1"
 dependencies = [
  "futures",
+ "kaspa-addresses",
  "kaspa-rpc-core",
  "kaspa-wrpc-client",
  "tokio",
