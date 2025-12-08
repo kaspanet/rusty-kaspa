@@ -6,8 +6,10 @@ use crate::protocol::{
     MiningSubscribeParams, StratumNotification, StratumRequest, StratumResponse,
 };
 use crate::BlockSubmission;
+use hex;
 use kaspa_addresses::Address;
 use parking_lot::RwLock;
+use rand::Rng;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -19,8 +21,16 @@ use tokio::sync::mpsc;
 /// Miner encoding type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Encoding {
-    BigHeader, // Standard EthereumStratum format
+    BigHeader, // Standard EthereumStratum format (IceRiver)
     Bitmain,   // Bitmain/GodMiner format
+}
+
+/// Miner type for extranonce size determination
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MinerType {
+    IceRiver, // Requires extranonce = 2 bytes
+    Bitmain,  // Requires extranonce = 0 bytes
+    Unknown,  // Default/unknown miner
 }
 
 /// Vardiff tracking state
@@ -47,6 +57,7 @@ pub struct MinerState {
     pub workers: HashSet<(String, String)>, // (address, worker_name)
     pub extra_nonce: String,
     pub encoding: Encoding,
+    pub miner_type: MinerType, // Miner type for extranonce size determination
     pub subscribed: bool,
     pub authorized: bool,
     pub connected_at: u64,
@@ -60,8 +71,9 @@ impl Default for MinerState {
             agent: "Unknown".to_string(),
             difficulty: 1.0,
             workers: HashSet::new(),
-            extra_nonce: generate_extra_nonce(),
+            extra_nonce: generate_extra_nonce(2), // Default to 2 bytes for IceRiver
             encoding: Encoding::BigHeader,
+            miner_type: MinerType::Unknown,
             subscribed: false,
             authorized: false,
             connected_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
@@ -71,10 +83,35 @@ impl Default for MinerState {
     }
 }
 
-fn generate_extra_nonce() -> String {
-    use rand::Rng;
+/// Generate extranonce based on size (in bytes)
+/// - IceRiver: 2 bytes (4 hex chars)
+/// - Bitmain: 0 bytes (empty string)
+fn generate_extra_nonce(size_bytes: usize) -> String {
+    if size_bytes == 0 {
+        return String::new();
+    }
     let mut rng = rand::thread_rng();
-    format!("{:04x}", rng.gen::<u16>())
+    match size_bytes {
+        2 => format!("{:04x}", rng.gen::<u16>()), // 2 bytes = 4 hex chars
+        _ => {
+            // For other sizes, generate appropriate random hex
+            let mut bytes = vec![0u8; size_bytes];
+            rng.fill(&mut bytes[..]);
+            hex::encode(bytes)
+        }
+    }
+}
+
+/// Detect miner type from user agent string
+fn detect_miner_type(agent: &str) -> MinerType {
+    let agent_lower = agent.to_lowercase();
+    if agent_lower.contains("iceriver") || agent_lower.contains("ks") || agent_lower.contains("icemining") {
+        MinerType::IceRiver
+    } else if agent_lower.contains("bitmain") || agent_lower.contains("godminer") || agent_lower.contains("antminer") {
+        MinerType::Bitmain
+    } else {
+        MinerType::Unknown
+    }
 }
 
 // MiningJob is now defined in server.rs
@@ -130,11 +167,26 @@ impl StratumClient {
         state_guard.subscribed = true;
         state_guard.agent = params.user_agent.unwrap_or_else(|| "Unknown".to_string());
 
-        // Detect encoding type based on user agent
-        let agent_lower = state_guard.agent.to_lowercase();
-        if agent_lower.contains("bitmain") || agent_lower.contains("godminer") || agent_lower.contains("antminer") {
+        // Detect miner type and encoding based on user agent
+        let miner_type = detect_miner_type(&state_guard.agent);
+        state_guard.miner_type = miner_type;
+        
+        // Set encoding based on miner type
+        if miner_type == MinerType::Bitmain {
             state_guard.encoding = Encoding::Bitmain;
+        } else {
+            state_guard.encoding = Encoding::BigHeader;
         }
+
+        // Set extranonce size based on miner type
+        // IceRiver: extranonce = 2 bytes (4 hex chars)
+        // Bitmain: extranonce = 0 bytes (empty string)
+        let extranonce_size = match miner_type {
+            MinerType::IceRiver => 2,
+            MinerType::Bitmain => 0,
+            MinerType::Unknown => 2, // Default to IceRiver size for unknown miners
+        };
+        state_guard.extra_nonce = generate_extra_nonce(extranonce_size);
 
         let extra_nonce = state_guard.extra_nonce.clone();
         let encoding = state_guard.encoding;
@@ -143,14 +195,23 @@ impl StratumClient {
         state_guard.difficulty = default_difficulty;
         drop(state_guard);
 
-        log::info!("Stratum client subscribed from {} - Agent: {}, Encoding: {:?}", client_addr, agent, encoding);
+        log::info!(
+            "Stratum client subscribed from {} - Agent: {}, MinerType: {:?}, Encoding: {:?}, Extranonce size: {} bytes",
+            client_addr,
+            agent,
+            miner_type,
+            encoding,
+            extranonce_size
+        );
 
         // Build response based on encoding
         let result = if encoding == Encoding::Bitmain {
             // Bitmain format: [null, extranonce, size]
-            json!([null, extra_nonce, 8 - (extra_nonce.len() / 2)])
+            // Bitmain uses extranonce = 0 bytes, so size = 8 (full nonce size)
+            let extranonce_size_bytes = extra_nonce.len() / 2; // Convert hex chars to bytes
+            json!([null, extra_nonce, 8 - extranonce_size_bytes])
         } else {
-            // Standard format: [true, "EthereumStratum/1.0.0"]
+            // Standard format (IceRiver): [true, "EthereumStratum/1.0.0"]
             json!([true, "EthereumStratum/1.0.0"])
         };
 
@@ -554,15 +615,20 @@ impl StratumClient {
                                     }
 
                                     // 2. IMMEDIATELY send set_extranonce notification
+                                    // IceRiver: extranonce = 2 bytes, send as single string
+                                    // Bitmain: extranonce = 0 bytes, send as [extranonce, size] where size = 8
                                     let extranonce_notification = if encoding == Encoding::Bitmain {
+                                        // Bitmain format: [extranonce, size] where size = 8 (full nonce size since extranonce = 0)
+                                        let extranonce_size_bytes = extra_nonce.len() / 2; // Convert hex chars to bytes
                                         create_notification(
                                             "set_extranonce".to_string(),
                                             vec![
                                                 Value::String(extra_nonce.clone()),
-                                                Value::Number(serde_json::Number::from(8 - (extra_nonce.len() / 2))),
+                                                Value::Number(serde_json::Number::from(8 - extranonce_size_bytes)),
                                             ],
                                         )
                                     } else {
+                                        // IceRiver format: single string (extranonce = 2 bytes)
                                         create_notification("set_extranonce".to_string(), vec![Value::String(extra_nonce)])
                                     };
                                     let extranonce_json = serde_json::to_string(&extranonce_notification).unwrap();

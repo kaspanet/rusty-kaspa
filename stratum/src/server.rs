@@ -329,38 +329,47 @@ impl StratumServer {
         // Use longer interval during IBD (60s) vs normal operation (10s)
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
         let mut is_ibd = false; // Track if we're in IBD based on error patterns
+        let mut last_template_time = tokio::time::Instant::now(); // Track last template distribution time for rate limiting
 
         loop {
             interval.tick().await;
 
             // Check if consensus is in transitional IBD state before attempting template build
-            let consensus_instance = consensus_manager.consensus();
-            let consensus_session = consensus_instance.unguarded_session();
-            let in_transitional_ibd = consensus_session.async_is_consensus_in_transitional_ibd_state().await;
+            // Get a fresh session each time to avoid Send issues
+            let in_transitional_ibd = {
+                let consensus_instance = consensus_manager.consensus();
+                let consensus_session = consensus_instance.unguarded_session();
+                consensus_session.async_is_consensus_in_transitional_ibd_state().await
+            };
 
             // Get current block template
             // Use the first authorized miner's address, or fall back to placeholder if none
-            let miner_address = {
-                let miner_addresses_read = miner_addresses.read();
-                // Get the first miner's address, or use placeholder
-                miner_addresses_read
-                    .values()
-                    .next()
-                    .cloned()
-                    .unwrap_or_else(|| Address::new(Prefix::Mainnet, Version::PubKey, &[0u8; 32]))
+            // Create address and miner_data in a separate scope to ensure Send safety
+            // Extract the address string to avoid holding Address across await points
+            let miner_data = {
+                let miner_address = {
+                    let miner_addresses_read = miner_addresses.read();
+                    miner_addresses_read
+                        .values()
+                        .next()
+                        .cloned()
+                        .unwrap_or_else(|| Address::new(Prefix::Mainnet, Version::PubKey, &[0u8; 32]))
+                };
+                
+                // Log which address we're using (do this while we have the address)
+                let has_miners = !miner_addresses.read().is_empty();
+                if has_miners {
+                    log::debug!("Using miner address for block template: {}", miner_address);
+                } else {
+                    log::debug!(
+                        "No authorized miners yet - using placeholder address for block template (will update once miners authorize)"
+                    );
+                }
+                
+                // Create miner_data immediately and drop the address
+                let script_pub_key = pay_to_address_script(&miner_address);
+                MinerData::new(script_pub_key, vec![])
             };
-
-            // Log which address we're using
-            if miner_addresses.read().is_empty() {
-                log::debug!(
-                    "No authorized miners yet - using placeholder address for block template (will update once miners authorize)"
-                );
-            } else {
-                log::debug!("Using miner address for block template: {}", miner_address);
-            }
-
-            let script_pub_key = pay_to_address_script(&miner_address);
-            let miner_data = MinerData::new(script_pub_key, vec![]);
 
             // Skip template building if in transitional IBD state
             // CRITICAL: During IBD, the virtual state and pruning points are changing,
@@ -393,9 +402,26 @@ impl StratumServer {
 
             let mining_manager_clone = mining_manager.clone();
             // Use the async get_block_template method on MiningManagerProxy
-            let template_result = mining_manager_clone.get_block_template(&consensus_session, miner_data.clone()).await;
+            // Get a fresh session for template building
+            let template_result = {
+                let consensus_instance = consensus_manager.consensus();
+                let consensus_session = consensus_instance.unguarded_session();
+                mining_manager_clone.get_block_template(&consensus_session, miner_data.clone()).await
+            };
             match template_result {
                 Ok(template) => {
+                    // CRITICAL: Template distribution rate limiting for Bitmain/IceRiver ASICs
+                    // These ASICs can have issues if they receive new jobs too frequently.
+                    // Add 250ms minimum delay between template distributions (matches bridge behavior).
+                    let elapsed_since_last_template = last_template_time.elapsed();
+                    const MIN_TEMPLATE_INTERVAL: tokio::time::Duration = tokio::time::Duration::from_millis(250);
+                    if elapsed_since_last_template < MIN_TEMPLATE_INTERVAL {
+                        let wait_time = MIN_TEMPLATE_INTERVAL - elapsed_since_last_template;
+                        log::debug!("Rate limiting template distribution - waiting {}ms (min interval: 250ms)", wait_time.as_millis());
+                        tokio::time::sleep(wait_time).await;
+                    }
+                    last_template_time = tokio::time::Instant::now();
+
                     // Successfully got template - reset IBD flag and interval if needed
                     if is_ibd {
                         log::info!("Block template building resumed after IBD - returning to normal polling interval");
@@ -414,9 +440,22 @@ impl StratumServer {
                     }
 
                     // Notify all connected clients
-                    let clients_read = clients.read();
-                    let client_count = clients_read.len();
-                    for (addr, tx) in clients_read.iter() {
+                    // CRITICAL: Add 500 microsecond delay between client notifications to prevent
+                    // network congestion and ASIC overload (matches bridge behavior)
+                    // Collect clients into a Vec first to avoid holding the lock across await points
+                    let clients_to_notify: Vec<(SocketAddr, mpsc::UnboundedSender<StratumNotification>)> = {
+                        let clients_read = clients.read();
+                        clients_read.iter().map(|(addr, tx)| (*addr, tx.clone())).collect()
+                    };
+                    let client_count = clients_to_notify.len();
+                    let mut client_index = 0;
+                    for (addr, tx) in clients_to_notify.iter() {
+                        // Add spacing delay between clients (except for the first one)
+                        if client_index > 0 {
+                            tokio::time::sleep(tokio::time::Duration::from_micros(500)).await;
+                        }
+                        client_index += 1;
+
                         // Use vardiff difficulty if enabled, otherwise use default
                         let difficulty_to_use = if vardiff_config.enabled {
                             let vardiff_states_read = vardiff_states.read();
@@ -754,6 +793,7 @@ impl StratumServer {
             // Check for duplicate nonce (before PoW validation, like JS pool)
             // The JS pool checks: if (this.contributions.has(nonce)) throw 'duplicate-share'
             // We track (job_id, nonce) pairs to detect duplicate submissions
+            // Note: We use the original job_id for duplicate checking, not the corrected one
             let nonce_key = (submission.job_id.clone(), submission.nonce);
             {
                 let mut seen = seen_nonces.write();
@@ -808,24 +848,110 @@ impl StratumServer {
                 last_cleanup = now;
             }
 
-            // Reconstruct block with nonce
-            // CRITICAL: Only set the nonce, do NOT modify the timestamp
-            // The pool code shows: template.header.nonce = nonce (no timestamp modification)
-            // Modifying the timestamp causes InvalidPoW errors because the block hash changes
-            log::debug!("[BLOCK] Reconstructing block for job {} with nonce 0x{:x}", submission.job_id, submission.nonce);
+            // CRITICAL: Job ID workaround for Bitmain/IceRiver ASICs
+            // These ASICs sometimes submit shares with incorrect job IDs. When a share is rejected
+            // due to low difficulty, we need to loop through previous job IDs to find the correct one.
+            // This is a workaround for a known bug in these ASIC firmware versions.
+            // We need to do this BEFORE checking stale templates, as the correct job might be older.
+            let mut current_job_id = submission.job_id.clone();
+            let mut current_job_to_check = job.clone();
+            let mut invalid_share = false;
+            const MAX_JOBS: u64 = 300; // Maximum number of jobs to check (matches bridge)
 
-            let mut mutable_block = job.template.block.clone();
-            mutable_block.header.nonce = submission.nonce;
-            // DO NOT modify timestamp - use the template's original timestamp
-            // The ASIC mines on the prePoWHash + timestamp we sent, but the node expects
-            // the original template timestamp when validating the block
-            mutable_block.header.finalize();
+            // CRITICAL: Validate share difficulty using PoW hash (not header hash)
+            // The pool code shows: state.checkWork(nonce) returns [isBlock, target]
+            // where target is the PoW hash value, which is compared against pool difficulty
+            // We must use the same PoW validation logic for both pool and network difficulty
 
-            let header_hash = mutable_block.header.hash;
-            log::debug!("[BLOCK] Reconstructed block hash: {}", header_hash);
+            // Create PoW state and check PoW hash
+            // CRITICAL: Create PoW state from header BEFORE setting nonce (like JS pool does)
+            // The JS pool does: state = getPoW(hash) then state.checkWork(nonce)
+            // So we need to create PoW state from the original template header, not the reconstructed one
+            let original_header = &current_job_to_check.template.block.header;
+            let pow_state = PowState::new(original_header);
+            let (mut pow_passed, mut pow_value) = pow_state.check_pow(submission.nonce);
+
+            // Calculate target from pool difficulty (job.difficulty)
+            // The pool uses calculateTarget(difficulty) which converts difficulty to a target
+            let mut pool_target = Self::calculate_target_from_difficulty(current_job_to_check.difficulty);
+
+            // Compare PoW hash value against pool difficulty target
+            // In the pool: if (target > calculateTarget(socket.data.difficulty)) throw 'low-difficulty-share'
+            // So we need: pow_value <= pool_target (lower PoW value = higher difficulty = better)
+            let meets_pool_difficulty = pow_value <= pool_target;
+
+            if !meets_pool_difficulty {
+                // Share doesn't meet difficulty - check if it's due to incorrect job ID
+                // Loop through previous job IDs (like the bridge does)
+                invalid_share = true;
+                let job_id_num: Option<u64> = current_job_id.parse().ok();
+                
+                // Try previous job IDs if job_id is numeric
+                if let Some(mut job_id_num_val) = job_id_num {
+                    let mut found_valid_job = false;
+                    let mut attempts = 0;
+                    const MAX_ATTEMPTS: u64 = 10; // Limit attempts to prevent infinite loop
+
+                    while attempts < MAX_ATTEMPTS && job_id_num_val > 1 {
+                        attempts += 1;
+                        job_id_num_val -= 1;
+                        let prev_job_id = format!("{:x}", job_id_num_val);
+
+                        // Check if this job ID exists
+                        let prev_job_opt = {
+                            let jobs_read = jobs.read();
+                            jobs_read.get(&prev_job_id).cloned()
+                        };
+                        if let Some(prev_job) = prev_job_opt {
+                            // Found a previous job - check if nonce meets difficulty for this job
+                            let prev_pow_state = PowState::new(&prev_job.template.block.header);
+                            let (prev_pow_passed, prev_pow_value) = prev_pow_state.check_pow(submission.nonce);
+                            let prev_pool_target = Self::calculate_target_from_difficulty(prev_job.difficulty);
+                            let prev_meets_difficulty = prev_pow_value <= prev_pool_target;
+
+                            if prev_meets_difficulty {
+                                // Found the correct job! Use this job instead
+                                current_job_id = prev_job_id.clone();
+                                current_job_to_check = prev_job;
+                                invalid_share = false;
+                                found_valid_job = true;
+                                // Update pow values for the correct job
+                                pow_passed = prev_pow_passed;
+                                pow_value = prev_pow_value;
+                                pool_target = prev_pool_target;
+                                log::debug!(
+                                    "[Job ID Workaround] Found correct job ID: {} (was submitted as {}) for nonce 0x{:x}",
+                                    current_job_id,
+                                    submission.job_id,
+                                    submission.nonce
+                                );
+                                break;
+                            }
+                        }
+
+                        // Check if we've exhausted all previous blocks
+                        if job_id_num_val == 1 || (job_id_num_val % MAX_JOBS) == ((submission.job_id.parse::<u64>().unwrap_or(0) % MAX_JOBS) + 1) {
+                            break;
+                        }
+                    }
+
+                    if !found_valid_job {
+                        invalid_share = true;
+                    }
+                } else {
+                    // Job ID is not numeric (hex format) - can't do workaround, just reject
+                    invalid_share = true;
+                }
+            }
+
+            // Use the correct job (may have been changed by job ID workaround)
+            // Clone it so we can still use current_job_to_check for vardiff state
+            let job = current_job_to_check.clone();
+            let submission_job_id = current_job_id.clone();
 
             // Check if template is stale (older than 10 seconds)
             // Stale templates can cause InvalidPoW errors
+            // NOTE: We check this AFTER the job ID workaround, as the correct job might be older
             let current_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
             let template_timestamp = job.template.block.header.timestamp as u64;
 
@@ -835,7 +961,7 @@ impl StratumServer {
                     // Reduce verbosity for expected errors (stale templates are normal when blocks arrive quickly)
                     log::debug!(
                         "[REJECTED] Stale template - job {} is {} seconds old (max 10s) - skipping submission",
-                        submission.job_id,
+                        submission_job_id,
                         template_age
                     );
                     // Remove from seen_nonces since we're rejecting
@@ -848,35 +974,18 @@ impl StratumServer {
                 }
             }
 
-            // CRITICAL: Validate share difficulty using PoW hash (not header hash)
-            // The pool code shows: state.checkWork(nonce) returns [isBlock, target]
-            // where target is the PoW hash value, which is compared against pool difficulty
-            // We must use the same PoW validation logic for both pool and network difficulty
-
-            // Create PoW state and check PoW hash
-            // CRITICAL: Create PoW state from header BEFORE setting nonce (like JS pool does)
-            // The JS pool does: state = getPoW(hash) then state.checkWork(nonce)
-            // So we need to create PoW state from the original template header, not the reconstructed one
-            let original_header = &job.template.block.header;
-            let pow_state = PowState::new(original_header);
-            let (pow_passed, pow_value) = pow_state.check_pow(submission.nonce);
-
-            // Calculate target from pool difficulty (job.difficulty)
-            // The pool uses calculateTarget(difficulty) which converts difficulty to a target
-            let pool_target = Self::calculate_target_from_difficulty(job.difficulty);
-
             // Log PoW validation details only for blocks that pass network difficulty or on errors
             if pow_passed {
                 log::info!(
                     "[BLOCK FOUND] Job {} - Nonce: 0x{:x}, PoW value: {}, Network target passed! Submitting to consensus...",
-                    submission.job_id,
+                    submission_job_id,
                     submission.nonce,
                     pow_value
                 );
             } else {
                 log::debug!(
                     "[PoW] Job {} - Nonce: 0x{:x}, PoW value: {}, Pool target: {}, Network passed: {}",
-                    submission.job_id,
+                    submission_job_id,
                     submission.nonce,
                     pow_value,
                     pool_target,
@@ -884,12 +993,23 @@ impl StratumServer {
                 );
             }
 
-            // Compare PoW hash value against pool difficulty target
-            // In the pool: if (target > calculateTarget(socket.data.difficulty)) throw 'low-difficulty-share'
-            // So we need: pow_value <= pool_target (lower PoW value = higher difficulty = better)
-            let meets_pool_difficulty = pow_value <= pool_target;
+            // Reconstruct block with nonce (only if share is valid)
+            // CRITICAL: Only set the nonce, do NOT modify the timestamp
+            // The pool code shows: template.header.nonce = nonce (no timestamp modification)
+            // Modifying the timestamp causes InvalidPoW errors because the block hash changes
+            log::debug!("[BLOCK] Reconstructing block for job {} with nonce 0x{:x}", submission_job_id, submission.nonce);
 
-            if !meets_pool_difficulty {
+            let mut mutable_block = job.template.block.clone();
+            mutable_block.header.nonce = submission.nonce;
+            // DO NOT modify timestamp - use the template's original timestamp
+            // The ASIC mines on the prePoWHash + timestamp we sent, but the node expects
+            // the original template timestamp when validating the block
+            mutable_block.header.finalize();
+
+            let header_hash = mutable_block.header.hash;
+            log::debug!("[BLOCK] Reconstructed block hash: {} (job: {})", header_hash, submission_job_id);
+
+            if invalid_share {
                 // Send rejection response to client
                 if let Some(ref response_tx) = submission.response_tx {
                     let _ = response_tx.send(false);
@@ -902,17 +1022,18 @@ impl StratumServer {
                     let mut vardiff_states_write = vardiff_states.write();
 
                     // Initialize vardiff state if it doesn't exist (even for rejected shares)
-                    // Use job.difficulty as the starting point since that's what the miner is actually mining at
+                    // Use current_job_to_check.difficulty as the starting point since that's what the miner is actually mining at
+                    let job_difficulty = current_job_to_check.difficulty;
                     vardiff_states_write.entry(submission.client_addr).or_insert_with(|| {
                         log::debug!(
                             "Initialized vardiff state for {} with difficulty {} (from job)",
                             submission.client_addr,
-                            job.difficulty
+                            job_difficulty
                         );
                         ClientVardiffState {
                             last_share: 0,
                             last_difficulty_change: now_ms,
-                            current_difficulty: job.difficulty, // Use job difficulty - this is what the miner is mining at
+                            current_difficulty: job_difficulty, // Use job difficulty - this is what the miner is mining at
                             share_count: 0,
                             connected_at: now_ms,
                             rejected_share_count: 0,
@@ -923,13 +1044,13 @@ impl StratumServer {
                     if let Some(vardiff_state) = vardiff_states_write.get_mut(&submission.client_addr) {
                         // If the job difficulty is higher than current difficulty, update it
                         // This handles the case where difficulty was increased but vardiff state wasn't updated
-                        if job.difficulty > vardiff_state.current_difficulty {
+                        if job_difficulty > vardiff_state.current_difficulty {
                             log::debug!(
                                 "Updating vardiff state difficulty from {} to {} (job difficulty is higher)",
                                 vardiff_state.current_difficulty,
-                                job.difficulty
+                                job_difficulty
                             );
-                            vardiff_state.current_difficulty = job.difficulty;
+                            vardiff_state.current_difficulty = job_difficulty;
                         }
 
                         // Track time since last share (accepted or rejected) for vardiff adjustment
@@ -1001,7 +1122,7 @@ impl StratumServer {
                 log::debug!(
                     "[REJECTED] Share from {} does not meet pool difficulty (job: {}, difficulty: {}, PoW value: {}, target: {})",
                     submission.client_addr,
-                    submission.job_id,
+                    submission_job_id,
                     job.difficulty,
                     pow_value,
                     pool_target
@@ -1054,7 +1175,7 @@ impl StratumServer {
                     log::info!(
                         "Share accepted from {} (job: {}, difficulty: {}, PoW: {}, total shares: {})",
                         submission.client_addr,
-                        submission.job_id,
+                        submission_job_id,
                         job.difficulty,
                         pow_value,
                         share_count
@@ -1081,7 +1202,7 @@ impl StratumServer {
                     log::info!(
                         "Share accepted from {} (job: {}, difficulty: {}, PoW: {}, total shares: {})",
                         submission.client_addr,
-                        submission.job_id,
+                        submission_job_id,
                         job.difficulty,
                         pow_value,
                         share_count
