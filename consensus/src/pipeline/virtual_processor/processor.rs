@@ -1065,7 +1065,7 @@ impl VirtualStateProcessor {
                 &virtual_state.mergeset_rewards,
                 &virtual_state.mergeset_non_daa,
             )
-            .unwrap();
+            .map_err(|e| RuleError::BadCoinbasePayload(e))?;
         txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);

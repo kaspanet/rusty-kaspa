@@ -1,7 +1,7 @@
 use super::VirtualStateProcessor;
 use crate::{
     errors::{
-        BlockProcessResult,
+        BlockProcessResult, RuleError,
         RuleError::{
             BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext,
             WrongHeaderPruningPoint,
@@ -268,11 +268,13 @@ impl VirtualStateProcessor {
         mergeset_non_daa: &BlockHashSet,
     ) -> BlockProcessResult<()> {
         // Extract only miner data from the provided coinbase
-        let miner_data = self.coinbase_manager.deserialize_coinbase_payload(&coinbase.payload).unwrap().miner_data;
+        let miner_data = self.coinbase_manager.deserialize_coinbase_payload(&coinbase.payload)
+            .map_err(|e| RuleError::BadCoinbasePayload(e))?
+            .miner_data;
         let expected_coinbase = self
             .coinbase_manager
             .expected_coinbase_transaction(daa_score, miner_data, ghostdag_data, mergeset_rewards, mergeset_non_daa)
-            .unwrap()
+            .map_err(|e| RuleError::BadCoinbasePayload(e))?
             .tx;
         if hashing::tx::hash(coinbase) != hashing::tx::hash(&expected_coinbase) {
             Err(BadCoinbaseTransaction)
