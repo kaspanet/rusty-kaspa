@@ -294,9 +294,8 @@ impl Rpc {
                 if argv.is_empty() {
                     return Err(Error::custom("Missing startHash argument"));
                 };
-                let start_hash = RpcHash::from_hex(argv.remove(0).as_str())?;
 
-                argv.reverse(); // reverse so we can pop from the end
+                let start_hash = RpcHash::from_hex(argv.remove(0).as_str())?;
 
                 let verbosity_level_i32 = argv.pop().and_then(|arg| arg.parse::<i32>().ok()).unwrap_or_default();
                 let verbosity_level = RpcDataVerbosityLevel::try_from(verbosity_level_i32)?;
