@@ -1464,7 +1464,7 @@ mod bitcoind_tests {
     fn test_bitcoind_tests() {
         // Script test files are split into two versions to test behavior after KIP-10:
         //
-        // - script_tests-kip10.json: Tests expanded functionality with KIP-10 enabled
+        // - script_tests.json: Tests expanded functionality with KIP-10 enabled
         //
         // KIP-10 introduces two major changes:
         //
@@ -1484,7 +1484,7 @@ mod bitcoind_tests {
         // When KIP-10 is disabled (pre-activation), the new opcodes will return an InvalidOpcode error
         // and arithmetic is limited to 4 bytes. When enabled, scripts gain full access to transaction
         // data and 8-byte arithmetic capabilities.
-        let file_name = "script_tests-kip10.json";
+        let file_name = "script_tests.json";
         let file =
             File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name)).expect("Could not find test file");
         let reader = BufReader::new(file);
