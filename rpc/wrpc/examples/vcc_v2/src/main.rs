@@ -67,7 +67,7 @@ async fn get_vcc_v2() -> Result<()> {
     // and keep iterating checkpoints to checkpoints to get a live view (high reactivity environment)
     let pp_hash = dag_info.pruning_point_hash;
 
-    let response = client.get_virtual_chain_from_block_v2(pp_hash.into(), Some(RpcDataVerbosityLevel::High), None).await?;
+    let response = client.get_virtual_chain_from_block_v2(pp_hash, Some(RpcDataVerbosityLevel::High), None).await?;
 
     // keep track of accepted transaction ids
     let mut global_seen_tx = HashSet::<RpcHash>::with_capacity(30_000);
