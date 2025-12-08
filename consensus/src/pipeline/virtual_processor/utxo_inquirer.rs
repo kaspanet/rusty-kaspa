@@ -385,33 +385,27 @@ impl VirtualStateProcessor {
         match tx_ids.as_deref() {
             None => {
                 // no filter passed, using default accepted transactions by mergeset filter
-                let mut all_txs = Vec::new();
+                let total_accepted: usize = acceptance_data.iter().map(|mbad| mbad.accepted_transactions.len()).sum();
 
-                for mbad in acceptance_data.iter() {
-                    let mut index_iter = mbad.accepted_transactions.iter().map(|tx| tx.index_within_block as usize);
+                // accepted transactions data of this mergeset
+                let mut all_txs = Vec::with_capacity(total_accepted);
 
-                    if let Some(mut next_target_index) = index_iter.next() {
-                        all_txs.extend(
-                            self.block_transactions_store
-                                .get(mbad.block_hash)
-                                .map_err(|_| UtxoInquirerError::MissingBlockFromBlockTxStore(mbad.block_hash))?
-                                .iter()
-                                .enumerate()
-                                .filter_map(|(i, tx)| {
-                                    if i == next_target_index {
-                                        next_target_index = index_iter.next().unwrap_or(usize::MAX);
-                                        Some(tx.clone())
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .take(mbad.accepted_transactions.len()),
-                        )
-                    } else {
-                        continue;
-                    };
+                for mbad in acceptance_data {
+                    let block_txs = self
+                        .block_transactions_store
+                        .get(mbad.block_hash)
+                        .map_err(|_| UtxoInquirerError::MissingBlockFromBlockTxStore(mbad.block_hash))?;
+
+                    for accepted in &mbad.accepted_transactions {
+                        let idx = accepted.index_within_block as usize;
+
+                        let tx = block_txs
+                            .get(idx)
+                            .ok_or_else(|| UtxoInquirerError::MissingTransactionIndexOfBlock(idx, mbad.block_hash))?;
+
+                        all_txs.push(tx.clone());
+                    }
                 }
-
                 Ok(all_txs)
             }
             Some([]) => {
