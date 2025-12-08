@@ -333,10 +333,17 @@ impl StratumServer {
     ) {
         // TODO: Subscribe to new block template notifications
         // For now, poll periodically
+        // Use longer interval during IBD (60s) vs normal operation (10s)
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
+        let mut is_ibd = false; // Track if we're in IBD based on error patterns
         
         loop {
             interval.tick().await;
+            
+            // Check if consensus is in transitional IBD state before attempting template build
+            let consensus_instance = consensus_manager.consensus();
+            let consensus_session = consensus_instance.unguarded_session();
+            let in_transitional_ibd = consensus_session.async_is_consensus_in_transitional_ibd_state().await;
             
             // Get current block template
             // Use the first authorized miner's address, or fall back to placeholder if none
@@ -362,13 +369,47 @@ impl StratumServer {
             let script_pub_key = pay_to_address_script(&miner_address);
             let miner_data = MinerData::new(script_pub_key, vec![]);
 
+            // Skip template building if in transitional IBD state
+            // CRITICAL: During IBD, the virtual state and pruning points are changing,
+            // which makes templates invalid. We must NOT serve templates during IBD
+            // as blocks mined on them would be rejected.
+            if in_transitional_ibd {
+                if !is_ibd {
+                    log::info!("Node is in IBD - clearing templates and pausing template distribution (templates invalid during IBD)");
+                    is_ibd = true;
+                    interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+                    
+                    // Clear all jobs since they're invalid during IBD
+                    // Virtual state changes during IBD make templates stale
+                    let job_count = {
+                        let jobs_read = jobs.read();
+                        let count = jobs_read.len();
+                        drop(jobs_read);
+                        let mut jobs_write = jobs.write();
+                        jobs_write.clear();
+                        *current_job.write() = None;
+                        count
+                    };
+                    if job_count > 0 {
+                        log::info!("Cleared {} cached job(s) - templates invalid during IBD", job_count);
+                    }
+                }
+                log::debug!("IBD in progress - template building paused until IBD completes");
+                continue;
+            }
+
             let mining_manager_clone = mining_manager.clone();
-            let consensus_instance = consensus_manager.consensus();
-            let consensus_session = consensus_instance.unguarded_session();
             // Use the async get_block_template method on MiningManagerProxy
             let template_result = mining_manager_clone.get_block_template(&consensus_session, miner_data.clone()).await;
             match template_result {
                 Ok(template) => {
+                    // Successfully got template - reset IBD flag and interval if needed
+                    if is_ibd {
+                        log::info!("Block template building resumed after IBD - returning to normal polling interval");
+                        is_ibd = false;
+                        interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
+                    }
+                    
                     // Create new job from template
                     let job = Self::create_job_from_template(&template, &job_counter, default_difficulty);
                     
@@ -413,7 +454,27 @@ impl StratumServer {
                     }
                 }
                 Err(e) => {
-                    log::warn!("Failed to get block template: {}", e);
+                    let error_msg = e.to_string();
+                    // Check if this is an IBD-related error (missing reward data)
+                    if error_msg.contains("missing reward data") || error_msg.contains("bad coinbase payload") {
+                        // This is expected during IBD - clear templates and pause distribution
+                        if !is_ibd {
+                            log::info!("Node appears to be in IBD (missing reward data) - clearing templates and pausing distribution");
+                            is_ibd = true;
+                            interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+                            
+                            // Clear all jobs since they're invalid during IBD
+                            {
+                                let mut jobs_write = jobs.write();
+                                jobs_write.clear();
+                                *current_job.write() = None;
+                            }
+                        }
+                        log::debug!("IBD in progress (missing reward data) - template building paused until IBD completes");
+                    } else {
+                        // Other errors - log at warn level and keep normal interval
+                        log::warn!("Failed to get block template: {}", e);
+                    }
                 }
             }
         }
