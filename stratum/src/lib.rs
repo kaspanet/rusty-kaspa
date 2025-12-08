@@ -5,12 +5,11 @@
 //!
 //! The Stratum server is optional and can be enabled via feature flag or configuration.
 
+pub mod client;
 pub mod error;
 pub mod protocol;
 pub mod server;
-pub mod client;
 
-pub use server::{StratumServer, StratumConfig, BlockSubmission};
-pub use server::MiningJob;
 pub use error::StratumError;
-
+pub use server::MiningJob;
+pub use server::{BlockSubmission, StratumConfig, StratumServer, VardiffConfig};

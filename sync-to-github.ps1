@@ -31,7 +31,7 @@ if (-not (Test-Path $TargetPath)) {
 }
 
 # Directories/files to exclude
-$excludeDirs = @("target", "stratum-proxy", ".git")
+$excludeDirs = @("target", "stratum-proxy", "kaspad-status", ".git")
 $excludeFiles = @() # Add specific files if needed
 
 Write-Host "Excluding directories:" -ForegroundColor Yellow

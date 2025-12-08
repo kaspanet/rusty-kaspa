@@ -80,16 +80,9 @@ impl TryFrom<&StratumRequest> for MiningAuthorizeParams {
             return Err("Not a mining.authorize request".to_string());
         }
 
-        let username = req.params
-            .first()
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "Missing username parameter".to_string())?
-            .to_string();
-        let password = req.params
-            .get(1)
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "Missing password parameter".to_string())?
-            .to_string();
+        let username =
+            req.params.first().and_then(|v| v.as_str()).ok_or_else(|| "Missing username parameter".to_string())?.to_string();
+        let password = req.params.get(1).and_then(|v| v.as_str()).ok_or_else(|| "Missing password parameter".to_string())?.to_string();
 
         Ok(MiningAuthorizeParams { username, password })
     }
@@ -103,21 +96,10 @@ impl TryFrom<&StratumRequest> for MiningSubmitParams {
             return Err("Not a mining.submit request".to_string());
         }
 
-        let username = req.params
-            .first()
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "Missing username parameter".to_string())?
-            .to_string();
-        let job_id = req.params
-            .get(1)
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "Missing job_id parameter".to_string())?
-            .to_string();
-        let nonce = req.params
-            .get(2)
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "Missing nonce parameter".to_string())?
-            .to_string();
+        let username =
+            req.params.first().and_then(|v| v.as_str()).ok_or_else(|| "Missing username parameter".to_string())?.to_string();
+        let job_id = req.params.get(1).and_then(|v| v.as_str()).ok_or_else(|| "Missing job_id parameter".to_string())?.to_string();
+        let nonce = req.params.get(2).and_then(|v| v.as_str()).ok_or_else(|| "Missing nonce parameter".to_string())?.to_string();
 
         Ok(MiningSubmitParams { username, job_id, nonce })
     }
@@ -130,28 +112,15 @@ pub fn parse_message(data: &[u8]) -> Result<StratumRequest, serde_json::Error> {
 
 /// Create a success response
 pub fn create_success_response(id: Option<u64>, result: Value) -> StratumResponse {
-    StratumResponse {
-        id,
-        result: Some(result),
-        error: None,
-    }
+    StratumResponse { id, result: Some(result), error: None }
 }
 
 /// Create an error response
 pub fn create_error_response(id: Option<u64>, code: i32, message: String) -> StratumResponse {
-    StratumResponse {
-        id,
-        result: None,
-        error: Some(StratumErrorResponse {
-            code,
-            message,
-            data: None,
-        }),
-    }
+    StratumResponse { id, result: None, error: Some(StratumErrorResponse { code, message, data: None }) }
 }
 
 /// Create a notification message
 pub fn create_notification(method: String, params: Vec<Value>) -> StratumNotification {
     StratumNotification { method, params }
 }
-

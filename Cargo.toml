@@ -18,6 +18,7 @@ members = [
     "consensus/pow",
     "consensus/wasm",
     "kaspad",
+    "kaspad-status",
     "simpa",
     "wasm",
     "wasm/core",
@@ -44,6 +45,7 @@ members = [
     "rpc/wrpc/examples/simple_client",
     "mining",
     "mining/errors",
+    "stratum",
     "protocol/p2p",
     "protocol/flows",
     "components/addressmanager",
@@ -106,6 +108,7 @@ kaspa-merkle = { version = "1.0.1", path = "crypto/merkle" }
 kaspa-metrics-core = { version = "1.0.1", path = "metrics/core" }
 kaspa-mining = { version = "1.0.1", path = "mining" }
 kaspa-mining-errors = { version = "1.0.1", path = "mining/errors" }
+kaspa-stratum = { version = "1.0.1", path = "stratum" }
 kaspa-muhash = { version = "1.0.1", path = "crypto/muhash" }
 kaspa-notify = { version = "1.0.1", path = "notify" }
 kaspa-p2p-flows = { version = "1.0.1", path = "protocol/flows" }

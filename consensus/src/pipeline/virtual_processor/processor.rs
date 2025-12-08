@@ -1065,7 +1065,7 @@ impl VirtualStateProcessor {
                 &virtual_state.mergeset_rewards,
                 &virtual_state.mergeset_non_daa,
             )
-            .map_err(|e| RuleError::BadCoinbasePayload(e))?;
+            .map_err(RuleError::BadCoinbasePayload)?;
         txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
@@ -1178,9 +1178,25 @@ impl VirtualStateProcessor {
             let mut virtual_write = self.virtual_stores.write();
 
             virtual_write.utxo_set.clear().unwrap();
+            let mut chunk_count = 0u64;
+            let mut utxo_count = 0u64;
+            let mut last_log_time = std::time::Instant::now();
             for chunk in &pruning_meta_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(1000) {
-                virtual_write.utxo_set.write_from_iterator_without_cache(chunk).unwrap();
+                // Count items in chunk iterator (chunks are typically 1000, but last chunk may be smaller)
+                let chunk_vec: Vec<_> = chunk.collect();
+                let chunk_size = chunk_vec.len() as u64;
+                virtual_write.utxo_set.write_from_iterator_without_cache(chunk_vec).unwrap();
+                chunk_count += 1;
+                utxo_count += chunk_size;
+
+                // Log progress every 10,000 chunks or every 5 seconds, whichever comes first
+                let now = std::time::Instant::now();
+                if chunk_count % 10000 == 0 || now.duration_since(last_log_time).as_secs() >= 5 {
+                    info!("UTXO import progress: {} chunks processed, {} UTXOs copied", chunk_count, utxo_count);
+                    last_log_time = now;
+                }
             }
+            info!("UTXO import completed: {} chunks, {} UTXOs total", chunk_count, utxo_count);
         }
 
         let virtual_read = self.virtual_stores.upgradable_read();

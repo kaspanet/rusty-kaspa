@@ -3105,6 +3105,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-stratum"
+version = "1.0.1"
+dependencies = [
+ "async-trait",
+ "borsh",
+ "futures-util",
+ "hex",
+ "kaspa-addresses",
+ "kaspa-consensus-core",
+ "kaspa-consensusmanager",
+ "kaspa-core",
+ "kaspa-hashes",
+ "kaspa-math",
+ "kaspa-mining",
+ "kaspa-pow",
+ "kaspa-txscript",
+ "log",
+ "parking_lot",
+ "rand",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "kaspa-testing-integration"
 version = "1.0.1"
 dependencies = [
@@ -3668,6 +3694,7 @@ dependencies = [
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
+ "kaspa-stratum",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",
@@ -3686,6 +3713,19 @@ dependencies = [
  "tokio",
  "toml",
  "workflow-log",
+]
+
+[[package]]
+name = "kaspad-status"
+version = "1.0.1"
+dependencies = [
+ "clap 4.5.19",
+ "kaspa-core",
+ "kaspa-rpc-core",
+ "kaspa-wrpc-client",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

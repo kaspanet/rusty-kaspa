@@ -107,8 +107,8 @@ impl CoinbaseManager {
         // Add an output for each mergeset blue block (∩ DAA window), paying to the script reported by the block.
         // Note that combinatorically it is nearly impossible for a blue block to be non-DAA
         for blue in ghostdag_data.mergeset_blues.iter().filter(|h| !mergeset_non_daa.contains(h)) {
-            let reward_data = mergeset_rewards.get(blue)
-                .ok_or_else(|| CoinbaseError::MissingRewardData(*blue))?;
+            let blue_hash = *blue;
+            let reward_data = mergeset_rewards.get(blue).ok_or(CoinbaseError::MissingRewardData(blue_hash))?;
             if reward_data.subsidy + reward_data.total_fees > 0 {
                 outputs
                     .push(TransactionOutput::new(reward_data.subsidy + reward_data.total_fees, reward_data.script_public_key.clone()));
@@ -122,8 +122,8 @@ impl CoinbaseManager {
         // bps activation = crescendo activation
         if self.bps.activation().is_active(daa_score) {
             for red in ghostdag_data.mergeset_reds.iter() {
-                let reward_data = mergeset_rewards.get(red)
-                    .ok_or_else(|| CoinbaseError::MissingRewardData(*red))?;
+                let red_hash = *red;
+                let reward_data = mergeset_rewards.get(red).ok_or(CoinbaseError::MissingRewardData(red_hash))?;
                 if mergeset_non_daa.contains(red) {
                     red_reward += reward_data.total_fees;
                 } else {
@@ -132,8 +132,8 @@ impl CoinbaseManager {
             }
         } else {
             for red in ghostdag_data.mergeset_reds.iter().filter(|h| !mergeset_non_daa.contains(h)) {
-                let reward_data = mergeset_rewards.get(red)
-                    .ok_or_else(|| CoinbaseError::MissingRewardData(*red))?;
+                let red_hash = *red;
+                let reward_data = mergeset_rewards.get(red).ok_or(CoinbaseError::MissingRewardData(red_hash))?;
                 red_reward += reward_data.subsidy + reward_data.total_fees;
             }
         }
