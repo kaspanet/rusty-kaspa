@@ -1794,14 +1794,11 @@ async fn staging_consensus_test() {
 /// KIP-10 is now enabled by default from the genesis block, allowing scripts to access
 /// transaction data through introspection opcodes for advanced smart contract capabilities.
 #[tokio::test]
-async fn run_kip10_activation_test() {
+async fn kip10_test() {
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
     use kaspa_txscript::opcodes::codes::{Op0, OpTxInputSpk};
     use kaspa_txscript::pay_to_script_hash_script;
     use kaspa_txscript::script_builder::ScriptBuilder;
-
-    // KIP-10 is enabled from genesis (DAA score 0)
-    const KIP10_ACTIVATION_DAA_SCORE: u64 = 0;
 
     init_allocator_with_default_settings();
 
@@ -1832,7 +1829,7 @@ async fn run_kip10_activation_test() {
             cfg.params.genesis.hash = genesis_header.hash;
         })
         .edit_consensus_params(|p| {
-            p.crescendo_activation = ForkActivation::new(KIP10_ACTIVATION_DAA_SCORE);
+            p.crescendo_activation = ForkActivation::always();
         })
         .build();
 
@@ -2013,9 +2010,6 @@ async fn runtime_sig_op_counting_test() {
     };
     use kaspa_txscript::{opcodes::codes::*, script_builder::ScriptBuilder};
 
-    // Runtime sig op counting is enabled from genesis (DAA score 0)
-    const RUNTIME_SIGOP_ACTIVATION_DAA_SCORE: u64 = 0;
-
     init_allocator_with_default_settings();
 
     // Set up signing key for signature verification
@@ -2062,7 +2056,7 @@ async fn runtime_sig_op_counting_test() {
             cfg.params.genesis.hash = genesis_header.hash;
         })
         .edit_consensus_params(|p| {
-            p.crescendo_activation = ForkActivation::new(RUNTIME_SIGOP_ACTIVATION_DAA_SCORE);
+            p.crescendo_activation = ForkActivation::always();
         })
         .build();
 
