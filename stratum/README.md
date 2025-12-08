@@ -107,7 +107,7 @@ The Stratum server is designed to be:
 
 ## References
 
-- Based on the existing TypeScript/Bun stratum implementation in `pool/src/stratum/`
+- Based on the TypeScript/Bun stratum implementation by KaffinPX
 - Follows EthereumStratum/1.0.0 protocol specification
 - Compatible with Bitmain/GodMiner encoding format
 
