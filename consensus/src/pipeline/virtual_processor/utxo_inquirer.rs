@@ -435,6 +435,8 @@ impl VirtualStateProcessor {
             }
             Some(_more) => {
                 Err(UtxoInquirerFindTxsFromAcceptanceDataError::TxIdsFilterNeedsLessOrEqualThanOneElementError.into())
+                // TODO: currently there is no calling site that needs to make arbitrary filter by tx_ids with more than 1 element
+                // But it should be considered a future enhancement to address
                 // artifact implementation that has been commented, keeping it for track record as long as it's unimplemented
                 /*
 
