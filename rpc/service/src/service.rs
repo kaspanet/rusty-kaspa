@@ -455,9 +455,18 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         // If the high hash is equal to sink it means get_hashes_between didn't skip any hashes, and
         // there's space to add the sink anticone, otherwise we cannot add the anticone because
         // there's no guarantee that all of the anticone root ancestors will be present.
-        let sink_anticone = if high_hash == sink_hash { session.async_get_anticone(sink_hash).await? } else { vec![] };
-        // Prepend low hash to make it inclusive and append the sink anticone
-        let block_hashes = once(low_hash).chain(block_hashes).chain(sink_anticone).collect::<Vec<_>>();
+        let filtered_sink_anticone = if high_hash == sink_hash {
+            // Get the sink anticone and filter out duplicates: remove low_hash and any blocks already in block_hashes
+            // This prevents the bug where low_hash appears twice (once at the start and once in sink_anticone)
+            let sink_anticone = session.async_get_anticone(sink_hash).await?;
+            let mut seen_hashes: std::collections::HashSet<_> = once(low_hash).chain(block_hashes.iter().copied()).collect();
+            sink_anticone.into_iter().filter(|hash| seen_hashes.insert(*hash)).collect()
+        } else {
+            vec![]
+        };
+
+        // Prepend low hash to make it inclusive and append the filtered sink anticone
+        let block_hashes = once(low_hash).chain(block_hashes).chain(filtered_sink_anticone).collect::<Vec<_>>();
         let blocks = if request.include_blocks {
             let mut blocks = Vec::with_capacity(block_hashes.len());
             for hash in block_hashes.iter().copied() {
