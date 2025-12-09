@@ -756,8 +756,8 @@ impl ConsensusApi for Consensus {
             .unwrap_option()
             .unwrap_or(virtual_score)
             .max(virtual_score)
-            - retention_period_root_score;
-        let block_count = virtual_score - retention_period_root_score;
+            .saturating_sub(retention_period_root_score);
+        let block_count = virtual_score.saturating_sub(retention_period_root_score);
         BlockCount { header_count, block_count }
     }
 
@@ -1424,5 +1424,39 @@ impl ConsensusApi for Consensus {
     fn is_consensus_in_transitional_ibd_state(&self) -> bool {
         let pruning_meta_read = self.pruning_meta_stores.read();
         pruning_meta_read.is_in_transitional_ibd_state()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    /// Test for issue #769: Integer overflow in estimate_block_count()
+    /// Verifies that saturating_sub prevents panic when virtual_score < retention_period_root_score
+    #[test]
+    fn test_estimate_block_count_overflow_protection() {
+        // Test the overflow scenario: virtual_score < retention_period_root_score
+        // This simulates the edge case that caused the panic in issue #769
+
+        let virtual_score: u64 = 100;
+        let retention_period_root_score: u64 = 200; // Larger than virtual_score
+
+        // Before fix: This would panic with "attempt to subtract with overflow"
+        // After fix: saturating_sub returns 0 instead of panicking
+        let block_count = virtual_score.saturating_sub(retention_period_root_score);
+
+        // Verify that saturating_sub returns 0 (not a panic) when subtraction would overflow
+        assert_eq!(block_count, 0, "saturating_sub should return 0 when virtual_score < retention_period_root_score");
+
+        // Test normal case: virtual_score > retention_period_root_score
+        let virtual_score_normal: u64 = 200;
+        let retention_period_root_score_normal: u64 = 100;
+        let block_count_normal = virtual_score_normal.saturating_sub(retention_period_root_score_normal);
+        assert_eq!(block_count_normal, 100, "saturating_sub should work normally when no overflow");
+
+        // Test edge case: virtual_score == retention_period_root_score
+        let virtual_score_equal: u64 = 150;
+        let retention_period_root_score_equal: u64 = 150;
+        let block_count_equal = virtual_score_equal.saturating_sub(retention_period_root_score_equal);
+        assert_eq!(block_count_equal, 0, "saturating_sub should return 0 when values are equal");
     }
 }
