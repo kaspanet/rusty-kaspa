@@ -37,7 +37,7 @@ impl RequestHeadersFlow {
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         const MAX_BLOCKS: usize = 1 << 10;
         // Internal consensus logic requires that `max_blocks > mergeset_size_limit`
-        let max_blocks = max(MAX_BLOCKS, self.ctx.config.mergeset_size_limit().upper_bound() as usize + 1);
+        let max_blocks = max(MAX_BLOCKS, self.ctx.config.mergeset_size_limit().after() as usize + 1);
 
         loop {
             let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestHeaders)?;

@@ -53,9 +53,7 @@ use crate::common;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
-use kaspa_consensus_core::errors::tx::TxRuleError;
 use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
-use kaspa_consensus_core::merkle::calc_hash_merkle_root;
 use kaspa_consensus_core::muhash::MuHashExtensions;
 use kaspa_core::core::Core;
 use kaspa_core::signals::Shutdown;
@@ -448,7 +446,7 @@ async fn header_in_isolation_validation_test() {
     {
         let mut block = block.clone();
         block.header.hash = 3.into();
-        block.header.parents_by_level[0] = vec![];
+        block.header.parents_by_level.set_direct_parents(vec![]);
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::NoParents) => {}
             res => {
@@ -461,7 +459,8 @@ async fn header_in_isolation_validation_test() {
         let mut block = block.clone();
         block.header.hash = 4.into();
         let max_block_parents = config.max_block_parents().after() as usize;
-        block.header.parents_by_level[0] = std::iter::repeat_n(config.genesis.hash, max_block_parents + 1).collect();
+        let parents = std::iter::repeat_n(config.genesis.hash, max_block_parents + 1).collect();
+        block.header.parents_by_level.set_direct_parents(parents);
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TooManyParents(num_parents, limit)) => {
                 assert_eq!(max_block_parents + 1, num_parents);
@@ -488,7 +487,8 @@ async fn incest_test() {
     virtual_state_task.await.unwrap();
 
     let mut block = consensus.build_header_only_block_with_parents(2.into(), vec![config.genesis.hash]);
-    block.header.parents_by_level[0] = vec![1.into(), config.genesis.hash];
+    block.header.parents_by_level.set_direct_parents(vec![1.into(), config.genesis.hash]);
+
     let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
     match virtual_state_task.await {
         Err(RuleError::InvalidParentsRelation(a, b)) => {
@@ -512,7 +512,8 @@ async fn missing_parents_test() {
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
     let mut block = consensus.build_header_only_block_with_parents(1.into(), vec![config.genesis.hash]);
-    block.header.parents_by_level[0] = vec![0.into()];
+    block.header.parents_by_level.set_direct_parents(vec![0.into()]);
+
     let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
     match virtual_state_task.await {
         Err(RuleError::MissingParents(missing)) => {
@@ -1131,8 +1132,10 @@ fn rpc_header_to_header(rpc_header: &RPCBlockHeader) -> Header {
         rpc_header
             .Parents
             .iter()
-            .map(|item| item.ParentHashes.iter().map(|parent| Hash::from_str(parent).unwrap()).collect())
-            .collect(),
+            .map(|item| item.ParentHashes.iter().map(|parent| Hash::from_str(parent).unwrap()).collect::<Vec<Hash>>())
+            .collect::<Vec<Vec<Hash>>>()
+            .try_into()
+            .unwrap(),
         Hash::from_str(&rpc_header.HashMerkleRoot).unwrap(),
         Hash::from_str(&rpc_header.AcceptedIDMerkleRoot).unwrap(),
         Hash::from_str(&rpc_header.UTXOCommitment).unwrap(),
@@ -1472,7 +1475,7 @@ async fn difficulty_test() {
         let fake_genesis = Header {
             hash: test.config.genesis.hash,
             version: 0,
-            parents_by_level: vec![],
+            parents_by_level: Vec::<Vec<Hash>>::new().try_into().unwrap(),
             hash_merkle_root: 0.into(),
             accepted_id_merkle_root: 0.into(),
             utxo_commitment: 0.into(),
@@ -1784,28 +1787,27 @@ async fn staging_consensus_test() {
     core.join(joins);
 }
 
-/// Tests the KIP-10 transaction introspection opcode activation by verifying that:
-/// 1. Transactions using these opcodes are rejected before the activation DAA score
-/// 2. The same transactions are accepted at and after the activation score
-/// Uses OpInputSpk opcode as an example
+/// Tests the KIP-10 transaction introspection opcodes by verifying that:
+/// 1. Transactions using these opcodes are accepted from genesis (DAA score 0)
+/// 2. The introspection opcodes (like OpInputSpk) function correctly in transaction validation
+///
+/// KIP-10 is now enabled by default from the genesis block, allowing scripts to access
+/// transaction data through introspection opcodes for advanced smart contract capabilities.
 #[tokio::test]
-async fn run_kip10_activation_test() {
+async fn kip10_test() {
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
     use kaspa_txscript::opcodes::codes::{Op0, OpTxInputSpk};
     use kaspa_txscript::pay_to_script_hash_script;
     use kaspa_txscript::script_builder::ScriptBuilder;
-
-    // KIP-10 activates at DAA score 3 in this test
-    const KIP10_ACTIVATION_DAA_SCORE: u64 = 3;
 
     init_allocator_with_default_settings();
 
     // Create P2SH script that attempts to use OpInputSpk - this will be our test subject
     // The script should fail before KIP-10 activation and succeed after
     let redeem_script = ScriptBuilder::new()
-        .add_op(Op0).unwrap() // Push 0 for input index
-        .add_op(OpTxInputSpk).unwrap() // Get the input's script pubkey
-        .drain();
+            .add_op(Op0).unwrap() // Push 0 for input index
+            .add_op(OpTxInputSpk).unwrap() // Get the input's script pubkey
+            .drain();
     let spk = pay_to_script_hash_script(&redeem_script);
 
     // Set up initial UTXO with our test script
@@ -1827,7 +1829,7 @@ async fn run_kip10_activation_test() {
             cfg.params.genesis.hash = genesis_header.hash;
         })
         .edit_consensus_params(|p| {
-            p.crescendo_activation = ForkActivation::new(KIP10_ACTIVATION_DAA_SCORE);
+            p.crescendo_activation = ForkActivation::always();
         })
         .build();
 
@@ -1837,14 +1839,8 @@ async fn run_kip10_activation_test() {
     consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
     consensus.init();
 
-    // Build blockchain up to one block before activation
-    let mut index = 0;
-    for _ in 0..KIP10_ACTIVATION_DAA_SCORE - 1 {
-        let parent = if index == 0 { config.genesis.hash } else { index.into() };
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).await.unwrap();
-        index += 1;
-    }
-    assert_eq!(consensus.get_virtual_daa_score(), index);
+    // Start from genesis block
+    let index = 0;
 
     // Create transaction that attempts to use the KIP-10 opcode
     let mut tx = Transaction::new(
@@ -1868,29 +1864,8 @@ async fn run_kip10_activation_test() {
     // This triggers storage mass population
     let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
     let tx = tx.tx.unwrap_or_clone();
-
-    // Test 1: Build empty block, then manually insert invalid tx and verify consensus rejects it
-    {
-        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-
-        // First build block without transactions
-        let mut block =
-            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
-
-        // Insert our test transaction and recalculate block hashes
-        block.transactions.push(tx.clone());
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
-        assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
-        assert_eq!(consensus.lkg_virtual_state.load().daa_score, 2);
-        index += 1;
-    }
-    // // Add one more block to reach activation score
-    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
-    index += 1;
-
-    // Test 2: Verify the same transaction is accepted after activation
-    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx.clone()]).await;
+    // Verify the transaction with KIP-10 opcodes is accepted
+    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![config.genesis.hash], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }
@@ -1949,11 +1924,8 @@ async fn payload_test() {
 }
 
 #[tokio::test]
-async fn payload_activation_test() {
+async fn payload_for_native_tx_test() {
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-
-    // Set payload activation at DAA score 3 for this test
-    const PAYLOAD_ACTIVATION_DAA_SCORE: u64 = 3;
 
     init_allocator_with_default_settings();
 
@@ -1980,9 +1952,6 @@ async fn payload_activation_test() {
             let genesis_header: Header = (&cfg.params.genesis).into();
             cfg.params.genesis.hash = genesis_header.hash;
         })
-        .edit_consensus_params(|p| {
-            p.crescendo_activation = ForkActivation::new(PAYLOAD_ACTIVATION_DAA_SCORE);
-        })
         .build();
 
     let consensus = TestConsensus::new(&config);
@@ -1990,15 +1959,6 @@ async fn payload_activation_test() {
     consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
     consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
     consensus.init();
-
-    // Build blockchain up to one block before activation
-    let mut index = 0;
-    for _ in 0..PAYLOAD_ACTIVATION_DAA_SCORE - 1 {
-        let parent = if index == 0 { config.genesis.hash } else { index.into() };
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).await.unwrap();
-        index += 1;
-    }
-    assert_eq!(consensus.get_virtual_daa_score(), index);
 
     // Create transaction with large payload
     let large_payload = vec![0u8; (config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
@@ -2019,53 +1979,36 @@ async fn payload_activation_test() {
     tx_with_payload.finalize();
     let tx_id = tx_with_payload.id();
 
-    // Test 1: Build empty block, then manually insert invalid tx and verify consensus rejects it
-    {
-        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-
-        // First build block without transactions
-        let mut block =
-            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
-
-        let mut tx = MutableTransaction::from_tx(tx_with_payload.clone());
-        // This triggers storage mass population
-        let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
-
-        // Insert our test transaction and recalculate block hashes
-        block.transactions.push(tx.tx.unwrap_or_clone());
-
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
-        assert!(matches!(block_status, Err(RuleError::TxInContextFailed(tx, TxRuleError::NonCoinbaseTxHasPayload)) if tx == tx_id));
-        assert_eq!(consensus.lkg_virtual_state.load().daa_score, PAYLOAD_ACTIVATION_DAA_SCORE - 1);
-        index += 1;
-    }
-
-    // Add one more block to reach activation score
-    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
-    index += 1;
-
     let mut tx = MutableTransaction::from_tx(tx_with_payload.clone());
     // This triggers storage mass population
     let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
 
     // Test 2: Verify the same transaction is accepted after activation
-    let status =
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx.tx.unwrap_or_clone()]).await;
+    let status = consensus.add_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], vec![tx.tx.unwrap_or_clone()]).await;
 
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }
 
+/// Tests runtime signature operation counting by verifying that:
+/// 1. Transactions are validated using runtime (execution-time) sig op counting from genesis (DAA score 0)
+/// 2. Only executed signature operations are counted, not all opcodes in the script
+///
+/// Runtime sig op counting is now enabled by default from genesis. This allows scripts with
+/// multiple signature opcodes to pass validation if only a subset are actually executed
+/// (e.g., in if-branches), as opposed to static counting which counts all sig ops regardless
+/// of execution path.
+///
+/// Test scenario: A P2SH script with sig_op_count=1 contains 3 CheckSig opcodes, but only 1
+/// is executed due to conditional logic. With runtime counting enabled from genesis, this
+/// transaction is accepted because only 1 sig op is actually executed, even though static
+/// analysis would see 3 sig ops.
 #[tokio::test]
 async fn runtime_sig_op_counting_test() {
     use kaspa_consensus_core::{
         hashing::sighash::SigHashReusedValuesUnsync, hashing::sighash_type::SIG_HASH_ALL, subnets::SUBNETWORK_ID_NATIVE,
     };
     use kaspa_txscript::{opcodes::codes::*, script_builder::ScriptBuilder};
-
-    // Runtime sig op counting activates at DAA score 3
-    const RUNTIME_SIGOP_ACTIVATION_DAA_SCORE: u64 = 3;
 
     init_allocator_with_default_settings();
 
@@ -2113,7 +2056,7 @@ async fn runtime_sig_op_counting_test() {
             cfg.params.genesis.hash = genesis_header.hash;
         })
         .edit_consensus_params(|p| {
-            p.crescendo_activation = ForkActivation::new(RUNTIME_SIGOP_ACTIVATION_DAA_SCORE);
+            p.crescendo_activation = ForkActivation::always();
         })
         .build();
 
@@ -2124,12 +2067,7 @@ async fn runtime_sig_op_counting_test() {
     consensus.init();
 
     // Build blockchain up to one block before activation
-    let mut index = 0;
-    for _ in 0..RUNTIME_SIGOP_ACTIVATION_DAA_SCORE - 1 {
-        let parent = if index == 0 { config.genesis.hash } else { index.into() };
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).await.unwrap();
-        index += 1;
-    }
+    let index = 0;
 
     // Create transaction spending P2SH with 1 sig op limit
     let mut tx = Transaction::new(
@@ -2138,7 +2076,7 @@ async fn runtime_sig_op_counting_test() {
             initial_utxo_collection[0].0,
             vec![], // Placeholder for signature script
             0,
-            1, // Only allowing 1 sig op - important for test
+            1, // Script declares 1 sig op (will execute only 1 despite having 3 CheckSig opcodes)
         )],
         vec![TransactionOutput::new(initial_utxo_collection[0].1.amount - 5000, ScriptPublicKey::from_vec(0, vec![OpTrue]))],
         0,
@@ -2171,24 +2109,9 @@ async fn runtime_sig_op_counting_test() {
     let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
     let tx = tx.tx.unwrap_or_clone();
 
-    // Test 1: Before activation, tx should be rejected due to static sig op counting (sees 3 ops)
-    {
-        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-        let mut block =
-            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
-        block.transactions.push(tx.clone());
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
-        assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
-        index += 1;
-    }
-
-    // Add block to reach activation
-    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
-    index += 1;
-
-    // Test 2: After activation, tx should be accepted as runtime counting only sees 1 executed sig op
-    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx]).await;
+    // Verify transaction is accepted with runtime sig op counting from genesis
+    // Runtime counting sees only 1 executed sig op (in the IF branch), not the 3 total CheckSig opcodes
+    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![config.genesis.hash], vec![tx]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
 }
 
@@ -2274,7 +2197,7 @@ async fn indirect_parents_test() {
         let hash: Hash = i.into();
         consensus.add_header_only_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
-        if consensus.get_header(*selected_chain.last().unwrap()).unwrap().parents_by_level.len() >= 3 {
+        if consensus.get_header(*selected_chain.last().unwrap()).unwrap().parents_by_level.expanded_len() >= 3 {
             level_3_count += 1;
         }
 

@@ -62,36 +62,3 @@ impl RuntimeSigOpCounter {
         self.sig_op_limit - self.sig_op_remaining
     }
 }
-
-pub trait SigOpConsumer {
-    fn consume_sig_op(&mut self) -> Result<(), TxScriptError>;
-
-    fn consume_falcon_sig_ops(&mut self) -> Result<(), TxScriptError>;
-}
-
-impl SigOpConsumer for RuntimeSigOpCounter {
-    fn consume_sig_op(&mut self) -> Result<(), TxScriptError> {
-        RuntimeSigOpCounter::consume_sig_op(self)
-    }
-
-    fn consume_falcon_sig_ops(&mut self) -> Result<(), TxScriptError> {
-        RuntimeSigOpCounter::consume_falcon_sig_ops(self)
-    }
-}
-impl SigOpConsumer for Option<RuntimeSigOpCounter> {
-    fn consume_sig_op(&mut self) -> Result<(), TxScriptError> {
-        if let Some(consumer) = self {
-            consumer.consume_sig_op()
-        } else {
-            Ok(())
-        }
-    }
-
-    fn consume_falcon_sig_ops(&mut self) -> Result<(), TxScriptError> {
-        if let Some(consumer) = self {
-            consumer.consume_falcon_sig_ops()
-        } else {
-            Ok(())
-        }
-    }
-}
