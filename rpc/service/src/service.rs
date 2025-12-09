@@ -456,8 +456,18 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         // there's space to add the sink anticone, otherwise we cannot add the anticone because
         // there's no guarantee that all of the anticone root ancestors will be present.
         let sink_anticone = if high_hash == sink_hash { session.async_get_anticone(sink_hash).await? } else { vec![] };
-        // Prepend low hash to make it inclusive and append the sink anticone
-        let block_hashes = once(low_hash).chain(block_hashes).chain(sink_anticone).collect::<Vec<_>>();
+        
+        // Filter out duplicates: remove low_hash and any blocks already in block_hashes from sink_anticone
+        // This prevents the bug where low_hash appears twice (once at the start and once in sink_anticone)
+        let mut seen_hashes = std::collections::HashSet::new();
+        seen_hashes.insert(low_hash);
+        for hash in &block_hashes {
+            seen_hashes.insert(*hash);
+        }
+        let filtered_sink_anticone: Vec<_> = sink_anticone.into_iter().filter(|hash| seen_hashes.insert(*hash)).collect();
+        
+        // Prepend low hash to make it inclusive and append the filtered sink anticone
+        let block_hashes = once(low_hash).chain(block_hashes).chain(filtered_sink_anticone).collect::<Vec<_>>();
         let blocks = if request.include_blocks {
             let mut blocks = Vec::with_capacity(block_hashes.len());
             for hash in block_hashes.iter().copied() {
