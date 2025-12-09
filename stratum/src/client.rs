@@ -170,7 +170,6 @@ impl StratumClient {
         // Detect miner type and encoding based on user agent
         let miner_type = detect_miner_type(&state_guard.agent);
         state_guard.miner_type = miner_type;
-        
         // Set encoding based on miner type
         if miner_type == MinerType::Bitmain {
             state_guard.encoding = Encoding::Bitmain;
@@ -490,7 +489,7 @@ impl StratumClient {
             while let Some(notification) = notification_rx.recv().await {
                 // Handle mining.notify to store job information
                 if notification.method == "mining.notify" && !notification.params.is_empty() {
-                    log::info!("Received mining.notify notification with {} params", notification.params.len());
+                    log::debug!("Received mining.notify notification with {} params", notification.params.len());
                     if let (Some(Value::String(job_id)), Some(Value::String(header_hash))) =
                         (notification.params.first(), notification.params.get(1))
                     {
@@ -500,7 +499,7 @@ impl StratumClient {
                             jobs_write.insert(job_id.clone(), header_hash.clone());
                             *current_job_for_notify.write() = Some(job_id.clone());
                         }
-                        log::info!("Stored new job: {} with header_hash: {}", job_id, header_hash);
+                        log::debug!("Stored new job: {} with header_hash: {}", job_id, header_hash);
                     } else {
                         log::warn!("mining.notify params format unexpected: {:?}", notification.params);
                     }
