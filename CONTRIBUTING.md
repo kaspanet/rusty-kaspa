@@ -6,7 +6,7 @@ We welcome contributions of all sizes and there are many opportunities to contri
 
 Reach out to `@Node Developers` in Discord in the [#development](https://discord.com/channels/599153230659846165/755890250643144788) channel.
 
-Follow along the R&D Telegram group.
+Follow along the R&D Telegram group [@kasparnd](https://t.me/c/kasparnd).
 
 ## Quick summary
 
@@ -15,10 +15,19 @@ Follow along the R&D Telegram group.
 - Write detailed pull requests descriptions: explain what you changed, why, design decisions, and any trade-offs.
 - **Anyone** willing to contribute is encouraged to review pull requests and ask questions. Your approval and review counts!
 
+## Reviewing Pull Requests
+
+If you can meaningfully review a pull request, please do so even if you have not contributed code to the repo. This helps in improving the quality of code and gives you a great opportunity to learn more about the codebase through the context of a change.
+
+- Leave review comments, ask clarifying questions, request documentation, point out potential regressions.
+- Even if you can't read the code but know how to test it, do that too! Ask for information on how to test the change if it's missing from the PR and run it.
+- Use Approve when you believe the change is correct and safe to merge.
+- Use Request Changes when you find real issues; explain the issue and prefer actionable guidance.
+
 ## How to get started
 
 1. Find an issue (or open one) — good first issues are a great first step.
-2. Fork the repo and create a feature branch with a short, descriptive name.
+2. Fork the repo (See [Installation](https://github.com/kaspanet/rusty-kaspa?tab=readme-ov-file#installation) guide) and create a feature branch with a short, descriptive name.
 3. Implement your change and include tests where appropriate.
 4. Make each commit atomic and focused. Update tests or add new ones in the same commit that changes behaviour.
 5. Push to your fork and open a Pull Request against the `master` branch (or the branch named in the issue).
@@ -26,8 +35,8 @@ Follow along the R&D Telegram group.
 ## Pull request guidelines
 
 ### Before making a Pull Request:
-- Run `cargo check` to make sure your code adheres to coding standards
-- Run `cargo nextest run --release` and make sure you all tests still pass
+- Run `./check` (or `./check.ps1` on windows) to make sure your code adheres to coding standards
+- Run `./test` (or `cargo nextest run --release` on windows) and make sure you all tests still pass
 
 ### Please make your PRs easy to review. A helpful PR contains:
 
@@ -42,15 +51,6 @@ Follow along the R&D Telegram group.
 
 - Start with a short subject line (<= 50 chars), leave a blank line, then add details.
 - Try to keep your commits atomic as this makes reviewing them in the context of a PR easier, making the PR overall easier to review and eventually merge
-
-## Reviewing Pull Requests
-
-If you can meaningfully review a pull request, please do so even if you have not contributed code to the repo. This helps in improving the quality of code and gives you a great opportunity to learn more about the codebase through the context of a change.
-
-- Leave review comments, ask clarifying questions, request documentation, point out potential regressions.
-- Even if you can't read the code but know how to test it, do that too! Ask for information on how to test the change if it's missing from the PR and run it.
-- Use Approve when you believe the change is correct and safe to merge.
-- Use Request Changes when you find real issues; explain the issue and prefer actionable guidance.
 
 ## Using Issues and Pull Requests for discussion
 
