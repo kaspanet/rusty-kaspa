@@ -267,6 +267,7 @@ async fn ghostdag_test() {
             .edit_consensus_params(|p| {
                 p.genesis.hash = string_to_hash(&test.genesis_id);
                 p.prior_ghostdag_k = test.k;
+                p.crescendo.ghostdag_k = test.k;
                 p.min_difficulty_window_size = p.prior_difficulty_window_size;
             })
             .build();
