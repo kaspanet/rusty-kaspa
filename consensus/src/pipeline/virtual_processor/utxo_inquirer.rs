@@ -399,9 +399,7 @@ impl VirtualStateProcessor {
                     for accepted in &mbad.accepted_transactions {
                         let idx = accepted.index_within_block as usize;
 
-                        let tx = block_txs
-                            .get(idx)
-                            .ok_or_else(|| UtxoInquirerError::MissingTransactionIndexOfBlock(idx, mbad.block_hash))?;
+                        let tx = block_txs.get(idx).ok_or(UtxoInquirerError::MissingTransactionIndexOfBlock(idx, mbad.block_hash))?;
 
                         all_txs.push(tx.clone());
                     }
