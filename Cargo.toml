@@ -18,7 +18,6 @@ members = [
     "consensus/pow",
     "consensus/wasm",
     "kaspad",
-    "kaspad-status",
     "simpa",
     "wasm",
     "wasm/core",
