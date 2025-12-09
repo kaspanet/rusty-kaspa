@@ -90,8 +90,7 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
     );
 
     header.into()
-}
-);
+});
 
 try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcRawHeader, {
     Self {
@@ -128,8 +127,7 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcOptionalHeader, {
     );
 
     kaspa_rpc_core::RpcOptionalHeader::from(header)
-}
-);
+});
 
 try_from!(item: &protowire::RpcBlockLevelParents, Vec<RpcHash>, {
     item.parent_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?
