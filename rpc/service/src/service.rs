@@ -1240,7 +1240,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         request: GetVirtualChainFromBlockV2Request,
     ) -> RpcResult<GetVirtualChainFromBlockV2Response> {
         let session = self.consensus_manager.consensus().session().await;
-        let data_verbosity_level = request.data_verbosity_level;
+        // sets to full by default
+        let data_verbosity_level = request.data_verbosity_level.or(Some(RpcDataVerbosityLevel::Full));
         let verbosity: RpcAcceptanceDataVerbosity = data_verbosity_level.map(RpcAcceptanceDataVerbosity::from).unwrap_or_default();
         let batch_size = (self.config.mergeset_size_limit().upper_bound() * 10) as usize;
 
