@@ -3717,19 +3717,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspad-status"
-version = "1.0.1"
-dependencies = [
- "clap 4.5.19",
- "kaspa-core",
- "kaspa-rpc-core",
- "kaspa-wrpc-client",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "keccak"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

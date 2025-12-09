@@ -365,7 +365,7 @@ impl StratumServer {
                         .cloned()
                         .unwrap_or_else(|| Address::new(Prefix::Mainnet, Version::PubKey, &[0u8; 32]))
                 };
-                
+
                 // Log which address we're using (do this while we have the address)
                 let has_miners = !miner_addresses.read().is_empty();
                 if has_miners {
@@ -375,7 +375,7 @@ impl StratumServer {
                         "No authorized miners yet - using placeholder address for block template (will update once miners authorize)"
                     );
                 }
-                
+
                 // Create miner_data immediately and drop the address
                 let script_pub_key = pay_to_address_script(&miner_address);
                 MinerData::new(script_pub_key, vec![])
@@ -458,13 +458,11 @@ impl StratumServer {
                         clients_read.iter().map(|(addr, tx)| (*addr, tx.clone())).collect()
                     };
                     let client_count = clients_to_notify.len();
-                    let mut client_index = 0;
-                    for (addr, tx) in clients_to_notify.iter() {
+                    for (client_index, (addr, tx)) in clients_to_notify.iter().enumerate() {
                         // Add spacing delay between clients (except for the first one)
                         if client_index > 0 {
                             tokio::time::sleep(tokio::time::Duration::from_micros(500)).await;
                         }
-                        client_index += 1;
 
                         // Use vardiff difficulty if enabled, otherwise use default
                         let difficulty_to_use = if vardiff_config.enabled {
@@ -489,7 +487,7 @@ impl StratumServer {
                         }
                     }
                     if client_count > 0 {
-                        log::info!("Distributed new job {} to {} client(s)", job.id, client_count);
+                        log::debug!("Distributed new job {} to {} client(s)", job.id, client_count);
                     }
                 }
                 Err(e) => {
@@ -731,7 +729,7 @@ impl StratumServer {
         // Use the calculated difficulty, but allow override from config if needed
         let job_difficulty = if difficulty > 0.0 { difficulty } else { calculated_difficulty };
 
-        log::info!(
+        log::debug!(
             "Template pre-PoW hash: {} (length: {}), nonce: {}, timestamp: {}, bits: {}, calculated difficulty: {}",
             hash_hex,
             hash_hex.len(),
@@ -749,7 +747,7 @@ impl StratumServer {
         // Concatenate prePoWHash + timestamp (little-endian hex) - this is the format ASICs expect
         // The pool sends: prePoWHash (64 hex chars) + timestamp (16 hex chars) = 80 hex chars total
         let header_hash = format!("{}{}", hash_hex, timestamp_hex);
-        log::info!(
+        log::debug!(
             "Job {} - prePoWHash+timestamp: {} (length: {}, expected: 80), difficulty: {}",
             job_id,
             header_hash,
@@ -879,6 +877,7 @@ impl StratumServer {
             // The JS pool does: state = getPoW(hash) then state.checkWork(nonce)
             // So we need to create PoW state from the original template header, not the reconstructed one
             let original_header = &current_job_to_check.template.block.header;
+            let original_header_bits = original_header.bits; // Extract bits before potential reassignment
             let pow_state = PowState::new(original_header);
             let (mut pow_passed, mut pow_value) = pow_state.check_pow(submission.nonce);
 
@@ -896,7 +895,7 @@ impl StratumServer {
                 // Loop through previous job IDs (like the bridge does)
                 invalid_share = true;
                 let job_id_num: Option<u64> = current_job_id.parse().ok();
-                
+
                 // Try previous job IDs if job_id is numeric
                 if let Some(mut job_id_num_val) = job_id_num {
                     let mut found_valid_job = false;
@@ -941,7 +940,9 @@ impl StratumServer {
                         }
 
                         // Check if we've exhausted all previous blocks
-                        if job_id_num_val == 1 || (job_id_num_val % MAX_JOBS) == ((submission.job_id.parse::<u64>().unwrap_or(0) % MAX_JOBS) + 1) {
+                        if job_id_num_val == 1
+                            || (job_id_num_val % MAX_JOBS) == ((submission.job_id.parse::<u64>().unwrap_or(0) % MAX_JOBS) + 1)
+                        {
                             break;
                         }
                     }
@@ -1226,19 +1227,53 @@ impl StratumServer {
             // Only submit blocks that meet network difficulty to consensus
             // The pow_passed result from check_pow already validates against network target (from header.bits)
             if !pow_passed {
-                log::debug!(
-                    "Share from {} meets pool difficulty but not network difficulty (PoW value: {}) - not submitting to consensus",
-                    submission.client_addr,
-                    pow_value
-                );
+                // Log at info level periodically to track network difficulty attempts
+                static NETWORK_DIFF_ATTEMPTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                let attempts = NETWORK_DIFF_ATTEMPTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                if attempts == 1 || attempts % 1000 == 0 {
+                    let network_target = Uint256::from_compact_target_bits(original_header_bits);
+                    log::info!(
+                        "[NETWORK DIFF] Share from {} meets pool difficulty (PoW: {}) but NOT network difficulty (network target: {}, header bits: {}) - attempt #{}",
+                        submission.client_addr,
+                        pow_value,
+                        network_target,
+                        original_header_bits,
+                        attempts
+                    );
+                } else {
+                    log::debug!(
+                        "Share from {} meets pool difficulty but not network difficulty (PoW value: {}) - not submitting to consensus",
+                        submission.client_addr,
+                        pow_value
+                    );
+                }
                 continue;
             }
 
             // Block meets network PoW difficulty - submit to consensus
+            // CRITICAL: Verify the template is not stale before submitting
+            // Stale templates can cause TimeTooOld errors even if PoW passes
+            let current_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+            let template_timestamp = job.template.block.header.timestamp as u64;
+            let template_age = current_time.saturating_sub(template_timestamp);
+
+            if template_age > 10 {
+                log::warn!(
+                    "[STALE BLOCK] Block from {} meets network PoW but template is {} seconds old (max 10s) - rejecting to prevent TimeTooOld error",
+                    submission.client_addr,
+                    template_age
+                );
+                continue;
+            }
+
+            let network_target = Uint256::from_compact_target_bits(original_header_bits);
             log::info!(
-                "Block from {} meets network PoW difficulty (PoW value: {}) - submitting to consensus",
+                "[SUBMITTING BLOCK] Block from {} meets network PoW difficulty (PoW value: {}, network target: {}, header bits: {}, template age: {}s) - submitting to consensus",
                 submission.client_addr,
-                pow_value
+                pow_value,
+                network_target,
+                original_header_bits,
+                template_age
             );
 
             // Convert mutable block to immutable block and submit via FlowContext
@@ -1254,7 +1289,8 @@ impl StratumServer {
 
             // Spawn a task to submit the block via FlowContext (which handles broadcasting and mempool updates)
             tokio::spawn(async move {
-                match flow_context_clone.submit_rpc_block(&consensus_session, block).await {
+                log::info!("[BLOCK SUBMISSION] Attempting to submit block {} from client {}", block_hash_full, client_addr);
+                match flow_context_clone.submit_rpc_block(&consensus_session, block.clone()).await {
                     Ok(_) => {
                         // Block was successfully submitted, validated, broadcast, and mempool updated!
                         log::info!("🎉 BLOCK FOUND! Hash: {}... - Mined by client {}", block_hash_short, client_addr);
@@ -1265,8 +1301,16 @@ impl StratumServer {
                         );
                     }
                     Err(e) => {
-                        log::warn!("Block submission failed for client {}: {:?}", client_addr, e);
-                        log::warn!("Block {} was rejected (may be invalid, orphaned, or duplicate)", block_hash_full);
+                        // Enhanced error logging to diagnose rejection reasons
+                        log::error!("[BLOCK REJECTION] Block {} from client {} was REJECTED: {:?}", block_hash_full, client_addr, e);
+                        log::warn!(
+                            "[BLOCK REJECTION] Block {} details - Timestamp: {}, Nonce: 0x{:x}, Parents: {:?}",
+                            block_hash_full,
+                            block.header.timestamp,
+                            block.header.nonce,
+                            block.header.direct_parents()
+                        );
+                        log::warn!("[BLOCK REJECTION] This block may be invalid, orphaned, duplicate, or have a stale timestamp");
                     }
                 }
             });
@@ -1518,7 +1562,7 @@ impl StratumServer {
             "mining.notify".to_string(),
             vec![Value::String(job.id.clone()), Value::String(job.header_hash.clone())],
         );
-        log::info!(
+        log::debug!(
             "Sending mining.notify for job {} - hash+timestamp: {} (length: {}, template_hash: {}, difficulty: {})",
             job.id,
             job.header_hash,
