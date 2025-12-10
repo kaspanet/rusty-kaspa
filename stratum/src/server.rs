@@ -231,6 +231,7 @@ impl StratumServer {
         let clients_submit = clients_for_loop.clone();
         let seen_nonces_submit = self.seen_nonces.clone();
         let flow_context_submit = self.flow_context.clone();
+        let client_encodings_submit = self.client_encodings.clone();
         tokio::spawn(async move {
             Self::block_submission_loop(
                 consensus_submit,
@@ -241,6 +242,7 @@ impl StratumServer {
                 vardiff_config_submit,
                 clients_submit,
                 seen_nonces_submit,
+                client_encodings_submit,
             )
             .await;
         });
@@ -250,8 +252,15 @@ impl StratumServer {
             let vardiff_states_monitor = vardiff_states_for_loop.clone();
             let vardiff_config_monitor = vardiff_config.clone();
             let clients_monitor = clients_for_loop.clone();
+            let client_encodings_monitor = self.client_encodings.clone();
             tokio::spawn(async move {
-                Self::vardiff_monitoring_loop(vardiff_states_monitor, vardiff_config_monitor, clients_monitor).await;
+                Self::vardiff_monitoring_loop(
+                    vardiff_states_monitor,
+                    vardiff_config_monitor,
+                    clients_monitor,
+                    client_encodings_monitor,
+                )
+                .await;
             });
         }
 
@@ -643,9 +652,13 @@ impl StratumServer {
     /// Required for IceRiver/Bitmain ASICs which only accept powers of 2
     /// Based on kaspa-stratum-bridge ClampPow2 feature
     /// When decreasing, rounds DOWN to prevent getting stuck at high difficulty
-    fn clamp_to_power_of_2(difficulty: f64) -> f64 {
+    ///
+    /// Bitmain-specific: Supports values below 1.0 (e.g., 0.125 = 2^-3) to match Go bridge behavior
+    /// IceRiver: Minimum is 1.0 (2^0)
+    /// Bitmain: Minimum is 0.125 (2^-3) per Go bridge: math.Max(0.125, minDiff)
+    fn clamp_to_power_of_2(difficulty: f64, is_bitmain: bool) -> f64 {
         if difficulty <= 0.0 {
-            return 1.0;
+            return if is_bitmain { 0.125 } else { 1.0 };
         }
 
         // Calculate log2 of difficulty
@@ -658,8 +671,14 @@ impl StratumServer {
         // Calculate 2^rounded_log2
         let clamped = 2.0_f64.powf(rounded_log2);
 
-        // Ensure minimum of 1.0
-        clamped.max(1.0)
+        // Bitmain-specific: Ensure minimum of 0.125 (matches Go bridge: math.Max(0.125, minDiff))
+        // 0.125 = 2^-3, which is a valid power of 2
+        // IceRiver: Ensure minimum of 1.0
+        if is_bitmain {
+            clamped.max(0.125)
+        } else {
+            clamped.max(1.0)
+        }
     }
 
     /// Calculate difficulty from block header bits
@@ -800,6 +819,7 @@ impl StratumServer {
         vardiff_config: VardiffConfig,
         clients: Arc<RwLock<HashMap<SocketAddr, mpsc::UnboundedSender<StratumNotification>>>>,
         seen_nonces: Arc<RwLock<HashSet<(String, u64)>>>,
+        client_encodings: Arc<RwLock<HashMap<SocketAddr, Encoding>>>,
     ) {
         // Track last cleanup time for seen_nonces (cleanup every 5 minutes)
         let mut last_cleanup = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
@@ -1106,10 +1126,21 @@ impl StratumServer {
                             let old_diff = vardiff_state.current_difficulty;
                             // Reduce difficulty by 75% (or to min_difficulty, whichever is higher)
                             // More aggressive reduction to get miner unstuck faster
-                            let new_diff = (old_diff * 0.25).max(vardiff_config.min_difficulty);
+                            // CRITICAL: Bitmain-specific minimum enforcement
+                            const BITMAIN_MIN_DIFFICULTY: f64 = 0.125;
+                            let is_bitmain = {
+                                let encodings_read = client_encodings.read();
+                                encodings_read.get(&submission.client_addr).copied().unwrap_or(Encoding::BigHeader)
+                                    == Encoding::Bitmain
+                            };
+                            let mut new_diff = (old_diff * 0.25).max(vardiff_config.min_difficulty);
+                            if is_bitmain {
+                                new_diff = new_diff.max(BITMAIN_MIN_DIFFICULTY);
+                            }
 
                             // Apply Pow2 clamping if enabled
-                            let final_diff = if vardiff_config.clamp_pow2 { Self::clamp_to_power_of_2(new_diff) } else { new_diff };
+                            let final_diff =
+                                if vardiff_config.clamp_pow2 { Self::clamp_to_power_of_2(new_diff, is_bitmain) } else { new_diff };
 
                             vardiff_state.current_difficulty = final_diff;
                             vardiff_state.last_difficulty_change = now_ms;
@@ -1140,6 +1171,7 @@ impl StratumServer {
                                     &vardiff_states,
                                     &vardiff_config,
                                     &clients,
+                                    &client_encodings,
                                 );
                             }
 
@@ -1227,6 +1259,7 @@ impl StratumServer {
                         &vardiff_states,
                         &vardiff_config,
                         &clients,
+                        &client_encodings,
                     );
                 }
             } else {
@@ -1349,6 +1382,7 @@ impl StratumServer {
         vardiff_states: &Arc<RwLock<HashMap<SocketAddr, ClientVardiffState>>>,
         config: &VardiffConfig,
         clients: &Arc<RwLock<HashMap<SocketAddr, mpsc::UnboundedSender<StratumNotification>>>>,
+        client_encodings: &Arc<RwLock<HashMap<SocketAddr, Encoding>>>,
     ) {
         let mut vardiff_states_write = vardiff_states.write();
         let vardiff_state = match vardiff_states_write.get_mut(client_addr) {
@@ -1383,12 +1417,21 @@ impl StratumServer {
 
         if time_since_last_share_seconds >= CRITICAL_TIMEOUT_SECONDS {
             // Emergency: No shares for 5+ minutes - reset difficulty
+            // CRITICAL: Bitmain-specific minimum enforcement
+            const BITMAIN_MIN_DIFFICULTY: f64 = 0.125;
+            let is_bitmain = {
+                let encodings_read = client_encodings.read();
+                encodings_read.get(client_addr).copied().unwrap_or(Encoding::BigHeader) == Encoding::Bitmain
+            };
             let emergency_diff = vardiff_state.current_difficulty * EMERGENCY_RESET_MULTIPLIER;
             let mut new_difficulty = emergency_diff.max(config.min_difficulty);
+            if is_bitmain {
+                new_difficulty = new_difficulty.max(BITMAIN_MIN_DIFFICULTY);
+            }
 
             // Apply Pow2 clamping if enabled (for IceRiver/Bitmain ASICs)
             if config.clamp_pow2 {
-                new_difficulty = Self::clamp_to_power_of_2(new_difficulty);
+                new_difficulty = Self::clamp_to_power_of_2(new_difficulty, is_bitmain);
             }
 
             let old_diff = vardiff_state.current_difficulty;
@@ -1447,7 +1490,21 @@ impl StratumServer {
             should_change = true;
         }
 
-        // Clamp to min/max difficulty
+        // CRITICAL: Bitmain-specific minimum difficulty enforcement
+        // Match Go bridge behavior: math.Max(0.125, minDiff) for Bitmain only
+        // Reference: https://github.com/rdugan/kaspa-stratum-bridge/commit/1d6bc83984dd8754d073b0dbb5dad3312a1d4542
+        const BITMAIN_MIN_DIFFICULTY: f64 = 0.125;
+        let is_bitmain = {
+            let encodings_read = client_encodings.read();
+            encodings_read.get(client_addr).copied().unwrap_or(Encoding::BigHeader) == Encoding::Bitmain
+        };
+
+        // Apply Bitmain-specific minimum ONLY for Bitmain miners
+        if is_bitmain {
+            new_difficulty = new_difficulty.max(BITMAIN_MIN_DIFFICULTY);
+        }
+
+        // Clamp to configured min/max difficulty
         new_difficulty = new_difficulty.max(config.min_difficulty).min(config.max_difficulty);
 
         // SAFEGUARD: Never exceed 90% of maxDifficulty
@@ -1458,8 +1515,9 @@ impl StratumServer {
 
         // Pow2 clamping for IceRiver/Bitmain ASICs (required for compatibility)
         // These ASICs only accept difficulties that are powers of 2
+        // NOTE: For Bitmain, this happens AFTER the 0.125 minimum enforcement
         if config.clamp_pow2 {
-            new_difficulty = Self::clamp_to_power_of_2(new_difficulty);
+            new_difficulty = Self::clamp_to_power_of_2(new_difficulty, is_bitmain);
         }
 
         // Only change if difference is significant (at least 5% change)
@@ -1513,6 +1571,7 @@ impl StratumServer {
         vardiff_states: Arc<RwLock<HashMap<SocketAddr, ClientVardiffState>>>,
         config: VardiffConfig,
         clients: Arc<RwLock<HashMap<SocketAddr, mpsc::UnboundedSender<StratumNotification>>>>,
+        client_encodings: Arc<RwLock<HashMap<SocketAddr, Encoding>>>,
     ) {
         const MONITOR_INTERVAL_SECONDS: u64 = 60; // Check every 60 seconds
         const STUCK_MINER_TIMEOUT_MS: u64 = 3 * 60 * 1000; // 3 minutes
@@ -1565,7 +1624,7 @@ impl StratumServer {
                 }
 
                 // Trigger difficulty adjustment
-                Self::adjust_difficulty(&client_addr, time_since_last_share_ms, &vardiff_states, &config, &clients);
+                Self::adjust_difficulty(&client_addr, time_since_last_share_ms, &vardiff_states, &config, &clients, &client_encodings);
             }
         }
     }
