@@ -2,9 +2,9 @@ use kaspa_notify::{scope::Scope, subscription::Command};
 
 use crate::protowire::{
     kaspad_request, kaspad_response, KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage,
-    NotifyFinalityConflictRequestMessage, NotifyNewBlockTemplateRequestMessage, NotifyPruningPointUtxoSetOverrideRequestMessage,
-    NotifySinkBlueScoreChangedRequestMessage, NotifyUtxosChangedRequestMessage, NotifyVirtualChainChangedRequestMessage,
-    NotifyVirtualDaaScoreChangedRequestMessage,
+    NotifyFinalityConflictRequestMessage, NotifyMempoolSizeChangedRequestMessage, NotifyNewBlockTemplateRequestMessage,
+    NotifyPruningPointUtxoSetOverrideRequestMessage, NotifySinkBlueScoreChangedRequestMessage, NotifyUtxosChangedRequestMessage,
+    NotifyVirtualChainChangedRequestMessage, NotifyVirtualDaaScoreChangedRequestMessage,
 };
 
 impl KaspadRequest {
@@ -64,6 +64,11 @@ impl kaspad_request::Payload {
                     command: command.into(),
                 })
             }
+            Scope::MempoolSizeChanged(_) => {
+                kaspad_request::Payload::NotifyMempoolSizeChangedRequest(NotifyMempoolSizeChangedRequestMessage {
+                    command: command.into(),
+                })
+            }
         }
     }
 
@@ -79,6 +84,7 @@ impl kaspad_request::Payload {
                 | Payload::NotifyVirtualDaaScoreChangedRequest(_)
                 | Payload::NotifyPruningPointUtxoSetOverrideRequest(_)
                 | Payload::NotifyNewBlockTemplateRequest(_)
+                | Payload::NotifyMempoolSizeChangedRequest(_)
                 | Payload::StopNotifyingUtxosChangedRequest(_)
                 | Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(_)
         )
@@ -108,6 +114,7 @@ impl kaspad_response::Payload {
             Payload::VirtualDaaScoreChangedNotification(_) => true,
             Payload::PruningPointUtxoSetOverrideNotification(_) => true,
             Payload::NewBlockTemplateNotification(_) => true,
+            Payload::MempoolSizeChangedNotification(_) => true,
             _ => false,
         }
     }

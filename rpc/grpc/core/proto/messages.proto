@@ -66,6 +66,7 @@ message KaspadRequest {
     GetFeeEstimateExperimentalRequestMessage getFeeEstimateExperimentalRequest = 1108;
     GetCurrentBlockColorRequestMessage getCurrentBlockColorRequest = 1110;
     GetUtxoReturnAddressRequestMessage GetUtxoReturnAddressRequest = 1112;
+    NotifyMempoolSizeChangedRequestMessage notifyMempoolSizeChangedRequest = 1114;
   }
 }
 
@@ -132,6 +133,8 @@ message KaspadResponse {
     GetFeeEstimateExperimentalResponseMessage getFeeEstimateExperimentalResponse = 1109;
     GetCurrentBlockColorResponseMessage getCurrentBlockColorResponse = 1111;
     GetUtxoReturnAddressResponseMessage GetUtxoReturnAddressResponse = 1113;
+    NotifyMempoolSizeChangedResponseMessage notifyMempoolSizeChangedResponse = 1115;
+    MempoolSizeChangedNotificationMessage mempoolSizeChangedNotification = 1117;
   }
 }
 

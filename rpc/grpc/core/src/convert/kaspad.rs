@@ -73,6 +73,7 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(NotifyVirtualDaaScoreChanged);
     impl_into_kaspad_request!(NotifyVirtualChainChanged);
     impl_into_kaspad_request!(NotifySinkBlueScoreChanged);
+    impl_into_kaspad_request!(NotifyMempoolSizeChanged);
 
     macro_rules! impl_into_kaspad_request {
         ($name:tt) => {
@@ -214,6 +215,7 @@ pub mod kaspad_response_convert {
 
     impl_into_kaspad_notify_response!(NotifyUtxosChanged, StopNotifyingUtxosChanged);
     impl_into_kaspad_notify_response!(NotifyPruningPointUtxoSetOverride, StopNotifyingPruningPointUtxoSetOverride);
+    impl_into_kaspad_notify_response!(NotifyMempoolSizeChanged);
 
     macro_rules! impl_into_kaspad_response {
         ($name:tt) => {

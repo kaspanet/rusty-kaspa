@@ -90,6 +90,7 @@ impl Factory {
                 NotifyPruningPointUtxoSetOverride,
                 NotifyVirtualDaaScoreChanged,
                 NotifyVirtualChainChanged,
+                NotifyMempoolSizeChanged,
                 StopNotifyingUtxosChanged,
                 StopNotifyingPruningPointUtxoSetOverride,
             ]
