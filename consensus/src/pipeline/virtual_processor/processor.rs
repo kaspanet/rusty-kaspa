@@ -1200,15 +1200,13 @@ impl VirtualStateProcessor {
                 utxo_count += chunk_size;
 
                 // Write batch every BATCH_SIZE chunks to reduce database write operations
-                if chunk_count % BATCH_SIZE == 0 {
-                    if !batched_utxos.is_empty() {
-                        let batch_utxo_count = batched_utxos.len();
-                        let mut batch = WriteBatch::default();
-                        virtual_write.utxo_set.write_many_batch(&mut batch, &batched_utxos).unwrap();
-                        self.db.write(batch).unwrap();
-                        trace!("Batched write: {} UTXOs written in single batch operation", batch_utxo_count);
-                        batched_utxos.clear();
-                    }
+                if chunk_count % BATCH_SIZE == 0 && !batched_utxos.is_empty() {
+                    let batch_utxo_count = batched_utxos.len();
+                    let mut batch = WriteBatch::default();
+                    virtual_write.utxo_set.write_many_batch(&mut batch, &batched_utxos).unwrap();
+                    self.db.write(batch).unwrap();
+                    trace!("Batched write: {} UTXOs written in single batch operation", batch_utxo_count);
+                    batched_utxos.clear();
                 }
 
                 // Log progress every 10,000 chunks or every 5 seconds, whichever comes first
@@ -1228,7 +1226,7 @@ impl VirtualStateProcessor {
                 trace!("Final batched write: {} UTXOs written", final_batch_count);
             }
 
-            let total_batches = (chunk_count + BATCH_SIZE - 1) / BATCH_SIZE; // Ceiling division
+            let total_batches = chunk_count.div_ceil(BATCH_SIZE);
             info!(
                 "UTXO import completed: {} chunks, {} UTXOs total, ~{} batched writes (vs {} individual writes without batching)",
                 chunk_count, utxo_count, total_batches, chunk_count
