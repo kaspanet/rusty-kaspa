@@ -1178,9 +1178,61 @@ impl VirtualStateProcessor {
             let mut virtual_write = self.virtual_stores.write();
 
             virtual_write.utxo_set.clear().unwrap();
+            let mut chunk_count = 0u64;
+            let mut utxo_count = 0u64;
+            let mut last_log_time = std::time::Instant::now();
+
+            // Batch size: write every 50 chunks to balance performance and memory usage
+            const BATCH_SIZE: u64 = 50;
+            let mut batched_utxos = Vec::new();
+
             for chunk in &pruning_meta_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(1000) {
-                virtual_write.utxo_set.write_from_iterator_without_cache(chunk).unwrap();
+                // Count items in chunk iterator (chunks are typically 1000, but last chunk may be smaller)
+                let chunk_vec: Vec<_> = chunk.collect();
+                let chunk_size = chunk_vec.len() as u64;
+
+                // Convert Arc<UtxoEntry> to UtxoEntry for batching
+                for (outpoint, entry) in chunk_vec {
+                    batched_utxos.push((outpoint, (*entry).clone()));
+                }
+
+                chunk_count += 1;
+                utxo_count += chunk_size;
+
+                // Write batch every BATCH_SIZE chunks to reduce database write operations
+                if chunk_count % BATCH_SIZE == 0 {
+                    if !batched_utxos.is_empty() {
+                        let batch_utxo_count = batched_utxos.len();
+                        let mut batch = WriteBatch::default();
+                        virtual_write.utxo_set.write_many_batch(&mut batch, &batched_utxos).unwrap();
+                        self.db.write(batch).unwrap();
+                        trace!("Batched write: {} UTXOs written in single batch operation", batch_utxo_count);
+                        batched_utxos.clear();
+                    }
+                }
+
+                // Log progress every 10,000 chunks or every 5 seconds, whichever comes first
+                let now = std::time::Instant::now();
+                if chunk_count % 10000 == 0 || now.duration_since(last_log_time).as_secs() >= 5 {
+                    info!("UTXO import progress: {} chunks processed, {} UTXOs copied", chunk_count, utxo_count);
+                    last_log_time = now;
+                }
             }
+
+            // Write any remaining UTXOs in the batch
+            if !batched_utxos.is_empty() {
+                let final_batch_count = batched_utxos.len();
+                let mut batch = WriteBatch::default();
+                virtual_write.utxo_set.write_many_batch(&mut batch, &batched_utxos).unwrap();
+                self.db.write(batch).unwrap();
+                trace!("Final batched write: {} UTXOs written", final_batch_count);
+            }
+
+            let total_batches = (chunk_count + BATCH_SIZE - 1) / BATCH_SIZE; // Ceiling division
+            info!(
+                "UTXO import completed: {} chunks, {} UTXOs total, ~{} batched writes (vs {} individual writes without batching)",
+                chunk_count, utxo_count, total_batches, chunk_count
+            );
         }
 
         let virtual_read = self.virtual_stores.upgradable_read();
