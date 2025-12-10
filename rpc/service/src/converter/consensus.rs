@@ -335,7 +335,7 @@ impl ConsensusConverter {
                         .map_err(|_| AddressError::InvalidAddress)?,
                 )
             } else {
-                None
+                Default::default()
             },
         })
     }
@@ -570,7 +570,7 @@ impl ConsensusConverter {
         })
     }
 
-    async fn get_mergeset_transactions_with_verbosity(
+    async fn get_mergeset_accepted_transactions_with_verbosity(
         &self,
         consensus: &ConsensusProxy,
         accepting_block: Hash,
@@ -638,7 +638,7 @@ impl ConsensusConverter {
 
             if let Some(mergeset_block_acceptance_data_verbosity) = verbosity.mergeset_block_acceptance_data_verbosity.as_ref() {
                 let mergeset_transactions_with_verbosity = self
-                    .get_mergeset_transactions_with_verbosity(
+                    .get_mergeset_accepted_transactions_with_verbosity(
                         consensus,
                         *accepting_chain_hash,
                         chain_block_mergeset_acceptance_data,
