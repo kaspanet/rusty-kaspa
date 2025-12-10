@@ -623,6 +623,7 @@ mod tests {
                 4294967291,
             ))
             .utxo_entry(utxo_entry)
+            .sig_op_count(1)
             .build()
             .unwrap();
 
