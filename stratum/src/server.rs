@@ -1605,15 +1605,29 @@ impl StratumServer {
             )
         };
 
-        log::debug!(
-            "Sending mining.notify for job {} - encoding: {:?}, hash+timestamp: {} (length: {}, template_hash: {}, difficulty: {})",
-            job.id,
-            encoding,
-            job.header_hash,
-            job.header_hash.len(),
-            job.template_hash,
-            job.difficulty
-        );
+        // Log the actual message being sent for debugging
+        if encoding == Encoding::Bitmain {
+            log::info!(
+                "Sending Bitmain mining.notify for job {} - encoding: {:?}, params count: {}, job_id: {}, hash: {} (length: {}), timestamp: {}",
+                job.id,
+                encoding,
+                job_notification.params.len(),
+                job.id,
+                if job.header_hash.len() >= 64 { &job.header_hash[..64] } else { &job.header_hash },
+                if job.header_hash.len() >= 64 { 64 } else { job.header_hash.len() },
+                job.timestamp
+            );
+        } else {
+            log::debug!(
+                "Sending mining.notify for job {} - encoding: {:?}, hash+timestamp: {} (length: {}, template_hash: {}, difficulty: {})",
+                job.id,
+                encoding,
+                job.header_hash,
+                job.header_hash.len(),
+                job.template_hash,
+                job.difficulty
+            );
+        }
         tx.send(job_notification.clone()).map_err(|_| StratumError::Protocol("Failed to send job".to_string()))?;
         log::debug!("Sent mining.notify notification: {:?}", job_notification);
 

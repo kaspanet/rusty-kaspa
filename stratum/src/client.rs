@@ -103,12 +103,23 @@ fn generate_extra_nonce(size_bytes: usize) -> String {
 }
 
 /// Detect miner type from user agent string
+/// Matches pool implementation: /.*(GodMiner|Bitmain|Antminer).*/i
 fn detect_miner_type(agent: &str) -> MinerType {
     let agent_lower = agent.to_lowercase();
-    if agent_lower.contains("iceriver") || agent_lower.contains("ks") || agent_lower.contains("icemining") {
+    
+    // Check for IceRiver first (more specific patterns)
+    if agent_lower.contains("iceriver") || agent_lower.contains("icemining") || agent_lower.contains("icm") {
         MinerType::IceRiver
-    } else if agent_lower.contains("bitmain") || agent_lower.contains("godminer") || agent_lower.contains("antminer") {
+    } 
+    // Check for Bitmain (matches pool regex: /.*(GodMiner|Bitmain|Antminer).*/i)
+    else if agent_lower.contains("godminer") || agent_lower.contains("bitmain") || agent_lower.contains("antminer") {
         MinerType::Bitmain
+    }
+    // Check for "ks" pattern - but only if not already matched as Bitmain
+    // Note: "ks" could match both IceRiver (KS2, KS3L) and Bitmain (KS5), so we check Bitmain first
+    else if agent_lower.contains("ks") {
+        // Default to IceRiver for "ks" pattern if not explicitly Bitmain
+        MinerType::IceRiver
     } else {
         MinerType::Unknown
     }
@@ -202,12 +213,13 @@ impl StratumClient {
         }
 
         log::info!(
-            "Stratum client subscribed from {} - Agent: {}, MinerType: {:?}, Encoding: {:?}, Extranonce size: {} bytes",
+            "Stratum client subscribed from {} - Agent: '{}', MinerType: {:?}, Encoding: {:?}, Extranonce size: {} bytes, Extranonce: '{}'",
             client_addr,
             agent,
             miner_type,
             encoding,
-            extranonce_size
+            extranonce_size,
+            extra_nonce
         );
 
         // Build response based on encoding
@@ -661,11 +673,30 @@ impl StratumClient {
                                     // Get current job from server
                                     let server_job_opt = server_current_job.read().clone();
                                     if let Some(server_job) = server_job_opt {
-                                        // Send job notification immediately after difficulty
-                                        let job_notification = create_notification(
-                                            "mining.notify".to_string(),
-                                            vec![Value::String(server_job.id.clone()), Value::String(server_job.header_hash.clone())],
-                                        );
+                                        // CRITICAL: Use encoding-specific format for job notification
+                                        // Bitmain requires 3 parameters: [job_id, hash, timestamp]
+                                        // Others use 2 parameters: [job_id, hash+timestamp]
+                                        let job_notification = if encoding == Encoding::Bitmain {
+                                            // Bitmain format: [job_id, hash, timestamp] where timestamp is a bigint
+                                            // Extract hash (64 hex chars) from header_hash
+                                            let hash = if server_job.header_hash.len() >= 64 {
+                                                server_job.header_hash[..64].to_string()
+                                            } else {
+                                                server_job.header_hash.clone() // Fallback if format unexpected
+                                            };
+                                            let timestamp_bigint = Value::Number(serde_json::Number::from(server_job.timestamp));
+                                            create_notification(
+                                                "mining.notify".to_string(),
+                                                vec![Value::String(server_job.id.clone()), Value::String(hash), timestamp_bigint],
+                                            )
+                                        } else {
+                                            // Standard format: [job_id, header_hash+timestamp] - hash and timestamp are concatenated
+                                            create_notification(
+                                                "mining.notify".to_string(),
+                                                vec![Value::String(server_job.id.clone()), Value::String(server_job.header_hash.clone())],
+                                            )
+                                        };
+                                        
                                         let job_json = serde_json::to_string(&job_notification).unwrap();
                                         let job_line = format!("{}\n", job_json);
                                         if response_tx.send(job_line).is_err() {
@@ -680,9 +711,11 @@ impl StratumClient {
                                         }
 
                                         log::info!(
-                                            "Sent job {} immediately after subscribe to {}",
+                                            "Sent job {} immediately after subscribe to {} - encoding: {:?}, params count: {}",
                                             server_job.id,
-                                            client_addr_for_handle
+                                            client_addr_for_handle,
+                                            encoding,
+                                            job_notification.params.len()
                                         );
                                     } else {
                                         log::warn!(
