@@ -1,0 +1,6 @@
+﻿# Increase stack size for tests to prevent STATUS_STACK_BUFFER_OVERRUN on Windows
+[target.'cfg(test)']
+rustflags = ["-C", "link-args=/STACK:16777216"]
+
+[target.'cfg(windows)']
+rustflags = ["-C", "link-args=/STACK:16777216"]

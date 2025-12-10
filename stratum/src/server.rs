@@ -1,6 +1,6 @@
 //! Stratum server implementation
 
-use crate::client::StratumClient;
+use crate::client::{Encoding, StratumClient};
 use crate::error::StratumError;
 use crate::protocol::{create_notification, StratumNotification};
 use hex;
@@ -121,6 +121,7 @@ pub struct StratumServer {
     submission_rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<BlockSubmission>>>>,
     vardiff_states: Arc<RwLock<HashMap<SocketAddr, ClientVardiffState>>>, // Vardiff tracking per client
     miner_addresses: Arc<RwLock<HashMap<SocketAddr, Address>>>,           // Miner addresses (from mining.authorize)
+    client_encodings: Arc<RwLock<HashMap<SocketAddr, Encoding>>>,         // Client encoding types (for Bitmain format)
     seen_nonces: Arc<RwLock<HashSet<(String, u64)>>>,                     // Track (job_id, nonce) pairs to detect duplicates
 }
 
@@ -146,6 +147,7 @@ impl StratumServer {
             submission_rx: Arc::new(Mutex::new(Some(submission_rx))),
             vardiff_states: Arc::new(RwLock::new(HashMap::new())),
             miner_addresses: Arc::new(RwLock::new(HashMap::new())),
+            client_encodings: Arc::new(RwLock::new(HashMap::new())),
             seen_nonces: Arc::new(RwLock::new(HashSet::new())),
         }
     }
@@ -190,6 +192,7 @@ impl StratumServer {
         let vardiff_states_dist = vardiff_states_for_loop.clone();
         let vardiff_config_dist = vardiff_config.clone();
         let miner_addresses_dist = self.miner_addresses.clone();
+        let client_encodings_dist = self.client_encodings.clone();
         tokio::spawn(async move {
             Self::job_distribution_loop(
                 consensus_manager_clone,
@@ -202,6 +205,7 @@ impl StratumServer {
                 vardiff_states_dist,
                 vardiff_config_dist,
                 miner_addresses_dist,
+                client_encodings_dist,
             )
             .await;
         });
@@ -252,6 +256,12 @@ impl StratumServer {
                                 clients.insert(addr, notification_tx.clone());
                             }
 
+                            // Store client encoding (will be updated when client subscribes)
+                            {
+                                let mut encodings = self.client_encodings.write();
+                                encodings.insert(addr, Encoding::BigHeader); // Default to BigHeader
+                            }
+
                             // Initialize vardiff state if enabled
                             if vardiff_config.enabled {
                                 let now_ms = std::time::SystemTime::now()
@@ -281,6 +291,8 @@ impl StratumServer {
                             let notification_tx_for_client = notification_tx.clone();
                             let miner_addresses_for_client = self.miner_addresses.clone();
                             let miner_addresses_for_disconnect = self.miner_addresses.clone();
+                            let client_encodings_for_client = self.client_encodings.clone();
+                            let client_encodings_for_disconnect = self.client_encodings.clone();
                             tokio::spawn(async move {
                                 if let Err(e) = client.run(
                                     submission_tx_clone,
@@ -289,6 +301,7 @@ impl StratumServer {
                                     current_job_for_client,
                                     notification_tx_for_client,
                                     miner_addresses_for_client,
+                                    client_encodings_for_client,
                                 ).await {
                                     log::error!("Client handler error: {}", e);
                                 }
@@ -300,6 +313,8 @@ impl StratumServer {
                                 }
                                 // Remove miner address on disconnect
                                 miner_addresses_for_disconnect.write().remove(&addr);
+                                // Remove client encoding on disconnect
+                                client_encodings_for_disconnect.write().remove(&addr);
                             });
                         }
                         Err(e) => {
@@ -333,6 +348,7 @@ impl StratumServer {
         vardiff_states: Arc<RwLock<HashMap<SocketAddr, ClientVardiffState>>>,
         vardiff_config: VardiffConfig,
         miner_addresses: Arc<RwLock<HashMap<SocketAddr, Address>>>,
+        client_encodings: Arc<RwLock<HashMap<SocketAddr, Encoding>>>,
     ) {
         // TODO: Subscribe to new block template notifications
         // For now, poll periodically
@@ -476,9 +492,15 @@ impl StratumServer {
                         let mut client_job = job.clone();
                         client_job.difficulty = difficulty_to_use;
 
+                        // Get client encoding for Bitmain format
+                        let encoding = {
+                            let encodings_read = client_encodings.read();
+                            encodings_read.get(addr).copied().unwrap_or(Encoding::BigHeader)
+                        };
+
                         // Check if client is still connected before sending
                         // If the channel is closed, the client has disconnected
-                        match Self::send_job_notification(tx, &client_job, difficulty_to_use) {
+                        match Self::send_job_notification(tx, &client_job, difficulty_to_use, encoding) {
                             Ok(_) => {}
                             Err(e) => {
                                 // Client may have disconnected - this is normal, log at debug level
@@ -1554,17 +1576,36 @@ impl StratumServer {
         tx: &mpsc::UnboundedSender<StratumNotification>,
         job: &MiningJob,
         _difficulty: f64,
+        encoding: Encoding,
     ) -> Result<(), StratumError> {
-        // Send job notification only (no difficulty update)
-        // Format: [job_id, header_hash+timestamp] - hash and timestamp are concatenated
-        // The header_hash already contains hash + timestamp (little-endian hex)
-        let job_notification = create_notification(
-            "mining.notify".to_string(),
-            vec![Value::String(job.id.clone()), Value::String(job.header_hash.clone())],
-        );
+        // CRITICAL: Bitmain requires 3 parameters: [job_id, hash, timestamp]
+        // Other miners use 2 parameters: [job_id, hash+timestamp]
+        let job_notification = if encoding == Encoding::Bitmain {
+            // Bitmain format: [job_id, hash, timestamp] where timestamp is a bigint
+            // Extract hash (64 hex chars) and timestamp (16 hex chars) from header_hash
+            let hash = if job.header_hash.len() >= 64 {
+                job.header_hash[..64].to_string()
+            } else {
+                job.header_hash.clone() // Fallback if format unexpected
+            };
+            let timestamp_bigint = Value::Number(serde_json::Number::from(job.timestamp));
+            create_notification(
+                "mining.notify".to_string(),
+                vec![Value::String(job.id.clone()), Value::String(hash), timestamp_bigint],
+            )
+        } else {
+            // Standard format: [job_id, header_hash+timestamp] - hash and timestamp are concatenated
+            // The header_hash already contains hash + timestamp (little-endian hex)
+            create_notification(
+                "mining.notify".to_string(),
+                vec![Value::String(job.id.clone()), Value::String(job.header_hash.clone())],
+            )
+        };
+
         log::debug!(
-            "Sending mining.notify for job {} - hash+timestamp: {} (length: {}, template_hash: {}, difficulty: {})",
+            "Sending mining.notify for job {} - encoding: {:?}, hash+timestamp: {} (length: {}, template_hash: {}, difficulty: {})",
             job.id,
+            encoding,
             job.header_hash,
             job.header_hash.len(),
             job.template_hash,

@@ -160,6 +160,7 @@ impl StratumClient {
         request: StratumRequest,
         client_addr: SocketAddr,
         default_difficulty: f64,
+        client_encodings: Arc<parking_lot::RwLock<std::collections::HashMap<SocketAddr, Encoding>>>,
     ) -> Result<StratumResponse, StratumError> {
         let params = MiningSubscribeParams::try_from(&request).map_err(StratumError::Protocol)?;
 
@@ -193,6 +194,12 @@ impl StratumClient {
         // Initialize difficulty from default (will be updated by notifications)
         state_guard.difficulty = default_difficulty;
         drop(state_guard);
+
+        // Store encoding in server for job notifications
+        {
+            let mut encodings = client_encodings.write();
+            encodings.insert(client_addr, encoding);
+        }
 
         log::info!(
             "Stratum client subscribed from {} - Agent: {}, MinerType: {:?}, Encoding: {:?}, Extranonce size: {} bytes",
@@ -434,6 +441,7 @@ impl StratumClient {
         server_current_job: Arc<RwLock<Option<super::MiningJob>>>,
         _server_notification_tx: mpsc::UnboundedSender<StratumNotification>,
         miner_addresses: Arc<parking_lot::RwLock<std::collections::HashMap<SocketAddr, kaspa_addresses::Address>>>,
+        client_encodings: Arc<parking_lot::RwLock<std::collections::HashMap<SocketAddr, Encoding>>>,
     ) -> Result<(), StratumError> {
         self.submission_tx = Some(submission_tx);
         self.client_addr = addr;
@@ -446,6 +454,7 @@ impl StratumClient {
         let client_addr_for_handle = self.client_addr;
         let default_difficulty_for_handle = default_difficulty;
         let miner_addresses_for_handle = miner_addresses.clone();
+        let client_encodings_for_handle = client_encodings.clone();
 
         let (read, write) = tokio::io::split(self.stream);
         let mut reader = BufReader::new(read);
@@ -593,6 +602,7 @@ impl StratumClient {
                                         request.clone(),
                                         client_addr_for_handle,
                                         default_difficulty_for_handle,
+                                        client_encodings_for_handle.clone(),
                                     )
                                     .await?;
 
