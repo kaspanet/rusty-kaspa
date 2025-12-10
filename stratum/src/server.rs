@@ -337,6 +337,7 @@ impl StratumServer {
     }
 
     /// Job distribution loop - monitors for new block templates and distributes to miners
+    #[allow(clippy::too_many_arguments)]
     async fn job_distribution_loop(
         consensus_manager: Arc<ConsensusManager>,
         mining_manager: MiningManagerProxy,
