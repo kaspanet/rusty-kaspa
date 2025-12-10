@@ -107,6 +107,21 @@ struct ClientVardiffState {
     last_rejected_share: u64,  // Timestamp of last rejected share
 }
 
+/// Context for job distribution loop - groups related parameters
+struct JobDistributionContext {
+    consensus_manager: Arc<ConsensusManager>,
+    mining_manager: MiningManagerProxy,
+    jobs: Arc<RwLock<HashMap<String, MiningJob>>>,
+    current_job: Arc<RwLock<Option<MiningJob>>>,
+    job_counter: Arc<RwLock<u64>>,
+    clients: Arc<RwLock<HashMap<SocketAddr, mpsc::UnboundedSender<StratumNotification>>>>,
+    default_difficulty: f64,
+    vardiff_states: Arc<RwLock<HashMap<SocketAddr, ClientVardiffState>>>,
+    vardiff_config: VardiffConfig,
+    miner_addresses: Arc<RwLock<HashMap<SocketAddr, Address>>>,
+    client_encodings: Arc<RwLock<HashMap<SocketAddr, Encoding>>>,
+}
+
 /// Stratum server
 pub struct StratumServer {
     config: StratumConfig,
@@ -193,21 +208,21 @@ impl StratumServer {
         let vardiff_config_dist = vardiff_config.clone();
         let miner_addresses_dist = self.miner_addresses.clone();
         let client_encodings_dist = self.client_encodings.clone();
+        let job_distribution_ctx = JobDistributionContext {
+            consensus_manager: consensus_manager_clone,
+            mining_manager: mining_manager_clone,
+            jobs: jobs_clone,
+            current_job: current_job_clone,
+            job_counter: job_counter_clone,
+            clients: clients_for_distribution,
+            default_difficulty,
+            vardiff_states: vardiff_states_dist,
+            vardiff_config: vardiff_config_dist,
+            miner_addresses: miner_addresses_dist,
+            client_encodings: client_encodings_dist,
+        };
         tokio::spawn(async move {
-            Self::job_distribution_loop(
-                consensus_manager_clone,
-                mining_manager_clone,
-                jobs_clone,
-                current_job_clone,
-                job_counter_clone,
-                clients_for_distribution,
-                default_difficulty,
-                vardiff_states_dist,
-                vardiff_config_dist,
-                miner_addresses_dist,
-                client_encodings_dist,
-            )
-            .await;
+            Self::job_distribution_loop(job_distribution_ctx).await;
         });
 
         // Start block submission handler
@@ -337,20 +352,7 @@ impl StratumServer {
     }
 
     /// Job distribution loop - monitors for new block templates and distributes to miners
-    #[allow(clippy::too_many_arguments)]
-    async fn job_distribution_loop(
-        consensus_manager: Arc<ConsensusManager>,
-        mining_manager: MiningManagerProxy,
-        jobs: Arc<RwLock<HashMap<String, MiningJob>>>,
-        current_job: Arc<RwLock<Option<MiningJob>>>,
-        job_counter: Arc<RwLock<u64>>,
-        clients: Arc<RwLock<HashMap<SocketAddr, mpsc::UnboundedSender<StratumNotification>>>>,
-        default_difficulty: f64,
-        vardiff_states: Arc<RwLock<HashMap<SocketAddr, ClientVardiffState>>>,
-        vardiff_config: VardiffConfig,
-        miner_addresses: Arc<RwLock<HashMap<SocketAddr, Address>>>,
-        client_encodings: Arc<RwLock<HashMap<SocketAddr, Encoding>>>,
-    ) {
+    async fn job_distribution_loop(ctx: JobDistributionContext) {
         // TODO: Subscribe to new block template notifications
         // For now, poll periodically
         // Use longer interval during IBD (60s) vs normal operation (10s)
@@ -364,7 +366,7 @@ impl StratumServer {
             // Check if consensus is in transitional IBD state before attempting template build
             // Get a fresh session each time to avoid Send issues
             let in_transitional_ibd = {
-                let consensus_instance = consensus_manager.consensus();
+                let consensus_instance = ctx.consensus_manager.consensus();
                 let consensus_session = consensus_instance.unguarded_session();
                 consensus_session.async_is_consensus_in_transitional_ibd_state().await
             };
@@ -375,7 +377,7 @@ impl StratumServer {
             // Extract the address string to avoid holding Address across await points
             let miner_data = {
                 let miner_address = {
-                    let miner_addresses_read = miner_addresses.read();
+                    let miner_addresses_read = ctx.miner_addresses.read();
                     miner_addresses_read
                         .values()
                         .next()
@@ -384,7 +386,7 @@ impl StratumServer {
                 };
 
                 // Log which address we're using (do this while we have the address)
-                let has_miners = !miner_addresses.read().is_empty();
+                let has_miners = !ctx.miner_addresses.read().is_empty();
                 if has_miners {
                     log::debug!("Using miner address for block template: {}", miner_address);
                 } else {
@@ -411,12 +413,12 @@ impl StratumServer {
                     // Clear all jobs since they're invalid during IBD
                     // Virtual state changes during IBD make templates stale
                     let job_count = {
-                        let jobs_read = jobs.read();
+                        let jobs_read = ctx.jobs.read();
                         let count = jobs_read.len();
                         drop(jobs_read);
-                        let mut jobs_write = jobs.write();
+                        let mut jobs_write = ctx.jobs.write();
                         jobs_write.clear();
-                        *current_job.write() = None;
+                        *ctx.current_job.write() = None;
                         count
                     };
                     if job_count > 0 {
@@ -427,11 +429,11 @@ impl StratumServer {
                 continue;
             }
 
-            let mining_manager_clone = mining_manager.clone();
+            let mining_manager_clone = ctx.mining_manager.clone();
             // Use the async get_block_template method on MiningManagerProxy
             // Get a fresh session for template building
             let template_result = {
-                let consensus_instance = consensus_manager.consensus();
+                let consensus_instance = ctx.consensus_manager.consensus();
                 let consensus_session = consensus_instance.unguarded_session();
                 mining_manager_clone.get_block_template(&consensus_session, miner_data.clone()).await
             };
@@ -457,13 +459,13 @@ impl StratumServer {
                     }
 
                     // Create new job from template
-                    let job = Self::create_job_from_template(&template, &job_counter, default_difficulty);
+                    let job = Self::create_job_from_template(&template, &ctx.job_counter, ctx.default_difficulty);
 
                     // Store job
                     {
-                        let mut jobs_write = jobs.write();
+                        let mut jobs_write = ctx.jobs.write();
                         jobs_write.insert(job.id.clone(), job.clone());
-                        *current_job.write() = Some(job.clone());
+                        *ctx.current_job.write() = Some(job.clone());
                     }
 
                     // Notify all connected clients
@@ -471,7 +473,7 @@ impl StratumServer {
                     // network congestion and ASIC overload (matches bridge behavior)
                     // Collect clients into a Vec first to avoid holding the lock across await points
                     let clients_to_notify: Vec<(SocketAddr, mpsc::UnboundedSender<StratumNotification>)> = {
-                        let clients_read = clients.read();
+                        let clients_read = ctx.clients.read();
                         clients_read.iter().map(|(addr, tx)| (*addr, tx.clone())).collect()
                     };
                     let client_count = clients_to_notify.len();
@@ -482,11 +484,11 @@ impl StratumServer {
                         }
 
                         // Use vardiff difficulty if enabled, otherwise use default
-                        let difficulty_to_use = if vardiff_config.enabled {
-                            let vardiff_states_read = vardiff_states.read();
-                            vardiff_states_read.get(addr).map(|s| s.current_difficulty).unwrap_or(default_difficulty)
+                        let difficulty_to_use = if ctx.vardiff_config.enabled {
+                            let vardiff_states_read = ctx.vardiff_states.read();
+                            vardiff_states_read.get(addr).map(|s| s.current_difficulty).unwrap_or(ctx.default_difficulty)
                         } else {
-                            default_difficulty
+                            ctx.default_difficulty
                         };
 
                         // Create job with client-specific difficulty
@@ -495,7 +497,7 @@ impl StratumServer {
 
                         // Get client encoding for Bitmain format
                         let encoding = {
-                            let encodings_read = client_encodings.read();
+                            let encodings_read = ctx.client_encodings.read();
                             encodings_read.get(addr).copied().unwrap_or(Encoding::BigHeader)
                         };
 
@@ -527,9 +529,9 @@ impl StratumServer {
 
                             // Clear all jobs since they're invalid during IBD
                             {
-                                let mut jobs_write = jobs.write();
+                                let mut jobs_write = ctx.jobs.write();
                                 jobs_write.clear();
-                                *current_job.write() = None;
+                                *ctx.current_job.write() = None;
                             }
                         }
                         log::debug!("IBD in progress (missing reward data) - template building paused until IBD completes");
