@@ -106,6 +106,7 @@ fn generate_extra_nonce(size_bytes: usize) -> String {
 /// Matches pool implementation: /.*(GodMiner|Bitmain|Antminer).*/i
 fn detect_miner_type(agent: &str) -> MinerType {
     let agent_lower = agent.to_lowercase();
+
     // Check for IceRiver first (more specific patterns)
     if agent_lower.contains("iceriver") || agent_lower.contains("icemining") || agent_lower.contains("icm") {
         MinerType::IceRiver
@@ -201,8 +202,11 @@ impl StratumClient {
         let extra_nonce = state_guard.extra_nonce.clone();
         let encoding = state_guard.encoding;
         let agent = state_guard.agent.clone();
-        // Initialize difficulty from default (will be updated by notifications)
-        state_guard.difficulty = default_difficulty;
+        // Initialize difficulty: Bitmain requires 16384, others use default
+        // Bitmain KS5/KS3 models require higher initial difficulty (16384 = 2^14)
+        // Reference: kaspa-stratum-bridge recommends 16384 for Bitmain KS5
+        let initial_difficulty = if miner_type == MinerType::Bitmain { 16384.0 } else { default_difficulty };
+        state_guard.difficulty = initial_difficulty;
         drop(state_guard);
 
         // Store encoding in server for job notifications
@@ -677,16 +681,29 @@ impl StratumClient {
                                         // Others use 2 parameters: [job_id, hash+timestamp]
                                         let job_notification = if encoding == Encoding::Bitmain {
                                             // Bitmain format: [job_id, hash, timestamp] where timestamp is a bigint
-                                            // Extract hash (64 hex chars) from header_hash
+                                            // Protocol definition: 'mining.notify': [ string, string ] | [ string, string, bigint ]
+                                            // In JSON, bigints serialize as strings (not numbers) to avoid precision loss
+                                            // References:
+                                            // - Protocol: pool/src/stratum/protocol.ts line 69
+                                            // - Go bridge: https://github.com/rdugan/kaspa-stratum-bridge (main branch, v1.2.2+)
+                                            // - Bitmain branch: https://github.com/aglov413/kaspa-stratum-bridge/tree/bitmain
+                                            // Extract hash (64 hex chars) from header_hash (pre-PoW hash)
                                             let hash = if server_job.header_hash.len() >= 64 {
                                                 server_job.header_hash[..64].to_string()
                                             } else {
                                                 server_job.header_hash.clone() // Fallback if format unexpected
                                             };
-                                            let timestamp_bigint = Value::Number(serde_json::Number::from(server_job.timestamp));
+                                            // Bitmain expects timestamp as a string representation of bigint (for JSON compatibility)
+                                            // JavaScript/TypeScript bigints serialize to strings in JSON to avoid precision loss
+                                            // Go's big.Int also serializes to strings in JSON
+                                            let timestamp_str = server_job.timestamp.to_string();
                                             create_notification(
                                                 "mining.notify".to_string(),
-                                                vec![Value::String(server_job.id.clone()), Value::String(hash), timestamp_bigint],
+                                                vec![
+                                                    Value::String(server_job.id.clone()),
+                                                    Value::String(hash),
+                                                    Value::String(timestamp_str),
+                                                ],
                                             )
                                         } else {
                                             // Standard format: [job_id, header_hash+timestamp] - hash and timestamp are concatenated
