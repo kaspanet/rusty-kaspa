@@ -1,5 +1,7 @@
 use kaspa_txscript_errors::TxScriptError;
 
+const FALCON_FACTOR: u8 = 2; // todo where this should be configured?
+
 /// RuntimeSigOpCounter represents the state tracking of signature operations during script execution.
 /// Unlike the static counting approach which counts all possible signature operations,
 /// this tracks only the actually executed signature operations, leading to more accurate
@@ -39,6 +41,13 @@ impl RuntimeSigOpCounter {
     /// ```
     pub fn consume_sig_op(&mut self) -> Result<(), TxScriptError> {
         self.sig_op_remaining = self.sig_op_remaining.checked_sub(1).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit))?;
+
+        Ok(())
+    }
+
+    pub fn consume_falcon_sig_ops(&mut self) -> Result<(), TxScriptError> {
+        self.sig_op_remaining =
+            self.sig_op_remaining.checked_sub(FALCON_FACTOR).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit))?;
 
         Ok(())
     }

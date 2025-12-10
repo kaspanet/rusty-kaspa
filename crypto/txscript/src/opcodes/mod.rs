@@ -996,7 +996,32 @@ opcode_list! {
         }
     }
     // Undefined opcodes
-    opcode OpUnknown196<0xc4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpCheckSigFalcon512<0xc4, 1>(self, vm) {
+        if !vm.falcon_enabled {
+            return Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+
+        let [mut sig, key] = vm.dstack.pop_raw()?;
+        // Hash type
+        match sig.pop() {
+            Some(typ) => {
+                let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
+                match vm.check_falcon_signature(hash_type, key.as_slice(), sig.as_slice()) {
+                    Ok(valid) => {
+                        vm.dstack.push_item(valid)?;
+                        Ok(())
+                    },
+                    Err(e) => {
+                        Err(e)
+                    }
+                }
+            }
+            None => {
+                vm.dstack.push_item(false)?;
+                Ok(())
+            }
+        }
+    }
     opcode OpUnknown197<0xc5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown198<0xc6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown199<0xc7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1102,7 +1127,7 @@ mod test {
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
         for TestCase { init, code, dstack } in tests {
-            let mut vm = TxScriptEngine::new(&reused_values, &cache);
+            let mut vm = TxScriptEngine::new(&reused_values, &cache, false); // todo check falcon
             vm.dstack = init.clone();
             code.execute(&mut vm).unwrap_or_else(|_| panic!("Opcode {} should not fail", code.value()));
             assert_eq!(*vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
@@ -1113,7 +1138,7 @@ mod test {
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
         for ErrorTestCase { init, code, error } in tests {
-            let mut vm = TxScriptEngine::new(&reused_values, &cache);
+            let mut vm = TxScriptEngine::new(&reused_values, &cache, false); // todo falcon
             vm.dstack.clone_from(&init);
             assert_eq!(
                 code.execute(&mut vm)
@@ -1148,7 +1173,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false); // todo falcon
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1182,7 +1207,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false); // todo falcon
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1197,7 +1222,7 @@ mod test {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpUnknown166::empty().expect("Should accept empty"),
             opcodes::OpUnknown167::empty().expect("Should accept empty"),
-            opcodes::OpUnknown196::empty().expect("Should accept empty"),
+            // opcodes::OpUnknown196::empty().expect("Should accept empty"), todo
             opcodes::OpUnknown197::empty().expect("Should accept empty"),
             opcodes::OpUnknown198::empty().expect("Should accept empty"),
             opcodes::OpUnknown199::empty().expect("Should accept empty"),
@@ -1255,7 +1280,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false); // todo falcon
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -2850,7 +2875,7 @@ mod test {
         ] {
             let mut tx = base_tx.clone();
             tx.0.lock_time = tx_lock_time;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache);
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false); // todo falcon
             vm.dstack = vec![lock_time.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -2892,7 +2917,7 @@ mod test {
         ] {
             let mut input = base_input.clone();
             input.sequence = tx_sequence;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache);
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false); // todo falcon
             vm.dstack = vec![sequence.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -3084,7 +3109,8 @@ mod test {
                     tx.utxo(current_idx).unwrap(),
                     &reused_values,
                     &sig_cache,
-                );
+                    false,
+                ); // todo falcon
 
                 // Check input index opcode first
                 let op_input_idx = opcodes::OpTxInputIndex::empty().expect("Should accept empty");
@@ -3317,6 +3343,7 @@ mod test {
                     tx.utxo(0).unwrap(),
                     &reused_values,
                     &sig_cache,
+                    false, // todo falcon
                 );
 
                 let op_input_count = opcodes::OpTxInputCount::empty().expect("Should accept empty");
@@ -3376,8 +3403,15 @@ mod test {
 
             // Test success case
             {
-                let mut vm =
-                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache);
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3393,8 +3427,15 @@ mod test {
                 tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
                 let tx = tx.as_verifiable();
-                let mut vm =
-                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache);
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
@@ -3426,8 +3467,15 @@ mod test {
                 let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
                 tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
                 let tx = tx.as_verifiable();
-                let mut vm =
-                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache);
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3445,8 +3493,15 @@ mod test {
                 tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
                 let tx = tx.as_verifiable();
-                let mut vm =
-                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache);
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
@@ -3467,10 +3522,17 @@ mod test {
             tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
             let tx = tx.as_verifiable();
-            let mut vm =
-                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache);
-
             // OpInputSpk should push input's SPK onto stack, making it non-empty
+            let mut vm = TxScriptEngine::from_transaction_input(
+                &tx,
+                &tx.inputs()[0],
+                0,
+                tx.utxo(0).unwrap(),
+                &reused_values,
+                &sig_cache,
+                false,
+            ); // todo falcon
+               // OpInputSpk should push input's SPK onto stack, making it non-empty
             assert_eq!(vm.execute(), Ok(()));
         }
 
@@ -3491,8 +3553,15 @@ mod test {
             tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
             let tx = tx.as_verifiable();
-            let mut vm =
-                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache);
+            let mut vm = TxScriptEngine::from_transaction_input(
+                &tx,
+                &tx.inputs()[0],
+                0,
+                tx.utxo(0).unwrap(),
+                &reused_values,
+                &sig_cache,
+                false,
+            ); // todo falcon
 
             // Should succeed because the SPKs are different
             assert_eq!(vm.execute(), Ok(()));
@@ -3516,8 +3585,15 @@ mod test {
             tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
             let tx = tx.as_verifiable();
-            let mut vm =
-                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache);
+            let mut vm = TxScriptEngine::from_transaction_input(
+                &tx,
+                &tx.inputs()[0],
+                0,
+                tx.utxo(0).unwrap(),
+                &reused_values,
+                &sig_cache,
+                false,
+            ); // todo falcon
 
             // Should succeed because both SPKs are identical
             assert_eq!(vm.execute(), Ok(()));
@@ -3554,8 +3630,15 @@ mod test {
                 tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
                 let tx = tx.as_verifiable();
-                let mut vm =
-                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache);
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3573,8 +3656,15 @@ mod test {
                 tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
                 let tx = tx.as_verifiable();
-                let mut vm =
-                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache);
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
@@ -3599,8 +3689,15 @@ mod test {
                 tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
                 let tx = tx.as_verifiable();
-                let mut vm =
-                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache);
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3616,8 +3713,15 @@ mod test {
                 tx.tx.inputs[1].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
 
                 let tx = tx.as_verifiable();
-                let mut vm =
-                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[1], 1, tx.utxo(1).unwrap(), &reused_values, &sig_cache);
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[1],
+                    1,
+                    tx.utxo(1).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    false,
+                ); // todo falcon
 
                 // Should fail because script expects index 0 but we're at index 1
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
@@ -3655,8 +3759,15 @@ mod test {
                 tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&input_count_script).unwrap().drain();
 
                 let tx = tx.as_verifiable();
-                let mut vm =
-                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache);
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3667,8 +3778,15 @@ mod test {
                 tx.tx.inputs[1].signature_script = ScriptBuilder::new().add_data(&output_count_script).unwrap().drain();
 
                 let tx = tx.as_verifiable();
-                let mut vm =
-                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[1], 1, tx.utxo(1).unwrap(), &reused_values, &sig_cache);
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[1],
+                    1,
+                    tx.utxo(1).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3683,8 +3801,15 @@ mod test {
                 tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&wrong_input_count_script).unwrap().drain();
 
                 let tx = tx.as_verifiable();
-                let mut vm =
-                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache);
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
@@ -3698,8 +3823,15 @@ mod test {
                 tx.tx.inputs[1].signature_script = ScriptBuilder::new().add_data(&wrong_output_count_script).unwrap().drain();
 
                 let tx = tx.as_verifiable();
-                let mut vm =
-                    TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[1], 1, tx.utxo(1).unwrap(), &reused_values, &sig_cache);
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[1],
+                    1,
+                    tx.utxo(1).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    false,
+                ); // todo falcon
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
