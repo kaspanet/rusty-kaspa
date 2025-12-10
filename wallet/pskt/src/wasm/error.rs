@@ -1,4 +1,5 @@
 use super::pskt::State;
+use kaspa_txscript::script_class::ScriptClass;
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
 
@@ -30,6 +31,9 @@ pub enum Error {
 
     #[error("PSKT must be initialized with a payload or CREATE role")]
     NotInitialized,
+
+    #[error("Invalid ScriptClass, expected {0}, got {1}")]
+    InvalidScriptClassError(ScriptClass, ScriptClass),
 
     #[error(transparent)]
     ConsensusClient(#[from] kaspa_consensus_client::error::Error),

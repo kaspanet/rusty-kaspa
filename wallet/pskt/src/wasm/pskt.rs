@@ -5,6 +5,7 @@ use kaspa_consensus_core::network::{NetworkId, NetworkIdT, NetworkType, NetworkT
 use kaspa_consensus_core::tx::{TransactionId, VerifiableTransaction};
 use kaspa_txscript::opcodes::codes::OpData65;
 use kaspa_txscript::script_builder::ScriptBuilder;
+use kaspa_txscript::script_class::ScriptClass;
 use wasm_bindgen::prelude::*;
 // use js_sys::Object;
 use crate::prelude::Signature;
@@ -486,10 +487,10 @@ impl PSKT {
         self.replace(State::Signer(signed_pskt))
     }
 
-    /// Get `Transaction` from a PSKT, by first finalizing it.
-    /// This method is useful to broadcast PSKT to the Kaspa Network, using `RpcClient.submitTransaction`.
-    #[wasm_bindgen(js_name = "finalizeAndExtractTransaction")]
-    pub fn finalize_and_extract_transaction(&self, network_type: &NetworkTypeT) -> Result<Transaction> {
+    /// Get `Transaction` from a PSKT, by first finalizing it for P2PK.
+    /// This method is useful to broadcast a P2PK PSKT to the Kaspa Network, using `RpcClient.submitTransaction`.
+    #[wasm_bindgen(js_name = "finalizeP2PK")]
+    pub fn finalize_p2pk(&self, network_type: &NetworkTypeT) -> Result<Transaction> {
         let network_type: NetworkType = network_type.try_into()?;
 
         let pskt_finalizer: Native<Finalizer> = match self.take() {
@@ -503,32 +504,52 @@ impl PSKT {
             state => return Err(Error::state(state))?,
         };
 
-        let result = pskt_finalizer.finalize_sync(|inner: &Inner| -> Result<Vec<Vec<u8>>> {
-            Ok(inner
+        // pre-conditions check
+        for input in pskt_finalizer.inputs.iter() {
+            if input.redeem_script.is_some() {
+                return Err(Error::custom("finalize_p2pk does not support redeem scripts"));
+            }
+
+            if let Some(utxo_entry) = &input.utxo_entry {
+                let script_class = ScriptClass::from_script(&utxo_entry.script_public_key);
+
+                // only allow p2pk script class
+                match script_class {
+                    ScriptClass::NonStandard => return Err(Error::InvalidScriptClassError(ScriptClass::PubKey, script_class)),
+                    ScriptClass::PubKeyECDSA => return Err(Error::InvalidScriptClassError(ScriptClass::PubKey, script_class)),
+                    ScriptClass::ScriptHash => return Err(Error::InvalidScriptClassError(ScriptClass::PubKey, script_class)),
+                    ScriptClass::PubKey => (),
+                }
+            } else {
+                return Err(Error::custom("Input without UTXO entry cannot be finalized"));
+            }
+        }
+
+        let result = pskt_finalizer.finalize_sync(|inner: &Inner| -> std::result::Result<Vec<Vec<u8>>, String> {
+            inner
                 .inputs
                 .iter()
-                .map(|input| -> Vec<u8> {
-                    let signatures: Vec<_> = input
-                        .partial_sigs
-                        .clone()
-                        .into_iter()
-                        .flat_map(|(_, signature)| {
-                            iter::once(OpData65).chain(signature.into_bytes()).chain([input.sighash_type.to_u8()])
-                        })
-                        .collect();
+                .map(|input| {
+                    if input.partial_sigs.len() != 1 {
+                        return Err(format!(
+                            "finalize_p2pk error: input for outpoint {} must have exactly one signature, but has {}",
+                            input.previous_outpoint,
+                            input.partial_sigs.len()
+                        ));
+                    }
 
-                    signatures
-                        .into_iter()
-                        .chain(
-                            input
-                                .redeem_script
-                                .as_ref()
-                                .map(|redeem_script| ScriptBuilder::new().add_data(redeem_script.as_slice()).unwrap().drain().to_vec())
-                                .unwrap_or_default(),
-                        )
-                        .collect()
+                    let signature_script: Vec<u8> = input
+                        .partial_sigs
+                        .values()
+                        .next()
+                        .map(|signature| {
+                            iter::once(OpData65).chain(signature.into_bytes()).chain([input.sighash_type.to_u8()]).collect()
+                        })
+                        .unwrap();
+
+                    Ok(signature_script)
                 })
-                .collect())
+                .collect()
         });
 
         let finalized_pskt = match result {
@@ -664,7 +685,7 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
-    fn _test_finalize_and_extract_transaction() {
+    fn _test_finalize_p2pk() {
         let sk = secp256k1::SecretKey::new(&mut secp256k1::rand::thread_rng());
         let pk: PrivateKey = PrivateKey::from(&sk);
 
@@ -678,7 +699,7 @@ mod tests {
 
         let signed_pskt = pskt.sign(keys_t, &network_type_t).unwrap();
 
-        let transaction = signed_pskt.finalize_and_extract_transaction(&network_type_t).unwrap();
+        let transaction = signed_pskt.finalize_p2pk(&network_type_t).unwrap();
 
         assert_eq!(transaction.inputs().len(), 1);
         let script_sig = transaction.inputs()[0].signature_script.clone();

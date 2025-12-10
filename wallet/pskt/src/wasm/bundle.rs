@@ -139,12 +139,12 @@ impl PSKB {
         Ok(PSKB(new_bundle_inner))
     }
 
-    #[wasm_bindgen(js_name = "finalizeAndExtractTransactions")]
-    pub fn finalize_and_extract_transactions(&self, network_type: &NetworkTypeT) -> Result<Vec<Transaction>> {
+    #[wasm_bindgen(js_name = "finalizeP2PK")]
+    pub fn finalize_p2pk(&self, network_type: &NetworkTypeT) -> Result<Vec<Transaction>> {
         let mut transactions = Vec::with_capacity(self.length());
         for i in 0..self.length() {
             let pskt = self.get(i)?;
-            let transaction = pskt.finalize_and_extract_transaction(network_type)?;
+            let transaction = pskt.finalize_p2pk(network_type)?;
             transactions.push(transaction);
         }
         Ok(transactions)
