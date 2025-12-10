@@ -106,11 +106,11 @@ fn generate_extra_nonce(size_bytes: usize) -> String {
 /// Matches pool implementation: /.*(GodMiner|Bitmain|Antminer).*/i
 fn detect_miner_type(agent: &str) -> MinerType {
     let agent_lower = agent.to_lowercase();
-    
+
     // Check for IceRiver first (more specific patterns)
     if agent_lower.contains("iceriver") || agent_lower.contains("icemining") || agent_lower.contains("icm") {
         MinerType::IceRiver
-    } 
+    }
     // Check for Bitmain (matches pool regex: /.*(GodMiner|Bitmain|Antminer).*/i)
     else if agent_lower.contains("godminer") || agent_lower.contains("bitmain") || agent_lower.contains("antminer") {
         MinerType::Bitmain
@@ -693,10 +693,13 @@ impl StratumClient {
                                             // Standard format: [job_id, header_hash+timestamp] - hash and timestamp are concatenated
                                             create_notification(
                                                 "mining.notify".to_string(),
-                                                vec![Value::String(server_job.id.clone()), Value::String(server_job.header_hash.clone())],
+                                                vec![
+                                                    Value::String(server_job.id.clone()),
+                                                    Value::String(server_job.header_hash.clone()),
+                                                ],
                                             )
                                         };
-                                        
+
                                         let job_json = serde_json::to_string(&job_notification).unwrap();
                                         let job_line = format!("{}\n", job_json);
                                         if response_tx.send(job_line).is_err() {
