@@ -4,7 +4,6 @@ use crate::wasm::signer::PrivateKeyArrayT;
 use kaspa_consensus_core::network::{NetworkId, NetworkIdT, NetworkType, NetworkTypeT};
 use kaspa_consensus_core::tx::{TransactionId, VerifiableTransaction};
 use kaspa_txscript::opcodes::codes::OpData65;
-use kaspa_txscript::script_builder::ScriptBuilder;
 use kaspa_txscript::script_class::ScriptClass;
 use wasm_bindgen::prelude::*;
 // use js_sys::Object;
