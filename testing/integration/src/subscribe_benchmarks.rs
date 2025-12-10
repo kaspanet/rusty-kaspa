@@ -189,13 +189,7 @@ async fn utxos_changed_subscriptions_client(address_cycle_seconds: u64, address_
     let params: Params = network.into();
 
     let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
-    let txs = common::utils::generate_tx_dag(
-        utxoset.clone(),
-        schnorr_key,
-        spk,
-        (TX_COUNT + TX_LEVEL_WIDTH - 1) / TX_LEVEL_WIDTH,
-        TX_LEVEL_WIDTH,
-    );
+    let txs = common::utils::generate_tx_dag(utxoset.clone(), schnorr_key, spk, TX_COUNT.div_ceil(TX_LEVEL_WIDTH), TX_LEVEL_WIDTH);
     common::utils::verify_tx_dag(&utxoset, &txs);
     info!("Generated overall {} txs", txs.len());
 

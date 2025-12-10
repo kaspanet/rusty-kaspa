@@ -15,11 +15,18 @@ impl Address {
             let op = argv.first().unwrap();
             match op.as_str() {
                 "new" => {
-                    let account = ctx.wallet().account()?.as_derivation_capable()?;
-                    let ident = account.name_with_id();
-                    let new_address = account.new_receive_address().await?;
-                    tprintln!(ctx, "Generating new address for account {}", style(ident).cyan());
-                    tprintln!(ctx, "{}", style(new_address).blue());
+                    #[cfg(not(feature = "multi-user"))]
+                    {
+                        let account = ctx.wallet().account()?.as_derivation_capable()?;
+                        let ident = account.name_with_id();
+                        let new_address = account.new_receive_address().await?;
+                        tprintln!(ctx, "Generating new address for account {}", style(ident).cyan());
+                        tprintln!(ctx, "{}", style(new_address).blue());
+                    }
+                    #[cfg(feature = "multi-user")]
+                    {
+                        return Err("Account selection is not available in multi-user mode".into());
+                    }
                 }
                 v => {
                     tprintln!(ctx, "unknown command: '{v}'\r\n");

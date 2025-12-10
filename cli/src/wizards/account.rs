@@ -51,6 +51,7 @@ pub(crate) async fn create(
         wallet.create_account_bip32(&wallet_secret, prv_key_data_info.id, payment_secret.as_ref(), account_create_args_bip32).await?;
 
     tprintln!(ctx, "\naccount created: {}\n", account.get_list_string()?);
+    #[cfg(not(feature = "multi-user"))]
     wallet.select(Some(&account)).await?;
     Ok(())
 }
@@ -83,6 +84,7 @@ async fn create_multisig(ctx: &Arc<KaspaCli>, account_name: Option<String>, mnem
         wallet.create_account_multisig(&wallet_secret, prv_key_data_args, xpub_keys, account_name, minimum_signatures).await?;
 
     tprintln!(ctx, "\naccount created: {}\n", account.get_list_string()?);
+    #[cfg(not(feature = "multi-user"))]
     wallet.select(Some(&account)).await?;
     Ok(())
 }
@@ -110,6 +112,7 @@ pub(crate) async fn bip32_watch(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Resu
     let account = wallet.create_account_bip32_watch(&wallet_secret, account_create_args_bip32_watch).await?;
 
     tprintln!(ctx, "\naccount created: {}\n", account.get_list_string()?);
+    #[cfg(not(feature = "multi-user"))]
     wallet.select(Some(&account)).await?;
     Ok(())
 }
@@ -142,6 +145,7 @@ pub(crate) async fn multisig_watch(ctx: &Arc<KaspaCli>, name: Option<&str>) -> R
         wallet.create_account_multisig(&wallet_secret, prv_key_data_args, xpub_keys, account_name, minimum_signatures).await?;
 
     tprintln!(ctx, "\naccount created: {}\n", account.get_list_string()?);
+    #[cfg(not(feature = "multi-user"))]
     wallet.select(Some(&account)).await?;
     Ok(())
 }

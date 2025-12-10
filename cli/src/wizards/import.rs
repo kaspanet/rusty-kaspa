@@ -127,6 +127,7 @@ pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: Acco
     };
 
     tprintln!(ctx, "\naccount imported: {}\n", account.get_list_string()?);
+    #[cfg(not(feature = "multi-user"))]
     wallet.select(Some(&account)).await?;
     Ok(())
 }

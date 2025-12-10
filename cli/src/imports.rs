@@ -4,6 +4,7 @@ pub use crate::extensions::*;
 pub(crate) use crate::helpers;
 pub use crate::notifier::Notification;
 pub use crate::result::Result;
+#[allow(unused_imports)] // Functions from utils are used via wildcard import in modules
 pub use crate::utils::*;
 pub use async_trait::async_trait;
 pub use cfg_if::cfg_if;

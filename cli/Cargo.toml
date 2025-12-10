@@ -18,6 +18,7 @@ include = [
 
 [features]
 default = []
+multi-user = ["kaspa-wallet-core/multi-user"]
 
 [lib]
 name = "kaspa_cli_lib"

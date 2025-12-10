@@ -373,6 +373,7 @@ impl KaspaCli {
                                     this.list().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
 
                                     // load default account if only one account exists
+                                    #[cfg(not(feature = "multi-user"))]
                                     this.wallet().autoselect_default_account_if_single().await.ok();
                                     this.term().refresh_prompt();
                                 },
@@ -520,12 +521,19 @@ impl KaspaCli {
     }
 
     pub async fn account(&self) -> Result<Arc<dyn Account>> {
-        if let Ok(account) = self.wallet.account() {
-            Ok(account)
-        } else {
-            let account = self.select_account().await?;
-            self.wallet.select(Some(&account)).await?;
-            Ok(account)
+        #[cfg(not(feature = "multi-user"))]
+        {
+            if let Ok(account) = self.wallet.account() {
+                Ok(account)
+            } else {
+                let account = self.select_account().await?;
+                self.wallet.select(Some(&account)).await?;
+                Ok(account)
+            }
+        }
+        #[cfg(feature = "multi-user")]
+        {
+            Err("Account selection is not available in multi-user mode".into())
         }
     }
 
@@ -858,17 +866,20 @@ impl Cli for KaspaCli {
                 prompt.push(title);
             }
 
-            if let Ok(account) = self.wallet.account() {
-                prompt.push(style(account.name_with_id()).blue().to_string());
+            #[cfg(not(feature = "multi-user"))]
+            {
+                if let Ok(account) = self.wallet.account() {
+                    prompt.push(style(account.name_with_id()).blue().to_string());
 
-                if let Ok(balance) = account.balance_as_strings(None) {
-                    if let Some(pending) = balance.pending {
-                        prompt.push(format!("{} ({})", balance.mature, pending));
+                    if let Ok(balance) = account.balance_as_strings(None) {
+                        if let Some(pending) = balance.pending {
+                            prompt.push(format!("{} ({})", balance.mature, pending));
+                        } else {
+                            prompt.push(balance.mature);
+                        }
                     } else {
-                        prompt.push(balance.mature);
+                        prompt.push("N/A".to_string());
                     }
-                } else {
-                    prompt.push("N/A".to_string());
                 }
             }
         }

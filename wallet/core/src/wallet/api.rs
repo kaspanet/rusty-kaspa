@@ -262,16 +262,23 @@ impl WalletApi for super::Wallet {
     }
 
     async fn accounts_select_call(self: Arc<Self>, request: AccountsSelectRequest) -> Result<AccountsSelectResponse> {
-        let AccountsSelectRequest { account_id } = request;
+        #[cfg(not(feature = "multi-user"))]
+        {
+            let AccountsSelectRequest { account_id } = request;
+            let guard = self.guard();
+            let guard = guard.lock().await;
 
-        let guard = self.guard();
-        let guard = guard.lock().await;
-
-        if let Some(account_id) = account_id {
-            let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
-            self.select(Some(&account)).await?;
-        } else {
-            self.select(None).await?;
+            if let Some(account_id) = account_id {
+                let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
+                self.select(Some(&account)).await?;
+            } else {
+                self.select(None).await?;
+            }
+        }
+        #[cfg(feature = "multi-user")]
+        {
+            // In multi-user mode, account selection is handled differently
+            let _ = request;
         }
         // self.inner.selected_account.lock().unwrap().replace(account);
 

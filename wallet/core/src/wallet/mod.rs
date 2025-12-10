@@ -239,6 +239,7 @@ impl Wallet {
     pub async fn reset(self: &Arc<Self>, clear_legacy_cache: bool) -> Result<()> {
         self.utxo_processor().cleanup().await?;
 
+        #[cfg(not(feature = "multi-user"))]
         self.select(None).await?;
 
         let accounts = self.active_accounts().collect();
@@ -1013,6 +1014,7 @@ impl Wallet {
         self.inner.store.clone().as_account_store()?.store_single(&account.to_storage()?, None).await?;
         self.inner.store.commit(wallet_secret).await?;
 
+        #[cfg(not(feature = "multi-user"))]
         self.select(Some(&account)).await?;
         Ok((wallet_descriptor, storage_descriptor, mnemonic, account))
     }

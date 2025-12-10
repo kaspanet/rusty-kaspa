@@ -1,10 +1,9 @@
 use kaspa_addresses::Version;
 use kaspa_bip32::secp256k1::XOnlyPublicKey;
+#[cfg(not(feature = "multi-user"))]
+use kaspa_wallet_core::account::{BIP32_ACCOUNT_KIND, KEYPAIR_ACCOUNT_KIND};
 use kaspa_wallet_core::message::SignMessageOptions;
-use kaspa_wallet_core::{
-    account::{BIP32_ACCOUNT_KIND, KEYPAIR_ACCOUNT_KIND},
-    message::{sign_message, verify_message, PersonalMessage},
-};
+use kaspa_wallet_core::message::{sign_message, verify_message, PersonalMessage};
 
 use crate::imports::*;
 
@@ -129,32 +128,40 @@ impl Message {
     }
 
     async fn get_address_private_key(self: Arc<Self>, ctx: &Arc<KaspaCli>, kaspa_address: Address) -> Result<[u8; 32]> {
-        let account = ctx.wallet().account()?;
+        #[cfg(not(feature = "multi-user"))]
+        {
+            let account = ctx.wallet().account()?;
 
-        match account.account_kind().as_ref() {
-            BIP32_ACCOUNT_KIND => {
-                let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
-                let keydata = account.prv_key_data(wallet_secret).await?;
-                let account = account.clone().as_derivation_capable().expect("expecting derivation capable");
+            match account.account_kind().as_ref() {
+                BIP32_ACCOUNT_KIND => {
+                    let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
+                    let keydata = account.prv_key_data(wallet_secret).await?;
+                    let account = account.clone().as_derivation_capable().expect("expecting derivation capable");
 
-                let (receive, change) = account.derivation().addresses_indexes(&[&kaspa_address])?;
-                let private_keys = account.create_private_keys(&keydata, &payment_secret, &receive, &change)?;
-                for (address, private_key) in private_keys {
-                    if kaspa_address == *address {
-                        return Ok(private_key.secret_bytes());
+                    let (receive, change) = account.derivation().addresses_indexes(&[&kaspa_address])?;
+                    let private_keys = account.create_private_keys(&keydata, &payment_secret, &receive, &change)?;
+                    for (address, private_key) in private_keys {
+                        if kaspa_address == *address {
+                            return Ok(private_key.secret_bytes());
+                        }
                     }
-                }
 
-                Err(Error::custom("Could not find address in any derivation path in account"))
+                    Err(Error::custom("Could not find address in any derivation path in account"))
+                }
+                KEYPAIR_ACCOUNT_KIND => {
+                    let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
+                    let keydata = account.prv_key_data(wallet_secret).await?;
+                    let decrypted_privkey = keydata.payload.decrypt(payment_secret.as_ref()).unwrap();
+                    let secretkey = decrypted_privkey.as_secret_key()?.unwrap();
+                    Ok(secretkey.secret_bytes())
+                }
+                _ => Err(Error::custom("Unsupported account kind")),
             }
-            KEYPAIR_ACCOUNT_KIND => {
-                let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
-                let keydata = account.prv_key_data(wallet_secret).await?;
-                let decrypted_privkey = keydata.payload.decrypt(payment_secret.as_ref()).unwrap();
-                let secretkey = decrypted_privkey.as_secret_key()?.unwrap();
-                Ok(secretkey.secret_bytes())
-            }
-            _ => Err(Error::custom("Unsupported account kind")),
+        }
+        #[cfg(feature = "multi-user")]
+        {
+            let _ = (ctx, kaspa_address);
+            Err("Account selection is not available in multi-user mode".into())
         }
     }
 }
