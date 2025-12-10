@@ -68,16 +68,17 @@ impl From<&[Hash]> for protowire::BlockLevelParents {
 // protowire to consensus_core
 // ----------------------------------------------------------------------------
 
-impl TryFrom<protowire::BlockHeader> for Header {
-    type Error = ConversionError;
-    fn try_from(item: protowire::BlockHeader) -> Result<Self, Self::Error> {
-        // Detect header format by checking the first entry's cumulative_level:
-        // Compressed header must have a cumulative_level > 0 (indication of at least one item in the parents_by_level vector)
-        // Legacy header would have a cumulative_level == 0 (when the cumulative_level field is unused, it defaults to 0)
-        let is_compressed = item.parents.first().is_some_and(|p| p.cumulative_level > 0);
+/// A wrapper for P2P header messages indicating the expected header format during conversion.
+pub struct Versioned<T>(pub HeaderFormat, pub T);
 
-        let parents_by_level = if is_compressed {
-            item.parents
+impl TryFrom<Versioned<protowire::BlockHeader>> for Header {
+    type Error = ConversionError;
+    fn try_from(value: Versioned<protowire::BlockHeader>) -> Result<Self, Self::Error> {
+        let Versioned(header_format, item) = value;
+
+        let parents_by_level = match header_format {
+            HeaderFormat::Compressed => item
+                .parents
                 .into_iter()
                 .map(|p| {
                     let cum = u8::try_from(p.cumulative_level)?;
@@ -85,16 +86,16 @@ impl TryFrom<protowire::BlockHeader> for Header {
                     Ok((cum, parents))
                 })
                 .collect::<Result<Vec<(u8, Vec<Hash>)>, ConversionError>>()?
-                .try_into()?
-        } else {
-            item.parents
+                .try_into()?,
+            HeaderFormat::Legacy => item
+                .parents
                 .into_iter()
                 .map(|p| p.parent_hashes.into_iter().map(Hash::try_from).collect::<Result<Vec<Hash>, ConversionError>>())
                 .collect::<Result<Vec<Vec<Hash>>, ConversionError>>()?
-                .try_into()?
+                .try_into()?,
         };
 
-        Ok(Self::new_finalized(
+        Ok(Header::new_finalized(
             item.version.try_into()?,
             parents_by_level,
             item.hash_merkle_root.try_into_ex()?,

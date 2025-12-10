@@ -1,5 +1,5 @@
-use super::header::HeaderFormat;
-use super::{error::ConversionError, option::TryIntoOptionEx};
+use super::error::ConversionError;
+use super::header::{HeaderFormat, Versioned};
 use crate::pb as protowire;
 use kaspa_consensus_core::{block::Block, tx::Transaction};
 type BlockBody = Vec<Transaction>;
@@ -26,12 +26,14 @@ impl From<&BlockBody> for protowire::BlockBodyMessage {
 // protowire to consensus_core
 // ----------------------------------------------------------------------------
 
-impl TryFrom<protowire::BlockMessage> for Block {
+impl TryFrom<Versioned<protowire::BlockMessage>> for Block {
     type Error = ConversionError;
 
-    fn try_from(block: protowire::BlockMessage) -> Result<Self, Self::Error> {
+    fn try_from(value: Versioned<protowire::BlockMessage>) -> Result<Self, Self::Error> {
+        let Versioned(header_format, block) = value;
+        let header = block.header.ok_or(ConversionError::NoneValue)?;
         Ok(Self::new(
-            block.header.try_into_ex()?,
+            Versioned(header_format, header).try_into()?,
             block.transactions.into_iter().map(|i| i.try_into()).collect::<Result<Vec<Transaction>, Self::Error>>()?,
         ))
     }
