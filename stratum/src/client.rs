@@ -106,7 +106,6 @@ fn generate_extra_nonce(size_bytes: usize) -> String {
 /// Matches pool implementation: /.*(GodMiner|Bitmain|Antminer).*/i
 fn detect_miner_type(agent: &str) -> MinerType {
     let agent_lower = agent.to_lowercase();
-
     // Check for IceRiver first (more specific patterns)
     if agent_lower.contains("iceriver") || agent_lower.contains("icemining") || agent_lower.contains("icm") {
         MinerType::IceRiver
