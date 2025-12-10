@@ -9,9 +9,16 @@ include.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+py-sdk = [
+    "pyo3",
+]
+
 [dependencies]
 borsh.workspace = true
 js-sys.workspace = true
+pyo3 = { workspace = true, optional = true } 
 serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true

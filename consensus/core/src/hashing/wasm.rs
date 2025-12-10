@@ -1,9 +1,14 @@
 use super::sighash_type::{self, SigHashType};
+#[cfg(feature = "py-sdk")]
+use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 /// Kaspa Sighash types allowed by consensus
 /// @category Consensus
+#[derive(PartialEq)]
+#[cfg_attr(feature = "py-sdk", pyclass(eq, eq_int))]
 #[wasm_bindgen]
+#[derive(Clone, Copy)]
 pub enum SighashType {
     All,
     None,

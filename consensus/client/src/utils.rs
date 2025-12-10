@@ -23,6 +23,13 @@ pub fn pay_to_address_script(address: &AddressT) -> Result<ScriptPublicKey> {
     Ok(standard::pay_to_address_script(address.as_ref()))
 }
 
+#[cfg(feature = "py-sdk")]
+#[pyfunction]
+#[pyo3(name = "pay_to_address_script")]
+pub fn pay_to_address_script_py(address: Address) -> Result<ScriptPublicKey> {
+    Ok(standard::pay_to_address_script(&address))
+}
+
 /// Takes a script and returns an equivalent pay-to-script-hash script.
 /// @param redeem_script - The redeem script ({@link HexString} or Uint8Array).
 /// @category Wallet SDK
@@ -30,6 +37,13 @@ pub fn pay_to_address_script(address: &AddressT) -> Result<ScriptPublicKey> {
 pub fn pay_to_script_hash_script(redeem_script: BinaryT) -> Result<ScriptPublicKey> {
     let redeem_script = redeem_script.try_as_vec_u8()?;
     Ok(standard::pay_to_script_hash_script(redeem_script.as_slice()))
+}
+
+#[cfg(feature = "py-sdk")]
+#[pyfunction]
+#[pyo3(name = "pay_to_script_hash_script")]
+pub fn pay_to_script_hash_script_py(redeem_script: PyBinary) -> PyResult<ScriptPublicKey> {
+    Ok(standard::pay_to_script_hash_script(redeem_script.data.as_slice()))
 }
 
 /// Generates a signature script that fits a pay-to-script-hash script.
@@ -42,6 +56,15 @@ pub fn pay_to_script_hash_signature_script(redeem_script: BinaryT, signature: Bi
     let signature = signature.try_as_vec_u8()?;
     let script = standard::pay_to_script_hash_signature_script(redeem_script, signature)?;
     Ok(script.to_hex().into())
+}
+
+#[cfg(feature = "py-sdk")]
+#[pyfunction]
+#[pyo3(name = "pay_to_script_hash_signature_script")]
+pub fn pay_to_script_hash_signature_script_py(redeem_script: PyBinary, signature: PyBinary) -> PyResult<String> {
+    let script = standard::pay_to_script_hash_signature_script(redeem_script.data, signature.data)
+        .map_err(|err| PyException::new_err(format!("{}", err.to_string())))?;
+    Ok(script.to_hex())
 }
 
 /// Returns the address encoded in a script public key.
@@ -59,6 +82,16 @@ pub fn address_from_script_public_key(script_public_key: &ScriptPublicKeyT, netw
     }
 }
 
+#[cfg(feature = "py-sdk")]
+#[pyfunction]
+#[pyo3(name = "address_from_script_public_key")]
+pub fn address_from_script_public_key_py(script_public_key: &ScriptPublicKey, network: &str) -> PyResult<Address> {
+    match standard::extract_script_pub_key_address(script_public_key, NetworkType::from_str(network)?.try_into()?) {
+        Ok(address) => Ok(address),
+        Err(err) => Err(pyo3::exceptions::PyException::new_err(format!("{}", err))),
+    }
+}
+
 /// Returns true if the script passed is a pay-to-pubkey.
 /// @param script - The script ({@link HexString} or Uint8Array).
 /// @category Wallet SDK
@@ -66,6 +99,13 @@ pub fn address_from_script_public_key(script_public_key: &ScriptPublicKeyT, netw
 pub fn is_script_pay_to_pubkey(script: BinaryT) -> Result<bool> {
     let script = script.try_as_vec_u8()?;
     Ok(ScriptClass::is_pay_to_pubkey(script.as_slice()))
+}
+
+#[cfg(feature = "py-sdk")]
+#[pyfunction]
+#[pyo3(name = "is_script_pay_to_pubkey")]
+pub fn is_script_pay_to_pubkey_py(script: PyBinary) -> PyResult<bool> {
+    Ok(ScriptClass::is_pay_to_pubkey(script.data.as_slice()))
 }
 
 /// Returns returns true if the script passed is an ECDSA pay-to-pubkey.
@@ -77,6 +117,13 @@ pub fn is_script_pay_to_pubkey_ecdsa(script: BinaryT) -> Result<bool> {
     Ok(ScriptClass::is_pay_to_pubkey_ecdsa(script.as_slice()))
 }
 
+#[cfg(feature = "py-sdk")]
+#[pyfunction]
+#[pyo3(name = "is_script_pay_to_pubkey_ecdsa")]
+pub fn is_script_pay_to_pubkey_ecdsa_py(script: PyBinary) -> PyResult<bool> {
+    Ok(ScriptClass::is_pay_to_pubkey_ecdsa(script.data.as_slice()))
+}
+
 /// Returns true if the script passed is a pay-to-script-hash (P2SH) format, false otherwise.
 /// @param script - The script ({@link HexString} or Uint8Array).
 /// @category Wallet SDK
@@ -84,4 +131,11 @@ pub fn is_script_pay_to_pubkey_ecdsa(script: BinaryT) -> Result<bool> {
 pub fn is_script_pay_to_script_hash(script: BinaryT) -> Result<bool> {
     let script = script.try_as_vec_u8()?;
     Ok(ScriptClass::is_pay_to_script_hash(script.as_slice()))
+}
+
+#[cfg(feature = "py-sdk")]
+#[pyfunction]
+#[pyo3(name = "is_script_pay_to_script_hash")]
+pub fn is_script_pay_to_script_hash_py(script: PyBinary) -> PyResult<bool> {
+    Ok(ScriptClass::is_pay_to_script_hash(script.data.as_slice()))
 }
