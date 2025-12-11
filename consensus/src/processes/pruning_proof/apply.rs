@@ -11,7 +11,7 @@ use kaspa_consensus_core::{
     header::Header,
     pruning::PruningPointProof,
     trusted::TrustedBlock,
-    BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher,
+    BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use kaspa_core::{debug, trace};
 use kaspa_hashes::Hash;
@@ -91,48 +91,44 @@ impl PruningProofManager {
                 }
             }
         }
-        // Populate ghostdag_store and relation store (on a per level basis) for every block in the proof
-        for (level, headers) in expanded_proof.iter().enumerate() {
-            trace!("Applying level {} from the pruning point proof", level);
-            // We are only interested in those level ancestors that belong to the pruning proof at that level,
-            // so other level parents are filtered out.
-            // Since each level is topologically sorted, we can construct the level ancesstors
-            // on the fly rather than constructing it ahead of time
-            let mut level_ancestors: HashSet<Hash> = HashSet::new();
-            level_ancestors.insert(ORIGIN);
+        // Populate ghostdag_store and relation store for every block in the proof
+        trace!("Applying level 0 from the pruning point proof");
+        // We are only interested in those ancestors that belong to the pruning proof,
+        // so other parents are filtered out.
+        // Since the dag is topologically sorted, we can construct the ancestors
+        // on the fly rather than constructing it ahead of time
+        let mut ancestors: HashSet<Hash> = HashSet::new();
+        ancestors.insert(ORIGIN);
 
-            for header in headers.iter() {
-                let parents = Arc::new(
-                    self.parents_manager
-                        .parents_at_level(header, level as BlockLevel)
-                        .iter()
-                        .copied()
-                        .filter(|parent| level_ancestors.contains(parent))
-                        .collect_vec()
-                        .push_if_empty(ORIGIN),
-                );
+        for header in expanded_proof[0].iter() {
+            let parents = Arc::new(
+                self.parents_manager
+                    .parents_at_level(header, 0)
+                    .iter()
+                    .copied()
+                    .filter(|parent| ancestors.contains(parent))
+                    .collect_vec()
+                    .push_if_empty(ORIGIN),
+            );
 
-                self.relations_stores.write()[level].insert(header.hash, parents.clone()).unwrap();
-                if level == 0 {
-                    let gd = if let Some(gd) = trusted_gd_map.get(&header.hash) {
-                        gd.clone()
-                    } else {
-                        let calculated_gd = self.ghostdag_manager.ghostdag(&parents);
-                        // Override the ghostdag data with the real blue score and blue work
-                        GhostdagData {
-                            blue_score: header.blue_score,
-                            blue_work: header.blue_work,
-                            selected_parent: calculated_gd.selected_parent,
-                            mergeset_blues: calculated_gd.mergeset_blues,
-                            mergeset_reds: calculated_gd.mergeset_reds,
-                            blues_anticone_sizes: calculated_gd.blues_anticone_sizes,
-                        }
-                    };
-                    self.ghostdag_store.insert(header.hash, Arc::new(gd)).unwrap();
+            self.relations_store.write().insert(header.hash, parents.clone()).unwrap();
+            let gd = if let Some(gd) = trusted_gd_map.get(&header.hash) {
+                gd.clone()
+            } else {
+                let calculated_gd = self.ghostdag_manager.ghostdag(&parents);
+                // Override the ghostdag data with the real blue score and blue work
+                GhostdagData {
+                    blue_score: header.blue_score,
+                    blue_work: header.blue_work,
+                    selected_parent: calculated_gd.selected_parent,
+                    mergeset_blues: calculated_gd.mergeset_blues,
+                    mergeset_reds: calculated_gd.mergeset_reds,
+                    blues_anticone_sizes: calculated_gd.blues_anticone_sizes,
                 }
+            };
+            self.ghostdag_store.insert(header.hash, Arc::new(gd)).unwrap();
 
-                level_ancestors.insert(header.hash);
-            }
+            ancestors.insert(header.hash);
         }
 
         // Update virtual state based on proof derived pruning point.

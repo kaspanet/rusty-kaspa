@@ -27,7 +27,6 @@ use crate::{
 };
 
 use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
-use itertools::Itertools;
 use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHashSet};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
@@ -40,7 +39,7 @@ pub struct ConsensusStorage {
 
     // Locked stores
     pub statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
+    pub relations_store: Arc<RwLock<DbRelationsStore>>,
     pub reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     pub pruning_point_store: Arc<RwLock<DbPruningStore>>,
@@ -171,18 +170,12 @@ impl ConsensusStorage {
 
         // Headers
         let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), statuses_builder.build())));
-        let relations_stores = Arc::new(RwLock::new(
-            (0..=params.max_block_level)
-                .map(|level| {
-                    DbRelationsStore::new(
-                        db.clone(),
-                        level,
-                        parents_builder.downscale(level).build(),
-                        children_builder.downscale(level).build(),
-                    )
-                })
-                .collect_vec(),
-        ));
+        let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(
+            db.clone(),
+            0,
+            parents_builder.downscale(0).build(),
+            children_builder.downscale(0).build(),
+        )));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(
             db.clone(),
             reachability_data_builder.build(),
@@ -238,7 +231,7 @@ impl ConsensusStorage {
         Arc::new(Self {
             db,
             statuses_store,
-            relations_stores,
+            relations_store,
             reachability_relations_store,
             reachability_store,
             ghostdag_store,
