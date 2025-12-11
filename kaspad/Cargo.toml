@@ -36,6 +36,7 @@ kaspa-p2p-mining.workspace = true
 kaspa-perf-monitor.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-service.workspace = true
+kaspa-stratum.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-utils-tower.workspace = true
