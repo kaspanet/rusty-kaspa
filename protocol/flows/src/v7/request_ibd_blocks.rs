@@ -28,6 +28,8 @@ impl HandleIbdBlockRequests {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
+        let header_format = kaspa_p2p_lib::convert::header::determine_header_format(self.router.properties().protocol_version);
+
         loop {
             let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestIbdBlocks)?;
             let hashes: Vec<_> = msg.try_into()?;
@@ -37,7 +39,7 @@ impl HandleIbdBlockRequests {
 
             for hash in hashes {
                 let block = session.async_get_block(hash).await?;
-                self.router.enqueue(make_response!(Payload::IbdBlock, (&block).into(), request_id)).await?;
+                self.router.enqueue(make_response!(Payload::IbdBlock, (header_format, &block).into(), request_id)).await?;
             }
         }
     }

@@ -10,7 +10,7 @@ use kaspa_consensus_core::{
 use kaspa_core::{debug, info};
 use kaspa_p2p_lib::{
     common::{ProtocolError, DEFAULT_TIMEOUT},
-    convert::model::trusted::TrustedDataEntry,
+    convert::{header::HeaderFormat, header::Versioned, model::trusted::TrustedDataEntry},
     make_message,
     pb::{
         kaspad_message::Payload, RequestNextHeadersMessage, RequestNextPruningPointAndItsAnticoneBlocksMessage,
@@ -26,12 +26,13 @@ pub const IBD_BATCH_SIZE: usize = 99;
 pub struct TrustedEntryStream<'a, 'b> {
     router: &'a Router,
     incoming_route: &'b mut IncomingRoute,
+    header_format: HeaderFormat,
     i: usize,
 }
 
 impl<'a, 'b> TrustedEntryStream<'a, 'b> {
-    pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
-        Self { router, incoming_route, i: 0 }
+    pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute, header_format: HeaderFormat) -> Self {
+        Self { router, incoming_route, header_format, i: 0 }
     }
 
     pub async fn next(&mut self) -> Result<Option<TrustedDataEntry>, ProtocolError> {
@@ -40,7 +41,7 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
                 if let Some(msg) = op {
                     match msg.payload {
                         Some(Payload::BlockWithTrustedDataV4(payload)) => {
-                            let entry: TrustedDataEntry = payload.try_into()?;
+                            let entry: TrustedDataEntry = Versioned(self.header_format, payload).try_into()?;
                             if entry.block.is_header_only() {
                                 Err(ProtocolError::OtherOwned(format!("trusted entry block {} is header only", entry.block.hash())))
                             } else {
@@ -87,12 +88,13 @@ pub type HeadersChunk = Vec<Arc<Header>>;
 pub struct HeadersChunkStream<'a, 'b> {
     router: &'a Router,
     incoming_route: &'b mut IncomingRoute,
+    header_format: HeaderFormat,
     i: usize,
 }
 
 impl<'a, 'b> HeadersChunkStream<'a, 'b> {
-    pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
-        Self { router, incoming_route, i: 0 }
+    pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute, header_format: HeaderFormat) -> Self {
+        Self { router, incoming_route, header_format, i: 0 }
     }
 
     pub async fn next(&mut self) -> Result<Option<HeadersChunk>, ProtocolError> {
@@ -105,7 +107,7 @@ impl<'a, 'b> HeadersChunkStream<'a, 'b> {
                                 // The syncer should have sent a done message if the search completed, and not an empty list
                                 Err(ProtocolError::Other("Received an empty headers message"))
                             } else {
-                                Ok(Some(payload.try_into()?))
+                                Ok(Some(Versioned(self.header_format, payload).try_into()?))
                             }
                         }
                         Some(Payload::DoneHeaders(_)) => {
