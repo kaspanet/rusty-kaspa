@@ -36,9 +36,13 @@ impl Handler {
             _ => (handler.to_token_stream().to_string(), vec![]),
         };
         //let name = handler.to_token_stream().to_string();
-        let fn_call = Ident::new(&format!("{}_call", name.to_case(Case::Snake)), Span::call_site());
-        let fn_with_suffix = fn_suffix.map(|suffix| Ident::new(&format!("{}_{suffix}", name.to_case(Case::Snake)), Span::call_site()));
-        let fn_no_suffix = Ident::new(&name.to_case(Case::Snake), Span::call_site());
+
+        // replace _v_2 with _v2
+        let snake_case_name = name.to_case(Case::Snake).replacen("_v_", "_v", 1);
+
+        let fn_call = Ident::new(&format!("{}_call", snake_case_name.clone()), Span::call_site());
+        let fn_with_suffix = fn_suffix.map(|suffix| Ident::new(&format!("{}_{suffix}", snake_case_name.clone()), Span::call_site()));
+        let fn_no_suffix = Ident::new(&snake_case_name, Span::call_site());
         let fn_camel = Ident::new(&name.to_case(Case::Camel), Span::call_site());
         let request_type = Ident::new(&format!("{name}Request"), Span::call_site());
         let response_type = Ident::new(&format!("{name}Response"), Span::call_site());

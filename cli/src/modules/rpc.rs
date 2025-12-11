@@ -290,6 +290,29 @@ impl Rpc {
 
                 self.println(&ctx, result);
             }
+            RpcApiOps::GetVirtualChainFromBlockV2 => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Missing startHash argument"));
+                };
+
+                let start_hash = RpcHash::from_hex(argv.remove(0).as_str())?;
+
+                let verbosity_level_i32 = argv.pop().and_then(|arg| arg.parse::<i32>().ok()).unwrap_or_default();
+                let verbosity_level = RpcDataVerbosityLevel::try_from(verbosity_level_i32)?;
+
+                let result = rpc
+                    .get_virtual_chain_from_block_v2_call(
+                        None,
+                        GetVirtualChainFromBlockV2Request {
+                            start_hash,
+                            data_verbosity_level: Some(verbosity_level),
+                            min_confirmation_count: None,
+                        },
+                    )
+                    .await;
+
+                self.println(&ctx, result);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

@@ -141,6 +141,9 @@ pub enum RpcError {
     #[error("utxo return address could not be found -> {0}")]
     UtxoReturnAddressNotFound(UtxoInquirerError),
 
+    #[error("consensus converter required {0} - but was not found")]
+    ConsensusConverterNotFound(String),
+
     #[error("consensus is currently in a transitional ibd state")]
     ConsensusInTransitionalIbdState,
 
