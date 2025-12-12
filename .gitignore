@@ -1,4 +1,5 @@
 target
+stratum-proxy
 web-root
 **/.idea/
 /rust-toolchain
