@@ -9,7 +9,8 @@ use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCt
 use kaspa_core::{debug, time::unix_now, warn};
 use kaspa_database::{
     prelude::{
-        BatchDbWriter, CachePolicy, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB,
+        BatchDbWriter, CachePolicy, CachedDbAccess, CachedDbItem, DirectDbWriter, RocksDbPreset, StoreError, StoreResult,
+        StoreResultExtensions, DB,
     },
     registry::DatabaseStorePrefixes,
 };
@@ -255,9 +256,13 @@ pub struct Factory {
     tx_script_cache_counters: Arc<TxScriptCacheCounters>,
     fd_budget: i32,
     mining_rules: Arc<MiningRules>,
+    rocksdb_preset: RocksDbPreset,
+    wal_dir: Option<PathBuf>,
+    cache_budget: Option<usize>,
 }
 
 impl Factory {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         management_db: Arc<DB>,
         config: &Config,
@@ -268,6 +273,9 @@ impl Factory {
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
         fd_budget: i32,
         mining_rules: Arc<MiningRules>,
+        rocksdb_preset: RocksDbPreset,
+        wal_dir: Option<PathBuf>,
+        cache_budget: Option<usize>,
     ) -> Self {
         assert!(fd_budget > 0, "fd_budget has to be positive");
         let mut config = config.clone();
@@ -286,6 +294,9 @@ impl Factory {
             tx_script_cache_counters,
             fd_budget,
             mining_rules,
+            rocksdb_preset,
+            wal_dir,
+            cache_budget,
         };
         factory.delete_inactive_consensus_entries();
         factory
@@ -316,6 +327,9 @@ impl ConsensusFactory for Factory {
             .with_db_path(dir)
             .with_parallelism(self.db_parallelism)
             .with_files_limit(self.fd_budget / 2) // active and staging consensuses should have equal budgets
+            .with_preset(self.rocksdb_preset)
+            .with_wal_dir(self.wal_dir.clone())
+            .with_cache_budget(self.cache_budget)
             .build()
             .unwrap();
 
@@ -351,6 +365,9 @@ impl ConsensusFactory for Factory {
             .with_db_path(dir)
             .with_parallelism(self.db_parallelism)
             .with_files_limit(self.fd_budget / 2) // active and staging consensuses should have equal budgets
+            .with_preset(self.rocksdb_preset)
+            .with_wal_dir(self.wal_dir.clone())
+            .with_cache_budget(self.cache_budget)
             .build()
             .unwrap();
 
