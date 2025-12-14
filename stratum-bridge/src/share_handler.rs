@@ -1,9 +1,7 @@
 use crate::{
-    errors::*,
     jsonrpc_event::{JsonRpcEvent, JsonRpcResponse},
     log_colors::LogColors,
     mining_state::GetMiningState,
-    prom::*,
     stratum_context::StratumContext,
 };
 use kaspa_consensus_core::block::Block;
@@ -103,16 +101,6 @@ impl ShareHandler {
         stats_map.insert(worker_id.clone(), stats.clone());
         drop(stats_map);
 
-        // Initialize worker counters
-        let wallet_addr = ctx.wallet_addr.lock().clone();
-        let worker_name = stats.worker_name.lock().clone();
-        init_worker_counters(&crate::prom::WorkerContext {
-            worker_name: worker_name.clone(),
-            miner: String::new(),
-            wallet: wallet_addr.clone(),
-            ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-        });
-
         stats
     }
 
@@ -139,8 +127,6 @@ impl ShareHandler {
         // We get the address from authorize, but we can optionally validate params[0] if present
         if event.params.len() < 3 {
             tracing::error!("[SUBMIT] ERROR: Expected at least 3 params, got {}", event.params.len());
-            let wallet_addr = ctx.wallet_addr.lock().clone();
-            record_worker_error(&wallet_addr, ErrorShortCode::BadDataFromMiner.as_str());
             return Err("malformed event, expected at least 3 params".into());
         }
 
@@ -225,8 +211,6 @@ impl ShareHandler {
                     stored_job_ids
                 );
                 // Job doesn't exist - fail immediately
-                let wallet_addr = ctx.wallet_addr.lock().clone();
-                record_worker_error(&wallet_addr, ErrorShortCode::MissingJob.as_str());
                 return Err("job does not exist. stale?".into());
             }
         };
@@ -601,18 +585,6 @@ impl ShareHandler {
                         *stats.blocks_found.lock() += 1;
                         *self.overall.blocks_found.lock() += 1;
 
-                        record_block_found(
-                            &crate::prom::WorkerContext {
-                                worker_name: worker_name.clone(),
-                                miner: String::new(),
-                                wallet: wallet_addr.clone(),
-                                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-                            },
-                            nonce_val,
-                            blue_score,
-                            blockhash.clone(),
-                        );
-
                         // Return allows HandleSubmit to record share (blocks are shares too!)
                         // After successful block submission, continue to record share at end of function
                         // Don't return early - let the code continue to record the share
@@ -642,12 +614,6 @@ impl ShareHandler {
                             *stats.stale_shares.lock() += 1;
                             *self.overall.stale_shares.lock() += 1;
 
-                            record_stale_share(&crate::prom::WorkerContext {
-                                worker_name: worker_name.clone(),
-                                miner: String::new(),
-                                wallet: wallet_addr.clone(),
-                                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-                            });
                             ctx.reply_stale_share(event.id.clone()).await?;
                             return Ok(());
                         } else {
@@ -669,12 +635,6 @@ impl ShareHandler {
                             *stats.invalid_shares.lock() += 1;
                             *self.overall.invalid_shares.lock() += 1;
 
-                            record_invalid_share(&crate::prom::WorkerContext {
-                                worker_name: worker_name.clone(),
-                                miner: String::new(),
-                                wallet: wallet_addr.clone(),
-                                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-                            });
                             ctx.reply_bad_share(event.id.clone()).await?;
                             return Ok(());
                         }
@@ -783,15 +743,6 @@ impl ShareHandler {
             *stats.invalid_shares.lock() += 1;
             *self.overall.invalid_shares.lock() += 1;
 
-            let wallet_addr = ctx.wallet_addr.lock().clone();
-            let worker_name = ctx.worker_name.lock().clone();
-            record_weak_share(&crate::prom::WorkerContext {
-                worker_name: worker_name.clone(),
-                miner: String::new(),
-                wallet: wallet_addr.clone(),
-                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-            });
-
             if let Some(id) = &event.id {
                 let _ = ctx.reply_low_diff_share(id).await;
             }
@@ -816,18 +767,6 @@ impl ShareHandler {
         *stats.shares_diff.lock() += hash_value;
         *stats.last_share.lock() = Instant::now();
         *self.overall.shares_found.lock() += 1;
-
-        let wallet_addr = ctx.wallet_addr.lock().clone();
-        let worker_name = ctx.worker_name.lock().clone();
-        record_share_found(
-            &crate::prom::WorkerContext {
-                worker_name: worker_name.clone(),
-                miner: String::new(),
-                wallet: wallet_addr.clone(),
-                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-            },
-            hash_value,
-        );
 
         ctx.reply(JsonRpcResponse { id: event.id.clone(), result: Some(serde_json::Value::Bool(true)), error: None })
             .await
@@ -1005,9 +944,4 @@ pub trait KaspaApiTrait: Send + Sync {
         &self,
         addresses: &[String],
     ) -> Result<Vec<(String, u64)>, Box<dyn std::error::Error + Send + Sync>>;
-}
-
-pub struct WorkerContext<'a> {
-    pub worker_name: &'a str,
-    pub wallet_addr: &'a str,
 }

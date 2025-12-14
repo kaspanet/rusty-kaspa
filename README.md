@@ -308,9 +308,6 @@ cargo run --release --bin kaspad -- --testnet
   # Custom shares per minute target for variable difficulty (default: 20)
   cargo run --release --bin kaspad -- --stratum-enabled --stratum-shares-per-min=30 --utxoindex
 
-  # Enable Prometheus metrics on custom port (default: 2114, use 0 to disable)
-  cargo run --release --bin kaspad -- --stratum-enabled --stratum-prom-port=2114 --utxoindex
-
   # Testnet with Stratum Bridge
   cargo run --release --bin kaspad -- --testnet --stratum-enabled --utxoindex
 
@@ -321,7 +318,6 @@ cargo run --release --bin kaspad -- --testnet
     --stratum-min-diff=8192 \
     --stratum-var-diff=true \
     --stratum-shares-per-min=30 \
-    --stratum-prom-port=2114 \
     --utxoindex
   ```
 
@@ -331,13 +327,12 @@ cargo run --release --bin kaspad -- --testnet
   - `--stratum-min-diff=<DIFFICULTY>` - Minimum share difficulty (default: `4096`)
   - `--stratum-var-diff=<true|false>` - Enable variable difficulty per miner (default: `true`)
   - `--stratum-shares-per-min=<SHARES>` - Target shares per minute for variable difficulty adjustment (default: `20`)
-  - `--stratum-prom-port=<PORT>` - Prometheus metrics port (default: `2114`, use `0` to disable)
 
   **Features:**
   - **Multi-ASIC Support**: Automatically detects and handles IceRiver, Bitmain/Antminer, BzMiner, and Goldshell miners
   - **Variable Difficulty**: Automatically adjusts difficulty per miner based on hashrate (enabled by default)
   - **Per-Client State**: Each miner has isolated state with proper job tracking
-  - **Prometheus Metrics**: Optional metrics endpoint for monitoring (default port: 2114)
+  - **Built-in Stats**: Statistics are displayed in the console and available through the node's logging system
   
 <details>
   <summary>

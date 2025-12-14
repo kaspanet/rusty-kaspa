@@ -645,7 +645,6 @@ Do you confirm? (y/n)";
         let bridge_config = BridgeConfig {
             stratum_port: format!(":{}", args.stratum_port),
             kaspad_address: grpc_address.clone(),
-            prom_port: if args.stratum_prom_port > 0 { format!(":{}", args.stratum_prom_port) } else { String::new() },
             print_stats: true,
             log_to_file: false, // Use node's logging system
             health_check_port: String::new(),

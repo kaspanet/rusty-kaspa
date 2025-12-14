@@ -26,7 +26,6 @@ thiserror.workspace = true
 tracing = "0.1"
 parking_lot.workspace = true
 hex.workspace = true
-prometheus = "0.13"
 log.workspace = true
 async-trait.workspace = true
 futures-util.workspace = true

@@ -84,7 +84,6 @@ use tracing::warn;
 pub struct BridgeConfig {
     pub stratum_port: String,
     pub kaspad_address: String,
-    pub prom_port: String,
     pub print_stats: bool,
     pub log_to_file: bool,
     pub health_check_port: String,

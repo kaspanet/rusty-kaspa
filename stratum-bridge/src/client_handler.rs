@@ -2,7 +2,6 @@ use crate::{
     hasher::{calculate_target, generate_iceriver_job_params, generate_job_header, generate_large_job_params, serialize_block_header},
     jsonrpc_event::JsonRpcEvent,
     mining_state::{GetMiningState, Job, MiningState},
-    prom::*,
     share_handler::{KaspaApiTrait, ShareHandler},
     stratum_context::StratumContext,
 };
@@ -141,14 +140,6 @@ impl ClientHandler {
             clients.remove(&id);
             tracing::debug!("removed client {}", id);
         }
-        let wallet_addr = ctx.wallet_addr.lock().clone();
-        let worker_name = ctx.worker_name.lock().clone();
-        record_disconnect(&crate::prom::WorkerContext {
-            worker_name: worker_name.clone(),
-            miner: String::new(),
-            wallet: wallet_addr.clone(),
-            ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-        });
     }
 
     /// Send an immediate job to a specific client (for use after authorization)
@@ -233,11 +224,9 @@ impl ClientHandler {
                 }
                 Err(e) => {
                     if e.to_string().contains("Could not decode address") {
-                        record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::InvalidAddressFmt.as_str());
                         error!("send_immediate_job: failed fetching block template, malformed address: {}", e);
                         client_clone.disconnect();
                     } else {
-                        record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::FailedBlockFetch.as_str());
                         error!("send_immediate_job: failed fetching block template: {}", e);
                     }
                     return;
@@ -256,7 +245,6 @@ impl ClientHandler {
                 Ok(h) => h,
                 Err(e) => {
                     let error_msg = e.to_string();
-                    record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::BadDataFromMiner.as_str());
                     error!("send_immediate_job: failed to serialize block header: {}", error_msg);
 
                     // Log block header details for debugging
@@ -420,22 +408,12 @@ impl ClientHandler {
 
             if let Err(e) = send_result {
                 if e.to_string().contains("disconnected") {
-                    record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::Disconnected.as_str());
                     tracing::error!("[JOB] ERROR: Failed to send job {} - client disconnected", job_id);
                 } else {
-                    record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::FailedSendWork.as_str());
                     error!("[JOB] ERROR: Failed sending work packet {}: {}", job_id, e);
                 }
                 tracing::debug!("[JOB] ===== JOB SEND FAILED FOR {} =====", client_clone.remote_addr);
             } else {
-                let wallet_addr_str = wallet_addr.clone();
-                let worker_name = client_clone.worker_name.lock().clone();
-                record_new_job(&crate::prom::WorkerContext {
-                    worker_name: worker_name.clone(),
-                    miner: String::new(),
-                    wallet: wallet_addr_str.clone(),
-                    ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                });
                 tracing::debug!("[JOB] Successfully sent job ID {} to client {}", job_id, client_clone.remote_addr);
                 tracing::debug!("[JOB] ===== JOB SENT SUCCESSFULLY TO {} =====", client_clone.remote_addr);
             }
@@ -496,8 +474,6 @@ impl ClientHandler {
                         if let Ok(elapsed) = connect_time.elapsed() {
                             if elapsed > CLIENT_TIMEOUT {
                                 warn!("client misconfigured, no miner address specified - disconnecting");
-                                let wallet_str = wallet_addr.clone();
-                                record_worker_error(&wallet_str, crate::errors::ErrorShortCode::NoMinerAddress.as_str());
                                 drop(wallet_addr); // Drop before disconnect
                                 client_clone.disconnect();
                             }
@@ -537,11 +513,9 @@ impl ClientHandler {
                     }
                     Err(e) => {
                         if e.to_string().contains("Could not decode address") {
-                            record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::InvalidAddressFmt.as_str());
                             error!("failed fetching new block template from kaspa, malformed address: {}", e);
                             client_clone.disconnect();
                         } else {
-                            record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::FailedBlockFetch.as_str());
                             error!("failed fetching new block template from kaspa: {}", e);
                         }
                         return;
@@ -560,7 +534,6 @@ impl ClientHandler {
                     Ok(h) => h,
                     Err(e) => {
                         let error_msg = e.to_string();
-                        record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::BadDataFromMiner.as_str());
                         error!("failed to serialize block header: {}", error_msg);
 
                         // Log block header details for debugging
@@ -721,10 +694,8 @@ impl ClientHandler {
 
                 if let Err(e) = send_result {
                     if e.to_string().contains("disconnected") {
-                        record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::Disconnected.as_str());
                         tracing::warn!("new_block_available: failed to send job {} - client disconnected", job_id);
                     } else {
-                        record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::FailedSendWork.as_str());
                         error!("failed sending work packet {}: {}", job_id, e);
                         tracing::error!(
                             "new_block_available: failed to send job {} to client {}: {}",
@@ -734,14 +705,6 @@ impl ClientHandler {
                         );
                     }
                 } else {
-                    let wallet_addr_str = wallet_addr.clone();
-                    let worker_name = client_clone.worker_name.lock().clone();
-                    record_new_job(&crate::prom::WorkerContext {
-                        worker_name: worker_name.clone(),
-                        miner: String::new(),
-                        wallet: wallet_addr_str.clone(),
-                        ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                    });
                     tracing::debug!("new_block_available: successfully sent job ID {} to client {}", job_id, client_clone.remote_addr);
                 }
             });
@@ -759,12 +722,11 @@ impl ClientHandler {
                 let kaspa_api_clone = Arc::clone(&kaspa_api);
                 tokio::spawn(async move {
                     match kaspa_api_clone.get_balances_by_addresses(&addresses_clone).await {
-                        Ok(balances) => {
-                            // Record balances
-                            crate::prom::record_balances(&balances);
+                        Ok(_balances) => {
+                            // Balances fetched (no longer recording to Prometheus)
                         }
                         Err(e) => {
-                            warn!("failed to get balances from kaspa, prom stats will be out of date: {}", e);
+                            warn!("failed to get balances from kaspa: {}", e);
                         }
                     }
                 });
@@ -796,8 +758,6 @@ fn send_client_diff(client: &StratumContext, _state: &MiningState, diff: f64) {
         let send_result = client_clone.send(diff_event).await;
 
         if let Err(e) = send_result {
-            let wallet_addr = client_clone.wallet_addr.lock().clone();
-            record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::FailedSetDiff.as_str());
             error!("[DIFFICULTY] ERROR: Failed sending difficulty: {}", e);
             return;
         }

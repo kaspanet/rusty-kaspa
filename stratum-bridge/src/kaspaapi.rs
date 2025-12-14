@@ -90,9 +90,9 @@ impl KaspaApi {
     }
 
     /// Start network stats thread
-    /// Fetches network stats every 30 seconds and records them in Prometheus
+    /// Fetches network stats every 30 seconds (no longer recording to Prometheus)
+    #[allow(dead_code)]
     async fn start_stats_thread(self: Arc<Self>) {
-        use crate::prom::record_network_stats;
         use kaspa_rpc_core::{EstimateNetworkHashesPerSecondRequest, GetBlockDagInfoRequest};
 
         let mut interval = tokio::time::interval(Duration::from_secs(30));
@@ -104,7 +104,7 @@ impl KaspaApi {
             let dag_response = match self.client.get_block_dag_info_call(None, GetBlockDagInfoRequest {}).await {
                 Ok(r) => r,
                 Err(e) => {
-                    warn!("failed to get network hashrate from kaspa, prom stats will be out of date: {}", e);
+                    warn!("failed to get network hashrate from kaspa: {}", e);
                     continue;
                 }
             };
@@ -122,20 +122,20 @@ impl KaspaApi {
             // Estimate network hashes per second
             // new(window_size: u32, start_hash: Option<RpcHash>)
             // RpcHash is the same as Hash, so we can use tip_hash directly
-            let hashrate_response = match self
+            let _hashrate_response = match self
                 .client
                 .estimate_network_hashes_per_second_call(None, EstimateNetworkHashesPerSecondRequest::new(1000, tip_hash))
                 .await
             {
                 Ok(r) => r,
                 Err(e) => {
-                    warn!("failed to get network hashrate from kaspa, prom stats will be out of date: {}", e);
+                    warn!("failed to get network hashrate from kaspa: {}", e);
                     continue;
                 }
             };
 
-            // Record network stats
-            record_network_stats(hashrate_response.network_hashes_per_second, dag_response.block_count, dag_response.difficulty);
+            // Network stats are now available via the node's built-in stats/logging
+            // No longer recording to Prometheus
         }
     }
 

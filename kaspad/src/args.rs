@@ -100,7 +100,6 @@ pub struct Args {
     pub stratum_min_diff: u32,
     pub stratum_var_diff: bool,
     pub stratum_shares_per_min: u32,
-    pub stratum_prom_port: u16,
 }
 
 impl Default for Args {
@@ -160,7 +159,6 @@ impl Default for Args {
             stratum_min_diff: 4096,
             stratum_var_diff: true,
             stratum_shares_per_min: 20,
-            stratum_prom_port: 2114,
         }
     }
 }
@@ -463,15 +461,6 @@ a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance
                 .value_parser(clap::value_parser!(u32))
                 .help("Target shares per minute for variable difficulty (default: 20)")
         )
-        .arg(
-            Arg::new("stratum-prom-port")
-                .long("stratum-prom-port")
-                .env("KASPAD_STRATUM_PROM_PORT")
-                .value_name("PORT")
-                .require_equals(true)
-                .value_parser(clap::value_parser!(u16))
-                .help("Prometheus metrics port (default: 2114, 0 to disable)")
-        )
         ;
 
     #[cfg(feature = "devnet-prealloc")]
@@ -555,7 +544,6 @@ impl Args {
             stratum_min_diff: arg_match_unwrap_or::<u32>(&m, "stratum-min-diff", defaults.stratum_min_diff),
             stratum_var_diff: arg_match_unwrap_or::<bool>(&m, "stratum-var-diff", defaults.stratum_var_diff),
             stratum_shares_per_min: arg_match_unwrap_or::<u32>(&m, "stratum-shares-per-min", defaults.stratum_shares_per_min),
-            stratum_prom_port: arg_match_unwrap_or::<u16>(&m, "stratum-prom-port", defaults.stratum_prom_port),
             ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),
             retention_period_days: m.get_one::<f64>("retention-period-days").cloned().or(defaults.retention_period_days),
 
