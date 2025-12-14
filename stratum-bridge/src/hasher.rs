@@ -434,19 +434,18 @@ mod tests {
     fn test_diff_to_target() {
         use num_traits::Num;
 
-        // Test difficulty 1.0 (should be 0xffff * 2^208)
+        // Test difficulty 1.0 (should be maxTarget = 2^224 - 1)
         let target = diff_to_target(1.0);
-        let difficulty_1_mantissa = BigUint::from(0xffffu64);
-        let difficulty_1_target = difficulty_1_mantissa << 208u32;
-        assert_eq!(target, difficulty_1_target);
+        let max_target = <BigUint as Num>::from_str_radix(MAX_TARGET, 16).unwrap();
+        assert_eq!(target, max_target, "Difficulty 1.0 should equal maxTarget");
 
-        // Test difficulty 8192 (should be (0xffff * 2^208) / 8192)
+        // Test difficulty 8192 (should be maxTarget / 8192)
         let target_8192 = diff_to_target(8192.0);
-        let expected_8192 = &difficulty_1_target >> 13u32; // 8192 = 2^13
-        assert_eq!(target_8192, expected_8192);
+        let expected_8192 = &max_target / BigUint::from(8192u64);
+        assert_eq!(target_8192, expected_8192, "Difficulty 8192 should equal maxTarget / 8192");
 
-        // Verify target_8192 is much smaller than difficulty_1_target
-        assert!(target_8192 < difficulty_1_target);
+        // Verify target_8192 is much smaller than max_target
+        assert!(target_8192 < max_target);
 
         // For difficulty 8192 = 2^13, target should be approximately 2^243
         // Let's verify it's in the right ballpark
@@ -495,50 +494,37 @@ mod tests {
         println!("Devnet bits: {} (0x{:x})", devnet_bits, devnet_bits);
         println!("Devnet target: {:x} ({} bytes)", devnet_target, devnet_target.to_bytes_be().len());
 
-        // Test comparison with actual pow_value that should pass
+        // Test comparison logic with pow_values
+        // Target is 0x21bc1c000000000000000000000000000000000000000000000000000000 (30 bytes)
+        // When padded to 32 bytes: 0x000021bc1c000000000000000000000000000000000000000000000000000000
         use num_traits::Num;
-        let pow_value_hex = "1411c29a4bb46627f3f225eff3a6334d61b8700568364aa7a36e9f16b49e12a0";
-        let pow_value = <BigUint as Num>::from_str_radix(pow_value_hex, 16).unwrap();
-
-        println!("pow_value: {:x} ({} bytes)", pow_value, pow_value.to_bytes_be().len());
-
-        // Print with leading zeros to see actual bit positions
-        println!("pow_value (64 hex chars):      {:064x}", pow_value);
-        println!("devnet_target (64 hex chars): {:064x}", devnet_target);
-
-        // Check raw byte comparison
-        let pow_bytes = pow_value.to_bytes_be();
+        
+        // Pad target to 32 bytes for proper comparison
         let target_bytes = devnet_target.to_bytes_be();
-        println!("pow_value bytes (len={}): {:?}...", pow_bytes.len(), &pow_bytes[0..4.min(pow_bytes.len())]);
-        println!("target bytes (len={}): {:?}...", target_bytes.len(), &target_bytes[0..4.min(target_bytes.len())]);
-
-        // The key insight: BigUint compares by MAGNITUDE, not lexicographically!
-        // A 32-byte number 0x1411c29a... has magnitude approximately 1.41 × 2^252
-        // A 30-byte number 0x21bc1c00... has magnitude approximately 2.22 × 2^232
-        // Since 2^252 >> 2^232, the 32-byte number is LARGER!
-
-        println!("\nMagnitude comparison:");
-        println!("32-byte pow_value magnitude ≈ {:e}", pow_value.to_f64().unwrap_or(0.0));
-        println!("30-byte target magnitude ≈ {:e}", devnet_target.to_f64().unwrap_or(0.0));
-
-        println!("pow_value <= devnet_target: {}", pow_value <= devnet_target);
-        println!("pow_value < devnet_target: {}", pow_value < devnet_target);
-
-        // The issue: target is 30 bytes, pow is 32 bytes
-        // When target is 30 bytes starting with 0x21bc1c, as a 256-bit number it should be:
-        // 0x000000000021bc1c000... (with leading zeros to fill to 256 bits)
-        // But BigUint interprets it differently!
-
-        // Let's manually pad target to 32 bytes and compare
-        let mut target_32bytes = vec![0u8; 2]; // Add 2 leading zero bytes
+        let mut target_32bytes = vec![0u8; 32 - target_bytes.len()];
         target_32bytes.extend_from_slice(&target_bytes);
         let target_padded = BigUint::from_bytes_be(&target_32bytes);
-        println!("\nWith manual padding:");
+        
         println!("target_padded (64 hex chars): {:064x}", target_padded);
-        println!("pow_value < target_padded: {}", pow_value < target_padded);
-
-        // This should now be true!
-        assert!(pow_value < target_padded, "After padding target to 32 bytes, pow_value should be less than target");
+        
+        // Test with a pow_value that is clearly less than target (valid share)
+        // Use a small 32-byte value that is definitely less than 0x000021bc1c...
+        let valid_pow_value_hex = "0000000000000000000000000000000000000000000000000000000000000001";
+        let valid_pow_value = <BigUint as Num>::from_str_radix(valid_pow_value_hex, 16).unwrap();
+        println!("valid_pow_value (64 hex chars): {:064x}", valid_pow_value);
+        println!("valid_pow_value < target_padded: {}", valid_pow_value < target_padded);
+        
+        // Verify valid pow_value is less than target
+        assert!(valid_pow_value < target_padded, "Valid pow_value should be less than target");
+        
+        // Test with a pow_value that is greater than target (invalid share)
+        let invalid_pow_value_hex = "1411c29a4bb46627f3f225eff3a6334d61b8700568364aa7a36e9f16b49e12a0";
+        let invalid_pow_value = <BigUint as Num>::from_str_radix(invalid_pow_value_hex, 16).unwrap();
+        println!("invalid_pow_value (64 hex chars): {:064x}", invalid_pow_value);
+        println!("invalid_pow_value < target_padded: {}", invalid_pow_value < target_padded);
+        
+        // Verify invalid pow_value is greater than target
+        assert!(invalid_pow_value > target_padded, "Invalid pow_value should be greater than target");
     }
 
     #[test]
