@@ -213,7 +213,7 @@ impl KaspaApi {
                     // Check if block appears in tip hashes
                     if let Ok(dag_response) = client_clone.get_block_dag_info_call(None, GetBlockDagInfoRequest {}).await {
                         // Check if our block hash is in tip hashes
-                        let in_tips = dag_response.tip_hashes.iter().any(|tip| *tip == block_hash_for_check);
+                        let in_tips = dag_response.tip_hashes.contains(&block_hash_for_check);
 
                         if in_tips {
                             info!(
@@ -528,7 +528,7 @@ impl KaspaApiTrait for KaspaApi {
     ) -> Result<Block, Box<dyn std::error::Error + Send + Sync>> {
         KaspaApi::get_block_template(self, wallet_addr, "", "").await.map_err(|e| {
             let error_msg = e.to_string();
-            Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_msg)) as Box<dyn std::error::Error + Send + Sync>
+            Box::new(std::io::Error::other(error_msg)) as Box<dyn std::error::Error + Send + Sync>
         })
     }
 
@@ -537,7 +537,7 @@ impl KaspaApiTrait for KaspaApi {
         block: Block,
     ) -> Result<kaspa_rpc_core::SubmitBlockResponse, Box<dyn std::error::Error + Send + Sync>> {
         KaspaApi::submit_block(self, block).await.map_err(|e| {
-            Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn std::error::Error + Send + Sync>
+            Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>
         })
     }
 
@@ -546,7 +546,7 @@ impl KaspaApiTrait for KaspaApi {
         addresses: &[String],
     ) -> Result<Vec<(String, u64)>, Box<dyn std::error::Error + Send + Sync>> {
         KaspaApi::get_balances_by_addresses(self, addresses).await.map_err(|e| {
-            Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn std::error::Error + Send + Sync>
+            Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>
         })
     }
 }

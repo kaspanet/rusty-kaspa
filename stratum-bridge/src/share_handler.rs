@@ -68,13 +68,19 @@ pub struct ShareHandler {
     overall: Arc<WorkStats>,
 }
 
-impl ShareHandler {
-    pub fn new() -> Self {
+impl Default for ShareHandler {
+    fn default() -> Self {
         Self {
             tip_blue_score: Arc::new(Mutex::new(0)),
             stats: Arc::new(Mutex::new(HashMap::new())),
             overall: Arc::new(WorkStats::new("overall".to_string())),
         }
+    }
+}
+
+impl ShareHandler {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn get_create_stats(&self, ctx: &StratumContext) -> WorkStats {
@@ -138,13 +144,13 @@ impl ShareHandler {
             return Err("malformed event, expected at least 3 params".into());
         }
 
-        tracing::debug!("[SUBMIT] Params[0] (address/identity): {:?}", event.params.get(0));
+        tracing::debug!("[SUBMIT] Params[0] (address/identity): {:?}", event.params.first());
         tracing::debug!("[SUBMIT] Params[1] (job_id): {:?}", event.params.get(1));
         tracing::debug!("[SUBMIT] Params[2] (nonce): {:?}", event.params.get(2));
 
         // Optionally validate params[0] (address.name) if present
         // Some miners send it, others don't - we get address from authorize anyway
-        if let Some(Value::String(submitted_identity)) = event.params.get(0) {
+        if let Some(Value::String(submitted_identity)) = event.params.first() {
             let wallet_addr = ctx.wallet_addr.lock().clone();
             let _worker_name = ctx.worker_name.lock().clone();
 
@@ -393,32 +399,30 @@ impl ShareHandler {
                     LogColors::block("*** NETWORK TARGET PASSED ***"),
                     format!("pow_value={:x} <= network_target={:x}", pow_value, network_target)
                 );
-            } else {
-                if !network_target.is_zero() {
-                    let ratio = if !pow_value.is_zero() {
-                        let target_f64 = network_target.to_f64().unwrap_or(0.0);
-                        let pow_f64 = pow_value.to_f64().unwrap_or(1.0);
-                        if pow_f64 > 0.0 {
-                            (target_f64 / pow_f64) * 100.0
-                        } else {
-                            0.0
-                        }
+            } else if !network_target.is_zero() {
+                let ratio = if !pow_value.is_zero() {
+                    let target_f64 = network_target.to_f64().unwrap_or(0.0);
+                    let pow_f64 = pow_value.to_f64().unwrap_or(1.0);
+                    if pow_f64 > 0.0 {
+                        (target_f64 / pow_f64) * 100.0
                     } else {
                         0.0
-                    };
-                    tracing::debug!(
-                        "{} {} {}",
-                        LogColors::validation("[VALIDATION]"),
-                        LogColors::label("Network target NOT met -"),
-                        format!("pow_value={:x} > network_target={:x} ({}% of target)", pow_value, network_target, ratio)
-                    );
+                    }
                 } else {
-                    warn!(
-                        "{} {}",
-                        LogColors::validation("[VALIDATION]"),
-                        LogColors::error("Network target is ZERO - cannot validate!")
-                    );
-                }
+                    0.0
+                };
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::validation("[VALIDATION]"),
+                    LogColors::label("Network target NOT met -"),
+                    format!("pow_value={:x} > network_target={:x} ({}% of target)", pow_value, network_target, ratio)
+                );
+            } else {
+                warn!(
+                    "{} {}",
+                    LogColors::validation("[VALIDATION]"),
+                    LogColors::error("Network target is ZERO - cannot validate!")
+                );
             }
 
             // Check network target (block)
@@ -683,7 +687,7 @@ impl ShareHandler {
             }
 
             // Check pool difficulty
-            let pool_target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(|| BigUint::zero());
+            let pool_target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(BigUint::zero);
 
             // Compare FULL pow_value against pool_target (not just lower bits)
             // Compare full 256-bit values

@@ -581,7 +581,7 @@ async fn get_config_json() -> String {
     let config_path = "config.yaml";
     if let Ok(content) = fs::read_to_string(config_path) {
         if let Ok(docs) = YamlLoader::load_from_str(&content) {
-            if let Some(doc) = docs.get(0) {
+            if let Some(doc) = docs.first() {
                 let mut config = serde_json::Map::new();
 
                 if let Some(port) = doc["stratum_port"].as_str() {

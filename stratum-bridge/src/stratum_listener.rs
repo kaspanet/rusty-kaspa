@@ -344,7 +344,7 @@ impl StratumListener {
                             "{} {} {}",
                             LogColors::asic_to_bridge("[ASIC->BRIDGE]"),
                             LogColors::label("  - String Length:"),
-                            format!("{} bytes (UTF-8)", message_str.as_bytes().len())
+                            format!("{} bytes (UTF-8)", message_str.len())
                         );
                         // Show byte-by-byte breakdown for first 100 bytes
                         if data.len() <= 100 {

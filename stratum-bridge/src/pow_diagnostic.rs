@@ -20,7 +20,7 @@ pub fn diagnose_pow_issue(header: &Header, nonce: u64) {
     tracing::debug!("  Nonce to test: {}", nonce);
 
     // Calculate target from bits
-    let exponent = (header.bits >> 24) as u32;
+    let exponent = header.bits >> 24;
     let mantissa = header.bits & 0xFFFFFF;
     tracing::debug!("\n[TARGET CALCULATION]");
     tracing::debug!("  Exponent: {} (0x{:x})", exponent, exponent);

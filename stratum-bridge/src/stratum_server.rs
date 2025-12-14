@@ -116,7 +116,7 @@ pub async fn start_block_template_listener_with_api(
     };
 
     kaspa_api.start_block_template_listener(block_wait_time, block_cb).await.map_err(|e| {
-        Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn std::error::Error + Send + Sync>
+        Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>
     })
 }
 
@@ -165,7 +165,7 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
             let event_clone = event.clone();
             Box::pin(async move {
                 crate::default_client::handle_subscribe(ctx_clone, event_clone, Some(client_handler)).await.map_err(|e| {
-                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn std::error::Error + Send + Sync>
+                    Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>
                 })
             })
                 as std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>
@@ -185,7 +185,7 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
             Box::pin(async move {
                 crate::default_client::handle_authorize(ctx_clone, event_clone, Some(client_handler), Some(kaspa_api)).await.map_err(
                     |e| {
-                        Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                        Box::new(std::io::Error::other(e.to_string()))
                             as Box<dyn std::error::Error + Send + Sync>
                     },
                 )
@@ -205,7 +205,7 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
             let ctx_clone = Arc::clone(&ctx);
             Box::pin(async move {
                 share_handler.handle_submit(ctx_clone, event, kaspa_api).await.map_err(|e| {
-                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn std::error::Error + Send + Sync>
+                    Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>
                 })
             })
                 as std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>

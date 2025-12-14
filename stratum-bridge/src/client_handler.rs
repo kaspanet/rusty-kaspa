@@ -37,7 +37,7 @@ pub struct ClientHandler {
 impl ClientHandler {
     pub fn new(share_handler: Arc<ShareHandler>, min_share_diff: f64, extranonce_size: i8) -> Self {
         let max_extranonce =
-            if extranonce_size > 0 { (2_f64.powi((8 * extranonce_size.min(3) as i32) as i32) - 1.0) as i32 } else { 0 };
+            if extranonce_size > 0 { (2_f64.powi(8 * extranonce_size.min(3) as i32) - 1.0) as i32 } else { 0 };
 
         Self {
             clients: Arc::new(Mutex::new(HashMap::new())),
@@ -297,7 +297,7 @@ impl ClientHandler {
                 let remote_app_clone = remote_app.clone();
                 stratum_diff.set_diff_value_for_miner(min_diff, &remote_app_clone);
                 state.set_stratum_diff(stratum_diff);
-                let target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(|| BigUint::zero());
+                let target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(BigUint::zero);
                 let target_bytes = target.to_bytes_be();
                 tracing::debug!(
                     "send_immediate_job: Initialized MiningState with difficulty: {}, target: {:x} ({} bytes, {} bits)",
@@ -312,7 +312,7 @@ impl ClientHandler {
             // Even if state is already initialized, we need to send difficulty to this specific client
             tracing::debug!("[DIFFICULTY] ===== SENDING DIFFICULTY TO {} =====", client_clone.remote_addr);
             tracing::debug!("[DIFFICULTY] Difficulty value: {}", min_diff);
-            send_client_diff(&client_clone, &*state, min_diff);
+            send_client_diff(&client_clone, &state, min_diff);
             share_handler.set_client_vardiff(&client_clone, min_diff);
             tracing::debug!("[DIFFICULTY] ===== DIFFICULTY SENT TO {} =====", client_clone.remote_addr);
 
@@ -608,7 +608,7 @@ impl ClientHandler {
                     let remote_app = client_clone.remote_app.lock().clone();
                     stratum_diff.set_diff_value_for_miner(min_diff, &remote_app);
                     state.set_stratum_diff(stratum_diff);
-                    let target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(|| BigUint::zero());
+                    let target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(BigUint::zero);
                     let target_bytes = target.to_bytes_be();
                     tracing::debug!(
                         "Initialized per-client MiningState with difficulty: {}, target: {:x} ({} bytes, {} bits)",
@@ -617,7 +617,7 @@ impl ClientHandler {
                         target_bytes.len(),
                         target_bytes.len() * 8
                     );
-                    send_client_diff(&client_clone, &*state, min_diff);
+                    send_client_diff(&client_clone, &state, min_diff);
                     share_handler.set_client_vardiff(&client_clone, min_diff);
                 } else {
                     // Check for vardiff update
@@ -630,7 +630,7 @@ impl ClientHandler {
                             let remote_app = client_clone.remote_app.lock().clone();
                             stratum_diff.set_diff_value_for_miner(var_diff, &remote_app);
                             state.set_stratum_diff(stratum_diff);
-                            send_client_diff(&client_clone, &*state, var_diff);
+                            send_client_diff(&client_clone, &state, var_diff);
                             share_handler.start_client_vardiff(&client_clone);
                         }
                     }

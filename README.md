@@ -288,29 +288,56 @@ The framework is compatible with all major desktop and mobile browsers.
 cargo run --release --bin kaspad -- --testnet
   ```
 
-  **Start a node with Stratum mining server enabled**
+  **Start a node with Stratum Bridge enabled (multi-ASIC support)**
+
+  The Stratum Bridge is integrated into kaspad and provides full support for all ASIC miner types with automatic miner detection.
 
   ```bash
-  # Mainnet with Stratum server (default: listens on 0.0.0.0:3333)
+  # Mainnet with Stratum Bridge (default: listens on 0.0.0.0:5555)
   cargo run --release --bin kaspad -- --stratum-enabled --utxoindex
 
-  # With custom Stratum listen address and port
-  cargo run --release --bin kaspad -- --stratum-enabled --stratum-listen-address=0.0.0.0 --stratum-listen-port=3333 --utxoindex
+  # With custom port
+  cargo run --release --bin kaspad -- --stratum-enabled --stratum-port=5555 --utxoindex
 
-  # With custom initial difficulty (default: 1.0)
-  cargo run --release --bin kaspad -- --stratum-enabled --stratum-difficulty=1.0 --utxoindex
+  # With custom minimum difficulty (default: 4096)
+  cargo run --release --bin kaspad -- --stratum-enabled --stratum-min-diff=8192 --utxoindex
 
-  # Testnet with Stratum server
+  # Disable variable difficulty (enabled by default)
+  cargo run --release --bin kaspad -- --stratum-enabled --stratum-var-diff=false --utxoindex
+
+  # Custom shares per minute target for variable difficulty (default: 20)
+  cargo run --release --bin kaspad -- --stratum-enabled --stratum-shares-per-min=30 --utxoindex
+
+  # Enable Prometheus metrics on custom port (default: 2114, use 0 to disable)
+  cargo run --release --bin kaspad -- --stratum-enabled --stratum-prom-port=2114 --utxoindex
+
+  # Testnet with Stratum Bridge
   cargo run --release --bin kaspad -- --testnet --stratum-enabled --utxoindex
+
+  # Full configuration example
+  cargo run --release --bin kaspad -- \
+    --stratum-enabled \
+    --stratum-port=5555 \
+    --stratum-min-diff=8192 \
+    --stratum-var-diff=true \
+    --stratum-shares-per-min=30 \
+    --stratum-prom-port=2114 \
+    --utxoindex
   ```
 
-  **Stratum Server Options:**
-  - `--stratum-enabled` - Enable the Stratum mining server
-  - `--stratum-listen-address=<IP>` - IP address to listen on (default: `0.0.0.0`)
-  - `--stratum-listen-port=<PORT>` - Port to listen on (default: `3333`)
-  - `--stratum-difficulty=<DIFFICULTY>` - Initial difficulty for miners (default: `1.0`)
+  **Stratum Bridge Options:**
+  - `--stratum-enabled` - Enable the Stratum Bridge (supports all ASIC miner types)
+  - `--stratum-port=<PORT>` - Port to listen on (default: `5555`)
+  - `--stratum-min-diff=<DIFFICULTY>` - Minimum share difficulty (default: `4096`)
+  - `--stratum-var-diff=<true|false>` - Enable variable difficulty per miner (default: `true`)
+  - `--stratum-shares-per-min=<SHARES>` - Target shares per minute for variable difficulty adjustment (default: `20`)
+  - `--stratum-prom-port=<PORT>` - Prometheus metrics port (default: `2114`, use `0` to disable)
 
-  **Note:** The Stratum server includes built-in vardiff (variable difficulty) that automatically adjusts difficulty per miner based on their hashrate. Vardiff starts at difficulty 1.0 and increases as miners submit shares faster than the target rate (~30 seconds per share).
+  **Features:**
+  - **Multi-ASIC Support**: Automatically detects and handles IceRiver, Bitmain/Antminer, BzMiner, and Goldshell miners
+  - **Variable Difficulty**: Automatically adjusts difficulty per miner based on hashrate (enabled by default)
+  - **Per-Client State**: Each miner has isolated state with proper job tracking
+  - **Prometheus Metrics**: Optional metrics endpoint for monitoring (default port: 2114)
   
 <details>
   <summary>
@@ -323,16 +350,16 @@ Start the DevNet node with the following command:
 cargo run --bin kaspad -- --devnet --enable-unsynced-mining --rpclisten=127.0.0.1 --rpclisten-borsh=127.0.0.1 --utxoindex
 ```
 
-**With Stratum server enabled:**
+**With Stratum Bridge enabled:**
 
 ```bash
 cargo run --bin kaspad -- --devnet --enable-unsynced-mining --rpclisten=127.0.0.1 --rpclisten-borsh=127.0.0.1 --utxoindex --stratum-enabled
 ```
 
 * `enable-unsynced-mining` is required when the network isn't synchronized, which is the case on the first launch
-* `uxtoindex` enables the UTXO index, which is necessary for wallet functionality.
-* `rpclisten-borsh` and `rpclisten-borsh` are likely to be required by mining softwares
-* `stratum-enabled` enables the Stratum mining server for direct ASIC/miner connections
+* `utxoindex` enables the UTXO index, which is necessary for wallet functionality.
+* `rpclisten-borsh` is likely to be required by mining softwares
+* `stratum-enabled` enables the Stratum Bridge for direct ASIC/miner connections (supports all ASIC miner types with automatic detection)
 
 note: it will take a bit of time for difficulty to adjust, so you may need to wait a bit before you see blocks being mined consistently.
 
