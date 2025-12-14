@@ -600,9 +600,37 @@ impl StratumListener {
                                             LogColors::asic_to_bridge("[ASIC->BRIDGE]"),
                                             "  - Starting handler execution..."
                                         );
-                                        if let Err(e) = handler(ctx.clone(), event).await {
+                                        if let Err(e) = handler(ctx.clone(), event.clone()).await {
                                             let error_msg = e.to_string();
-                                            if error_msg.contains("stale") || error_msg.contains("job does not exist") {
+
+                                            // For critical handlers (subscribe, authorize), send error response to miner
+                                            // Otherwise miner will wait forever for a response
+                                            if event.method == "mining.subscribe" || event.method == "mining.authorize" {
+                                                error!(
+                                                    "{} {} {}",
+                                                    LogColors::asic_to_bridge("[ASIC->BRIDGE]"),
+                                                    LogColors::error("  - Result:"),
+                                                    format!("ERROR ({} handler failed)", event.method)
+                                                );
+                                                error!(
+                                                    "{} {} {}",
+                                                    LogColors::asic_to_bridge("[ASIC->BRIDGE]"),
+                                                    LogColors::label("  - Error Message:"),
+                                                    error_msg
+                                                );
+
+                                                // Send error response to miner
+                                                use crate::jsonrpc_event::JsonRpcResponse;
+                                                let error_response = JsonRpcResponse::error(event.id.clone(), -1, &error_msg, None);
+                                                if let Err(send_err) = ctx.reply(error_response).await {
+                                                    error!(
+                                                        "{} {} {}",
+                                                        LogColors::asic_to_bridge("[ASIC->BRIDGE]"),
+                                                        LogColors::error("  - Failed to send error response:"),
+                                                        send_err
+                                                    );
+                                                }
+                                            } else if error_msg.contains("stale") || error_msg.contains("job does not exist") {
                                                 // Log stale job errors as debug (expected behavior, not important)
                                                 tracing::debug!(
                                                     "{}",
