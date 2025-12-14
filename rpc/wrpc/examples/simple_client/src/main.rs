@@ -3,7 +3,8 @@
 use kaspa_rpc_core::{api::rpc::RpcApi, GetBlockDagInfoResponse, GetServerInfoResponse};
 use kaspa_wrpc_client::{
     client::{ConnectOptions, ConnectStrategy},
-    prelude::{NetworkId, NetworkType},
+    prelude::NetworkId,
+    prelude::NetworkType,
     result::Result,
     KaspaRpcClient, Resolver, WrpcEncoding,
 };

@@ -689,25 +689,6 @@ async fn sanity_test() {
                 })
             }
 
-            KaspadPayloadOps::GetVirtualChainFromBlockV2 => {
-                let rpc_client = client.clone();
-                tst!(op, {
-                    let response = rpc_client
-                        .get_virtual_chain_from_block_v2_call(
-                            None,
-                            GetVirtualChainFromBlockV2Request {
-                                start_hash: SIMNET_GENESIS.hash,
-                                data_verbosity_level: None,
-                                min_confirmation_count: None,
-                            },
-                        )
-                        .await
-                        .unwrap();
-                    assert!(response.added_chain_block_hashes.is_empty());
-                    assert!(response.removed_chain_block_hashes.is_empty());
-                })
-            }
-
             KaspadPayloadOps::NotifyBlockAdded => {
                 let rpc_client = client.clone();
                 let id = listener_id;

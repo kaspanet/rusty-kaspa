@@ -1,0 +1,50 @@
+[package]
+name = "kaspa-stratum-bridge"
+description = "Kaspa Stratum Bridge - Rust implementation for ASIC miner connectivity"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Kaspa dependencies - using workspace dependencies
+kaspa-consensus-core.workspace = true
+kaspa-hashes.workspace = true
+kaspa-pow.workspace = true
+kaspa-addresses.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-grpc-client.workspace = true
+kaspa-notify.workspace = true
+
+# External dependencies
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing = "0.1"
+parking_lot.workspace = true
+hex.workspace = true
+prometheus = "0.13"
+log.workspace = true
+async-trait.workspace = true
+futures-util.workspace = true
+
+# Additional dependencies not in workspace
+anyhow = "1.0"
+once_cell = "1.19"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+blake2 = "0.10"
+num-bigint = "0.4"
+num-traits = "0.2"
+regex = "1.10"
+yaml-rust = "0.4"
+uuid = { version = "1.0", features = ["v4"] }
+faster-hex = "0.9.0"
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Console"] }
+
+[lints]
+workspace = true
+

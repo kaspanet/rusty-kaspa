@@ -33,9 +33,8 @@ message RpcBlockHeader {
   uint64 nonce = 8;
   uint64 daaScore = 9;
   string blueWork = 10;
-  uint64 blueScore = 13;
   string pruningPoint = 14;
-  string hash = 15;
+  uint64 blueScore = 13;
 }
 
 message RpcBlockLevelParents {
@@ -67,37 +66,12 @@ message RpcTransaction {
   uint64 mass = 10;
 }
 
-message RpcTransactionVerboseData{
-  string transactionId = 1;
-  string hash = 2;
-  uint64 computeMass = 4;
-  string blockHash = 12;
-  uint64 blockTime = 14;
-}
-
 message RpcTransactionInput {
   RpcOutpoint previousOutpoint = 1;
   string signatureScript = 2;
   uint64 sequence = 3;
   uint32 sigOpCount = 5;
   RpcTransactionInputVerboseData verboseData = 4;
-}
-
-message RpcTransactionInputVerboseData {
-  RpcUtxoEntry utxoEntry = 1; // this field is new, if this is null, the utxo cannot be found, or is coinbase.
-}
-
-message RpcUtxoEntry {
-  uint64 amount = 1;
-  RpcScriptPublicKey scriptPublicKey = 2;
-  uint64 blockDaaScore = 3;
-  bool isCoinbase = 4;
-  RpcUtxoEntryVerboseData verboseData = 5;
-}
-
-message RpcUtxoEntryVerboseData {
-  string scriptPublicKeyType = 5;
-  string scriptPublicKeyAddress = 6;
 }
 
 message RpcScriptPublicKey {
@@ -114,6 +88,24 @@ message RpcTransactionOutput {
 message RpcOutpoint {
   string transactionId = 1;
   uint32 index = 2;
+}
+
+message RpcUtxoEntry {
+  uint64 amount = 1;
+  RpcScriptPublicKey scriptPublicKey = 2;
+  uint64 blockDaaScore = 3;
+  bool isCoinbase = 4;
+}
+
+message RpcTransactionVerboseData{
+  string transactionId = 1;
+  string hash = 2;
+  uint64 computeMass = 4;
+  string blockHash = 12;
+  uint64 blockTime = 14;
+}
+
+message RpcTransactionInputVerboseData{
 }
 
 message RpcTransactionOutputVerboseData{
@@ -565,7 +557,7 @@ message GetUtxosByAddressesResponseMessage {
 }
 
 // GetBalanceByAddressRequest returns the total balance in unspent transactions towards a given address
-//
+// 
 // This call is only available when this kaspad was started with `--utxoindex`
 message GetBalanceByAddressRequestMessage {
   string address = 1;
@@ -800,7 +792,7 @@ message ConnectionMetrics {
   uint32 jsonLiveConnections = 41;
   uint64 jsonConnectionAttempts = 42;
   uint64 jsonHandshakeFailures = 43;
-
+  
   uint32 activePeers = 51;
 }
 
@@ -823,7 +815,7 @@ message ConsensusMetrics{
   uint64 txsCounts = 5;
   uint64 chainBlockCounts = 6;
   uint64 massCounts = 7;
-
+  
   uint64 blockCount = 11;
   uint64 headerCount = 12;
   uint64 mempoolSize = 13;
@@ -925,7 +917,7 @@ message RpcFeerateBucket {
 }
 
 // Data required for making fee estimates.
-//
+// 
 // Feerate values represent fee/mass of a transaction in `sompi/gram` units.
 // Given a feerate value recommendation, calculate the required fee by
 // taking the transaction mass and multiplying it by feerate: `fee = feerate * mass(tx)`
@@ -974,129 +966,6 @@ message GetFeeEstimateExperimentalResponseMessage {
   RPCError error = 1000;
 }
 
-message GetUtxoReturnAddressRequestMessage {
-  string txid = 1;
-  uint64 accepting_block_daa_score = 2;
-}
-
-message GetUtxoReturnAddressResponseMessage {
-  string return_address = 1;
-  RPCError error = 1000;
-}
-
-// ### messages for vspc v2 ###
-
-enum RpcDataVerbosityLevel {
-  NONE = 0;
-  LOW = 1;
-  HIGH = 2;
-  FULL = 3;
-}
-
-message RpcOptionalHeader {
-  optional string hash = 2;
-  optional uint32 version = 3;
-  repeated RpcBlockLevelParents parentsByLevel = 4;
-  optional string hashMerkleRoot = 5;
-  optional string acceptedIdMerkleRoot = 6;
-  optional string utxoCommitment = 7;
-  optional int64 timestamp = 8;
-  optional uint32 bits = 9;
-  optional uint64 nonce = 10;
-  optional uint64 daaScore = 11;
-  optional string blueWork = 12;
-  optional uint64 blueScore = 13;
-  optional string pruningPoint = 14;
-}
-
-message RpcOptionalTransactionOutpoint {
-  optional string transactionId = 2;
-  optional uint32 index = 3;
-}
-
-message RpcOptionalUtxoEntryVerboseData {
-  optional string scriptPublicKeyType = 2;
-  optional string scriptPublicKeyAddress = 3;
-}
-
-message RpcOptionalUtxoEntry {
-  optional uint64 amount = 2;
-  optional RpcScriptPublicKey scriptPublicKey = 3;
-  optional uint64 blockDaaScore = 4;
-  optional bool isCoinbase = 5;
-  optional RpcOptionalUtxoEntryVerboseData verboseData = 6;
-}
-
-message RpcOptionalTransactionInputVerboseData {
-  optional RpcOptionalUtxoEntry utxoEntry = 2;
-}
-
-message RpcOptionalTransactionInput {
-  optional RpcOptionalTransactionOutpoint previousOutpoint = 2;
-  optional string signatureScript = 3;
-  optional uint64 sequence = 4;
-  optional uint32 sigOpCount = 5;
-  optional RpcOptionalTransactionInputVerboseData verboseData = 6;
-}
-
-message RpcOptionalTransactionOutputVerboseData {
-  optional string scriptPublicKeyType = 2;
-  optional string scriptPublicKeyAddress = 3;
-}
-
-message RpcOptionalTransactionOutput {
-  optional uint64 value = 2;
-  optional RpcScriptPublicKey scriptPublicKey = 3;
-  optional RpcOptionalTransactionOutputVerboseData verboseData = 4;
-}
-
-message RpcOptionalTransactionVerboseData {
-  optional string transactionId = 2;
-  optional string hash = 3;
-  optional uint64 computeMass = 4;
-  optional string blockHash = 5;
-  optional uint64 blockTime = 6;
-}
-
-message RpcOptionalTransaction {
-  optional uint32 version = 2;
-  repeated RpcOptionalTransactionInput inputs = 3;
-  repeated RpcOptionalTransactionOutput outputs = 4;
-  optional uint64 lockTime = 5;
-  optional string subnetworkId = 6;
-  optional uint64 gas = 7;
-  optional string payload = 8;
-  optional uint64 mass = 9;
-  optional RpcOptionalTransactionVerboseData verboseData = 10;
-}
-
-message RpcChainBlockAcceptedTransactions {
-  RpcOptionalHeader chainBlockHeader = 2;
-  repeated RpcOptionalTransaction acceptedTransactions = 3;
-}
-
-/// GetVirtualChainFromBlockV2RequestMessage requests the virtual selected
-/// parent chain from some startHash to this kaspad's current virtual
-message GetVirtualChainFromBlockV2RequestMessage {
-  string startHash = 1;
-
-  optional RpcDataVerbosityLevel dataVerbosityLevel = 2;
-  optional uint64 minConfirmationCount = 3;
-}
-
-message GetVirtualChainFromBlockV2ResponseMessage {
-  // The chain blocks that were removed, in high-to-low order
-  repeated string removedChainBlockHashes = 1;
-
-  // The chain blocks that were added, in low-to-high order
-  repeated string addedChainBlockHashes = 2;
-
-  // Will be filled depending on the supplied RpcDataVerbosityLevel.
-  repeated RpcChainBlockAcceptedTransactions chainBlockAcceptedTransactions = 3;
-
-  RPCError error = 1000;
-}
-
 message GetCurrentBlockColorRequestMessage {
   string hash = 1;
 }
@@ -1104,5 +973,15 @@ message GetCurrentBlockColorRequestMessage {
 message GetCurrentBlockColorResponseMessage {
   bool blue = 1;
 
+  RPCError error = 1000;
+}
+
+message GetUtxoReturnAddressRequestMessage {
+  string txid = 1;
+  uint64 accepting_block_daa_score = 2;
+}
+
+message GetUtxoReturnAddressResponseMessage {
+  string return_address = 1;
   RPCError error = 1000;
 }

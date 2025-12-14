@@ -94,11 +94,13 @@ pub struct Args {
 
     pub override_params_file: Option<String>,
 
-    // Stratum server configuration
+    // Stratum server configuration (unified implementation)
     pub stratum_enabled: bool,
-    pub stratum_listen_address: String,
-    pub stratum_listen_port: u16,
-    pub stratum_difficulty: f64,
+    pub stratum_port: u16,
+    pub stratum_min_diff: u32,
+    pub stratum_var_diff: bool,
+    pub stratum_shares_per_min: u32,
+    pub stratum_prom_port: u16,
 }
 
 impl Default for Args {
@@ -154,9 +156,11 @@ impl Default for Args {
 
             // Stratum defaults
             stratum_enabled: false,
-            stratum_listen_address: "0.0.0.0".to_string(),
-            stratum_listen_port: 3333,
-            stratum_difficulty: 1.0, // Start at difficulty 1, let vardiff increase if needed
+            stratum_port: 5555,
+            stratum_min_diff: 4096,
+            stratum_var_diff: true,
+            stratum_shares_per_min: 20,
+            stratum_prom_port: 2114,
         }
     }
 }
@@ -420,35 +424,53 @@ a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance
                 .help("Path to a JSON file containing override parameters.")
         )
         .arg(
-            arg!(--"stratum-enabled" "Enable Stratum mining protocol server")
+            arg!(--"stratum-enabled" "Enable Stratum mining protocol server (supports all ASIC miner types)")
                 .env("KASPAD_STRATUM_ENABLED")
         )
         .arg(
-            Arg::new("stratum-listen-address")
-                .long("stratum-listen-address")
-                .env("KASPAD_STRATUM_LISTEN_ADDRESS")
-                .value_name("IP")
-                .require_equals(true)
-                .value_parser(clap::value_parser!(String))
-                .help("IP address to listen for Stratum connections (default: 0.0.0.0)")
-        )
-        .arg(
-            Arg::new("stratum-listen-port")
-                .long("stratum-listen-port")
-                .env("KASPAD_STRATUM_LISTEN_PORT")
+            Arg::new("stratum-port")
+                .long("stratum-port")
+                .env("KASPAD_STRATUM_PORT")
                 .value_name("PORT")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(u16))
-                .help("Port to listen for Stratum connections (default: 3333)")
+                .help("Port to listen for Stratum connections (default: 5555)")
         )
         .arg(
-            Arg::new("stratum-difficulty")
-                .long("stratum-difficulty")
-                .env("KASPAD_STRATUM_DIFFICULTY")
+            Arg::new("stratum-min-diff")
+                .long("stratum-min-diff")
+                .env("KASPAD_STRATUM_MIN_DIFF")
                 .value_name("DIFFICULTY")
                 .require_equals(true)
-                .value_parser(clap::value_parser!(f64))
-                .help("Default difficulty for Stratum miners (default: 1.0)")
+                .value_parser(clap::value_parser!(u32))
+                .help("Minimum share difficulty (default: 4096)")
+        )
+        .arg(
+            Arg::new("stratum-var-diff")
+                .long("stratum-var-diff")
+                .env("KASPAD_STRATUM_VAR_DIFF")
+                .value_name("ENABLED")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(bool))
+                .help("Enable variable difficulty (default: true)")
+        )
+        .arg(
+            Arg::new("stratum-shares-per-min")
+                .long("stratum-shares-per-min")
+                .env("KASPAD_STRATUM_SHARES_PER_MIN")
+                .value_name("SHARES")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(u32))
+                .help("Target shares per minute for variable difficulty (default: 20)")
+        )
+        .arg(
+            Arg::new("stratum-prom-port")
+                .long("stratum-prom-port")
+                .env("KASPAD_STRATUM_PROM_PORT")
+                .value_name("PORT")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(u16))
+                .help("Prometheus metrics port (default: 2114, 0 to disable)")
         )
         ;
 
@@ -529,9 +551,11 @@ impl Args {
             disable_dns_seeding: arg_match_unwrap_or::<bool>(&m, "nodnsseed", defaults.disable_dns_seeding),
             disable_grpc: arg_match_unwrap_or::<bool>(&m, "nogrpc", defaults.disable_grpc),
             stratum_enabled: arg_match_unwrap_or::<bool>(&m, "stratum-enabled", defaults.stratum_enabled),
-            stratum_listen_address: arg_match_unwrap_or::<String>(&m, "stratum-listen-address", defaults.stratum_listen_address),
-            stratum_listen_port: arg_match_unwrap_or::<u16>(&m, "stratum-listen-port", defaults.stratum_listen_port),
-            stratum_difficulty: arg_match_unwrap_or::<f64>(&m, "stratum-difficulty", defaults.stratum_difficulty),
+            stratum_port: arg_match_unwrap_or::<u16>(&m, "stratum-port", defaults.stratum_port),
+            stratum_min_diff: arg_match_unwrap_or::<u32>(&m, "stratum-min-diff", defaults.stratum_min_diff),
+            stratum_var_diff: arg_match_unwrap_or::<bool>(&m, "stratum-var-diff", defaults.stratum_var_diff),
+            stratum_shares_per_min: arg_match_unwrap_or::<u32>(&m, "stratum-shares-per-min", defaults.stratum_shares_per_min),
+            stratum_prom_port: arg_match_unwrap_or::<u16>(&m, "stratum-prom-port", defaults.stratum_prom_port),
             ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),
             retention_period_days: m.get_one::<f64>("retention-period-days").cloned().or(defaults.retention_period_days),
 

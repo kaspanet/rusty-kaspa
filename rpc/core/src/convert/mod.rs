@@ -7,4 +7,3 @@ pub mod notification;
 pub mod scope;
 pub mod tx;
 pub mod utxo;
-pub mod verbosity;

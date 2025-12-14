@@ -132,7 +132,7 @@ cfg_if::cfg_if! {
         const TS_BLOCK: &'static str = r#"
         /**
          * Interface defining the structure of a block.
-         *
+         * 
          * @category Consensus
          */
         export interface IBlock {
@@ -143,7 +143,7 @@ cfg_if::cfg_if! {
 
         /**
          * Interface defining the structure of a block verbose data.
-         *
+         * 
          * @category Node RPC
          */
         export interface IBlockVerboseData {
@@ -161,11 +161,11 @@ cfg_if::cfg_if! {
 
         /**
          * Interface defining the structure of a raw block.
-         *
+         * 
          * Raw block is a structure used by GetBlockTemplate and SubmitBlock RPCs
          * and differs from `IBlock` in that it does not include verbose data and carries
          * `IRawHeader` that does not include a cached block hash.
-         *
+         * 
          * @category Consensus
          */
         export interface IRawBlock {
