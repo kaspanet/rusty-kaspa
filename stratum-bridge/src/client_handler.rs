@@ -36,8 +36,7 @@ pub struct ClientHandler {
 
 impl ClientHandler {
     pub fn new(share_handler: Arc<ShareHandler>, min_share_diff: f64, extranonce_size: i8) -> Self {
-        let max_extranonce =
-            if extranonce_size > 0 { (2_f64.powi(8 * extranonce_size.min(3) as i32) - 1.0) as i32 } else { 0 };
+        let max_extranonce = if extranonce_size > 0 { (2_f64.powi(8 * extranonce_size.min(3) as i32) - 1.0) as i32 } else { 0 };
 
         Self {
             clients: Arc::new(Mutex::new(HashMap::new())),

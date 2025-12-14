@@ -536,17 +536,17 @@ impl KaspaApiTrait for KaspaApi {
         &self,
         block: Block,
     ) -> Result<kaspa_rpc_core::SubmitBlockResponse, Box<dyn std::error::Error + Send + Sync>> {
-        KaspaApi::submit_block(self, block).await.map_err(|e| {
-            Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>
-        })
+        KaspaApi::submit_block(self, block)
+            .await
+            .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
     }
 
     async fn get_balances_by_addresses(
         &self,
         addresses: &[String],
     ) -> Result<Vec<(String, u64)>, Box<dyn std::error::Error + Send + Sync>> {
-        KaspaApi::get_balances_by_addresses(self, addresses).await.map_err(|e| {
-            Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>
-        })
+        KaspaApi::get_balances_by_addresses(self, addresses)
+            .await
+            .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
     }
 }

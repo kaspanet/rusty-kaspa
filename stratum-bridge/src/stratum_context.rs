@@ -555,9 +555,9 @@ impl StratumContext {
     /// Reply with low difficulty share error
     pub async fn reply_low_diff_share(&self, id: &serde_json::Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tracing::debug!("[BRIDGE->ASIC] Preparing LOW DIFFICULTY SHARE response (Error Code: 23, Invalid difficulty)");
-        self.reply(JsonRpcResponse::error(Some(id.clone()), 23, "Invalid difficulty", None)).await.map_err(|e| {
-            Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>
-        })
+        self.reply(JsonRpcResponse::error(Some(id.clone()), 23, "Invalid difficulty", None))
+            .await
+            .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
     }
 
     /// Send a response (async)

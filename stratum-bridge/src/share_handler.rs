@@ -418,11 +418,7 @@ impl ShareHandler {
                     format!("pow_value={:x} > network_target={:x} ({}% of target)", pow_value, network_target, ratio)
                 );
             } else {
-                warn!(
-                    "{} {}",
-                    LogColors::validation("[VALIDATION]"),
-                    LogColors::error("Network target is ZERO - cannot validate!")
-                );
+                warn!("{} {}", LogColors::validation("[VALIDATION]"), LogColors::error("Network target is ZERO - cannot validate!"));
             }
 
             // Check network target (block)
