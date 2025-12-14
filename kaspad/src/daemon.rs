@@ -597,7 +597,7 @@ Do you confirm? (y/n)";
     async_runtime.register(mining_rule_engine);
 
     // Initialize and register Stratum server if enabled
-    // 
+    //
     // The Stratum Bridge is a sophisticated implementation that handles multiple ASIC miner types
     // with automatic detection and per-client configuration:
     //
@@ -620,11 +620,11 @@ Do you confirm? (y/n)";
     // - Notification-based block template updates with polling fallback
     //
     if args.stratum_enabled {
-        use kaspa_stratum_bridge::{BridgeConfig, KaspaApi, listen_and_serve};
+        use kaspa_stratum_bridge::{listen_and_serve, BridgeConfig, KaspaApi};
         use std::time::Duration;
-        
+
         info!("Initializing Stratum server on port {} (multi-ASIC support enabled)", args.stratum_port);
-        
+
         // Get gRPC server address - match standalone RustBridge configuration
         // Standalone uses: "localhost:16110" as default
         // KaspaApi::new() will add grpc:// prefix automatically if needed
@@ -636,20 +636,16 @@ Do you confirm? (y/n)";
             // Default to localhost with network's default gRPC port (matches standalone)
             format!("localhost:{}", network.default_rpc_port())
         };
-        
+
         info!("Stratum server connecting to gRPC at: {}", grpc_address);
-        
+
         // Create bridge configuration
         // Note: extranonce_size=0 means auto-detect per client based on miner type
         // This is critical for proper ASIC handling - Bitmain gets 0, others get 2 bytes
         let bridge_config = BridgeConfig {
             stratum_port: format!(":{}", args.stratum_port),
             kaspad_address: grpc_address.clone(),
-            prom_port: if args.stratum_prom_port > 0 {
-                format!(":{}", args.stratum_prom_port)
-            } else {
-                String::new()
-            },
+            prom_port: if args.stratum_prom_port > 0 { format!(":{}", args.stratum_prom_port) } else { String::new() },
             print_stats: true,
             log_to_file: false, // Use node's logging system
             health_check_port: String::new(),
@@ -661,32 +657,28 @@ Do you confirm? (y/n)";
             extranonce_size: 0, // Auto-detect per client (critical for multi-ASIC support)
             pow2_clamp: true,   // Required for ASIC compatibility (IceRiver/Bitmain)
         };
-        
+
         // Create a service wrapper for the Stratum Bridge
         struct StratumBridgeService {
             config: BridgeConfig,
             grpc_address: String,
         }
-        
+
         impl AsyncService for StratumBridgeService {
             fn ident(self: Arc<Self>) -> &'static str {
                 "stratum-server"
             }
-            
+
             fn start(self: Arc<Self>) -> AsyncServiceFuture {
                 let config = self.config.clone();
                 let grpc_address = self.grpc_address.clone();
                 Box::pin(async move {
                     // Create Kaspa API client (already returns Arc)
                     // This connects to the local node's gRPC server for block templates and submissions
-                    let kaspa_api = KaspaApi::new(grpc_address.clone(), config.block_wait_time)
-                        .await
-                        .map_err(|e| {
-                            kaspa_core::task::service::AsyncServiceError::Service(
-                                format!("Failed to create Kaspa API client: {}", e)
-                            )
-                        })?;
-                    
+                    let kaspa_api = KaspaApi::new(grpc_address.clone(), config.block_wait_time).await.map_err(|e| {
+                        kaspa_core::task::service::AsyncServiceError::Service(format!("Failed to create Kaspa API client: {}", e))
+                    })?;
+
                     // Start the bridge server
                     // listen_and_serve properly initializes:
                     // - ClientHandler with auto-detection for ASIC types
@@ -702,31 +694,24 @@ Do you confirm? (y/n)";
                     info!("Starting Stratum server on port {} (multi-ASIC auto-detection enabled)", &config.stratum_port);
                     info!("Stratum server ready - waiting for miner connections on port {}", &config.stratum_port);
                     info!("Supported ASIC types: IceRiver, Bitmain (GodMiner/Antminer), BzMiner, Goldshell");
-                    listen_and_serve(config, kaspa_api.clone(), Some(kaspa_api))
-                        .await
-                        .map_err(|e| {
-                            kaspa_core::task::service::AsyncServiceError::Service(
-                                format!("Stratum Bridge server error: {}", e)
-                            )
-                        })?;
-                    
+                    listen_and_serve(config, kaspa_api.clone(), Some(kaspa_api)).await.map_err(|e| {
+                        kaspa_core::task::service::AsyncServiceError::Service(format!("Stratum Bridge server error: {}", e))
+                    })?;
+
                     Ok(())
                 })
             }
-            
+
             fn signal_exit(self: Arc<Self>) {
                 // Stratum Bridge doesn't need explicit exit signaling
             }
-            
+
             fn stop(self: Arc<Self>) -> AsyncServiceFuture {
                 Box::pin(async move { Ok(()) })
             }
         }
-        
-        async_runtime.register(Arc::new(StratumBridgeService {
-            config: bridge_config,
-            grpc_address,
-        }));
+
+        async_runtime.register(Arc::new(StratumBridgeService { config: bridge_config, grpc_address }));
     }
 
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;

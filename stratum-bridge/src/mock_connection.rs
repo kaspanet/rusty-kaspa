@@ -19,12 +19,12 @@ static CHANNEL_COUNTER: AtomicI32 = AtomicI32::new(0);
 impl MockConnection {
     pub fn new() -> (Self, mpsc::UnboundedSender<Vec<u8>>) {
         let id = format!("mc_{}", CHANNEL_COUNTER.fetch_add(1, Ordering::Relaxed));
-        
+
         let (in_tx, in_rx) = mpsc::unbounded_channel();
         let (out_tx, _out_rx) = mpsc::unbounded_channel();
-        
+
         let in_tx_clone = in_tx.clone();
-        
+
         // Store receiver in the struct - caller can access via read_test_data_from_buffer
         let conn = Self {
             id,
@@ -33,7 +33,7 @@ impl MockConnection {
             in_tx,
             out_rx: _out_rx,
         };
-        
+
         (conn, in_tx_clone)
     }
 
@@ -67,7 +67,7 @@ impl MockAddr {
 
 impl std::net::ToSocketAddrs for MockAddr {
     type Iter = std::iter::Once<std::net::SocketAddr>;
-    
+
     fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
         // Return a dummy address
         Ok(std::iter::once("127.0.0.1:0".parse().unwrap()))
@@ -79,4 +79,3 @@ impl std::fmt::Display for MockAddr {
         write!(f, "{}", self.id)
     }
 }
-
