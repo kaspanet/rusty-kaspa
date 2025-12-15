@@ -51,6 +51,7 @@ members = [
     "components/addressmanager",
     "components/connectionmanager",
     "components/consensusmanager",
+    "components/kaspa-stratum-bridge",
     "database",
     "crypto/txscript",
     "crypto/txscript/errors",
