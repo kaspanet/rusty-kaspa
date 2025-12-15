@@ -1,7 +1,7 @@
 use futures_util::future::try_join_all;
-use once_cell::sync::Lazy;
 use kaspa_stratum_bridge::log_colors::LogColors;
 use kaspa_stratum_bridge::*;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
