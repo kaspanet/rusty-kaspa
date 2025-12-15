@@ -63,11 +63,6 @@ impl LogColors {
         }
     }
 
-    #[cfg(not(windows))]
-    fn enable_windows_vt() -> bool {
-        true
-    }
-
     /// Check if Windows supports ANSI colors
     /// Modern Windows terminals (PowerShell 5.1+, Windows Terminal, etc.) support ANSI
     #[cfg(windows)]
