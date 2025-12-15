@@ -272,10 +272,17 @@ impl AsyncService for StratumBridgeService {
                 let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,kaspa_stratum_bridge=info"));
 
                 // Create a tracing subscriber that outputs to stderr (same as kaspad's logging)
-                // This ensures bridge logs appear in kaspad's terminal output
+                // Format: timestamp level message (compact, matches kaspad style)
                 let _ = tracing_subscriber::registry()
                     .with(filter)
-                    .with(fmt::layer().with_writer(std::io::stderr).with_ansi(true).with_target(false))
+                    .with(
+                        fmt::layer()
+                            .with_writer(std::io::stderr)
+                            .with_ansi(true)
+                            .with_target(false) // Hide module path to reduce clutter
+                            .with_level(true) // Show log level
+                            .compact(), // Compact format (no extra spacing)
+                    )
                     .try_init();
             });
 
