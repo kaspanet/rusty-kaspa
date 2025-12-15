@@ -3753,6 +3753,7 @@ name = "kaspad"
 version = "1.0.1"
 dependencies = [
  "async-channel 2.3.1",
+ "async-trait",
  "cfg-if 1.0.0",
  "clap 4.5.51",
  "dhat",
@@ -3779,6 +3780,7 @@ dependencies = [
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
+ "kaspa-stratum-bridge",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",
@@ -3797,6 +3799,7 @@ dependencies = [
  "tokio",
  "toml",
  "workflow-log",
+ "yaml-rust",
 ]
 
 [[package]]

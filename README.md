@@ -383,6 +383,78 @@ wRPC
 
 </details>
 
+<details>
+
+  <summary>
+Stratum Mining Bridge
+  </summary>
+
+  The Stratum bridge is integrated directly into `kaspad`, allowing ASIC miners to connect and mine without requiring a separate bridge process. The bridge runs as part of the node's async runtime, using direct RPC calls for optimal performance.
+
+  **Single-Instance Mode:**
+
+  Enable a single Stratum bridge instance on a specified port:
+
+  ```bash
+  cargo run --release --bin kaspad -- --stratum-enabled --stratum-port=:5555
+  ```
+
+  **Multi-Instance Mode:**
+
+  Enable multiple Stratum bridge instances with different ports and difficulty settings using a configuration file:
+
+  ```bash
+  cargo run --release --bin kaspad -- --stratum-enabled --stratum-config=config.yaml
+  ```
+
+  **Configuration File Format:**
+
+  Create a `config.yaml` file in the same directory as `kaspad`:
+
+  ```yaml
+  kaspad_address: "127.0.0.1:16110"
+  block_wait_time: 1000
+  print_stats: true
+  log_to_file: false  # Uses kaspad's logging in direct mode
+  var_diff: false
+  shares_per_min: 20
+  extranonce_size: 2
+  pow2_clamp: true
+
+  instances:
+    - stratum_port: ":5555"
+      min_share_diff: 2048
+      prom_port: ":2114"
+    
+    - stratum_port: ":5556"
+      min_share_diff: 4096
+      prom_port: ":2115"
+    
+    - stratum_port: ":5557"
+      min_share_diff: 8192
+      prom_port: ":2116"
+  ```
+
+  **Features:**
+
+  - **Direct Integration**: Runs inside `kaspad` process, no separate bridge needed
+  - **Multi-Instance Support**: Run multiple bridge instances with different difficulty settings
+  - **Automatic Miner Detection**: Detects miner type (IceRiver, Bitmain, BzMiner, Goldshell) automatically
+  - **Block Finding & Submission**: Full support for block discovery and network submission
+  - **Prometheus Metrics**: Optional Prometheus metrics per instance
+  - **Low Latency**: Uses direct RPC calls instead of gRPC for minimal overhead
+
+  **Connecting Miners:**
+
+  Configure your ASIC miners to connect to:
+  - **Host**: `127.0.0.1` (or your kaspad IP address)
+  - **Port**: The `stratum_port` from your configuration (e.g., `5555`)
+  - **Worker**: `your_wallet_address.worker_name`
+
+  **Note:** The `kaspad_address` field in the config file is not used in direct integration mode (the bridge uses internal RPC), but is required for compatibility with the standalone bridge configuration format.
+
+</details>
+
 
 ## Benchmarking & Testing
 

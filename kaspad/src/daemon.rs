@@ -45,6 +45,9 @@ use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::Count
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
 
+#[path = "../../direct/stratum_bridge_service.rs"]
+mod stratum_bridge_service;
+
 /// Desired soft FD limit that needs to be configured
 /// for the kaspad process.
 pub const DESIRED_DAEMON_SOFT_FD_LIMIT: u64 = 8 * 1024;
@@ -594,6 +597,16 @@ Do you confirm? (y/n)";
     async_runtime.register(mining_monitor);
     async_runtime.register(perf_monitor);
     async_runtime.register(mining_rule_engine);
+
+    // Register Stratum bridge service if enabled
+    if args.stratum_enabled {
+        let stratum_service = Arc::new(stratum_bridge_service::StratumBridgeService::new(
+            rpc_core_service.clone(),
+            args.stratum_port.clone(),
+            args.stratum_config.clone(),
+        ));
+        async_runtime.register(stratum_service);
+    }
 
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments

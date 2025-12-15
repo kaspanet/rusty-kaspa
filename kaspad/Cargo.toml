@@ -41,8 +41,10 @@ kaspa-utils.workspace = true
 kaspa-utils-tower.workspace = true
 kaspa-utxoindex.workspace = true
 kaspa-wrpc-server.workspace = true
+kaspa-stratum-bridge.workspace = true
 
 async-channel.workspace = true
+async-trait.workspace = true
 cfg-if.workspace = true
 clap = { workspace = true, features = ["env"]}
 dhat = { workspace = true, optional = true }
@@ -60,6 +62,7 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 workflow-log.workspace = true
 serde_json.workspace = true
+yaml-rust = "0.4"
 
 toml = "0.8.10"
 serde_with = "3.7.0"

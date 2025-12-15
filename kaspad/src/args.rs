@@ -93,6 +93,13 @@ pub struct Args {
     pub retention_period_days: Option<f64>,
 
     pub override_params_file: Option<String>,
+
+    #[serde(rename = "stratum-enabled")]
+    pub stratum_enabled: bool,
+    #[serde(rename = "stratum-port")]
+    pub stratum_port: Option<String>,
+    #[serde(rename = "stratum-config")]
+    pub stratum_config: Option<String>,
 }
 
 impl Default for Args {
@@ -145,6 +152,10 @@ impl Default for Args {
             ram_scale: 1.0,
             retention_period_days: None,
             override_params_file: None,
+
+            stratum_enabled: false,
+            stratum_port: None,
+            stratum_config: None,
         }
     }
 }
@@ -384,6 +395,25 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
         .arg(arg!(--"disable-upnp" "Disable upnp").env("KASPAD_DISABLE_UPNP"))
         .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers").env("KASPAD_NODNSSEED"))
         .arg(arg!(--"nogrpc" "Disable gRPC server").env("KASPAD_NOGRPC"))
+        .arg(arg!(--"stratum-enabled" "Enable Stratum mining bridge").env("KASPAD_STRATUM_ENABLED"))
+        .arg(
+            Arg::new("stratum-port")
+                .long("stratum-port")
+                .env("KASPAD_STRATUM_PORT")
+                .value_name("stratum-port")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(String))
+                .help("Stratum bridge port for miners to connect (e.g., :5555). Single-instance mode."),
+        )
+        .arg(
+            Arg::new("stratum-config")
+                .long("stratum-config")
+                .env("KASPAD_STRATUM_CONFIG")
+                .value_name("stratum-config")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(String))
+                .help("Path to Stratum bridge config.yaml file for multi-instance mode (e.g., config.yaml)."),
+        )
         .arg(
             Arg::new("ram-scale")
                 .long("ram-scale")
@@ -487,6 +517,10 @@ impl Args {
             disable_grpc: arg_match_unwrap_or::<bool>(&m, "nogrpc", defaults.disable_grpc),
             ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),
             retention_period_days: m.get_one::<f64>("retention-period-days").cloned().or(defaults.retention_period_days),
+
+            stratum_enabled: arg_match_unwrap_or::<bool>(&m, "stratum-enabled", defaults.stratum_enabled),
+            stratum_port: m.get_one::<String>("stratum-port").cloned(),
+            stratum_config: m.get_one::<String>("stratum-config").cloned(),
 
             #[cfg(feature = "devnet-prealloc")]
             num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),

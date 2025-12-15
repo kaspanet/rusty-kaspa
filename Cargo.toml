@@ -119,6 +119,7 @@ kaspa-pow = { version = "1.0.1", path = "consensus/pow" }
 kaspa-rpc-core = { version = "1.0.1", path = "rpc/core" }
 kaspa-rpc-macros = { version = "1.0.1", path = "rpc/macros" }
 kaspa-rpc-service = { version = "1.0.1", path = "rpc/service" }
+kaspa-stratum-bridge = { version = "1.0.1", path = "components/kaspa-stratum-bridge" }
 kaspa-txscript = { version = "1.0.1", path = "crypto/txscript" }
 kaspa-txscript-errors = { version = "1.0.1", path = "crypto/txscript/errors" }
 kaspa-utils = { version = "1.0.1", path = "utils" }
