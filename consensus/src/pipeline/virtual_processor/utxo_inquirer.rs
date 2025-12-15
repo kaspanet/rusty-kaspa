@@ -1,80 +1,274 @@
-use std::{cmp, sync::Arc};
+use std::{cmp, collections::HashSet, sync::Arc};
 
 use kaspa_consensus_core::{
-    acceptance_data::AcceptanceData,
-    tx::{SignableTransaction, Transaction, UtxoEntry},
-    utxo::{utxo_diff::ImmutableUtxoDiff, utxo_inquirer::UtxoInquirerError},
+    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
+    tx::{SignableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, UtxoEntry},
+    utxo::{
+        utxo_diff::ImmutableUtxoDiff,
+        utxo_inquirer::{UtxoInquirerError, UtxoInquirerFindTxsFromAcceptanceDataError, UtxoInquirerResult},
+    },
 };
-use kaspa_core::{trace, warn};
+use kaspa_core::trace;
 use kaspa_hashes::Hash;
 
-use crate::model::stores::{
-    acceptance_data::AcceptanceDataStoreReader, block_transactions::BlockTransactionsStoreReader, headers::HeaderStoreReader,
-    selected_chain::SelectedChainStoreReader, utxo_diffs::UtxoDiffsStoreReader,
+use crate::model::{
+    services::reachability::ReachabilityService,
+    stores::{
+        acceptance_data::AcceptanceDataStoreReader, block_transactions::BlockTransactionsStoreReader, headers::HeaderStoreReader,
+        selected_chain::SelectedChainStoreReader, utxo_diffs::UtxoDiffsStoreReader, utxo_set::UtxoSetStoreReader,
+        virtual_state::VirtualStateStoreReader,
+    },
 };
 
 use super::VirtualStateProcessor;
 
-impl VirtualStateProcessor {
-    /// Returns the fully populated transaction with the given txid which was accepted at the provided accepting_block_daa_score.
-    /// The argument `accepting_block_daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
-    ///
-    /// *Assumed to be called under the pruning read lock.*
-    pub fn get_populated_transaction(
-        &self,
-        txid: Hash,
-        accepting_block_daa_score: u64,
-        retention_period_root_hash: Hash,
-    ) -> Result<SignableTransaction, UtxoInquirerError> {
-        let retention_period_root_daa_score = self
-            .headers_store
-            .get_daa_score(retention_period_root_hash)
-            .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(retention_period_root_hash))?;
+pub struct MergesetAcceptanceMetaData {
+    pub accepting_block_hash: Hash,
+    pub acceptance_data: Arc<AcceptanceData>,
+    pub accepting_daa_score: u64,
+    pub mergeset_idx: usize,
+}
 
-        if accepting_block_daa_score < retention_period_root_daa_score {
-            // Early exit if target daa score is lower than that of pruning point's daa score:
-            return Err(UtxoInquirerError::AlreadyPruned);
+impl VirtualStateProcessor {
+    pub fn find_accepting_data(
+        &self,
+        block_hash: Hash,
+        retention_period_root_hash: Hash,
+        sink_hash: Hash,
+    ) -> UtxoInquirerResult<Option<MergesetAcceptanceMetaData>> {
+        // accepting block hash, daa score, acceptance data
+        // check if block is an ancestor of the sink block, i.e. we expect it to be accepted
+        if self.reachability_service.is_dag_ancestor_of(block_hash, sink_hash) {
+            // find the first "possible" accepting chain block
+            let ancestor = self.find_accepting_chain_block_hash_at_daa_score(
+                self.headers_store
+                    .get_daa_score(block_hash)
+                    .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(block_hash))?,
+                retention_period_root_hash,
+            )?;
+            // iterate forward from the ancestor to the sink block, looking for the accepting block
+            for candidate in self.reachability_service.forward_chain_iterator(ancestor, sink_hash, true) {
+                let acceptance_data = self
+                    .acceptance_data_store
+                    .get(candidate)
+                    .map_err(|_| UtxoInquirerError::MissingAcceptanceDataForChainBlock(candidate))?;
+                for (i, mbad) in acceptance_data.iter().enumerate() {
+                    if mbad.block_hash == block_hash {
+                        return Ok(Some(MergesetAcceptanceMetaData {
+                            accepting_block_hash: candidate,
+                            acceptance_data,
+                            accepting_daa_score: self
+                                .headers_store
+                                .get_daa_score(candidate)
+                                .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(candidate))?,
+                            mergeset_idx: i,
+                        }));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn populate_block_transactions(
+        &self,
+        block_hash: Hash,
+        txs: Vec<Transaction>,
+        retention_period_root_hash: Hash,
+    ) -> UtxoInquirerResult<Vec<SignableTransaction>> {
+        let virual_state_read = self.virtual_stores.read();
+        let sink_hash = virual_state_read.state.get().expect("expected virtual state").ghostdag_data.selected_parent;
+        let utxo_store = &virual_state_read.utxo_set;
+
+        let mut signable_transactions = Vec::with_capacity(txs.len());
+
+        if let Some(mergeset_meta_data) = self.find_accepting_data(block_hash, retention_period_root_hash, sink_hash)? {
+            // We have a mergeset acceptance, so we most factor in the acceptance data to populate the transactions
+            let utxo_diff = self
+                .utxo_diffs_store
+                .get(mergeset_meta_data.accepting_block_hash)
+                .map_err(|_| UtxoInquirerError::MissingUtxoDiffForChainBlock(mergeset_meta_data.accepting_block_hash))?;
+            for tx in txs.into_iter() {
+                let mut entries = Vec::with_capacity(tx.inputs.len());
+                for input in tx.inputs.iter() {
+                    if let Some(utxo) = utxo_diff.removed().get(&input.previous_outpoint) {
+                        // first check: if it was accepted, i.e. removed in the diff
+                        entries.push(utxo.clone());
+                    } else if let Some(utxo) = utxo_store.get(&input.previous_outpoint).ok().map(|arc| (*arc).clone()) {
+                        // secound check: if it was not accepted, it may be in the utxo set
+                        entries.push(utxo);
+                    } else {
+                        // third check: if it was not accepted and not in the utxo set, it may have been created and spent in a parallel block.
+                        entries.push(self.resolve_missing_outpoint(
+                            &input.previous_outpoint,
+                            &mergeset_meta_data.acceptance_data,
+                            mergeset_meta_data.accepting_daa_score,
+                        )?);
+                    }
+                }
+                signable_transactions.push(SignableTransaction::with_entries(tx, entries));
+            }
+        } else {
+            // We don't have a mergeset acceptance, so we use the utxo set solely to populate the transactions.
+            // we do not expect to find the outpoints anywhere else.
+            for tx in txs.into_iter() {
+                let mut entries = Vec::with_capacity(tx.inputs.len());
+                for input in tx.inputs.iter() {
+                    match utxo_store.get(&input.previous_outpoint) {
+                        Ok(utxo) => entries.push((*utxo).clone()),
+                        Err(_) => return Err(UtxoInquirerError::MissingUtxoEntryForOutpoint(input.previous_outpoint)),
+                    }
+                }
+                signable_transactions.push(SignableTransaction::with_entries(tx, entries));
+            }
         }
 
-        let (matching_chain_block_hash, acceptance_data) =
-            self.find_accepting_chain_block_hash_at_daa_score(accepting_block_daa_score, retention_period_root_hash)?;
+        Ok(signable_transactions)
+    }
 
+    fn resolve_missing_outpoint(
+        &self,
+        outpoint: &TransactionOutpoint,
+        acceptance_data: &AcceptanceData,
+        accepting_block_daa_score: u64,
+    ) -> UtxoInquirerResult<UtxoEntry> {
+        // This handles this rare scenario:
+        // - UTXO0 is spent by TX1 and creates UTXO1
+        // - UTXO1 is spent by TX2 and creates UTXO2
+        // - A chain block happens to accept both of these
+        // In this case, removed_diff wouldn't contain the outpoint of the created-and-immediately-spent UTXO
+        // so we use the transaction (which also has acceptance data in this block) and look at its outputs
+        let other_tx = &self.find_txs_from_acceptance_data(Some(vec![outpoint.transaction_id]), acceptance_data)?[0];
+        let output = &other_tx.outputs[outpoint.index as usize];
+        let utxo_entry =
+            UtxoEntry::new(output.value, output.script_public_key.clone(), accepting_block_daa_score, other_tx.is_coinbase());
+        Ok(utxo_entry)
+    }
+
+    pub fn get_populated_transactions_by_block_acceptance_data(
+        &self,
+        tx_ids: Option<Vec<TransactionId>>,
+        block_acceptance_data: MergesetBlockAcceptanceData,
+        accepting_block: Hash,
+    ) -> UtxoInquirerResult<Vec<SignableTransaction>> {
+        let accepting_daa_score = self
+            .headers_store
+            .get_daa_score(accepting_block)
+            .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(accepting_block))?;
+
+        let utxo_diff = self
+            .utxo_diffs_store
+            .get(accepting_block)
+            .map_err(|_| UtxoInquirerError::MissingUtxoDiffForChainBlock(accepting_block))?;
+
+        let acceptance_data_for_this_block = vec![block_acceptance_data];
+
+        let txs = self.find_txs_from_acceptance_data(tx_ids, &acceptance_data_for_this_block)?;
+
+        let mut populated_txs = Vec::<SignableTransaction>::with_capacity(txs.len());
+
+        for tx in txs.iter() {
+            let mut entries = Vec::with_capacity(tx.inputs.len());
+            for input in tx.inputs.iter() {
+                let filled_utxo = if let Some(utxo) = utxo_diff.removed().get(&input.previous_outpoint).cloned() {
+                    Some(utxo)
+                } else if let Some(utxo) = populated_txs.iter().map(|ptx| &ptx.tx).chain(txs.iter()).find_map(|tx| {
+                    if tx.id() == input.previous_outpoint.transaction_id {
+                        let output = &tx.outputs[input.previous_outpoint.index as usize];
+                        Some(UtxoEntry::new(output.value, output.script_public_key.clone(), accepting_daa_score, tx.is_coinbase()))
+                    } else {
+                        None
+                    }
+                }) {
+                    Some(utxo)
+                } else {
+                    // When trying to resolve the missing outpoint, the transaction data we need is going to come from the acceptance
+                    // data of some other block that was merged by this chain block. We cannot use "acceptance_data_for_this_block" as that
+                    // definitely cannot contain the missing outpoint. A single block cannot accept interdependent txs, therefore the dependency tx
+                    // must have been included by a different block.
+                    // So we need to acquire the full acceptance data here of all the blocks merged and accepted by this chain block
+                    // and pass that down to resolve_missing_outpoint.
+                    let full_acceptance_data = self
+                        .acceptance_data_store
+                        .get(accepting_block)
+                        .map_err(|_| UtxoInquirerError::MissingAcceptanceDataForChainBlock(accepting_block))?;
+                    Some(self.resolve_missing_outpoint(&input.previous_outpoint, &full_acceptance_data, accepting_daa_score)?)
+                };
+
+                entries.push(filled_utxo.ok_or(UtxoInquirerError::MissingUtxoEntryForOutpoint(input.previous_outpoint))?);
+            }
+            populated_txs.push(SignableTransaction::with_entries(tx.clone(), entries));
+        }
+
+        Ok(populated_txs)
+    }
+
+    pub fn get_populated_transactions_by_accepting_block(
+        &self,
+        tx_ids: Option<Vec<TransactionId>>,
+        accepting_block: Hash,
+    ) -> UtxoInquirerResult<Vec<SignableTransaction>> {
+        let acceptance_data = self
+            .acceptance_data_store
+            .get(accepting_block)
+            .map_err(|_| UtxoInquirerError::MissingAcceptanceDataForChainBlock(accepting_block))?;
+
+        let accepting_daa_score = self
+            .headers_store
+            .get_daa_score(accepting_block)
+            .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(accepting_block))?;
         // Expected to never fail, since we found the acceptance data and therefore there must be matching diff
         let utxo_diff = self
             .utxo_diffs_store
-            .get(matching_chain_block_hash)
-            .map_err(|_| UtxoInquirerError::MissingUtxoDiffForChainBlock(matching_chain_block_hash))?;
+            .get(accepting_block)
+            .map_err(|_| UtxoInquirerError::MissingUtxoDiffForChainBlock(accepting_block))?;
 
-        let tx = self.find_tx_from_acceptance_data(txid, &acceptance_data)?;
+        let txs = self.find_txs_from_acceptance_data(tx_ids, &acceptance_data)?;
 
-        let mut populated_tx = SignableTransaction::new(tx);
+        let mut populated_txs = Vec::<SignableTransaction>::with_capacity(txs.len());
 
-        let removed_diffs = utxo_diff.removed();
+        for tx in txs.iter() {
+            let mut entries = Vec::with_capacity(tx.inputs.len());
+            for input in tx.inputs.iter() {
+                let filled_utxo = if let Some(utxo) = utxo_diff.removed().get(&input.previous_outpoint).cloned() {
+                    Some(utxo)
+                } else if let Some(utxo) = populated_txs.iter().map(|ptx| &ptx.tx).chain(txs.iter()).find_map(|tx| {
+                    if tx.id() == input.previous_outpoint.transaction_id {
+                        let output = &tx.outputs[input.previous_outpoint.index as usize];
+                        Some(UtxoEntry::new(output.value, output.script_public_key.clone(), accepting_daa_score, tx.is_coinbase()))
+                    } else {
+                        None
+                    }
+                }) {
+                    Some(utxo)
+                } else {
+                    Some(self.resolve_missing_outpoint(&input.previous_outpoint, &acceptance_data, accepting_daa_score)?)
+                };
 
-        populated_tx.tx.inputs.iter().enumerate().for_each(|(index, input)| {
-            let filled_utxo = if let Some(utxo_entry) = removed_diffs.get(&input.previous_outpoint) {
-                Some(utxo_entry.clone().to_owned())
-            } else {
-                // This handles this rare scenario:
-                // - UTXO0 is spent by TX1 and creates UTXO1
-                // - UTXO1 is spent by TX2 and creates UTXO2
-                // - A chain block happens to accept both of these
-                // In this case, removed_diff wouldn't contain the outpoint of the created-and-immediately-spent UTXO
-                // so we use the transaction (which also has acceptance data in this block) and look at its outputs
-                let other_txid = input.previous_outpoint.transaction_id;
-                let other_tx = self.find_tx_from_acceptance_data(other_txid, &acceptance_data).unwrap();
-                let output = &other_tx.outputs[input.previous_outpoint.index as usize];
-                let utxo_entry =
-                    UtxoEntry::new(output.value, output.script_public_key.clone(), accepting_block_daa_score, other_tx.is_coinbase());
-                Some(utxo_entry)
-            };
+                entries.push(filled_utxo.ok_or(UtxoInquirerError::MissingUtxoEntryForOutpoint(input.previous_outpoint))?);
+            }
+            populated_txs.push(SignableTransaction::with_entries(tx.clone(), entries));
+        }
 
-            populated_tx.entries[index] = filled_utxo;
-        });
-
-        Ok(populated_tx)
+        Ok(populated_txs)
     }
 
+    /// Returns the fully populated transactions with the given tx ids which were accepted at the provided accepting_block_daa_score.
+    /// The argument `accepting_block_daa_score` is expected to be the DAA score of the accepting chain block of `tx ids`.
+    ///
+    /// *Assumed to be called under the pruning read lock.*
+    ///
+    pub fn get_populated_transactions_by_accepting_daa_score(
+        &self,
+        tx_ids: Option<Vec<TransactionId>>,
+        accepting_block_daa_score: u64,
+        retention_period_root_hash: Hash,
+    ) -> UtxoInquirerResult<Vec<SignableTransaction>> {
+        let matching_chain_block_hash =
+            self.find_accepting_chain_block_hash_at_daa_score(accepting_block_daa_score, retention_period_root_hash)?;
+
+        self.get_populated_transactions_by_accepting_block(tx_ids, matching_chain_block_hash)
+    }
     /// Find the accepting chain block hash at the given DAA score by binary searching
     /// through selected chain store using indexes.
     /// This method assumes that local caller have acquired the pruning read lock to guarantee
@@ -82,11 +276,11 @@ impl VirtualStateProcessor {
     /// other stores outside). If no such lock is acquired, this method tries to find
     /// the accepting chain block hash on a best effort basis (may fail if parts of the data
     /// are pruned between two sequential calls)
-    fn find_accepting_chain_block_hash_at_daa_score(
+    pub fn find_accepting_chain_block_hash_at_daa_score(
         &self,
         target_daa_score: u64,
         retention_period_root_hash: Hash,
-    ) -> Result<(Hash, Arc<AcceptanceData>), UtxoInquirerError> {
+    ) -> UtxoInquirerResult<Hash> {
         let sc_read = self.selected_chain_store.read();
 
         let retention_period_root_index = sc_read
@@ -138,50 +332,153 @@ impl VirtualStateProcessor {
             }
         };
 
-        let acceptance_data = self
-            .acceptance_data_store
-            .get(matching_chain_block_hash)
-            .map_err(|_| UtxoInquirerError::MissingAcceptanceDataForChainBlock(matching_chain_block_hash))?;
-
-        Ok((matching_chain_block_hash, acceptance_data))
+        Ok(matching_chain_block_hash)
     }
 
     /// Finds a transaction's containing block hash and index within block through
     /// the accepting block acceptance data
-    fn find_containing_block_and_index_from_acceptance_data(
+    fn find_containing_blocks_and_indices_from_acceptance_data(
         &self,
-        txid: Hash,
+        tx_ids: &[TransactionId],
         acceptance_data: &AcceptanceData,
-    ) -> Option<(Hash, usize)> {
-        acceptance_data.iter().find_map(|mbad| {
-            let tx_arr_index =
-                mbad.accepted_transactions.iter().find_map(|tx| (tx.transaction_id == txid).then_some(tx.index_within_block as usize));
-            tx_arr_index.map(|index| (mbad.block_hash, index))
-        })
-    }
+    ) -> Vec<(Hash, Vec<TransactionIndexType>)> {
+        let tx_set = tx_ids.iter().collect::<HashSet<_>>();
+        let mut collected = 0usize;
 
-    /// Finds a transaction through the accepting block acceptance data (and using indexed info therein for
-    /// finding the tx in the block transactions store)
-    fn find_tx_from_acceptance_data(&self, txid: Hash, acceptance_data: &AcceptanceData) -> Result<Transaction, UtxoInquirerError> {
-        let (containing_block, index) = self
-            .find_containing_block_and_index_from_acceptance_data(txid, acceptance_data)
-            .ok_or(UtxoInquirerError::MissingContainingAcceptanceForTx(txid))?;
+        let mut result = Vec::with_capacity(acceptance_data.len());
 
-        let tx = self
-            .block_transactions_store
-            .get(containing_block)
-            .map_err(|_| UtxoInquirerError::MissingBlockFromBlockTxStore(containing_block))
-            .and_then(|block_txs| {
-                block_txs.get(index).cloned().ok_or(UtxoInquirerError::MissingTransactionIndexOfBlock(index, containing_block))
-            })?;
-
-        if tx.id() != txid {
-            // Should never happen, but do a sanity check. This would mean something went wrong with storing block transactions.
-            // Sanity check is necessary to guarantee that this function will never give back a wrong address (err on the side of not found)
-            warn!("Expected {} to match {} when checking block_transaction_store using array index of transaction", tx.id(), txid);
-            return Err(UtxoInquirerError::UnexpectedTransactionMismatch(tx.id(), txid));
+        'outer: for mbad in acceptance_data.iter() {
+            for atx in mbad.accepted_transactions.iter() {
+                let mut indices = Vec::new();
+                if tx_set.contains(&atx.transaction_id) {
+                    indices.push(atx.index_within_block);
+                    collected += 1;
+                    if collected == tx_ids.len() {
+                        result.push((mbad.block_hash, indices));
+                        break 'outer;
+                    }
+                }
+                if !indices.is_empty() {
+                    result.push((mbad.block_hash, indices));
+                }
+            }
         }
 
-        Ok(tx)
+        result
+    }
+
+    /// Finds transaction(s) through a provided accepting block acceptance data
+    ///
+    /// Arguments:
+    /// * `tx_ids`: an optional list of tx id(s) to resolve. When passing `None`, the accepted transaction ids
+    ///   contained in `acceptance_data` is used as a filter.
+    ///   This default behavior ensures only the accepted transactions by this mergeset are resolved.
+    /// * `acceptance_data`: accepting block acceptance data
+    ///
+    /// Limitations:
+    /// * `tx_ids` currently only allow filtering with exactly one transaction, not multiple
+    fn find_txs_from_acceptance_data(
+        &self,
+        tx_ids: Option<Vec<TransactionId>>,
+        acceptance_data: &AcceptanceData,
+    ) -> UtxoInquirerResult<Vec<Transaction>> {
+        match tx_ids.as_deref() {
+            None => {
+                // no filter passed, using default accepted transactions by mergeset filter
+                let total_accepted: usize = acceptance_data.iter().map(|mbad| mbad.accepted_transactions.len()).sum();
+
+                // accepted transactions data of this mergeset
+                let mut all_txs = Vec::with_capacity(total_accepted);
+
+                for mbad in acceptance_data {
+                    let block_txs = self
+                        .block_transactions_store
+                        .get(mbad.block_hash)
+                        .map_err(|_| UtxoInquirerError::MissingBlockFromBlockTxStore(mbad.block_hash))?;
+
+                    for accepted in &mbad.accepted_transactions {
+                        let idx = accepted.index_within_block as usize;
+
+                        let tx = block_txs.get(idx).ok_or(UtxoInquirerError::MissingTransactionIndexOfBlock(idx, mbad.block_hash))?;
+
+                        all_txs.push(tx.clone());
+                    }
+                }
+                Ok(all_txs)
+            }
+            Some([]) => {
+                // empty filter -> error
+                Err(UtxoInquirerFindTxsFromAcceptanceDataError::TxIdsFilterIsEmptyError.into())
+            }
+            Some([tx_id]) => {
+                // single element filter, optimize for this case specifically
+                let (containing_block, index) = acceptance_data
+                    .iter()
+                    .find_map(|mbad| {
+                        let tx_arr_index = mbad
+                            .accepted_transactions
+                            .iter()
+                            .find_map(|tx| (tx.transaction_id == *tx_id).then_some(tx.index_within_block as usize));
+                        tx_arr_index.map(|index| (mbad.block_hash, index))
+                    })
+                    .ok_or_else(|| UtxoInquirerError::MissingQueriedTransactions(vec![*tx_id]))?;
+
+                let tx = self
+                    .block_transactions_store
+                    .get(containing_block)
+                    .map_err(|_| UtxoInquirerError::MissingBlockFromBlockTxStore(containing_block))
+                    .and_then(|block_txs| {
+                        block_txs.get(index).cloned().ok_or(UtxoInquirerError::MissingTransactionIndexOfBlock(index, containing_block))
+                    })?;
+
+                Ok(vec![tx])
+            }
+            Some(_more) => {
+                Err(UtxoInquirerFindTxsFromAcceptanceDataError::TxIdsFilterNeedsLessOrEqualThanOneElementError.into())
+                // TODO: currently there is no calling site that needs to make arbitrary filter by tx_ids with more than 1 element
+                // But it should be considered a future enhancement to address
+                // artifact implementation that has been commented, keeping it for track record as long as it's unimplemented
+                /*
+
+                let mut txs = HashMap::<TransactionId, Transaction, _>::new();
+                for (containing_block, indices) in
+                    self.find_containing_blocks_and_indices_from_acceptance_data(&tx_ids, acceptance_data)
+                {
+                    let mut indice_iter = indices.iter();
+                    let mut target_index = (*indice_iter.next().unwrap()) as usize;
+                    let cut_off_index = (*indices.last().unwrap()) as usize;
+
+                    txs.extend(
+                        self.block_transactions_store
+                            .get(containing_block)
+                            .map_err(|_| UtxoInquirerError::MissingBlockFromBlockTxStore(containing_block))?
+                            .unwrap_or_clone()
+                            .into_iter()
+                            .enumerate()
+                            .take_while(|(i, _)| *i <= cut_off_index)
+                            .filter_map(|(i, tx)| {
+                                if i == target_index {
+                                    target_index = (*indice_iter.next().unwrap()) as usize;
+                                    Some((tx.id(), tx))
+                                } else {
+                                    None
+                                }
+                            }),
+                    );
+                }
+
+                /*
+                if txs.len() < tx_ids.len() {
+                    // The query includes txs which are not in the acceptance data, we constitute this as an error.
+                    return Err(UtxoInquirerError::MissingQueriedTransactions(
+                        tx_ids.iter().filter(|tx_id| !txs.contains_key(*tx_id)).copied().collect::<Vec<_>>(),
+                    ));
+                };
+                */
+
+                return Ok(tx_ids.iter().map(|tx_id| txs.remove(tx_id).expect("expected queried tx id")).collect::<Vec<_>>())
+                                    */
+            }
+        }
     }
 }

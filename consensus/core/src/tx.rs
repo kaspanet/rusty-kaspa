@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
+use std::sync::Arc;
 use std::{
     fmt::Display,
     ops::Range,
@@ -94,10 +95,6 @@ pub struct TransactionInput {
     #[serde(with = "serde_bytes")]
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
-
-    // TODO: Since this field is used for calculating mass context free, and we already commit
-    // to the mass in a dedicated field (on the tx level), it follows that this field is no longer
-    // needed, and can be removed if we ever implement a v2 transaction
     pub sig_op_count: u8,
 }
 
@@ -233,8 +230,8 @@ impl Transaction {
         self.id
     }
 
-    /// Set the storage mass commitment field of this transaction. This field is expected to be activated on mainnet
-    /// as part of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
+    /// Set the storage mass commitment field of this transaction. This field has been activated on mainnet as part
+    /// of the Crescendo hardfork. The field has no effect on tx ID so no need to finalize following this call.
     pub fn set_mass(&self, mass: u64) {
         self.mass.0.store(mass, SeqCst)
     }
@@ -542,6 +539,18 @@ impl MutableTransaction {
 /// and can also be modified internally and signed etc.
 pub type SignableTransaction = MutableTransaction<Transaction>;
 
+#[derive(Debug, Clone)]
+pub enum TransactionType {
+    Transaction,
+    SignableTransaction,
+}
+
+#[derive(Debug, Clone)]
+pub enum TransactionQueryResult {
+    Transaction(Arc<Vec<Transaction>>),
+    SignableTransaction(Arc<Vec<SignableTransaction>>),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -688,7 +697,7 @@ mod tests {
         let vec = (0..SCRIPT_VECTOR_SIZE as u8).collect::<Vec<_>>();
         let spk = ScriptPublicKey::from_vec(0xc0de, vec.clone());
         let hex: String = serde_json::to_string(&spk).unwrap();
-        assert_eq!("\"c0de000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223\"", hex);
+        assert_eq!("\"c0de000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122\"", hex);
         let spk = serde_json::from_str::<ScriptPublicKey>(&hex).unwrap();
         assert_eq!(spk.version, 0xc0de);
         assert_eq!(spk.script.as_slice(), vec.as_slice());

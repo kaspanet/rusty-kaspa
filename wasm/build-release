@@ -87,8 +87,3 @@ cp LICENSE release/kaspa-wasm32-sdk/LICENSE
 
 node build/package-sizes.js
 cp package-sizes.js release/kaspa-wasm32-sdk/package-sizes.js
-
-pushd .
-cd release
-zip -q -r kaspa-wasm32-sdk.zip kaspa-wasm32-sdk
-popd
