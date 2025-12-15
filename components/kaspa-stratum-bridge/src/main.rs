@@ -271,11 +271,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Write target with capitalization
             let target = event.metadata().target();
-            let formatted_target = if let Some(rest) = target.strip_prefix("rustbridge") {
-                format!("rustbridge{}", rest)
-            } else {
-                target.to_string()
-            };
+            let formatted_target =
+                if let Some(rest) = target.strip_prefix("rustbridge") { format!("rustbridge{}", rest) } else { target.to_string() };
             write!(writer, "{}: ", formatted_target)?;
 
             // Collect the message into a string first so we can analyze it for color patterns
