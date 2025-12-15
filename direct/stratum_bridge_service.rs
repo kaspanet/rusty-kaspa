@@ -6,13 +6,14 @@ use async_trait::async_trait;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::block::Block;
 use kaspa_core::task::service::{AsyncService, AsyncServiceFuture};
-use kaspa_rpc_core::{api::rpc::RpcApi, GetBalancesByAddressesRequest, GetBlockTemplateRequest, RpcAddress, SubmitBlockRequest};
+use kaspa_rpc_core::{api::rpc::RpcApi, GetBalancesByAddressesRequest, GetBlockTemplateRequest, GetSyncStatusRequest, RpcAddress, SubmitBlockRequest};
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_stratum_bridge::{listen_and_serve, BridgeConfig, KaspaApiTrait};
-use log::{error, info};
+use log::{error, info, warn};
 use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::time::sleep;
 use yaml_rust::YamlLoader;
 
 /// Adapter that wraps RpcCoreService to implement KaspaApiTrait
@@ -285,6 +286,24 @@ impl AsyncService for StratumBridgeService {
                     )
                     .try_init();
             });
+
+            // Wait for node to sync before starting the Stratum server
+            info!("[stratum-bridge] Waiting for Kaspa node to sync...");
+            loop {
+                match rpc_core.get_sync_status_call(None, GetSyncStatusRequest {}).await {
+                    Ok(response) => {
+                        if response.is_synced {
+                            info!("[stratum-bridge] Kaspa node is synced, starting Stratum server");
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("[stratum-bridge] Failed to get sync status: {}, retrying...", e);
+                    }
+                }
+                info!("[stratum-bridge] Kaspa node is not synced, waiting for sync before starting Stratum server...");
+                sleep(Duration::from_secs(5)).await;
+            }
 
             // Create RpcCoreKaspaApi adapter
             let api = Arc::new(RpcCoreKaspaApi::new(rpc_core));
