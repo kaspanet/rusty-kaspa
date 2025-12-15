@@ -258,6 +258,27 @@ impl AsyncService for StratumBridgeService {
         let stratum_config = self.stratum_config.clone();
 
         Box::pin(async move {
+            // Initialize tracing subscriber to make bridge logs visible
+            // The bridge crate uses tracing macros, so we need to initialize a subscriber
+            use std::sync::Once;
+            static INIT_TRACING: Once = Once::new();
+            INIT_TRACING.call_once(|| {
+                use tracing_subscriber::fmt;
+                use tracing_subscriber::prelude::*;
+                use tracing_subscriber::EnvFilter;
+
+                // Get log level from RUST_LOG or default to info for bridge
+                // Allow info level for kaspa_stratum_bridge crate to see mining activity
+                let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,kaspa_stratum_bridge=info"));
+
+                // Create a tracing subscriber that outputs to stderr (same as kaspad's logging)
+                // This ensures bridge logs appear in kaspad's terminal output
+                let _ = tracing_subscriber::registry()
+                    .with(filter)
+                    .with(fmt::layer().with_writer(std::io::stderr).with_ansi(true).with_target(false))
+                    .try_init();
+            });
+
             // Create RpcCoreKaspaApi adapter
             let api = Arc::new(RpcCoreKaspaApi::new(rpc_core));
 
