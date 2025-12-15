@@ -3798,6 +3798,7 @@ dependencies = [
  "thiserror 1.0.64",
  "tokio",
  "toml",
+ "tracing-subscriber",
  "workflow-log",
  "yaml-rust",
 ]
