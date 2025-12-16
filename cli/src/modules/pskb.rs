@@ -1,11 +1,14 @@
 #![allow(unused_imports)]
 
 use crate::imports::*;
+use faster_hex::hex_string;
 use kaspa_addresses::Prefix;
+use kaspa_bip32::secp256k1;
 use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
+use kaspa_wallet_core::account::multisig::MultiSig;
 use kaspa_wallet_core::account::pskb::finalize_pskt_one_or_more_sig_and_redeem_script;
 use kaspa_wallet_pskt::{
-    prelude::{lock_script_sig_templating, script_sig_to_address, unlock_utxos_as_pskb, Bundle, Signer, PSKT},
+    prelude::{lock_script_sig_templating, script_sig_to_address, unlock_utxos_as_pskb, Bundle, SignInputOk, Signature, Signer, PSKT},
     pskt::Inner,
 };
 
@@ -186,6 +189,106 @@ impl Pskb {
                     Err(e) => terrorln!(ctx, "{}", e.to_string()),
                 }
             }
+            "sign-key" => {
+                // Offline signing with a provided private key (32-byte hex). No wallet secrets required.
+                // Usage: pskb sign-key <privkey-hex> <pskb>
+                if argv.len() != 2 {
+                    return self.display_help(ctx, argv).await;
+                }
+                let key_arg = argv.remove(0);
+                let pskb = Self::parse_input_pskb(argv.first().unwrap().as_str())?;
+
+                let privkey_bytes: [u8; 32] = {
+                    if key_arg.len() == 64 && key_arg.chars().all(|c| c.is_ascii_hexdigit()) {
+                        let mut buf = [0u8; 32];
+                        faster_hex::hex_decode(key_arg.as_bytes(), &mut buf).map_err(|e| Error::custom(e.to_string()))?;
+                        buf
+                    } else {
+                        return Err(Error::Custom("provide 32-byte hex private key".to_string()));
+                    }
+                };
+
+                let kp = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &privkey_bytes)
+                    .map_err(|e| Error::custom(format!("invalid key: {e}")))?;
+
+                let mut signed_bundle = Bundle::new();
+                for inner in pskb.iter() {
+                    let pskt: PSKT<Signer> = PSKT::from(inner.clone());
+                    let signed = pskt.pass_signature_sync(|tx, sighash| {
+                        let reused = kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync::new();
+                        tx.tx
+                            .inputs
+                            .iter()
+                            .enumerate()
+                            .map(|(i, _)| {
+                                let hash = kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash(
+                                    &tx.as_verifiable(),
+                                    i,
+                                    sighash[i],
+                                    &reused,
+                                );
+                                let msg =
+                                    secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).map_err(|e| e.to_string())?;
+                                let sig = kp.sign_schnorr(msg);
+                                Ok(SignInputOk { signature: Signature::Schnorr(sig), pub_key: kp.public_key(), key_source: None })
+                            })
+                            .collect::<std::result::Result<Vec<SignInputOk>, String>>()
+                    })?;
+                    signed_bundle.add_pskt(signed);
+                }
+
+                let encoded = signed_bundle.serialize()?;
+                tprintln!(ctx, "{encoded}");
+            }
+            "build" => {
+                // Build a PSKB with one or more outputs.
+                // Usage: pskb build [priority_fee] <address amount> [address amount]...
+                if argv.len() < 2 {
+                    return self.display_help(ctx, argv).await;
+                }
+
+                let mut args = argv;
+                let mut priority_fee_sompi: i64 = 0;
+
+                // Try to parse first arg as optional priority fee
+                if let Ok(fee_opt) = try_parse_optional_kaspa_as_sompi_i64(Some(&args[0])) {
+                    if let Some(fee_val) = fee_opt {
+                        priority_fee_sompi = fee_val;
+                        args.remove(0);
+                    }
+                }
+
+                if args.len() % 2 != 0 {
+                    return self.display_help(ctx, args).await;
+                }
+
+                let mut outputs_vec = Vec::new();
+                while !args.is_empty() {
+                    let addr = Address::try_from(args.remove(0).as_str())?;
+                    let amt = try_parse_required_nonzero_kaspa_as_sompi_u64(Some(&args.remove(0)))?;
+                    outputs_vec.push((addr, amt));
+                }
+
+                let outputs = PaymentOutputs::from(outputs_vec.as_slice());
+                let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(None).await?;
+                let account: Arc<dyn Account> = ctx.wallet().account()?;
+                let abortable = Abortable::default();
+
+                let bundle = account
+                    .pskb_from_send_generator(
+                        outputs.into(),
+                        None,
+                        priority_fee_sompi.into(),
+                        None,
+                        wallet_secret.clone(),
+                        payment_secret.clone(),
+                        &abortable,
+                    )
+                    .await?;
+
+                let encoded = bundle.serialize()?;
+                tprintln!(ctx, "{encoded}");
+            }
             "send" => {
                 if argv.len() != 1 {
                     return self.display_help(ctx, argv).await;
@@ -196,6 +299,19 @@ impl Pskb {
                     Ok(sent) => tprintln!(ctx, "Sent transactions {:?}", sent),
                     Err(e) => terrorln!(ctx, "Send error {:?}", e),
                 }
+            }
+            "redeem" => {
+                // Print redeem script for the current multisig account (or provided address).
+                // Usage: pskb redeem [address]
+                let account = ctx.wallet().account()?;
+                let multisig = account.clone().downcast_arc::<MultiSig>().map_err(|_| Error::InvalidAccountKind)?;
+
+                let addr =
+                    if argv.is_empty() { multisig.receive_address()? } else { Address::try_from(argv.first().unwrap().as_str())? };
+
+                let script = multisig.redeem_script_for_address(&addr)?;
+                let script_hex = hex_string(&script);
+                tprintln!(ctx, "{script_hex}");
             }
             "debug" => {
                 if argv.len() != 1 {
@@ -253,6 +369,8 @@ impl Pskb {
             &[
                 ("pskb create <address> <amount> <priority fee>", "Create a PSKB from single send transaction"),
                 ("pskb sign <pskb>", "Sign given PSKB"),
+                ("pskb sign-key <privkey-hex|wif> <pskb>", "Offline sign PSKB with provided private key"),
+                ("pskb build [priority fee] <address amount> [address amount]...", "Build PSKB bundle with one or more outputs"),
                 ("pskb send <pskb>", "Broadcast bundled transactions"),
                 ("pskb debug <payload>", "Print PSKB debug view"),
                 ("pskb parse <payload>", "Print PSKB formatted view"),
@@ -261,6 +379,7 @@ impl Pskb {
                 ("pskb script sign <pskb>", "Sign all PSKB's P2SH locked inputs"),
                 ("pskb script sign <pskb>", "Sign all PSKB's P2SH locked inputs"),
                 ("pskb script address <pskb>", "Prints P2SH address"),
+                ("pskb redeem [address]", "Print redeem script for current multisig account (defaults to current receive)"),
             ],
             None,
         )?;

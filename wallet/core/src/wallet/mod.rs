@@ -331,8 +331,28 @@ impl Wallet {
                 self.inner.selected_account.lock().unwrap().clone().ok_or_else(|| Error::AccountSelection)
             }
 
+        }
+        // Minimal stubs for multi-user builds to keep API parity for callers that rely on select/account helpers.
+        else {
+            pub async fn autoselect_default_account_if_single(self: &Arc<Wallet>) -> Result<()> {
+                // Multi-user mode may manage accounts differently; no-op here.
+                Ok(())
+            }
 
+            pub async fn select(self: &Arc<Self>, account: Option<&Arc<dyn Account>>) -> Result<()> {
+                *self.inner.selected_account.lock().unwrap() = account.cloned();
+                if let Some(account) = account {
+                    account.clone().start().await?;
+                    self.notify(Events::AccountSelection{ id : Some(*account.id()) }).await?;
+                } else {
+                    self.notify(Events::AccountSelection{ id : None }).await?;
+                }
+                Ok(())
+            }
 
+            pub fn account(&self) -> Result<Arc<dyn Account>> {
+                self.inner.selected_account.lock().unwrap().clone().ok_or_else(|| Error::AccountSelection)
+            }
         }
     }
 
