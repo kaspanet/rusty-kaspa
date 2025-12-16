@@ -6,6 +6,7 @@ use crate::{
         block_transactions::DbBlockTransactionsStore,
         block_window_cache::BlockWindowCacheStore,
         daa::DbDaaStore,
+        dagknight::DbDagknightStore,
         depth::DbDepthStore,
         ghostdag::{CompactGhostdagData, DbGhostdagStore},
         headers::{CompactHeaderData, DbHeadersStore},
@@ -48,6 +49,7 @@ pub struct ConsensusStorage {
     pub pruning_meta_stores: Arc<RwLock<PruningMetaStores>>,
     pub virtual_stores: Arc<RwLock<VirtualStores>>,
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
+    pub dagknight_store: Option<Arc<DbDagknightStore>>,
 
     // Append-only stores
     pub ghostdag_store: Arc<DbGhostdagStore>,
@@ -228,6 +230,11 @@ impl ConsensusStorage {
         reachability::init(reachability_store.write().deref_mut()).unwrap();
         relations::init(reachability_relations_store.write().deref_mut());
 
+        // TODO[DK]: Small cache policy for dagknight data; this can be tuned via perf params later
+        let dagknight_builder = PolicyBuilder::new().bytes_budget(scaled(5_000_000)).tracked_bytes();
+        // TODO[DK]: Use a config or ForkActivation to gate this
+        let dagknight_store = Some(Arc::new(DbDagknightStore::new(db.clone(), dagknight_builder.build())));
+
         Arc::new(Self {
             _db: db,
             statuses_store,
@@ -253,6 +260,7 @@ impl ConsensusStorage {
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             lkg_virtual_state,
+            dagknight_store,
         })
     }
 }
