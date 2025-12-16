@@ -251,11 +251,9 @@ impl Pskb {
                 let mut priority_fee_sompi: i64 = 0;
 
                 // Try to parse first arg as optional priority fee
-                if let Ok(fee_opt) = try_parse_optional_kaspa_as_sompi_i64(Some(&args[0])) {
-                    if let Some(fee_val) = fee_opt {
-                        priority_fee_sompi = fee_val;
-                        args.remove(0);
-                    }
+                if let Ok(Some(fee_val)) = try_parse_optional_kaspa_as_sompi_i64(Some(&args[0])) {
+                    priority_fee_sompi = fee_val;
+                    args.remove(0);
                 }
 
                 if args.len() % 2 != 0 {
