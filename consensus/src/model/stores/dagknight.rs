@@ -8,6 +8,8 @@ use kaspa_database::{
 use kaspa_hashes::Hash;
 
 use crate::model::stores::ghostdag::GhostdagData;
+use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB};
+use rocksdb::WriteBatch;
 
 pub struct DagknightConflictEntry {
     // TODO: incremental colouring data for relevant k values
@@ -47,6 +49,12 @@ impl DagknightKey {
         bytes[kaspa_hashes::HASH_SIZE + 1..].copy_from_slice(pov_hash.as_ref());
 
         Self { pov_hash, root_hash, k, bytes }
+    }
+}
+
+impl ToString for DagknightKey {
+    fn to_string(&self) -> String {
+        format!("{:?}", &self.bytes)
     }
 }
 
@@ -108,6 +116,61 @@ impl DagknightStore for MemoryDagknightStore {
     fn delete(&self, key: DagknightKey) -> Result<(), StoreError> {
         self.dk_map.borrow_mut().remove(&key);
 
+        Ok(())
+    }
+}
+
+/// A DB + cache implementation of `DagknightStore` trait, with concurrency support.
+#[derive(Clone)]
+pub struct DbDagknightStore {
+    db: Arc<DB>,
+    access: CachedDbAccess<DagknightKey, Arc<GhostdagData>>,
+}
+
+impl DbDagknightStore {
+    pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
+        let prefix = DatabaseStorePrefixes::DagKnight.as_ref().to_vec();
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, prefix) }
+    }
+
+    pub fn insert_batch(&self, batch: &mut WriteBatch, key: DagknightKey, data: Arc<GhostdagData>) -> Result<(), StoreError> {
+        if self.access.has(key.clone())? {
+            return Err(StoreError::KeyAlreadyExists(key.to_string()));
+        }
+        self.access.write(BatchDbWriter::new(batch), key, data)?;
+        Ok(())
+    }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, key: DagknightKey) -> Result<(), StoreError> {
+        self.access.delete(BatchDbWriter::new(batch), key)
+    }
+}
+
+impl DagknightStoreReader for DbDagknightStore {
+    fn get_selected_parent(&self, dk_key: DagknightKey) -> Result<Hash, StoreError> {
+        Ok(self.get_data(dk_key)?.selected_parent)
+    }
+
+    fn get_data(&self, dk_key: DagknightKey) -> Result<Arc<GhostdagData>, StoreError> {
+        self.access.read(dk_key)
+    }
+}
+
+impl DagknightStore for DbDagknightStore {
+    fn insert(&self, key: DagknightKey, dk_data: Arc<GhostdagData>) -> Result<(), StoreError> {
+        if self.access.has(key.clone())? {
+            return Err(StoreError::KeyAlreadyExists(key.to_string()));
+        }
+        let mut batch = WriteBatch::default();
+        self.access.write(BatchDbWriter::new(&mut batch), key, dk_data)?;
+        self.db.write(batch)?;
+        Ok(())
+    }
+
+    fn delete(&self, key: DagknightKey) -> Result<(), StoreError> {
+        let mut batch = WriteBatch::default();
+        self.access.delete(BatchDbWriter::new(&mut batch), key)?;
+        self.db.write(batch)?;
         Ok(())
     }
 }
