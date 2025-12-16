@@ -5,6 +5,7 @@
 use crate::account::Inner;
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
 use crate::imports::*;
+use kaspa_txscript::{multisig_redeem_script, multisig_redeem_script_ecdsa};
 
 pub const MULTISIG_ACCOUNT_KIND: &str = "kaspa-multisig-standard";
 
@@ -157,6 +158,40 @@ impl MultiSig {
         self.minimum_signatures
     }
 
+    pub fn redeem_script_for_address(&self, address: &Address) -> Result<Vec<u8>> {
+        let (receive, change) = self.derivation.addresses_indexes(&[address])?;
+        let (is_change, index) = if let Some((_, idx)) = receive.first() {
+            (false, *idx)
+        } else if let Some((_, idx)) = change.first() {
+            (true, *idx)
+        } else {
+            return Err(Error::Custom("Address index not found for multisig redeem script".to_string()));
+        };
+
+        let manager = if is_change { self.derivation.change_address_manager() } else { self.derivation.receive_address_manager() };
+        let mut pubkeys = Vec::with_capacity(manager.pubkey_managers.len());
+        for derivator in manager.pubkey_managers.iter() {
+            let range = derivator.get_range(index..index + 1)?;
+            if let Some(pk) = range.first() {
+                pubkeys.push(*pk);
+            }
+        }
+
+        if pubkeys.is_empty() {
+            return Err(Error::Custom("No public keys derived for redeem script".to_string()));
+        }
+
+        let min_sigs = self.minimum_signatures.max(1) as usize;
+        let script = if self.ecdsa {
+            multisig_redeem_script_ecdsa(pubkeys.iter().map(|pk| pk.serialize()), min_sigs)
+        } else {
+            multisig_redeem_script(pubkeys.iter().map(|pk| pk.x_only_public_key().0.serialize()), min_sigs)
+        }
+        .map_err(|_| Error::Custom("Failed to build multisig redeem script".to_string()))?;
+
+        Ok(script)
+    }
+
     fn watch_only(&self) -> bool {
         self.prv_key_data_ids.is_none()
     }
@@ -184,7 +219,10 @@ impl Account for MultiSig {
     }
 
     fn prv_key_data_id(&self) -> Result<&PrvKeyDataId> {
-        Err(Error::AccountKindFeature)
+        self.prv_key_data_ids
+            .as_ref()
+            .and_then(|ids| ids.first())
+            .ok_or(Error::AccountKindFeature)
     }
 
     fn as_dyn_arc(self: Arc<Self>) -> Arc<dyn Account> {
@@ -253,6 +291,11 @@ impl Account for MultiSig {
 impl DerivationCapableAccount for MultiSig {
     fn derivation(&self) -> Arc<dyn AddressDerivationManagerTrait> {
         self.derivation.clone()
+    }
+
+    fn cosigner_index(&self) -> u32 {
+        // Use the configured cosigner index if provided (defaulting to 0 for watch-only / single-key)
+        self.cosigner_index.unwrap_or(0) as u32
     }
 
     fn account_index(&self) -> u64 {

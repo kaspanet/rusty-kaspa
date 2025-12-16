@@ -14,7 +14,9 @@ use pskb::{
     bundle_from_pskt_generator, bundle_to_finalizer_stream, commit_reveal_batch_bundle, pskb_signer_for_address,
     pskt_to_pending_transaction, PSKBSigner, PSKTGenerator,
 };
+use pskb::PSKT;
 pub use variants::*;
+use variants::multisig::MultiSig;
 
 use crate::derivation::build_derivate_paths;
 use crate::derivation::AddressDerivationManagerTrait;
@@ -29,6 +31,7 @@ use crate::utxo::UtxoContextBinding;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, PrivateKey};
 use kaspa_consensus_client::UtxoEntry;
 use kaspa_consensus_client::UtxoEntryReference;
+use kaspa_txscript::extract_script_pub_key_address;
 use kaspa_wallet_keys::derivation::gen0::WalletDerivationManagerV0;
 use workflow_core::abortable::Abortable;
 
@@ -460,6 +463,17 @@ pub trait Account: AnySync + Send + Sync + 'static {
         payment_secret: Option<Secret>,
         sign_for_address: Option<&Address>,
     ) -> Result<Bundle, Error> {
+        let bundle_owned = if self.account_kind() == AccountKind::from(MULTISIG_ACCOUNT_KIND) {
+            let account: Arc<dyn Account> = self.clone().as_dyn_arc();
+            populate_multisig_redeem_scripts(account, bundle)?
+        } else {
+            let mut cloned: Bundle = Bundle::new();
+            for pskt in bundle.iter() {
+                cloned.add_pskt::<Signer>(PSKT::from(pskt.clone()));
+            }
+            cloned
+        };
+
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(PSKBSigner::new(self.clone().as_dyn_arc(), keydata.clone(), payment_secret.clone()));
 
@@ -478,7 +492,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
             (Some(derivation_path), Some(key_fingerprint))
         };
 
-        match pskb_signer_for_address(bundle, signer, network_id, sign_for_address, derivation_path, key_fingerprint).await {
+        match pskb_signer_for_address(&bundle_owned, signer, network_id, sign_for_address, derivation_path, key_fingerprint).await {
             Ok(signer) => Ok(signer),
             Err(e) => Err(Error::from(e.to_string())),
         }
@@ -848,6 +862,30 @@ pub trait DerivationCapableAccount: Account {
 }
 
 downcast_sync!(dyn DerivationCapableAccount);
+
+fn populate_multisig_redeem_scripts(account: Arc<dyn Account>, bundle: &Bundle) -> Result<Bundle, Error> {
+    let multisig = account.clone().downcast_arc::<MultiSig>().map_err(|_| Error::InvalidAccountKind)?;
+    let network_id = account.wallet().network_id()?;
+
+    let mut updated: Bundle = Bundle::new();
+    for pskt_inner in bundle.iter() {
+        let mut inner = pskt_inner.clone();
+        for input in inner.inputs.iter_mut() {
+            if input.redeem_script.is_none() {
+                if let Some(utxo) = input.utxo_entry.as_ref() {
+                    if let Ok(address) = extract_script_pub_key_address(&utxo.script_public_key, network_id.into()) {
+                        if let Ok(script) = multisig.redeem_script_for_address(&address) {
+                            input.redeem_script = Some(script);
+                        }
+                    }
+                }
+            }
+        }
+        updated.add_pskt::<Signer>(PSKT::from(inner));
+    }
+
+    Ok(updated)
+}
 
 pub(crate) fn create_private_keys<'l>(
     account_kind: &AccountKind,
