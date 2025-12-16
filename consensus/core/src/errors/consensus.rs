@@ -40,6 +40,12 @@ pub enum ConsensusError {
     #[error("difficulty error: {0}")]
     DifficultyError(#[from] DifficultyError),
 
+    #[error("under min allowed window size ({0} < {1})")]
+    UnderMinWindowSizeAllowed(usize, usize),
+
+    #[error("window data has only {0} entries -- this usually happens when the node has just began syncing")]
+    InsufficientWindowData(usize),
+
     #[error("{0}")]
     General(&'static str),
 

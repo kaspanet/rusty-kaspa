@@ -5,7 +5,6 @@ use crate::model::stores::{
 };
 use kaspa_consensus_core::{
     config::params::{ForkActivation, MAX_DIFFICULTY_TARGET_AS_F64},
-    errors::difficulty::{DifficultyError, DifficultyResult},
     BlockHashSet, BlueWorkType, MAX_WORK_LEVEL,
 };
 use kaspa_core::{info, log::CRESCENDO_KEYWORD};
@@ -42,29 +41,6 @@ trait DifficultyManagerExtension {
                 DifficultyBlock { timestamp: data.timestamp, bits: data.bits, sortable_block: item.0.clone() }
             })
             .collect()
-    }
-
-    fn internal_estimate_network_hashes_per_second(&self, window: &BlockWindowHeap) -> DifficultyResult<u64> {
-        // TODO: perhaps move this const
-        const MIN_WINDOW_SIZE: usize = 1000;
-        let window_size = window.len();
-        if window_size < MIN_WINDOW_SIZE {
-            return Err(DifficultyError::UnderMinWindowSizeAllowed(window_size, MIN_WINDOW_SIZE));
-        }
-        let difficulty_blocks = self.get_difficulty_blocks(window);
-        let (min_ts, max_ts) = difficulty_blocks.iter().map(|x| x.timestamp).minmax().into_option().unwrap();
-        if min_ts == max_ts {
-            return Err(DifficultyError::EmptyTimestampRange);
-        }
-        let window_duration = (max_ts - min_ts) / 1000; // Divided by 1000 to convert milliseconds to seconds
-        if window_duration == 0 {
-            return Ok(0);
-        }
-
-        let (min_blue_work, max_blue_work) =
-            difficulty_blocks.iter().map(|x| x.sortable_block.blue_work).minmax().into_option().unwrap();
-
-        Ok(((max_blue_work - min_blue_work) / window_duration).as_u64())
     }
 
     #[inline]
@@ -155,10 +131,6 @@ impl<T: HeaderStoreReader> FullDifficultyManager<T> {
         let average_target = targets_sum / (difficulty_blocks_len);
         let new_target = average_target * max(max_ts - min_ts, 1) / (self.target_time_per_block * difficulty_blocks_len);
         Uint256::try_from(new_target.min(self.max_difficulty_target)).expect("max target < Uint256::MAX").compact_target_bits()
-    }
-
-    pub fn estimate_network_hashes_per_second(&self, window: &BlockWindowHeap) -> DifficultyResult<u64> {
-        self.internal_estimate_network_hashes_per_second(window)
     }
 }
 
@@ -395,10 +367,6 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
         }
 
         Uint256::try_from(new_target.min(self.max_difficulty_target)).expect("max target < Uint256::MAX").compact_target_bits()
-    }
-
-    pub fn estimate_network_hashes_per_second(&self, window: &BlockWindowHeap) -> DifficultyResult<u64> {
-        self.internal_estimate_network_hashes_per_second(window)
     }
 }
 
