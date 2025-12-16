@@ -4,20 +4,23 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
-            DB, block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
-            headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore,
-            pruning::DbPruningStore, pruning_samples::DbPruningSamplesStore, reachability::DbReachabilityStore,
-            relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore,
+            DB, block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, dagknight::DbDagknightStore, depth::DbDepthStore,
+            ghostdag::DbGhostdagStore, headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore,
+            past_pruning_points::DbPastPruningPointsStore, pruning::DbPruningStore, pruning_samples::DbPruningSamplesStore,
+            reachability::DbReachabilityStore, relations::DbRelationsStore, selected_chain::DbSelectedChainStore,
+            statuses::DbStatusesStore,
         },
     },
     processes::{
-        block_depth::BlockDepthManager, coinbase::CoinbaseManager, ghostdag::protocol::GhostdagManager,
-        parents_builder::ParentsManager, pruning::PruningPointManager, pruning_proof::PruningProofManager, sync::SyncManager,
-        transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager, window::SampledWindowManager,
+        block_depth::BlockDepthManager, coinbase::CoinbaseManager, dagknight::protocol::DagknightExecutor,
+        ghostdag::protocol::GhostdagManager, parents_builder::ParentsManager, pruning::PruningPointManager,
+        pruning_proof::PruningProofManager, sync::SyncManager, transaction_validator::TransactionValidator,
+        traversal_manager::DagTraversalManager, window::SampledWindowManager,
     },
 };
 use kaspa_consensus_core::mass::MassCalculator;
 use kaspa_txscript::caches::TxScriptCacheCounters;
+use parking_lot::RwLock;
 use std::sync::{Arc, atomic::AtomicBool};
 
 pub type DbGhostdagManager =
@@ -47,6 +50,8 @@ pub type DbPruningPointManager = PruningPointManager<
 >;
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore, DbHeadersStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
+pub type DbDagknightExecutor =
+    DagknightExecutor<DbDagknightStore, DbGhostdagStore, DbHeadersStore, MTRelationsService<DbRelationsStore>, DbReachabilityStore>;
 
 pub struct ConsensusServices {
     // Underlying storage
@@ -67,6 +72,7 @@ pub struct ConsensusServices {
     pub depth_manager: DbBlockDepthManager,
     pub mass_calculator: MassCalculator,
     pub transaction_validator: TransactionValidator,
+    pub dagknight_executor: Option<DbDagknightExecutor>,
 }
 
 impl ConsensusServices {
@@ -120,6 +126,16 @@ impl ConsensusServices {
             storage.headers_store.clone(),
             reachability_service.clone(),
         );
+
+        // TODO[DK]: Use a config or ForkActivation to gate this
+        let dagknight_executor = storage.dagknight_store.as_ref().map(|dagknight_store| DagknightExecutor {
+            genesis_hash: params.genesis.hash,
+            dagknight_store: dagknight_store.clone(),
+            ghostdag_store: storage.ghostdag_store.clone(),
+            headers_store: storage.headers_store.clone(),
+            relations_store: Arc::new(RwLock::new(relations_service.clone())),
+            reachability_service: reachability_service.clone(),
+        });
 
         let coinbase_manager = CoinbaseManager::new(
             params.coinbase_payload_script_public_key_max_len,
@@ -212,6 +228,7 @@ impl ConsensusServices {
             depth_manager,
             mass_calculator,
             transaction_validator,
+            dagknight_executor,
         })
     }
 }
