@@ -219,10 +219,7 @@ impl Account for MultiSig {
     }
 
     fn prv_key_data_id(&self) -> Result<&PrvKeyDataId> {
-        self.prv_key_data_ids
-            .as_ref()
-            .and_then(|ids| ids.first())
-            .ok_or(Error::AccountKindFeature)
+        self.prv_key_data_ids.as_ref().and_then(|ids| ids.first()).ok_or(Error::AccountKindFeature)
     }
 
     fn as_dyn_arc(self: Arc<Self>) -> Arc<dyn Account> {

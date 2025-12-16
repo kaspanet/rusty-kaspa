@@ -10,13 +10,13 @@ pub mod variants;
 use kaspa_hashes::Hash;
 use kaspa_wallet_pskt::bundle::Bundle;
 pub use kind::*;
+use pskb::PSKT;
 use pskb::{
     bundle_from_pskt_generator, bundle_to_finalizer_stream, commit_reveal_batch_bundle, pskb_signer_for_address,
     pskt_to_pending_transaction, PSKBSigner, PSKTGenerator,
 };
-use pskb::PSKT;
-pub use variants::*;
 use variants::multisig::MultiSig;
+pub use variants::*;
 
 use crate::derivation::build_derivate_paths;
 use crate::derivation::AddressDerivationManagerTrait;
