@@ -1,8 +1,8 @@
 use crate::{
     consensus::{
         services::{
-            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbPruningPointManager,
-            DbWindowManager,
+            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbDagknightExecutor, DbGhostdagManager, DbParentsManager,
+            DbPruningPointManager, DbWindowManager,
         },
         storage::ConsensusStorage,
     },
@@ -134,6 +134,7 @@ pub struct HeaderProcessor {
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) _pruning_point_manager: DbPruningPointManager,
     pub(super) parents_manager: DbParentsManager,
+    pub(super) dagknight_executor: Option<DbDagknightExecutor>,
 
     // Pruning lock
     pruning_lock: SessionLock,
@@ -184,6 +185,7 @@ impl HeaderProcessor {
             depth_manager: services.depth_manager.clone(),
             _pruning_point_manager: services.pruning_point_manager.clone(),
             parents_manager: services.parents_manager.clone(),
+            dagknight_executor: services.dagknight_executor.clone(),
 
             task_manager: BlockTaskDependencyManager::new(),
             pruning_lock,
@@ -285,6 +287,8 @@ impl HeaderProcessor {
         let block_level = self.validate_header_in_isolation(header)?;
         self.validate_parent_relations(header)?;
         let mut ctx = self.build_processing_context(header, block_level);
+        // TODO[DK]: This part triggers the inserts to DK store. Aggregate those changes and commit all at once during commit_header.
+        // aggregate it into the context.
         self.ghostdag(&mut ctx);
         self.pre_pow_validation(&mut ctx, header)?;
         if let Err(e) = self.post_pow_validation(&mut ctx, header) {
@@ -330,12 +334,14 @@ impl HeaderProcessor {
 
     /// Runs the GHOSTDAG algorithm and writes the data into the context (if hasn't run already)
     fn ghostdag(&self, ctx: &mut HeaderProcessingContext) {
-        let ghostdag_data = self
-            .ghostdag_store
-            .get_data(ctx.hash)
-            .optional()
-            .unwrap()
-            .unwrap_or_else(|| Arc::new(self.ghostdag_manager.ghostdag(&ctx.known_direct_parents)));
+        let ghostdag_data = self.ghostdag_store.get_data(ctx.hash).optional().unwrap().unwrap_or_else(|| {
+            Arc::new(if let Some(executor) = &self.dagknight_executor {
+                let dk_sp = executor.dagknight(&ctx.known_direct_parents);
+                self.ghostdag_manager.incremental_coloring(&ctx.known_direct_parents, dk_sp)
+            } else {
+                self.ghostdag_manager.ghostdag(&ctx.known_direct_parents)
+            })
+        });
         self.counters.mergeset_counts.fetch_add(ghostdag_data.mergeset_size() as u64, Ordering::Relaxed);
         ctx.ghostdag_data = Some(ghostdag_data);
     }
