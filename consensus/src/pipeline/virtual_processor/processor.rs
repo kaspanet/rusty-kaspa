@@ -1,8 +1,8 @@
 use crate::{
     consensus::{
         services::{
-            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbPruningPointManager,
-            DbWindowManager,
+            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbDagknightExecutor, DbGhostdagManager, DbParentsManager,
+            DbPruningPointManager, DbWindowManager,
         },
         storage::ConsensusStorage,
     },
@@ -168,6 +168,8 @@ pub struct VirtualStateProcessor {
 
     // Mining Rule
     _mining_rules: Arc<MiningRules>,
+
+    pub(super) dagknight_executor: Option<DbDagknightExecutor>,
 }
 
 impl VirtualStateProcessor {
@@ -228,6 +230,7 @@ impl VirtualStateProcessor {
             pruning_point_manager: services.pruning_point_manager.clone(),
             parents_manager: services.parents_manager.clone(),
             depth_manager: services.depth_manager.clone(),
+            dagknight_executor: services.dagknight_executor.clone(),
 
             pruning_lock,
             notification_root,
@@ -641,7 +644,21 @@ impl VirtualStateProcessor {
         // since we check that every pushed block is not in the past of current heap
         // (and it can't be in the future by induction)
         loop {
-            let candidate = heap.pop().expect("valid sink must exist").hash;
+            let candidate = if let Some(executor) = &self.dagknight_executor {
+                // TODO[DK]: extra hacky workaround. Get rid of this!
+                let curr_tips = heap.iter().map(|sb| sb.hash).collect::<Vec<_>>();
+                let candidate = executor.dagknight(&curr_tips);
+
+                // Remove the selected candidate from the heap so it won't be reconsidered.
+                // BinaryHeap has no direct remove, so recreate it without the candidate.
+                let vec = heap.into_vec();
+                let filtered: Vec<SortableBlock> = vec.into_iter().filter(|sb| sb.hash != candidate).collect();
+                heap = BinaryHeap::from(filtered);
+
+                candidate
+            } else {
+                heap.pop().expect("valid sink must exist").hash
+            };
             if self.reachability_service.is_chain_ancestor_of(finality_point, candidate) {
                 diff_point = self.calculate_utxo_state_relatively(stores, diff, diff_point, candidate);
                 if diff_point == candidate {
@@ -787,7 +804,12 @@ impl VirtualStateProcessor {
         mut virtual_parents: Vec<Hash>,
         current_pruning_point: Hash,
     ) -> (Vec<Hash>, GhostdagData) {
-        let mut ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
+        let mut ghostdag_data = if let Some(executor) = &self.dagknight_executor {
+            let dk_sp = executor.dagknight(&virtual_parents);
+            self.ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
+        } else {
+            self.ghostdag_manager.ghostdag(&virtual_parents)
+        };
         let merge_depth_root = self.depth_manager.calc_merge_depth_root(&ghostdag_data, current_pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;
         let mut bad_reds = Vec::new();
@@ -814,7 +836,12 @@ impl VirtualStateProcessor {
             // Remove all parents which lead to merging a bad red
             virtual_parents.retain(|&h| !self.reachability_service.is_any_dag_ancestor(&mut bad_reds.iter().copied(), h));
             // Recompute ghostdag data since parents changed
-            ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
+            ghostdag_data = if let Some(executor) = &self.dagknight_executor {
+                let dk_sp = executor.dagknight(&virtual_parents);
+                self.ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
+            } else {
+                self.ghostdag_manager.ghostdag(&virtual_parents)
+            };
         }
 
         (virtual_parents, ghostdag_data)
