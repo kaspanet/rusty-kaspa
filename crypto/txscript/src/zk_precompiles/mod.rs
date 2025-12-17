@@ -17,7 +17,8 @@ trait ZkPrecompile {
 
 pub fn parse_tag(dstack: &mut Stack) -> Result<ZkTag, TxScriptError> {
     let [tag_bytes] = dstack.pop_raw()?;
-    ZkTag::try_from(*tag_bytes.get(0).unwrap_or(&u8::MAX)).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))
+    ZkTag::try_from(*tag_bytes.first().ok_or(TxScriptError::ZkIntegrity("Could not find tag byte".to_string()))?)
+        .map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))
 }
 
 /**
