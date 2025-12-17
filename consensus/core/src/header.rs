@@ -7,6 +7,7 @@ use kaspa_utils::{
 };
 use serde::{Deserialize, Serialize};
 use std::mem::size_of;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 /// An efficient run-length encoding for the parent-by-level vector in the block header.
 /// The i-th run `(cum_count, parents)` indicates that for all levels in the range `prev_cum_count..cum_count`,
@@ -15,9 +16,21 @@ use std::mem::size_of;
 /// Example: `[(3, [A]), (5, [B])]` means levels 0-2 have parents `[A]`,
 /// and levels 3-4 have parents `[B]`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[wasm_bindgen(inspectable)]
 pub struct CompressedParents(Vec<(u8, Vec<Hash>)>);
 
 impl CompressedParents {
+    /// Creates a `CompressedParents` from precomputed runs `(cumulative_level, parents)`.
+    /// The caller must guarantee the runs are valid (monotonic cumulative levels, <= 255, etc.).
+    pub fn new(runs: Vec<(u8, Vec<Hash>)>) -> Self {
+        Self(runs)
+    }
+
+    /// Returns the internal run-length encoded representation.
+    pub fn runs(&self) -> &[(u8, Vec<Hash>)] {
+        &self.0
+    }
+
     pub fn expanded_len(&self) -> usize {
         self.0.last().map(|(cum, _)| *cum as usize).unwrap_or(0)
     }
