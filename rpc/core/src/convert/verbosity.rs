@@ -74,7 +74,7 @@ impl_verbosity_from! {
         include_daa_score:               (RpcDataVerbosityLevel::Low),
         include_blue_work:               (RpcDataVerbosityLevel::Low),
         include_blue_score:              (RpcDataVerbosityLevel::Low),
-        include_parents_by_level:        (RpcDataVerbosityLevel::High),
+        include_compressed_parents:        (RpcDataVerbosityLevel::High),
         include_hash_merkle_root:        (RpcDataVerbosityLevel::High),
         include_accepted_id_merkle_root: (RpcDataVerbosityLevel::High),
         include_utxo_commitment:         (RpcDataVerbosityLevel::Full),
