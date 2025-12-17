@@ -25,7 +25,7 @@ impl ZkTag {
     /// Since 1 sigop is priced at 1000 gram, the costs are in 1000 gram units
     pub fn sigop_cost(&self) -> u32 {
         match self {
-            ZkTag::R0Groth16 => 135,
+            ZkTag::R0Groth16 => 140,
             ZkTag::R0Succinct => 740,
         }
     }

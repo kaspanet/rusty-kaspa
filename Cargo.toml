@@ -225,8 +225,8 @@ rand_distr = "0.4.3"
 rayon = "1.8.0"
 regex = "1.10.2"
 risc0-groth16 = "3.0.3"
-risc0-circuit-recursion = "4.0.3"
-risc0-circuit-keccak = "4.0.3"
+risc0-circuit-recursion = { version="4.0.3", default-features=false }
+risc0-circuit-keccak =  { version="4.0.3", default-features=false }
 risc0-zkp = "3.0.3"
 risc0-core = "3.0.0"
 risc0-binfmt = "3.0.3"

@@ -194,7 +194,7 @@ async function zktest() {
             }],
             0n,
             '',
-            135  // No sig op count for ZK verification
+            104 
         );
 
         // Set the signature script

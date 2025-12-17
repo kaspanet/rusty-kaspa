@@ -85,7 +85,7 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
 #[inline(always)]
 fn write_input<T: Hasher>(hasher: &mut T, input: &TransactionInput, encoding_flags: TxEncodingFlags) {
     write_outpoint(hasher, &input.previous_outpoint);
-    if encoding_flags & TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT != TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT {
+    if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT) {
         hasher.write_var_bytes(input.signature_script.as_slice()).update([input.sig_op_count]);
     } else {
         hasher.write_var_bytes(&[]);

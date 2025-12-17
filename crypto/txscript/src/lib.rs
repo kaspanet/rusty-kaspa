@@ -225,7 +225,16 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
             Err(_) => return num_sigs,
         }
     }
-    num_sigs
+
+
+    if num_sigs <= 100 {
+        num_sigs
+    } else {
+        // This encodes the sigop count to avoid large numbers while still
+        // providing some granularity for higher counts.
+        let encoded = 100 + ((num_sigs - 100) / 10);
+        encoded
+    }
 }
 
 /// Returns whether the passed public key script is unspendable, or guaranteed to fail at execution.

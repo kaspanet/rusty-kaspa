@@ -194,7 +194,7 @@ async function zktest() {
             }],
             0n,
             '',
-            740 
+            164 
         );
 
         console.log(redeemTx)
