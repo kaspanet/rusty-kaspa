@@ -1000,10 +1000,8 @@ opcode_list! {
         let tag = parse_tag(&mut vm.dstack)?;
 
         // Consume sigop cost
-        if let Some(runtime_sigop_counter)= &mut vm.runtime_sig_op_counter {
-            let sigop_count=
-            runtime_sigop_counter.consume_sig_ops(tag.sigop_cost());
-        }
+        vm.runtime_sig_op_counter.consume_sig_ops(tag.sigop_cost())?;
+
         // Verify the ZK proof
         verify_zk(tag,&mut vm.dstack)?;
 
