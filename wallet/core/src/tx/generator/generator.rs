@@ -284,7 +284,7 @@ struct Inner {
     // Event multiplexer
     multiplexer: Option<Multiplexer<Box<Events>>>,
     // typically a number of keys required to sign the transaction
-    sig_op_count: u16,
+    sig_op_count: u8,
     // number of minimum signatures required to sign the transaction
     minimum_signatures: u16,
     // change address
@@ -506,7 +506,7 @@ impl Generator {
     }
 
     #[inline(always)]
-    pub fn sig_op_count(&self) -> u16 {
+    pub fn sig_op_count(&self) -> u8 {
         self.inner.sig_op_count
     }
 

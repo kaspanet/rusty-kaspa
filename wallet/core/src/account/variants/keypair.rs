@@ -134,7 +134,7 @@ impl Account for Keypair {
         self
     }
 
-    fn sig_op_count(&self) -> u16 {
+    fn sig_op_count(&self) -> u8 {
         1
     }
 

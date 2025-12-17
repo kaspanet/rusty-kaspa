@@ -44,7 +44,7 @@ impl Account for Resident {
         self
     }
 
-    fn sig_op_count(&self) -> u16 {
+    fn sig_op_count(&self) -> u8 {
         // TODO - discuss
         unreachable!()
     }

@@ -80,7 +80,7 @@ pub struct SerializableTransactionInput {
     pub transaction_id: TransactionId,
     pub index: SignedTransactionIndexType,
     pub sequence: String,
-    pub sig_op_count: u16,
+    pub sig_op_count: u8,
     #[serde(with = "hex::serde")]
     pub signature_script: Vec<u8>,
     pub utxo: SerializableUtxoEntry,

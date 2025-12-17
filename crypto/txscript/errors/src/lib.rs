@@ -74,7 +74,7 @@ pub enum TxScriptError {
     #[error(transparent)]
     Serialization(#[from] SerializationError),
     #[error("sig op count exceeds passed limit of {0}")]
-    ExceededSigOpLimit(u16),
+    ExceededSigOpLimit(u8),
     #[error("ZK Integrity: {0}")]
     ZkIntegrity(String),
 }

@@ -273,7 +273,7 @@ struct GeneratorSettings {
     pub change_address: Option<Address>,
     pub fee_rate: Option<f64>,
     pub final_priority_fee: Fees,
-    pub sig_op_count: u16,
+    pub sig_op_count: u8,
     pub minimum_signatures: u16,
     pub payload: Option<Vec<u8>>,
 }
@@ -306,7 +306,7 @@ impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
 
         let sig_op_count = args.get_value("sigOpCount")?;
         let sig_op_count =
-            if !sig_op_count.is_undefined() { sig_op_count.as_f64().expect("sigOpCount should be a number") as u16 } else { 1 };
+            if !sig_op_count.is_undefined() { sig_op_count.as_f64().expect("sigOpCount should be a number") as u8 } else { 1 };
 
         let minimum_signatures = args.get_value("minimumSignatures")?;
         let minimum_signatures = if !minimum_signatures.is_undefined() {

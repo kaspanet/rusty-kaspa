@@ -16,7 +16,7 @@ pub fn create_transaction_js(
     outputs: IPaymentOutputArray,
     priority_fee: BigInt,
     payload: Option<BinaryT>,
-    sig_op_count: Option<u16>,
+    sig_op_count: Option<u8>,
 ) -> crate::result::Result<Transaction> {
     let utxo_entries = if let Some(utxo_entries) = utxo_entry_source.dyn_ref::<js_sys::Array>() {
         utxo_entries.to_vec().iter().map(UtxoEntryReference::try_owned_from).collect::<Result<Vec<_>, _>>()?

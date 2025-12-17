@@ -138,7 +138,7 @@ pub struct RpcTransactionInput {
     #[serde(with = "hex::serde")]
     pub signature_script: Vec<u8>,
     pub sequence: u64,
-    pub sig_op_count: u16,
+    pub sig_op_count: u8,
     pub verbose_data: Option<RpcTransactionInputVerboseData>,
 }
 
@@ -178,7 +178,7 @@ impl Serializer for RpcTransactionInput {
         serialize!(RpcTransactionOutpoint, &self.previous_outpoint, writer)?;
         store!(Vec<u8>, &self.signature_script, writer)?;
         store!(u64, &self.sequence, writer)?;
-        store!(u16, &self.sig_op_count, writer)?;
+        store!(u8, &self.sig_op_count, writer)?;
         serialize!(Option<RpcTransactionInputVerboseData>, &self.verbose_data, writer)?;
 
         Ok(())
@@ -191,7 +191,7 @@ impl Deserializer for RpcTransactionInput {
         let previous_outpoint = deserialize!(RpcTransactionOutpoint, reader)?;
         let signature_script = load!(Vec<u8>, reader)?;
         let sequence = load!(u64, reader)?;
-        let sig_op_count = load!(u16, reader)?;
+        let sig_op_count = load!(u8, reader)?;
         let verbose_data = deserialize!(Option<RpcTransactionInputVerboseData>, reader)?;
 
         Ok(Self { previous_outpoint, signature_script, sequence, sig_op_count, verbose_data })

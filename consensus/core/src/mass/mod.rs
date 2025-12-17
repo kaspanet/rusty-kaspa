@@ -258,10 +258,13 @@ impl MassCalculator {
             .map(|output| 2 /* script public key version (u16) */ + output.script_public_key.script().len() as u64)
             .sum();
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
+
         let total_sigops: u64 = tx.inputs.iter().map(|input| input.sig_op_count as u64).sum();
         let total_sigops_mass = total_sigops * self.mass_per_sig_op;
+
         let compute_mass = compute_mass_for_size + total_script_public_key_mass + total_sigops_mass;
         let transient_mass = size * TRANSIENT_BYTE_TO_MASS_FACTOR;
+
         NonContextualMasses::new(compute_mass, transient_mass)
     }
 

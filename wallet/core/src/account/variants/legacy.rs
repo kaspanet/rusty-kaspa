@@ -151,7 +151,7 @@ impl Account for Legacy {
         self
     }
 
-    fn sig_op_count(&self) -> u16 {
+    fn sig_op_count(&self) -> u8 {
         1
     }
 

@@ -39,7 +39,7 @@ pub struct Input {
     /// The redeem script for this input.
     pub redeem_script: Option<Vec<u8>>,
     #[builder(setter(strip_option))]
-    pub sig_op_count: Option<u16>,
+    pub sig_op_count: Option<u8>,
     /// A map from public keys needed to sign this input to their corresponding
     /// master key fingerprints and derivation paths.
     pub bip32_derivations: BTreeMap<secp256k1::PublicKey, Option<KeySource>>,
