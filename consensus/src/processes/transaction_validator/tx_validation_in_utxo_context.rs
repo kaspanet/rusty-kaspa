@@ -1,7 +1,6 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{
-    hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
-    tx::{TransactionInput, VerifiableTransaction},
+    hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync}, mass::decode_sig_op_count, tx::{TransactionInput, VerifiableTransaction}
 };
 use kaspa_txscript::{caches::Cache, get_sig_op_count_upper_bound, SigCacheKey, TxScriptEngine};
 use kaspa_txscript_errors::TxScriptError;
@@ -163,8 +162,15 @@ impl TransactionValidator {
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
             let calculated =
                 get_sig_op_count_upper_bound::<T, SigHashReusedValuesUnsync>(&input.signature_script, &entry.script_public_key);
-            if calculated != input.sig_op_count as u64 {
-                return Err(TxRuleError::WrongSigOpCount(i, input.sig_op_count as u64, calculated));
+            
+            // Decode the sigop count from the input
+            // Zk precompiles require a higher sigop count.
+            // When sigop count is greater than 100, each additional sigop counts as 10, 
+            // which means we can encode the zk sigop cost without having to change the sigop type from u8.
+            let decoded_sigop_count =decode_sig_op_count(input.sig_op_count);
+
+            if calculated != decoded_sigop_count as u64 {
+                return Err(TxRuleError::WrongSigOpCount(i, decoded_sigop_count as u64, calculated));
             }
         }
         Ok(())

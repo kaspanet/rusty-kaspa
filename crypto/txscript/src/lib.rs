@@ -132,7 +132,7 @@ fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
 /// # Returns
 /// * `Ok(u8)` - The exact number of signature operations executed
 /// * `Err(TxScriptError)` - If script execution fails or input index is invalid
-pub fn get_sig_op_count<T: VerifiableTransaction>(tx: &T, input_idx: usize, kip10_enabled: bool) -> Result<u8, TxScriptError> {
+pub fn get_sig_op_count<T: VerifiableTransaction>(tx: &T, input_idx: usize, kip10_enabled: bool) -> Result<u16, TxScriptError> {
     let sig_cache = Cache::new(0);
     let reused_values = SigHashReusedValuesUnsync::new();
     let mut vm = TxScriptEngine::from_transaction_input(
@@ -214,7 +214,6 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
                         let tag = if let Some(Ok(zk_tag)) = opcodes.get(i - 1).as_ref() {
                             zk_tag.get_data().first().unwrap_or(&u8::MAX)
                         } else {
-                            println!("ZK precompile tag could not be read, defaulting to max");
                             &u8::MAX
                         };
                         num_sigs += compute_zk_sigop_cost(*tag) as u64;
@@ -225,16 +224,7 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
             Err(_) => return num_sigs,
         }
     }
-
-
-    if num_sigs <= 100 {
-        num_sigs
-    } else {
-        // This encodes the sigop count to avoid large numbers while still
-        // providing some granularity for higher counts.
-        let encoded = 100 + ((num_sigs - 100) / 10);
-        encoded
-    }
+    num_sigs
 }
 
 /// Returns whether the passed public key script is unspendable, or guaranteed to fail at execution.
@@ -262,7 +252,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     /// Returns the number of signature operations used in script execution if runtime sig op counting is enabled.
     ///
     /// Returns None if runtime signature operation counting is disabled.
-    pub fn used_sig_ops(&self) -> Option<u8> {
+    pub fn used_sig_ops(&self) -> Option<u16> {
         self.runtime_sig_op_counter.as_ref().map(|counter| counter.used_sig_ops())
     }
 

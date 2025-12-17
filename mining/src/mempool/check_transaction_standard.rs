@@ -12,7 +12,7 @@ use kaspa_txscript::{get_sig_op_count_upper_bound, is_unspendable, script_class:
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
 /// that are considered standard in a pay-to-script-hash script.
-const MAX_STANDARD_P2SH_SIG_OPS: u8 = 255;
+const MAX_STANDARD_P2SH_SIG_OPS: u16 = 1000;
 
 /// MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE is the maximum size allowed for a
 /// transaction input signature script to be considered standard. This
@@ -40,7 +40,6 @@ const MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS: u64 = 600_000;
 impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
-        println!("checking tx");
         // The transaction must be a currently supported version.
         //
         // This check is currently mirrored in consensus.

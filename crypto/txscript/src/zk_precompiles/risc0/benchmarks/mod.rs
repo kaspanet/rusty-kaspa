@@ -1,7 +1,10 @@
 #[cfg(test)]
 mod test {
-    use crate::{data_stack::Stack, zk_precompiles::verify_zk};
-    
+    use crate::{
+        data_stack::Stack,
+        zk_precompiles::{parse_tag, verify_zk},
+    };
+
     #[test]
     fn test_benchmark_verification() {
         use hex::decode;
@@ -49,7 +52,8 @@ mod test {
         for _ in 0..ITERATIONS {
             let mut stark_stack_clone = stark_stack.clone();
             let start = Instant::now();
-            verify_zk(&mut stark_stack_clone).unwrap();
+            let tag = parse_tag(&mut stark_stack_clone).unwrap();
+            verify_zk(tag, &mut stark_stack_clone).unwrap();
             total_stark_time += start.elapsed();
         }
         let avg_stark_time = total_stark_time / ITERATIONS;
@@ -59,7 +63,8 @@ mod test {
         for _ in 0..ITERATIONS {
             let mut groth_stack_clone = groth_stack.clone();
             let start = Instant::now();
-            verify_zk(&mut groth_stack_clone).unwrap();
+            let tag = parse_tag(&mut groth_stack_clone).unwrap();
+            verify_zk(tag, &mut groth_stack_clone).unwrap();
             total_groth16_time += start.elapsed();
         }
         let avg_groth16_time = total_groth16_time / ITERATIONS;
@@ -132,20 +137,18 @@ mod test {
         let proof_batch: Vec<_> = (0..BATCH_SIZE).map(|_| stark_stack.clone()).collect();
 
         println!("\n=== Test 2: Batch Verification Parallelism ({} STARK Proofs) ===", BATCH_SIZE);
-        
+
         let mut baseline_time = None;
-        
+
         for num_threads in [1, 2, 4, 8, 16] {
-            let pool = ThreadPoolBuilder::new()
-                .num_threads(num_threads)
-                .build()
-                .unwrap();
+            let pool = ThreadPoolBuilder::new().num_threads(num_threads).build().unwrap();
 
             // Warmup
             pool.install(|| {
                 proof_batch.par_iter().all(|stack| {
                     let mut s = stack.clone();
-                    verify_zk(&mut s).is_ok()
+                    let tag = parse_tag(&mut s).unwrap();
+                    verify_zk(tag,&mut s).is_ok()
                 });
             });
 
@@ -155,14 +158,15 @@ mod test {
 
             for _ in 0..ITERATIONS {
                 let start = Instant::now();
-                
+
                 pool.install(|| {
                     proof_batch.par_iter().all(|stack| {
                         let mut s = stack.clone();
-                        verify_zk(&mut s).is_ok()
+                        let tag = parse_tag(&mut s).unwrap();
+                        verify_zk(tag,&mut s).is_ok()
                     })
                 });
-                
+
                 times.push(start.elapsed());
             }
 
@@ -173,12 +177,14 @@ mod test {
 
             // Calculate standard deviation
             let mean_secs = mean.as_secs_f64();
-            let variance: f64 = times.iter()
+            let variance: f64 = times
+                .iter()
                 .map(|t| {
                     let diff = t.as_secs_f64() - mean_secs;
                     diff * diff
                 })
-                .sum::<f64>() / ITERATIONS as f64;
+                .sum::<f64>()
+                / ITERATIONS as f64;
             let std_dev_ms = variance.sqrt() * 1000.0;
 
             // Calculate min/max

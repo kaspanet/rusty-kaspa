@@ -1,50 +1,7 @@
+use kaspa_consensus_core::mass::decode_sig_op_count;
 use kaspa_txscript_errors::TxScriptError;
 
-/// Decodes a compressed signature operation count.
-/// 
-/// The encoding scheme:
-/// - Values 0-100: Direct mapping (no compression)
-/// - Values 101-255: Each value represents increments of 10
-///   - Formula: actual_sigops = 100 + (encoded - 100) * 10
-///   - Example: 104 → 140, 164 → 740, 255 → 1650
-///
-/// # Arguments
-/// * `encoded` - The compressed u8 value
-///
-/// # Returns
-/// The actual (decoded) signature operation count as u16
-#[inline]
-pub fn decode_sig_op_count(encoded: u8) -> u16 {
-    if encoded <= 100 {
-        encoded as u16
-    } else {
-        100 + ((encoded as u16 - 100) * 10)
-    }
-}
 
-/// Encodes an actual signature operation count into compressed u8 format.
-/// 
-/// The encoding scheme:
-/// - Values 0-100: Direct mapping (no compression)
-/// - Values 101-1650: Compressed in increments of 10
-///   - Formula: encoded = 100 + (actual_sigops - 100) / 10
-///   - Note: Values not divisible by 10 are rounded down
-/// - Values >1650: Capped at 255 (representing 1650)
-///
-/// # Arguments
-/// * `actual_sigops` - The actual signature operation count
-///
-/// # Returns
-/// The compressed u8 value (0-255)
-#[inline]
-pub fn encode_sig_op_count(actual_sigops: u64) -> u8 {
-    if actual_sigops <= 100 {
-        actual_sigops as u8
-    } else {
-        let encoded = 100 + ((actual_sigops - 100) / 10);
-        encoded.min(255) as u8
-    }
-}
 
 /// RuntimeSigOpCounter represents the state tracking of signature operations during script execution.
 /// Unlike the static counting approach which counts all possible signature operations,
@@ -109,12 +66,7 @@ impl RuntimeSigOpCounter {
     }
 
     /// Returns the number of signature operations used (as encoded u8 value)
-    pub fn used_sig_ops(&self) -> u8 {
-        encode_sig_op_count((self.sig_op_limit - self.sig_op_remaining) as u64)
-    }
-
-    /// Returns the actual number of signature operations used (decoded value)
-    pub fn used_sig_ops_actual(&self) -> u16 {
+    pub fn used_sig_ops(&self) -> u16 {
         self.sig_op_limit - self.sig_op_remaining
     }
 }

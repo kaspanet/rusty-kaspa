@@ -23,14 +23,14 @@ impl ZkTag {
     /// Prices are based on benchmarks and estimations of verification complexity
     ///
     /// Since 1 sigop is priced at 1000 gram, the costs are in 1000 gram units
-    pub fn sigop_cost(&self) -> u32 {
+    pub fn sigop_cost(&self) -> u16 {
         match self {
             ZkTag::R0Groth16 => 140,
             ZkTag::R0Succinct => 740,
         }
     }
 
-    pub fn max_cost() -> u32 {
+    pub fn max_cost() -> u16 {
         740 // The highest cost among supported tags
     }
 }

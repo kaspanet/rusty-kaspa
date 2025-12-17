@@ -1,6 +1,6 @@
 #[macro_use]
 mod macros;
-use crate::zk_precompiles::verify_zk;
+use crate::zk_precompiles::{verify_zk,parse_tag};
 use crate::{
     data_stack::{DataStack, Kip10I64, OpcodeData},
     ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE,
@@ -996,7 +996,18 @@ opcode_list! {
         }
     }
     opcode OpZkPrecompile<0xc4, 1>(self, vm) {
-        verify_zk(&mut vm.dstack)?;
+        // Parse the ZK Precompile tag
+        let tag = parse_tag(&mut vm.dstack)?;
+
+        // Consume sigop cost
+        if let Some(runtime_sigop_counter)= &mut vm.runtime_sig_op_counter {
+            let sigop_count=
+            runtime_sigop_counter.consume_sig_ops(tag.sigop_cost());
+        }
+        // Verify the ZK proof
+        verify_zk(tag,&mut vm.dstack)?;
+
+        // If no errors, push true to the stack
         vm.dstack.push_item(true)?;
         Ok(())
     }
