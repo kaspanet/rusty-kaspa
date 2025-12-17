@@ -1075,7 +1075,7 @@ mod tests {
         name: &'static str,
         script_builder: ScriptBuilderFn,
         sig_builder: SigBuilder,
-        expected_sig_ops: u8,
+        expected_sig_ops: u16,
         sig_op_limit: u8,
         should_pass: bool,
     }
