@@ -285,7 +285,7 @@ mod tests {
                 name: "max standard tx size with default minimum relay fee",
                 size: MAXIMUM_STANDARD_TRANSACTION_MASS,
                 minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
-                want: 100000,
+                want: 1000000,
             },
             Test { name: "1500 bytes with 5000 relay fee", size: 1500, minimum_relay_transaction_fee: 5000, want: 7500 },
             Test { name: "1500 bytes with 3000 relay fee", size: 1500, minimum_relay_transaction_fee: 3000, want: 4500 },

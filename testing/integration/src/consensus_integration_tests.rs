@@ -1910,7 +1910,7 @@ async fn payload_test() {
     // This triggers storage mass population
     consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
     let consensus_res = consensus.add_utxo_valid_block_with_parents(4.into(), vec![2.into()], vec![tx.tx.unwrap_or_clone()]).await;
-    assert_match!(consensus_res, Err(RuleError::ExceedsTransientMassLimit(_, _)));
+    assert_match!(consensus_res, Err(RuleError::ExceedsComputeMassLimit(_, _)));
 
     // Fix the payload to be below the limit
     txx.payload = vec![0; (config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];

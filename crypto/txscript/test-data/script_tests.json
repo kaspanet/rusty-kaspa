@@ -3822,11 +3822,11 @@
     "OpTxOutputSpk is enabled since kip10"
   ],
   [
-    "1",
+    "0",
     "IF 0xc4 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE",
-    "opcodes above OpTxOutputSpk invalid if executed"
+    "OK",
+    "OpZkPrecompile is enabled since kip16 (not executed)"
   ],
   [
     "1",

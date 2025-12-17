@@ -190,11 +190,11 @@ async function zktest() {
             [p2shUtxoEntry],
             [{
                 address: sourceAddress,
-                amount: commitAmount - 140000n
+                amount: commitAmount - 141000n
             }],
             0n,
             '',
-            104 
+            104
         );
 
         // Set the signature script
