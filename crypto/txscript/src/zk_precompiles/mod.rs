@@ -24,7 +24,7 @@ pub fn parse_tag(dstack: &mut Stack) -> Result<ZkTag, TxScriptError> {
  * Verifies a ZK proof from the data stack.
  * The first byte on the stack indicates the ZK tag (proof type).
  */
-pub fn verify_zk(tag:ZkTag,dstack: &mut Stack) -> Result<(), TxScriptError> {
+pub fn verify_zk(tag: ZkTag, dstack: &mut Stack) -> Result<(), TxScriptError> {
     // Matcth the tag and verify the proof accordingly
     match tag {
         ZkTag::R0Groth16 => R0Groth16Precompile::verify_zk(dstack).map_err(|e| TxScriptError::ZkIntegrity(e.to_string())),

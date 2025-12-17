@@ -148,7 +148,7 @@ mod test {
                 proof_batch.par_iter().all(|stack| {
                     let mut s = stack.clone();
                     let tag = parse_tag(&mut s).unwrap();
-                    verify_zk(tag,&mut s).is_ok()
+                    verify_zk(tag, &mut s).is_ok()
                 });
             });
 
@@ -163,7 +163,7 @@ mod test {
                     proof_batch.par_iter().all(|stack| {
                         let mut s = stack.clone();
                         let tag = parse_tag(&mut s).unwrap();
-                        verify_zk(tag,&mut s).is_ok()
+                        verify_zk(tag, &mut s).is_ok()
                     })
                 });
 

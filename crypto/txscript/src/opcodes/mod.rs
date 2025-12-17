@@ -1,6 +1,6 @@
 #[macro_use]
 mod macros;
-use crate::zk_precompiles::{verify_zk,parse_tag};
+use crate::zk_precompiles::{parse_tag, verify_zk};
 use crate::{
     data_stack::{DataStack, OpcodeData},
     ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE,

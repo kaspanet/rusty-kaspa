@@ -1,8 +1,6 @@
 use kaspa_consensus_core::mass::decode_sig_op_count;
 use kaspa_txscript_errors::TxScriptError;
 
-
-
 /// RuntimeSigOpCounter represents the state tracking of signature operations during script execution.
 /// Unlike the static counting approach which counts all possible signature operations,
 /// this tracks only the actually executed signature operations, leading to more accurate
@@ -17,7 +15,7 @@ pub struct RuntimeSigOpCounter {
 
 impl RuntimeSigOpCounter {
     /// Creates a new RuntimeSigOpCounter from an encoded sig_op_limit.
-    /// 
+    ///
     /// # Arguments
     /// * `encoded_sig_op_limit` - The compressed u8 sig_op_limit from the transaction input
     pub fn new(encoded_sig_op_limit: u8) -> Self {
@@ -47,7 +45,8 @@ impl RuntimeSigOpCounter {
     /// counter.consume_sig_op().unwrap_err(); // Err(ExceededSigOpLimit)
     /// ```
     pub fn consume_sig_op(&mut self) -> Result<(), TxScriptError> {
-        self.sig_op_remaining = self.sig_op_remaining.checked_sub(1).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit as u8))?;
+        self.sig_op_remaining =
+            self.sig_op_remaining.checked_sub(1).ok_or(TxScriptError::ExceededSigOpLimit(self.sig_op_limit as u8))?;
         Ok(())
     }
 
