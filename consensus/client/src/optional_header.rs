@@ -62,6 +62,7 @@ pub struct OptionalHeader {
 }
 
 impl OptionalHeader {
+    #[allow(clippy::too_many_arguments)]
     pub fn new_from_fields(
         hash: Option<Hash>,
         version: Option<u16>,
