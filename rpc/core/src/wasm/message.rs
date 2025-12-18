@@ -1339,7 +1339,7 @@ try_from! ( args: GetVirtualChainFromBlockV2Response, IGetVirtualChainFromBlockV
         let element = Object::new();
 
         element.set("chainBlockHeader", &OptionalHeader::from(&entry.chain_block_header).into())?;
-        element.set("acceptedTransactions", &to_value(&entry)?)?;
+        element.set("acceptedTransactions", &to_value(&entry.accepted_transactions)?)?;
 
         chain_block_accepted_transactions.push(&element);
     }
