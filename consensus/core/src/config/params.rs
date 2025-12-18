@@ -848,5 +848,5 @@ pub const DEVNET_PARAMS: Params = Params {
 
     crescendo: CRESCENDO,
     // TODO: Set this to always after the fork
-    crescendo_activation: ForkActivation::never(),
+    crescendo_activation: ForkActivation::always(),
 };

@@ -1071,11 +1071,8 @@ impl VirtualStateProcessor {
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter());
 
-        let accepted_id_merkle_root = self.calc_accepted_id_merkle_root(
-            virtual_state.daa_score,
-            virtual_state.accepted_tx_ids.iter().copied(),
-            virtual_state.ghostdag_data.selected_parent,
-        );
+        let accepted_id_merkle_root = self
+            .calc_accepted_id_merkle_root(virtual_state.accepted_tx_ids.iter().copied(), virtual_state.ghostdag_data.selected_parent);
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;

@@ -4,7 +4,6 @@
 
 use async_channel::unbounded;
 use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
 use kaspa_consensus::consensus::test_consensus::{TestConsensus, TestConsensusFactory};
@@ -16,9 +15,7 @@ use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
-use kaspa_consensus::params::{
-    ForkActivation, Params, CRESCENDO, DEVNET_PARAMS, MAINNET_PARAMS, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64,
-};
+use kaspa_consensus::params::{ForkActivation, OverrideParams, DEVNET_PARAMS, MAINNET_PARAMS};
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
@@ -26,20 +23,18 @@ use kaspa_consensus::processes::window::{WindowManager, WindowType};
 use kaspa_consensus_core::api::args::TransactionValidationArgs;
 use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi};
 use kaspa_consensus_core::block::Block;
-use kaspa_consensus_core::blockhash::new_unique;
+use kaspa_consensus_core::blockhash::{self, new_unique};
 use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER, TRANSIENT_BYTE_TO_MASS_FACTOR};
+use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
+use kaspa_consensus_core::hashing;
 use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::mining_rules::MiningRules;
-use kaspa_consensus_core::network::{NetworkId, NetworkType::Mainnet};
 use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
 use kaspa_consensus_core::tx::{
     MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
-use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
@@ -50,6 +45,8 @@ use kaspa_hashes::Hash;
 use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
+use crate::common::json::{json_line_to_block, json_line_to_utxo_pairs, json_trusted_line_to_block_and_gd};
+use common::json::{rpc_header_to_header, KaspadGoParams, RPCBlockHeader};
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
@@ -81,7 +78,7 @@ use std::{
     fs::File,
     future::Future,
     io::{BufRead, BufReader},
-    str::{from_utf8, FromStr},
+    str::from_utf8,
 };
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -670,192 +667,6 @@ async fn mergeset_size_limit_test() {
     consensus.shutdown(wait_handles);
 }
 
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCBlock {
-    Header: RPCBlockHeader,
-    Transactions: Vec<RPCTransaction>,
-    VerboseData: RPCBlockVerboseData,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCTransaction {
-    Version: u16,
-    Inputs: Vec<RPCTransactionInput>,
-    Outputs: Vec<RPCTransactionOutput>,
-    LockTime: u64,
-    SubnetworkID: String,
-    Gas: u64,
-    Payload: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCTransactionOutput {
-    Amount: u64,
-    ScriptPublicKey: RPCScriptPublicKey,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCScriptPublicKey {
-    Version: u16,
-    Script: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCTransactionInput {
-    PreviousOutpoint: RPCOutpoint,
-    SignatureScript: String,
-    Sequence: u64,
-    SigOpCount: u8,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCOutpoint {
-    TransactionID: String,
-    Index: u32,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCBlockHeader {
-    Version: u16,
-    Parents: Vec<RPCBlockLevelParents>,
-    HashMerkleRoot: String,
-    AcceptedIDMerkleRoot: String,
-    UTXOCommitment: String,
-    Timestamp: u64,
-    Bits: u32,
-    Nonce: u64,
-    DAAScore: u64,
-    BlueScore: u64,
-    BlueWork: String,
-    PruningPoint: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCBlockLevelParents {
-    ParentHashes: Vec<String>,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCBlockVerboseData {
-    Hash: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct JsonBlockWithTrustedData {
-    Block: RPCBlock,
-    GHOSTDAG: JsonGHOSTDAGData,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct JsonGHOSTDAGData {
-    BlueScore: u64,
-    BlueWork: String,
-    SelectedParent: String,
-    MergeSetBlues: Vec<String>,
-    MergeSetReds: Vec<String>,
-    BluesAnticoneSizes: Vec<JsonBluesAnticoneSizes>,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct JsonBluesAnticoneSizes {
-    BlueHash: String,
-    AnticoneSize: GhostdagKType,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct JsonOutpointUTXOEntryPair {
-    Outpoint: RPCOutpoint,
-    UTXOEntry: RPCUTXOEntry,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCUTXOEntry {
-    Amount: u64,
-    ScriptPublicKey: RPCScriptPublicKey,
-    BlockDAAScore: u64,
-    IsCoinbase: bool,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct KaspadGoParams {
-    K: GhostdagKType,
-    TimestampDeviationTolerance: u64,
-    TargetTimePerBlock: u64,
-    MaxBlockParents: u8,
-    DifficultyAdjustmentWindowSize: usize,
-    MergeSetSizeLimit: u64,
-    MergeDepth: u64,
-    FinalityDuration: u64,
-    CoinbasePayloadScriptPublicKeyMaxLength: u8,
-    MaxCoinbasePayloadLength: usize,
-    MassPerTxByte: u64,
-    MassPerSigOp: u64,
-    MassPerScriptPubKeyByte: u64,
-    MaxBlockMass: u64,
-    DeflationaryPhaseDaaScore: u64,
-    PreDeflationaryPhaseBaseSubsidy: u64,
-    SkipProofOfWork: bool,
-    MaxBlockLevel: u8,
-    PruningProofM: u64,
-}
-
-impl KaspadGoParams {
-    fn into_params(self) -> Params {
-        let finality_depth = self.FinalityDuration / self.TargetTimePerBlock;
-        Params {
-            dns_seeders: &[],
-            net: NetworkId { network_type: Mainnet, suffix: None },
-            genesis: GENESIS,
-            prior_ghostdag_k: self.K,
-            timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
-            prior_target_time_per_block: self.TargetTimePerBlock / 1_000_000,
-            prior_max_block_parents: self.MaxBlockParents,
-            max_difficulty_target: MAX_DIFFICULTY_TARGET,
-            max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-            prior_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
-            min_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
-            prior_mergeset_size_limit: self.MergeSetSizeLimit,
-            prior_merge_depth: self.MergeDepth,
-            prior_finality_depth: finality_depth,
-            prior_pruning_depth: 2 * finality_depth + 4 * self.MergeSetSizeLimit * self.K as u64 + 2 * self.K as u64 + 2,
-            coinbase_payload_script_public_key_max_len: self.CoinbasePayloadScriptPublicKeyMaxLength,
-            max_coinbase_payload_len: self.MaxCoinbasePayloadLength,
-            prior_max_tx_inputs: MAINNET_PARAMS.prior_max_tx_inputs,
-            prior_max_tx_outputs: MAINNET_PARAMS.prior_max_tx_outputs,
-            prior_max_signature_script_len: MAINNET_PARAMS.prior_max_signature_script_len,
-            prior_max_script_public_key_len: MAINNET_PARAMS.prior_max_script_public_key_len,
-            mass_per_tx_byte: self.MassPerTxByte,
-            mass_per_script_pub_key_byte: self.MassPerScriptPubKeyByte,
-            mass_per_sig_op: self.MassPerSigOp,
-            max_block_mass: self.MaxBlockMass,
-            storage_mass_parameter: STORAGE_MASS_PARAMETER,
-            deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
-            pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
-            prior_coinbase_maturity: MAINNET_PARAMS.prior_coinbase_maturity,
-            skip_proof_of_work: self.SkipProofOfWork,
-            max_block_level: self.MaxBlockLevel,
-            pruning_proof_m: self.PruningProofM,
-            crescendo: CRESCENDO,
-            crescendo_activation: ForkActivation::never(),
-        }
-    }
-}
-
 #[tokio::test]
 async fn goref_custom_pruning_depth_test() {
     init_allocator_with_default_settings();
@@ -877,13 +688,13 @@ async fn goref_notx_concurrent_test() {
 #[tokio::test]
 async fn goref_tx_small_test() {
     init_allocator_with_default_settings();
-    json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks", false).await
+    json_test("testdata/dags_for_json_tests/goref-1060-tx-265-blocks", false).await
 }
 
 #[tokio::test]
 async fn goref_tx_small_concurrent_test() {
     init_allocator_with_default_settings();
-    json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks", true).await
+    json_test("testdata/dags_for_json_tests/goref-1060-tx-265-blocks", true).await
 }
 
 #[ignore]
@@ -928,23 +739,30 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let proof_exists = common::file_exists(&main_path.join("proof.json.gz"));
 
     let mut lines = gzip_file_lines(&main_path.join("blocks.json.gz"));
-    let first_line = lines.next().unwrap();
-    let go_params_res: Result<KaspadGoParams, _> = serde_json::from_str(&first_line);
-    let params = if let Ok(go_params) = go_params_res {
-        let mut params = go_params.into_params();
-        if !proof_exists {
-            let second_line = lines.next().unwrap();
-            let genesis_block = json_line_to_block(second_line);
-            params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
+    let params = {
+        let first_line = lines.next().unwrap();
+        let parsed_params = if let Ok(override_params) = serde_json::from_str::<OverrideParams>(&first_line) {
+            Some(DEVNET_PARAMS.override_params(override_params))
+        } else if let Ok(go_params) = serde_json::from_str::<KaspadGoParams>(&first_line) {
+            Some(go_params.into_params())
+        } else {
+            None
+        };
+
+        if let Some(mut params) = parsed_params {
+            if !proof_exists {
+                let second_line = lines.next().unwrap();
+                let genesis_block = json_line_to_block(second_line);
+                params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
+            }
+            params
+        } else {
+            let genesis_block = json_line_to_block(first_line);
+            let mut params = DEVNET_PARAMS;
+            params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
+            params.min_difficulty_window_size = params.prior_difficulty_window_size;
+            params
         }
-        params.min_difficulty_window_size = params.prior_difficulty_window_size;
-        params
-    } else {
-        let genesis_block = json_line_to_block(first_line);
-        let mut params = DEVNET_PARAMS;
-        params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
-        params.min_difficulty_window_size = params.prior_difficulty_window_size;
-        params
     };
 
     let mut config = Config::new(params);
@@ -1125,144 +943,6 @@ fn submit_body_chunk(
         futures.push(f);
     }
     futures
-}
-
-fn rpc_header_to_header(rpc_header: &RPCBlockHeader) -> Header {
-    Header::new_finalized(
-        rpc_header.Version,
-        rpc_header
-            .Parents
-            .iter()
-            .map(|item| item.ParentHashes.iter().map(|parent| Hash::from_str(parent).unwrap()).collect::<Vec<Hash>>())
-            .collect::<Vec<Vec<Hash>>>()
-            .try_into()
-            .unwrap(),
-        Hash::from_str(&rpc_header.HashMerkleRoot).unwrap(),
-        Hash::from_str(&rpc_header.AcceptedIDMerkleRoot).unwrap(),
-        Hash::from_str(&rpc_header.UTXOCommitment).unwrap(),
-        rpc_header.Timestamp,
-        rpc_header.Bits,
-        rpc_header.Nonce,
-        rpc_header.DAAScore,
-        BlueWorkType::from_hex(&rpc_header.BlueWork).unwrap(),
-        rpc_header.BlueScore,
-        Hash::from_str(&rpc_header.PruningPoint).unwrap(),
-    )
-}
-
-fn json_trusted_line_to_block_and_gd(line: String) -> TrustedBlock {
-    let json_block_with_trusted: JsonBlockWithTrustedData = serde_json::from_str(&line).unwrap();
-    let block = rpc_block_to_block(json_block_with_trusted.Block);
-
-    let gd = ExternalGhostdagData {
-        blue_score: json_block_with_trusted.GHOSTDAG.BlueScore,
-        blue_work: BlueWorkType::from_hex(&json_block_with_trusted.GHOSTDAG.BlueWork).unwrap(),
-        selected_parent: Hash::from_str(&json_block_with_trusted.GHOSTDAG.SelectedParent).unwrap(),
-        mergeset_blues: json_block_with_trusted
-            .GHOSTDAG
-            .MergeSetBlues
-            .into_iter()
-            .map(|hex| Hash::from_str(&hex).unwrap())
-            .collect_vec(),
-
-        mergeset_reds: json_block_with_trusted
-            .GHOSTDAG
-            .MergeSetReds
-            .into_iter()
-            .map(|hex| Hash::from_str(&hex).unwrap())
-            .collect_vec(),
-
-        blues_anticone_sizes: BlockHashMap::from_iter(
-            json_block_with_trusted
-                .GHOSTDAG
-                .BluesAnticoneSizes
-                .into_iter()
-                .map(|e| (Hash::from_str(&e.BlueHash).unwrap(), e.AnticoneSize)),
-        ),
-    };
-
-    TrustedBlock::new(block, gd)
-}
-
-fn json_line_to_utxo_pairs(line: String) -> Vec<(TransactionOutpoint, UtxoEntry)> {
-    let json_pairs: Vec<JsonOutpointUTXOEntryPair> = serde_json::from_str(&line).unwrap();
-    json_pairs
-        .iter()
-        .map(|json_pair| {
-            (
-                TransactionOutpoint {
-                    transaction_id: Hash::from_str(&json_pair.Outpoint.TransactionID).unwrap(),
-                    index: json_pair.Outpoint.Index,
-                },
-                UtxoEntry {
-                    amount: json_pair.UTXOEntry.Amount,
-                    script_public_key: ScriptPublicKey::from_vec(
-                        json_pair.UTXOEntry.ScriptPublicKey.Version,
-                        hex_decode(&json_pair.UTXOEntry.ScriptPublicKey.Script),
-                    ),
-                    block_daa_score: json_pair.UTXOEntry.BlockDAAScore,
-                    is_coinbase: json_pair.UTXOEntry.IsCoinbase,
-                },
-            )
-        })
-        .collect_vec()
-}
-
-fn json_line_to_block(line: String) -> Block {
-    let rpc_block: RPCBlock = serde_json::from_str(&line).unwrap();
-    rpc_block_to_block(rpc_block)
-}
-
-fn rpc_block_to_block(rpc_block: RPCBlock) -> Block {
-    let header = rpc_header_to_header(&rpc_block.Header);
-    assert_eq!(header.hash, Hash::from_str(&rpc_block.VerboseData.Hash).unwrap());
-    Block::new(
-        header,
-        rpc_block
-            .Transactions
-            .iter()
-            .map(|tx| {
-                Transaction::new(
-                    tx.Version,
-                    tx.Inputs
-                        .iter()
-                        .map(|input| TransactionInput {
-                            previous_outpoint: TransactionOutpoint {
-                                transaction_id: Hash::from_str(&input.PreviousOutpoint.TransactionID).unwrap(),
-                                index: input.PreviousOutpoint.Index,
-                            },
-                            signature_script: hex_decode(&input.SignatureScript),
-                            sequence: input.Sequence,
-                            sig_op_count: input.SigOpCount,
-                        })
-                        .collect(),
-                    tx.Outputs
-                        .iter()
-                        .map(|output| TransactionOutput {
-                            value: output.Amount,
-                            script_public_key: ScriptPublicKey::from_vec(
-                                output.ScriptPublicKey.Version,
-                                hex_decode(&output.ScriptPublicKey.Script),
-                            ),
-                        })
-                        .collect(),
-                    tx.LockTime,
-                    SubnetworkId::from_str(&tx.SubnetworkID).unwrap(),
-                    tx.Gas,
-                    hex_decode(&tx.Payload),
-                )
-            })
-            .collect(),
-    )
-}
-
-fn hex_decode(src: &str) -> Vec<u8> {
-    if src.is_empty() {
-        return Vec::new();
-    }
-    let mut dst: Vec<u8> = vec![0; src.len() / 2];
-    faster_hex::hex_decode(src.as_bytes(), &mut dst).unwrap();
-    dst
 }
 
 #[tokio::test]
