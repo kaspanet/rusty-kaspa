@@ -55,7 +55,8 @@ const TS_ADDED_ACCEPTANCE_DATA: &'static str = r#"
      */
     export interface IChainBlockAddedTransactions {
         chainBlockHeader: IOptionalHeader;
-        acceptedTransactions: Transaction[];
+        // small hack because wasm doesn't define OptionalTransaction utility
+        acceptedTransactions: Partial<ITransaction>[];
     }
 "#;
 
