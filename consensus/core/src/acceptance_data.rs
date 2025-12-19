@@ -3,13 +3,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::tx::{TransactionId, TransactionIndexType};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct AcceptanceData {
-    pub mergeset: Vec<MergesetBlockAcceptanceData>,
-    pub accepting_blue_score: u64,
-}
+/// Holds a mergeset acceptance data, a list of all its merged block with their accepted transactions
+pub type AcceptanceData = Vec<MergesetBlockAcceptanceData>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Holds a merged block with its accepted transactions
 pub struct MergesetBlockAcceptanceData {
     pub block_hash: Hash,
     pub accepted_transactions: Vec<AcceptedTxEntry>,

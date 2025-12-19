@@ -65,6 +65,7 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(GetFeeEstimateExperimental);
     impl_into_kaspad_request!(GetCurrentBlockColor);
     impl_into_kaspad_request!(GetUtxoReturnAddress);
+    impl_into_kaspad_request!(GetVirtualChainFromBlockV2);
 
     impl_into_kaspad_request!(NotifyBlockAdded);
     impl_into_kaspad_request!(NotifyNewBlockTemplate);
@@ -204,6 +205,7 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_response!(GetFeeEstimateExperimental);
     impl_into_kaspad_response!(GetCurrentBlockColor);
     impl_into_kaspad_response!(GetUtxoReturnAddress);
+    impl_into_kaspad_response!(GetVirtualChainFromBlockV2);
 
     impl_into_kaspad_notify_response!(NotifyBlockAdded);
     impl_into_kaspad_notify_response!(NotifyNewBlockTemplate);

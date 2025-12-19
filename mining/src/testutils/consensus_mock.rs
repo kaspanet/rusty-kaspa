@@ -12,7 +12,7 @@ use kaspa_consensus_core::{
         coinbase::CoinbaseResult,
         tx::{TxResult, TxRuleError},
     },
-    header::Header,
+    header::{CompressedParents, Header},
     mass::{transaction_estimated_serialized_size, ContextualMasses, NonContextualMasses},
     merkle::calc_hash_merkle_root,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
@@ -86,10 +86,10 @@ impl ConsensusApi for ConsensusMock {
         let coinbase = coinbase_manager.expected_coinbase_transaction(miner_data.clone());
         txs.insert(0, coinbase.tx);
         let now = unix_now();
-        let hash_merkle_root = self.calc_transaction_hash_merkle_root(&txs, 0);
+        let hash_merkle_root = self.calc_transaction_hash_merkle_root(&txs);
         let header = Header::new_finalized(
             BLOCK_VERSION,
-            vec![],
+            CompressedParents::default(),
             hash_merkle_root,
             ZERO_HASH,
             ZERO_HASH,
@@ -176,7 +176,7 @@ impl ConsensusApi for ConsensusMock {
         Ok(coinbase_manager.modify_coinbase_payload(payload, miner_data))
     }
 
-    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], _pov_daa_score: u64) -> Hash {
-        calc_hash_merkle_root(txs.iter(), false)
+    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction]) -> Hash {
+        calc_hash_merkle_root(txs.iter())
     }
 }

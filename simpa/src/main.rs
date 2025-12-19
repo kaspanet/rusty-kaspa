@@ -13,11 +13,11 @@ use kaspa_consensus::{
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
     },
-    params::{ForkActivation, Params, TenBps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, SIMNET_PARAMS},
+    params::{ForkActivation, OverrideParams, Params, TenBps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, SIMNET_PARAMS},
 };
 use kaspa_consensus_core::{
     api::ConsensusApi, block::Block, blockstatus::BlockStatus, config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult,
-    mining_rules::MiningRules, BlockHashSet, BlockLevel, HashMapCustomHasher,
+    mining_rules::MiningRules, tx::TransactionType, BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::{
@@ -126,6 +126,9 @@ struct Args {
     long_payload: bool,
     #[arg(long)]
     retention_period_days: Option<f64>,
+
+    #[arg(long)]
+    override_params_output: Option<String>,
 }
 
 #[cfg(feature = "heap")]
@@ -218,6 +221,13 @@ fn main_impl(mut args: Args) {
     if let Some(rocksdb_mem_budget) = args.rocksdb_mem_budget {
         conn_builder = conn_builder.with_mem_budget(rocksdb_mem_budget);
     }
+
+    if let Some(output_path) = args.override_params_output {
+        let override_params: OverrideParams = config.params.clone().into();
+        let override_params_json = serde_json::to_string_pretty(&override_params).unwrap();
+        std::fs::write(output_path, override_params_json).expect("Unable to write override_params to file");
+    }
+
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
         let mut config = (*config).clone();
@@ -286,7 +296,13 @@ fn main_impl(mut args: Args) {
                     let block = consensus.get_block(hash).unwrap();
                     cbad.accepted_transactions.iter().for_each(|ate| {
                         assert!(
-                            consensus.get_populated_transaction(ate.transaction_id, block.header.daa_score).is_ok(),
+                            consensus
+                                .get_transactions_by_accepting_daa_score(
+                                    block.header.daa_score,
+                                    Some(vec![ate.transaction_id]),
+                                    TransactionType::SignableTransaction
+                                )
+                                .is_ok(),
                             "Expected to find find tx {} at accepted daa {} via get_populated_transaction",
                             ate.transaction_id,
                             block.header.daa_score

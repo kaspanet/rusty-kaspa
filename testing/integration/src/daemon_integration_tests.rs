@@ -78,7 +78,7 @@ async fn daemon_mining_test() {
             .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
             .await
             .unwrap();
-        let header: Header = (&template.block.header).into();
+        let header: Header = (&template.block.header).try_into().unwrap();
         last_block_hash = Some(header.hash);
         rpc_client1.submit_block(template.block, false).await.unwrap();
 
@@ -110,6 +110,7 @@ async fn daemon_mining_test() {
         .get_virtual_chain_from_block(
             kaspa_consensus::params::SIMNET_GENESIS.hash, //
             true,
+            None,
         )
         .await
         .unwrap();
@@ -188,7 +189,7 @@ async fn daemon_utxos_propagation_test() {
     let mut last_block_hash = None;
     for i in 0..initial_blocks {
         let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
-        let header: Header = (&template.block.header).into();
+        let header: Header = (&template.block.header).try_into().unwrap();
         last_block_hash = Some(header.hash);
         rpc_client1.submit_block(template.block, false).await.unwrap();
 
@@ -231,7 +232,7 @@ async fn daemon_utxos_propagation_test() {
     assert_eq!(dag_info.sink, last_block_hash.unwrap());
 
     // Check that acceptance data contains the expected coinbase tx ids
-    let vc = rpc_client2.get_virtual_chain_from_block(kaspa_consensus::params::SIMNET_GENESIS.hash, true).await.unwrap();
+    let vc = rpc_client2.get_virtual_chain_from_block(kaspa_consensus::params::SIMNET_GENESIS.hash, true, None).await.unwrap();
     assert_eq!(vc.removed_chain_block_hashes.len(), 0);
     assert_eq!(vc.added_chain_block_hashes.len() as u64, initial_blocks);
     assert_eq!(vc.accepted_transaction_ids.len() as u64, initial_blocks);

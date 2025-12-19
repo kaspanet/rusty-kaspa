@@ -128,10 +128,16 @@ impl Rpc {
                 };
                 let start_hash = RpcHash::from_hex(argv.remove(0).as_str())?;
                 let include_accepted_transaction_ids = argv.first().and_then(|x| x.parse::<bool>().ok()).unwrap_or_default();
+                let min_confirmation_count = argv.get(1).and_then(|x| x.parse::<u64>().ok()).unwrap_or_default();
+
                 let result = rpc
                     .get_virtual_chain_from_block_call(
                         None,
-                        GetVirtualChainFromBlockRequest { start_hash, include_accepted_transaction_ids },
+                        GetVirtualChainFromBlockRequest {
+                            start_hash,
+                            include_accepted_transaction_ids,
+                            min_confirmation_count: Some(min_confirmation_count),
+                        },
                     )
                     .await?;
                 self.println(&ctx, result);
@@ -306,6 +312,29 @@ impl Rpc {
 
                 let result =
                     rpc.get_utxo_return_address_call(None, GetUtxoReturnAddressRequest { txid, accepting_block_daa_score }).await?;
+
+                self.println(&ctx, result);
+            }
+            RpcApiOps::GetVirtualChainFromBlockV2 => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Missing startHash argument"));
+                };
+
+                let start_hash = RpcHash::from_hex(argv.remove(0).as_str())?;
+
+                let verbosity_level_i32 = argv.pop().and_then(|arg| arg.parse::<i32>().ok()).unwrap_or_default();
+                let verbosity_level = RpcDataVerbosityLevel::try_from(verbosity_level_i32)?;
+
+                let result = rpc
+                    .get_virtual_chain_from_block_v2_call(
+                        None,
+                        GetVirtualChainFromBlockV2Request {
+                            start_hash,
+                            data_verbosity_level: Some(verbosity_level),
+                            min_confirmation_count: None,
+                        },
+                    )
+                    .await;
 
                 self.println(&ctx, result);
             }

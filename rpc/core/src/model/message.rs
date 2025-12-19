@@ -860,19 +860,21 @@ impl Deserializer for GetSubnetworkResponse {
 pub struct GetVirtualChainFromBlockRequest {
     pub start_hash: RpcHash,
     pub include_accepted_transaction_ids: bool,
+    pub min_confirmation_count: Option<u64>,
 }
 
 impl GetVirtualChainFromBlockRequest {
-    pub fn new(start_hash: RpcHash, include_accepted_transaction_ids: bool) -> Self {
-        Self { start_hash, include_accepted_transaction_ids }
+    pub fn new(start_hash: RpcHash, include_accepted_transaction_ids: bool, min_confirmation_count: Option<u64>) -> Self {
+        Self { start_hash, include_accepted_transaction_ids, min_confirmation_count }
     }
 }
 
 impl Serializer for GetVirtualChainFromBlockRequest {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         store!(RpcHash, &self.start_hash, writer)?;
         store!(bool, &self.include_accepted_transaction_ids, writer)?;
+        store!(Option<u64>, &self.min_confirmation_count, writer)?;
 
         Ok(())
     }
@@ -880,11 +882,13 @@ impl Serializer for GetVirtualChainFromBlockRequest {
 
 impl Deserializer for GetVirtualChainFromBlockRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let version = load!(u16, reader)?;
         let start_hash = load!(RpcHash, reader)?;
         let include_accepted_transaction_ids = load!(bool, reader)?;
 
-        Ok(Self { start_hash, include_accepted_transaction_ids })
+        let min_confirmation_count = if version > 1 { load!(Option<u64>, reader)? } else { None };
+
+        Ok(Self { start_hash, include_accepted_transaction_ids, min_confirmation_count })
     }
 }
 
@@ -2730,79 +2734,74 @@ impl Deserializer for GetUtxoReturnAddressResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetTransactionDataRequest {
-    // This requires the the node to be run with -- txindex
-    pub transaction_ids: Vec<RpcTransactionId>,
-    pub include_transactions: bool,
-    pub include_acceptance_data: bool,
-    pub include_inclusion_data: bool,
-    pub include_verbose_data: bool,
+pub struct GetVirtualChainFromBlockV2Request {
+    pub start_hash: RpcHash,
+    pub data_verbosity_level: Option<RpcDataVerbosityLevel>,
+    pub min_confirmation_count: Option<u64>,
 }
 
-impl Serializer for GetTransactionDataRequest {
+impl GetVirtualChainFromBlockV2Request {
+    pub fn new(start_hash: RpcHash, data_verbosity_level: Option<RpcDataVerbosityLevel>, min_confirmation_count: Option<u64>) -> Self {
+        Self { start_hash, data_verbosity_level, min_confirmation_count }
+    }
+}
+
+impl Serializer for GetVirtualChainFromBlockV2Request {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(Vec<RpcTransactionId>, &self.transaction_ids, writer)?;
-        store!(bool, &self.include_transactions, writer)?;
-        store!(bool, &self.include_acceptance_data, writer)?;
-        store!(bool, &self.include_inclusion_data, writer)?;
-        store!(bool, &self.include_verbose_data, writer)?;
+        store!(RpcHash, &self.start_hash, writer)?;
+        serialize!(Option<RpcDataVerbosityLevel>, &self.data_verbosity_level, writer)?;
+        store!(Option<u64>, &self.min_confirmation_count, writer)?;
+
         Ok(())
     }
 }
 
-impl GetTransactionDataRequest {
-    pub fn new(
-        transaction_ids: Vec<RpcTransactionId>,
-        include_transactions: bool,
-        include_acceptance_data: bool,
-        include_inclusion_data: bool,
-        include_verbose_data: bool,
-    ) -> Self {
-        Self { transaction_ids, include_transactions, include_acceptance_data, include_inclusion_data, include_verbose_data }
-    }
-}
-
-impl Deserializer for GetTransactionDataRequest {
+impl Deserializer for GetVirtualChainFromBlockV2Request {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let transaction_ids = load!(Vec<RpcTransactionId>, reader)?;
-        let include_transactions = load!(bool, reader)?;
-        let include_acceptance_data = load!(bool, reader)?;
-        let include_inclusion_data = load!(bool, reader)?;
-        let include_verbose_data = load!(bool, reader)?;
+        let start_hash = load!(RpcHash, reader)?;
+        let data_verbosity_level = deserialize!(Option<RpcDataVerbosityLevel>, reader)?;
+        let min_confirmation_count = load!(Option<u64>, reader)?;
 
-        Ok(Self { transaction_ids, include_transactions, include_acceptance_data, include_inclusion_data, include_verbose_data })
+        Ok(Self { start_hash, data_verbosity_level, min_confirmation_count })
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetTransactionDataResponse {
-    pub transaction_data: Vec<RpcTransactionData>,
+pub struct GetVirtualChainFromBlockV2Response {
+    /// always present, no matter the verbosity level
+    pub removed_chain_block_hashes: Arc<Vec<RpcHash>>,
+    /// always present, no matter the verbosity level
+    pub added_chain_block_hashes: Arc<Vec<RpcHash>>,
+    /// struct properties are optionally returned depending on the verbosity level
+    pub chain_block_accepted_transactions: Arc<Vec<RpcChainBlockAcceptedTransactions>>,
 }
 
-impl GetTransactionDataResponse {
-    pub fn new(transaction_data: Vec<RpcTransactionData>) -> Self {
-        Self { transaction_data }
-    }
-}
-
-impl Serializer for GetTransactionDataResponse {
+impl Serializer for GetVirtualChainFromBlockV2Response {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(Vec<RpcTransactionData>, &self.transaction_data, writer)?;
+        store!(Vec<RpcHash>, &self.removed_chain_block_hashes, writer)?;
+        store!(Vec<RpcHash>, &self.added_chain_block_hashes, writer)?;
+        serialize!(Vec<RpcChainBlockAcceptedTransactions>, &self.chain_block_accepted_transactions, writer)?;
         Ok(())
     }
 }
 
-impl Deserializer for GetTransactionDataResponse {
+impl Deserializer for GetVirtualChainFromBlockV2Response {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let transaction_data = load!(Vec<RpcTransactionData>, reader)?;
-        Ok(Self { transaction_data })
+        let removed_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
+        let added_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
+        let chain_block_accepted_transactions = deserialize!(Vec<RpcChainBlockAcceptedTransactions>, reader)?;
+        Ok(Self {
+            removed_chain_block_hashes: removed_chain_block_hashes.into(),
+            added_chain_block_hashes: added_chain_block_hashes.into(),
+            chain_block_accepted_transactions: chain_block_accepted_transactions.into(),
+        })
     }
 }
 

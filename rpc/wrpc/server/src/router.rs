@@ -69,7 +69,7 @@ impl Router {
                 GetSystemInfo,
                 GetUtxosByAddresses,
                 GetVirtualChainFromBlock,
-                GetTransactionData,
+                GetVirtualChainFromBlockV2,
                 ResolveFinalityConflict,
                 Shutdown,
                 SubmitBlock,

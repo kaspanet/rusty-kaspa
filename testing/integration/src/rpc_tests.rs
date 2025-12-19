@@ -96,6 +96,7 @@ async fn sanity_test() {
                             GetVirtualChainFromBlockRequest {
                                 start_hash: SIMNET_GENESIS.hash,
                                 include_accepted_transaction_ids: false,
+                                min_confirmation_count: None,
                             },
                         )
                         .await
@@ -117,7 +118,7 @@ async fn sanity_test() {
                     assert!(!is_synced);
 
                     // Compute the expected block hash for the received block
-                    let header: Header = (&block.header).into();
+                    let header: Header = (&block.header).try_into().unwrap();
                     let block_hash = header.hash;
 
                     // Submit the template (no mining, in simnet PoW is skipped)
@@ -156,12 +157,27 @@ async fn sanity_test() {
                             GetVirtualChainFromBlockRequest {
                                 start_hash: SIMNET_GENESIS.hash,
                                 include_accepted_transaction_ids: false,
+                                min_confirmation_count: None,
                             },
                         )
                         .await
                         .unwrap();
                     assert!(response.added_chain_block_hashes.contains(&block_hash));
                     assert!(response.removed_chain_block_hashes.is_empty());
+
+                    // VSPC min confirmation count test
+                    let vc_min_count_1_response = rpc_client
+                        .get_virtual_chain_from_block_call(
+                            None,
+                            GetVirtualChainFromBlockRequest {
+                                start_hash: SIMNET_GENESIS.hash,
+                                include_accepted_transaction_ids: false,
+                                min_confirmation_count: Some(1),
+                            },
+                        )
+                        .await
+                        .unwrap();
+                    assert!(vc_min_count_1_response.added_chain_block_hashes.is_empty());
 
                     let result =
                         rpc_client.get_current_block_color_call(None, GetCurrentBlockColorRequest { hash: SIMNET_GENESIS.hash }).await;
@@ -696,6 +712,25 @@ async fn sanity_test() {
                             _ => false,
                         }
                     }));
+                })
+            }
+
+            KaspadPayloadOps::GetVirtualChainFromBlockV2 => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client
+                        .get_virtual_chain_from_block_v2_call(
+                            None,
+                            GetVirtualChainFromBlockV2Request {
+                                start_hash: SIMNET_GENESIS.hash,
+                                data_verbosity_level: None,
+                                min_confirmation_count: None,
+                            },
+                        )
+                        .await
+                        .unwrap();
+                    assert!(response.added_chain_block_hashes.is_empty());
+                    assert!(response.removed_chain_block_hashes.is_empty());
                 })
             }
 

@@ -224,7 +224,7 @@ mod tests {
             is_acyclic: bool,
         }
 
-        let tests = vec![
+        let tests = [
             Test { name: "a regular DAG", dag: build_dag(false), is_acyclic: true },
             Test { name: "an invalid DAG with one cycle", dag: build_dag(true), is_acyclic: false },
         ];
@@ -238,8 +238,8 @@ mod tests {
                 test.name,
                 if test.is_acyclic { "acyclic" } else { "invalid" }
             );
-            if index_in_degree.is_ok() {
-                let test_result = test.dag.check_topological_order(index_in_degree.as_ref().unwrap());
+            if let Ok(ref index) = index_in_degree {
+                let test_result = test.dag.check_topological_order(index);
                 assert!(
                     test_result.is_ok(),
                     "testing {}, expecting {:?} to be topologically ordered and got {:?}",
@@ -257,8 +257,8 @@ mod tests {
                 test.name,
                 if test.is_acyclic { "acyclic" } else { "invalid" }
             );
-            if index_dfs.is_ok() {
-                let test_result = test.dag.check_topological_order(index_dfs.as_ref().unwrap());
+            if let Ok(ref index) = index_dfs {
+                let test_result = test.dag.check_topological_order(index);
                 assert!(
                     test_result.is_ok(),
                     "testing {}, expecting {:?} to be topologically ordered and got {:?}",
@@ -278,7 +278,7 @@ mod tests {
             expected_result: TopologicalIndexResult<()>,
         }
 
-        let tests = vec![
+        let tests = [
             Test {
                 name: "topologically ordered index",
                 index: vec!["shirt", "socks", "tie", "boxer", "pants", "belt", "jacket", "shoes"],
