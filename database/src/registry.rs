@@ -65,9 +65,18 @@ pub enum DatabaseStorePrefixes {
     BannedAddresses = 129,
 
     // ---- Indexes ----
+    // 1) UTXO index
     UtxoIndex = 192,
     UtxoIndexTips = 193,
     CirculatingSupply = 194,
+    // Reserve 195 - 200 for UTXO index
+
+    // 2) TX index
+    TxIndexTxEntries = 201,
+    TxIndexTxEntriesCount = 202,
+    TxIndexSinkData = 203,
+    TxIndexPruningState = 204,
+    // Reserve 205 - 210 for TX index
 
     // ---- Separator ----
     /// Reserved as a separator

@@ -35,11 +35,16 @@ use kaspa_consensus_core::{
     trusted::ExternalGhostdagData,
     BlockHashMap, BlockHashSet, BlockLevel,
 };
+use kaspa_consensus_notify::{
+    notification::{PruningPointAdvancementNotification, Notification},
+    root::ConsensusNotificationRoot,
+};
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, trace, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_notify::{events::EventType, notifier::Notify};
 use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
@@ -99,6 +104,7 @@ impl PruningProcessor {
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
+        notification_root: &Arc<ConsensusNotificationRoot>,
         pruning_lock: SessionLock,
         config: Arc<Config>,
         is_consensus_exiting: Arc<AtomicBool>,
@@ -111,6 +117,7 @@ impl PruningProcessor {
             pruning_point_manager: services.pruning_point_manager.clone(),
             pruning_proof_manager: services.pruning_proof_manager.clone(),
             parents_manager: services.parents_manager.clone(),
+            notification_root: notification_root.clone(),
             pruning_lock,
             config,
             is_consensus_exiting,
@@ -313,6 +320,14 @@ impl PruningProcessor {
         assert_eq!(new_pruning_point, data.anticone[0]);
         assert_eq!(genesis, self.config.genesis.hash);
         assert_eq!(genesis, proof.last().unwrap().last().unwrap().hash);
+
+        if self.notification_root.has_subscription(EventType::PruningPointAdvancement) {
+            // send notification about new pruning point and it's blue score
+            self.notification_root.send(Notification::PruningPointAdvancement(PruningPointAdvancementNotification {
+                new_pruning_point,
+                new_pruning_point_blue_score: proof[0].last().unwrap().blue_score,
+            }));
+        }
 
         // We keep full data for pruning point and its anticone, relations for DAA/GD
         // windows and pruning proof, and only headers for past pruning points

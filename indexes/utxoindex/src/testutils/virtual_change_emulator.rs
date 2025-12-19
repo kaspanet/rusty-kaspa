@@ -1,11 +1,15 @@
-use crate::model::{CirculatingSupply, CirculatingSupplyDiff};
-use kaspa_consensus::test_helpers::*;
+use kaspa_consensus::testutils::generate::from_rand::{
+    hash::generate_random_hashes,
+    utxo::{generate_random_p2pk_script_public_key, generate_random_utxos_from_script_public_key_pool},
+};
 use kaspa_consensus_core::{
     tx::ScriptPublicKey,
     utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
     BlockHashSet, HashMapCustomHasher,
 };
+use kaspa_consensus_notify::notification::UtxosChangedNotification as ConsensusUtxosChangedNotification;
 use kaspa_hashes::Hash;
+use kaspa_index_core::models::utxoindex::{CirculatingSupply, CirculatingSupplyDiff};
 #[cfg(test)]
 use rand::Rng;
 use rand::{rngs::SmallRng, SeedableRng};
@@ -88,6 +92,13 @@ impl VirtualChangeEmulator {
         self.virtual_parents = Arc::new(vec![]);
         self.selected_parent_blue_score = 0;
         self.daa_score = 0;
+    }
+
+    pub fn generate_consensus_utxo_changed_notiication(&self) -> ConsensusUtxosChangedNotification {
+        ConsensusUtxosChangedNotification {
+            accumulated_utxo_diff: self.accumulated_utxo_diff.clone(),
+            virtual_parents: self.virtual_parents.clone(),
+        }
     }
 }
 

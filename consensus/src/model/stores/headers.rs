@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use kaspa_consensus_core::{header::Header, BlockHasher, BlockLevel};
+use kaspa_consensus_core::{
+    header::{CompactHeaderData, Header},
+    BlockHasher, BlockLevel,
+};
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
 use kaspa_database::prelude::{CachePolicy, DB};
 use kaspa_database::prelude::{StoreError, StoreResult};

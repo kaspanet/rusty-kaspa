@@ -348,30 +348,41 @@ impl VirtualStateProcessor {
         // Emit notifications
         let accumulated_diff = Arc::new(accumulated_diff);
         let virtual_parents = Arc::new(new_virtual_state.parents.clone());
+
+        let is_new_sink = new_sink != prev_sink;
+
         self.notification_root
             .notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))
             .expect("expecting an open unbounded channel");
-        self.notification_root
-            .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)))
-            .expect("expecting an open unbounded channel");
-        self.notification_root
-            .notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(compact_sink_ghostdag_data.blue_score)))
-            .expect("expecting an open unbounded channel");
-        self.notification_root
-            .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)))
-            .expect("expecting an open unbounded channel");
-        if self.notification_root.has_subscription(EventType::VirtualChainChanged) {
-            // check for subscriptions before the heavy lifting
+        if is_new_sink {
+            self.notification_root
+                .notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(sink_ghostdag_data.blue_score)))
+                .expect("expecting an open unbounded channel");
+        }
+        if prev_state.daa_score != new_virtual_state.daa_score {
+            self.notification_root
+                .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)))
+                .expect("expecting an open unbounded channel");
+        }
+        if is_new_sink && self.notification_root.has_subscription(EventType::VirtualChainChanged) {
             let added_chain_blocks_acceptance_data =
                 chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
+            let removed_chain_blocks_acceptance_data =
+                chain_path.removed.iter().copied().map(|removed| self.acceptance_data_store.get(removed).unwrap()).collect_vec();
             self.notification_root
                 .notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
                     chain_path.added.into(),
                     chain_path.removed.into(),
                     Arc::new(added_chain_blocks_acceptance_data),
+                    Arc::new(removed_chain_blocks_acceptance_data),
                 )))
                 .expect("expecting an open unbounded channel");
         }
+        // keep this after the virtual chain changed notification, so we commit to the txindex before the utxoindex.
+        // this should allow for higher hit rates when querying transactions in the txindex.
+        self.notification_root
+            .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)))
+            .expect("expecting an open unbounded channel");
     }
 
     pub(crate) fn virtual_finality_point(&self, virtual_ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {

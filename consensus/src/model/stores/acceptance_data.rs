@@ -16,13 +16,13 @@ use std::sync::Arc;
 
 pub trait AcceptanceDataStoreReader {
     fn get(&self, hash: Hash) -> Result<Arc<AcceptanceData>, StoreError>;
+    fn has(&self, hash: Hash) -> Result<bool, StoreError>;
 }
 
 pub trait AcceptanceDataStore: AcceptanceDataStoreReader {
     fn insert(&self, hash: Hash, acceptance_data: Arc<AcceptanceData>) -> Result<(), StoreError>;
     fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
-
 /// Simple wrapper for implementing `MemSizeEstimator`
 #[derive(Clone, Serialize, Deserialize)]
 struct AcceptanceDataEntry(Arc<AcceptanceData>);
@@ -68,6 +68,10 @@ impl DbAcceptanceDataStore {
 impl AcceptanceDataStoreReader for DbAcceptanceDataStore {
     fn get(&self, hash: Hash) -> Result<Arc<AcceptanceData>, StoreError> {
         Ok(self.access.read(hash)?.0)
+    }
+
+    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
+        self.access.has(hash)
     }
 }
 

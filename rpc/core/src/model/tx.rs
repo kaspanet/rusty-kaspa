@@ -1,9 +1,11 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{
-    ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
+    ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
+   
     UtxoEntry,
 };
+use kaspa_index_core::models::txindex::AcceptanceDataIndexType;
 use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
@@ -233,12 +235,89 @@ impl RpcTransactionOutput {
     pub fn from_transaction_outputs(other: Vec<TransactionOutput>) -> Vec<Self> {
         other.into_iter().map(Self::from).collect()
     }
+
+    pub fn populate_verbose_data(&mut self, verbose_data: RpcTransactionOutputVerboseData) {
+        self.verbose_data = Some(verbose_data);
+    }
 }
 
 impl From<TransactionOutput> for RpcTransactionOutput {
     fn from(output: TransactionOutput) -> Self {
         Self { value: output.value, script_public_key: output.script_public_key, verbose_data: None }
     }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcTransactionData {
+    pub transaction: Option<RpcTransaction>,
+    pub inclusion_data: Option<RpcTransactionInclusionData>,
+    pub acceptance_data: Option<RpcTransactionAcceptanceData>,
+}
+
+impl Serializer for RpcTransactionData {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        store!(Option<RpcTransaction>, &self.transaction, writer)?;
+        store!(Option<RpcTransactionInclusionData>, &self.inclusion_data, writer)?;
+        store!(Option<RpcTransactionAcceptanceData>, &self.acceptance_data, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcTransactionData {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let transaction = load!(Option<RpcTransaction>, reader)?;
+        let inclusion_data = load!(Option<RpcTransactionInclusionData>, reader)?;
+        let acceptance_data = load!(Option<RpcTransactionAcceptanceData>, reader)?;
+
+        Ok(Self { transaction, inclusion_data, acceptance_data })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcTransactionInclusionData {
+    pub block_hash: RpcHash,
+    pub transaction_index: TransactionIndexType,
+    pub timestamp: u64,
+    pub daa_score: u64,
+}
+
+impl Serializer for RpcTransactionInclusionData {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        store!(RpcHash, &self.block_hash, writer)?;
+        store!(TransactionIndexType, &self.transaction_index, writer)?;
+        store!(u64, &self.timestamp, writer)?;
+        store!(u64, &self.daa_score, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcTransactionInclusionData {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let block_hash = load!(RpcHash, reader)?;
+        let transaction_index = load!(TransactionIndexType, reader)?;
+        let timestamp = load!(u64, reader)?;
+        let daa_score = load!(u64, reader)?;
+
+        Ok(Self { block_hash, transaction_index, timestamp, daa_score })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcTransactionAcceptanceData {
+    pub block_hash: RpcHash,
+    pub acceptance_data_index: AcceptanceDataIndexType,
+    pub timestamp: u64,
+    pub daa_score: u64,  // use this as indication for network time, NOT confirmation counting!
+    pub blue_score: u64, // use this for Confirmation counting!
 }
 
 impl Serializer for RpcTransactionOutput {
@@ -305,6 +384,12 @@ pub struct RpcTransaction {
     pub payload: Vec<u8>,
     pub mass: u64,
     pub verbose_data: Option<RpcTransactionVerboseData>,
+}
+
+impl RpcTransaction {
+    pub fn populate_verbose_data(&mut self, verbose_data: RpcTransactionVerboseData) {
+        self.verbose_data = Some(verbose_data);
+    }
 }
 
 impl std::fmt::Debug for RpcTransaction {

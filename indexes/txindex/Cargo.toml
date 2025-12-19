@@ -1,0 +1,29 @@
+[package]
+name = "kaspa-txindex"
+description = "Kaspa TX index"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+kaspa-hashes.workspace = true
+thiserror.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-consensus.workspace = true
+kaspa-consensus-notify.workspace = true
+kaspa-core.workspace = true
+kaspa-utils.workspace = true
+kaspa-index-core.workspace = true
+kaspa-database.workspace = true
+kaspa-consensusmanager.workspace = true
+log.workspace = true
+rocksdb.workspace = true
+serde.workspace = true
+parking_lot.workspace = true
+futures.workspace = true
+bincode.workspace = true
+
+[dev-dependencies]
+rand = { workspace = true, features = ["small_rng"] }

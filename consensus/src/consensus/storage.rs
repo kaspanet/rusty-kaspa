@@ -7,7 +7,7 @@ use crate::{
         daa::DbDaaStore,
         depth::DbDepthStore,
         ghostdag::{CompactGhostdagData, DbGhostdagStore},
-        headers::{CompactHeaderData, DbHeadersStore},
+        headers::DbHeadersStore,
         headers_selected_tip::DbHeadersSelectedTipStore,
         past_pruning_points::DbPastPruningPointsStore,
         pruning::DbPruningStore,
@@ -26,10 +26,9 @@ use crate::{
     processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
 };
 
-use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
 use itertools::Itertools;
-use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHashSet};
-use kaspa_database::registry::DatabaseStorePrefixes;
+use kaspa_consensus_core::{blockstatus::BlockStatus, header::CompactHeaderData, BlockHashSet};
+use kaspa_database::{cache_policy_builder::CachePolicyBuilder as PolicyBuilder, registry::DatabaseStorePrefixes};
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 use std::{ops::DerefMut, sync::Arc};

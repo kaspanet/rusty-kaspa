@@ -257,6 +257,31 @@ impl Rpc {
                     }
                 }
             }
+            RpcApiOps::GetTransactionData => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Missing transaction Ids to query"));
+                }
+                let transaction_ids = argv
+                    .iter()
+                    .map(|transaction_id| RpcHash::from_hex(transaction_id.as_str()))
+                    .take_while(|res| res.is_ok())
+                    .map(|res| res.unwrap()) // safe to unwrap because of `take_while` condition. 
+                    .collect::<Vec<_>>();
+                if argv.len() - transaction_ids.len() > 4 {
+                    return Err(Error::custom("Too many arguments"));
+                }
+                let argv_index_offset = transaction_ids.len();
+                let result = rpc
+                    .get_transaction_data_call(GetTransactionDataRequest {
+                        transaction_ids,
+                        include_transactions: try_extract_bool(&argv, argv_index_offset, "include_transactions")?,
+                        include_acceptance_data: try_extract_bool(&argv, argv_index_offset + 1, "include_acceptance_data")?,
+                        include_inclusion_data: try_extract_bool(&argv, argv_index_offset + 2, "include_inclusion_data")?,
+                        include_verbose_data: try_extract_bool(&argv, argv_index_offset + 3, "include_verbose_data")?,
+                    })
+                    .await?;
+                self.println(&ctx, result);
+            }
             RpcApiOps::GetFeeEstimate => {
                 let result = rpc.get_fee_estimate_call(None, GetFeeEstimateRequest {}).await?;
                 self.println(&ctx, result);
@@ -339,4 +364,17 @@ impl Rpc {
 
         Ok(())
     }
+}
+
+// argv extractors:
+
+/// will try and extract a bool from the argv at the given index,
+/// if the index is out of bounds it will return the default bool value (i.e. `false`),
+/// if parsing at the index returns an error, it will return an error, with indication of the field name.
+#[inline]
+fn try_extract_bool(argv: &[String], index: usize, field_name: &str) -> Result<bool> {
+    argv.get(index)
+        .unwrap_or(&bool::default().to_string())
+        .parse::<bool>()
+        .map_err(|err| Error::custom(format!("Could not parse `{0}` to bool: {1}", field_name, err)))
 }

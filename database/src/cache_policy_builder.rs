@@ -1,9 +1,9 @@
-use kaspa_database::prelude::CachePolicy;
+use crate::prelude::CachePolicy;
 use kaspa_utils::mem_size::MemMode;
 use rand::Rng;
 
 /// Adds stochastic noise to cache sizes to avoid predictable and equal sizes across all network nodes
-fn noise(size: usize, magnitude: usize) -> usize {
+pub fn noise(size: usize, magnitude: usize) -> usize {
     if size == 0 {
         // no noise if original size is zero
         size
@@ -13,7 +13,7 @@ fn noise(size: usize, magnitude: usize) -> usize {
 }
 
 /// Bounds the size according to the "memory budget" (represented in bytes) and the approximate size of each unit in bytes
-fn bounded_size(desired_units: usize, memory_budget_bytes: usize, approx_unit_bytes: usize) -> usize {
+pub fn bounded_size(desired_units: usize, memory_budget_bytes: usize, approx_unit_bytes: usize) -> usize {
     let max_size = memory_budget_bytes / approx_unit_bytes;
     usize::min(desired_units, max_size)
 }

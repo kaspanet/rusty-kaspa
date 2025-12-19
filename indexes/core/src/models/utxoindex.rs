@@ -1,10 +1,13 @@
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, mem::size_of};
 
-// TODO: explore potential optimization via custom TransactionOutpoint hasher for below,
-// One possible implementation: u64 of transaction id xor'd with 4 bytes of transaction index.
+/// Type for circulating supply
+pub type CirculatingSupply = u64;
+/// Type for circulating supply difference
+pub type CirculatingSupplyDiff = i64; // As i64 since circulating supply diff can go negative.
+
 pub type CompactUtxoCollection = HashMap<TransactionOutpoint, CompactUtxoEntry>;
 
 /// A collection of utxos indexed via; [`ScriptPublicKey`] => [`TransactionOutpoint`] => [`CompactUtxoEntry`].
@@ -31,7 +34,15 @@ impl CompactUtxoEntry {
     }
 }
 
-impl MemSizeEstimator for CompactUtxoEntry {}
+impl MemSizeEstimator for CompactUtxoEntry {
+    fn estimate_mem_units(&self) -> usize {
+        1
+    }
+
+    fn estimate_mem_bytes(&self) -> usize {
+        size_of::<Self>()
+    }
+}
 
 impl From<UtxoEntry> for CompactUtxoEntry {
     fn from(utxo_entry: UtxoEntry) -> Self {

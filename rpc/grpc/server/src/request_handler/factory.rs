@@ -78,6 +78,7 @@ impl Factory {
                 GetServerInfo,
                 GetSyncStatus,
                 GetDaaScoreTimestampEstimate,
+                GetTransactionData,
                 GetFeeEstimate,
                 GetFeeEstimateExperimental,
                 GetCurrentBlockColor,

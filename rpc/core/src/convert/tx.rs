@@ -1,14 +1,43 @@
 //! Conversion of Transaction related types
 
 use crate::{
-    RpcError, RpcOptionalTransaction, RpcOptionalTransactionInput, RpcOptionalTransactionOutput, RpcResult, RpcTransaction,
-    RpcTransactionInput, RpcTransactionOutput,
+    RpcError, RpcResult, RpcTransaction, RpcTransactionAcceptanceData, RpcTransactionInclusionData, RpcTransactionInput,
+    RpcTransactionOutput,
 };
+use kaspa_consensus_core::{
+    header::CompactHeaderData,
+    tx::{Transaction, TransactionInput, TransactionOutput},
+};
+use kaspa_index_core::models::txindex::{BlockAcceptanceOffset, TxOffset};
+
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput};
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core
 // ----------------------------------------------------------------------------
+
+impl From<(&BlockAcceptanceOffset, &CompactHeaderData)> for RpcTransactionAcceptanceData {
+    fn from(item: (&BlockAcceptanceOffset, &CompactHeaderData)) -> Self {
+        Self {
+            block_hash: item.0.accepting_block,
+            acceptance_data_index: item.0.acceptance_data_index,
+            timestamp: item.1.timestamp,
+            daa_score: item.1.daa_score,
+            blue_score: item.1.blue_score,
+        }
+    }
+}
+
+impl From<(&TxOffset, &CompactHeaderData)> for RpcTransactionInclusionData {
+    fn from(item: (&TxOffset, &CompactHeaderData)) -> Self {
+        Self {
+            block_hash: item.0.including_block,
+            transaction_index: item.0.transaction_index,
+            timestamp: item.1.timestamp,
+            daa_score: item.1.daa_score,
+        }
+    }
+}
 
 impl From<&Transaction> for RpcTransaction {
     fn from(item: &Transaction) -> Self {

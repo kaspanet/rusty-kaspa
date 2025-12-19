@@ -34,7 +34,7 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
     pub fn calculate_chain_path(&self, from: Hash, to: Hash, chain_path_added_limit: Option<usize>) -> ChainPath {
         let mut removed = Vec::new();
         let mut common_ancestor = from;
-        for current in self.reachability_service.default_backward_chain_iterator(from) {
+        for current in self.reachability_service.default_backward_chain_iterator(from).take(max_traversal_allowed) {
             if !self.reachability_service.is_chain_ancestor_of(current, to) {
                 removed.push(current);
             } else {

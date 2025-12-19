@@ -49,6 +49,7 @@ async fn sanity_test() {
         enable_unsynced_mining: true,
         block_template_cache_lifetime: Some(0),
         utxoindex: true,
+        txindex: true,
         unsafe_rpc: true,
         ..Default::default()
     };
@@ -245,6 +246,8 @@ async fn sanity_test() {
                     assert_eq!(response.server_version, kaspa_core::kaspad_env::version().to_string());
                     assert_eq!(response.mempool_size, 0);
                     assert!(response.is_utxo_indexed);
+                    assert!(response.is_tx_indexed);
+                    //TODO: is_synced
                     assert!(response.has_message_id);
                     assert!(response.has_notify_command);
                 })
@@ -642,6 +645,29 @@ async fn sanity_test() {
                     for timestamp in results.timestamps.iter() {
                         info!("Timestamp estimate is {}", timestamp);
                     }
+                })
+            }
+            KaspadPayloadOps::GetTransactionData => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let genesis_transactions = SIMNET_GENESIS.build_genesis_transactions();
+                    let results = rpc_client
+                        .get_transaction_data_call(GetTransactionDataRequest {
+                            transaction_ids: genesis_transactions.iter().map(|tx| tx.id()).collect(),
+                            include_transactions: true,
+                            include_acceptance_data: true,
+                            include_inclusion_data: true,
+                            include_verbose_data: true,
+                        })
+                        .await
+                        .unwrap();
+                    // We do not expect the txindex to be populated, in order to return results in this test.
+                    // and we expect a single transaction data to be returned with None for all fields
+                    assert_eq!(results.transaction_data.len(), 1);
+                    let rpc_transaction_data = results.transaction_data.first().unwrap();
+                    assert!(rpc_transaction_data.transaction.is_none());
+                    assert!(rpc_transaction_data.inclusion_data.is_none());
+                    assert!(rpc_transaction_data.acceptance_data.is_none());
                 })
             }
 

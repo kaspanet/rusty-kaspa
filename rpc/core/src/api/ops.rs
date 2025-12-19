@@ -30,6 +30,9 @@ pub enum RpcApiOps {
 
     // ~~~
 
+    /// Get Transactions accepted by the Network.
+    GetTransactionData,
+
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded = 10,
     NotifyNewBlockTemplate = 11,
@@ -181,6 +184,7 @@ impl From<EventType> for RpcApiOps {
             EventType::VirtualDaaScoreChanged => RpcApiOps::VirtualDaaScoreChangedNotification,
             EventType::PruningPointUtxoSetOverride => RpcApiOps::PruningPointUtxoSetOverrideNotification,
             EventType::NewBlockTemplate => RpcApiOps::NewBlockTemplateNotification,
+            EventType::PruningPointAdvancement => unimplemented!("PruningPointAdvancement is not supported by RPC"),
         }
     }
 }

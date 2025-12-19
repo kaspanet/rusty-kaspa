@@ -16,7 +16,7 @@ use crate::{
         pruning::PruningImportResult,
         tx::TxResult,
     },
-    header::Header,
+    header::{CompactHeaderData, Header},
     mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
@@ -64,6 +64,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFutures {
+        unimplemented!()
+    }
+
+    fn get_block_transactions(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
         unimplemented!()
     }
 
@@ -259,6 +263,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn find_highest_common_chain_block(&self, low: Hash, high: Hash) -> ConsensusResult<Hash> {
+        unimplemented!()
+    }
+
     fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
         unimplemented!()
     }
@@ -268,6 +276,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>> {
+        unimplemented!()
+    }
+
+    fn get_compact_header(&self, hash: Hash) -> ConsensusResult<CompactHeaderData> {
         unimplemented!()
     }
 

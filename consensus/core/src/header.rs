@@ -191,10 +191,12 @@ impl Header {
     }
 }
 
-impl AsRef<Header> for Header {
-    fn as_ref(&self) -> &Header {
-        self
-    }
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct CompactHeaderData {
+    pub daa_score: u64,
+    pub timestamp: u64,
+    pub bits: u32,
+    pub blue_score: u64,
 }
 
 impl MemSizeEstimator for Header {

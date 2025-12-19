@@ -17,7 +17,7 @@ use crate::{
             acceptance_data::AcceptanceDataStoreReader,
             block_transactions::BlockTransactionsStoreReader,
             ghostdag::{GhostdagData, GhostdagStoreReader},
-            headers::{CompactHeaderData, HeaderStoreReader},
+            headers::HeaderStoreReader,
             headers_selected_tip::HeadersSelectedTipStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::PruningStoreReader,
@@ -62,7 +62,7 @@ use kaspa_consensus_core::{
         pruning::PruningImportError,
         tx::TxResult,
     },
-    header::Header,
+    header::{CompactHeaderData, Header},
     mass::{ContextualMasses, NonContextualMasses},
     merkle::calc_hash_merkle_root,
     mining_rules::MiningRules,
@@ -280,6 +280,7 @@ impl Consensus {
             db.clone(),
             &storage,
             &services,
+            &notification_root,
             pruning_lock.clone(),
             config.clone(),
             is_consensus_exiting.clone(),
@@ -761,7 +762,7 @@ impl ConsensusApi for Consensus {
         BlockCount { header_count, block_count }
     }
 
-    fn get_virtual_chain_from_block(&self, low: Hash, chain_path_added_limit: Option<usize>) -> ConsensusResult<ChainPath> {
+    fn get_virtual_chain_from_block(&self, low: Hash, high: Option<Hash>, chain_path_added_limit: Option<usize>) -> ConsensusResult<ChainPath> {
         // Calculate chain changes between the given `low` and the current sink hash (up to `limit` amount of block hashes).
         // Note:
         // 1) that we explicitly don't
@@ -769,8 +770,6 @@ impl ConsensusApi for Consensus {
         // won't later need to remove it from the result.
         // 2) supplying `None` as `chain_path_added_limit` will result in the full chain path, with optimized performance.
         let _guard = self.pruning_lock.blocking_read();
-
-        // Verify that the block exists
         self.validate_block_exists(low)?;
 
         // Verify that retention root is on chain(block)
@@ -780,7 +779,21 @@ impl ConsensusApi for Consensus {
             .then_some(())
             .ok_or(ConsensusError::General("the queried hash does not have retention root on its chain"))?;
 
-        Ok(self.services.dag_traversal_manager.calculate_chain_path(low, self.get_sink(), chain_path_added_limit))
+        let sink = self.get_sink();
+
+        let high = if let Some(high) = high {
+            self.validate_block_exists(high)?;
+            let new_high = self.find_highest_common_chain_block(high, sink)?;
+            if !self.is_chain_ancestor_of(low, new_high)? {
+                return Err(ConsensusError::ExpectedAncestor(low, high));
+            };
+            new_high
+        } else {
+            sink
+        };
+
+        Ok(self.services.dag_traversal_manager.calculate_chain_path(low, high, chain_path_added_limit))
+    
     }
 
     /// Returns a Vec of header samples since genesis
@@ -1087,6 +1100,12 @@ impl ConsensusApi for Consensus {
             .map_err(|e| ConsensusError::GeneralOwned(format!("past pruning points do not form a valid chain: {}", e)))
     }
 
+    fn find_highest_common_chain_block(&self, low: Hash, high: Hash) -> ConsensusResult<Hash> {
+        self.validate_block_exists(low)?;
+        self.validate_block_exists(high)?;
+        Ok(self.services.sync_manager.find_highest_common_chain_block(low, high))
+    }
+
     fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
         let _guard = self.pruning_lock.blocking_read();
         self.validate_block_exists(low)?;
@@ -1106,6 +1125,10 @@ impl ConsensusApi for Consensus {
 
     fn get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>> {
         self.headers_store.get_header(hash).unwrap_option().ok_or(ConsensusError::HeaderNotFound(hash))
+    }
+
+    fn get_compact_header(&self, hash: Hash) -> ConsensusResult<CompactHeaderData> {
+        self.headers_store.get_compact_header_data(hash).unwrap_option().ok_or(ConsensusError::HeaderNotFound(hash))
     }
 
     fn get_headers_selected_tip(&self) -> Hash {
@@ -1227,6 +1250,10 @@ impl ConsensusApi for Consensus {
         })
     }
 
+    fn get_block_transactions(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
+        self.block_transactions_store.get(hash).map_err(|_e| ConsensusError::MissingData(hash))
+    }
+
     fn get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagData> {
         match self.get_block_status(hash) {
             None => return Err(ConsensusError::HeaderNotFound(hash)),
@@ -1252,40 +1279,15 @@ impl ConsensusApi for Consensus {
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
         self.statuses_store.read().get(hash).unwrap_option()
     }
-
     fn get_block_acceptance_data(&self, hash: Hash) -> ConsensusResult<Arc<AcceptanceData>> {
         self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))
     }
 
-    fn get_blocks_acceptance_data(
-        &self,
-        hashes: &[Hash],
-        merged_blocks_limit: Option<usize>,
-    ) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
-        // Note: merged_blocks_limit will limit after the sum of merged blocks is breached along the supplied hash's acceptance data
-        // and not limit the acceptance data within a queried hash. i.e. It has mergeset_size_limit granularity, this is to guarantee full acceptance data coverage.
-        if merged_blocks_limit.is_none() {
-            return hashes
-                .iter()
-                .copied()
-                .map(|hash| self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash)))
-                .collect::<ConsensusResult<Vec<_>>>();
-        }
-        let merged_blocks_limit = merged_blocks_limit.unwrap(); // we handle `is_none`, so may unwrap.
-        let mut num_of_merged_blocks = 0usize;
-
+    fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
         hashes
             .iter()
             .copied()
-            .map_while(|hash| {
-                let entry = self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash));
-                num_of_merged_blocks += entry.as_ref().map_or(0, |entry| entry.len());
-                if num_of_merged_blocks > merged_blocks_limit {
-                    None
-                } else {
-                    Some(entry)
-                }
-            })
+            .map(|hash| self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash)))
             .collect::<ConsensusResult<Vec<_>>>()
     }
 

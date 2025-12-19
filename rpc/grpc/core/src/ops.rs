@@ -84,6 +84,7 @@ pub enum KaspadPayloadOps {
     GetServerInfo,
     GetSyncStatus,
     GetDaaScoreTimestampEstimate,
+    GetTransactionData,
     GetFeeEstimate,
     GetFeeEstimateExperimental,
     GetCurrentBlockColor,

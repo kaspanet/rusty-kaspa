@@ -1,4 +1,3 @@
-pub mod connection;
-pub mod indexed_utxos;
-pub mod notification;
-pub mod notifier;
+pub mod models;
+pub mod notify;
+pub mod reindexers;

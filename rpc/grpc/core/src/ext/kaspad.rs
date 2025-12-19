@@ -64,6 +64,7 @@ impl kaspad_request::Payload {
                     command: command.into(),
                 })
             }
+            Scope::PruningPointAdvancement(_) => unimplemented!("PruningPointAdvancement is not supported by RPC"),
         }
     }
 
