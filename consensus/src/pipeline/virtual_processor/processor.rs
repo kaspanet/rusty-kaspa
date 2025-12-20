@@ -940,13 +940,8 @@ impl VirtualStateProcessor {
             virtual_state.daa_score,
             virtual_state.past_median_time,
         )?;
-        let ValidatedTransaction { calculated_fee, .. } = self.validate_transaction_in_utxo_context(
-            tx,
-            utxo_view,
-            virtual_state.daa_score,
-            virtual_state.daa_score,
-            TxValidationFlags::Full,
-        )?;
+        let ValidatedTransaction { calculated_fee, .. } =
+            self.validate_transaction_in_utxo_context(tx, utxo_view, virtual_state.daa_score, TxValidationFlags::Full)?;
         Ok(calculated_fee)
     }
 
@@ -1187,7 +1182,6 @@ impl VirtualStateProcessor {
         let validated_transactions = self.validate_transactions_in_parallel(
             &new_pruning_point_transactions,
             &virtual_read.utxo_set,
-            new_pruning_point_header.daa_score,
             new_pruning_point_header.daa_score,
             TxValidationFlags::Full,
         );
