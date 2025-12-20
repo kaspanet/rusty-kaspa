@@ -833,13 +833,7 @@ pub const DEVNET_PARAMS: Params = Params {
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
-    // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
-    // switches to the deflationary period. This number is calculated as follows:
-    // We define a year as 365.25 days
-    // Half a year in seconds = 365.25 / 2 * 24 * 60 * 60 = 15778800
-    // The network was down for three days shortly after launch
-    // Three days in seconds = 3 * 24 * 60 * 60 = 259200
-    deflationary_phase_daa_score: 15778800 - 259200,
+    deflationary_phase_daa_score: 0,
     pre_deflationary_phase_base_subsidy: 50000000000,
     prior_coinbase_maturity: 100,
     skip_proof_of_work: false,
@@ -847,6 +841,5 @@ pub const DEVNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 
     crescendo: CRESCENDO,
-    // TODO: Set this to always after the fork
     crescendo_activation: ForkActivation::always(),
 };

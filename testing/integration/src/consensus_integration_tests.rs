@@ -951,13 +951,13 @@ async fn bounded_merge_depth_test() {
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.prior_ghostdag_k = 5;
-            p.prior_merge_depth = 7;
+            p.crescendo.ghostdag_k = 5;
+            p.crescendo.merge_depth = 7;
         })
         .build();
 
     assert!(
-        (config.ghostdag_k().before() as u64) < config.prior_merge_depth,
+        (config.ghostdag_k().after() as u64) < config.merge_depth().after(),
         "K must be smaller than merge depth for this test to run"
     );
 
@@ -965,7 +965,7 @@ async fn bounded_merge_depth_test() {
     let wait_handles = consensus.init();
 
     let mut selected_chain = vec![config.genesis.hash];
-    for i in 1..(config.prior_merge_depth + 3) {
+    for i in 1..(config.crescendo.merge_depth + 3) {
         let hash: Hash = (i + 1).into();
         consensus.add_header_only_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
@@ -973,8 +973,8 @@ async fn bounded_merge_depth_test() {
 
     // The length of block_chain_2 is shorter by one than selected_chain, so selected_chain will remain the selected chain.
     let mut block_chain_2 = vec![config.genesis.hash];
-    for i in 1..(config.prior_merge_depth + 2) {
-        let hash: Hash = (i + config.prior_merge_depth + 3).into();
+    for i in 1..(config.crescendo.merge_depth + 2) {
+        let hash: Hash = (i + config.crescendo.merge_depth + 3).into();
         consensus.add_header_only_block_with_parents(hash, vec![*block_chain_2.last().unwrap()]).await.unwrap();
         block_chain_2.push(hash);
     }
