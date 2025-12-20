@@ -1,6 +1,8 @@
 use kaspa_hashes::Hash;
 use thiserror::Error;
 
+use crate::{tx::TransactionIndexType, utxo::utxo_inquirer::UtxoInquirerError};
+
 use super::{difficulty::DifficultyError, sync::SyncManagerError, traversal::TraversalError};
 
 #[derive(Error, Debug, Clone)]
@@ -10,6 +12,12 @@ pub enum ConsensusError {
 
     #[error("cannot find header {0}")]
     HeaderNotFound(Hash),
+
+    #[error("trying to query {0} txs in block {1}, but the block only holds {2} txs")]
+    TransactionQueryTooLarge(usize, Hash, usize),
+
+    #[error("index {0} out of max {1} in block {2} is out of bounds")]
+    TransactionIndexOutOfBounds(TransactionIndexType, usize, Hash),
 
     #[error("block {0} is invalid")]
     InvalidBlock(Hash),
@@ -34,6 +42,9 @@ pub enum ConsensusError {
 
     #[error("{0}")]
     General(&'static str),
+
+    #[error("utxo inquirer error: {0}")]
+    UtxoInquirerError(#[from] UtxoInquirerError),
 
     #[error("{0}")]
     GeneralOwned(String),
