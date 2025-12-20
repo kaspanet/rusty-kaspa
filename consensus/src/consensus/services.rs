@@ -13,7 +13,7 @@ use crate::{
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, ghostdag::protocol::GhostdagManager,
         parents_builder::ParentsManager, pruning::PruningPointManager, pruning_proof::PruningProofManager, sync::SyncManager,
-        transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager, window::DualWindowManager,
+        transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager, window::SampledWindowManager,
     },
 };
 use itertools::Itertools;
@@ -26,7 +26,7 @@ pub type DbGhostdagManager =
 
 pub type DbDagTraversalManager = DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 
-pub type DbWindowManager = DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>;
+pub type DbWindowManager = SampledWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>;
 
 pub type DbSyncManager = SyncManager<
     MTRelationsService<DbRelationsStore>,
@@ -91,7 +91,7 @@ impl ConsensusServices {
             relations_service.clone(),
             reachability_service.clone(),
         );
-        let window_manager = DualWindowManager::new(
+        let window_manager = SampledWindowManager::new(
             &params.genesis,
             storage.ghostdag_store.clone(),
             storage.headers_store.clone(),
@@ -102,11 +102,9 @@ impl ConsensusServices {
             params.prior_target_time_per_block,
             params.crescendo.target_time_per_block,
             params.crescendo_activation,
-            params.prior_difficulty_window_size,
             params.crescendo.sampled_difficulty_window_size as usize,
-            params.min_difficulty_window_size,
+            params.min_difficulty_window_size.min(params.crescendo.sampled_difficulty_window_size as usize),
             params.crescendo.difficulty_sample_rate,
-            params.prior_past_median_time_window_size(),
             params.sampled_past_median_time_window_size(),
             params.crescendo.past_median_time_sample_rate,
         );
