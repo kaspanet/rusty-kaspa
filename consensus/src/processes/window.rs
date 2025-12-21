@@ -1,6 +1,6 @@
 use crate::{
     model::stores::{
-        block_window_cache::{BlockWindowCacheReader, BlockWindowCacheWriter, BlockWindowHeap, WindowOrigin},
+        block_window_cache::{BlockWindowCacheReader, BlockWindowCacheWriter, BlockWindowHeap},
         daa::DaaStoreReader,
         ghostdag::{GhostdagData, GhostdagStoreReader},
         headers::HeaderStoreReader,
@@ -61,27 +61,6 @@ pub trait WindowManager {
 
 trait AffiliatedWindowCacheReader {
     fn get(&self, hash: &Hash) -> Option<Arc<BlockWindowHeap>>;
-}
-
-/// A local wrapper over an (optional) block window cache which filters cache hits based on a pre-specified window origin
-struct AffiliatedWindowCache<'a, U: BlockWindowCacheReader> {
-    /// The inner underlying cache
-    inner: Option<&'a Arc<U>>,
-    /// The affiliated origin (sampled vs. full)
-    origin: WindowOrigin,
-}
-
-impl<'a, U: BlockWindowCacheReader> AffiliatedWindowCache<'a, U> {
-    fn new(inner: Option<&'a Arc<U>>, origin: WindowOrigin) -> Self {
-        Self { inner, origin }
-    }
-}
-
-impl<U: BlockWindowCacheReader> AffiliatedWindowCacheReader for AffiliatedWindowCache<'_, U> {
-    fn get(&self, hash: &Hash) -> Option<Arc<BlockWindowHeap>> {
-        // Only return the cached window if it originates from the affiliated origin
-        self.inner.and_then(|cache| cache.get(hash, self.origin))
-    }
 }
 
 type DaaStatus = Option<(u64, BlockHashSet)>;
@@ -179,26 +158,22 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
 
         // First, we handle all edge cases
         if window_size == 0 {
-            return Ok(Arc::new(BlockWindowHeap::new(WindowOrigin::Sampled)));
+            return Ok(Arc::new(BlockWindowHeap::new()));
         }
         if ghostdag_data.selected_parent == self.genesis_hash {
             // Special case: Genesis does not enter the DAA window due to having a fixed timestamp
             mergeset_non_daa_inserter(self.genesis_hash);
-            return Ok(Arc::new(BlockWindowHeap::new(WindowOrigin::Sampled)));
+            return Ok(Arc::new(BlockWindowHeap::new()));
         }
         if ghostdag_data.selected_parent.is_origin() {
             return Err(RuleError::InsufficientDaaWindowSize(0));
         }
 
-        let inner_cache = match window_type {
+        let cache = match window_type {
             WindowType::DifficultyWindow => Some(&self.block_window_cache_for_difficulty),
             WindowType::MedianTimeWindow => Some(&self.block_window_cache_for_past_median_time),
             WindowType::VaryingWindow(_) => None,
         };
-        // Wrap the inner cache with a cache affiliated with this origin (WindowOrigin::Sampled).
-        // This is crucial for hardfork times where the DAA mechanism changes thereby invalidating cache entries
-        // originating from the prior mechanism
-        let cache = AffiliatedWindowCache::new(inner_cache, WindowOrigin::Sampled);
 
         let selected_parent_blue_work = self.ghostdag_store.get_blue_work(ghostdag_data.selected_parent).unwrap();
 
@@ -211,13 +186,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             selected_parent_blue_work,
             Some(&mut mergeset_non_daa_inserter),
         ) {
-            // [Crescendo]: the selected parent window will be in the cache only if it was activated (due to tracking of window origin),
-            // so we can safely inherit it, add activated blocks from the mergeset and return
             return Ok(res);
         }
 
         // else we populate the window with the passed ghostdag_data.
-        let mut window_heap = BoundedSizeBlockHeap::new(WindowOrigin::Sampled, window_size);
+        let mut window_heap = BoundedSizeBlockHeap::new(window_size);
         self.push_mergeset(
             &mut &mut window_heap,
             sample_rate,
@@ -256,9 +229,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             // push the current mergeset into the window
             self.push_mergeset(&mut &mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work, None::<fn(Hash)>);
 
-            // [Crescendo]: the chain ancestor window will be in the cache only if it was
-            // activated (due to tracking of window origin), so we can safely inherit it
-            //
             // see if we can inherit and merge with the selected parent cache
             if self.try_merge_with_selected_parent_cache(&mut window_heap, &cache, &current_ghostdag.selected_parent) {
                 // if successful, we may break out of the loop, with the window already filled.
@@ -308,7 +278,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         &self,
         window_size: usize,
         sample_rate: u64,
-        cache: &impl AffiliatedWindowCacheReader,
+        cache: &impl BlockWindowCacheReader,
         ghostdag_data: &GhostdagData,
         selected_parent_blue_work: BlueWorkType,
         mergeset_non_daa_inserter: Option<impl FnMut(Hash)>,
@@ -328,7 +298,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
     fn try_merge_with_selected_parent_cache(
         &self,
         heap: &mut BoundedSizeBlockHeap,
-        cache: &impl AffiliatedWindowCacheReader,
+        cache: &impl BlockWindowCacheReader,
         selected_parent: &Hash,
     ) -> bool {
         cache
@@ -401,7 +371,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
     }
 
     fn calc_past_median_time_for_known_hash(&self, hash: Hash) -> Result<u64, RuleError> {
-        if let Some(window) = self.block_window_cache_for_past_median_time.get(&hash, WindowOrigin::Sampled) {
+        if let Some(window) = self.block_window_cache_for_past_median_time.get(&hash) {
             let past_median_time = self
                 .past_median_time_manager
                 .calc_past_median_time(&window, self.ghostdag_store.get_selected_parent(hash).unwrap())?;
@@ -435,8 +405,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
     }
 
     fn consecutive_cover_for_window(&self, mut ghostdag: Arc<GhostdagData>, window: &BlockWindowHeap) -> Vec<Hash> {
-        assert_eq!(WindowOrigin::Sampled, window.origin());
-
         // In the sampled case, the sampling logic relies on DAA indexes which can only be calculated correctly if the full
         // mergesets covering all sampled blocks are sent.
 
@@ -479,8 +447,8 @@ struct BoundedSizeBlockHeap {
 }
 
 impl BoundedSizeBlockHeap {
-    fn new(contents: WindowOrigin, size_bound: usize) -> Self {
-        Self::from_binary_heap(size_bound, BlockWindowHeap::with_capacity(contents, size_bound))
+    fn new(size_bound: usize) -> Self {
+        Self::from_binary_heap(size_bound, BlockWindowHeap::with_capacity(size_bound))
     }
 
     fn from_binary_heap(size_bound: usize, binary_heap: BlockWindowHeap) -> Self {
