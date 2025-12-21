@@ -20,7 +20,7 @@ use std::{
     },
 };
 
-use super::{ghostdag::ordering::SortableBlock, utils::CoinFlip};
+use super::ghostdag::ordering::SortableBlock;
 use itertools::Itertools;
 
 trait DifficultyManagerExtension {
@@ -228,9 +228,6 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
         let mut difficulty_blocks = self.get_difficulty_blocks(window);
 
         // Until there are enough blocks for a valid calculation the difficulty should remain constant.
-        //
-        // [Crescendo]: post activation special case -- first activated blocks which do not have
-        // enough activated samples in their past
         if difficulty_blocks.len() < self.min_difficulty_window_size {
             let selected_parent = ghostdag_data.selected_parent;
             if selected_parent == self.genesis_hash {
@@ -257,26 +254,6 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
         let measured_duration = max(max_ts - min_ts, 1);
         let expected_duration = self.target_time_per_block * self.difficulty_sample_rate * difficulty_blocks_len; // This does differ from FullDifficultyManager version
         let new_target = average_target * measured_duration / expected_duration;
-
-        if difficulty_blocks_len + 1 < self.difficulty_window_size as u64 {
-            if self.crescendo_logger.report_activation_progress(CrescendoLogger::DYNAMIC) {
-                info!(target: CRESCENDO_KEYWORD,
-                    "[Crescendo] Dynamic DAA reactivated, scaling the difficulty by the measured/expected duration ratio: \n\t\t\t\t\t\t  {} -> {} (measured duration: {}, expected duration: {}, ratio {:.4})",
-                    difficulty_desc(average_target),
-                    difficulty_desc(new_target),
-                    measured_duration,
-                    expected_duration,
-                    measured_duration as f64 / expected_duration as f64
-                );
-            }
-            if CoinFlip::default().flip() {
-                info!(target: CRESCENDO_KEYWORD,
-                    "[Crescendo] DAA window increasing post activation: {} (target: {})",
-                    difficulty_blocks_len + 1,
-                    self.difficulty_window_size
-                );
-            }
-        }
 
         Uint256::try_from(new_target.min(self.max_difficulty_target)).expect("max target < Uint256::MAX").compact_target_bits()
     }

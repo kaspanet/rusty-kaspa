@@ -13,7 +13,6 @@ use kaspa_consensus_core::{
     errors::{block::RuleError, difficulty::DifficultyResult},
     BlockHashSet, BlueWorkType, HashMapCustomHasher,
 };
-use kaspa_core::{info, log::CRESCENDO_KEYWORD};
 use kaspa_hashes::Hash;
 use kaspa_math::Uint256;
 use once_cell::unsync::Lazy;
@@ -24,7 +23,7 @@ use std::{
     sync::Arc,
 };
 
-use super::{difficulty::SampledDifficultyManager, past_median_time::SampledPastMedianTimeManager, utils::CoinFlip};
+use super::{difficulty::SampledDifficultyManager, past_median_time::SampledPastMedianTimeManager};
 
 #[derive(Clone, Copy)]
 pub enum WindowType {
@@ -191,28 +190,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             return Err(RuleError::InsufficientDaaWindowSize(0));
         }
 
-        // [Crescendo]: filter non activated blocks from the window
-        let filter_non_activated = true;
-
-        /*
-            Crescendo extended explanation
-
-            Background: for the post-activation window we filter all previously non activated blocks.
-            See https://github.com/kaspanet/kips/blob/master/kip-0014.md#handling-difficulty-adjustment-during-the-transition
-
-            We consider a block C to be not activated from the pov of this block (B) if either:
-                1. C's selected parent DAA score is below the activation threshold
-                2. The merging block of C from chain(B) is not activated (per definition 1).
-
-            It will be rarely the case where 1. is not satisfied and 2. is, but it is possible combinatorically
-            since the DAA score is not guaranteed to be monotonic. We add definition 2 in order to make it easier
-            for the algorithm below to recognize when to stop the traversal during the activation transition phase
-            (since the window will remain smaller than the target size so the blue work exit condition will not suffice).
-
-            Note that the DAA score *is* monotonic over chain blocks, so once we identify a block on chain(B) which is not
-            activated we can halt the search (since we are traversing down the chain).
-        */
-
         let inner_cache = match window_type {
             WindowType::DifficultyWindow => Some(&self.block_window_cache_for_difficulty),
             WindowType::MedianTimeWindow => Some(&self.block_window_cache_for_past_median_time),
@@ -233,7 +210,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             ghostdag_data,
             selected_parent_blue_work,
             Some(&mut mergeset_non_daa_inserter),
-            filter_non_activated,
         ) {
             // [Crescendo]: the selected parent window will be in the cache only if it was activated (due to tracking of window origin),
             // so we can safely inherit it, add activated blocks from the mergeset and return
@@ -248,7 +224,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             ghostdag_data,
             selected_parent_blue_work,
             Some(&mut mergeset_non_daa_inserter),
-            filter_non_activated,
         );
 
         let mut current_ghostdag = self.ghostdag_store.get_data(ghostdag_data.selected_parent).unwrap();
@@ -279,14 +254,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             }
 
             // push the current mergeset into the window
-            self.push_mergeset(
-                &mut &mut window_heap,
-                sample_rate,
-                &current_ghostdag,
-                parent_ghostdag.blue_work,
-                None::<fn(Hash)>,
-                filter_non_activated,
-            );
+            self.push_mergeset(&mut &mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work, None::<fn(Hash)>);
 
             // [Crescendo]: the chain ancestor window will be in the cache only if it was
             // activated (due to tracking of window origin), so we can safely inherit it
@@ -313,11 +281,10 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         ghostdag_data: &GhostdagData,
         selected_parent_blue_work: BlueWorkType,
         mergeset_non_daa_inserter: Option<impl FnMut(Hash)>,
-        filter_non_activated: bool,
     ) {
         if let Some(mut mergeset_non_daa_inserter) = mergeset_non_daa_inserter {
             // If we have a non-daa inserter, we must iterate over the whole mergeset and operate on the sampled and non-daa blocks.
-            for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work, filter_non_activated) {
+            for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
                 match block {
                     SampledBlock::Sampled(block) => {
                         heap.try_push(block.hash, block.blue_work);
@@ -327,7 +294,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             }
         } else {
             // If we don't have a non-daa inserter, we can iterate over the sampled mergeset and return early if we can't push anymore.
-            for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work, filter_non_activated) {
+            for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
                 if let SampledBlock::Sampled(block) = block {
                     if !heap.try_push(block.hash, block.blue_work) {
                         return;
@@ -345,19 +312,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         ghostdag_data: &GhostdagData,
         selected_parent_blue_work: BlueWorkType,
         mergeset_non_daa_inserter: Option<impl FnMut(Hash)>,
-        filter_non_activated: bool,
     ) -> Option<Arc<BlockWindowHeap>> {
         cache.get(&ghostdag_data.selected_parent).map(|selected_parent_window| {
             let mut heap = Lazy::new(|| BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_window).clone()));
             // We pass a Lazy heap as an optimization to avoid cloning the selected parent heap in cases where the mergeset contains no samples
-            self.push_mergeset(
-                &mut heap,
-                sample_rate,
-                ghostdag_data,
-                selected_parent_blue_work,
-                mergeset_non_daa_inserter,
-                filter_non_activated,
-            );
+            self.push_mergeset(&mut heap, sample_rate, ghostdag_data, selected_parent_blue_work, mergeset_non_daa_inserter);
             if let Ok(heap) = Lazy::into_value(heap) {
                 Arc::new(heap.binary_heap)
             } else {
@@ -385,7 +344,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         sample_rate: u64,
         ghostdag_data: &'a GhostdagData,
         selected_parent_blue_work: BlueWorkType,
-        filter_non_activated: bool,
     ) -> impl Iterator<Item = SampledBlock> + 'a {
         let selected_parent_block = SortableBlock::new(ghostdag_data.selected_parent, selected_parent_blue_work);
         let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
@@ -400,9 +358,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
                     Some(SampledBlock::NonDaa(block.hash))
                 } else {
                     index += 1;
-                    if filter_non_activated {
-                        return None;
-                    }
                     if (selected_parent_daa_score + index) % sample_rate == 0 {
                         Some(SampledBlock::Sampled(block))
                     } else {
@@ -441,13 +396,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
 
     fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
         let window = self.block_window(ghostdag_data, WindowType::MedianTimeWindow)?;
-        if window.len() < self.past_median_time_window_size && CoinFlip::default().flip() {
-            info!(target: CRESCENDO_KEYWORD,
-                "[Crescendo] MDT window increasing post activation: {} (target: {})",
-                window.len(),
-                self.past_median_time_window_size
-            );
-        }
         let past_median_time = self.past_median_time_manager.calc_past_median_time(&window, ghostdag_data.selected_parent)?;
         Ok((past_median_time, window))
     }
