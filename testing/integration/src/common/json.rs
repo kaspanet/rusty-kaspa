@@ -22,18 +22,18 @@ use kaspa_consensus_core::KType;
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RPCBlock {
-    pub Header: RPCBlockHeader,
-    pub Transactions: Vec<RPCTransaction>,
-    pub VerboseData: RPCBlockVerboseData,
+pub struct JsonTestBlock {
+    pub Header: JsonTestBlockHeader,
+    pub Transactions: Vec<JsonTestTransaction>,
+    pub VerboseData: JsonTestBlockVerboseData,
 }
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RPCTransaction {
+pub struct JsonTestTransaction {
     pub Version: u16,
-    pub Inputs: Vec<RPCTransactionInput>,
-    pub Outputs: Vec<RPCTransactionOutput>,
+    pub Inputs: Vec<JsonTestTransactionInput>,
+    pub Outputs: Vec<JsonTestTransactionOutput>,
     pub LockTime: u64,
     pub SubnetworkID: String,
     pub Gas: u64,
@@ -45,22 +45,22 @@ pub struct RPCTransaction {
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RPCTransactionOutput {
+pub struct JsonTestTransactionOutput {
     pub Amount: u64,
-    pub ScriptPublicKey: RPCScriptPublicKey,
+    pub ScriptPublicKey: JsonTestScriptPublicKey,
 }
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RPCScriptPublicKey {
+pub struct JsonTestScriptPublicKey {
     pub Version: u16,
     pub Script: String,
 }
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RPCTransactionInput {
-    pub PreviousOutpoint: RPCOutpoint,
+pub struct JsonTestTransactionInput {
+    pub PreviousOutpoint: JsonTestOutpoint,
     pub SignatureScript: String,
     pub Sequence: u64,
     pub SigOpCount: u8,
@@ -68,16 +68,16 @@ pub struct RPCTransactionInput {
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RPCOutpoint {
+pub struct JsonTestOutpoint {
     pub TransactionID: String,
     pub Index: u32,
 }
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RPCBlockHeader {
+pub struct JsonTestBlockHeader {
     pub Version: u16,
-    pub Parents: Vec<RPCBlockLevelParents>,
+    pub Parents: Vec<JsonTestBlockLevelParents>,
     pub HashMerkleRoot: String,
     pub AcceptedIDMerkleRoot: String,
     pub UTXOCommitment: String,
@@ -92,20 +92,20 @@ pub struct RPCBlockHeader {
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RPCBlockLevelParents {
+pub struct JsonTestBlockLevelParents {
     pub ParentHashes: Vec<String>,
 }
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RPCBlockVerboseData {
+pub struct JsonTestBlockVerboseData {
     pub Hash: String,
 }
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct JsonBlockWithTrustedData {
-    pub Block: RPCBlock,
+    pub Block: JsonTestBlock,
     pub GHOSTDAG: JsonGHOSTDAGData,
 }
 
@@ -130,15 +130,15 @@ pub struct JsonBluesAnticoneSizes {
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct JsonOutpointUTXOEntryPair {
-    pub Outpoint: RPCOutpoint,
-    pub UTXOEntry: RPCUTXOEntry,
+    pub Outpoint: JsonTestOutpoint,
+    pub UTXOEntry: JsonTestUTXOEntry,
 }
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RPCUTXOEntry {
+pub struct JsonTestUTXOEntry {
     pub Amount: u64,
-    pub ScriptPublicKey: RPCScriptPublicKey,
+    pub ScriptPublicKey: JsonTestScriptPublicKey,
     pub BlockDAAScore: u64,
     pub IsCoinbase: bool,
 }
@@ -252,35 +252,35 @@ pub fn params_to_kaspad_go_params(params: &Params) -> KaspadGoParams {
     }
 }
 
-pub fn rpc_header_to_header(rpc_header: &RPCBlockHeader) -> Header {
+pub fn json_test_header_to_header(json_test_header: &JsonTestBlockHeader) -> Header {
     Header::new_finalized(
-        rpc_header.Version,
-        rpc_header
+        json_test_header.Version,
+        json_test_header
             .Parents
             .iter()
             .map(|item| item.ParentHashes.iter().map(|parent| Hash::from_str(parent).unwrap()).collect::<Vec<Hash>>())
             .collect::<Vec<Vec<Hash>>>()
             .try_into()
             .unwrap(),
-        Hash::from_str(&rpc_header.HashMerkleRoot).unwrap(),
-        Hash::from_str(&rpc_header.AcceptedIDMerkleRoot).unwrap(),
-        Hash::from_str(&rpc_header.UTXOCommitment).unwrap(),
-        rpc_header.Timestamp,
-        rpc_header.Bits,
-        rpc_header.Nonce,
-        rpc_header.DAAScore,
-        BlueWorkType::from_hex(&rpc_header.BlueWork).unwrap(),
-        rpc_header.BlueScore,
-        Hash::from_str(&rpc_header.PruningPoint).unwrap(),
+        Hash::from_str(&json_test_header.HashMerkleRoot).unwrap(),
+        Hash::from_str(&json_test_header.AcceptedIDMerkleRoot).unwrap(),
+        Hash::from_str(&json_test_header.UTXOCommitment).unwrap(),
+        json_test_header.Timestamp,
+        json_test_header.Bits,
+        json_test_header.Nonce,
+        json_test_header.DAAScore,
+        BlueWorkType::from_hex(&json_test_header.BlueWork).unwrap(),
+        json_test_header.BlueScore,
+        Hash::from_str(&json_test_header.PruningPoint).unwrap(),
     )
 }
 
-pub fn rpc_block_to_block(rpc_block: RPCBlock) -> Block {
-    let header = rpc_header_to_header(&rpc_block.Header);
-    assert_eq!(header.hash, Hash::from_str(&rpc_block.VerboseData.Hash).unwrap());
+pub fn json_test_block_to_block(json_test_block: JsonTestBlock) -> Block {
+    let header = json_test_header_to_header(&json_test_block.Header);
+    assert_eq!(header.hash, Hash::from_str(&json_test_block.VerboseData.Hash).unwrap());
     Block::new(
         header,
-        rpc_block
+        json_test_block
             .Transactions
             .iter()
             .map(|tx| {
@@ -321,7 +321,7 @@ pub fn rpc_block_to_block(rpc_block: RPCBlock) -> Block {
 
 pub fn json_trusted_line_to_block_and_gd(line: String) -> TrustedBlock {
     let json_block_with_trusted: JsonBlockWithTrustedData = serde_json::from_str(&line).unwrap();
-    let block = rpc_block_to_block(json_block_with_trusted.Block);
+    let block = json_test_block_to_block(json_block_with_trusted.Block);
 
     let gd = ExternalGhostdagData {
         blue_score: json_block_with_trusted.GHOSTDAG.BlueScore,
@@ -378,19 +378,19 @@ pub fn json_line_to_utxo_pairs(line: String) -> Vec<(TransactionOutpoint, UtxoEn
 }
 
 pub fn json_line_to_block(line: String) -> Block {
-    let rpc_block: RPCBlock = serde_json::from_str(&line).unwrap();
-    rpc_block_to_block(rpc_block)
+    let json_test_block: JsonTestBlock = serde_json::from_str(&line).unwrap();
+    json_test_block_to_block(json_test_block)
 }
 
-pub fn block_to_rpc_block(block: Block) -> RPCBlock {
-    RPCBlock {
-        Header: RPCBlockHeader {
+pub fn block_to_json_test_block(block: Block) -> JsonTestBlock {
+    JsonTestBlock {
+        Header: JsonTestBlockHeader {
             Version: block.header.version,
             Parents: block
                 .header
                 .parents_by_level
                 .expanded_iter()
-                .map(|p| RPCBlockLevelParents { ParentHashes: p.iter().map(|h| h.to_string()).collect() })
+                .map(|p| JsonTestBlockLevelParents { ParentHashes: p.iter().map(|h| h.to_string()).collect() })
                 .collect(),
             HashMerkleRoot: block.header.hash_merkle_root.to_string(),
             AcceptedIDMerkleRoot: block.header.accepted_id_merkle_root.to_string(),
@@ -406,13 +406,13 @@ pub fn block_to_rpc_block(block: Block) -> RPCBlock {
         Transactions: block
             .transactions
             .iter()
-            .map(|tx| RPCTransaction {
+            .map(|tx| JsonTestTransaction {
                 Version: tx.version,
                 Inputs: tx
                     .inputs
                     .iter()
-                    .map(|input| RPCTransactionInput {
-                        PreviousOutpoint: RPCOutpoint {
+                    .map(|input| JsonTestTransactionInput {
+                        PreviousOutpoint: JsonTestOutpoint {
                             TransactionID: input.previous_outpoint.transaction_id.to_string(),
                             Index: input.previous_outpoint.index,
                         },
@@ -424,9 +424,9 @@ pub fn block_to_rpc_block(block: Block) -> RPCBlock {
                 Outputs: tx
                     .outputs
                     .iter()
-                    .map(|output| RPCTransactionOutput {
+                    .map(|output| JsonTestTransactionOutput {
                         Amount: output.value,
-                        ScriptPublicKey: RPCScriptPublicKey {
+                        ScriptPublicKey: JsonTestScriptPublicKey {
                             Version: output.script_public_key.version,
                             Script: output.script_public_key.script().to_hex(),
                         },
@@ -439,6 +439,6 @@ pub fn block_to_rpc_block(block: Block) -> RPCBlock {
                 Mass: tx.mass(),
             })
             .collect(),
-        VerboseData: RPCBlockVerboseData { Hash: block.hash().to_string() },
+        VerboseData: JsonTestBlockVerboseData { Hash: block.hash().to_string() },
     }
 }

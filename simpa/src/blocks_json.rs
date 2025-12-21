@@ -8,7 +8,7 @@ use kaspa_consensus::{consensus::Consensus, params::OverrideParams};
 use kaspa_consensus_core::{api::ConsensusApi, block::Block};
 
 use crate::topologically_ordered_hashes;
-use kaspa_testing_integration::common::json::{block_to_rpc_block, RPCBlock};
+use kaspa_testing_integration::common::json::{block_to_json_test_block, JsonTestBlock};
 
 pub(crate) fn write_blocks_json(params: &Params, consensus: &Consensus, file_path: &str) {
     let file = File::create(file_path).unwrap();
@@ -29,11 +29,11 @@ fn write_go_kaspad_params_json<W: Write>(params: &Params, writer: &mut W) {
 }
 
 fn write_block_json<W: Write>(block: Block, writer: &mut W) {
-    let rpc_block = block_to_rpc_block(block);
-    write_rpc_block_json(rpc_block, writer);
+    let json_test_block = block_to_json_test_block(block);
+    write_json_test_block_json(json_test_block, writer);
 }
 
-fn write_rpc_block_json<W: Write>(block: RPCBlock, writer: &mut W) {
+fn write_json_test_block_json<W: Write>(block: JsonTestBlock, writer: &mut W) {
     serde_json::to_writer(&mut *writer, &block).unwrap();
     writer.write_all(b"\n").unwrap();
 }

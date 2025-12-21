@@ -46,7 +46,7 @@ use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
 use crate::common::json::{json_line_to_block, json_line_to_utxo_pairs, json_trusted_line_to_block_and_gd};
-use common::json::{rpc_header_to_header, KaspadGoParams, RPCBlockHeader};
+use common::json::{json_test_header_to_header, JsonTestBlockHeader, KaspadGoParams};
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
@@ -804,8 +804,8 @@ async fn json_test(file_path: &str, concurrency: bool) {
         let proof_lines = gzip_file_lines(&main_path.join("proof.json.gz"));
         let proof = proof_lines
             .map(|line| {
-                let rpc_headers: Vec<RPCBlockHeader> = serde_json::from_str(&line).unwrap();
-                rpc_headers.iter().map(|rh| Arc::new(rpc_header_to_header(rh))).collect_vec()
+                let json_test_headers: Vec<JsonTestBlockHeader> = serde_json::from_str(&line).unwrap();
+                json_test_headers.iter().map(|rh| Arc::new(json_test_header_to_header(rh))).collect_vec()
             })
             .collect_vec();
 
