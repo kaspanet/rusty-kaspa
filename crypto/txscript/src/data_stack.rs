@@ -270,18 +270,6 @@ impl Stack {
     }
 
     #[inline]
-    pub fn peek_items<const SIZE: usize, T: Debug>(&self) -> Result<[T; SIZE], TxScriptError>
-    where
-        Vec<u8>: OpcodeData<T>,
-    {
-        if self.len() < SIZE {
-            return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
-        }
-        Ok(<[T; SIZE]>::try_from(self.inner[self.len() - SIZE..].iter().map(|v| v.deserialize()).collect::<Result<Vec<T>, _>>()?)
-            .expect("Already exact item"))
-    }
-
-    #[inline]
     pub fn pop_raw<const SIZE: usize>(&mut self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
         if self.len() < SIZE {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
