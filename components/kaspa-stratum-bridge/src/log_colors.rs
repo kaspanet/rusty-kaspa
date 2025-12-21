@@ -64,6 +64,7 @@ impl LogColors {
     }
 
     #[cfg(not(windows))]
+    #[allow(dead_code)]
     fn enable_windows_vt() -> bool {
         true
     }
