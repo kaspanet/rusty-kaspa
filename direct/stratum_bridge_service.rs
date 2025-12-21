@@ -10,7 +10,7 @@ use kaspa_rpc_core::{
     api::rpc::RpcApi, GetBalancesByAddressesRequest, GetBlockTemplateRequest, GetSyncStatusRequest, RpcAddress, SubmitBlockRequest,
 };
 use kaspa_rpc_service::service::RpcCoreService;
-use kaspa_stratum_bridge::{listen_and_serve, BridgeConfig, KaspaApiTrait, prom};
+use kaspa_stratum_bridge::{listen_and_serve, prom, BridgeConfig, KaspaApiTrait};
 use log::{error, info, warn};
 use std::fs;
 use std::sync::Arc;
