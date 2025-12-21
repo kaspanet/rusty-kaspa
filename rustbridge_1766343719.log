@@ -1,0 +1,33 @@
+INFO  kaspa_stratum_bridge: ----------------------------------
+INFO  kaspa_stratum_bridge: initializing bridge (4 instances)
+INFO  kaspa_stratum_bridge: 	kaspad:          127.0.0.1:16110 (shared)
+INFO  kaspa_stratum_bridge: 	block wait:      1s
+INFO  kaspa_stratum_bridge: 	print stats:     true
+INFO  kaspa_stratum_bridge: 	var diff:        true
+INFO  kaspa_stratum_bridge: 	shares per min:  20
+INFO  kaspa_stratum_bridge: 	var diff stats:  true
+INFO  kaspa_stratum_bridge: 	pow2 clamp:      true
+INFO  kaspa_stratum_bridge: 	extranonce:      auto-detected per client
+INFO  kaspa_stratum_bridge: 	health check:    
+INFO  kaspa_stratum_bridge: 	--- Instance 1 ---
+INFO  kaspa_stratum_bridge: 	  stratum:       :5555
+INFO  kaspa_stratum_bridge: 	  min diff:      2048
+INFO  kaspa_stratum_bridge: 	  prom:          :2114
+INFO  kaspa_stratum_bridge: 	  log to file:   true
+INFO  kaspa_stratum_bridge: 	--- Instance 2 ---
+INFO  kaspa_stratum_bridge: 	  stratum:       :5556
+INFO  kaspa_stratum_bridge: 	  min diff:      4096
+INFO  kaspa_stratum_bridge: 	  prom:          :2115
+INFO  kaspa_stratum_bridge: 	  log to file:   true
+INFO  kaspa_stratum_bridge: 	--- Instance 3 ---
+INFO  kaspa_stratum_bridge: 	  stratum:       :5557
+INFO  kaspa_stratum_bridge: 	  min diff:      8192
+INFO  kaspa_stratum_bridge: 	  prom:          :2116
+INFO  kaspa_stratum_bridge: 	  log to file:   true
+INFO  kaspa_stratum_bridge: 	--- Instance 4 ---
+INFO  kaspa_stratum_bridge: 	  stratum:       :5558
+INFO  kaspa_stratum_bridge: 	  min diff:      16384
+INFO  kaspa_stratum_bridge: 	  prom:          :2117
+INFO  kaspa_stratum_bridge: 	  log to file:   true
+INFO  kaspa_stratum_bridge: ----------------------------------
+INFO  kaspa_stratum_bridge::kaspaapi: Connecting to Kaspa node at 127.0.0.1:16110
