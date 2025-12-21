@@ -15,7 +15,7 @@ pub mod wasm;
 pub mod runtime_sig_op_counter;
 
 use crate::caches::Cache;
-use crate::data_stack::{DataStack, Stack};
+use crate::data_stack::Stack;
 use crate::opcodes::{deserialize_next_opcode, OpCodeImplementation};
 use itertools::Itertools;
 use kaspa_consensus_core::hashing::sighash::{
@@ -77,6 +77,11 @@ enum ScriptSource<'a, T: VerifiableTransaction> {
     StandAloneScripts(Vec<&'a [u8]>),
 }
 
+#[derive(Default, Copy, Clone)]
+pub struct EngineFlags {
+    pub covenants_enabled: bool,
+}
+
 pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> {
     dstack: Stack,
     astack: Stack,
@@ -91,6 +96,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
 
     num_ops: i32,
     runtime_sig_op_counter: RuntimeSigOpCounter,
+    flags: EngineFlags,
 }
 
 fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
@@ -223,16 +229,23 @@ pub fn is_unspendable<T: VerifiableTransaction, Reused: SigHashReusedValues>(scr
 
 impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'a, T, Reused> {
     pub fn new(reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
+        let flags = EngineFlags::default(); // TODO: set flags appropriately
         Self {
-            dstack: vec![],
-            astack: vec![],
+            dstack: Self::new_stack(flags),
+            astack: Self::new_stack(flags),
             script_source: ScriptSource::StandAloneScripts(vec![]),
             reused_values,
             sig_cache,
             cond_stack: vec![],
             num_ops: 0,
             runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
+            flags,
         }
+    }
+
+    fn new_stack(flags: EngineFlags) -> Stack {
+        let max_elem_size = if flags.covenants_enabled { MAX_SCRIPT_ELEMENT_SIZE } else { usize::MAX };
+        Stack::new(vec![], max_elem_size)
     }
 
     /// Returns the number of signature operations used in script execution.
@@ -268,23 +281,26 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
         // the user provides
         let is_p2sh = ScriptClass::is_pay_to_script_hash(script_public_key);
+        let flags = EngineFlags::default(); // TODO: set flags appropriately
         assert!(input_idx < tx.tx().inputs.len());
         Self {
-            dstack: Default::default(),
-            astack: Default::default(),
+            dstack: Self::new_stack(flags),
+            astack: Self::new_stack(flags),
             script_source: ScriptSource::TxInput { tx, input, idx: input_idx, utxo_entry, is_p2sh },
             reused_values,
             sig_cache,
             cond_stack: Default::default(),
             num_ops: 0,
             runtime_sig_op_counter: RuntimeSigOpCounter::new(input.sig_op_count),
+            flags,
         }
     }
 
     pub fn from_script(script: &'a [u8], reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
+        let flags = EngineFlags::default(); // TODO: set flags appropriately
         Self {
-            dstack: Default::default(),
-            astack: Default::default(),
+            dstack: Self::new_stack(flags),
+            astack: Self::new_stack(flags),
             script_source: ScriptSource::StandAloneScripts(vec![script]),
             reused_values,
             sig_cache,
@@ -292,6 +308,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             num_ops: 0,
             // Runtime sig op counting is not needed for standalone scripts, only inputs have sig op count value
             runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
+            flags,
         }
     }
 
@@ -386,7 +403,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             return Err(TxScriptError::ScriptSize(s.len(), MAX_SCRIPTS_SIZE));
         }
 
-        let mut saved_stack: Option<Vec<Vec<u8>>> = None;
+        let mut saved_stack: Option<Stack> = None;
         // try_for_each quits only if an error occurred. So, we always run over all scripts if
         // each is successful
         scripts.iter().enumerate().filter(|(_, s)| !s.is_empty()).try_for_each(|(idx, s)| {

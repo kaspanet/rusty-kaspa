@@ -4,7 +4,7 @@ use core::iter;
 use kaspa_txscript_errors::SerializationError;
 use std::cmp::Ordering;
 use std::num::TryFromIntError;
-use std::ops::Deref;
+use std::ops::{Deref, Index};
 
 #[derive(PartialEq, Eq, Debug, Default, PartialOrd, Ord)]
 pub(crate) struct SizedEncodeInt<const LEN: usize>(pub(crate) i64);
@@ -55,26 +55,39 @@ impl<const LEN: usize> From<SizedEncodeInt<LEN>> for i64 {
     }
 }
 
-pub(crate) type Stack = Vec<Vec<u8>>;
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) struct Stack {
+    inner: Vec<Vec<u8>>,
+    max_element_size: usize,
+}
 
-pub(crate) trait DataStack {
-    fn pop_items<const SIZE: usize, T: Debug>(&mut self) -> Result<[T; SIZE], TxScriptError>
-    where
-        Vec<u8>: OpcodeData<T>;
-    #[allow(dead_code)]
-    fn peek_items<const SIZE: usize, T: Debug>(&self) -> Result<[T; SIZE], TxScriptError>
-    where
-        Vec<u8>: OpcodeData<T>;
-    fn pop_raw<const SIZE: usize>(&mut self) -> Result<[Vec<u8>; SIZE], TxScriptError>;
-    fn peek_raw<const SIZE: usize>(&self) -> Result<[Vec<u8>; SIZE], TxScriptError>;
-    fn push_item<T: Debug>(&mut self, item: T) -> Result<(), TxScriptError>
-    where
-        Vec<u8>: OpcodeData<T>;
-    fn drop_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError>;
-    fn dup_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError>;
-    fn over_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError>;
-    fn rot_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError>;
-    fn swap_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError>;
+impl Deref for Stack {
+    type Target = Vec<Vec<u8>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl Index<usize> for Stack {
+    type Output = Vec<u8>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.inner[index]
+    }
+}
+
+impl From<Vec<Vec<u8>>> for Stack {
+    fn from(inner: Vec<Vec<u8>>) -> Self {
+        // TODO: Replace with the correct max element size after the fork.
+        Self { inner, max_element_size: usize::MAX }
+    }
+}
+
+impl From<Stack> for Vec<Vec<u8>> {
+    fn from(stack: Stack) -> Self {
+        stack.inner
+    }
 }
 
 pub(crate) trait OpcodeData<T> {
@@ -223,62 +236,82 @@ impl OpcodeData<bool> for Vec<u8> {
     }
 }
 
-impl DataStack for Stack {
+impl Stack {
+    pub(crate) fn new(inner: Vec<Vec<u8>>, max_element_size: usize) -> Self {
+        Self { inner, max_element_size }
+    }
+
     #[inline]
-    fn pop_items<const SIZE: usize, T: Debug>(&mut self) -> Result<[T; SIZE], TxScriptError>
+    pub fn insert(&mut self, index: usize, element: Vec<u8>) -> Result<(), TxScriptError> {
+        if element.len() > self.max_element_size {
+            return Err(TxScriptError::ElementTooBig(element.len(), self.max_element_size));
+        }
+        self.inner.insert(index, element);
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn get_inner(&self) -> Vec<Vec<u8>> {
+        self.inner.clone()
+    }
+
+    #[inline]
+    pub fn pop_items<const SIZE: usize, T: Debug>(&mut self) -> Result<[T; SIZE], TxScriptError>
     where
         Vec<u8>: OpcodeData<T>,
     {
         if self.len() < SIZE {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
-        Ok(<[T; SIZE]>::try_from(self.split_off(self.len() - SIZE).iter().map(|v| v.deserialize()).collect::<Result<Vec<T>, _>>()?)
-            .expect("Already exact item"))
+        Ok(<[T; SIZE]>::try_from(
+            self.inner.split_off(self.len() - SIZE).iter().map(|v| v.deserialize()).collect::<Result<Vec<T>, _>>()?,
+        )
+        .expect("Already exact item"))
     }
 
     #[inline]
-    fn peek_items<const SIZE: usize, T: Debug>(&self) -> Result<[T; SIZE], TxScriptError>
+    pub fn peek_items<const SIZE: usize, T: Debug>(&self) -> Result<[T; SIZE], TxScriptError>
     where
         Vec<u8>: OpcodeData<T>,
     {
         if self.len() < SIZE {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
-        Ok(<[T; SIZE]>::try_from(self[self.len() - SIZE..].iter().map(|v| v.deserialize()).collect::<Result<Vec<T>, _>>()?)
+        Ok(<[T; SIZE]>::try_from(self.inner[self.len() - SIZE..].iter().map(|v| v.deserialize()).collect::<Result<Vec<T>, _>>()?)
             .expect("Already exact item"))
     }
 
     #[inline]
-    fn pop_raw<const SIZE: usize>(&mut self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
+    pub fn pop_raw<const SIZE: usize>(&mut self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
         if self.len() < SIZE {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
-        Ok(<[Vec<u8>; SIZE]>::try_from(self.split_off(self.len() - SIZE)).expect("Already exact item"))
+        Ok(<[Vec<u8>; SIZE]>::try_from(self.inner.split_off(self.len() - SIZE)).expect("Already exact item"))
     }
 
     #[inline]
-    fn peek_raw<const SIZE: usize>(&self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
+    pub fn peek_raw<const SIZE: usize>(&self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
         if self.len() < SIZE {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
-        Ok(<[Vec<u8>; SIZE]>::try_from(self[self.len() - SIZE..].to_vec()).expect("Already exact item"))
+        Ok(<[Vec<u8>; SIZE]>::try_from(self.inner[self.len() - SIZE..].to_vec()).expect("Already exact item"))
     }
 
     #[inline]
-    fn push_item<T: Debug>(&mut self, item: T) -> Result<(), TxScriptError>
+    pub fn push_item<T: Debug>(&mut self, item: T) -> Result<(), TxScriptError>
     where
         Vec<u8>: OpcodeData<T>,
     {
         let v = OpcodeData::serialize(&item)?;
-        Vec::push(self, v);
+        Vec::push(&mut self.inner, v);
         Ok(())
     }
 
     #[inline]
-    fn drop_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
+    pub fn drop_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= SIZE {
             true => {
-                self.truncate(self.len() - SIZE);
+                self.inner.truncate(self.len() - SIZE);
                 Ok(())
             }
             false => Err(TxScriptError::InvalidStackOperation(SIZE, self.len())),
@@ -286,10 +319,10 @@ impl DataStack for Stack {
     }
 
     #[inline]
-    fn dup_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
+    pub fn dup_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= SIZE {
             true => {
-                self.extend_from_within(self.len() - SIZE..);
+                self.inner.extend_from_within(self.len() - SIZE..);
                 Ok(())
             }
             false => Err(TxScriptError::InvalidStackOperation(SIZE, self.len())),
@@ -297,10 +330,10 @@ impl DataStack for Stack {
     }
 
     #[inline]
-    fn over_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
+    pub fn over_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= 2 * SIZE {
             true => {
-                self.extend_from_within(self.len() - 2 * SIZE..self.len() - SIZE);
+                self.inner.extend_from_within(self.len() - 2 * SIZE..self.len() - SIZE);
                 Ok(())
             }
             false => Err(TxScriptError::InvalidStackOperation(2 * SIZE, self.len())),
@@ -308,11 +341,11 @@ impl DataStack for Stack {
     }
 
     #[inline]
-    fn rot_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
+    pub fn rot_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= 3 * SIZE {
             true => {
-                let drained = self.drain(self.len() - 3 * SIZE..self.len() - 2 * SIZE).collect::<Vec<Vec<u8>>>();
-                self.extend(drained);
+                let drained = self.inner.drain(self.len() - 3 * SIZE..self.len() - 2 * SIZE).collect::<Vec<Vec<u8>>>();
+                self.inner.extend(drained);
                 Ok(())
             }
             false => Err(TxScriptError::InvalidStackOperation(3 * SIZE, self.len())),
@@ -320,15 +353,39 @@ impl DataStack for Stack {
     }
 
     #[inline]
-    fn swap_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
+    pub fn swap_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= 2 * SIZE {
             true => {
-                let drained = self.drain(self.len() - 2 * SIZE..self.len() - SIZE).collect::<Vec<Vec<u8>>>();
-                self.extend(drained);
+                let drained = self.inner.drain(self.len() - 2 * SIZE..self.len() - SIZE).collect::<Vec<Vec<u8>>>();
+                self.inner.extend(drained);
                 Ok(())
             }
             false => Err(TxScriptError::InvalidStackOperation(2 * SIZE, self.len())),
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.inner.clear()
+    }
+
+    pub fn pop(&mut self) -> Option<Vec<u8>> {
+        self.inner.pop()
+    }
+
+    pub fn split_off(&mut self, at: usize) -> Vec<Vec<u8>> {
+        self.inner.split_off(at)
+    }
+
+    pub fn push(&mut self, item: Vec<u8>) -> Result<(), TxScriptError> {
+        if item.len() > self.max_element_size {
+            return Err(TxScriptError::ElementTooBig(item.len(), self.max_element_size));
+        }
+        self.inner.push(item);
+        Ok(())
+    }
+
+    pub fn remove(&mut self, index: usize) -> Vec<u8> {
+        self.inner.remove(index)
     }
 }
 

@@ -2,9 +2,8 @@
 mod macros;
 
 use crate::{
-    data_stack::{DataStack, OpcodeData},
-    ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE,
-    SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
+    data_stack::OpcodeData, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM,
+    NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
 };
 use blake2b_simd::Params;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
@@ -203,8 +202,7 @@ fn push_data<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     data: Vec<u8>,
     vm: &mut TxScriptEngine<T, Reused>,
 ) -> OpCodeResult {
-    vm.dstack.push(data);
-    Ok(())
+    vm.dstack.push(data)
 }
 
 #[inline]
@@ -250,8 +248,7 @@ opcode_list! {
 
     // Data push opcodes.
     opcode |Op0| OpFalse<0x00, 1>(self , vm) {
-        vm.dstack.push(vec![]);
-        Ok(())
+        vm.dstack.push(vec![])
     }
 
     opcode OpData1<0x01, 2>(self, vm) push_data(self.data.clone(), vm)
@@ -436,15 +433,13 @@ opcode_list! {
     // Stack opcodes.
     opcode OpToAltStack<0x6b, 1>(self, vm) {
         let [item] = vm.dstack.pop_raw()?;
-        vm.astack.push(item);
-        Ok(())
+        vm.astack.push(item)
     }
 
     opcode OpFromAltStack<0x6c, 1>(self, vm) {
         match vm.astack.pop() {
             Some(last) => {
-                vm.dstack.push(last);
-                Ok(())
+                vm.dstack.push(last)
             },
             None => Err(TxScriptError::EmptyStack)
         }
@@ -460,7 +455,7 @@ opcode_list! {
     opcode OpIfDup<0x73, 1>(self, vm) {
         let [result] = vm.dstack.peek_raw()?;
         if <Vec<u8> as OpcodeData<bool>>::deserialize(&result)? {
-            vm.dstack.push(result);
+            vm.dstack.push(result)?;
         }
         Ok(())
     }
@@ -487,8 +482,7 @@ opcode_list! {
         if  loc < 0 || loc as usize >= vm.dstack.len() {
             return Err(TxScriptError::InvalidState("pick at an invalid location".to_string()));
         }
-        vm.dstack.push(vm.dstack[vm.dstack.len()-(loc as usize)-1].clone());
-        Ok(())
+        vm.dstack.push(vm.dstack[vm.dstack.len()-(loc as usize)-1].clone())
     }
 
     opcode OpRoll<0x7a, 1>(self, vm) {
@@ -497,8 +491,7 @@ opcode_list! {
             return Err(TxScriptError::InvalidState("roll at an invalid location".to_string()));
         }
         let item = vm.dstack.remove(vm.dstack.len()-(loc as usize)-1);
-        vm.dstack.push(item);
-        Ok(())
+        vm.dstack.push(item)
     }
 
     opcode OpRot<0x7b, 1>(self, vm) vm.dstack.rot_items::<1>()
@@ -507,7 +500,7 @@ opcode_list! {
     opcode OpTuck<0x7d, 1>(self, vm) {
         match vm.dstack.len() >= 2 {
             true => {
-                vm.dstack.insert(vm.dstack.len()-2, vm.dstack.last().expect("We have at least two items").clone());
+                vm.dstack.insert(vm.dstack.len()-2, vm.dstack.last().expect("We have at least two items").clone())?;
                 Ok(())
             }
             false => Err(TxScriptError::InvalidStackOperation(2, vm.dstack.len()))
@@ -544,7 +537,6 @@ opcode_list! {
                     true => vm.dstack.push(vec![1]),
                     false => vm.dstack.push(vec![]),
                 }
-                Ok(())
             }
             false => Err(TxScriptError::InvalidStackOperation(2, vm.dstack.len()))
         }
@@ -726,8 +718,7 @@ opcode_list! {
         let [last] = vm.dstack.pop_raw()?;
         let mut hasher = Sha256::new();
         hasher.update(last);
-        vm.dstack.push(hasher.finalize().to_vec());
-        Ok(())
+        vm.dstack.push(hasher.finalize().to_vec())
     }
 
     opcode OpCheckMultiSigECDSA<0xa9, 1>(self, vm) {
@@ -738,8 +729,7 @@ opcode_list! {
         let [last] = vm.dstack.pop_raw()?;
         //let hash = blake2b(last.as_slice());
         let hash = Params::new().hash_length(32).to_state().update(&last).finalize();
-        vm.dstack.push(hash.as_bytes().to_vec());
-        Ok(())
+        vm.dstack.push(hash.as_bytes().to_vec())
     }
 
     opcode OpCheckSigECDSA<0xab, 1>(self, vm) {
@@ -961,8 +951,7 @@ opcode_list! {
                 let utxo = usize::try_from(idx).ok()
                     .and_then(|idx| tx.utxo(idx))
                     .ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
-                vm.dstack.push(utxo.script_public_key.to_bytes());
-                Ok(())
+                vm.dstack.push(utxo.script_public_key.to_bytes())
             },
             _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
         }
@@ -989,8 +978,7 @@ opcode_list! {
                 let output = usize::try_from(idx).ok()
                     .and_then(|idx| tx.outputs().get(idx))
                     .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
-                vm.dstack.push(output.script_public_key.to_bytes());
-                Ok(())
+                vm.dstack.push(output.script_public_key.to_bytes())
             },
             _ => Err(TxScriptError::InvalidSource("OpOutputSpk only applies to transaction inputs".to_string()))
         }
@@ -1087,13 +1075,13 @@ mod test {
     };
 
     struct TestCase<'a> {
-        init: Stack,
+        init: Vec<Vec<u8>>,
         code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>, SigHashReusedValuesUnsync>>,
-        dstack: Stack,
+        dstack: Vec<Vec<u8>>,
     }
 
     struct ErrorTestCase<'a> {
-        init: Stack,
+        init: Vec<Vec<u8>>,
         code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>, SigHashReusedValuesUnsync>>,
         error: TxScriptError,
     }
@@ -1102,10 +1090,12 @@ mod test {
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
         for TestCase { init, code, dstack } in tests {
+            let init: Stack = init.into();
+            let dstack = dstack.into();
             let mut vm = TxScriptEngine::new(&reused_values, &cache);
             vm.dstack = init.clone();
             code.execute(&mut vm).unwrap_or_else(|_| panic!("Opcode {} should not fail", code.value()));
-            assert_eq!(*vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
+            assert_eq!(vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
         }
     }
 
@@ -1114,7 +1104,7 @@ mod test {
         let reused_values = SigHashReusedValuesUnsync::new();
         for ErrorTestCase { init, code, error } in tests {
             let mut vm = TxScriptEngine::new(&reused_values, &cache);
-            vm.dstack.clone_from(&init);
+            vm.dstack = init.clone().into();
             assert_eq!(
                 code.execute(&mut vm)
                     .expect_err(format!("Opcode {} should have errored (init: {:?})", code.value(), init.clone()).as_str()),
@@ -2851,7 +2841,7 @@ mod test {
             let mut tx = base_tx.clone();
             tx.0.lock_time = tx_lock_time;
             let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache);
-            vm.dstack = vec![lock_time.clone()];
+            vm.dstack = vec![lock_time.clone()].into();
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
                 Ok(()) => assert!(
@@ -2893,7 +2883,7 @@ mod test {
             let mut input = base_input.clone();
             input.sequence = tx_sequence;
             let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache);
-            vm.dstack = vec![sequence.clone()];
+            vm.dstack = vec![sequence.clone()].into();
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
                 Ok(()) => {
@@ -2998,7 +2988,7 @@ mod test {
     mod kip10 {
         use super::*;
         use crate::{
-            data_stack::{DataStack, OpcodeData},
+            data_stack::OpcodeData,
             opcodes::{codes::*, push_number},
             pay_to_script_hash_script,
             script_builder::ScriptBuilder,
@@ -3116,10 +3106,10 @@ mod test {
 
                             // Check the result matches expectations
                             if let Some(ref expected_spk) = expected_result.expected_spk {
-                                assert_eq!(vm.dstack, vec![expected_spk.clone()]);
+                                assert_eq!(vm.dstack.get_inner(), vec![expected_spk.clone()]);
                             }
                             if let Some(ref expected_amount) = expected_result.expected_amount {
-                                assert_eq!(vm.dstack, vec![expected_amount.clone()]);
+                                assert_eq!(vm.dstack.get_inner(), vec![expected_amount.clone()]);
                             }
                             vm.dstack.clear();
                         }
@@ -3325,7 +3315,7 @@ mod test {
                 // Test input count
                 op_input_count.execute(&mut vm).unwrap();
                 assert_eq!(
-                    vm.dstack,
+                    vm.dstack.get_inner(),
                     vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(input_count as i64)).unwrap()],
                     "Input count mismatch for {} inputs",
                     input_count
@@ -3335,7 +3325,7 @@ mod test {
                 // Test output count
                 op_output_count.execute(&mut vm).unwrap();
                 assert_eq!(
-                    vm.dstack,
+                    vm.dstack.get_inner(),
                     vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(output_count as i64)).unwrap()],
                     "Output count mismatch for {} outputs",
                     output_count
