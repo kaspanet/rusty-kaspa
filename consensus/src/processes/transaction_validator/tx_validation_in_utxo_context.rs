@@ -35,7 +35,6 @@ impl TransactionValidator {
         &self,
         tx: &(impl VerifiableTransaction + Sync),
         pov_daa_score: u64,
-        block_daa_score: u64,
         flags: TxValidationFlags,
         mass_and_feerate_threshold: Option<(u64, f64)>,
     ) -> TxResult<u64> {
@@ -43,8 +42,7 @@ impl TransactionValidator {
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         let fee = total_in - total_out;
-        if flags != TxValidationFlags::SkipMassCheck && self.crescendo_activation.is_active(block_daa_score) {
-            // Storage mass hardfork was activated
+        if flags != TxValidationFlags::SkipMassCheck {
             self.check_mass_commitment(tx)?;
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;

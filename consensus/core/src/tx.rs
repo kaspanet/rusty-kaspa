@@ -198,6 +198,22 @@ impl Transaction {
         tx
     }
 
+    pub fn new_with_mass(
+        version: u16,
+        inputs: Vec<TransactionInput>,
+        outputs: Vec<TransactionOutput>,
+        lock_time: u64,
+        subnetwork_id: SubnetworkId,
+        gas: u64,
+        payload: Vec<u8>,
+        mass: u64,
+    ) -> Self {
+        let mut tx = Self::new_non_finalized(version, inputs, outputs, lock_time, subnetwork_id, gas, payload);
+        tx.set_mass(mass);
+        tx.finalize();
+        tx
+    }
+
     pub fn new_non_finalized(
         version: u16,
         inputs: Vec<TransactionInput>,
