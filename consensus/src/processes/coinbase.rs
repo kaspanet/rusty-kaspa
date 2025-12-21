@@ -457,12 +457,15 @@ mod tests {
                 expected: u64,
             }
 
-            let tests = vec![
-                Test { name: "first mined block", daa_score: 1, expected: pre_deflationary_phase_base_subsidy },
+            let mut tests = vec![
                 Test {
-                    name: "before deflationary phase",
-                    daa_score: params.deflationary_phase_daa_score - 1,
-                    expected: pre_deflationary_phase_base_subsidy,
+                    name: "first mined block",
+                    daa_score: 1,
+                    expected: if params.deflationary_phase_daa_score > 0 {
+                        pre_deflationary_phase_base_subsidy
+                    } else {
+                        deflationary_phase_initial_subsidy
+                    },
                 },
                 Test {
                     name: "start of deflationary phase",
@@ -500,6 +503,14 @@ mod tests {
                     expected: 0,
                 },
             ];
+
+            if params.deflationary_phase_daa_score > 0 {
+                tests.push(Test {
+                    name: "before deflationary phase",
+                    daa_score: params.deflationary_phase_daa_score - 1,
+                    expected: pre_deflationary_phase_base_subsidy,
+                });
+            }
 
             for t in tests {
                 assert_eq!(cbm.calc_block_subsidy(t.daa_score), t.expected, "{} test '{}' failed", network_id, t.name);
