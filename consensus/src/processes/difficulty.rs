@@ -4,7 +4,7 @@ use crate::model::stores::{
     headers::HeaderStoreReader,
 };
 use kaspa_consensus_core::{
-    config::params::{ForkActivation, MAX_DIFFICULTY_TARGET_AS_F64},
+    config::params::MAX_DIFFICULTY_TARGET_AS_F64,
     errors::difficulty::{DifficultyError, DifficultyResult},
     BlockHashSet, BlueWorkType, MAX_WORK_LEVEL,
 };
@@ -143,8 +143,7 @@ fn difficulty_desc(target: Uint320) -> String {
     format!("{:.2} {}", rate, suffix)
 }
 
-/// A difficulty manager implementing [KIP-0004](https://github.com/kaspanet/kips/blob/master/kip-0004.md),
-/// so based on sampled windows
+/// A difficulty manager based on sampled block windows, implementing [KIP-0004](https://github.com/kaspanet/kips/blob/master/kip-0004.md)
 #[derive(Clone)]
 pub struct SampledDifficultyManager<T: HeaderStoreReader, U: GhostdagStoreReader> {
     headers_store: Arc<T>,
@@ -155,14 +154,10 @@ pub struct SampledDifficultyManager<T: HeaderStoreReader, U: GhostdagStoreReader
     difficulty_window_size: usize,
     min_difficulty_window_size: usize,
     difficulty_sample_rate: u64,
-    prior_target_time_per_block: u64,
     target_time_per_block: u64,
-    crescendo_activation: ForkActivation,
-    crescendo_logger: CrescendoLogger,
 }
 
 impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U> {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         headers_store: Arc<T>,
         ghostdag_store: Arc<U>,
@@ -172,9 +167,7 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
         difficulty_window_size: usize,
         min_difficulty_window_size: usize,
         difficulty_sample_rate: u64,
-        prior_target_time_per_block: u64,
         target_time_per_block: u64,
-        crescendo_activation: ForkActivation,
     ) -> Self {
         Self::check_min_difficulty_window_size(difficulty_window_size, min_difficulty_window_size);
         Self {
@@ -186,10 +179,7 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
             difficulty_window_size,
             min_difficulty_window_size,
             difficulty_sample_rate,
-            prior_target_time_per_block,
             target_time_per_block,
-            crescendo_activation,
-            crescendo_logger: CrescendoLogger::new(),
         }
     }
 
