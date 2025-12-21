@@ -897,7 +897,18 @@ opcode_list! {
 
     // Introspection opcodes
     // Transaction level opcodes (following Transaction struct field order)
-    opcode OpTxVersion<0xb2, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxVersion<0xb2, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    push_number(tx.tx().version as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpTxVersion only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+        }
+    }
     opcode OpTxInputCount<0xb3, 1>(self, vm) {
         match vm.script_source {
             ScriptSource::TxInput{tx, ..} => {
@@ -914,10 +925,54 @@ opcode_list! {
             _ => Err(TxScriptError::InvalidSource("OpOutputCount only applies to transaction inputs".to_string()))
         }
     }
-    opcode OpTxLockTime<0xb5, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
-    opcode OpTxSubnetId<0xb6, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
-    opcode OpTxGas<0xb7, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
-    opcode OpTxPayload<0xb8, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxLockTime<0xb5, 1>(self, vm){
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    push_number(tx.tx().lock_time as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpTxLockTime only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+        }
+    }
+    opcode OpTxSubnetId<0xb6, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    push_data(tx.tx().subnetwork_id.into(), vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpTxSubnetId only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+        }
+    }
+    opcode OpTxGas<0xb7, 1>(self, vm){
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    push_number(tx.tx().gas as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpTxGas only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+        }
+    }
+    opcode OpTxPayloadLen<0xb8, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    push_number(tx.tx().payload.len() as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpTxPayloadLen only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+        }
+    }
     // Input related opcodes (following TransactionInput struct field order)
     opcode OpTxInputIndex<0xb9, 1>(self, vm) {
         match vm.script_source {
@@ -1157,11 +1212,6 @@ mod test {
             opcodes::OpVerNotIf::empty().expect("Should accept empty"),
             opcodes::OpReserved1::empty().expect("Should accept empty"),
             opcodes::OpReserved2::empty().expect("Should accept empty"),
-            opcodes::OpTxVersion::empty().expect("Should accept empty"),
-            opcodes::OpTxLockTime::empty().expect("Should accept empty"),
-            opcodes::OpTxSubnetId::empty().expect("Should accept empty"),
-            opcodes::OpTxGas::empty().expect("Should accept empty"),
-            opcodes::OpTxPayload::empty().expect("Should accept empty"),
             opcodes::OpOutpointTxId::empty().expect("Should accept empty"),
             opcodes::OpOutpointIndex::empty().expect("Should accept empty"),
             opcodes::OpTxInputScriptSig::empty().expect("Should accept empty"),
