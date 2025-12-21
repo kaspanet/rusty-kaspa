@@ -1,26 +1,29 @@
-// Copyright 2025 RISC Zero, Inc.
-//
-// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
-// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
-// http://opensource.org/licenses/MIT>, at your option. This file may not be
-// copied, modified, or distributed except according to those terms.
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-// SPDX-License-Identifier: Apache-2.0 OR MIT
-
-//! Manages the output and cryptographic data for a proven computation.
-use crate::zk_precompiles::ZkIntegrityError;
-mod benchmarks;
-pub mod groth16;
-mod merkle;
+use crate::{
+    data_stack::{DataStack, Stack},
+    zk_precompiles::{
+        ZkPrecompile, error::ZkIntegrityError, risc0::{ inner::Inner, receipt_claim::compute_assert_claim}
+    },
+};
+use kaspa_txscript_errors::TxScriptError;
+use risc0_zkp::core::digest::Digest;
+mod inner;
 mod receipt_claim;
-pub mod succinct;
+mod merkle;
+mod error;
+pub struct R0SuccinctPrecompile;
+pub use error::R0Error;
+impl ZkPrecompile for R0SuccinctPrecompile {
+    type Error = R0Error;
+    fn verify_zk(dstack: &mut Stack) -> Result<(), Self::Error> {
+        let [image_id] = dstack.pop_raw()?;
+        let [journal] = dstack.pop_raw()?;
+        let [proof_data] = dstack.pop_raw()?;
 
-pub trait R0IntegrityVerifier {
-    fn verify_integrity(&self) -> Result<(), ZkIntegrityError>;
+        let inner: Inner = borsh::from_slice(&proof_data)?;
+        let image_id: Digest = Digest::try_from(image_id).map_err(R0Error::Digest)?;
+        let journal: Digest = Digest::try_from(journal).map_err(R0Error::Digest)?;
+        // Verify that the claim comes from the provided image id
+        compute_assert_claim(inner.claim(), image_id, journal).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))?;
+        inner.verify_integrity()
+    }
 }

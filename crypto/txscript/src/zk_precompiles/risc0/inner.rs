@@ -25,8 +25,8 @@ use risc0_zkp::{adapter::CircuitInfo, core::digest::Digest, verify::Verification
 use serde::Serialize;
 
 use crate::zk_precompiles::error::ZkIntegrityError;
+use crate::zk_precompiles::risc0::R0Error;
 use crate::zk_precompiles::risc0::merkle::MerkleProof;
-use crate::zk_precompiles::risc0::R0IntegrityVerifier;
 /// A succinct receipt, produced via recursion, proving the execution of the zkVM with a [STARK].
 ///
 /// Using recursion, a [CompositeReceipt][crate::CompositeReceipt] can be compressed to form a
@@ -75,10 +75,10 @@ impl Inner {
     }
 }
 
-impl R0IntegrityVerifier for Inner {
+impl Inner {
     /// Verify the integrity of this receipt, ensuring the claim is attested
     /// to by the seal.
-    fn verify_integrity(&self) -> Result<(), ZkIntegrityError> {
+    pub fn verify_integrity(&self) -> Result<(), R0Error> {
         let suites: BTreeMap<String, HashSuite<risc0_zkp::field::baby_bear::BabyBear>> = BTreeMap::from([
             ("blake2b".into(), Blake2bCpuHashSuite::new_suite()),
             ("poseidon2".into(), Poseidon2HashSuite::new_suite()),

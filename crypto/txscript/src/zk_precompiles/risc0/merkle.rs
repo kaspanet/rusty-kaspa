@@ -23,7 +23,7 @@ use risc0_core::field::baby_bear::BabyBear;
 use risc0_zkp::core::{digest::Digest, hash::HashFn};
 use serde::{Deserialize, Serialize};
 
-use crate::zk_precompiles::error::ZkIntegrityError;
+use crate::zk_precompiles::{error::ZkIntegrityError, risc0::R0Error};
 
 /// An inclusion proof for the [MerkleGroup]. Used to verify inclusion of a
 /// given recursion program in the committed set.
@@ -40,11 +40,11 @@ pub struct MerkleProof {
 
 impl MerkleProof {
     /// Verify the Merkle inclusion proof against the given leaf and root.
-    pub fn verify(&self, leaf: &Digest, root: &Digest, hashfn: &dyn HashFn<BabyBear>) -> Result<(), ZkIntegrityError> {
+    pub fn verify(&self, leaf: &Digest, root: &Digest, hashfn: &dyn HashFn<BabyBear>) -> Result<(), R0Error> {
         if self.root(leaf, hashfn) == *root {
             return Ok(());
         }
-        Err(ZkIntegrityError::Merkle)
+        Err(R0Error::Merkle)
     }
 
     /// Calculate the root of this branch by iteratively hashing, starting from the leaf.

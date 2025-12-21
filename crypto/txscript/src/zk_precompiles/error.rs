@@ -4,6 +4,10 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ZkIntegrityError {
+    #[error("Groth16 error: {0}")]
+    Groth16(#[from] crate::zk_precompiles::groth16::Groth16Error),
+    #[error("R0 error: {0}")]
+    R0Error(#[from] crate::zk_precompiles::risc0::R0Error),
     #[error("ZK verification failed: {0}")]
     R0Verification(String),
     #[error("Std io error: {0}")]
@@ -16,6 +20,7 @@ pub enum ZkIntegrityError {
     Merkle,
     #[error("Unknown tag: {0}")]
     UnknownTag(u8),
+
 }
 
 impl From<VerificationError> for ZkIntegrityError {

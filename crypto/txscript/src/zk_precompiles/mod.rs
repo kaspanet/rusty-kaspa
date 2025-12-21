@@ -1,18 +1,19 @@
 mod error;
 mod risc0;
+mod groth16;
+mod benchmarks;
 mod tags;
 use crate::{
     data_stack::{DataStack, Stack},
     zk_precompiles::{
-        error::ZkIntegrityError,
-        risc0::{groth16::R0Groth16Precompile, succinct::R0SuccinctPrecompile},
-        tags::ZkTag,
+        error::ZkIntegrityError, groth16::Groth16Precompile, risc0::R0SuccinctPrecompile, tags::ZkTag
     },
 };
 use kaspa_txscript_errors::TxScriptError;
 
 trait ZkPrecompile {
-    fn verify_zk(dstack: &mut Stack) -> Result<(), ZkIntegrityError>;
+    type Error: Into<ZkIntegrityError> + std::fmt::Display;
+    fn verify_zk(dstack: &mut Stack) -> Result<(),Self::Error>;
 }
 
 pub fn parse_tag(dstack: &mut Stack) -> Result<ZkTag, TxScriptError> {
@@ -28,7 +29,7 @@ pub fn parse_tag(dstack: &mut Stack) -> Result<ZkTag, TxScriptError> {
 pub fn verify_zk(tag: ZkTag, dstack: &mut Stack) -> Result<(), TxScriptError> {
     // Matcth the tag and verify the proof accordingly
     match tag {
-        ZkTag::R0Groth16 => R0Groth16Precompile::verify_zk(dstack).map_err(|e| TxScriptError::ZkIntegrity(e.to_string())),
+        ZkTag::R0Groth16 => Groth16Precompile::verify_zk(dstack).map_err(|e| TxScriptError::ZkIntegrity(e.to_string())),
         ZkTag::R0Succinct => R0SuccinctPrecompile::verify_zk(dstack).map_err(|e| TxScriptError::ZkIntegrity(e.to_string())),
     }
 }

@@ -18,7 +18,7 @@ use risc0_binfmt::{tagged_struct, Digestible, ExitCode, SystemState};
 use risc0_zkp::core::{digest::Digest, hash::sha::Sha256};
 use serde::{Deserialize, Serialize};
 
-use crate::zk_precompiles::error::ZkIntegrityError;
+use crate::zk_precompiles::{error::ZkIntegrityError, risc0::R0Error};
 
 /// Public claims about a zkVM guest execution, such as the journal committed to by the guest.
 ///
@@ -47,7 +47,7 @@ struct ReceiptClaim {
 
 /// Construct a [ReceiptClaim] representing a zkVM execution that ended normally (i.e.
 /// Halted(0)) with the given image ID and journal.
-pub fn compute_assert_claim(claim: &Digest, image_id: Digest, journal_hash: Digest) -> Result<(), ZkIntegrityError> {
+pub fn compute_assert_claim(claim: &Digest, image_id: Digest, journal_hash: Digest) -> Result<(), R0Error> {
     let computed_claim = ReceiptClaim {
         pre: image_id,
         post: SystemState { pc: 0, merkle_root: Digest::ZERO },
@@ -59,10 +59,7 @@ pub fn compute_assert_claim(claim: &Digest, image_id: Digest, journal_hash: Dige
 
     // If the claim does not match the computed claim, return an error
     if *claim != computed_claim {
-        return Err(ZkIntegrityError::R0Verification(format!(
-            "Claim: {:?} does not match the computed claim digest: {:?}",
-            claim, computed_claim
-        )));
+        return Err(R0Error::VerificationFailed);
     }
     Ok(())
 }
