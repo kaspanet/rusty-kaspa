@@ -1,6 +1,16 @@
-# RustBridge Multi-Instance Test Configuration
-# This configuration runs 4 instances for testing the multi-instance feature
-# All instances share the same Kaspa node (kaspad_address)
+# RustBridge Configuration
+# =======================
+# This file supports TWO modes:
+# 1) Single-instance (legacy / simple)
+# 2) Multi-instance (recommended if you want multiple stratum ports / different starting diffs)
+#
+# IMPORTANT NOTE ABOUT VarDiff:
+# - VarDiff is PER CONNECTION (per miner/worker), based on observed accepted shares over time.
+# - Miners usually do NOT reliably report their exact ASIC model. VarDiff does not depend on model names.
+# - `min_share_diff` is the STARTING difficulty for a connection; VarDiff will adjust it up/down to hit `shares_per_min`.
+#
+# You can keep one instance and let VarDiff adapt for all miners, or run multiple instances if you want
+# different starting diffs / ports / Prometheus endpoints.
 
 # ============================================
 # GLOBAL SETTINGS (shared by all instances)
@@ -13,7 +23,7 @@
 kaspad_address: "127.0.0.1:16110"
 
 # Block template wait time in milliseconds (shared)
-# How long to wait between checking for new block templates
+# How long to wait between checking for new block templates (polling / fallback ticker)
 block_wait_time: 1000
 
 # Print statistics to console (shared)
@@ -22,50 +32,59 @@ print_stats: true
 # Default log to file setting (can be overridden per-instance)
 log_to_file: true
 
-# Health check server port (optional, leave empty to disable)
-# This is a GLOBAL health check endpoint
+# Health check server bind address (optional, leave empty to disable)
+# Examples:
+# - ":8080"           (bind all interfaces)
+# - "127.0.0.1:8080"  (bind localhost only)
+# This is a GLOBAL health check endpoint (shared across instances).
 health_check_port: ""
 
 # Variable difficulty settings (defaults, can be overridden per-instance)
-var_diff: false
+# - var_diff: enable/disable VarDiff
+# - shares_per_min: target accepted shares per minute per connection (e.g. 10-30)
+# - var_diff_stats: if true, logs diff adjustments (can be noisy with many miners)
+var_diff: true
 shares_per_min: 20
-var_diff_stats: false
+var_diff_stats: true
 
 # Power-of-2 difficulty clamping (default, can be overridden per-instance)
+# If true, VarDiff rounds difficulties to powers of 2 (often more stable / ASIC-friendly).
 pow2_clamp: true
 
-# Extranonce size (auto-detected per client, this is just for backward compatibility)
+# Extranonce size is auto-detected per client based on miner behavior.
+# This field is kept for backward compatibility and is generally safe to leave as-is.
 extranonce_size: 2
 
 # ============================================
-# INSTANCE CONFIGURATIONS
+# INSTANCE CONFIGURATIONS (multi-instance mode)
 # ============================================
 # Each instance runs independently with its own:
 # - Stratum port (REQUIRED, must be unique)
-# - Minimum share difficulty (REQUIRED)
+# - Starting share difficulty (REQUIRED) -> VarDiff adjusts per connection around this
 # - Prometheus port (OPTIONAL, per-instance)
 # - Log to file (OPTIONAL, per-instance, defaults to global setting)
+# - Optional overrides: var_diff / shares_per_min / var_diff_stats / pow2_clamp
 
 instances:
-  # Instance 1: Low difficulty pool (for smaller miners or testing)
+  # Instance 1: Lower starting difficulty (good default if you have mixed/unknown miners)
   - stratum_port: ":5555"
     min_share_diff: 2048
     prom_port: ":2114"
     log_to_file: true
 
-  # Instance 2: Medium difficulty pool
+  # Instance 2: Medium starting difficulty
   - stratum_port: ":5556"
     min_share_diff: 4096
     prom_port: ":2115"
     log_to_file: true
 
-  # Instance 3: High difficulty pool (for powerful miners)
+  # Instance 3: Higher starting difficulty
   - stratum_port: ":5557"
     min_share_diff: 8192
     prom_port: ":2116"
     log_to_file: true
 
-  # Instance 4: Very high difficulty pool (for very powerful miners)
+  # Instance 4: Very high starting difficulty
   - stratum_port: ":5558"
     min_share_diff: 16384
     prom_port: ":2117"
@@ -73,26 +92,61 @@ instances:
     # Optional: instance-specific overrides
     # var_diff: true
     # shares_per_min: 30
+    # var_diff_stats: false
+    # pow2_clamp: true
 
 # ============================================
-# TESTING NOTES
+# SINGLE-INSTANCE MODE (optional)
 # ============================================
-# To test this configuration:
-# 1. Ensure your Kaspa node is running on 127.0.0.1:16110
-# 2. Run: cargo run --release (or ./target/release/rustbridge.exe on Windows)
-# 3. You should see logs showing all 4 instances starting:
-#    - [Instance 1] Starting on stratum port :5555
-#    - [Instance 2] Starting on stratum port :5556
-#    - [Instance 3] Starting on stratum port :5557
-#    - [Instance 4] Starting on stratum port :5558
-# 4. Connect miners to:
-#    - Instance 1: localhost:5555 (min_share_diff: 2048) - Low difficulty
-#    - Instance 2: localhost:5556 (min_share_diff: 4096) - Medium difficulty
-#    - Instance 3: localhost:5557 (min_share_diff: 8192) - High difficulty
-#    - Instance 4: localhost:5558 (min_share_diff: 16384) - Very high difficulty
-# 5. Check Prometheus metrics:
-#    - Instance 1: http://localhost:2114/metrics
-#    - Instance 2: http://localhost:2115/metrics
-#    - Instance 3: http://localhost:2116/metrics
-#    - Instance 4: http://localhost:2117/metrics
-# 6. All logs will include instance identifiers like [Instance 1], [Instance 2], etc.
+# If you remove the `instances:` array, these legacy top-level keys are supported instead:
+#
+# stratum_port: ":5555"
+# min_share_diff: 8192
+# prom_port: ":2114"
+#
+# In single-instance mode, the global settings above still apply.
+
+# ============================================
+# RECOMMENDED PRESETS (copy/paste ideas)
+# ============================================
+# You can use these as starting points. The “right” values depend on your miner mix and how much
+# shares traffic you want to handle.
+#
+# Key intuition:
+# - Lower `shares_per_min` => fewer shares, lower CPU/network overhead, slower VarDiff convergence
+# - Higher `shares_per_min` => more shares, faster convergence, more overhead
+# - `pow2_clamp: true` is usually a good default for stability
+#
+# ---- Preset A: Conservative / low overhead (good for first deployments) ----
+# var_diff: true
+# shares_per_min: 10
+# var_diff_stats: false
+# pow2_clamp: true
+# Suggested starting diffs (single instance):
+# min_share_diff: 4096   # mixed miners; VarDiff adapts
+#
+# ---- Preset B: Balanced (recommended default) ----
+# var_diff: true
+# shares_per_min: 20
+# var_diff_stats: false  # enable temporarily while tuning
+# pow2_clamp: true
+# Suggested starting diffs:
+# min_share_diff: 8192   # or 4096 if you have many small miners
+#
+# ---- Preset C: Fast convergence / testing ----
+# var_diff: true
+# shares_per_min: 30
+# var_diff_stats: true   # noisy, but great for verifying adjustments during tests
+# pow2_clamp: true
+# Suggested starting diffs:
+# min_share_diff: 2048   # start low so you quickly see VarDiff adjust up for strong miners
+#
+# ============================================
+# TESTING CHECKLIST (works even if you only own 1 ASIC)
+# ============================================
+# 1) Set `var_diff_stats: true` temporarily.
+# 2) Run the bridge, connect your miner, wait ~1–2 minutes.
+# 3) Confirm you see VarDiff log lines like:
+#    "VarDiff: XX.X spm (target YY.Y) ... diff A -> B"
+# 4) Confirm the miner accepts difficulty updates and continues submitting shares.
+# 5) After validating, set `var_diff_stats: false` for quieter logs.

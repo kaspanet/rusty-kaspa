@@ -1,10 +1,10 @@
+use crate::constants::{WRITE_TIMEOUT, WRITE_MAX_RETRIES, WRITE_RETRY_DELAY};
 use crate::jsonrpc_event::{JsonRpcEvent, JsonRpcResponse};
 use crate::log_colors::LogColors;
 use hex;
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -116,96 +116,42 @@ impl StratumContext {
             return Err(ErrorDisconnected);
         }
 
-        let json = serde_json::to_string(&response).map_err(|_| ErrorDisconnected)?;
+        let json = serde_json::to_string(&response)
+            .map_err(|_| ErrorDisconnected)?;
         let data = format!("{}\n", json);
 
         // Get client context for detailed logging
         let wallet_addr = self.wallet_addr.lock().clone();
         let worker_name = self.worker_name.lock().clone();
         let remote_app = self.remote_app.lock().clone();
-
+        
         // Log outgoing response at DEBUG level (detailed logs moved to debug)
         tracing::debug!("{}", LogColors::bridge_to_asic("========================================"));
         tracing::debug!("{}", LogColors::bridge_to_asic("===== SENDING RESPONSE TO ASIC ===== "));
         tracing::debug!("{}", LogColors::bridge_to_asic("========================================"));
         tracing::debug!("{} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("Client Information:"));
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - IP Address:"),
-            format!("{}:{}", self.remote_addr, self.remote_port)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Wallet Address:"),
-            format!("'{}'", wallet_addr)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Worker Name:"),
-            format!("'{}'", worker_name)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Miner Application:"),
-            format!("'{}'", remote_app)
-        );
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - IP Address:"), format!("{}:{}", self.remote_addr, self.remote_port));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Wallet Address:"), format!("'{}'", wallet_addr));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Worker Name:"), format!("'{}'", worker_name));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Miner Application:"), format!("'{}'", remote_app));
         tracing::debug!("{} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("Response Details:"));
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Response ID:"),
-            format!("{:?}", response.id)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Response Type:"),
-            "JSON-RPC Response"
-        );
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Response ID:"), format!("{:?}", response.id));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Response Type:"), "JSON-RPC Response");
         if let Some(ref result) = response.result {
             let result_str = serde_json::to_string(result).unwrap_or_else(|_| "N/A".to_string());
             tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Result:"), result_str);
-            tracing::debug!(
-                "{} {} {}",
-                LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-                LogColors::label("  - Result Length:"),
-                format!("{} characters", result_str.len())
-            );
+            tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Result Length:"), format!("{} characters", result_str.len()));
         }
         if let Some(ref error) = response.error {
             let error_str = serde_json::to_string(error).unwrap_or_else(|_| "N/A".to_string());
             tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::error("  - Error:"), error_str);
-            tracing::debug!(
-                "{} {} {}",
-                LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-                LogColors::label("  - Error Length:"),
-                format!("{} characters", error_str.len())
-            );
+            tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Error Length:"), format!("{} characters", error_str.len()));
         }
         tracing::debug!("{} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("Message Data:"));
         tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Raw JSON:"), json);
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - JSON Length:"),
-            format!("{} characters", json.len())
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Total Bytes (with newline):"),
-            format!("{} bytes", data.len())
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Raw Bytes (hex):"),
-            hex::encode(data.as_bytes())
-        );
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - JSON Length:"), format!("{} characters", json.len()));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Total Bytes (with newline):"), format!("{} bytes", data.len()));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Raw Bytes (hex):"), hex::encode(data.as_bytes()));
         tracing::debug!("{}", LogColors::bridge_to_asic("========================================"));
 
         self.write_data(data.as_bytes()).await?;
@@ -218,7 +164,8 @@ impl StratumContext {
             return Err(ErrorDisconnected);
         }
 
-        let json = serde_json::to_string(&event).map_err(|_| ErrorDisconnected)?;
+        let json = serde_json::to_string(&event)
+            .map_err(|_| ErrorDisconnected)?;
         let data = format!("{}\n", json);
 
         // Get client context for detailed logging
@@ -226,118 +173,53 @@ impl StratumContext {
         let worker_name = self.worker_name.lock().clone();
         let remote_app = self.remote_app.lock().clone();
         let params_str = serde_json::to_string(&event.params).unwrap_or_else(|_| "[]".to_string());
-
+        
         // Log outgoing event at DEBUG level (detailed logs moved to debug)
         tracing::debug!("{}", LogColors::bridge_to_asic("========================================"));
         tracing::debug!("{}", LogColors::bridge_to_asic("===== SENDING EVENT TO ASIC ===== "));
         tracing::debug!("{}", LogColors::bridge_to_asic("========================================"));
         tracing::debug!("{} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("Client Information:"));
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - IP Address:"),
-            format!("{}:{}", self.remote_addr, self.remote_port)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Wallet Address:"),
-            format!("'{}'", wallet_addr)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Worker Name:"),
-            format!("'{}'", worker_name)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Miner Application:"),
-            format!("'{}'", remote_app)
-        );
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - IP Address:"), format!("{}:{}", self.remote_addr, self.remote_port));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Wallet Address:"), format!("'{}'", wallet_addr));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Worker Name:"), format!("'{}'", worker_name));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Miner Application:"), format!("'{}'", remote_app));
         tracing::debug!("{} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("Event Details:"));
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Method:"),
-            format!("'{}'", event.method)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Event ID:"),
-            format!("{:?}", event.id)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - JSON-RPC Version:"),
-            format!("'{}'", event.jsonrpc)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Format:"),
-            "Standard JSON-RPC (with jsonrpc field)"
-        );
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Method:"), format!("'{}'", event.method));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Event ID:"), format!("{:?}", event.id));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - JSON-RPC Version:"), format!("'{}'", event.jsonrpc));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Format:"), "Standard JSON-RPC (with jsonrpc field)");
         tracing::debug!("{} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("Parameters:"));
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Params Count:"),
-            event.params.len()
-        );
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Params Count:"), event.params.len());
         tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Params JSON:"), params_str);
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Params Length:"),
-            format!("{} characters", params_str.len())
-        );
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Params Length:"), format!("{} characters", params_str.len()));
         // Log each param individually
         for (idx, param) in event.params.iter().enumerate() {
             let param_str = serde_json::to_string(param).unwrap_or_else(|_| "N/A".to_string());
-            let param_type = if param.is_string() {
+            let param_type = if param.is_string() { 
                 "String".to_string()
-            } else if param.is_number() {
+            } 
+            else if param.is_number() { 
                 "Number".to_string()
-            } else if param.is_array() {
+            } 
+            else if param.is_array() { 
                 "Array".to_string()
-            } else if param.is_object() {
+            } 
+            else if param.is_object() { 
                 "Object".to_string()
-            } else if param.is_boolean() {
+            } 
+            else if param.is_boolean() { 
                 "Boolean".to_string()
-            } else {
+            } 
+            else { 
                 "Null".to_string()
             };
-            tracing::debug!(
-                "{} {} {}",
-                LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-                LogColors::label(&format!("  - Param[{}]:", idx)),
-                format!("{} (type: {})", param_str, param_type)
-            );
+            tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label(&format!("  - Param[{}]:", idx)), format!("{} (type: {})", param_str, param_type));
         }
         tracing::debug!("{} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("Message Data:"));
         tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Raw JSON:"), json);
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - JSON Length:"),
-            format!("{} characters", json.len())
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Total Bytes (with newline):"),
-            format!("{} bytes", data.len())
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Raw Bytes (hex):"),
-            hex::encode(data.as_bytes())
-        );
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - JSON Length:"), format!("{} characters", json.len()));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Total Bytes (with newline):"), format!("{} bytes", data.len()));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Raw Bytes (hex):"), hex::encode(data.as_bytes()));
         tracing::debug!("{}", LogColors::bridge_to_asic("========================================"));
 
         self.write_data(data.as_bytes()).await?;
@@ -356,8 +238,9 @@ impl StratumContext {
             "method": method,
             "params": params
         });
-
-        let json = serde_json::to_string(&notification).map_err(|_| ErrorDisconnected)?;
+        
+        let json = serde_json::to_string(&notification)
+            .map_err(|_| ErrorDisconnected)?;
         let data = format!("{}\n", json);
 
         // Get client context for detailed logging
@@ -365,107 +248,52 @@ impl StratumContext {
         let worker_name = self.worker_name.lock().clone();
         let remote_app = self.remote_app.lock().clone();
         let params_str = serde_json::to_string(&params).unwrap_or_else(|_| "[]".to_string());
-
+        
         // Log outgoing notification at DEBUG level (detailed logs moved to debug)
         tracing::debug!("{}", LogColors::bridge_to_asic("========================================"));
         tracing::debug!("{}", LogColors::bridge_to_asic("===== SENDING NOTIFICATION TO ASIC ===== "));
         tracing::debug!("{}", LogColors::bridge_to_asic("========================================"));
         tracing::debug!("{} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("Client Information:"));
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - IP Address:"),
-            format!("{}:{}", self.remote_addr, self.remote_port)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Wallet Address:"),
-            format!("'{}'", wallet_addr)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Worker Name:"),
-            format!("'{}'", worker_name)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Miner Application:"),
-            format!("'{}'", remote_app)
-        );
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - IP Address:"), format!("{}:{}", self.remote_addr, self.remote_port));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Wallet Address:"), format!("'{}'", wallet_addr));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Worker Name:"), format!("'{}'", worker_name));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Miner Application:"), format!("'{}'", remote_app));
         tracing::debug!("{} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("Notification Details:"));
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Method:"),
-            format!("'{}'", method)
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Format:"),
-            "Minimal Stratum (no id/jsonrpc fields)"
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Target:"),
-            "IceRiver/BzMiner compatible"
-        );
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Method:"), format!("'{}'", method));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Format:"), "Minimal Stratum (no id/jsonrpc fields)");
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Target:"), "IceRiver/BzMiner compatible");
         tracing::debug!("{} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("Parameters:"));
         tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Params Count:"), params.len());
         tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Params JSON:"), params_str);
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Params Length:"),
-            format!("{} characters", params_str.len())
-        );
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Params Length:"), format!("{} characters", params_str.len()));
         // Log each param individually
         for (idx, param) in params.iter().enumerate() {
             let param_str = serde_json::to_string(param).unwrap_or_else(|_| "N/A".to_string());
-            let param_type = if param.is_string() {
+            let param_type = if param.is_string() { 
                 format!("String (length: {})", param.as_str().map(|s| s.len()).unwrap_or(0))
-            } else if param.is_number() {
+            } 
+            else if param.is_number() { 
                 "Number".to_string()
-            } else if param.is_array() {
+            } 
+            else if param.is_array() { 
                 format!("Array (length: {})", param.as_array().map(|a| a.len()).unwrap_or(0))
-            } else if param.is_object() {
+            } 
+            else if param.is_object() { 
                 "Object".to_string()
-            } else if param.is_boolean() {
+            } 
+            else if param.is_boolean() { 
                 "Boolean".to_string()
-            } else {
+            } 
+            else { 
                 "Null".to_string()
             };
-            tracing::debug!(
-                "{} {} {}",
-                LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-                LogColors::label(&format!("  - Param[{}]:", idx)),
-                format!("{} (type: {})", param_str, param_type)
-            );
+            tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label(&format!("  - Param[{}]:", idx)), format!("{} (type: {})", param_str, param_type));
         }
         tracing::debug!("{} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("Message Data:"));
         tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Raw JSON:"), json);
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - JSON Length:"),
-            format!("{} characters", json.len())
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Total Bytes (with newline):"),
-            format!("{} bytes", data.len())
-        );
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::bridge_to_asic("[BRIDGE->ASIC]"),
-            LogColors::label("  - Raw Bytes (hex):"),
-            hex::encode(data.as_bytes())
-        );
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - JSON Length:"), format!("{} characters", json.len()));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Total Bytes (with newline):"), format!("{} bytes", data.len()));
+        tracing::debug!("{} {} {}", LogColors::bridge_to_asic("[BRIDGE->ASIC]"), LogColors::label("  - Raw Bytes (hex):"), hex::encode(data.as_bytes()));
         tracing::debug!("{}", LogColors::bridge_to_asic("========================================"));
 
         self.write_data(data.as_bytes()).await?;
@@ -480,26 +308,31 @@ impl StratumContext {
         }
 
         for attempt in 0..3 {
-            if self.write_lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+            if self.write_lock.compare_exchange(
+                false,
+                true,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            ).is_ok() {
                 // Extract write half (drop guard before await)
                 let write_half_opt = {
                     let mut write_guard = self.write_half.lock();
                     write_guard.take()
                 };
-
+                
                 let result = if let Some(mut write_half) = write_half_opt {
-                    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-
+                    let deadline = tokio::time::Instant::now() + WRITE_TIMEOUT;
+                    
                     // Try to write directly (no need to wait for writable)
                     let write_result = tokio::time::timeout_at(deadline, write_half.write_all(data)).await;
-
-                    // Put write half back regardless of result
-                    {
-                        let mut write_guard = self.write_half.lock();
-                        *write_guard = Some(write_half);
-                    }
-
-                    write_result
+                            
+                            // Put write half back regardless of result
+                            {
+                                let mut write_guard = self.write_half.lock();
+                                *write_guard = Some(write_half);
+                            }
+                            
+                            write_result
                 } else {
                     self.write_lock.store(false, Ordering::Release);
                     return Err(ErrorDisconnected);
@@ -516,8 +349,8 @@ impl StratumContext {
                     }
                     Err(_) => {
                         // Timeout on write - try again if we have attempts left
-                        if attempt < 2 {
-                            tokio::time::sleep(Duration::from_millis(10)).await;
+                        if attempt < WRITE_MAX_RETRIES - 1 {
+                            tokio::time::sleep(WRITE_RETRY_DELAY).await;
                             continue;
                         } else {
                             self.check_disconnect();
@@ -527,7 +360,7 @@ impl StratumContext {
                 }
             } else {
                 // Write blocked - wait and retry
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                tokio::time::sleep(WRITE_RETRY_DELAY).await;
             }
         }
 
@@ -555,15 +388,16 @@ impl StratumContext {
     /// Reply with low difficulty share error
     pub async fn reply_low_diff_share(&self, id: &serde_json::Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tracing::debug!("[BRIDGE->ASIC] Preparing LOW DIFFICULTY SHARE response (Error Code: 23, Invalid difficulty)");
-        self.reply(JsonRpcResponse::error(Some(id.clone()), 23, "Invalid difficulty", None))
-            .await
+        self.reply(JsonRpcResponse::error(Some(id.clone()), 23, "Invalid difficulty", None)).await
             .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
     }
+
 
     /// Send a response (async)
     #[allow(dead_code)]
     async fn send_response(&self, response: JsonRpcResponse) -> Result<(), ErrorDisconnected> {
-        let json = serde_json::to_string(&response).map_err(|_| ErrorDisconnected)?;
+        let json = serde_json::to_string(&response)
+            .map_err(|_| ErrorDisconnected)?;
         let data = format!("{}\n", json);
         self.write_data(data.as_bytes()).await
     }
@@ -572,20 +406,20 @@ impl StratumContext {
     pub fn disconnect(&self) {
         if !self.disconnecting.swap(true, Ordering::Release) {
             tracing::info!("disconnecting client {}", self.remote_addr);
-
+            
             // Close the write half
             let write_half_opt = {
                 let mut write_guard = self.write_half.lock();
                 write_guard.take()
             };
-
+            
             if let Some(mut write_half) = write_half_opt {
                 // Try to shutdown gracefully in async context
                 tokio::spawn(async move {
                     let _ = write_half.shutdown().await;
                 });
             }
-
+            
             // Close the read half
             let _ = {
                 let mut read_guard = self.read_half.lock();
@@ -632,3 +466,4 @@ impl Clone for StratumContext {
 }
 
 use serde_json::Value;
+
