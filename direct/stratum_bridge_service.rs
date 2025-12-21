@@ -7,7 +7,8 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::block::Block;
 use kaspa_core::task::service::{AsyncService, AsyncServiceFuture};
 use kaspa_rpc_core::{
-    api::rpc::RpcApi, GetBalancesByAddressesRequest, GetBlockTemplateRequest, GetSyncStatusRequest, RpcAddress, SubmitBlockRequest,
+    api::rpc::RpcApi, EstimateNetworkHashesPerSecondRequest, GetBalancesByAddressesRequest, GetBlockDagInfoRequest, GetBlockTemplateRequest,
+    GetSyncStatusRequest, RpcAddress, SubmitBlockRequest,
 };
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_stratum_bridge::{listen_and_serve, prom, BridgeConfig, KaspaApiTrait};
@@ -306,6 +307,53 @@ impl AsyncService for StratumBridgeService {
                 info!("[stratum-bridge] Kaspa node is not synced, waiting for sync before starting Stratum server...");
                 sleep(Duration::from_secs(5)).await;
             }
+
+            let stats_shutdown_signal = shutdown_signal.clone();
+            let rpc_core_stats = Arc::clone(&rpc_core);
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(30));
+                loop {
+                    tokio::select! {
+                        _ = stats_shutdown_signal.clone() => {
+                            break;
+                        }
+                        _ = interval.tick() => {
+                            let dag_response = match rpc_core_stats.get_block_dag_info_call(None, GetBlockDagInfoRequest {}).await {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    warn!("[stratum-bridge] failed to get block DAG info for prom network stats: {}", e);
+                                    continue;
+                                }
+                            };
+
+                            let tip_hash = match dag_response.tip_hashes.first() {
+                                Some(hash) => Some(*hash),
+                                None => {
+                                    warn!("[stratum-bridge] no tip hashes available for prom network stats");
+                                    continue;
+                                }
+                            };
+
+                            let hashrate_response = match rpc_core_stats
+                                .estimate_network_hashes_per_second_call(None, EstimateNetworkHashesPerSecondRequest::new(1000, tip_hash))
+                                .await
+                            {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    warn!("[stratum-bridge] failed to estimate network hashrate for prom network stats: {}", e);
+                                    continue;
+                                }
+                            };
+
+                            prom::record_network_stats(
+                                hashrate_response.network_hashes_per_second,
+                                dag_response.block_count,
+                                dag_response.difficulty,
+                            );
+                        }
+                    }
+                }
+            });
 
             // Create RpcCoreKaspaApi adapter
             let api = Arc::new(RpcCoreKaspaApi::new(rpc_core));
