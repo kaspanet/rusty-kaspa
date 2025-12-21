@@ -43,7 +43,6 @@ impl TransactionValidator {
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         let fee = total_in - total_out;
         if flags != TxValidationFlags::SkipMassCheck {
-            // Storage mass hardfork was activated
             self.check_mass_commitment(tx)?;
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;
