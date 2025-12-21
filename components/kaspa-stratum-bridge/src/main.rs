@@ -1,5 +1,3 @@
-use rustbridge::*;
-use rustbridge::log_colors::LogColors;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -8,6 +6,7 @@ use futures_util::future::try_join_all;
 use std::sync::Mutex as StdMutex;
 use std::collections::HashMap;
 use once_cell::sync::Lazy;
+use kaspa_stratum_bridge::{prom, BridgeConfig as StratumBridgeConfig, KaspaApi, listen_and_serve};
 
 // Global registry mapping instance_id strings to instance numbers
 // This persists across async boundaries and thread switches
@@ -45,9 +44,9 @@ struct GlobalConfig {
     pow2_clamp: bool,
 }
 
-/// Bridge configuration (supports both single and multi-instance modes)
+/// App configuration (supports both single and multi-instance modes)
 #[derive(Debug)]
-struct BridgeConfig {
+struct AppConfig {
     global: GlobalConfig,
     instances: Vec<InstanceConfig>,
 }
@@ -84,7 +83,7 @@ impl Default for InstanceConfig {
     }
 }
 
-impl BridgeConfig {
+impl AppConfig {
     fn from_yaml(content: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let docs = YamlLoader::load_from_str(content)?;
         let doc = docs.first().ok_or("empty YAML document")?;
@@ -207,7 +206,7 @@ impl BridgeConfig {
                 }
             }
             
-            Ok(BridgeConfig { global, instances })
+            Ok(Self { global, instances })
         } else {
             // Single-instance mode (backward compatible)
             let mut instance = InstanceConfig::default();
@@ -235,7 +234,7 @@ impl BridgeConfig {
             // Single-instance mode: use global log_to_file as instance default
             instance.log_to_file = Some(global.log_to_file);
             
-            Ok(BridgeConfig {
+            Ok(Self {
                 global,
                 instances: vec![instance],
             })
@@ -247,27 +246,24 @@ impl BridgeConfig {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load config first to check if file logging is enabled
     let config_path = std::path::Path::new("config.yaml");
-    let config = if config_path.exists() {
+    let config: AppConfig = if config_path.exists() {
         let content = std::fs::read_to_string(config_path)?;
-        BridgeConfig::from_yaml(&content)?
+        AppConfig::from_yaml(&content)?
     } else {
         // Create default single-instance config
-        BridgeConfig {
+        AppConfig {
             global: GlobalConfig::default(),
             instances: vec![InstanceConfig::default()],
         }
     };
-    
-    // Initialize color support detection
-    rustbridge::log_colors::LogColors::init();
     
     // Initialize tracing with WARN level by default (less verbose)
     // Can be overridden with RUST_LOG environment variable (e.g., RUST_LOG=info,debug)
     // To see more details, set RUST_LOG=info or RUST_LOG=debug
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| {
-            // Default: warn level, but allow info from rustbridge module for important messages
-            EnvFilter::new("warn,rustbridge=info")
+            // Default: warn level, but allow info from this bridge module for important messages
+            EnvFilter::new("warn,kaspa_stratum_bridge=info")
         });
     
     // Custom formatter that applies colors directly to the Writer (like tracing-subscriber does for levels)
@@ -296,8 +292,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             // Write target with capitalization
             let target = event.metadata().target();
-            let formatted_target = if target.starts_with("rustbridge") {
-                format!("rustbridge{}", target.strip_prefix("rustbridge").unwrap_or(target))
+            let formatted_target = if target.starts_with("kaspa_stratum_bridge") {
+                format!("kaspa_stratum_bridge{}", target.strip_prefix("kaspa_stratum_bridge").unwrap_or(target))
             } else {
                 target.to_string()
             };
@@ -363,11 +359,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Apply colors based on message content patterns (only if this formatter has colors enabled)
             if self.apply_colors {
                 // First priority: Use instance number from thread-local (applies to ALL logs from that instance)
-                if let Some(inst_num) = instance_num {
-                    // Apply instance color to the entire message
-                    let color_code = rustbridge::log_colors::LogColors::instance_color_code(inst_num);
-                    write!(writer, "{}{}\x1b[0m", color_code, &message)?;
-                    writeln!(writer)?;
+                if let Some(_inst_num) = instance_num {
+                    writeln!(writer, "{}", &message)?;
                     return Ok(());
                 }
                 
@@ -375,11 +368,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(instance_start) = message.find("[Instance ") {
                     if let Some(instance_end) = message[instance_start..].find("]") {
                         let instance_str = &message[instance_start + 10..instance_start + instance_end];
-                        if let Ok(inst_num) = instance_str.parse::<usize>() {
-                            // Apply instance color to the entire message
-                            let color_code = rustbridge::log_colors::LogColors::instance_color_code(inst_num);
-                            write!(writer, "{}{}\x1b[0m", color_code, &message)?;
-                            writeln!(writer)?;
+                        if let Ok(_inst_num) = instance_str.parse::<usize>() {
+                            writeln!(writer, "{}", &message)?;
                             return Ok(());
                         }
                     }
@@ -457,8 +447,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with(filter)
             .with(
                 tracing_subscriber::fmt::layer()
-                    .with_ansi(LogColors::should_colorize()) // Enable ANSI colors for console conditionally
-                    .event_format(CustomFormatter { apply_colors: LogColors::should_colorize() })
+                    .with_ansi(false)
+                    .event_format(CustomFormatter { apply_colors: false })
             )
             .with(
                 tracing_subscriber::fmt::layer()
@@ -475,8 +465,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with(filter)
             .with(
                 tracing_subscriber::fmt::layer()
-                    .with_ansi(LogColors::should_colorize()) // Enable ANSI colors for console conditionally
-                    .event_format(CustomFormatter { apply_colors: LogColors::should_colorize() })
+                    .with_ansi(false)
+                    .event_format(CustomFormatter { apply_colors: false })
                     // Use default formatter to preserve ANSI codes in messages
                     // .event_format(CustomFormatter)
             )
@@ -538,7 +528,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     // Create shared kaspa API client (all instances use the same node)
-    let kaspa_api = rustbridge::KaspaApi::new(
+    let kaspa_api = KaspaApi::new(
         config.global.kaspad_address.clone(),
         config.global.block_wait_time,
     ).await.map_err(|e| format!("Failed to create Kaspa API client: {}", e))?;
@@ -570,7 +560,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Spawn this instance
         let handle = tokio::spawn(async move {
             // Register this instance in the global registry - this persists across async boundaries
-            let instance_id_str = rustbridge::log_colors::LogColors::format_instance_id(instance_num);
+            let instance_id_str = format!("[Instance {}]", instance_num);
             {
                 if let Ok(mut registry) = INSTANCE_REGISTRY.lock() {
                     registry.insert(instance_id_str.clone(), instance_num);
@@ -578,12 +568,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             
             // Use colored instance identifier for startup message
-            let colored_instance_id = rustbridge::log_colors::LogColors::format_instance_id(instance_num);
+            let colored_instance_id = instance_id_str.clone();
             tracing::info!("{} Starting on stratum port {}", colored_instance_id, instance.stratum_port);
             
             // Create bridge config for this instance
             // Store the instance_id for use in logs
-            let bridge_config = rustbridge::BridgeConfig {
+            let bridge_config = StratumBridgeConfig {
                 instance_id: instance_id_str.clone(),
                 stratum_port: instance.stratum_port.clone(),
                 kaspad_address: global.kaspad_address.clone(),
@@ -602,7 +592,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             // Start this instance
             // Only first instance gets concrete_api (for notifications), others use None (polling only)
-            rustbridge::listen_and_serve(
+            listen_and_serve(
                 bridge_config, 
                 Arc::clone(&kaspa_api_clone), 
                 if is_first_instance { Some(kaspa_api_clone) } else { None }
