@@ -55,18 +55,18 @@ impl MiningState {
         *counter += 1;
         let idx = *counter;
         let slot = idx % MAX_JOBS;
-        
+
         let mut jobs = self.jobs.lock();
         let mut job_ids = self.job_ids.lock();
-        
+
         // Log if we're overwriting an old job
         if let Some(old_id) = job_ids.get(&slot) {
             tracing::debug!("Overwriting job at slot {}: old_id={}, new_id={}", slot, old_id, idx);
         }
-        
+
         jobs.insert(slot, job);
         job_ids.insert(slot, idx);
-        
+
         tracing::debug!("[JOB STORAGE] Added job ID {} at slot {} (counter now: {})", idx, slot, idx);
         idx
     }
@@ -78,11 +78,11 @@ impl MiningState {
     pub fn get_job(&self, id: u64) -> Option<Job> {
         let jobs = self.jobs.lock();
         let slot = id % MAX_JOBS;
-        
+
         // Return job at slot, don't verify ID matches
         jobs.get(&slot).cloned()
     }
-    
+
     /// Get job ID at a specific slot (for debugging/stale job workaround)
     pub fn get_job_id_at_slot(&self, slot: u64) -> Option<u64> {
         let job_ids = self.job_ids.lock();
@@ -149,12 +149,12 @@ impl MiningState {
         let job_ids = self.job_ids.lock();
         job_ids.values().copied().collect()
     }
-    
+
     /// Get last header
     pub fn get_last_header(&self) -> Option<kaspa_consensus_core::header::Header> {
         self.last_header.lock().clone()
     }
-    
+
     /// Set last header
     pub fn set_last_header(&self, header: kaspa_consensus_core::header::Header) {
         *self.last_header.lock() = Some(header);
@@ -173,4 +173,3 @@ pub fn GetMiningState(ctx: &crate::stratum_context::StratumContext) -> Arc<Minin
     // State is now stored directly as Arc<MiningState>, so we can just clone it
     Arc::clone(&ctx.state)
 }
-

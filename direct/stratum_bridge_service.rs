@@ -6,9 +6,11 @@ use async_trait::async_trait;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::block::Block;
 use kaspa_core::task::service::{AsyncService, AsyncServiceFuture};
-use kaspa_rpc_core::{api::rpc::RpcApi, GetBalancesByAddressesRequest, GetBlockTemplateRequest, GetSyncStatusRequest, RpcAddress, SubmitBlockRequest};
+use kaspa_rpc_core::{
+    api::rpc::RpcApi, GetBalancesByAddressesRequest, GetBlockTemplateRequest, GetSyncStatusRequest, RpcAddress, SubmitBlockRequest,
+};
 use kaspa_rpc_service::service::RpcCoreService;
-use kaspa_stratum_bridge::{listen_and_serve, BridgeConfig, KaspaApiTrait};
+use kaspa_stratum_bridge::{listen_and_serve, BridgeConfig, KaspaApiTrait, prom};
 use log::{error, info, warn};
 use std::fs;
 use std::sync::Arc;
@@ -401,6 +403,19 @@ impl AsyncService for StratumBridgeService {
                 let global = config.global.clone();
 
                 let handle = tokio::spawn(async move {
+                    // Start instance-specific Prometheus server if configured
+                    if let Some(ref prom_port) = instance.prom_port {
+                        if !prom_port.is_empty() {
+                            let prom_port = prom_port.clone();
+                            let instance_num_prom = instance_num;
+                            tokio::spawn(async move {
+                                if let Err(e) = prom::start_prom_server(&prom_port).await {
+                                    error!("[Instance {}] Prometheus server error: {}", instance_num_prom, e);
+                                }
+                            });
+                        }
+                    }
+
                     let bridge_config = BridgeConfig {
                         instance_id: format!("[Instance {}]", instance_num),
                         stratum_port: instance.stratum_port.clone(),

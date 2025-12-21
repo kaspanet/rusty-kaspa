@@ -27,22 +27,22 @@ pub enum MinerType {
 /// 4. Otherwise returns Legacy
 pub fn detect_miner_type(remote_app: &str, use_big_job: bool) -> MinerType {
     let remote_app_lower = remote_app.to_lowercase();
-    
+
     // Check IceRiver first (case-insensitive)
     if ICERIVER_KEYWORDS.iter().any(|&keyword| remote_app_lower.contains(keyword)) {
         return MinerType::IceRiver;
     }
-    
+
     // Check Bitmain (case-insensitive)
     if BITMAIN_KEYWORDS.iter().any(|&keyword| remote_app_lower.contains(keyword)) {
         return MinerType::Bitmain;
     }
-    
+
     // Check BzMiner (requires use_big_job flag)
     if use_big_job {
         return MinerType::BzMiner;
     }
-    
+
     // Default to Legacy
     MinerType::Legacy
 }

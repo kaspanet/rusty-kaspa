@@ -2,17 +2,17 @@ use crate::{
     client_handler::ClientHandler,
     default_client::*,
     jsonrpc_event::JsonRpcEvent,
+    kaspaapi::KaspaApi,
     share_handler::{KaspaApiTrait, ShareHandler},
     stratum_context::StratumContext,
     stratum_listener::{StratumListener, StratumListenerConfig},
-    kaspaapi::KaspaApi,
 };
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::warn;
 
 pub struct BridgeConfig {
-    pub instance_id: String,  // Instance identifier for logging (e.g., "Instance 1", "Instance 2")
+    pub instance_id: String, // Instance identifier for logging (e.g., "Instance 1", "Instance 2")
     pub stratum_port: String,
     pub kaspad_address: String,
     pub prom_port: String,
@@ -37,7 +37,7 @@ pub async fn start_block_template_listener_with_api(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let client_handler_cb = Arc::clone(&client_handler);
     let kaspa_api_cb = Arc::clone(&kaspa_api);
-    
+
     let block_cb = move || {
         let client_handler = Arc::clone(&client_handler_cb);
         let kaspa_api = Arc::clone(&kaspa_api_cb);
@@ -45,8 +45,10 @@ pub async fn start_block_template_listener_with_api(
             client_handler.new_block_available(kaspa_api).await;
         });
     };
-    
-    kaspa_api.start_block_template_listener(block_wait_time, block_cb).await
+
+    kaspa_api
+        .start_block_template_listener(block_wait_time, block_cb)
+        .await
         .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
 }
 
@@ -82,12 +84,7 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
     // Create client handler
     // Note: extranonce_size parameter is now only used for backward compatibility
     // Actual extranonce assignment happens per-client in handle_subscribe based on detected miner type
-    let client_handler = Arc::new(ClientHandler::new(
-        Arc::clone(&share_handler),
-        min_diff,
-        extranonce_size,
-        instance_id.clone(),
-    ));
+    let client_handler = Arc::new(ClientHandler::new(Arc::clone(&share_handler), min_diff, extranonce_size, instance_id.clone()));
 
     // Setup default handlers
     let mut handlers = default_handlers();
@@ -100,9 +97,11 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
             let ctx_clone = Arc::clone(&ctx);
             let event_clone = event.clone();
             Box::pin(async move {
-                crate::default_client::handle_subscribe(ctx_clone, event_clone, Some(client_handler)).await
+                crate::default_client::handle_subscribe(ctx_clone, event_clone, Some(client_handler))
+                    .await
                     .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
-            }) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>
+            })
+                as std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>
         }) as crate::stratum_listener::EventHandler
     };
     handlers.insert("mining.subscribe".to_string(), subscribe_handler);
@@ -117,9 +116,11 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
             let ctx_clone = Arc::clone(&ctx);
             let event_clone = event.clone();
             Box::pin(async move {
-                crate::default_client::handle_authorize(ctx_clone, event_clone, Some(client_handler), Some(kaspa_api)).await
+                crate::default_client::handle_authorize(ctx_clone, event_clone, Some(client_handler), Some(kaspa_api))
+                    .await
                     .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
-            }) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>
+            })
+                as std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>
         }) as crate::stratum_listener::EventHandler
     };
     handlers.insert("mining.authorize".to_string(), authorize_handler);
@@ -137,11 +138,12 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
                     .handle_submit(ctx_clone, event, kaspa_api)
                     .await
                     .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
-            }) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>
+            })
+                as std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>
         }) as crate::stratum_listener::EventHandler
     };
     handlers.insert("mining.submit".to_string(), submit_handler);
-    
+
     // Setup listener config
     // Each client will get its own MiningState (created in stratum_listener)
     // Each client gets its own isolated state
@@ -164,11 +166,7 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
 
     // Start vardiff thread if enabled
     if config.var_diff {
-        let shares_per_min = if config.shares_per_min > 0 {
-            config.shares_per_min
-        } else {
-            20
-        };
+        let shares_per_min = if config.shares_per_min > 0 { config.shares_per_min } else { 20 };
 
         // Expose target shares-per-minute to the stats printer so it can
         // display VarDiff columns (diff / spm / target / trend / status)
@@ -186,14 +184,14 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
 
     // Start block template listener with notifications + ticker fallback
     // This provides immediate notifications when new blocks are available, with polling as fallback
-    
+
     // If concrete KaspaApi is provided, use notification-based listener
     // Otherwise, use polling only (fallback for trait objects)
     if let Some(concrete_api) = concrete_kaspa_api {
         // We have concrete KaspaApi - use notification-based listener
         let client_handler_cb = Arc::clone(&client_handler);
         let kaspa_api_cb = Arc::clone(&kaspa_api);
-        
+
         let block_cb = move || {
             let client_handler = Arc::clone(&client_handler_cb);
             let kaspa_api = Arc::clone(&kaspa_api_cb);
@@ -201,14 +199,11 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
                 client_handler.new_block_available(kaspa_api).await;
             });
         };
-        
+
         // Start notification-based listener with ticker fallback
         // Method signature: start_block_template_listener(self: Arc<Self>, ...)
         // Call the method directly on Arc<KaspaApi> (it's an instance method taking Arc<Self>)
-        if let Err(e) = concrete_api.start_block_template_listener(
-            config.block_wait_time,
-            block_cb,
-        ).await {
+        if let Err(e) = concrete_api.start_block_template_listener(config.block_wait_time, block_cb).await {
             warn!("Failed to start notification-based block template listener: {}, falling back to polling", e);
             // Fall through to polling approach
         } else {
@@ -218,7 +213,7 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
     } else {
         // No concrete KaspaApi provided - use polling only
         warn!("Using polling-based block template listener (concrete KaspaApi not provided, notifications not available)");
-        
+
         let client_handler_poll = Arc::clone(&client_handler);
         let kaspa_api_poll = Arc::clone(&kaspa_api);
         tokio::spawn(async move {
@@ -237,4 +232,3 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
     tracing::info!("{} Starting stratum listener on {}", instance_id, config.stratum_port);
     listener.listen().await
 }
-

@@ -10,7 +10,7 @@ pub fn diagnose_pow_issue(header: &Header, nonce: u64) {
     tracing::debug!("\n========================================");
     tracing::debug!("PoW DIAGNOSTIC TEST");
     tracing::debug!("========================================");
-    
+
     // Print header details
     tracing::debug!("\n[HEADER DETAILS]");
     tracing::debug!("  Version: {}", header.version);
@@ -18,7 +18,7 @@ pub fn diagnose_pow_issue(header: &Header, nonce: u64) {
     tracing::debug!("  Bits: {} (0x{:08x})", header.bits, header.bits);
     tracing::debug!("  Nonce in header: {}", header.nonce);
     tracing::debug!("  Nonce to test: {}", nonce);
-    
+
     // Calculate target from bits
     let exponent = header.bits >> 24;
     let mantissa = header.bits & 0xFFFFFF;
@@ -26,12 +26,12 @@ pub fn diagnose_pow_issue(header: &Header, nonce: u64) {
     tracing::debug!("  Exponent: {} (0x{:x})", exponent, exponent);
     tracing::debug!("  Mantissa: {} (0x{:06x})", mantissa, mantissa);
     tracing::debug!("  Shift: 8 * ({} - 3) = {} bits", exponent, 8 * (exponent - 3));
-    
+
     let shift = if exponent > 3 { 8 * (exponent - 3) } else { 0 };
     let target = BigUint::from(mantissa) << shift;
     tracing::debug!("  Target: 0x{:064x}", target);
     tracing::debug!("  Target magnitude: {:.3e}", target.to_f64().unwrap_or(0.0));
-    
+
     // Method 1: PowState with nonce already in header
     tracing::debug!("\n[METHOD 1: PowState with header nonce]");
     let mut header1 = header.clone();
@@ -43,19 +43,19 @@ pub fn diagnose_pow_issue(header: &Header, nonce: u64) {
     tracing::debug!("  Pow value: 0x{:064x}", pow_value1);
     tracing::debug!("  Pow magnitude: {:.3e}", pow_value1.to_f64().unwrap_or(0.0));
     tracing::debug!("  Ratio to target: {:.2e}", pow_value1.to_f64().unwrap_or(0.0) / target.to_f64().unwrap_or(1.0));
-    
+
     // Method 2: PowState with nonce=0 in header, passing nonce to check_pow
     tracing::debug!("\n[METHOD 2: PowState with nonce passed to check_pow]");
     let mut header2 = header.clone();
-    header2.nonce = 0;  // Set to 0 first
+    header2.nonce = 0; // Set to 0 first
     let pow_state2 = PowState::new(&header2);
-    let (passed2, value2) = pow_state2.check_pow(nonce);  // Then pass nonce
+    let (passed2, value2) = pow_state2.check_pow(nonce); // Then pass nonce
     let pow_value2 = BigUint::from_bytes_be(&value2.to_be_bytes());
     tracing::debug!("  Result: {}", if passed2 { "PASS" } else { "FAIL" });
     tracing::debug!("  Pow value: 0x{:064x}", pow_value2);
     tracing::debug!("  Pow magnitude: {:.3e}", pow_value2.to_f64().unwrap_or(0.0));
     tracing::debug!("  Ratio to target: {:.2e}", pow_value2.to_f64().unwrap_or(0.0) / target.to_f64().unwrap_or(1.0));
-    
+
     // Method 3: Test with nonce=0
     tracing::debug!("\n[METHOD 3: Test with nonce=0]");
     let mut header3 = header.clone();
@@ -66,7 +66,7 @@ pub fn diagnose_pow_issue(header: &Header, nonce: u64) {
     tracing::debug!("  Result: {}", if passed3 { "PASS" } else { "FAIL" });
     tracing::debug!("  Pow value: 0x{:064x}", pow_value3);
     tracing::debug!("  Pow magnitude: {:.3e}", pow_value3.to_f64().unwrap_or(0.0));
-    
+
     // Method 4: Try minimum possible nonce
     tracing::debug!("\n[METHOD 4: Trying nonce=1]");
     let mut header4 = header.clone();
@@ -77,7 +77,7 @@ pub fn diagnose_pow_issue(header: &Header, nonce: u64) {
     tracing::debug!("  Result: {}", if passed4 { "PASS" } else { "FAIL" });
     tracing::debug!("  Pow value: 0x{:064x}", pow_value4);
     tracing::debug!("  Ratio to target: {:.2e}", pow_value4.to_f64().unwrap_or(0.0) / target.to_f64().unwrap_or(1.0));
-    
+
     // Check if ANY nonce in a small range would pass
     tracing::debug!("\n[BRUTE FORCE TEST: First 1000 nonces]");
     let mut found_valid = false;
@@ -94,12 +94,12 @@ pub fn diagnose_pow_issue(header: &Header, nonce: u64) {
             break;
         }
     }
-    
+
     if !found_valid {
         tracing::debug!("  ✗ No valid nonce found in range 0-999");
         tracing::debug!("  This confirms the issue: even with devnet difficulty, we can't find valid blocks");
     }
-    
+
     // Statistical analysis
     tracing::debug!("\n[STATISTICAL ANALYSIS]");
     let target_f64 = target.to_f64().unwrap_or(1.0);
@@ -110,9 +110,8 @@ pub fn diagnose_pow_issue(header: &Header, nonce: u64) {
     tracing::debug!("  Bits off: {:.2} bits", bits_off);
     tracing::debug!("  Expected probability: 1 in {:.2e}", 2.0_f64.powf(256.0) / target_f64);
     tracing::debug!("  Actual (if working): Should find valid block in ~{} hashes", (2.0_f64.powf(256.0) / target_f64) as u64);
-    
+
     tracing::debug!("\n========================================");
     tracing::debug!("END DIAGNOSTIC");
     tracing::debug!("========================================\n");
 }
-

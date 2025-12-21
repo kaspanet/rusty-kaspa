@@ -1,25 +1,25 @@
 use crate::{
     errors::*,
+    jsonrpc_event::{JsonRpcEvent, JsonRpcResponse},
     log_colors::LogColors,
     mining_state::GetMiningState,
     prom::*,
     stratum_context::StratumContext,
-    jsonrpc_event::{JsonRpcEvent, JsonRpcResponse},
 };
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::hashing::header;
 // kaspa_pow used inline for PoW validation
 use num_bigint::BigUint;
 use num_traits::{ToPrimitive, Zero};
+use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
-use once_cell::sync::Lazy;
 
-use crate::constants::{STATS_PRUNE_INTERVAL, STATS_PRINT_INTERVAL};
+use crate::constants::{STATS_PRINT_INTERVAL, STATS_PRUNE_INTERVAL};
 
 // Global aggregation for single consolidated print across instances (formatting only)
 struct PrintSnapshot {
@@ -32,8 +32,7 @@ struct PrintSnapshot {
     uptime: String,
 }
 
-static GLOBAL_PRINT_SNAPSHOTS: Lazy<Mutex<HashMap<String, PrintSnapshot>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static GLOBAL_PRINT_SNAPSHOTS: Lazy<Mutex<HashMap<String, PrintSnapshot>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[allow(dead_code)]
 const VAR_DIFF_THREAD_SLEEP: u64 = 10;
@@ -57,23 +56,17 @@ fn vardiff_pow2_clamp_towards(current: f64, next: f64) -> f64 {
     // Keep updates monotonic when clamping:
     // - If we are increasing (next >= current): clamp up to the next power-of-two (ceil).
     // - If we are decreasing (next < current): clamp down to the previous power-of-two (floor).
-    let exp = if next >= current {
-        next.log2().ceil()
-    } else {
-        next.log2().floor()
-    };
+    let exp = if next >= current { next.log2().ceil() } else { next.log2().floor() };
 
     let clamped = 2_f64.powi(exp as i32);
-    if clamped < 1.0 { 1.0 } else { clamped }
+    if clamped < 1.0 {
+        1.0
+    } else {
+        clamped
+    }
 }
 
-fn vardiff_compute_next_diff(
-    current: f64,
-    shares: f64,
-    elapsed_secs: f64,
-    expected_spm: f64,
-    clamp_pow2: bool,
-) -> Option<f64> {
+fn vardiff_compute_next_diff(current: f64, shares: f64, elapsed_secs: f64, expected_spm: f64, clamp_pow2: bool) -> Option<f64> {
     if !current.is_finite() || current <= 0.0 {
         return None;
     }
@@ -127,7 +120,11 @@ fn vardiff_compute_next_diff(
         return None;
     }
 
-    if next != current { Some(next) } else { None }
+    if next != current {
+        Some(next)
+    } else {
+        None
+    }
 }
 
 #[derive(Clone)]
@@ -170,7 +167,7 @@ pub struct ShareHandler {
     tip_blue_score: Arc<Mutex<u64>>,
     stats: Arc<Mutex<HashMap<String, WorkStats>>>,
     overall: Arc<WorkStats>,
-    instance_id: String,  // Instance identifier for logging
+    instance_id: String, // Instance identifier for logging
     target_spm: Arc<Mutex<Option<f64>>>,
 }
 
@@ -184,7 +181,7 @@ impl ShareHandler {
             target_spm: Arc::new(Mutex::new(None)),
         }
     }
-    
+
     fn log_prefix(&self) -> String {
         format!("[{}]", self.instance_id)
     }
@@ -195,7 +192,7 @@ impl ShareHandler {
 
     pub fn get_create_stats(&self, ctx: &StratumContext) -> WorkStats {
         let mut stats_map = self.stats.lock();
-        
+
         let worker_id = {
             let worker_name = ctx.worker_name.lock();
             if !worker_name.is_empty() {
@@ -237,14 +234,13 @@ impl ShareHandler {
         tracing::debug!("{} [SUBMIT] Event ID: {:?}", prefix, event.id);
         tracing::debug!("{} [SUBMIT] Params count: {}", prefix, event.params.len());
         tracing::debug!("{} [SUBMIT] Full params: {:?}", prefix, event.params);
-        
+
         // Get per-client mining state from context
         let state = GetMiningState(&ctx);
         let _max_jobs = state.max_jobs() as u64;
         let current_counter = state.current_job_counter();
         let stored_ids = state.get_stored_job_ids();
-        tracing::debug!("{} [SUBMIT] Retrieved MiningState - counter: {}, stored IDs: {:?}", 
-                      prefix, current_counter, stored_ids);
+        tracing::debug!("{} [SUBMIT] Retrieved MiningState - counter: {}, stored IDs: {:?}", prefix, current_counter, stored_ids);
 
         // Validate submit
         // According to stratum protocol: params[0] = address.name, params[1] = jobid, params[2] = nonce
@@ -255,7 +251,7 @@ impl ShareHandler {
             record_worker_error(&wallet_addr, ErrorShortCode::BadDataFromMiner.as_str());
             return Err("malformed event, expected at least 3 params".into());
         }
-        
+
         let prefix = self.log_prefix();
         tracing::debug!("{} [SUBMIT] Params[0] (address/identity): {:?}", prefix, event.params.first());
         tracing::debug!("{} [SUBMIT] Params[1] (job_id): {:?}", prefix, event.params.get(1));
@@ -266,18 +262,21 @@ impl ShareHandler {
         if let Some(Value::String(submitted_identity)) = event.params.first() {
             let wallet_addr = ctx.wallet_addr.lock().clone();
             let _worker_name = ctx.worker_name.lock().clone();
-            
+
             // Extract address from submitted identity (format: "address.worker")
             let parts: Vec<&str> = submitted_identity.split('.').collect();
             let submitted_address = parts[0];
-            
+
             // Check if submitted address matches authorized address (case-insensitive, ignore prefix)
             let submitted_clean = submitted_address.trim_start_matches("kaspa:").trim_start_matches("kaspatest:");
             let authorized_clean = wallet_addr.trim_start_matches("kaspa:").trim_start_matches("kaspatest:");
-            
+
             if submitted_clean.to_lowercase() != authorized_clean.to_lowercase() {
-                tracing::debug!("Submit params[0] address mismatch: submitted '{}' vs authorized '{}' (using authorized)", 
-                              submitted_identity, wallet_addr);
+                tracing::debug!(
+                    "Submit params[0] address mismatch: submitted '{}' vs authorized '{}' (using authorized)",
+                    submitted_identity,
+                    wallet_addr
+                );
             } else {
                 tracing::debug!("Submit params[0] matches authorized address: {}", submitted_identity);
             }
@@ -287,13 +286,11 @@ impl ShareHandler {
         let job_id = match &event.params[1] {
             serde_json::Value::String(s) => {
                 tracing::debug!("[SUBMIT] Job ID is string: '{}'", s);
-                s.parse::<u64>()
-                    .map_err(|e| format!("job id is not parsable as a number: {}", e))?
+                s.parse::<u64>().map_err(|e| format!("job id is not parsable as a number: {}", e))?
             }
             serde_json::Value::Number(n) => {
                 tracing::debug!("[SUBMIT] Job ID is number: {}", n);
-                n.as_u64()
-                    .ok_or("job id number is out of range")?
+                n.as_u64().ok_or("job id number is out of range")?
             }
             _ => {
                 tracing::error!("[SUBMIT] ERROR: Job ID must be string or number, got: {:?}", event.params[1]);
@@ -302,16 +299,19 @@ impl ShareHandler {
         };
 
         tracing::debug!("[SUBMIT] Parsed job_id: {}", job_id);
-        
+
         // Get current job counter for debugging
         let current_job_counter = state.current_job_counter();
-        tracing::debug!("[SUBMIT] Current job counter: {}, submitted job_id: {} (diff: {})", 
-                      current_job_counter, job_id, 
-                      if job_id > current_job_counter { 
-                          format!("+{}", job_id - current_job_counter) 
-                      } else { 
-                          format!("-{}", current_job_counter - job_id) 
-                      });
+        tracing::debug!(
+            "[SUBMIT] Current job counter: {}, submitted job_id: {} (diff: {})",
+            current_job_counter,
+            job_id,
+            if job_id > current_job_counter {
+                format!("+{}", job_id - current_job_counter)
+            } else {
+                format!("-{}", current_job_counter - job_id)
+            }
+        );
 
         // Fail immediately if job doesn't exist
         //          if !exists { return nil, fmt.Errorf("job does not exist. stale?") }
@@ -323,12 +323,17 @@ impl ShareHandler {
             Some(j) => {
                 tracing::debug!("{} [SUBMIT] Found job ID {} (current counter: {})", prefix, job_id, current_counter);
                 j
-            },
+            }
             None => {
                 // Job doesn't exist at slot - log debug info
                 let stored_job_ids = state.get_stored_job_ids();
-                tracing::warn!("[SUBMIT] Job ID {} not found at slot {} (current counter: {}, stored IDs: {:?})", 
-                              job_id, job_id % 300, current_counter, stored_job_ids);
+                tracing::warn!(
+                    "[SUBMIT] Job ID {} not found at slot {} (current counter: {}, stored IDs: {:?})",
+                    job_id,
+                    job_id % 300,
+                    current_counter,
+                    stored_job_ids
+                );
                 // Job doesn't exist - fail immediately
                 let wallet_addr = ctx.wallet_addr.lock().clone();
                 record_worker_error(&wallet_addr, ErrorShortCode::MissingJob.as_str());
@@ -336,11 +341,9 @@ impl ShareHandler {
             }
         };
 
-        let nonce_str = event.params[2]
-            .as_str()
-            .ok_or("nonce must be a string")?;
+        let nonce_str = event.params[2].as_str().ok_or("nonce must be a string")?;
         tracing::debug!("[SUBMIT] Raw nonce string: '{}'", nonce_str);
-        
+
         let nonce_str = nonce_str.replace("0x", "");
         tracing::debug!("[SUBMIT] Nonce after removing 0x: '{}' (length: {} hex chars)", nonce_str, nonce_str.len());
 
@@ -351,12 +354,18 @@ impl ShareHandler {
             if !extranonce.is_empty() {
                 let extranonce_val = extranonce.clone();
                 let extranonce2_len = 16 - extranonce_val.len();
-                
+
                 // Only prepend extranonce if nonce is shorter than expected
                 if nonce_str.len() <= extranonce2_len {
                     // Format with zero-padding on the right
                     final_nonce_str = format!("{}{:0>width$}", extranonce_val, nonce_str, width = extranonce2_len);
-                    tracing::debug!("[SUBMIT] Extranonce prepended: '{}' = '{}' + '{:0>width$}'", final_nonce_str, extranonce_val, nonce_str, width = extranonce2_len);
+                    tracing::debug!(
+                        "[SUBMIT] Extranonce prepended: '{}' = '{}' + '{:0>width$}'",
+                        final_nonce_str,
+                        extranonce_val,
+                        nonce_str,
+                        width = extranonce2_len
+                    );
                 }
             }
         } // extranonce guard is dropped here
@@ -364,13 +373,12 @@ impl ShareHandler {
         tracing::debug!("[SUBMIT] Final nonce string: '{}'", final_nonce_str);
         let nonce_val = {
             let prefix = self.log_prefix();
-            u64::from_str_radix(&final_nonce_str, 16)
-                .map_err(|e| {
-                    tracing::error!("{} [SUBMIT] ERROR: Failed to parse nonce '{}' as hex: {}", prefix, final_nonce_str, e);
-                    format!("failed parsing noncestr: {}", e)
-                })?
+            u64::from_str_radix(&final_nonce_str, 16).map_err(|e| {
+                tracing::error!("{} [SUBMIT] ERROR: Failed to parse nonce '{}' as hex: {}", prefix, final_nonce_str, e);
+                format!("failed parsing noncestr: {}", e)
+            })?
         };
-        
+
         tracing::debug!("[SUBMIT] Parsed nonce value (u64): {}", nonce_val);
         tracing::debug!("[SUBMIT] Nonce hex: {:016x}", nonce_val);
 
@@ -383,7 +391,7 @@ impl ShareHandler {
         let mut pow_passed;
         let mut pow_value;
         let max_jobs = state.max_jobs() as u64;
-        
+
         tracing::debug!("[SUBMIT] Starting PoW validation for job_id: {} (max_jobs: {})", current_job_id, max_jobs);
 
         loop {
@@ -391,67 +399,119 @@ impl ShareHandler {
             static DIAGNOSTIC_RUN: std::sync::Once = std::sync::Once::new();
             let header = &current_job.block.header;
             let mut header_clone = (**header).clone();
-            
+
             DIAGNOSTIC_RUN.call_once(|| {
                 tracing::debug!("{}", LogColors::block("===== RUNNING POW DIAGNOSTIC ====="));
                 crate::pow_diagnostic::diagnose_pow_issue(&header_clone, nonce_val);
                 tracing::debug!("{}", LogColors::block("===== DIAGNOSTIC COMPLETE ====="));
             });
-            
+
             // DEBUG: Compare what we sent to ASIC vs what we're validating (moved to debug level)
             tracing::debug!("{} {}", LogColors::validation("[DEBUG]"), LogColors::label("===== VALIDATION DEBUG ====="));
-            tracing::debug!("{} {} {}", LogColors::validation("[DEBUG]"), LogColors::label("Job we sent to ASIC:"), 
-                  format!("job_id={}, timestamp={}", current_job_id, current_job.block.header.timestamp));
-            tracing::debug!("{} {} {}", LogColors::validation("[DEBUG]"), LogColors::label("ASIC submitted:"), 
-                  format!("job_id={}, nonce=0x{:x}", current_job_id, nonce_val));
-            tracing::debug!("{} {} {}", LogColors::validation("[DEBUG]"), LogColors::label("Header we're validating:"), 
-                  format!("timestamp={}, nonce={}, bits=0x{:08x}", header_clone.timestamp, header_clone.nonce, header_clone.bits));
-            
+            tracing::debug!(
+                "{} {} {}",
+                LogColors::validation("[DEBUG]"),
+                LogColors::label("Job we sent to ASIC:"),
+                format!("job_id={}, timestamp={}", current_job_id, current_job.block.header.timestamp)
+            );
+            tracing::debug!(
+                "{} {} {}",
+                LogColors::validation("[DEBUG]"),
+                LogColors::label("ASIC submitted:"),
+                format!("job_id={}, nonce=0x{:x}", current_job_id, nonce_val)
+            );
+            tracing::debug!(
+                "{} {} {}",
+                LogColors::validation("[DEBUG]"),
+                LogColors::label("Header we're validating:"),
+                format!("timestamp={}, nonce={}, bits=0x{:08x}", header_clone.timestamp, header_clone.nonce, header_clone.bits)
+            );
+
             // Set the nonce in the header
             header_clone.nonce = nonce_val;
-            
-            tracing::debug!("{} {} {}", LogColors::validation("[DEBUG]"), LogColors::label("After setting nonce:"), 
-                  format!("timestamp={}, nonce=0x{:x}, bits=0x{:08x}", header_clone.timestamp, header_clone.nonce, header_clone.bits));
-            
+
+            tracing::debug!(
+                "{} {} {}",
+                LogColors::validation("[DEBUG]"),
+                LogColors::label("After setting nonce:"),
+                format!("timestamp={}, nonce=0x{:x}, bits=0x{:08x}", header_clone.timestamp, header_clone.nonce, header_clone.bits)
+            );
+
             // Use kaspa_pow::State for proper PoW validation
             use kaspa_pow::State as PowState;
             let pow_state = PowState::new(&header_clone);
             let (check_passed, pow_value_uint256) = pow_state.check_pow(nonce_val);
-            
+
             // Convert Uint256 to BigUint for comparison
             pow_value = num_bigint::BigUint::from_bytes_be(&pow_value_uint256.to_be_bytes());
-            
-            tracing::debug!("{} {} {}", LogColors::validation("[DEBUG]"), LogColors::label("PowState result:"), 
-                  format!("check_passed={}, pow_value={:x}", check_passed, pow_value));
-            
+
+            tracing::debug!(
+                "{} {} {}",
+                LogColors::validation("[DEBUG]"),
+                LogColors::label("PowState result:"),
+                format!("check_passed={}, pow_value={:x}", check_passed, pow_value)
+            );
+
             // Calculate network target from header.bits
             use crate::hasher::calculate_target;
             let network_target = calculate_target(header_clone.bits as u64);
-            
+
             // Check if pow_value meets network target (lower hash is better)
             let meets_network_target = pow_value <= network_target;
             pow_passed = meets_network_target;
-            
+
             let pow_value_bytes = pow_value.to_bytes_be();
             let network_target_bytes = network_target.to_bytes_be();
-            
+
             tracing::debug!("[SUBMIT] Target comparison:");
             tracing::debug!("[SUBMIT]   - pow_value: {:x} ({} bytes)", pow_value, pow_value_bytes.len());
             tracing::debug!("[SUBMIT]   - network_target: {:x} ({} bytes)", network_target, network_target_bytes.len());
             tracing::debug!("[SUBMIT]   - meets_network_target: {}", meets_network_target);
-            
-            tracing::debug!("[SUBMIT] PoW check result: passed={}, pow_value={:x}, network_target={:x}, header.bits={}", 
-                          pow_passed, pow_value, network_target, header_clone.bits);
-            
+
+            tracing::debug!(
+                "[SUBMIT] PoW check result: passed={}, pow_value={:x}, network_target={:x}, header.bits={}",
+                pow_passed,
+                pow_value,
+                network_target,
+                header_clone.bits
+            );
+
             // Log detailed validation information with colors (moved to debug level)
-            tracing::debug!("{} {} {}", LogColors::validation("[VALIDATION]"), LogColors::label("PoW Validation -"), format!("Nonce: {:x}, Pow Value: {:x} ({} bytes), Network Target: {:x} ({} bytes)", nonce_val, pow_value, pow_value_bytes.len(), network_target, network_target_bytes.len()));
-            tracing::debug!("{} {} {}", LogColors::validation("[VALIDATION]"), LogColors::label("Comparison:"), format!("pow_value <= network_target = {} (lower hash is better)", meets_network_target));
-            tracing::debug!("{} {} {}", LogColors::validation("[VALIDATION]"), LogColors::label("PowState.check_pow() result:"), format!("passed={}, Header bits: {}", pow_passed, header_clone.bits));
-            
+            tracing::debug!(
+                "{} {} {}",
+                LogColors::validation("[VALIDATION]"),
+                LogColors::label("PoW Validation -"),
+                format!(
+                    "Nonce: {:x}, Pow Value: {:x} ({} bytes), Network Target: {:x} ({} bytes)",
+                    nonce_val,
+                    pow_value,
+                    pow_value_bytes.len(),
+                    network_target,
+                    network_target_bytes.len()
+                )
+            );
+            tracing::debug!(
+                "{} {} {}",
+                LogColors::validation("[VALIDATION]"),
+                LogColors::label("Comparison:"),
+                format!("pow_value <= network_target = {} (lower hash is better)", meets_network_target)
+            );
+            tracing::debug!(
+                "{} {} {}",
+                LogColors::validation("[VALIDATION]"),
+                LogColors::label("PowState.check_pow() result:"),
+                format!("passed={}, Header bits: {}", pow_passed, header_clone.bits)
+            );
+
             // On devnet, network difficulty is very low, so we should see blocks being found
             // Log at debug level (detailed validation logs moved to debug)
             if pow_passed {
-                tracing::debug!("{} {} {}", LogColors::validation("[VALIDATION]"), LogColors::block("*** NETWORK TARGET PASSED ***"), format!("pow_value={:x} <= network_target={:x}", pow_value, network_target));
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::validation("[VALIDATION]"),
+                    LogColors::block("*** NETWORK TARGET PASSED ***"),
+                    format!("pow_value={:x} <= network_target={:x}", pow_value, network_target)
+                );
             } else if !network_target.is_zero() {
                 let ratio = if !pow_value.is_zero() {
                     let target_f64 = network_target.to_f64().unwrap_or(0.0);
@@ -464,7 +524,12 @@ impl ShareHandler {
                 } else {
                     0.0
                 };
-                tracing::debug!("{} {} {}", LogColors::validation("[VALIDATION]"), LogColors::label("Network target NOT met -"), format!("pow_value={:x} > network_target={:x} ({}% of target)", pow_value, network_target, ratio));
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::validation("[VALIDATION]"),
+                    LogColors::label("Network target NOT met -"),
+                    format!("pow_value={:x} > network_target={:x} ({}% of target)", pow_value, network_target, ratio)
+                );
             } else {
                 warn!("{} {}", LogColors::validation("[VALIDATION]"), LogColors::error("Network target is ZERO - cannot validate!"));
             }
@@ -478,93 +543,174 @@ impl ShareHandler {
                 let wallet_addr = ctx.wallet_addr.lock().clone();
                 let worker_name = ctx.worker_name.lock().clone();
                 let prefix = self.log_prefix();
-                
+
                 info!("{} {}", prefix, LogColors::block("===== BLOCK FOUND! ===== PoW passed network target"));
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("ACCEPTANCE REASON:"), format!("pow_value ({:x}) <= network_target ({:x}) - Block meets network difficulty requirement", pow_value, network_target));
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Worker:"), format!("{}, Wallet: {}, Nonce: {:x}, Pow Value: {:x}", worker_name, wallet_addr, nonce_val, pow_value));
-                
+                info!(
+                    "{} {} {} {}",
+                    prefix,
+                    LogColors::block("[BLOCK]"),
+                    LogColors::label("ACCEPTANCE REASON:"),
+                    format!(
+                        "pow_value ({:x}) <= network_target ({:x}) - Block meets network difficulty requirement",
+                        pow_value, network_target
+                    )
+                );
+                info!(
+                    "{} {} {} {}",
+                    prefix,
+                    LogColors::block("[BLOCK]"),
+                    LogColors::label("Worker:"),
+                    format!("{}, Wallet: {}, Nonce: {:x}, Pow Value: {:x}", worker_name, wallet_addr, nonce_val, pow_value)
+                );
+
                 // Log block details before creating the block (to avoid borrow issues)
                 let header_bits = header_clone.bits;
                 let header_version = header_clone.version;
                 let original_timestamp = header_clone.timestamp;
-                
+
                 // Block found - submit it
                 // Only set the nonce - keep all other header fields from the real block template
                 // The header comes directly from the Kaspa node via get_block_template_call()
                 // We preserve: version, bits, timestamp, all hash fields, parents, scores, etc.
                 header_clone.nonce = nonce_val;
-                
+
                 // Verify timestamp is still valid (not too old)
                 // Kaspa typically accepts blocks with timestamps within a reasonable window
                 // Block templates are fetched frequently, so the timestamp should be recent
-                let current_time_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
+                let current_time_ms =
+                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
                 let timestamp_age_ms = current_time_ms.saturating_sub(original_timestamp);
                 let timestamp_age_sec = timestamp_age_ms / 1000;
-                
+
                 // Log header verification to confirm we're using real headers (moved to debug level)
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Header Verification:"), "Using REAL header from Kaspa node block template");
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::block("[BLOCK]"),
+                    LogColors::label("Header Verification:"),
+                    "Using REAL header from Kaspa node block template"
+                );
                 tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("  - Header Version:"), header_version);
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("  - Header Bits:"), format!("{} (0x{:x})", header_bits, header_bits));
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("  - Timestamp:"), format!("{} (age: {}s, preserved from template)", original_timestamp, timestamp_age_sec));
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("  - Nonce:"), format!("{:x} (set from ASIC submission)", nonce_val));
-                
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::block("[BLOCK]"),
+                    LogColors::label("  - Header Bits:"),
+                    format!("{} (0x{:x})", header_bits, header_bits)
+                );
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::block("[BLOCK]"),
+                    LogColors::label("  - Timestamp:"),
+                    format!("{} (age: {}s, preserved from template)", original_timestamp, timestamp_age_sec)
+                );
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::block("[BLOCK]"),
+                    LogColors::label("  - Nonce:"),
+                    format!("{:x} (set from ASIC submission)", nonce_val)
+                );
+
                 // Warn if timestamp is very old (more than 60 seconds)
                 // This shouldn't happen with frequent template updates, but log it for debugging
                 if timestamp_age_sec > 60 {
-                    warn!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::error("⚠ Timestamp is old:"), format!("{} seconds old - block template may be stale", timestamp_age_sec));
+                    warn!(
+                        "{} {} {}",
+                        LogColors::block("[BLOCK]"),
+                        LogColors::error("⚠ Timestamp is old:"),
+                        format!("{} seconds old - block template may be stale", timestamp_age_sec)
+                    );
                 }
-                
+
                 // Create new block with updated header
                 let transactions_vec = current_job.block.transactions.iter().cloned().collect();
-                let block = Block::from_arcs(
-                    Arc::new(header_clone),
-                    Arc::new(transactions_vec),
-                );
+                let block = Block::from_arcs(Arc::new(header_clone), Arc::new(transactions_vec));
                 let blue_score = block.header.blue_score;
-                
+
                 // Log block submission details before submission (moved to debug level)
                 tracing::debug!("{} {}", LogColors::block("[BLOCK]"), LogColors::block("=== SUBMITTING BLOCK TO NODE ==="));
                 tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Nonce:"), format!("{:x} (0x{:016x})", nonce_val, nonce_val));
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Bits:"), format!("{} (0x{:08x})", header_bits, header_bits));
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Timestamp:"), format!("{}", original_timestamp));
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::block("[BLOCK]"),
+                    LogColors::label("Nonce:"),
+                    format!("{:x} (0x{:016x})", nonce_val, nonce_val)
+                );
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::block("[BLOCK]"),
+                    LogColors::label("Bits:"),
+                    format!("{} (0x{:08x})", header_bits, header_bits)
+                );
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::block("[BLOCK]"),
+                    LogColors::label("Timestamp:"),
+                    format!("{}", original_timestamp)
+                );
                 tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Blue Score:"), blue_score);
                 tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Pow Value:"), format!("{:x}", pow_value));
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Network Target:"), format!("{:x}", network_target));
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::block("[BLOCK]"),
+                    LogColors::label("Network Target:"),
+                    format!("{:x}", network_target)
+                );
                 tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Job ID:"), current_job_id);
                 tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Wallet:"), wallet_addr);
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Client:"), format!("{}:{}", ctx.remote_addr(), ctx.remote_port()));
-                
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::block("[BLOCK]"),
+                    LogColors::label("Client:"),
+                    format!("{}:{}", ctx.remote_addr(), ctx.remote_port())
+                );
+
                 // Calculate block hash BEFORE submission (for logging)
                 // Go calculates blockhash AFTER submit to get it submitted faster, but we log it before for debugging
                 // Use kaspa_consensus_core::hashing::header::hash() for block hash calculation
                 // In Kaspa, the block hash is the header hash (transactions are represented by hash_merkle_root in header)
                 let block_hash_before_submit = header::hash(&block.header).to_string();
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Block Hash (before submit):"), block_hash_before_submit);
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::block("[BLOCK]"),
+                    LogColors::label("Block Hash (before submit):"),
+                    block_hash_before_submit
+                );
                 tracing::debug!("{} {}", LogColors::block("[BLOCK]"), "Calling kaspa_api.submit_block()...");
-                
+
                 // Submit block to node
                 let block_submit_result = kaspa_api.submit_block(block.clone()).await;
                 // Use header::hash() for block hash calculation
                 let blockhash = header::hash(&block.header).to_string();
-                
+
                 match block_submit_result {
                     Ok(_response) => {
                         let prefix = self.log_prefix();
                         // Block accepted - log after submit to get it submitted faster
-                        info!("{} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::block(&format!("✓ Submitted block {}", blockhash)));
-                        info!("{} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::block(&format!("🎉🎉🎉 BLOCK ACCEPTED BY NODE! 🎉🎉🎉 Hash: {}", blockhash)));
+                        info!(
+                            "{} {} {}",
+                            prefix,
+                            LogColors::block("[BLOCK]"),
+                            LogColors::block(&format!("✓ Submitted block {}", blockhash))
+                        );
+                        info!(
+                            "{} {} {}",
+                            prefix,
+                            LogColors::block("[BLOCK]"),
+                            LogColors::block(&format!("🎉🎉🎉 BLOCK ACCEPTED BY NODE! 🎉🎉🎉 Hash: {}", blockhash))
+                        );
                         info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("  - Worker:"), worker_name);
-                        info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("  - Nonce:"), format!("{:x}", nonce_val));
-                        
+                        info!(
+                            "{} {} {} {}",
+                            prefix,
+                            LogColors::block("[BLOCK]"),
+                            LogColors::label("  - Nonce:"),
+                            format!("{:x}", nonce_val)
+                        );
+
                         // Record block found statistics
                         let stats = self.get_create_stats(&ctx);
                         *stats.blocks_found.lock() += 1;
                         *self.overall.blocks_found.lock() += 1;
-                        
+
                         record_block_found(
                             &crate::prom::WorkerContext {
                                 worker_name: worker_name.clone(),
@@ -576,7 +722,7 @@ impl ShareHandler {
                             blue_score,
                             blockhash.clone(),
                         );
-                        
+
                         // Return allows HandleSubmit to record share (blocks are shares too!)
                         // After successful block submission, continue to record share at end of function
                         // Don't return early - let the code continue to record the share
@@ -592,16 +738,22 @@ impl ShareHandler {
                         error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
                         error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Blockhash:"), blockhash);
                         error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("Error:"), error_str);
-                        
+
                         if error_str.contains("ErrDuplicateBlock") {
                             // Block rejected, stale
                             warn!("{} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("block rejected, stale"));
-                            warn!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("REJECTION REASON:"), "Block was already submitted to the network (stale/duplicate)");
-                            
+                            warn!(
+                                "{} {} {} {}",
+                                prefix,
+                                LogColors::block("[BLOCK]"),
+                                LogColors::label("REJECTION REASON:"),
+                                "Block was already submitted to the network (stale/duplicate)"
+                            );
+
                             let stats = self.get_create_stats(&ctx);
                             *stats.stale_shares.lock() += 1;
                             *self.overall.stale_shares.lock() += 1;
-                            
+
                             record_stale_share(&crate::prom::WorkerContext {
                                 worker_name: worker_name.clone(),
                                 miner: String::new(),
@@ -612,14 +764,25 @@ impl ShareHandler {
                             return Ok(());
                         } else {
                             // Block rejected, unknown issue (probably bad pow)
-                            warn!("{} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("block rejected, unknown issue (probably bad pow)"));
-                            error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("REJECTION REASON:"), "Block failed node validation (probably bad pow)");
+                            warn!(
+                                "{} {} {}",
+                                prefix,
+                                LogColors::block("[BLOCK]"),
+                                LogColors::error("block rejected, unknown issue (probably bad pow)")
+                            );
+                            error!(
+                                "{} {} {} {}",
+                                prefix,
+                                LogColors::block("[BLOCK]"),
+                                LogColors::label("REJECTION REASON:"),
+                                "Block failed node validation (probably bad pow)"
+                            );
                             error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("Error:"), error_str);
-                            
+
                             let stats = self.get_create_stats(&ctx);
                             *stats.invalid_shares.lock() += 1;
                             *self.overall.invalid_shares.lock() += 1;
-                            
+
                             record_invalid_share(&crate::prom::WorkerContext {
                                 worker_name: worker_name.clone(),
                                 miner: String::new(),
@@ -634,39 +797,47 @@ impl ShareHandler {
             }
 
             // Check pool difficulty
-            let pool_target = state.stratum_diff()
-                .map(|d| d.target_value.clone())
-                .unwrap_or_else(BigUint::zero);
-            
+            let pool_target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(BigUint::zero);
+
             // Compare FULL pow_value against pool_target (not just lower bits)
             // Compare full 256-bit values
             let pow_bytes = pow_value.to_bytes_be();
             let target_bytes = pool_target.to_bytes_be();
-            
+
             // Log difficulty check for debugging
             if pool_target.is_zero() {
                 tracing::warn!("stratum_diff target is zero! pow_value: {:x}, pool_target: {:x}", pow_value, pool_target);
             } else {
                 let pow_len = pow_bytes.len();
                 let target_len = target_bytes.len();
-                
+
                 tracing::debug!("difficulty check: nonce: {:x} ({}), pow_value (full): {:x} ({} bytes), pool_target: {:x} ({} bytes), diff_value: {:?}, pow_value <= pool_target = {}", 
                               nonce_val, nonce_val, pow_value, pow_len, pool_target, target_len, state.stratum_diff().map(|d| d.diff_value), pow_value <= pool_target);
-                tracing::debug!("Full comparison - pow_value: {:x} ({} bytes), pool_target: {:x} ({} bytes)", 
-                              pow_value, pow_len, pool_target, target_len);
+                tracing::debug!(
+                    "Full comparison - pow_value: {:x} ({} bytes), pool_target: {:x} ({} bytes)",
+                    pow_value,
+                    pow_len,
+                    pool_target,
+                    target_len
+                );
             }
-            
+
             // Check pool difficulty (stratum target)
             // If pow_value >= pool_target, share doesn't meet pool difficulty
             // Higher hash value means worse share
             if pow_value >= pool_target {
                 // Share doesn't meet pool difficulty - might be wrong job ID (moved to debug to keep terminal clean)
                 let worker_name = ctx.worker_name.lock().clone();
-                tracing::debug!("{} {} {}", LogColors::validation("✗ INVALID SHARE (too high)"),
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::validation("✗ INVALID SHARE (too high)"),
                     LogColors::label("worker:"),
-                    format!("{}, nonce: {:x}, pow_value: {:x}, pool_target: {:x}, pow_ge_pool_target: true",
-                        worker_name, nonce_val, pow_value, pool_target));
-                
+                    format!(
+                        "{}, nonce: {:x}, pow_value: {:x}, pool_target: {:x}, pow_ge_pool_target: true",
+                        worker_name, nonce_val, pow_value, pool_target
+                    )
+                );
+
                 if current_job_id == job_id {
                     tracing::debug!("low diff share... checking for bad job ID ({})", current_job_id);
                     invalid_share = true;
@@ -676,7 +847,12 @@ impl ShareHandler {
                 // Validate job ID: jobId == 1 || jobId%maxJobs == submitInfo.jobId%maxJobs+1
                 if current_job_id == 1 || (current_job_id % max_jobs == ((job_id % max_jobs) + 1) % max_jobs) {
                     // Exhausted all previous blocks (wrapped around or reached job 1)
-                    tracing::debug!("Job ID loop exhausted: current_job_id={}, job_id={}, max_jobs={}", current_job_id, job_id, max_jobs);
+                    tracing::debug!(
+                        "Job ID loop exhausted: current_job_id={}, job_id={}, max_jobs={}",
+                        current_job_id,
+                        job_id,
+                        max_jobs
+                    );
                     break;
                 } else {
                     // Try previous job ID
@@ -696,11 +872,16 @@ impl ShareHandler {
             } else {
                 // Valid share (pow_value < pool_target) - moved to debug to keep terminal clean
                 let worker_name = ctx.worker_name.lock().clone();
-                tracing::debug!("{} {} {}", LogColors::validation("✓ VALID SHARE"),
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::validation("✓ VALID SHARE"),
                     LogColors::label("worker:"),
-                    format!("{}, nonce: {:x}, pow_value: {:x}, pool_target: {:x}, pow_lt_pool_target: true",
-                        worker_name, nonce_val, pow_value, pool_target));
-                
+                    format!(
+                        "{}, nonce: {:x}, pow_value: {:x}, pool_target: {:x}, pow_lt_pool_target: true",
+                        worker_name, nonce_val, pow_value, pool_target
+                    )
+                );
+
                 if invalid_share {
                     tracing::debug!("found correct job ID: {} (submitted as {})", current_job_id, job_id);
                 }
@@ -715,7 +896,7 @@ impl ShareHandler {
             tracing::debug!("low diff share confirmed");
             *stats.invalid_shares.lock() += 1;
             *self.overall.invalid_shares.lock() += 1;
-            
+
             let wallet_addr = ctx.wallet_addr.lock().clone();
             let worker_name = ctx.worker_name.lock().clone();
             record_weak_share(&crate::prom::WorkerContext {
@@ -724,7 +905,7 @@ impl ShareHandler {
                 wallet: wallet_addr.clone(),
                 ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
             });
-            
+
             if let Some(id) = &event.id {
                 let _ = ctx.reply_low_diff_share(id).await;
             }
@@ -741,32 +922,30 @@ impl ShareHandler {
         let stats = self.get_create_stats(&ctx);
         *stats.shares_found.lock() += 1;
         *stats.var_diff_shares_found.lock() += 1;
-        
+
         // Get hashValue from stratum_diff
-        let hash_value = state.stratum_diff()
-            .map(|d| d.hash_value)
-            .unwrap_or(0.0);
-        
+        let hash_value = state.stratum_diff().map(|d| d.hash_value).unwrap_or(0.0);
+
         // Accumulate hashValue for hashrate calculation
         *stats.shares_diff.lock() += hash_value;
         *stats.last_share.lock() = Instant::now();
         *self.overall.shares_found.lock() += 1;
-        
+
         let wallet_addr = ctx.wallet_addr.lock().clone();
         let worker_name = ctx.worker_name.lock().clone();
-        record_share_found(&crate::prom::WorkerContext {
-            worker_name: worker_name.clone(),
-            miner: String::new(),
-            wallet: wallet_addr.clone(),
-            ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-        }, hash_value);
+        record_share_found(
+            &crate::prom::WorkerContext {
+                worker_name: worker_name.clone(),
+                miner: String::new(),
+                wallet: wallet_addr.clone(),
+                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
+            },
+            hash_value,
+        );
 
-        ctx.reply(JsonRpcResponse {
-            id: event.id.clone(),
-            result: Some(serde_json::Value::Bool(true)),
-            error: None,
-        }).await
-        .map_err(|e| format!("failed to reply: {}", e))?;
+        ctx.reply(JsonRpcResponse { id: event.id.clone(), result: Some(serde_json::Value::Bool(true)), error: None })
+            .await
+            .map_err(|e| format!("failed to reply: {}", e))?;
         Ok(())
     }
 
@@ -814,7 +993,7 @@ impl ShareHandler {
             let mut interval = tokio::time::interval(STATS_PRUNE_INTERVAL);
             loop {
                 interval.tick().await;
-                use crate::constants::{WORKER_INITIAL_GRACE_PERIOD, WORKER_INACTIVITY_TIMEOUT};
+                use crate::constants::{WORKER_INACTIVITY_TIMEOUT, WORKER_INITIAL_GRACE_PERIOD};
                 let mut stats_map = stats.lock();
                 let now = Instant::now();
                 stats_map.retain(|_, v| {
@@ -837,20 +1016,24 @@ impl ShareHandler {
         let instance_id_src = self.instance_id.clone();
         let instance_col = {
             let digits: String = instance_id_src.chars().filter(|c| c.is_ascii_digit()).collect();
-            if let Ok(n) = digits.parse::<usize>() { format!("Ins{:02}", n) } else { instance_id_src }
+            if let Ok(n) = digits.parse::<usize>() {
+                format!("Ins{:02}", n)
+            } else {
+                instance_id_src
+            }
         };
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(STATS_PRINT_INTERVAL);
             let start = Instant::now();
             loop {
                 interval.tick().await;
-                
+
                 let now = Instant::now();
                 let target_spm_val = *target_spm.lock();
                 let stats_map = stats.lock();
                 let mut lines = Vec::new();
                 let mut total_rate = 0.0;
-                
+
                 for (_, v) in stats_map.iter() {
                     let elapsed = v.start_time.elapsed().as_secs_f64();
                     // Calculate hashrate: total_hashValue / elapsed_time
@@ -876,11 +1059,7 @@ impl ShareHandler {
                         Some(start_window) => {
                             let window_elapsed = now.duration_since(start_window).as_secs_f64().max(0.0);
                             let window_shares = *v.var_diff_shares_found.lock() as f64;
-                            let spm_val = if window_elapsed > 0.0 {
-                                (window_shares / window_elapsed) * 60.0
-                            } else {
-                                0.0
-                            };
+                            let spm_val = if window_elapsed > 0.0 { (window_shares / window_elapsed) * 60.0 } else { 0.0 };
                             (spm_val, window_elapsed)
                         }
                         None => (0.0, 0.0),
@@ -912,21 +1091,17 @@ impl ShareHandler {
                         let mut it = s.chars();
                         let mut out = String::with_capacity(16);
                         for _ in 0..16 {
-                            if let Some(c) = it.next() { out.push(c); } else { break; }
+                            if let Some(c) = it.next() {
+                                out.push(c);
+                            } else {
+                                break;
+                            }
                         }
                         out
                     };
                     let diff_str = if diff > 0.0 { format!("{:.0}", diff) } else { "-".to_string() };
-                    let _spm_str = if target_spm_val.is_some() && window_secs > 0.0 {
-                        format!("{:.1}", spm)
-                    } else {
-                        "-".to_string()
-                    };
-                    let target_str = if let Some(target) = target_spm_val {
-                        format!("{:.1}", target)
-                    } else {
-                        "-".to_string()
-                    };
+                    let _spm_str = if target_spm_val.is_some() && window_secs > 0.0 { format!("{:.1}", spm) } else { "-".to_string() };
+                    let target_str = if let Some(target) = target_spm_val { format!("{:.1}", target) } else { "-".to_string() };
 
                     // Compose compact SPM/target column for white-style table
                     let spm_target = if target_spm_val.is_some() && window_secs > 0.0 {
@@ -951,7 +1126,7 @@ impl ShareHandler {
                         uptime
                     ));
                 }
-                
+
                 lines.sort();
                 drop(stats_map);
 
@@ -965,12 +1140,7 @@ impl ShareHandler {
                 let sep_dash = "-".repeat(width);
 
                 // Update global snapshot for this instance
-                let inst_num_opt = instance_col
-                    .chars()
-                    .filter(|c| c.is_ascii_digit())
-                    .collect::<String>()
-                    .parse::<usize>()
-                    .ok();
+                let inst_num_opt = instance_col.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse::<usize>().ok();
                 let snapshot = PrintSnapshot {
                     lines: lines.clone(),
                     total_rate,
@@ -1012,7 +1182,9 @@ impl ShareHandler {
                             sum_invalids += snap.invalids;
                             sum_blocks += snap.blocks;
                             if let Some(stripped) = snap.uptime.strip_suffix('m') {
-                                if let Ok(v) = stripped.parse::<f64>() { max_uptime_secs = max_uptime_secs.max(v * 60.0); }
+                                if let Ok(v) = stripped.parse::<f64>() {
+                                    max_uptime_secs = max_uptime_secs.max(v * 60.0);
+                                }
                             }
                         }
                     }
@@ -1047,12 +1219,7 @@ impl ShareHandler {
         });
     }
 
-    pub fn start_vardiff_thread(
-        &self,
-        expected_share_rate: u32,
-        log_stats: bool,
-        clamp: bool,
-    ) {
+    pub fn start_vardiff_thread(&self, expected_share_rate: u32, log_stats: bool, clamp: bool) {
         // VarDiff controller:
         // - Uses accepted share rate per worker to converge towards `expected_share_rate` shares/minute
         // - Adjusts difficulty smoothly (sqrt damping + max step per tick)
@@ -1147,12 +1314,12 @@ pub trait KaspaApiTrait: Send + Sync {
         remote_app: &str,
         canxium_addr: &str,
     ) -> Result<Block, Box<dyn std::error::Error + Send + Sync>>;
-    
+
     async fn submit_block(
         &self,
         block: Block,
     ) -> Result<kaspa_rpc_core::SubmitBlockResponse, Box<dyn std::error::Error + Send + Sync>>;
-    
+
     /// Get balances by addresses (for Prometheus metrics)
     /// Get balances for addresses
     async fn get_balances_by_addresses(
@@ -1214,4 +1381,3 @@ mod vardiff_tests {
         assert_eq!(next, Some(8192.0));
     }
 }
-
