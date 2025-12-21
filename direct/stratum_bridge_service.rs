@@ -7,8 +7,8 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::block::Block;
 use kaspa_core::task::service::{AsyncService, AsyncServiceFuture};
 use kaspa_rpc_core::{
-    api::rpc::RpcApi, EstimateNetworkHashesPerSecondRequest, GetBalancesByAddressesRequest, GetBlockDagInfoRequest, GetBlockTemplateRequest,
-    GetSyncStatusRequest, RpcAddress, SubmitBlockRequest,
+    api::rpc::RpcApi, EstimateNetworkHashesPerSecondRequest, GetBalancesByAddressesRequest, GetBlockDagInfoRequest,
+    GetBlockTemplateRequest, GetSyncStatusRequest, RpcAddress, SubmitBlockRequest,
 };
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_stratum_bridge::{listen_and_serve, prom, BridgeConfig, KaspaApiTrait};
