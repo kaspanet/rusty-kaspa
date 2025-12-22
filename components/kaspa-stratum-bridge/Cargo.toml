@@ -14,8 +14,12 @@ kaspa-hashes = { workspace = true }
 kaspa-pow = { workspace = true }
 kaspa-addresses = { workspace = true }
 kaspa-rpc-core = { workspace = true }
+kaspa-rpc-service = { workspace = true }
 kaspa-grpc-client = { workspace = true }
 kaspa-notify = { workspace = true }
+kaspa-core = { workspace = true }
+kaspa-utils = { workspace = true }
+kaspad = { workspace = true }
 
 # External dependencies - using workspace versions where available
 tokio = { workspace = true, features = ["full"] }
