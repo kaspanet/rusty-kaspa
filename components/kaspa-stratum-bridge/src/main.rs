@@ -4,6 +4,7 @@ use kaspa_stratum_bridge::log_colors::LogColors;
 use kaspa_stratum_bridge::*;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
@@ -11,6 +12,10 @@ use std::time::Duration;
 use tokio::process::Command;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use yaml_rust::YamlLoader;
+
+use kaspa_core::signals::Shutdown;
+use kaspa_utils::fd_budget;
+use kaspad_lib::{args as kaspad_args, daemon as kaspad_daemon};
 
 // Global registry mapping instance_id strings to instance numbers
 // This persists across async boundaries and thread switches
@@ -23,6 +28,9 @@ struct Cli {
     #[arg(long, default_value = "config.yaml")]
     config: PathBuf,
 
+    #[arg(long, value_enum)]
+    node_mode: Option<NodeMode>,
+
     #[arg(long)]
     node_args: Option<String>,
 
@@ -31,6 +39,13 @@ struct Cli {
 
     #[arg(long)]
     node_bin: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum NodeMode {
+    External,
+    Subprocess,
+    Inprocess,
 }
 
 fn split_shell_words(input: &str) -> Result<Vec<String>, anyhow::Error> {
@@ -328,6 +343,31 @@ impl BridgeConfig {
     }
 }
 
+struct InProcessNode {
+    core: Arc<kaspa_core::core::Core>,
+    workers: Vec<std::thread::JoinHandle<()>>,
+}
+
+impl InProcessNode {
+    fn start_from_args(args: kaspad_args::Args) -> Result<Self, anyhow::Error> {
+        let runtime = kaspad_daemon::Runtime::from_args(&args);
+        let fd_total_budget =
+            fd_budget::limit() - args.rpc_max_clients as i32 - args.inbound_limit as i32 - args.outbound_target as i32;
+        let (core, _) = kaspad_daemon::create_core_with_runtime(&runtime, &args, fd_total_budget);
+        let workers = core.start();
+        Ok(Self { core, workers })
+    }
+
+    fn shutdown(self) {
+        self.core.shutdown();
+        self.core.join(self.workers);
+    }
+}
+
+async fn shutdown_inprocess(node: InProcessNode) {
+    let _ = tokio::task::spawn_blocking(move || node.shutdown()).await;
+}
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
@@ -338,10 +378,22 @@ async fn main() -> Result<(), anyhow::Error> {
     }
     node_args.extend(cli.node_arg.iter().cloned());
 
+    let inferred_mode = if !node_args.is_empty() || cli.node_bin.is_some() { NodeMode::Subprocess } else { NodeMode::External };
+    let node_mode = cli.node_mode.unwrap_or(inferred_mode);
+
     let mut node_child: Option<tokio::process::Child> = None;
-    if !node_args.is_empty() || cli.node_bin.is_some() {
-        let node_bin = cli.node_bin.or_else(default_kaspad_path).unwrap_or_else(|| PathBuf::from("kaspad"));
-        node_child = Some(spawn_kaspad(&node_bin, &node_args).await?);
+    let mut inprocess_node: Option<InProcessNode> = None;
+    if node_mode == NodeMode::Subprocess {
+        if !node_args.is_empty() || cli.node_bin.is_some() {
+            let node_bin = cli.node_bin.or_else(default_kaspad_path).unwrap_or_else(|| PathBuf::from("kaspad"));
+            node_child = Some(spawn_kaspad(&node_bin, &node_args).await?);
+        }
+    } else if node_mode == NodeMode::Inprocess {
+        let mut argv: Vec<OsString> = Vec::with_capacity(node_args.len() + 1);
+        argv.push(OsString::from("kaspad"));
+        argv.extend(node_args.iter().map(OsString::from));
+        let args = kaspad_args::Args::parse(argv).map_err(|e| anyhow::anyhow!("{}", e))?;
+        inprocess_node = Some(InProcessNode::start_from_args(args)?);
     }
 
     // Load config first to check if file logging is enabled
@@ -622,7 +674,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Create shared kaspa API client (all instances use the same node)
-    let kaspa_api = if node_child.is_some() {
+    let kaspa_api = if node_child.is_some() || inprocess_node.is_some() {
         kaspa_api_with_retry(config.global.kaspad_address.clone(), config.global.block_wait_time)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?
@@ -724,6 +776,10 @@ async fn main() -> Result<(), anyhow::Error> {
         res = bridge_fut => {
             if let Some(mut child) = node_child {
                 let _ = child.kill().await;
+                let _ = child.wait().await;
+            }
+            if let Some(node) = inprocess_node {
+                shutdown_inprocess(node).await;
             }
             res
         }
@@ -731,6 +787,9 @@ async fn main() -> Result<(), anyhow::Error> {
             if let Some(mut child) = node_child {
                 let _ = child.kill().await;
                 let _ = child.wait().await;
+            }
+            if let Some(node) = inprocess_node {
+                shutdown_inprocess(node).await;
             }
             Ok(())
         }
