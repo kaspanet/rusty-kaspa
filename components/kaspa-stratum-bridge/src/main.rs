@@ -1,11 +1,14 @@
+use clap::Parser;
 use futures_util::future::try_join_all;
-use once_cell::sync::Lazy;
 use kaspa_stratum_bridge::log_colors::LogColors;
 use kaspa_stratum_bridge::*;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 use std::time::Duration;
+use tokio::process::Command;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use yaml_rust::YamlLoader;
 
@@ -13,6 +16,109 @@ use yaml_rust::YamlLoader;
 // This persists across async boundaries and thread switches
 // Format: "[Instance 1]" -> 1, "[Instance 2]" -> 2, etc.
 static INSTANCE_REGISTRY: Lazy<StdMutex<HashMap<String, usize>>> = Lazy::new(|| StdMutex::new(HashMap::new()));
+
+#[derive(Debug, Parser)]
+#[command(author, version, about)]
+struct Cli {
+    #[arg(long, default_value = "config.yaml")]
+    config: PathBuf,
+
+    #[arg(long)]
+    node_args: Option<String>,
+
+    #[arg(long, action = clap::ArgAction::Append)]
+    node_arg: Vec<String>,
+
+    #[arg(long)]
+    node_bin: Option<PathBuf>,
+}
+
+fn split_shell_words(input: &str) -> Result<Vec<String>, anyhow::Error> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut chars = input.chars().peekable();
+    let mut quote: Option<char> = None;
+
+    while let Some(ch) = chars.next() {
+        match quote {
+            Some(q) => {
+                if ch == q {
+                    quote = None;
+                } else if ch == '\\' {
+                    if let Some(next) = chars.next() {
+                        cur.push(next);
+                    }
+                } else {
+                    cur.push(ch);
+                }
+            }
+            None => {
+                if ch.is_whitespace() {
+                    if !cur.is_empty() {
+                        out.push(std::mem::take(&mut cur));
+                    }
+                } else if ch == '\'' || ch == '"' {
+                    quote = Some(ch);
+                } else if ch == '\\' {
+                    if let Some(next) = chars.next() {
+                        cur.push(next);
+                    }
+                } else {
+                    cur.push(ch);
+                }
+            }
+        }
+    }
+
+    if quote.is_some() {
+        return Err(anyhow::anyhow!("unterminated quote in --node-args"));
+    }
+
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+
+    Ok(out)
+}
+
+fn default_kaspad_path() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let candidates = ["kaspad.exe", "kaspad"];
+    for name in candidates {
+        let p = dir.join(name);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+async fn spawn_kaspad(node_bin: &Path, node_args: &[String]) -> Result<tokio::process::Child, anyhow::Error> {
+    let mut cmd = Command::new(node_bin);
+    cmd.args(node_args);
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::inherit());
+    cmd.stderr(std::process::Stdio::inherit());
+    Ok(cmd.spawn()?)
+}
+
+async fn kaspa_api_with_retry(
+    kaspad_address: String,
+    block_wait_time: Duration,
+) -> Result<Arc<kaspa_stratum_bridge::KaspaApi>, anyhow::Error> {
+    let mut last_err: Option<anyhow::Error> = None;
+    for _ in 0..60 {
+        match kaspa_stratum_bridge::KaspaApi::new(kaspad_address.clone(), block_wait_time).await {
+            Ok(api) => return Ok(api),
+            Err(e) => {
+                last_err = Some(anyhow::anyhow!("{}", e));
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("failed to connect to kaspad")))
+}
 
 /// Instance-specific configuration
 #[derive(Debug, Clone)]
@@ -83,9 +189,9 @@ impl Default for InstanceConfig {
 }
 
 impl BridgeConfig {
-    fn from_yaml(content: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    fn from_yaml(content: &str) -> Result<Self, anyhow::Error> {
         let docs = YamlLoader::load_from_str(content)?;
-        let doc = docs.first().ok_or("empty YAML document")?;
+        let doc = docs.first().ok_or_else(|| anyhow::anyhow!("empty YAML document"))?;
 
         // Parse global config
         let mut global = GlobalConfig::default();
@@ -145,14 +251,14 @@ impl BridgeConfig {
                 if let Some(port) = instance_yaml["stratum_port"].as_str() {
                     instance.stratum_port = if port.starts_with(':') { port.to_string() } else { format!(":{}", port) };
                 } else {
-                    return Err(format!("Instance {} missing required 'stratum_port'", idx).into());
+                    return Err(anyhow::anyhow!("Instance {} missing required 'stratum_port'", idx));
                 }
 
                 // Required: min_share_diff
                 if let Some(diff) = instance_yaml["min_share_diff"].as_i64() {
                     instance.min_share_diff = diff as u32;
                 } else {
-                    return Err(format!("Instance {} missing required 'min_share_diff'", idx).into());
+                    return Err(anyhow::anyhow!("Instance {} missing required 'min_share_diff'", idx));
                 }
 
                 // Optional: prom_port (per-instance)
@@ -186,14 +292,14 @@ impl BridgeConfig {
             }
 
             if instances.is_empty() {
-                return Err("instances array cannot be empty".into());
+                return Err(anyhow::anyhow!("instances array cannot be empty"));
             }
 
             // Validate unique ports
             let mut ports = std::collections::HashSet::new();
             for instance in &instances {
                 if !ports.insert(&instance.stratum_port) {
-                    return Err(format!("Duplicate stratum_port: {}", instance.stratum_port).into());
+                    return Err(anyhow::anyhow!("Duplicate stratum_port: {}", instance.stratum_port));
                 }
             }
 
@@ -223,9 +329,23 @@ impl BridgeConfig {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), anyhow::Error> {
+    let cli = Cli::parse();
+
+    let mut node_args: Vec<String> = Vec::new();
+    if let Some(node_args_str) = cli.node_args.as_deref() {
+        node_args.extend(split_shell_words(node_args_str)?);
+    }
+    node_args.extend(cli.node_arg.iter().cloned());
+
+    let mut node_child: Option<tokio::process::Child> = None;
+    if !node_args.is_empty() || cli.node_bin.is_some() {
+        let node_bin = cli.node_bin.or_else(default_kaspad_path).unwrap_or_else(|| PathBuf::from("kaspad"));
+        node_child = Some(spawn_kaspad(&node_bin, &node_args).await?);
+    }
+
     // Load config first to check if file logging is enabled
-    let config_path = std::path::Path::new("config.yaml");
+    let config_path = cli.config.as_path();
     let config = if config_path.exists() {
         let content = std::fs::read_to_string(config_path)?;
         BridgeConfig::from_yaml(&content)?
@@ -271,11 +391,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Write target with capitalization
             let target = event.metadata().target();
-            let formatted_target = if let Some(rest) = target.strip_prefix("rustbridge") {
-                format!("rustbridge{}", rest)
-            } else {
-                target.to_string()
-            };
+            let formatted_target =
+                if let Some(rest) = target.strip_prefix("rustbridge") { format!("rustbridge{}", rest) } else { target.to_string() };
             write!(writer, "{}: ", formatted_target)?;
 
             // Collect the message into a string first so we can analyze it for color patterns
@@ -505,9 +622,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Create shared kaspa API client (all instances use the same node)
-    let kaspa_api = kaspa_stratum_bridge::KaspaApi::new(config.global.kaspad_address.clone(), config.global.block_wait_time)
-        .await
-        .map_err(|e| format!("Failed to create Kaspa API client: {}", e))?;
+    let kaspa_api = if node_child.is_some() {
+        kaspa_api_with_retry(config.global.kaspad_address.clone(), config.global.block_wait_time)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?
+    } else {
+        kaspa_stratum_bridge::KaspaApi::new(config.global.kaspad_address.clone(), config.global.block_wait_time)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?
+    };
 
     // Spawn each instance
     let mut instance_handles = Vec::new();
@@ -583,17 +706,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Wait for all instances (if any fails, we'll know)
     tracing::info!("All {} instance(s) started, waiting for completion...", instance_count);
 
-    // Wait for all instances (if any fails, we'll know)
-    let result = try_join_all(instance_handles).await;
+    let bridge_fut = async {
+        let result = try_join_all(instance_handles).await;
+        match result {
+            Ok(_) => {
+                tracing::info!("All instances completed successfully");
+                Ok(())
+            }
+            Err(e) => {
+                tracing::error!("One or more instances failed: {:?}", e);
+                Err(anyhow::anyhow!("Instance error: {:?}", e))
+            }
+        }
+    };
 
-    match result {
-        Ok(_) => {
-            tracing::info!("All instances completed successfully");
+    tokio::select! {
+        res = bridge_fut => {
+            if let Some(mut child) = node_child {
+                let _ = child.kill().await;
+            }
+            res
+        }
+        _ = tokio::signal::ctrl_c() => {
+            if let Some(mut child) = node_child {
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+            }
             Ok(())
         }
-        Err(e) => {
-            tracing::error!("One or more instances failed: {:?}", e);
-            Err(format!("Instance error: {:?}", e).into())
+        status = async {
+            let res: Result<Option<std::process::ExitStatus>, anyhow::Error> = match &mut node_child {
+                Some(child) => Ok(Some(child.wait().await?)),
+                None => Ok(None),
+            };
+            res
+        }, if node_child.is_some() => {
+            match status? {
+                Some(exit) => Err(anyhow::anyhow!("kaspad exited: {}", exit)),
+                None => Ok(()),
+            }
         }
     }
 }

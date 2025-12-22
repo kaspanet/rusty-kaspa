@@ -31,6 +31,9 @@ parking_lot = { workspace = true }
 regex = { workspace = true }
 uuid = { workspace = true }
 
+# CLI
+clap = { workspace = true, features = ["derive"] }
+
 # External dependencies not in workspace (add specific versions)
 anyhow = "1.0"
 tracing = "0.1"
@@ -48,4 +51,8 @@ tokio-test = "0.4"
 
 [[bin]]
 name = "kaspa-stratum-bridge"
+path = "src/main.rs"
+
+[[bin]]
+name = "stratum-bridge"
 path = "src/main.rs"
