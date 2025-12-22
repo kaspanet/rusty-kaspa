@@ -664,8 +664,7 @@ impl PruningProcessor {
     fn confirm_pruning_depth_below_virtual(&self, pruning_point: Hash) -> bool {
         let virtual_state = self.virtual_stores.read().state.get().unwrap();
         let pp_bs = self.headers_store.get_blue_score(pruning_point).unwrap();
-        let pp_daa = self.headers_store.get_daa_score(pruning_point).unwrap();
-        virtual_state.ghostdag_data.blue_score >= pp_bs + self.config.params.pruning_depth().get(pp_daa)
+        virtual_state.ghostdag_data.blue_score >= pp_bs + self.config.params.pruning_depth().after()
     }
 
     fn assert_proof_rebuilding(&self, ref_proof: Arc<PruningPointProof>, new_pruning_point: Hash) {

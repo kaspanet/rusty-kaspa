@@ -134,8 +134,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             // ORIGIN is always a single parent so both blue score and work should remain zero
             return GhostdagData::new_with_selected_parent(selected_parent, 1); // k is only a capacity hint here
         }
-        // [Crescendo]: get k as function of the selected parent DAA score
-        let k = self.k.get(self.headers_store.get_daa_score(selected_parent).unwrap());
+        let k = self.k.after();
         // Initialize new GHOSTDAG block data with the selected parent
         let mut new_block_data = GhostdagData::new_with_selected_parent(selected_parent, k);
         // Get the mergeset in consensus-agreed topological order (topological here means forward in time from blocks to children)
