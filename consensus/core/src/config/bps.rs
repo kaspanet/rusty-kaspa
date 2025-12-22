@@ -90,7 +90,7 @@ impl<const BPS: u64> Bps<BPS> {
     }
 
     pub const fn finality_depth() -> u64 {
-        BPS * NEW_FINALITY_DURATION
+        BPS * FINALITY_DURATION
     }
 
     pub const fn pruning_depth() -> u64 {
@@ -103,10 +103,10 @@ impl<const BPS: u64> Bps<BPS> {
             + 2 * Self::ghostdag_k() as u64
             + 2;
 
-        if lower_bound > BPS * NEW_PRUNING_DURATION {
+        if lower_bound > BPS * PRUNING_DURATION {
             lower_bound
         } else {
-            BPS * NEW_PRUNING_DURATION
+            BPS * PRUNING_DURATION
         }
     }
 

@@ -54,23 +54,23 @@ pub mod consensus {
     pub const MIN_DIFFICULTY_WINDOW_SIZE: usize = 150;
 
     /// **New** difficulty window duration expressed in time units (seconds).
-    pub const NEW_DIFFICULTY_WINDOW_DURATION: u64 = 2641;
+    pub const DIFFICULTY_WINDOW_DURATION: u64 = 2641;
 
     /// The desired interval between samples of the difficulty window (seconds).
     pub const DIFFICULTY_WINDOW_SAMPLE_INTERVAL: u64 = 4;
 
     /// Size of the **sampled** difficulty window (independent of BPS)
-    pub const DIFFICULTY_SAMPLED_WINDOW_SIZE: u64 = NEW_DIFFICULTY_WINDOW_DURATION.div_ceil(DIFFICULTY_WINDOW_SAMPLE_INTERVAL);
+    pub const DIFFICULTY_SAMPLED_WINDOW_SIZE: u64 = DIFFICULTY_WINDOW_DURATION.div_ceil(DIFFICULTY_WINDOW_SAMPLE_INTERVAL);
 
     //
     // ~~~~~~~~~~~~~~~~~~~ Finality & Pruning ~~~~~~~~~~~~~~~~~~~
     //
 
     /// **New** finality duration expressed in time units (seconds).
-    pub const NEW_FINALITY_DURATION: u64 = 43_200; // 12 hours
+    pub const FINALITY_DURATION: u64 = 43_200; // 12 hours
 
     /// **New** pruning duration expressed in time units (seconds).
-    pub const NEW_PRUNING_DURATION: u64 = 108_000; // 30 hours
+    pub const PRUNING_DURATION: u64 = 108_000; // 30 hours
 
     /// Merge depth bound duration (in seconds). For 1 BPS networks this equals the legacy depth
     /// bound in block units. For higher BPS networks this should be scaled up.
