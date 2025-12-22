@@ -85,6 +85,10 @@ impl CompressedParents {
         parents[0] = direct_parents;
         *self = parents.try_into().unwrap();
     }
+
+    pub fn raw(&self) -> &[(u8, Vec<Hash>)] {
+        &self.0
+    }
 }
 
 use crate::errors::header::CompressedParentsError;
