@@ -13,11 +13,11 @@ use kaspa_consensus::{
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
     },
-    params::{ForkActivation, Params, TenBps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, SIMNET_PARAMS},
+    params::{ForkActivation, OverrideParams, Params, TenBps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, SIMNET_PARAMS},
 };
 use kaspa_consensus_core::{
     api::ConsensusApi, block::Block, blockstatus::BlockStatus, config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult,
-    mining_rules::MiningRules, BlockHashSet, BlockLevel, HashMapCustomHasher,
+    mining_rules::MiningRules, tx::TransactionType, BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::{
@@ -34,6 +34,7 @@ use kaspa_utils::fd_budget;
 use simulator::network::KaspaNetworkSimulator;
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
+mod blocks_json;
 pub mod simulator;
 
 /// Kaspa Network Simulator
@@ -126,6 +127,12 @@ struct Args {
     long_payload: bool,
     #[arg(long)]
     retention_period_days: Option<f64>,
+
+    #[arg(long)]
+    override_params_output: Option<String>,
+
+    #[arg(long)]
+    blocks_json_gz_output_path: Option<String>,
 }
 
 #[cfg(feature = "heap")]
@@ -218,6 +225,13 @@ fn main_impl(mut args: Args) {
     if let Some(rocksdb_mem_budget) = args.rocksdb_mem_budget {
         conn_builder = conn_builder.with_mem_budget(rocksdb_mem_budget);
     }
+
+    if let Some(output_path) = args.override_params_output {
+        let override_params: OverrideParams = config.params.clone().into();
+        let override_params_json = serde_json::to_string_pretty(&override_params).unwrap();
+        std::fs::write(output_path, override_params_json).expect("Unable to write override_params to file");
+    }
+
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
         let mut config = (*config).clone();
@@ -262,13 +276,13 @@ fn main_impl(mut args: Args) {
     };
 
     if args.test_pruning {
-        let hashes = topologically_ordered_hashes(&consensus, consensus.pruning_point());
+        let hashes = topologically_ordered_hashes(&consensus, consensus.pruning_point(), false);
         let num_blocks = hashes.len();
         let num_txs = print_stats(&consensus, &hashes, args.delay, args.bps, config.ghostdag_k().before());
         info!("There are {num_blocks} blocks with {num_txs} transactions overall above the current pruning point");
 
         if args.retention_period_days.is_some() {
-            let hashes_retention = topologically_ordered_hashes(&consensus, consensus.get_retention_period_root());
+            let hashes_retention = topologically_ordered_hashes(&consensus, consensus.get_retention_period_root(), false);
             info!("There are {} blocks above the retention period root", hashes_retention.len());
         }
 
@@ -286,7 +300,13 @@ fn main_impl(mut args: Args) {
                     let block = consensus.get_block(hash).unwrap();
                     cbad.accepted_transactions.iter().for_each(|ate| {
                         assert!(
-                            consensus.get_populated_transaction(ate.transaction_id, block.header.daa_score).is_ok(),
+                            consensus
+                                .get_transactions_by_accepting_daa_score(
+                                    block.header.daa_score,
+                                    Some(vec![ate.transaction_id]),
+                                    TransactionType::SignableTransaction
+                                )
+                                .is_ok(),
                             "Expected to find find tx {} at accepted daa {} via get_populated_transaction",
                             ate.transaction_id,
                             block.header.daa_score
@@ -298,6 +318,10 @@ fn main_impl(mut args: Args) {
 
         drop(consensus);
         return;
+    }
+
+    if let Some(blocks_json_output_path) = args.blocks_json_gz_output_path {
+        blocks_json::write_blocks_json(&config.params, &consensus, &blocks_json_output_path);
     }
 
     // Benchmark the DAG validation time
@@ -330,7 +354,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
     // We have no actual PoW in the simulation, so the true max is most reflective,
     // however we avoid the actual max since it is reserved for the DB prefix scheme
     params.max_block_level = BlockLevel::MAX - 1;
-    params.genesis.timestamp = 0;
+    // params.genesis.timestamp = 0;
     if args.testnet11 {
         info!(
             "Using kaspa-testnet-11 configuration (GHOSTDAG K={}, DAA window size={}, Median time window size={})",
@@ -399,7 +423,7 @@ fn apply_args_to_perf_params(args: &Args, perf_params: &mut PerfParams) {
 }
 
 async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: &Params, delay: f64, bps: f64, header_only: bool) {
-    let hashes = topologically_ordered_hashes(src_consensus, params.genesis.hash);
+    let hashes = topologically_ordered_hashes(src_consensus, params.genesis.hash, false);
     let num_blocks = hashes.len();
     let num_txs = print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k().before());
     if header_only {
@@ -463,10 +487,10 @@ fn submit_chunk(
     futures
 }
 
-fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -> Vec<Hash> {
+pub(crate) fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash, include_genesis: bool) -> Vec<Hash> {
     let mut queue: VecDeque<Hash> = std::iter::once(genesis_hash).collect();
     let mut visited = BlockHashSet::new();
-    let mut vec = Vec::new();
+    let mut vec = if include_genesis { vec![genesis_hash] } else { Vec::new() };
     let relations = src_consensus.relations_stores.read();
     while let Some(current) = queue.pop_front() {
         for child in relations[0].get_children(current).unwrap().read().iter() {

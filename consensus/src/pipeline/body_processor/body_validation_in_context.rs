@@ -1,7 +1,7 @@
 use super::BlockBodyProcessor;
 use crate::{
     errors::{BlockProcessResult, RuleError},
-    model::stores::{ghostdag::GhostdagStoreReader, headers::HeaderStoreReader, statuses::StatusesStoreReader},
+    model::stores::statuses::StatusesStoreReader,
     processes::{
         transaction_validator::{
             tx_validation_in_header_context::{LockTimeArg, LockTimeType},
@@ -10,7 +10,7 @@ use crate::{
         window::WindowManager,
     },
 };
-use kaspa_consensus_core::{block::Block, errors::tx::TxRuleError};
+use kaspa_consensus_core::block::Block;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use once_cell::unsync::Lazy;
@@ -19,7 +19,6 @@ use std::sync::Arc;
 impl BlockBodyProcessor {
     pub fn validate_body_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
         self.check_parent_bodies_exist(block)?;
-        self.check_coinbase_outputs_limit(block)?;
         self.check_coinbase_blue_score_and_subsidy(block)?;
         self.check_block_transactions_in_context(block)
     }
@@ -35,7 +34,7 @@ impl BlockBodyProcessor {
                 // We only evaluate the pmt calculation when actually needed
                 LockTimeType::Time => LockTimeArg::MedianTime((*lazy_pmt_res).clone()?),
             };
-            if let Err(e) = self.transaction_validator.validate_tx_in_header_context(tx, block.header.daa_score, lock_time_arg) {
+            if let Err(e) = self.transaction_validator.validate_tx_in_header_context(tx, lock_time_arg) {
                 return Err(RuleError::TxInContextFailed(tx.id(), e));
             };
         }
@@ -58,32 +57,6 @@ impl BlockBodyProcessor {
             return Err(RuleError::MissingParents(missing));
         }
 
-        Ok(())
-    }
-
-    fn check_coinbase_outputs_limit(&self, block: &Block) -> BlockProcessResult<()> {
-        // [Crescendo]: coinbase_outputs_limit depends on ghostdag k and thus depends on fork activation
-        // which makes it header contextual.
-        //
-        // TODO (post HF): move this check back to transaction in isolation validation
-
-        // [Crescendo]: Ghostdag k activation is decided based on selected parent DAA score
-        // so we follow the same methodology for coinbase output limit (which is driven from the
-        // actual bound on the number of blue blocks in the mergeset).
-        //
-        // Note that body validation in context is not called for trusted blocks, so we can safely assume
-        // the selected parent exists and its daa score is accessible
-        let selected_parent = self.ghostdag_store.get_selected_parent(block.hash()).unwrap();
-        let selected_parent_daa_score = self.headers_store.get_daa_score(selected_parent).unwrap();
-        let coinbase_outputs_limit = self.ghostdag_k.get(selected_parent_daa_score) as u64 + 2;
-
-        let tx = &block.transactions[0];
-        if tx.outputs.len() as u64 > coinbase_outputs_limit {
-            return Err(RuleError::TxInIsolationValidationFailed(
-                tx.id(),
-                TxRuleError::CoinbaseTooManyOutputs(tx.outputs.len(), coinbase_outputs_limit),
-            ));
-        }
         Ok(())
     }
 
@@ -116,33 +89,29 @@ mod tests {
         constants::TX_VERSION,
         errors::RuleError,
         model::stores::ghostdag::GhostdagStoreReader,
-        params::DEVNET_PARAMS,
         processes::{transaction_validator::errors::TxRuleError, window::WindowManager},
     };
     use kaspa_consensus_core::{
         api::ConsensusApi,
-        merkle::calc_hash_merkle_root as calc_hash_merkle_root_with_options,
+        config::params::MAINNET_PARAMS,
+        merkle::calc_hash_merkle_root,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
     };
     use kaspa_core::assert_match;
     use kaspa_hashes::Hash;
 
-    fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
-        calc_hash_merkle_root_with_options(txs, false)
-    }
-
     #[tokio::test]
     async fn validate_body_in_context_test() {
-        let config = ConfigBuilder::new(DEVNET_PARAMS)
+        let config = ConfigBuilder::new(MAINNET_PARAMS)
             .skip_proof_of_work()
-            .edit_consensus_params(|p| p.deflationary_phase_daa_score = 2)
+            .edit_consensus_params(|p| p.deflationary_phase_daa_score = p.genesis.daa_score + 2)
             .build();
         let consensus = TestConsensus::new(&config);
         let wait_handles = consensus.init();
         let body_processor = consensus.block_body_processor();
 
-        consensus.add_block_with_parents(1.into(), vec![config.genesis.hash]).await.unwrap();
+        consensus.add_header_only_block_with_parents(1.into(), vec![config.genesis.hash]).await.unwrap();
 
         {
             let block = consensus.build_block_with_parents_and_transactions(2.into(), vec![1.into()], vec![]);

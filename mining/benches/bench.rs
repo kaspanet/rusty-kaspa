@@ -69,11 +69,11 @@ pub fn bench_compare_topological_index_fns(c: &mut Criterion) {
     let mut group = c.benchmark_group("compare fns");
     group.bench_function("TopologicalIndex::topological_index", |b| {
         let dag = build_dag();
-        b.iter(|| (black_box(dag.topological_index())))
+        b.iter(|| black_box(dag.topological_index()))
     });
     group.bench_function("TopologicalIndex::topological_index_dfs", |b| {
         let dag = build_dag();
-        b.iter(|| (black_box(dag.topological_index_dfs())))
+        b.iter(|| black_box(dag.topological_index_dfs()))
     });
     group.finish();
 }
@@ -102,7 +102,7 @@ pub fn bench_mempool_sampling(c: &mut Criterion) {
     }
 
     let len = cap;
-    let mut frontier = Frontier::default();
+    let mut frontier = Frontier::new(1.0);
     for item in map.values().take(len).cloned() {
         frontier.insert(item).then_some(()).unwrap();
     }
@@ -183,7 +183,7 @@ pub fn bench_mempool_selectors(c: &mut Criterion) {
     }
 
     for len in [100, 300, 350, 500, 1000, 2000, 5000, 10_000, 100_000, 500_000, 1_000_000].into_iter().rev() {
-        let mut frontier = Frontier::default();
+        let mut frontier = Frontier::new(1.0);
         for item in map.values().take(len).cloned() {
             frontier.insert(item).then_some(()).unwrap();
         }
@@ -252,7 +252,7 @@ pub fn bench_inplace_sampling_worst_case(c: &mut Criterion) {
             map.insert(key.tx.id(), key);
         }
 
-        let mut frontier = Frontier::default();
+        let mut frontier = Frontier::new(1.0);
         for item in map.values().cloned() {
             frontier.insert(item).then_some(()).unwrap();
         }

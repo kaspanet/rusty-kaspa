@@ -1062,6 +1062,10 @@ build_wrpc_wasm_bindgen_interface!(
         /// Returned information: None.
         Unban,
         /// Get UTXO Return Addresses.
-        GetUtxoReturnAddress
+        GetUtxoReturnAddress,
+        /// Retrieves the virtual chain corresponding to a specified block hash.
+        /// Returned information: Virtual chain information. (Version 2)
+        /// May be used to get fully populated transactions
+        GetVirtualChainFromBlockV2
     ]
 );

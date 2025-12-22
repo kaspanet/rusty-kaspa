@@ -8,12 +8,9 @@ use kaspa_consensus_core::{
     mining_rules::MiningRules,
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
-use kaspa_core::{core::Core, debug, info, trace};
+use kaspa_core::{core::Core, debug, info};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
-use kaspa_database::{
-    prelude::{CachePolicy, DbWriter, DirectDbWriter},
-    registry::DatabaseStorePrefixes,
-};
+use kaspa_database::prelude::CachePolicy;
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
 use kaspa_p2p_lib::Hub;
@@ -26,7 +23,11 @@ use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use kaspa_addressmanager::AddressManager;
-use kaspa_consensus::{consensus::factory::Factory as ConsensusFactory, pipeline::ProcessingCounters};
+use kaspa_consensus::{
+    consensus::factory::Factory as ConsensusFactory,
+    params::{OverrideParams, Params},
+    pipeline::ProcessingCounters,
+};
 use kaspa_consensus::{
     consensus::factory::MultiConsensusManagementStore, model::stores::headers::DbHeadersStore, pipeline::monitor::ConsensusMonitor,
 };
@@ -40,7 +41,6 @@ use kaspa_mining::{
 };
 use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
-use itertools::Itertools;
 use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
@@ -223,7 +223,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     let network = args.network();
     let mut fd_remaining = fd_total_budget;
     let utxo_files_limit = if args.utxoindex {
-        let utxo_files_limit = fd_remaining * 10 / 100;
+        let utxo_files_limit = fd_remaining / 10;
         fd_remaining -= utxo_files_limit;
         utxo_files_limit
     } else {
@@ -235,11 +235,31 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
         exit(1);
     }
 
+    let params = {
+        let params: Params = network.into();
+        match &args.override_params_file {
+            Some(path) => {
+                if network.is_mainnet() {
+                    println!("Overriding params on mainnet is not allowed.");
+                    exit(1);
+                }
+
+                let file_content = fs::read_to_string(path).unwrap_or_else(|err| {
+                    println!("Failed to read override params file '{}': {}", path, err);
+                    exit(1);
+                });
+                let override_params: OverrideParams = serde_json::from_str(&file_content).unwrap_or_else(|err| {
+                    println!("Failed to parse override params file '{}': {}", path, err);
+                    exit(1);
+                });
+                params.override_params(override_params)
+            }
+            None => params,
+        }
+    };
+
     let config = Arc::new(
-        ConfigBuilder::new(network.into())
-            .adjust_perf_params_to_consensus_params()
-            .apply_args(|config| args.apply_to_config(config))
-            .build(),
+        ConfigBuilder::new(params).adjust_perf_params_to_consensus_params().apply_args(|config| args.apply_to_config(config)).build(),
     );
 
     let app_dir = get_app_dir_from_args(args);
@@ -356,91 +376,12 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         // TODO: Update this entire section to a more robust implementation that allows applying multiple upgrade strategies.
         // If I'm at version 3 and latest version is 7, I need to be able to upgrade to that version following the intermediate
         // steps without having to delete the DB
-        if version == 3 {
-            let active_consensus_dir_name = mcms.active_consensus_dir_name().unwrap();
-
-            match active_consensus_dir_name {
-                Some(current_consensus_db) => {
-                    // Apply soft upgrade logic: delete GD data from higher levels
-                    // and then update DB version to 4
-                    let consensus_db = kaspa_database::prelude::ConnBuilder::default()
-                        .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
-                        .with_files_limit(1)
-                        .build()
-                        .unwrap();
-                    info!("Scanning for deprecated records to cleanup");
-
-                    let mut gd_record_count: u32 = 0;
-                    let mut compact_record_count: u32 = 0;
-
-                    let start_level: u8 = 1;
-                    let start_level_bytes = start_level.to_le_bytes();
-                    let ghostdag_prefix_vec = DatabaseStorePrefixes::Ghostdag.into_iter().chain(start_level_bytes).collect_vec();
-                    let ghostdag_prefix = ghostdag_prefix_vec.as_slice();
-
-                    // This section is used to count the records to be deleted. It's not used for the actual delete.
-                    for result in consensus_db.iterator(rocksdb::IteratorMode::From(ghostdag_prefix, rocksdb::Direction::Forward)) {
-                        let (key, _) = result.unwrap();
-                        if !key.starts_with(&[DatabaseStorePrefixes::Ghostdag.into()]) {
-                            break;
-                        }
-
-                        gd_record_count += 1;
-                    }
-
-                    let compact_prefix_vec = DatabaseStorePrefixes::GhostdagCompact.into_iter().chain(start_level_bytes).collect_vec();
-                    let compact_prefix = compact_prefix_vec.as_slice();
-
-                    for result in consensus_db.iterator(rocksdb::IteratorMode::From(compact_prefix, rocksdb::Direction::Forward)) {
-                        let (key, _) = result.unwrap();
-                        if !key.starts_with(&[DatabaseStorePrefixes::GhostdagCompact.into()]) {
-                            break;
-                        }
-
-                        compact_record_count += 1;
-                    }
-
-                    trace!("Number of Ghostdag records to cleanup: {}", gd_record_count);
-                    trace!("Number of GhostdagCompact records to cleanup: {}", compact_record_count);
-                    info!("Number of deprecated records to cleanup: {}", gd_record_count + compact_record_count);
-
-                    let msg =
-                        "Node database currently at version 3. Upgrade process to version 4 needs to be applied. Continue? (y/n)";
-                    get_user_approval_or_exit(msg, args.yes);
-
-                    // Actual delete only happens after user consents to the upgrade:
-                    let mut writer = DirectDbWriter::new(&consensus_db);
-
-                    let end_level: u8 = config.max_block_level + 1;
-                    let end_level_bytes = end_level.to_le_bytes();
-
-                    let start_ghostdag_prefix_vec = DatabaseStorePrefixes::Ghostdag.into_iter().chain(start_level_bytes).collect_vec();
-                    let end_ghostdag_prefix_vec = DatabaseStorePrefixes::Ghostdag.into_iter().chain(end_level_bytes).collect_vec();
-
-                    let start_compact_prefix_vec =
-                        DatabaseStorePrefixes::GhostdagCompact.into_iter().chain(start_level_bytes).collect_vec();
-                    let end_compact_prefix_vec =
-                        DatabaseStorePrefixes::GhostdagCompact.into_iter().chain(end_level_bytes).collect_vec();
-
-                    // Apply delete of range from level 1 to max (+1) for Ghostdag and GhostdagCompact:
-                    writer.delete_range(start_ghostdag_prefix_vec.clone(), end_ghostdag_prefix_vec.clone()).unwrap();
-                    writer.delete_range(start_compact_prefix_vec.clone(), end_compact_prefix_vec.clone()).unwrap();
-
-                    // Compact the deleted rangeto apply the delete immediately
-                    consensus_db.compact_range(Some(start_ghostdag_prefix_vec.as_slice()), Some(end_ghostdag_prefix_vec.as_slice()));
-                    consensus_db.compact_range(Some(start_compact_prefix_vec.as_slice()), Some(end_compact_prefix_vec.as_slice()));
-
-                    // Also update the version to one higher:
-                    mcms.set_version(version + 1).unwrap();
-                }
-                None => {
-                    let msg =
-                    "Node database is from a different Kaspad *DB* version and needs to be fully deleted, do you confirm the delete? (y/n)";
-                    get_user_approval_or_exit(msg, args.yes);
-
-                    is_db_reset_needed = true;
-                }
-            }
+        if version == 4 {
+            let msg = "NOTE: Node database is from an older version. Proceeding with the upgrade is instant and safe.
+However, downgrading to an older node version later will require deleting the database.
+Do you confirm? (y/n)";
+            get_user_approval_or_exit(msg, args.yes);
+            mcms.set_version(kaspa_consensus::consensus::factory::LATEST_DB_VERSION).unwrap();
         } else {
             let msg =
                 "Node database is from a different Kaspad *DB* version and needs to be fully deleted, do you confirm the delete? (y/n)";
@@ -567,13 +508,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         config.block_template_cache_lifetime,
         mining_counters.clone(),
     )));
-    let mining_monitor = Arc::new(MiningMonitor::new(
-        mining_manager.clone(),
-        consensus_manager.clone(),
-        mining_counters,
-        tx_script_cache_counters.clone(),
-        tick_service.clone(),
-    ));
+    let mining_monitor =
+        Arc::new(MiningMonitor::new(mining_manager.clone(), mining_counters, tx_script_cache_counters.clone(), tick_service.clone()));
 
     let hub = Hub::new();
     let mining_rule_engine = Arc::new(MiningRuleEngine::new(
