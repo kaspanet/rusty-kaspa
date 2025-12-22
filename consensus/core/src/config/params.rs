@@ -11,7 +11,10 @@ use crate::{
 use kaspa_addresses::Prefix;
 use kaspa_math::Uint256;
 use serde::{Deserialize, Serialize};
-use std::cmp::min;
+use std::{
+    cmp::min,
+    ops::{Deref, DerefMut},
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForkActivation(u64);
@@ -197,34 +200,31 @@ pub const CRESCENDO: CrescendoParams = CrescendoParams {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OverrideParams {
-    pub prior_ghostdag_k: Option<KType>,
-
+    // pub prior_ghostdag_k: Option<KType>,
     /// Timestamp deviation tolerance (in seconds)
     pub timestamp_deviation_tolerance: Option<u64>,
 
     /// Target time per block (in milliseconds)
-    pub prior_target_time_per_block: Option<u64>,
+    pub pre_crescendo_target_time_per_block: Option<u64>,
 
     /// Size of full blocks window that is inspected to calculate the required difficulty of each block
-    pub prior_difficulty_window_size: Option<usize>,
+    // pub prior_difficulty_window_size: Option<usize>,
 
     /// The minimum size a difficulty window (full or sampled) must have to trigger a DAA calculation
     pub min_difficulty_window_size: Option<usize>,
 
-    pub prior_max_block_parents: Option<u8>,
-    pub prior_mergeset_size_limit: Option<u64>,
-    pub prior_merge_depth: Option<u64>,
-    pub prior_finality_depth: Option<u64>,
-    pub prior_pruning_depth: Option<u64>,
-
+    // pub prior_max_block_parents: Option<u8>,
+    // pub prior_mergeset_size_limit: Option<u64>,
+    // pub prior_merge_depth: Option<u64>,
+    // pub prior_finality_depth: Option<u64>,
+    // pub prior_pruning_depth: Option<u64>,
     pub coinbase_payload_script_public_key_max_len: Option<u8>,
     pub max_coinbase_payload_len: Option<usize>,
 
-    pub prior_max_tx_inputs: Option<usize>,
-    pub prior_max_tx_outputs: Option<usize>,
-    pub prior_max_signature_script_len: Option<usize>,
-    pub prior_max_script_public_key_len: Option<usize>,
-
+    // pub prior_max_tx_inputs: Option<usize>,
+    // pub prior_max_tx_outputs: Option<usize>,
+    // pub prior_max_signature_script_len: Option<usize>,
+    // pub prior_max_script_public_key_len: Option<usize>,
     pub mass_per_tx_byte: Option<u64>,
     pub mass_per_script_pub_key_byte: Option<u64>,
     pub mass_per_sig_op: Option<u64>,
@@ -237,7 +237,7 @@ pub struct OverrideParams {
     pub deflationary_phase_daa_score: Option<u64>,
 
     pub pre_deflationary_phase_base_subsidy: Option<u64>,
-    pub prior_coinbase_maturity: Option<u64>,
+    // pub prior_coinbase_maturity: Option<u64>,
     pub skip_proof_of_work: Option<bool>,
     pub max_block_level: Option<BlockLevel>,
     pub pruning_proof_m: Option<u64>,
@@ -249,22 +249,21 @@ pub struct OverrideParams {
 impl From<Params> for OverrideParams {
     fn from(p: Params) -> Self {
         Self {
-            prior_ghostdag_k: Some(p.prior_ghostdag_k),
             timestamp_deviation_tolerance: Some(p.timestamp_deviation_tolerance),
-            prior_target_time_per_block: Some(p.prior_target_time_per_block),
-            prior_difficulty_window_size: Some(p.prior_difficulty_window_size),
+            pre_crescendo_target_time_per_block: Some(p.pre_crescendo_target_time_per_block),
+            // prior_difficulty_window_size: Some(p.prior_difficulty_window_size),
             min_difficulty_window_size: Some(p.min_difficulty_window_size),
-            prior_max_block_parents: Some(p.prior_max_block_parents),
-            prior_mergeset_size_limit: Some(p.prior_mergeset_size_limit),
-            prior_merge_depth: Some(p.prior_merge_depth),
-            prior_finality_depth: Some(p.prior_finality_depth),
-            prior_pruning_depth: Some(p.prior_pruning_depth),
+            // prior_max_block_parents: Some(p.prior_max_block_parents),
+            // prior_mergeset_size_limit: Some(p.prior_mergeset_size_limit),
+            // prior_merge_depth: Some(p.prior_merge_depth),
+            // prior_finality_depth: Some(p.prior_finality_depth),
+            // prior_pruning_depth: Some(p.prior_pruning_depth),
             coinbase_payload_script_public_key_max_len: Some(p.coinbase_payload_script_public_key_max_len),
             max_coinbase_payload_len: Some(p.max_coinbase_payload_len),
-            prior_max_tx_inputs: Some(p.prior_max_tx_inputs),
-            prior_max_tx_outputs: Some(p.prior_max_tx_outputs),
-            prior_max_signature_script_len: Some(p.prior_max_signature_script_len),
-            prior_max_script_public_key_len: Some(p.prior_max_script_public_key_len),
+            // prior_max_tx_inputs: Some(p.prior_max_tx_inputs),
+            // prior_max_tx_outputs: Some(p.prior_max_tx_outputs),
+            // prior_max_signature_script_len: Some(p.prior_max_signature_script_len),
+            // prior_max_script_public_key_len: Some(p.prior_max_script_public_key_len),
             mass_per_tx_byte: Some(p.mass_per_tx_byte),
             mass_per_script_pub_key_byte: Some(p.mass_per_script_pub_key_byte),
             mass_per_sig_op: Some(p.mass_per_sig_op),
@@ -272,7 +271,7 @@ impl From<Params> for OverrideParams {
             storage_mass_parameter: Some(p.storage_mass_parameter),
             deflationary_phase_daa_score: Some(p.deflationary_phase_daa_score),
             pre_deflationary_phase_base_subsidy: Some(p.pre_deflationary_phase_base_subsidy),
-            prior_coinbase_maturity: Some(p.prior_coinbase_maturity),
+            // prior_coinbase_maturity: Some(p.prior_coinbase_maturity),
             skip_proof_of_work: Some(p.skip_proof_of_work),
             max_block_level: Some(p.max_block_level),
             pruning_proof_m: Some(p.pruning_proof_m),
@@ -290,13 +289,13 @@ pub struct Params {
     pub dns_seeders: &'static [&'static str],
     pub net: NetworkId,
     pub genesis: GenesisBlock,
-    pub prior_ghostdag_k: KType,
 
+    // pub prior_ghostdag_k: KType,
     /// Timestamp deviation tolerance (in seconds)
     pub timestamp_deviation_tolerance: u64,
 
     /// Target time per block (in milliseconds)
-    pub prior_target_time_per_block: u64,
+    pub pre_crescendo_target_time_per_block: u64,
 
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
     pub max_difficulty_target: Uint256,
@@ -305,25 +304,23 @@ pub struct Params {
     pub max_difficulty_target_f64: f64,
 
     /// Size of full blocks window that is inspected to calculate the required difficulty of each block
-    pub prior_difficulty_window_size: usize,
+    // pub prior_difficulty_window_size: usize,
 
     /// The minimum size a difficulty window (full or sampled) must have to trigger a DAA calculation
     pub min_difficulty_window_size: usize,
 
-    pub prior_max_block_parents: u8,
-    pub prior_mergeset_size_limit: u64,
-    pub prior_merge_depth: u64,
-    pub prior_finality_depth: u64,
-    pub prior_pruning_depth: u64,
-
+    // pub prior_max_block_parents: u8,
+    // pub prior_mergeset_size_limit: u64,
+    // pub prior_merge_depth: u64,
+    // pub prior_finality_depth: u64,
+    // pub prior_pruning_depth: u64,
     pub coinbase_payload_script_public_key_max_len: u8,
     pub max_coinbase_payload_len: usize,
 
-    pub prior_max_tx_inputs: usize,
-    pub prior_max_tx_outputs: usize,
-    pub prior_max_signature_script_len: usize,
-    pub prior_max_script_public_key_len: usize,
-
+    // pub prior_max_tx_inputs: usize,
+    // pub prior_max_tx_outputs: usize,
+    // pub prior_max_signature_script_len: usize,
+    // pub prior_max_script_public_key_len: usize,
     pub mass_per_tx_byte: u64,
     pub mass_per_script_pub_key_byte: u64,
     pub mass_per_sig_op: u64,
@@ -336,7 +333,7 @@ pub struct Params {
     pub deflationary_phase_daa_score: u64,
 
     pub pre_deflationary_phase_base_subsidy: u64,
-    pub prior_coinbase_maturity: u64,
+    // pub prior_coinbase_maturity: u64,
     pub skip_proof_of_work: bool,
     pub max_block_level: BlockLevel,
     pub pruning_proof_m: u64,
@@ -346,139 +343,104 @@ pub struct Params {
 }
 
 impl Params {
-    /// Returns the size of the full blocks window that is inspected to calculate the past median time (legacy)
+    /// Returns the size of the sampled block window that is inspected to calculate the past median time
     #[inline]
     #[must_use]
-    pub fn prior_past_median_time_window_size(&self) -> usize {
-        (2 * self.timestamp_deviation_tolerance - 1) as usize
-    }
-
-    /// Returns the size of the sampled blocks window that is inspected to calculate the past median time
-    #[inline]
-    #[must_use]
-    pub fn sampled_past_median_time_window_size(&self) -> usize {
+    pub fn past_median_time_window_size(&self) -> usize {
         self.crescendo.past_median_time_sampled_window_size as usize
-    }
-
-    /// Returns the size of the blocks window that is inspected to calculate the past median time.
-    #[inline]
-    #[must_use]
-    pub fn past_median_time_window_size(&self) -> ForkedParam<usize> {
-        ForkedParam::new(
-            self.prior_past_median_time_window_size(),
-            self.sampled_past_median_time_window_size(),
-            self.crescendo_activation,
-        )
     }
 
     /// Returns the past median time sample rate
     #[inline]
     #[must_use]
-    pub fn past_median_time_sample_rate(&self) -> ForkedParam<u64> {
-        ForkedParam::new(1, self.crescendo.past_median_time_sample_rate, self.crescendo_activation)
+    pub fn past_median_time_sample_rate(&self) -> u64 {
+        self.crescendo.past_median_time_sample_rate
     }
 
-    /// Returns the size of the blocks window that is inspected to calculate the difficulty
+    /// Returns the size of the sampled block window that is inspected to calculate the difficulty
     #[inline]
     #[must_use]
-    pub fn difficulty_window_size(&self) -> ForkedParam<usize> {
-        ForkedParam::new(
-            self.prior_difficulty_window_size,
-            self.crescendo.sampled_difficulty_window_size as usize,
-            self.crescendo_activation,
-        )
+    pub fn difficulty_window_size(&self) -> usize {
+        self.crescendo.sampled_difficulty_window_size as usize
     }
 
     /// Returns the difficulty sample rate
     #[inline]
     #[must_use]
-    pub fn difficulty_sample_rate(&self) -> ForkedParam<u64> {
-        ForkedParam::new(1, self.crescendo.difficulty_sample_rate, self.crescendo_activation)
+    pub fn difficulty_sample_rate(&self) -> u64 {
+        self.crescendo.difficulty_sample_rate
     }
 
     /// Returns the target time per block
     #[inline]
     #[must_use]
-    pub fn target_time_per_block(&self) -> ForkedParam<u64> {
-        ForkedParam::new(self.prior_target_time_per_block, self.crescendo.target_time_per_block, self.crescendo_activation)
+    pub fn target_time_per_block(&self) -> u64 {
+        self.crescendo.target_time_per_block
     }
 
     /// Returns the expected number of blocks per second
     #[inline]
     #[must_use]
-    pub fn bps(&self) -> ForkedParam<u64> {
+    pub fn bps(&self) -> u64 {
+        1000 / self.crescendo.target_time_per_block
+    }
+
+    /// Returns the expected number of blocks per second (as forked param)
+    #[inline]
+    #[must_use]
+    pub fn forked_bps(&self) -> ForkedParam<u64> {
         ForkedParam::new(
-            1000 / self.prior_target_time_per_block,
+            1000 / self.pre_crescendo_target_time_per_block,
             1000 / self.crescendo.target_time_per_block,
             self.crescendo_activation,
         )
     }
 
-    pub fn ghostdag_k(&self) -> ForkedParam<KType> {
-        ForkedParam::new(self.prior_ghostdag_k, self.crescendo.ghostdag_k, self.crescendo_activation)
+    pub fn ghostdag_k(&self) -> KType {
+        self.crescendo.ghostdag_k
     }
 
-    pub fn max_block_parents(&self) -> ForkedParam<u8> {
-        ForkedParam::new(self.prior_max_block_parents, self.crescendo.max_block_parents, self.crescendo_activation)
+    pub fn max_block_parents(&self) -> u8 {
+        self.crescendo.max_block_parents
     }
 
-    pub fn mergeset_size_limit(&self) -> ForkedParam<u64> {
-        ForkedParam::new(self.prior_mergeset_size_limit, self.crescendo.mergeset_size_limit, self.crescendo_activation)
+    pub fn mergeset_size_limit(&self) -> u64 {
+        self.crescendo.mergeset_size_limit
     }
 
-    pub fn merge_depth(&self) -> ForkedParam<u64> {
-        ForkedParam::new(self.prior_merge_depth, self.crescendo.merge_depth, self.crescendo_activation)
+    pub fn merge_depth(&self) -> u64 {
+        self.crescendo.merge_depth
     }
 
-    pub fn finality_depth(&self) -> ForkedParam<u64> {
-        ForkedParam::new(self.prior_finality_depth, self.crescendo.finality_depth, self.crescendo_activation)
+    pub fn finality_depth(&self) -> u64 {
+        self.crescendo.finality_depth
     }
 
-    pub fn pruning_depth(&self) -> ForkedParam<u64> {
-        ForkedParam::new(self.prior_pruning_depth, self.crescendo.pruning_depth, self.crescendo_activation)
+    pub fn pruning_depth(&self) -> u64 {
+        self.crescendo.pruning_depth
     }
 
-    pub fn coinbase_maturity(&self) -> ForkedParam<u64> {
-        ForkedParam::new(self.prior_coinbase_maturity, self.crescendo.coinbase_maturity, self.crescendo_activation)
+    pub fn coinbase_maturity(&self) -> u64 {
+        self.crescendo.coinbase_maturity
     }
 
-    pub fn finality_duration_in_milliseconds(&self) -> ForkedParam<u64> {
-        ForkedParam::new(
-            self.prior_target_time_per_block * self.prior_finality_depth,
-            self.crescendo.target_time_per_block * self.crescendo.finality_depth,
-            self.crescendo_activation,
-        )
+    pub fn finality_duration_in_milliseconds(&self) -> u64 {
+        self.crescendo.target_time_per_block * self.crescendo.finality_depth
     }
 
-    pub fn difficulty_window_duration_in_block_units(&self) -> ForkedParam<u64> {
-        ForkedParam::new(
-            self.prior_difficulty_window_size as u64,
-            self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size,
-            self.crescendo_activation,
-        )
+    pub fn difficulty_window_duration_in_block_units(&self) -> u64 {
+        self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size
     }
 
-    pub fn expected_difficulty_window_duration_in_milliseconds(&self) -> ForkedParam<u64> {
-        ForkedParam::new(
-            self.prior_target_time_per_block * self.prior_difficulty_window_size as u64,
-            self.crescendo.target_time_per_block
-                * self.crescendo.difficulty_sample_rate
-                * self.crescendo.sampled_difficulty_window_size,
-            self.crescendo_activation,
-        )
+    pub fn expected_difficulty_window_duration_in_milliseconds(&self) -> u64 {
+        self.crescendo.target_time_per_block * self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size
     }
 
     /// Returns the depth at which the anticone of a chain block is final (i.e., is a permanently closed set).
     /// Based on the analysis at <https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf>
     /// and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
-    pub fn anticone_finalization_depth(&self) -> ForkedParam<u64> {
-        let prior_anticone_finalization_depth = self.prior_finality_depth
-            + self.prior_merge_depth
-            + 4 * self.prior_mergeset_size_limit * self.prior_ghostdag_k as u64
-            + 2 * self.prior_ghostdag_k as u64
-            + 2;
-
-        let new_anticone_finalization_depth = self.crescendo.finality_depth
+    pub fn anticone_finalization_depth(&self) -> u64 {
+        let anticone_finalization_depth = self.crescendo.finality_depth
             + self.crescendo.merge_depth
             + 4 * self.crescendo.mergeset_size_limit * self.crescendo.ghostdag_k as u64
             + 2 * self.crescendo.ghostdag_k as u64
@@ -489,27 +451,23 @@ impl Params {
         // a smaller (unsafe) pruning depth, so we return the minimum of
         // the two to avoid a situation where a block can be pruned and
         // not finalized.
-        ForkedParam::new(
-            min(self.prior_pruning_depth, prior_anticone_finalization_depth),
-            min(self.crescendo.pruning_depth, new_anticone_finalization_depth),
-            self.crescendo_activation,
-        )
+        min(self.crescendo.pruning_depth, anticone_finalization_depth)
     }
 
-    pub fn max_tx_inputs(&self) -> ForkedParam<usize> {
-        ForkedParam::new(self.prior_max_tx_inputs, self.crescendo.max_tx_inputs, self.crescendo_activation)
+    pub fn max_tx_inputs(&self) -> usize {
+        self.crescendo.max_tx_inputs
     }
 
-    pub fn max_tx_outputs(&self) -> ForkedParam<usize> {
-        ForkedParam::new(self.prior_max_tx_outputs, self.crescendo.max_tx_outputs, self.crescendo_activation)
+    pub fn max_tx_outputs(&self) -> usize {
+        self.crescendo.max_tx_outputs
     }
 
-    pub fn max_signature_script_len(&self) -> ForkedParam<usize> {
-        ForkedParam::new(self.prior_max_signature_script_len, self.crescendo.max_signature_script_len, self.crescendo_activation)
+    pub fn max_signature_script_len(&self) -> usize {
+        self.crescendo.max_signature_script_len
     }
 
-    pub fn max_script_public_key_len(&self) -> ForkedParam<usize> {
-        ForkedParam::new(self.prior_max_script_public_key_len, self.crescendo.max_script_public_key_len, self.crescendo_activation)
+    pub fn max_script_public_key_len(&self) -> usize {
+        self.crescendo.max_script_public_key_len
     }
 
     pub fn network_name(&self) -> String {
@@ -533,37 +491,23 @@ impl Params {
             dns_seeders: self.dns_seeders,
             net: self.net,
             genesis: self.genesis.clone(),
-            prior_ghostdag_k: overrides.prior_ghostdag_k.unwrap_or(self.prior_ghostdag_k),
 
             timestamp_deviation_tolerance: overrides.timestamp_deviation_tolerance.unwrap_or(self.timestamp_deviation_tolerance),
 
-            prior_target_time_per_block: overrides.prior_target_time_per_block.unwrap_or(self.prior_target_time_per_block),
+            pre_crescendo_target_time_per_block: overrides
+                .pre_crescendo_target_time_per_block
+                .unwrap_or(self.pre_crescendo_target_time_per_block),
 
             max_difficulty_target: self.max_difficulty_target,
             max_difficulty_target_f64: self.max_difficulty_target_f64,
 
-            prior_difficulty_window_size: overrides.prior_difficulty_window_size.unwrap_or(self.prior_difficulty_window_size),
-
             min_difficulty_window_size: overrides.min_difficulty_window_size.unwrap_or(self.min_difficulty_window_size),
-
-            prior_max_block_parents: overrides.prior_max_block_parents.unwrap_or(self.prior_max_block_parents),
-
-            prior_mergeset_size_limit: overrides.prior_mergeset_size_limit.unwrap_or(self.prior_mergeset_size_limit),
-
-            prior_merge_depth: overrides.prior_merge_depth.unwrap_or(self.prior_merge_depth),
-            prior_finality_depth: overrides.prior_finality_depth.unwrap_or(self.prior_finality_depth),
-            prior_pruning_depth: overrides.prior_pruning_depth.unwrap_or(self.prior_pruning_depth),
 
             coinbase_payload_script_public_key_max_len: overrides
                 .coinbase_payload_script_public_key_max_len
                 .unwrap_or(self.coinbase_payload_script_public_key_max_len),
 
             max_coinbase_payload_len: overrides.max_coinbase_payload_len.unwrap_or(self.max_coinbase_payload_len),
-
-            prior_max_tx_inputs: overrides.prior_max_tx_inputs.unwrap_or(self.prior_max_tx_inputs),
-            prior_max_tx_outputs: overrides.prior_max_tx_outputs.unwrap_or(self.prior_max_tx_outputs),
-            prior_max_signature_script_len: overrides.prior_max_signature_script_len.unwrap_or(self.prior_max_signature_script_len),
-            prior_max_script_public_key_len: overrides.prior_max_script_public_key_len.unwrap_or(self.prior_max_script_public_key_len),
 
             mass_per_tx_byte: overrides.mass_per_tx_byte.unwrap_or(self.mass_per_tx_byte),
             mass_per_script_pub_key_byte: overrides.mass_per_script_pub_key_byte.unwrap_or(self.mass_per_script_pub_key_byte),
@@ -578,8 +522,6 @@ impl Params {
                 .pre_deflationary_phase_base_subsidy
                 .unwrap_or(self.pre_deflationary_phase_base_subsidy),
 
-            prior_coinbase_maturity: overrides.prior_coinbase_maturity.unwrap_or(self.prior_coinbase_maturity),
-
             skip_proof_of_work: overrides.skip_proof_of_work.unwrap_or(self.skip_proof_of_work),
 
             max_block_level: overrides.max_block_level.unwrap_or(self.max_block_level),
@@ -589,6 +531,20 @@ impl Params {
             crescendo: overrides.crescendo.clone().unwrap_or(self.crescendo.clone()),
             crescendo_activation: overrides.crescendo_activation.unwrap_or(self.crescendo_activation),
         }
+    }
+}
+
+impl Deref for Params {
+    type Target = CrescendoParams;
+
+    fn deref(&self) -> &Self::Target {
+        &self.crescendo
+    }
+}
+
+impl DerefMut for Params {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.crescendo
     }
 }
 
@@ -641,18 +597,18 @@ pub const MAINNET_PARAMS: Params = Params {
     ],
     net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
-    prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
+    // prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
-    prior_target_time_per_block: 1000,
+    pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    // prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
-    prior_max_block_parents: 10,
-    prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
-    prior_merge_depth: 3600,
-    prior_finality_depth: 86400,
-    prior_pruning_depth: 185798,
+    // prior_max_block_parents: 10,
+    // prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
+    // prior_merge_depth: 3600,
+    // prior_finality_depth: 86400,
+    // prior_pruning_depth: 185798,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
@@ -660,11 +616,10 @@ pub const MAINNET_PARAMS: Params = Params {
     // check these rules, but in practice it's enforced by the network layer that limits the message
     // size to 1 GB.
     // These values should be lowered to more reasonable amounts on the next planned HF/SF.
-    prior_max_tx_inputs: 1_000_000_000,
-    prior_max_tx_outputs: 1_000_000_000,
-    prior_max_signature_script_len: 1_000_000_000,
-    prior_max_script_public_key_len: 1_000_000_000,
-
+    // prior_max_tx_inputs: 1_000_000_000,
+    // prior_max_tx_outputs: 1_000_000_000,
+    // prior_max_signature_script_len: 1_000_000_000,
+    // prior_max_script_public_key_len: 1_000_000_000,
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
@@ -680,7 +635,7 @@ pub const MAINNET_PARAMS: Params = Params {
     // Three days in seconds = 3 * 24 * 60 * 60 = 259200
     deflationary_phase_daa_score: 15778800 - 259200,
     pre_deflationary_phase_base_subsidy: 50000000000,
-    prior_coinbase_maturity: 100,
+    // prior_coinbase_maturity: 100,
     skip_proof_of_work: false,
     max_block_level: 225,
     pruning_proof_m: 1000,
@@ -701,18 +656,18 @@ pub const TESTNET_PARAMS: Params = Params {
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 10),
     genesis: TESTNET_GENESIS,
-    prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
+    // prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
-    prior_target_time_per_block: 1000,
+    pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    // prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
-    prior_max_block_parents: 10,
-    prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
-    prior_merge_depth: 3600,
-    prior_finality_depth: 86400,
-    prior_pruning_depth: 185798,
+    // prior_max_block_parents: 10,
+    // prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
+    // prior_merge_depth: 3600,
+    // prior_finality_depth: 86400,
+    // prior_pruning_depth: 185798,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
@@ -720,11 +675,10 @@ pub const TESTNET_PARAMS: Params = Params {
     // check these rules, but in practice it's enforced by the network layer that limits the message
     // size to 1 GB.
     // These values should be lowered to more reasonable amounts on the next planned HF/SF.
-    prior_max_tx_inputs: 1_000_000_000,
-    prior_max_tx_outputs: 1_000_000_000,
-    prior_max_signature_script_len: 1_000_000_000,
-    prior_max_script_public_key_len: 1_000_000_000,
-
+    // prior_max_tx_inputs: 1_000_000_000,
+    // prior_max_tx_outputs: 1_000_000_000,
+    // prior_max_signature_script_len: 1_000_000_000,
+    // prior_max_script_public_key_len: 1_000_000_000,
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
@@ -739,7 +693,7 @@ pub const TESTNET_PARAMS: Params = Params {
     // Three days in seconds = 3 * 24 * 60 * 60 = 259200
     deflationary_phase_daa_score: 15778800 - 259200,
     pre_deflationary_phase_base_subsidy: 50000000000,
-    prior_coinbase_maturity: 100,
+    // prior_coinbase_maturity: 100,
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
@@ -756,33 +710,31 @@ pub const SIMNET_PARAMS: Params = Params {
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    // prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
 
     //
     // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
     //
     // Note we use a 10 BPS configuration for simnet
-    prior_ghostdag_k: TenBps::ghostdag_k(),
-    prior_target_time_per_block: TenBps::target_time_per_block(),
+    // prior_ghostdag_k: TenBps::ghostdag_k(),
+    pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
     // For simnet, we deviate from TN11 configuration and allow at least 64 parents in order to support mempool benchmarks out of the box
-    prior_max_block_parents: if TenBps::max_block_parents() > 64 { TenBps::max_block_parents() } else { 64 },
-    prior_mergeset_size_limit: TenBps::mergeset_size_limit(),
-    prior_merge_depth: TenBps::merge_depth_bound(),
-    prior_finality_depth: TenBps::finality_depth(),
-    prior_pruning_depth: TenBps::pruning_depth(),
+    // prior_max_block_parents: if TenBps::max_block_parents() > 64 { TenBps::max_block_parents() } else { 64 },
+    // prior_mergeset_size_limit: TenBps::mergeset_size_limit(),
+    // prior_merge_depth: TenBps::merge_depth_bound(),
+    // prior_finality_depth: TenBps::finality_depth(),
+    // prior_pruning_depth: TenBps::pruning_depth(),
     deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
     pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
-    prior_coinbase_maturity: TenBps::coinbase_maturity(),
-
+    // prior_coinbase_maturity: TenBps::coinbase_maturity(),
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
-    prior_max_tx_inputs: 10_000,
-    prior_max_tx_outputs: 10_000,
-    prior_max_signature_script_len: 1_000_000,
-    prior_max_script_public_key_len: 1_000_000,
-
+    // prior_max_tx_inputs: 10_000,
+    // prior_max_tx_outputs: 10_000,
+    // prior_max_signature_script_len: 1_000_000,
+    // prior_max_script_public_key_len: 1_000_000,
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
@@ -802,18 +754,18 @@ pub const DEVNET_PARAMS: Params = Params {
     dns_seeders: &[],
     net: NetworkId::new(NetworkType::Devnet),
     genesis: DEVNET_GENESIS,
-    prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
+    // prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
-    prior_target_time_per_block: 1000,
+    pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    // prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
-    prior_max_block_parents: 10,
-    prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
-    prior_merge_depth: 3600,
-    prior_finality_depth: 86400,
-    prior_pruning_depth: 185798,
+    // prior_max_block_parents: 10,
+    // prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
+    // prior_merge_depth: 3600,
+    // prior_finality_depth: 86400,
+    // prior_pruning_depth: 185798,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
@@ -821,11 +773,10 @@ pub const DEVNET_PARAMS: Params = Params {
     // check these rules, but in practice it's enforced by the network layer that limits the message
     // size to 1 GB.
     // These values should be lowered to more reasonable amounts on the next planned HF/SF.
-    prior_max_tx_inputs: 1_000_000_000,
-    prior_max_tx_outputs: 1_000_000_000,
-    prior_max_signature_script_len: 1_000_000_000,
-    prior_max_script_public_key_len: 1_000_000_000,
-
+    // prior_max_tx_inputs: 1_000_000_000,
+    // prior_max_tx_outputs: 1_000_000_000,
+    // prior_max_signature_script_len: 1_000_000_000,
+    // prior_max_script_public_key_len: 1_000_000_000,
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
@@ -835,7 +786,7 @@ pub const DEVNET_PARAMS: Params = Params {
 
     deflationary_phase_daa_score: 0,
     pre_deflationary_phase_base_subsidy: 50000000000,
-    prior_coinbase_maturity: 100,
+    // prior_coinbase_maturity: 100,
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,

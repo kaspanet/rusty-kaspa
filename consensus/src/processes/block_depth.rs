@@ -1,7 +1,4 @@
-use kaspa_consensus_core::{
-    blockhash::{BlockHashExtensions, ORIGIN},
-    config::params::ForkedParam,
-};
+use kaspa_consensus_core::blockhash::{BlockHashExtensions, ORIGIN};
 use kaspa_hashes::Hash;
 use std::sync::Arc;
 
@@ -22,8 +19,8 @@ enum BlockDepthType {
 
 #[derive(Clone)]
 pub struct BlockDepthManager<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader, T: HeaderStoreReader> {
-    merge_depth: ForkedParam<u64>,
-    finality_depth: ForkedParam<u64>,
+    merge_depth: u64,
+    finality_depth: u64,
     genesis_hash: Hash,
     depth_store: Arc<S>,
     reachability_service: MTReachabilityService<U>,
@@ -33,8 +30,8 @@ pub struct BlockDepthManager<S: DepthStoreReader, U: ReachabilityStoreReader, V:
 
 impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader, T: HeaderStoreReader> BlockDepthManager<S, U, V, T> {
     pub fn new(
-        merge_depth: ForkedParam<u64>,
-        finality_depth: ForkedParam<u64>,
+        merge_depth: u64,
+        finality_depth: u64,
         genesis_hash: Hash,
         depth_store: Arc<S>,
         reachability_service: MTReachabilityService<U>,
@@ -56,8 +53,8 @@ impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader, T:
             return ORIGIN;
         }
         let depth = match depth_type {
-            BlockDepthType::MergeRoot => self.merge_depth.after(),
-            BlockDepthType::Finality => self.finality_depth.after(),
+            BlockDepthType::MergeRoot => self.merge_depth,
+            BlockDepthType::Finality => self.finality_depth,
         };
         if ghostdag_data.blue_score < depth {
             return self.genesis_hash;

@@ -28,7 +28,6 @@ use kaspa_consensus_core::{
     },
     block::{BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     coinbase::MinerData,
-    config::params::ForkedParam,
     errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
 };
@@ -55,12 +54,12 @@ impl MiningManager {
         cache_lifetime: Option<u64>,
         counters: Arc<MiningCounters>,
     ) -> Self {
-        let config = Config::build_default(ForkedParam::new_const(target_time_per_block), relay_non_std_transactions, max_block_mass);
+        let config = Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass);
         Self::with_config(config, cache_lifetime, counters)
     }
 
     pub fn new_with_extended_config(
-        target_time_per_block: ForkedParam<u64>,
+        target_time_per_block: u64,
         relay_non_std_transactions: bool,
         max_block_mass: u64,
         ram_scale: f64,
@@ -206,7 +205,7 @@ impl MiningManager {
 
     /// Returns realtime feerate estimations based on internal mempool state
     pub(crate) fn get_realtime_feerate_estimations(&self) -> FeerateEstimations {
-        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second.after(), self.config.maximum_mass_per_block);
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
         let estimator = self.mempool.read().build_feerate_estimator(args);
         estimator.calc_estimations(self.config.minimum_feerate())
     }
@@ -217,7 +216,7 @@ impl MiningManager {
         consensus: &dyn ConsensusApi,
         prefix: kaspa_addresses::Prefix,
     ) -> MiningManagerResult<FeeEstimateVerbose> {
-        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second.after(), self.config.maximum_mass_per_block);
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
         let network_mass_per_second = args.network_mass_per_second();
         let mempool_read = self.mempool.read();
         let estimator = mempool_read.build_feerate_estimator(args);

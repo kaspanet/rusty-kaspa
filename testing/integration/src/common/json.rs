@@ -3,7 +3,7 @@ use std::str::FromStr;
 use itertools::Itertools;
 use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::params::{CrescendoParams, ForkActivation, Params};
-use kaspa_consensus::params::{CRESCENDO, MAINNET_PARAMS, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64};
+use kaspa_consensus::params::{CRESCENDO, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::constants::STORAGE_MASS_PARAMETER;
 use kaspa_consensus_core::header::Header;
@@ -174,29 +174,28 @@ pub struct KaspadGoParams {
 
 impl KaspadGoParams {
     pub fn into_params(self) -> Params {
-        let finality_depth = self.FinalityDuration / self.TargetTimePerBlock;
         Params {
             dns_seeders: &[],
             net: NetworkId { network_type: Mainnet, suffix: None },
             genesis: GENESIS,
-            prior_ghostdag_k: self.K,
+            // prior_ghostdag_k: self.K,
             timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
-            prior_target_time_per_block: self.TargetTimePerBlock / 1_000_000,
-            prior_max_block_parents: self.MaxBlockParents,
+            pre_crescendo_target_time_per_block: self.TargetTimePerBlock / 1_000_000,
+            // prior_max_block_parents: self.MaxBlockParents,
             max_difficulty_target: self.max_difficulty_target.unwrap_or(MAX_DIFFICULTY_TARGET),
             max_difficulty_target_f64: self.max_difficulty_target_f64.unwrap_or(MAX_DIFFICULTY_TARGET_AS_F64),
-            prior_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
+            // prior_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
             min_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
-            prior_mergeset_size_limit: self.MergeSetSizeLimit,
-            prior_merge_depth: self.MergeDepth,
-            prior_finality_depth: finality_depth,
-            prior_pruning_depth: 2 * finality_depth + 4 * self.MergeSetSizeLimit * self.K as u64 + 2 * self.K as u64 + 2,
+            // prior_mergeset_size_limit: self.MergeSetSizeLimit,
+            // prior_merge_depth: self.MergeDepth,
+            // prior_finality_depth: finality_depth,
+            // prior_pruning_depth: 2 * finality_depth + 4 * self.MergeSetSizeLimit * self.K as u64 + 2 * self.K as u64 + 2,
             coinbase_payload_script_public_key_max_len: self.CoinbasePayloadScriptPublicKeyMaxLength,
             max_coinbase_payload_len: self.MaxCoinbasePayloadLength,
-            prior_max_tx_inputs: MAINNET_PARAMS.prior_max_tx_inputs,
-            prior_max_tx_outputs: MAINNET_PARAMS.prior_max_tx_outputs,
-            prior_max_signature_script_len: MAINNET_PARAMS.prior_max_signature_script_len,
-            prior_max_script_public_key_len: MAINNET_PARAMS.prior_max_script_public_key_len,
+            // prior_max_tx_inputs: MAINNET_PARAMS.prior_max_tx_inputs,
+            // prior_max_tx_outputs: MAINNET_PARAMS.prior_max_tx_outputs,
+            // prior_max_signature_script_len: MAINNET_PARAMS.prior_max_signature_script_len,
+            // prior_max_script_public_key_len: MAINNET_PARAMS.prior_max_script_public_key_len,
             mass_per_tx_byte: self.MassPerTxByte,
             mass_per_script_pub_key_byte: self.MassPerScriptPubKeyByte,
             mass_per_sig_op: self.MassPerSigOp,
@@ -204,7 +203,7 @@ impl KaspadGoParams {
             storage_mass_parameter: self.storage_mass_parameter.unwrap_or(STORAGE_MASS_PARAMETER),
             deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
             pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
-            prior_coinbase_maturity: MAINNET_PARAMS.prior_coinbase_maturity,
+            // prior_coinbase_maturity: MAINNET_PARAMS.prior_coinbase_maturity,
             skip_proof_of_work: self.SkipProofOfWork,
             max_block_level: self.MaxBlockLevel,
             pruning_proof_m: self.PruningProofM,
@@ -225,14 +224,14 @@ fn hex_decode(src: &str) -> Vec<u8> {
 
 pub fn params_to_kaspad_go_params(params: &Params) -> KaspadGoParams {
     KaspadGoParams {
-        K: params.ghostdag_k().after(),
+        K: params.ghostdag_k(),
         TimestampDeviationTolerance: params.timestamp_deviation_tolerance,
-        TargetTimePerBlock: params.target_time_per_block().after() * 1_000_000,
-        MaxBlockParents: params.max_block_parents().after(),
-        DifficultyAdjustmentWindowSize: params.difficulty_window_size().after(),
-        MergeSetSizeLimit: params.mergeset_size_limit().after(),
-        MergeDepth: params.merge_depth().after(),
-        FinalityDuration: params.finality_duration_in_milliseconds().after(),
+        TargetTimePerBlock: params.target_time_per_block() * 1_000_000,
+        MaxBlockParents: params.max_block_parents(),
+        DifficultyAdjustmentWindowSize: params.difficulty_window_size(),
+        MergeSetSizeLimit: params.mergeset_size_limit(),
+        MergeDepth: params.merge_depth(),
+        FinalityDuration: params.finality_duration_in_milliseconds(),
         CoinbasePayloadScriptPublicKeyMaxLength: params.coinbase_payload_script_public_key_max_len,
         MaxCoinbasePayloadLength: params.max_coinbase_payload_len,
         MassPerTxByte: params.mass_per_tx_byte,
