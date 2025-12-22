@@ -317,8 +317,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         once(selected_parent_block)
             .chain(ghostdag_data.descending_mergeset_without_selected_parent(self.ghostdag_store.deref()))
             .filter_map(move |block| {
-                let compact = self.ghostdag_store.get_compact_data(block.hash).unwrap();
-                if compact.blue_score < blue_score_threshold {
+                let blue_score = self.ghostdag_store.get_blue_score(block.hash).unwrap();
+                if blue_score < blue_score_threshold {
                     Some(SampledBlock::NonDaa(block.hash))
                 } else {
                     index += 1;
