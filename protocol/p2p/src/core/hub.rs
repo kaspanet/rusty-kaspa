@@ -53,16 +53,11 @@ impl Hub {
                                     new_router.close().await;
 
                                     match err {
-                                        ProtocolError::LoopbackConnection(_) | ProtocolError::PeerAlreadyExists(_) => {
+                                        ProtocolError::LoopbackConnection(_)
+                                        | ProtocolError::PeerAlreadyExists(_)
+                                        | ProtocolError::VersionMismatch(_, ..=6) => {
+                                            // version 6 and below is prior crescendo, silencing logs on deprecated versions
                                             debug!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
-                                        }
-                                        ProtocolError::VersionMismatch(_, peer_p2p_version) => {
-                                            // version 6 and below is prior creshendo, silencing logs on deprecated versions
-                                            if peer_p2p_version <= 6 {
-                                                debug!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
-                                            } else {
-                                                warn!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
-                                            }
                                         }
                                         _ => {
                                             warn!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
