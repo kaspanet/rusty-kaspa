@@ -2,8 +2,8 @@ use std::str::FromStr;
 
 use itertools::Itertools;
 use kaspa_consensus::config::genesis::GENESIS;
-use kaspa_consensus::params::{CrescendoParams, ForkActivation, Params, MAINNET_PARAMS, MEDIAN_TIME_SAMPLED_WINDOW_SIZE};
-use kaspa_consensus::params::{CRESCENDO, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64};
+use kaspa_consensus::params::{BlockrateParams, ForkActivation, Params, MAINNET_PARAMS, MEDIAN_TIME_SAMPLED_WINDOW_SIZE};
+use kaspa_consensus::params::{MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::constants::STORAGE_MASS_PARAMETER;
 use kaspa_consensus_core::header::Header;
@@ -165,7 +165,7 @@ pub struct KaspadGoParams {
     pub SkipProofOfWork: bool,
     pub MaxBlockLevel: u8,
     pub PruningProofM: u64,
-    pub Crescendo: Option<CrescendoParams>,
+    pub BlockrateParams: Option<BlockrateParams>,
     pub CrescendoActivation: Option<ForkActivation>,
     pub storage_mass_parameter: Option<u64>,
     pub max_difficulty_target: Option<Uint256>,
@@ -179,19 +179,13 @@ impl KaspadGoParams {
             dns_seeders: &[],
             net: NetworkId { network_type: Mainnet, suffix: None },
             genesis: GENESIS,
-            // prior_ghostdag_k: self.K,
             timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
             pre_crescendo_target_time_per_block: self.TargetTimePerBlock / 1_000_000,
-            // prior_max_block_parents: self.MaxBlockParents,
             max_difficulty_target: self.max_difficulty_target.unwrap_or(MAX_DIFFICULTY_TARGET),
             max_difficulty_target_f64: self.max_difficulty_target_f64.unwrap_or(MAX_DIFFICULTY_TARGET_AS_F64),
             difficulty_window_size: self.DifficultyAdjustmentWindowSize as u64,
             past_median_time_window_size: self.past_median_time_window_size.unwrap_or(MEDIAN_TIME_SAMPLED_WINDOW_SIZE),
             min_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
-            // prior_mergeset_size_limit: self.MergeSetSizeLimit,
-            // prior_merge_depth: self.MergeDepth,
-            // prior_finality_depth: finality_depth,
-            // prior_pruning_depth: 2 * finality_depth + 4 * self.MergeSetSizeLimit * self.K as u64 + 2 * self.K as u64 + 2,
             coinbase_payload_script_public_key_max_len: self.CoinbasePayloadScriptPublicKeyMaxLength,
             max_coinbase_payload_len: self.MaxCoinbasePayloadLength,
             max_tx_inputs: MAINNET_PARAMS.max_tx_inputs,
@@ -205,11 +199,10 @@ impl KaspadGoParams {
             storage_mass_parameter: self.storage_mass_parameter.unwrap_or(STORAGE_MASS_PARAMETER),
             deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
             pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
-            // prior_coinbase_maturity: MAINNET_PARAMS.prior_coinbase_maturity,
             skip_proof_of_work: self.SkipProofOfWork,
             max_block_level: self.MaxBlockLevel,
             pruning_proof_m: self.PruningProofM,
-            crescendo: self.Crescendo.unwrap_or(CRESCENDO),
+            blockrate: self.BlockrateParams.unwrap_or(BlockrateParams::new::<10>()),
             crescendo_activation: ForkActivation::always(),
         }
     }
@@ -245,7 +238,7 @@ pub fn params_to_kaspad_go_params(params: &Params) -> KaspadGoParams {
         SkipProofOfWork: params.skip_proof_of_work,
         MaxBlockLevel: params.max_block_level,
         PruningProofM: params.pruning_proof_m,
-        Crescendo: Some(params.crescendo.clone()),
+        BlockrateParams: Some(params.blockrate.clone()),
         CrescendoActivation: Some(params.crescendo_activation),
         storage_mass_parameter: Some(params.storage_mass_parameter),
         max_difficulty_target: Some(params.max_difficulty_target),

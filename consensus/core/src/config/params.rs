@@ -142,40 +142,47 @@ impl<T: Copy + Ord> ForkedParam<T> {
     }
 }
 
-/// Fork params for the Crescendo hardfork
+/// Blockrate-related consensus params.
+/// Grouped together under a single struct because they are logically related and
+/// in order to easily support **future BPS acceleration hardforks** (by simply adding
+/// a forked instance of blockrate params to the main [`Params`]).
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CrescendoParams {
-    /// Target time per block (in milliseconds)
-    pub target_time_per_block: u64,
+pub struct BlockrateParams {
+    pub target_time_per_block: u64, // (milliseconds)
     pub ghostdag_k: KType,
-
     pub past_median_time_sample_rate: u64,
     pub difficulty_sample_rate: u64,
-
     pub max_block_parents: u8,
     pub mergeset_size_limit: u64,
     pub merge_depth: u64,
     pub finality_depth: u64,
     pub pruning_depth: u64,
-
     pub coinbase_maturity: u64,
 }
 
-pub const CRESCENDO: CrescendoParams = CrescendoParams {
-    //
-    // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
-    //
-    target_time_per_block: TenBps::target_time_per_block(),
-    ghostdag_k: TenBps::ghostdag_k(),
-    past_median_time_sample_rate: TenBps::past_median_time_sample_rate(),
-    difficulty_sample_rate: TenBps::difficulty_adjustment_sample_rate(),
-    max_block_parents: TenBps::max_block_parents(),
-    mergeset_size_limit: TenBps::mergeset_size_limit(),
-    merge_depth: TenBps::merge_depth_bound(),
-    finality_depth: TenBps::finality_depth(),
-    pruning_depth: TenBps::pruning_depth(),
-    coinbase_maturity: TenBps::coinbase_maturity(),
-};
+impl BlockrateParams {
+    pub const fn new<const BPS: u64>() -> Self {
+        Self {
+            target_time_per_block: Bps::<BPS>::target_time_per_block(),
+            ghostdag_k: Bps::<BPS>::ghostdag_k(),
+            past_median_time_sample_rate: Bps::<BPS>::past_median_time_sample_rate(),
+            difficulty_sample_rate: Bps::<BPS>::difficulty_adjustment_sample_rate(),
+            max_block_parents: Bps::<BPS>::max_block_parents(),
+            mergeset_size_limit: Bps::<BPS>::mergeset_size_limit(),
+            merge_depth: Bps::<BPS>::merge_depth_bound(),
+            finality_depth: Bps::<BPS>::finality_depth(),
+            pruning_depth: Bps::<BPS>::pruning_depth(),
+            coinbase_maturity: Bps::<BPS>::coinbase_maturity(),
+        }
+    }
+
+    pub const fn increase_max_block_parents(mut self, max_block_parents: u8) -> Self {
+        if self.max_block_parents < max_block_parents {
+            self.max_block_parents = max_block_parents;
+        }
+        self
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OverrideParams {
@@ -194,11 +201,6 @@ pub struct OverrideParams {
     /// The minimum size a difficulty window (full or sampled) must have to trigger a DAA calculation
     pub min_difficulty_window_size: Option<usize>,
 
-    // pub prior_max_block_parents: Option<u8>,
-    // pub prior_mergeset_size_limit: Option<u64>,
-    // pub prior_merge_depth: Option<u64>,
-    // pub prior_finality_depth: Option<u64>,
-    // pub prior_pruning_depth: Option<u64>,
     pub coinbase_payload_script_public_key_max_len: Option<u8>,
     pub max_coinbase_payload_len: Option<usize>,
 
@@ -218,12 +220,11 @@ pub struct OverrideParams {
     pub deflationary_phase_daa_score: Option<u64>,
 
     pub pre_deflationary_phase_base_subsidy: Option<u64>,
-    // pub prior_coinbase_maturity: Option<u64>,
     pub skip_proof_of_work: Option<bool>,
     pub max_block_level: Option<BlockLevel>,
     pub pruning_proof_m: Option<u64>,
 
-    pub crescendo: Option<CrescendoParams>,
+    pub blockrate: Option<BlockrateParams>,
     pub crescendo_activation: Option<ForkActivation>,
 }
 
@@ -235,11 +236,6 @@ impl From<Params> for OverrideParams {
             difficulty_window_size: Some(p.difficulty_window_size),
             past_median_time_window_size: Some(p.past_median_time_window_size),
             min_difficulty_window_size: Some(p.min_difficulty_window_size),
-            // prior_max_block_parents: Some(p.prior_max_block_parents),
-            // prior_mergeset_size_limit: Some(p.prior_mergeset_size_limit),
-            // prior_merge_depth: Some(p.prior_merge_depth),
-            // prior_finality_depth: Some(p.prior_finality_depth),
-            // prior_pruning_depth: Some(p.prior_pruning_depth),
             coinbase_payload_script_public_key_max_len: Some(p.coinbase_payload_script_public_key_max_len),
             max_coinbase_payload_len: Some(p.max_coinbase_payload_len),
             max_tx_inputs: Some(p.max_tx_inputs),
@@ -253,11 +249,10 @@ impl From<Params> for OverrideParams {
             storage_mass_parameter: Some(p.storage_mass_parameter),
             deflationary_phase_daa_score: Some(p.deflationary_phase_daa_score),
             pre_deflationary_phase_base_subsidy: Some(p.pre_deflationary_phase_base_subsidy),
-            // prior_coinbase_maturity: Some(p.prior_coinbase_maturity),
             skip_proof_of_work: Some(p.skip_proof_of_work),
             max_block_level: Some(p.max_block_level),
             pruning_proof_m: Some(p.pruning_proof_m),
-            crescendo: Some(p.crescendo),
+            blockrate: Some(p.blockrate),
             crescendo_activation: Some(p.crescendo_activation),
         }
     }
@@ -272,7 +267,6 @@ pub struct Params {
     pub net: NetworkId,
     pub genesis: GenesisBlock,
 
-    // pub prior_ghostdag_k: KType,
     /// Timestamp deviation tolerance (in seconds)
     pub timestamp_deviation_tolerance: u64,
 
@@ -295,11 +289,6 @@ pub struct Params {
     /// The minimum size a difficulty window (full or sampled) must have to trigger a DAA calculation
     pub min_difficulty_window_size: usize,
 
-    // pub prior_max_block_parents: u8,
-    // pub prior_mergeset_size_limit: u64,
-    // pub prior_merge_depth: u64,
-    // pub prior_finality_depth: u64,
-    // pub prior_pruning_depth: u64,
     pub coinbase_payload_script_public_key_max_len: u8,
     pub max_coinbase_payload_len: usize,
 
@@ -320,12 +309,11 @@ pub struct Params {
     pub deflationary_phase_daa_score: u64,
 
     pub pre_deflationary_phase_base_subsidy: u64,
-    // pub prior_coinbase_maturity: u64,
     pub skip_proof_of_work: bool,
     pub max_block_level: BlockLevel,
     pub pruning_proof_m: u64,
 
-    pub crescendo: CrescendoParams,
+    pub blockrate: BlockrateParams,
     pub crescendo_activation: ForkActivation,
 }
 
@@ -341,7 +329,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn past_median_time_sample_rate(&self) -> u64 {
-        self.crescendo.past_median_time_sample_rate
+        self.blockrate.past_median_time_sample_rate
     }
 
     /// Returns the size of the sampled block window that is inspected to calculate the difficulty
@@ -355,21 +343,21 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn difficulty_sample_rate(&self) -> u64 {
-        self.crescendo.difficulty_sample_rate
+        self.blockrate.difficulty_sample_rate
     }
 
     /// Returns the target time per block
     #[inline]
     #[must_use]
     pub fn target_time_per_block(&self) -> u64 {
-        self.crescendo.target_time_per_block
+        self.blockrate.target_time_per_block
     }
 
     /// Returns the expected number of blocks per second
     #[inline]
     #[must_use]
     pub fn bps(&self) -> u64 {
-        1000 / self.crescendo.target_time_per_block
+        1000 / self.blockrate.target_time_per_block
     }
 
     /// Returns the expected number of blocks per second (as forked param)
@@ -378,59 +366,59 @@ impl Params {
     pub fn forked_bps(&self) -> ForkedParam<u64> {
         ForkedParam::new(
             1000 / self.pre_crescendo_target_time_per_block,
-            1000 / self.crescendo.target_time_per_block,
+            1000 / self.blockrate.target_time_per_block,
             self.crescendo_activation,
         )
     }
 
     pub fn ghostdag_k(&self) -> KType {
-        self.crescendo.ghostdag_k
+        self.blockrate.ghostdag_k
     }
 
     pub fn max_block_parents(&self) -> u8 {
-        self.crescendo.max_block_parents
+        self.blockrate.max_block_parents
     }
 
     pub fn mergeset_size_limit(&self) -> u64 {
-        self.crescendo.mergeset_size_limit
+        self.blockrate.mergeset_size_limit
     }
 
     pub fn merge_depth(&self) -> u64 {
-        self.crescendo.merge_depth
+        self.blockrate.merge_depth
     }
 
     pub fn finality_depth(&self) -> u64 {
-        self.crescendo.finality_depth
+        self.blockrate.finality_depth
     }
 
     pub fn pruning_depth(&self) -> u64 {
-        self.crescendo.pruning_depth
+        self.blockrate.pruning_depth
     }
 
     pub fn coinbase_maturity(&self) -> u64 {
-        self.crescendo.coinbase_maturity
+        self.blockrate.coinbase_maturity
     }
 
     pub fn finality_duration_in_milliseconds(&self) -> u64 {
-        self.crescendo.target_time_per_block * self.crescendo.finality_depth
+        self.blockrate.target_time_per_block * self.blockrate.finality_depth
     }
 
     pub fn difficulty_window_duration_in_block_units(&self) -> u64 {
-        self.crescendo.difficulty_sample_rate * self.difficulty_window_size
+        self.blockrate.difficulty_sample_rate * self.difficulty_window_size
     }
 
     pub fn expected_difficulty_window_duration_in_milliseconds(&self) -> u64 {
-        self.crescendo.target_time_per_block * self.crescendo.difficulty_sample_rate * self.difficulty_window_size
+        self.blockrate.target_time_per_block * self.blockrate.difficulty_sample_rate * self.difficulty_window_size
     }
 
     /// Returns the depth at which the anticone of a chain block is final (i.e., is a permanently closed set).
     /// Based on the analysis at <https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf>
     /// and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
     pub fn anticone_finalization_depth(&self) -> u64 {
-        let anticone_finalization_depth = self.crescendo.finality_depth
-            + self.crescendo.merge_depth
-            + 4 * self.crescendo.mergeset_size_limit * self.crescendo.ghostdag_k as u64
-            + 2 * self.crescendo.ghostdag_k as u64
+        let anticone_finalization_depth = self.blockrate.finality_depth
+            + self.blockrate.merge_depth
+            + 4 * self.blockrate.mergeset_size_limit * self.blockrate.ghostdag_k as u64
+            + 2 * self.blockrate.ghostdag_k as u64
             + 2;
 
         // In mainnet it's guaranteed that `self.pruning_depth` is greater
@@ -438,7 +426,7 @@ impl Params {
         // a smaller (unsafe) pruning depth, so we return the minimum of
         // the two to avoid a situation where a block can be pruned and
         // not finalized.
-        min(self.crescendo.pruning_depth, anticone_finalization_depth)
+        min(self.blockrate.pruning_depth, anticone_finalization_depth)
     }
 
     pub fn max_tx_inputs(&self) -> usize {
@@ -521,23 +509,23 @@ impl Params {
 
             pruning_proof_m: overrides.pruning_proof_m.unwrap_or(self.pruning_proof_m),
 
-            crescendo: overrides.crescendo.clone().unwrap_or(self.crescendo.clone()),
+            blockrate: overrides.blockrate.clone().unwrap_or(self.blockrate.clone()),
             crescendo_activation: overrides.crescendo_activation.unwrap_or(self.crescendo_activation),
         }
     }
 }
 
 impl Deref for Params {
-    type Target = CrescendoParams;
+    type Target = BlockrateParams;
 
     fn deref(&self) -> &Self::Target {
-        &self.crescendo
+        &self.blockrate
     }
 }
 
 impl DerefMut for Params {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.crescendo
+        &mut self.blockrate
     }
 }
 
@@ -590,7 +578,6 @@ pub const MAINNET_PARAMS: Params = Params {
     ],
     net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
-    // prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
@@ -598,11 +585,6 @@ pub const MAINNET_PARAMS: Params = Params {
     past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
-    // prior_max_block_parents: 10,
-    // prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
-    // prior_merge_depth: 3600,
-    // prior_finality_depth: 86400,
-    // prior_pruning_depth: 185798,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
@@ -630,12 +612,11 @@ pub const MAINNET_PARAMS: Params = Params {
     // Three days in seconds = 3 * 24 * 60 * 60 = 259200
     deflationary_phase_daa_score: 15778800 - 259200,
     pre_deflationary_phase_base_subsidy: 50000000000,
-    // prior_coinbase_maturity: 100,
     skip_proof_of_work: false,
     max_block_level: 225,
     pruning_proof_m: 1000,
 
-    crescendo: CRESCENDO,
+    blockrate: BlockrateParams::new::<10>(),
     // Roughly 2025-05-05 1500 UTC
     crescendo_activation: ForkActivation::new(110_165_000),
 };
@@ -651,7 +632,6 @@ pub const TESTNET_PARAMS: Params = Params {
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 10),
     genesis: TESTNET_GENESIS,
-    // prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
@@ -659,11 +639,6 @@ pub const TESTNET_PARAMS: Params = Params {
     past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
-    // prior_max_block_parents: 10,
-    // prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
-    // prior_merge_depth: 3600,
-    // prior_finality_depth: 86400,
-    // prior_pruning_depth: 185798,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
@@ -690,12 +665,11 @@ pub const TESTNET_PARAMS: Params = Params {
     // Three days in seconds = 3 * 24 * 60 * 60 = 259200
     deflationary_phase_daa_score: 15778800 - 259200,
     pre_deflationary_phase_base_subsidy: 50000000000,
-    // prior_coinbase_maturity: 100,
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
 
-    crescendo: CRESCENDO,
+    blockrate: BlockrateParams::new::<10>(),
     // 18:30 UTC, March 6, 2025
     crescendo_activation: ForkActivation::new(88_657_000),
 };
@@ -711,21 +685,9 @@ pub const SIMNET_PARAMS: Params = Params {
     difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
 
-    //
-    // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
-    //
-    // Note we use a 10 BPS configuration for simnet
-    // prior_ghostdag_k: TenBps::ghostdag_k(),
     pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
-    // For simnet, we deviate from TN11 configuration and allow at least 64 parents in order to support mempool benchmarks out of the box
-    // prior_max_block_parents: if TenBps::max_block_parents() > 64 { TenBps::max_block_parents() } else { 64 },
-    // prior_mergeset_size_limit: TenBps::mergeset_size_limit(),
-    // prior_merge_depth: TenBps::merge_depth_bound(),
-    // prior_finality_depth: TenBps::finality_depth(),
-    // prior_pruning_depth: TenBps::pruning_depth(),
     deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
     pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
-    // prior_coinbase_maturity: TenBps::coinbase_maturity(),
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
@@ -745,7 +707,8 @@ pub const SIMNET_PARAMS: Params = Params {
     max_block_level: 250,
     pruning_proof_m: PRUNING_PROOF_M,
 
-    crescendo: CRESCENDO,
+    // For simnet, we deviate from default 10BPS configuration and allow at least 64 parents in order to support mempool benchmarks out of the box
+    blockrate: BlockrateParams::new::<10>().increase_max_block_parents(64),
     crescendo_activation: ForkActivation::always(),
 };
 
@@ -753,7 +716,6 @@ pub const DEVNET_PARAMS: Params = Params {
     dns_seeders: &[],
     net: NetworkId::new(NetworkType::Devnet),
     genesis: DEVNET_GENESIS,
-    // prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
@@ -761,11 +723,6 @@ pub const DEVNET_PARAMS: Params = Params {
     past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
-    // prior_max_block_parents: 10,
-    // prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
-    // prior_merge_depth: 3600,
-    // prior_finality_depth: 86400,
-    // prior_pruning_depth: 185798,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
@@ -783,11 +740,10 @@ pub const DEVNET_PARAMS: Params = Params {
 
     deflationary_phase_daa_score: 0,
     pre_deflationary_phase_base_subsidy: 50000000000,
-    // prior_coinbase_maturity: 100,
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
 
-    crescendo: CRESCENDO,
+    blockrate: BlockrateParams::new::<10>(),
     crescendo_activation: ForkActivation::always(),
 };
