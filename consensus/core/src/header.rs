@@ -62,10 +62,6 @@ impl CompressedParents {
         }
     }
 
-    pub fn inner(&self) -> &[(u8, Vec<Hash>)] {
-        &self.0
-    }
-
     /// Sets the direct parents (level 0) to the given value, preserving all other levels.
     ///
     /// NOTE: inefficient implementation, should be used for testing purposes only.

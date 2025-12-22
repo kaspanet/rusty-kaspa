@@ -34,7 +34,7 @@ impl From<(HeaderFormat, &Header)> for protowire::BlockHeader {
                 HeaderFormat::Legacy => item.parents_by_level.expanded_iter().map(protowire::BlockLevelParents::from).collect(),
                 HeaderFormat::Compressed => item
                     .parents_by_level
-                    .inner()
+                    .raw()
                     .iter()
                     .map(|(cum, hashes)| protowire::BlockLevelParents {
                         cumulative_level: (*cum).into(),
