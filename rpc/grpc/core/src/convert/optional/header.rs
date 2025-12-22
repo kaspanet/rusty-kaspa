@@ -5,7 +5,7 @@ use std::{convert::TryFrom, str::FromStr};
 
 fn compressed_parents_to_protowire(parents: &kaspa_rpc_core::RpcCompressedParents) -> Vec<protowire::RpcCompressedBlockLevelParent> {
     parents
-        .runs()
+        .raw()
         .iter()
         .map(|(cumulative_level, hashes)| protowire::RpcCompressedBlockLevelParent {
             cumulative_level: *cumulative_level as u32,

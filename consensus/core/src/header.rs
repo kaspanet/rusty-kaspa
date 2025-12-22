@@ -24,11 +24,6 @@ impl CompressedParents {
         Self(runs)
     }
 
-    /// Returns the internal run-length encoded representation.
-    pub fn runs(&self) -> &[(u8, Vec<Hash>)] {
-        &self.0
-    }
-
     pub fn expanded_len(&self) -> usize {
         self.0.last().map(|(cum, _)| *cum as usize).unwrap_or(0)
     }
@@ -86,6 +81,7 @@ impl CompressedParents {
         *self = parents.try_into().unwrap();
     }
 
+    /// Returns the internal run-length encoded representation.
     pub fn raw(&self) -> &[(u8, Vec<Hash>)] {
         &self.0
     }
