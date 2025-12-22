@@ -507,6 +507,7 @@ impl PruningProofManager {
             .parents_at_level(header, level)
             .iter()
             .copied()
+            .filter(|&p| self.reachability_service.has_reachability_data(p))
             .filter_map(|p| self.headers_store.get_header(p).unwrap_option().map(|h| SortableBlock::new(p, h.blue_work)))
             .max()
             .ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof("no parents with header".to_string()))?;
