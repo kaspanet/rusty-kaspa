@@ -145,9 +145,6 @@ impl<T: Copy + Ord> ForkedParam<T> {
 /// Fork params for the Crescendo hardfork
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CrescendoParams {
-    pub past_median_time_sampled_window_size: u64,
-    pub sampled_difficulty_window_size: u64,
-
     /// Target time per block (in milliseconds)
     pub target_time_per_block: u64,
     pub ghostdag_k: KType,
@@ -165,9 +162,6 @@ pub struct CrescendoParams {
 }
 
 pub const CRESCENDO: CrescendoParams = CrescendoParams {
-    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
-
     //
     // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
     //
@@ -180,21 +174,22 @@ pub const CRESCENDO: CrescendoParams = CrescendoParams {
     merge_depth: TenBps::merge_depth_bound(),
     finality_depth: TenBps::finality_depth(),
     pruning_depth: TenBps::pruning_depth(),
-
     coinbase_maturity: TenBps::coinbase_maturity(),
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OverrideParams {
-    // pub prior_ghostdag_k: Option<KType>,
     /// Timestamp deviation tolerance (in seconds)
     pub timestamp_deviation_tolerance: Option<u64>,
 
-    /// Target time per block (in milliseconds)
+    /// Target time per block prior to the crescendo hardfork (in milliseconds)
     pub pre_crescendo_target_time_per_block: Option<u64>,
 
-    /// Size of full blocks window that is inspected to calculate the required difficulty of each block
-    // pub prior_difficulty_window_size: Option<usize>,
+    /// Size of the sampled block window that is used to calculate the past median time of each block
+    pub past_median_time_window_size: Option<u64>,
+
+    /// Size of the sampled block window that is used to calculate the required difficulty of each block
+    pub difficulty_window_size: Option<u64>,
 
     /// The minimum size a difficulty window (full or sampled) must have to trigger a DAA calculation
     pub min_difficulty_window_size: Option<usize>,
@@ -237,7 +232,8 @@ impl From<Params> for OverrideParams {
         Self {
             timestamp_deviation_tolerance: Some(p.timestamp_deviation_tolerance),
             pre_crescendo_target_time_per_block: Some(p.pre_crescendo_target_time_per_block),
-            // prior_difficulty_window_size: Some(p.prior_difficulty_window_size),
+            difficulty_window_size: Some(p.difficulty_window_size),
+            past_median_time_window_size: Some(p.past_median_time_window_size),
             min_difficulty_window_size: Some(p.min_difficulty_window_size),
             // prior_max_block_parents: Some(p.prior_max_block_parents),
             // prior_mergeset_size_limit: Some(p.prior_mergeset_size_limit),
@@ -280,7 +276,8 @@ pub struct Params {
     /// Timestamp deviation tolerance (in seconds)
     pub timestamp_deviation_tolerance: u64,
 
-    /// Target time per block (in milliseconds)
+    /// Target time per block prior to the crescendo hardfork (in milliseconds)
+    /// Required permanently in order to calculate the subsidy month from the current DAA score
     pub pre_crescendo_target_time_per_block: u64,
 
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
@@ -289,8 +286,11 @@ pub struct Params {
     /// Highest allowed proof of work difficulty as a floating number
     pub max_difficulty_target_f64: f64,
 
-    /// Size of full blocks window that is inspected to calculate the required difficulty of each block
-    // pub prior_difficulty_window_size: usize,
+    /// Size of the sampled block window that is used to calculate the past median time of each block
+    pub past_median_time_window_size: u64,
+
+    /// Size of the sampled block window that is used to calculate the required difficulty of each block
+    pub difficulty_window_size: u64,
 
     /// The minimum size a difficulty window (full or sampled) must have to trigger a DAA calculation
     pub min_difficulty_window_size: usize,
@@ -334,7 +334,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn past_median_time_window_size(&self) -> usize {
-        self.crescendo.past_median_time_sampled_window_size as usize
+        self.past_median_time_window_size as usize
     }
 
     /// Returns the past median time sample rate
@@ -348,7 +348,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn difficulty_window_size(&self) -> usize {
-        self.crescendo.sampled_difficulty_window_size as usize
+        self.difficulty_window_size as usize
     }
 
     /// Returns the difficulty sample rate
@@ -416,11 +416,11 @@ impl Params {
     }
 
     pub fn difficulty_window_duration_in_block_units(&self) -> u64 {
-        self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size
+        self.crescendo.difficulty_sample_rate * self.difficulty_window_size
     }
 
     pub fn expected_difficulty_window_duration_in_milliseconds(&self) -> u64 {
-        self.crescendo.target_time_per_block * self.crescendo.difficulty_sample_rate * self.crescendo.sampled_difficulty_window_size
+        self.crescendo.target_time_per_block * self.crescendo.difficulty_sample_rate * self.difficulty_window_size
     }
 
     /// Returns the depth at which the anticone of a chain block is final (i.e., is a permanently closed set).
@@ -488,6 +488,8 @@ impl Params {
             max_difficulty_target: self.max_difficulty_target,
             max_difficulty_target_f64: self.max_difficulty_target_f64,
 
+            difficulty_window_size: overrides.difficulty_window_size.unwrap_or(self.difficulty_window_size),
+            past_median_time_window_size: overrides.past_median_time_window_size.unwrap_or(self.past_median_time_window_size),
             min_difficulty_window_size: overrides.min_difficulty_window_size.unwrap_or(self.min_difficulty_window_size),
 
             coinbase_payload_script_public_key_max_len: overrides
@@ -593,7 +595,8 @@ pub const MAINNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    // prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
+    difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     // prior_max_block_parents: 10,
     // prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
@@ -653,7 +656,8 @@ pub const TESTNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    // prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
+    difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     // prior_max_block_parents: 10,
     // prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
@@ -703,7 +707,8 @@ pub const SIMNET_PARAMS: Params = Params {
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    // prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
+    difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
 
     //
@@ -753,7 +758,8 @@ pub const DEVNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    // prior_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
+    difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     // prior_max_block_parents: 10,
     // prior_mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,

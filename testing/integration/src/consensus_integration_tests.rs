@@ -570,7 +570,7 @@ async fn median_time_test() {
                 p.crescendo_activation = ForkActivation::always();
                 p.timestamp_deviation_tolerance = 120;
                 p.past_median_time_sample_rate = 3;
-                p.past_median_time_sampled_window_size = (2 * 120 - 1) / 3;
+                p.past_median_time_window_size = (2 * 120 - 1) / 3;
             })
             .build(),
     }];
@@ -1077,13 +1077,13 @@ async fn difficulty_test() {
                 .edit_consensus_params(|p| {
                     p.ghostdag_k = 1;
                     p.ghostdag_k = 1;
-                    p.sampled_difficulty_window_size = SAMPLED_WINDOW_SIZE;
+                    p.difficulty_window_size = SAMPLED_WINDOW_SIZE;
                     p.difficulty_sample_rate = SAMPLE_RATE;
                     p.crescendo_activation = ForkActivation::always();
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.past_median_time_sample_rate = PMT_SAMPLE_RATE;
-                    p.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
+                    p.past_median_time_window_size = PMT_SAMPLED_WINDOW_SIZE;
                     p.timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
                 })
                 .build(),
@@ -1097,13 +1097,13 @@ async fn difficulty_test() {
                     p.ghostdag_k = 1;
                     p.ghostdag_k = 1;
                     p.target_time_per_block /= HIGH_BPS;
-                    p.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
+                    p.difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
                     p.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
                     p.crescendo_activation = ForkActivation::always();
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;
-                    p.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
+                    p.past_median_time_window_size = PMT_SAMPLED_WINDOW_SIZE;
                     p.timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
                 })
                 .build(),

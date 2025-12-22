@@ -377,7 +377,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
             // Scale DAA and median-time windows linearly with BPS
             params.crescendo_activation = ForkActivation::never();
             params.timestamp_deviation_tolerance = (params.timestamp_deviation_tolerance as f64 * args.bps) as u64;
-            params.sampled_difficulty_window_size = (params.sampled_difficulty_window_size as f64 * args.bps) as u64;
+            params.difficulty_window_size = (params.difficulty_window_size as f64 * args.bps) as u64;
         } else {
             // Use the new sampling algorithms
             params.crescendo_activation = ForkActivation::always();
@@ -394,7 +394,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.pruning_proof_m = 16;
         params.min_difficulty_window_size = 16;
         params.timestamp_deviation_tolerance = 16;
-        params.sampled_difficulty_window_size = params.sampled_difficulty_window_size.min(32);
+        params.difficulty_window_size = params.difficulty_window_size.min(32);
 
         params.ghostdag_k = 20;
         params.finality_depth = 100 * 2;

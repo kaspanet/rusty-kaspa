@@ -3,7 +3,6 @@ pub mod consensus {
     //! A module for constants which directly impact consensus.
     //!
 
-    use crate::KType;
     use kaspa_math::Uint256;
 
     //
@@ -15,9 +14,6 @@ pub mod consensus {
 
     /// **Desired** upper bound on the probability of anticones larger than k
     pub const GHOSTDAG_TAIL_DELTA: f64 = 0.01;
-
-    /// **Legacy** default K for 1 BPS
-    pub const LEGACY_DEFAULT_GHOSTDAG_K: KType = 18;
 
     //
     // ~~~~~~~~~~~~~~~~~~ Timestamp deviation & Median time ~~~~~~~~~~~~~~~~~~
@@ -55,12 +51,7 @@ pub mod consensus {
     /// Also used during BPS fork transitions to stabilize the new rate before applying DA (see KIP-14).
     /// With 4 seconds sampling interval, a value of 150 indicates 10 minutes of fixed
     /// difficulty until the window grows large enough.
-    ///
-    /// TODO (crescendo): finalize
     pub const MIN_DIFFICULTY_WINDOW_SIZE: usize = 150;
-
-    /// **Legacy** difficulty adjustment window size corresponding to ~44 minutes with 1 BPS
-    pub const LEGACY_DIFFICULTY_WINDOW_SIZE: usize = 2641;
 
     /// **New** difficulty window duration expressed in time units (seconds).
     pub const NEW_DIFFICULTY_WINDOW_DURATION: u64 = 2641;
@@ -74,9 +65,6 @@ pub mod consensus {
     //
     // ~~~~~~~~~~~~~~~~~~~ Finality & Pruning ~~~~~~~~~~~~~~~~~~~
     //
-
-    /// **Legacy** finality depth (in block units)
-    pub const LEGACY_FINALITY_DEPTH: u64 = 86_400;
 
     /// **New** finality duration expressed in time units (seconds).
     pub const NEW_FINALITY_DURATION: u64 = 43_200; // 12 hours
@@ -99,8 +87,8 @@ pub mod consensus {
     // ~~~~~~~~~~~~~~~~~~~ Coinbase ~~~~~~~~~~~~~~~~~~~
     //
 
-    /// **Legacy** value of the coinbase maturity parameter for 1 BPS networks
-    pub const LEGACY_COINBASE_MATURITY: u64 = 100;
+    /// Coinbase maturity in seconds
+    pub const COINBASE_MATURITY_SECONDS: u64 = 100;
 }
 
 pub mod perf {

@@ -121,7 +121,7 @@ impl<const BPS: u64> Bps<BPS> {
     }
 
     pub const fn coinbase_maturity() -> u64 {
-        BPS * LEGACY_COINBASE_MATURITY
+        BPS * COINBASE_MATURITY_SECONDS
     }
 
     /// DAA score after which the pre-deflationary period switches to the deflationary period.

@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use itertools::Itertools;
 use kaspa_consensus::config::genesis::GENESIS;
-use kaspa_consensus::params::{CrescendoParams, ForkActivation, Params, MAINNET_PARAMS};
+use kaspa_consensus::params::{CrescendoParams, ForkActivation, Params, MAINNET_PARAMS, MEDIAN_TIME_SAMPLED_WINDOW_SIZE};
 use kaspa_consensus::params::{CRESCENDO, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::constants::STORAGE_MASS_PARAMETER;
@@ -170,6 +170,7 @@ pub struct KaspadGoParams {
     pub storage_mass_parameter: Option<u64>,
     pub max_difficulty_target: Option<Uint256>,
     pub max_difficulty_target_f64: Option<f64>,
+    pub past_median_time_window_size: Option<u64>,
 }
 
 impl KaspadGoParams {
@@ -184,7 +185,8 @@ impl KaspadGoParams {
             // prior_max_block_parents: self.MaxBlockParents,
             max_difficulty_target: self.max_difficulty_target.unwrap_or(MAX_DIFFICULTY_TARGET),
             max_difficulty_target_f64: self.max_difficulty_target_f64.unwrap_or(MAX_DIFFICULTY_TARGET_AS_F64),
-            // prior_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
+            difficulty_window_size: self.DifficultyAdjustmentWindowSize as u64,
+            past_median_time_window_size: self.past_median_time_window_size.unwrap_or(MEDIAN_TIME_SAMPLED_WINDOW_SIZE),
             min_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
             // prior_mergeset_size_limit: self.MergeSetSizeLimit,
             // prior_merge_depth: self.MergeDepth,
@@ -248,6 +250,7 @@ pub fn params_to_kaspad_go_params(params: &Params) -> KaspadGoParams {
         storage_mass_parameter: Some(params.storage_mass_parameter),
         max_difficulty_target: Some(params.max_difficulty_target),
         max_difficulty_target_f64: Some(params.max_difficulty_target_f64),
+        past_median_time_window_size: Some(params.past_median_time_window_size),
     }
 }
 
