@@ -161,11 +161,6 @@ pub struct CrescendoParams {
     pub finality_depth: u64,
     pub pruning_depth: u64,
 
-    pub max_tx_inputs: usize,
-    pub max_tx_outputs: usize,
-    pub max_signature_script_len: usize,
-    pub max_script_public_key_len: usize,
-
     pub coinbase_maturity: u64,
 }
 
@@ -187,15 +182,6 @@ pub const CRESCENDO: CrescendoParams = CrescendoParams {
     pruning_depth: TenBps::pruning_depth(),
 
     coinbase_maturity: TenBps::coinbase_maturity(),
-
-    // Limit the cost of calculating compute/transient/storage masses
-    max_tx_inputs: 1000,
-    max_tx_outputs: 1000,
-    // Transient mass enforces a limit of 125Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
-    max_signature_script_len: 10_000,
-    // Compute mass enforces a limit of ~45.5Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
-    // Note that storage mass will kick in and gradually penalize also for lower lengths (generalized KIP-0009, plurality will be high).
-    max_script_public_key_len: 10_000,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -221,10 +207,10 @@ pub struct OverrideParams {
     pub coinbase_payload_script_public_key_max_len: Option<u8>,
     pub max_coinbase_payload_len: Option<usize>,
 
-    // pub prior_max_tx_inputs: Option<usize>,
-    // pub prior_max_tx_outputs: Option<usize>,
-    // pub prior_max_signature_script_len: Option<usize>,
-    // pub prior_max_script_public_key_len: Option<usize>,
+    pub max_tx_inputs: Option<usize>,
+    pub max_tx_outputs: Option<usize>,
+    pub max_signature_script_len: Option<usize>,
+    pub max_script_public_key_len: Option<usize>,
     pub mass_per_tx_byte: Option<u64>,
     pub mass_per_script_pub_key_byte: Option<u64>,
     pub mass_per_sig_op: Option<u64>,
@@ -260,10 +246,10 @@ impl From<Params> for OverrideParams {
             // prior_pruning_depth: Some(p.prior_pruning_depth),
             coinbase_payload_script_public_key_max_len: Some(p.coinbase_payload_script_public_key_max_len),
             max_coinbase_payload_len: Some(p.max_coinbase_payload_len),
-            // prior_max_tx_inputs: Some(p.prior_max_tx_inputs),
-            // prior_max_tx_outputs: Some(p.prior_max_tx_outputs),
-            // prior_max_signature_script_len: Some(p.prior_max_signature_script_len),
-            // prior_max_script_public_key_len: Some(p.prior_max_script_public_key_len),
+            max_tx_inputs: Some(p.max_tx_inputs),
+            max_tx_outputs: Some(p.max_tx_outputs),
+            max_signature_script_len: Some(p.max_signature_script_len),
+            max_script_public_key_len: Some(p.max_script_public_key_len),
             mass_per_tx_byte: Some(p.mass_per_tx_byte),
             mass_per_script_pub_key_byte: Some(p.mass_per_script_pub_key_byte),
             mass_per_sig_op: Some(p.mass_per_sig_op),
@@ -317,10 +303,11 @@ pub struct Params {
     pub coinbase_payload_script_public_key_max_len: u8,
     pub max_coinbase_payload_len: usize,
 
-    // pub prior_max_tx_inputs: usize,
-    // pub prior_max_tx_outputs: usize,
-    // pub prior_max_signature_script_len: usize,
-    // pub prior_max_script_public_key_len: usize,
+    pub max_tx_inputs: usize,
+    pub max_tx_outputs: usize,
+    pub max_signature_script_len: usize,
+    pub max_script_public_key_len: usize,
+
     pub mass_per_tx_byte: u64,
     pub mass_per_script_pub_key_byte: u64,
     pub mass_per_sig_op: u64,
@@ -455,19 +442,19 @@ impl Params {
     }
 
     pub fn max_tx_inputs(&self) -> usize {
-        self.crescendo.max_tx_inputs
+        self.max_tx_inputs
     }
 
     pub fn max_tx_outputs(&self) -> usize {
-        self.crescendo.max_tx_outputs
+        self.max_tx_outputs
     }
 
     pub fn max_signature_script_len(&self) -> usize {
-        self.crescendo.max_signature_script_len
+        self.max_signature_script_len
     }
 
     pub fn max_script_public_key_len(&self) -> usize {
-        self.crescendo.max_script_public_key_len
+        self.max_script_public_key_len
     }
 
     pub fn network_name(&self) -> String {
@@ -509,6 +496,10 @@ impl Params {
 
             max_coinbase_payload_len: overrides.max_coinbase_payload_len.unwrap_or(self.max_coinbase_payload_len),
 
+            max_tx_inputs: overrides.max_tx_inputs.unwrap_or(self.max_tx_inputs),
+            max_tx_outputs: overrides.max_tx_outputs.unwrap_or(self.max_tx_outputs),
+            max_signature_script_len: overrides.max_signature_script_len.unwrap_or(self.max_signature_script_len),
+            max_script_public_key_len: overrides.max_script_public_key_len.unwrap_or(self.max_script_public_key_len),
             mass_per_tx_byte: overrides.mass_per_tx_byte.unwrap_or(self.mass_per_tx_byte),
             mass_per_script_pub_key_byte: overrides.mass_per_script_pub_key_byte.unwrap_or(self.mass_per_script_pub_key_byte),
             mass_per_sig_op: overrides.mass_per_sig_op.unwrap_or(self.mass_per_sig_op),
@@ -612,14 +603,15 @@ pub const MAINNET_PARAMS: Params = Params {
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
-    // This is technically a soft fork from the Go implementation since kaspad's consensus doesn't
-    // check these rules, but in practice it's enforced by the network layer that limits the message
-    // size to 1 GB.
-    // These values should be lowered to more reasonable amounts on the next planned HF/SF.
-    // prior_max_tx_inputs: 1_000_000_000,
-    // prior_max_tx_outputs: 1_000_000_000,
-    // prior_max_signature_script_len: 1_000_000_000,
-    // prior_max_script_public_key_len: 1_000_000_000,
+    // Limit the cost of calculating compute/transient/storage masses
+    max_tx_inputs: 1000,
+    max_tx_outputs: 1000,
+    // Transient mass enforces a limit of 125Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
+    max_signature_script_len: 10_000,
+    // Compute mass enforces a limit of ~45.5Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
+    // Note that storage mass will kick in and gradually penalize also for lower lengths (generalized KIP-0009, plurality will be high).
+    max_script_public_key_len: 10_000,
+
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
@@ -671,14 +663,15 @@ pub const TESTNET_PARAMS: Params = Params {
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
-    // This is technically a soft fork from the Go implementation since kaspad's consensus doesn't
-    // check these rules, but in practice it's enforced by the network layer that limits the message
-    // size to 1 GB.
-    // These values should be lowered to more reasonable amounts on the next planned HF/SF.
-    // prior_max_tx_inputs: 1_000_000_000,
-    // prior_max_tx_outputs: 1_000_000_000,
-    // prior_max_signature_script_len: 1_000_000_000,
-    // prior_max_script_public_key_len: 1_000_000_000,
+    // Limit the cost of calculating compute/transient/storage masses
+    max_tx_inputs: 1000,
+    max_tx_outputs: 1000,
+    // Transient mass enforces a limit of 125Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
+    max_signature_script_len: 10_000,
+    // Compute mass enforces a limit of ~45.5Kb, however script engine max scripts size is 10Kb so there's no point in surpassing that.
+    // Note that storage mass will kick in and gradually penalize also for lower lengths (generalized KIP-0009, plurality will be high).
+    max_script_public_key_len: 10_000,
+
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
@@ -731,10 +724,11 @@ pub const SIMNET_PARAMS: Params = Params {
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
-    // prior_max_tx_inputs: 10_000,
-    // prior_max_tx_outputs: 10_000,
-    // prior_max_signature_script_len: 1_000_000,
-    // prior_max_script_public_key_len: 1_000_000,
+    max_tx_inputs: 1000,
+    max_tx_outputs: 1000,
+    max_signature_script_len: 10_000,
+    max_script_public_key_len: 10_000,
+
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
@@ -769,14 +763,11 @@ pub const DEVNET_PARAMS: Params = Params {
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
-    // This is technically a soft fork from the Go implementation since kaspad's consensus doesn't
-    // check these rules, but in practice it's enforced by the network layer that limits the message
-    // size to 1 GB.
-    // These values should be lowered to more reasonable amounts on the next planned HF/SF.
-    // prior_max_tx_inputs: 1_000_000_000,
-    // prior_max_tx_outputs: 1_000_000_000,
-    // prior_max_signature_script_len: 1_000_000_000,
-    // prior_max_script_public_key_len: 1_000_000_000,
+    max_tx_inputs: 1000,
+    max_tx_outputs: 1000,
+    max_signature_script_len: 10_000,
+    max_script_public_key_len: 10_000,
+
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,

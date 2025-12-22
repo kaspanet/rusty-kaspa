@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use itertools::Itertools;
 use kaspa_consensus::config::genesis::GENESIS;
-use kaspa_consensus::params::{CrescendoParams, ForkActivation, Params};
+use kaspa_consensus::params::{CrescendoParams, ForkActivation, Params, MAINNET_PARAMS};
 use kaspa_consensus::params::{CRESCENDO, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::constants::STORAGE_MASS_PARAMETER;
@@ -192,10 +192,10 @@ impl KaspadGoParams {
             // prior_pruning_depth: 2 * finality_depth + 4 * self.MergeSetSizeLimit * self.K as u64 + 2 * self.K as u64 + 2,
             coinbase_payload_script_public_key_max_len: self.CoinbasePayloadScriptPublicKeyMaxLength,
             max_coinbase_payload_len: self.MaxCoinbasePayloadLength,
-            // prior_max_tx_inputs: MAINNET_PARAMS.prior_max_tx_inputs,
-            // prior_max_tx_outputs: MAINNET_PARAMS.prior_max_tx_outputs,
-            // prior_max_signature_script_len: MAINNET_PARAMS.prior_max_signature_script_len,
-            // prior_max_script_public_key_len: MAINNET_PARAMS.prior_max_script_public_key_len,
+            max_tx_inputs: MAINNET_PARAMS.max_tx_inputs,
+            max_tx_outputs: MAINNET_PARAMS.max_tx_outputs,
+            max_signature_script_len: MAINNET_PARAMS.max_signature_script_len,
+            max_script_public_key_len: MAINNET_PARAMS.max_script_public_key_len,
             mass_per_tx_byte: self.MassPerTxByte,
             mass_per_script_pub_key_byte: self.MassPerScriptPubKeyByte,
             mass_per_sig_op: self.MassPerSigOp,
