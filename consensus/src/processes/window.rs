@@ -59,12 +59,6 @@ pub trait WindowManager {
     fn consecutive_cover_for_window(&self, ghostdag_data: Arc<GhostdagData>, window: &BlockWindowHeap) -> Vec<Hash>;
 }
 
-trait AffiliatedWindowCacheReader {
-    fn get(&self, hash: &Hash) -> Option<Arc<BlockWindowHeap>>;
-}
-
-type DaaStatus = Option<(u64, BlockHashSet)>;
-
 enum SampledBlock {
     Sampled(SortableBlock),
     NonDaa(Hash),
