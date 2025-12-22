@@ -14,7 +14,7 @@ use crate::{
             daa::DbDaaStore,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
-            headers::{DbHeadersStore, HeaderStoreReader},
+            headers::DbHeadersStore,
             headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
             pruning::{DbPruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
@@ -313,12 +313,14 @@ impl HeaderProcessor {
     }
 
     fn collect_known_direct_parents(&self, header: &Header) -> BlockHashes {
+        let relations_read = self.relations_store.read();
         Arc::new(
             self.parents_manager
                         .parents_at_level(header,0)
                         .iter()
                         .copied()
-                        .filter(|&parent| self.headers_store.get_header(parent).unwrap_option().is_some())
+                        // TODO(relaxed): revisit a more transparent filtering condition
+                        .filter(|&parent| relations_read.has(parent).unwrap_option().is_some())
                         .collect_vec()
                         // This kicks-in only for trusted blocks. If an ordinary block is 
                         // missing direct parents it will fail validation.
