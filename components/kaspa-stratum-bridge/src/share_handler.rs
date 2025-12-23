@@ -1,6 +1,7 @@
 use crate::{
     errors::*,
     jsonrpc_event::{JsonRpcEvent, JsonRpcResponse},
+    kaspaapi::NODE_STATUS,
     log_colors::LogColors,
     mining_state::GetMiningState,
     prom::*,
@@ -1070,6 +1071,11 @@ impl ShareHandler {
             loop {
                 interval.tick().await;
 
+                let node_status = {
+                    let s = NODE_STATUS.lock();
+                    s.clone()
+                };
+
                 let entries = {
                     let registry = STATS_PRINTER_REGISTRY.lock();
                     registry
@@ -1161,6 +1167,29 @@ impl ShareHandler {
                 let hdr = header();
 
                 let mut out = Vec::new();
+
+                let sync_str = match node_status.is_synced {
+                    Some(true) => "synced".to_string(),
+                    Some(false) => "syncing".to_string(),
+                    None => "unknown".to_string(),
+                };
+                let conn_str = if node_status.is_connected { "connected" } else { "disconnected" };
+
+                let net = node_status.network_id.as_deref().unwrap_or("-");
+                let ver = node_status.server_version.as_deref().unwrap_or("-");
+                let peers = node_status.peers.map(|p| p.to_string()).unwrap_or_else(|| "-".to_string());
+                let vdaa = node_status.virtual_daa_score.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string());
+                let blocks = node_status.block_count.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string());
+                let headers = node_status.header_count.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string());
+                let diff = node_status.difficulty.map(|d| format!("{:.2}", d)).unwrap_or_else(|| "-".to_string());
+                let tip = node_status.tip_hash.as_deref().unwrap_or("-");
+                let mempool = node_status.mempool_size.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string());
+
+                out.push(format!(
+                    "[NODE] {} / {} | net={} | ver={} | peers={} | vdaa={} | blocks={}/{} | diff={} | mempool={} | tip={}",
+                    conn_str, sync_str, net, ver, peers, vdaa, blocks, headers, diff, mempool, tip
+                ));
+
                 out.push(top.clone());
                 out.push(hdr);
                 out.push(sep.clone());

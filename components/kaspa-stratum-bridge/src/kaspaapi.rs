@@ -6,15 +6,34 @@ use kaspa_consensus_core::block::Block;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::{listener::ListenerId, scope::NewBlockTemplateScope};
 use kaspa_rpc_core::{
-    api::rpc::RpcApi, GetBlockDagInfoRequest, GetBlockTemplateRequest, Notification, RpcRawBlock, SubmitBlockRequest,
-    SubmitBlockResponse,
+    api::rpc::RpcApi, GetBlockDagInfoRequest, GetBlockTemplateRequest, GetConnectedPeerInfoRequest, GetInfoRequest,
+    GetServerInfoRequest, Notification, RpcRawBlock, SubmitBlockRequest, SubmitBlockResponse,
 };
+use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tracing::{error, info, warn};
+
+#[derive(Clone, Debug, Default)]
+pub struct NodeStatusSnapshot {
+    pub last_updated: Option<std::time::Instant>,
+    pub is_connected: bool,
+    pub is_synced: Option<bool>,
+    pub network_id: Option<String>,
+    pub server_version: Option<String>,
+    pub virtual_daa_score: Option<u64>,
+    pub block_count: Option<u64>,
+    pub header_count: Option<u64>,
+    pub difficulty: Option<f64>,
+    pub tip_hash: Option<String>,
+    pub peers: Option<usize>,
+    pub mempool_size: Option<u64>,
+}
+
+pub static NODE_STATUS: Lazy<Mutex<NodeStatusSnapshot>> = Lazy::new(|| Mutex::new(NodeStatusSnapshot::default()));
 
 /// Kaspa API client wrapper using RPC client
 /// Both use gRPC under the hood, but through an RPC client wrapper abstraction
@@ -85,6 +104,12 @@ impl KaspaApi {
             api_clone.start_stats_thread().await;
         });
 
+        // Start node status polling thread (for console status display)
+        let api_clone = Arc::clone(&api);
+        tokio::spawn(async move {
+            api_clone.start_node_status_thread().await;
+        });
+
         Ok(api)
     }
 
@@ -135,6 +160,57 @@ impl KaspaApi {
 
             // Record network stats
             record_network_stats(hashrate_response.network_hashes_per_second, dag_response.block_count, dag_response.difficulty);
+        }
+    }
+
+    async fn start_node_status_thread(self: Arc<Self>) {
+        let mut interval = tokio::time::interval(Duration::from_secs(10));
+        loop {
+            interval.tick().await;
+
+            let connected = self.client.is_connected();
+
+            let server_info_fut = self.client.get_server_info_call(None, GetServerInfoRequest {});
+            let dag_info_fut = self.client.get_block_dag_info_call(None, GetBlockDagInfoRequest {});
+            let peers_fut = self.client.get_connected_peer_info_call(None, GetConnectedPeerInfoRequest {});
+            let info_fut = self.client.get_info_call(None, GetInfoRequest {});
+
+            let (server_info, dag_info, peers_info, info_resp) = tokio::join!(server_info_fut, dag_info_fut, peers_fut, info_fut);
+
+            let mut snapshot = NODE_STATUS.lock();
+            snapshot.last_updated = Some(std::time::Instant::now());
+            snapshot.is_connected = connected;
+
+            if let Ok(server_info) = server_info {
+                snapshot.is_synced = Some(server_info.is_synced);
+                snapshot.network_id = Some(format!("{:?}", server_info.network_id));
+                snapshot.server_version = Some(server_info.server_version);
+                snapshot.virtual_daa_score = Some(server_info.virtual_daa_score);
+            }
+
+            if let Ok(dag) = dag_info {
+                snapshot.block_count = Some(dag.block_count);
+                snapshot.header_count = Some(dag.header_count);
+                snapshot.difficulty = Some(dag.difficulty);
+                snapshot.tip_hash = dag.tip_hashes.first().map(|h| format!("{}", h));
+                if snapshot.virtual_daa_score.is_none() {
+                    snapshot.virtual_daa_score = Some(dag.virtual_daa_score);
+                }
+                if snapshot.network_id.is_none() {
+                    snapshot.network_id = Some(format!("{:?}", dag.network));
+                }
+            }
+
+            if let Ok(peers) = peers_info {
+                snapshot.peers = Some(peers.peer_info.len());
+            }
+
+            if let Ok(info) = info_resp {
+                snapshot.mempool_size = Some(info.mempool_size);
+                if snapshot.server_version.is_none() {
+                    snapshot.server_version = Some(info.server_version);
+                }
+            }
         }
     }
 
