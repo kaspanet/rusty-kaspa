@@ -14,7 +14,7 @@ pub(crate) fn write_blocks_json(params: &Params, consensus: &Consensus, file_pat
     let file = File::create(file_path).unwrap();
     let mut writer = GzEncoder::new(file, Compression::default());
     write_go_kaspad_params_json(params, &mut writer);
-    let hashes = topologically_ordered_hashes(consensus, consensus.pruning_point(), true);
+    let hashes = topologically_ordered_hashes(consensus, consensus.get_retention_period_root(), true);
     for hash in hashes {
         let block = consensus.get_block(hash).unwrap();
         write_block_json(block, &mut writer)
