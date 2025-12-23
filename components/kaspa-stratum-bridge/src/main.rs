@@ -5,11 +5,10 @@ use kaspa_stratum_bridge::*;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 use std::time::Duration;
-use tokio::process::Command;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use yaml_rust::YamlLoader;
 
@@ -36,15 +35,11 @@ struct Cli {
 
     #[arg(long, action = clap::ArgAction::Append)]
     node_arg: Vec<String>,
-
-    #[arg(long)]
-    node_bin: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 enum NodeMode {
     External,
-    Subprocess,
     Inprocess,
 }
 
@@ -94,28 +89,6 @@ fn split_shell_words(input: &str) -> Result<Vec<String>, anyhow::Error> {
     }
 
     Ok(out)
-}
-
-fn default_kaspad_path() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let dir = exe.parent()?;
-    let candidates = ["kaspad.exe", "kaspad"];
-    for name in candidates {
-        let p = dir.join(name);
-        if p.exists() {
-            return Some(p);
-        }
-    }
-    None
-}
-
-async fn spawn_kaspad(node_bin: &Path, node_args: &[String]) -> Result<tokio::process::Child, anyhow::Error> {
-    let mut cmd = Command::new(node_bin);
-    cmd.args(node_args);
-    cmd.stdin(std::process::Stdio::null());
-    cmd.stdout(std::process::Stdio::inherit());
-    cmd.stderr(std::process::Stdio::inherit());
-    Ok(cmd.spawn()?)
 }
 
 async fn kaspa_api_with_retry(
@@ -378,17 +351,11 @@ async fn main() -> Result<(), anyhow::Error> {
     }
     node_args.extend(cli.node_arg.iter().cloned());
 
-    let inferred_mode = if !node_args.is_empty() || cli.node_bin.is_some() { NodeMode::Subprocess } else { NodeMode::External };
+    let inferred_mode = if !node_args.is_empty() { NodeMode::Inprocess } else { NodeMode::External };
     let node_mode = cli.node_mode.unwrap_or(inferred_mode);
 
-    let mut node_child: Option<tokio::process::Child> = None;
     let mut inprocess_node: Option<InProcessNode> = None;
-    if node_mode == NodeMode::Subprocess {
-        if !node_args.is_empty() || cli.node_bin.is_some() {
-            let node_bin = cli.node_bin.or_else(default_kaspad_path).unwrap_or_else(|| PathBuf::from("kaspad"));
-            node_child = Some(spawn_kaspad(&node_bin, &node_args).await?);
-        }
-    } else if node_mode == NodeMode::Inprocess {
+    if node_mode == NodeMode::Inprocess {
         let mut argv: Vec<OsString> = Vec::with_capacity(node_args.len() + 1);
         argv.push(OsString::from("kaspad"));
         argv.extend(node_args.iter().map(OsString::from));
@@ -677,7 +644,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Create shared kaspa API client (all instances use the same node)
-    let kaspa_api = if node_child.is_some() || inprocess_node.is_some() {
+    let kaspa_api = if inprocess_node.is_some() {
         kaspa_api_with_retry(config.global.kaspad_address.clone(), config.global.block_wait_time)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?
@@ -687,20 +654,15 @@ async fn main() -> Result<(), anyhow::Error> {
             .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?
     };
 
-    // Spawn each instance
     let mut instance_handles = Vec::new();
-
     for (idx, instance_config) in config.instances.iter().enumerate() {
         let instance_num = idx + 1;
         let instance = instance_config.clone();
         let global = config.global.clone();
         let kaspa_api_clone = Arc::clone(&kaspa_api);
 
-        // Only the first instance should try to use notification-based listener
-        // All other instances will use polling (notification receiver can only be taken once)
         let is_first_instance = idx == 0;
 
-        // Spawn instance-specific Prometheus server if configured
         if let Some(ref prom_port) = instance.prom_port {
             let prom_port = prom_port.clone();
             let instance_num_prom = instance_num;
@@ -711,9 +673,7 @@ async fn main() -> Result<(), anyhow::Error> {
             });
         }
 
-        // Spawn this instance
         let handle = tokio::spawn(async move {
-            // Register this instance in the global registry - this persists across async boundaries
             let instance_id_str = kaspa_stratum_bridge::log_colors::LogColors::format_instance_id(instance_num);
             {
                 if let Ok(mut registry) = INSTANCE_REGISTRY.lock() {
@@ -721,20 +681,17 @@ async fn main() -> Result<(), anyhow::Error> {
                 }
             }
 
-            // Use colored instance identifier for startup message
             let colored_instance_id = kaspa_stratum_bridge::log_colors::LogColors::format_instance_id(instance_num);
             tracing::info!("{} Starting on stratum port {}", colored_instance_id, instance.stratum_port);
 
-            // Create bridge config for this instance
-            // Store the instance_id for use in logs
             let bridge_config = kaspa_stratum_bridge::BridgeConfig {
                 instance_id: instance_id_str.clone(),
                 stratum_port: instance.stratum_port.clone(),
                 kaspad_address: global.kaspad_address.clone(),
-                prom_port: String::new(), // Prometheus handled separately per-instance
+                prom_port: String::new(),
                 print_stats: global.print_stats,
                 log_to_file: instance.log_to_file.unwrap_or(global.log_to_file),
-                health_check_port: String::new(), // Global health check only
+                health_check_port: String::new(),
                 block_wait_time: global.block_wait_time,
                 min_share_diff: instance.min_share_diff,
                 var_diff: instance.var_diff.unwrap_or(global.var_diff),
@@ -744,8 +701,6 @@ async fn main() -> Result<(), anyhow::Error> {
                 pow2_clamp: instance.pow2_clamp.unwrap_or(global.pow2_clamp),
             };
 
-            // Start this instance
-            // Only first instance gets concrete_api (for notifications), others use None (polling only)
             kaspa_stratum_bridge::listen_and_serve(
                 bridge_config,
                 Arc::clone(&kaspa_api_clone),
@@ -754,11 +709,9 @@ async fn main() -> Result<(), anyhow::Error> {
             .await
             .map_err(|e| format!("[Instance {}] Bridge server error: {}", instance_num, e))
         });
-
         instance_handles.push(handle);
     }
 
-    // Wait for all instances (if any fails, we'll know)
     tracing::info!("All {} instance(s) started, waiting for completion...", instance_count);
 
     let bridge_fut = async {
@@ -777,36 +730,16 @@ async fn main() -> Result<(), anyhow::Error> {
 
     tokio::select! {
         res = bridge_fut => {
-            if let Some(mut child) = node_child {
-                let _ = child.kill().await;
-                let _ = child.wait().await;
-            }
             if let Some(node) = inprocess_node {
                 shutdown_inprocess(node).await;
             }
             res
         }
         _ = tokio::signal::ctrl_c() => {
-            if let Some(mut child) = node_child {
-                let _ = child.kill().await;
-                let _ = child.wait().await;
-            }
             if let Some(node) = inprocess_node {
                 shutdown_inprocess(node).await;
             }
             Ok(())
-        }
-        status = async {
-            let res: Result<Option<std::process::ExitStatus>, anyhow::Error> = match &mut node_child {
-                Some(child) => Ok(Some(child.wait().await?)),
-                None => Ok(None),
-            };
-            res
-        }, if node_child.is_some() => {
-            match status? {
-                Some(exit) => Err(anyhow::anyhow!("kaspad exited: {}", exit)),
-                None => Ok(()),
-            }
         }
     }
 }

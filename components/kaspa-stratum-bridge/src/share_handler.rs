@@ -897,10 +897,22 @@ impl ShareHandler {
         });
     }
 
-    pub fn start_print_stats_thread(&self) {
+    pub fn start_print_stats_thread(&self, target_spm: u32) {
         let stats = Arc::clone(&self.stats);
         let overall = Arc::clone(&self.overall);
         let prefix = self.log_prefix();
+        let inst_short = {
+            let instance = prefix.trim_matches(|c| c == '[' || c == ']').to_string();
+            if let Some(num_str) = instance.strip_prefix("Instance ") {
+                if let Ok(n) = num_str.parse::<u32>() {
+                    format!("Ins{:02}", n)
+                } else {
+                    "Ins??".to_string()
+                }
+            } else {
+                "Ins??".to_string()
+            }
+        };
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(STATS_PRINT_INTERVAL);
             let start = Instant::now();
@@ -910,6 +922,8 @@ impl ShareHandler {
                 let stats_map = stats.lock();
                 let mut lines = Vec::new();
                 let mut total_rate = 0.0;
+
+                let target_spm = if target_spm == 0 { 20.0 } else { target_spm as f64 };
 
                 for (_, v) in stats_map.iter() {
                     let elapsed = v.start_time.elapsed().as_secs_f64();
@@ -928,30 +942,62 @@ impl ShareHandler {
                     let stales = *v.stale_shares.lock();
                     let invalids = *v.invalid_shares.lock();
                     let blocks = *v.blocks_found.lock();
-                    let uptime = format!("{:?}", v.start_time.elapsed());
+
+                    let min_diff = *v.min_diff.lock();
+                    let spm = if elapsed > 0.0 { (shares as f64) / (elapsed / 60.0) } else { 0.0 };
+                    let trend = if spm > target_spm * 1.2 {
+                        "up"
+                    } else if spm < target_spm * 0.8 {
+                        "down"
+                    } else {
+                        "flat"
+                    };
+
+                    let uptime = v.start_time.elapsed();
+                    let uptime_mins = uptime.as_secs_f64() / 60.0;
+
                     lines.push(format!(
-                        " {:<22}| {:>14} | {:>13} | {:>6} | {:>11}",
+                        "| {:<12} | {:<5} | {:>9} | {:>5} | {:>4.1}/{:<4.1} | {:<4} | {:>10} | {:>6} | {:>6.1}m |",
                         &*v.worker_name.lock(),
+                        inst_short,
                         format_hashrate(rate),
+                        min_diff.round() as u64,
+                        spm,
+                        target_spm,
+                        trend,
                         format!("{}/{}/{}", shares, stales, invalids),
                         blocks,
-                        uptime
+                        uptime_mins
                     ));
                 }
 
                 lines.sort();
                 drop(stats_map);
 
-                info!("{} \n===============================================================================\n      worker name      |  avg hashrate  |  acc/stl/inv  | blocks |    uptime   \n-------------------------------------------------------------------------------\n{}\n-------------------------------------------------------------------------------\n                       | {:>14} | {:>13} | {:>6} | {:>11}\n========================================================== RustBridge V.1 ===\n",
+                let total_uptime_mins = start.elapsed().as_secs_f64() / 60.0;
+                let overall_spm =
+                    if total_uptime_mins > 0.0 { (*overall.shares_found.lock()) as f64 / total_uptime_mins } else { 0.0 };
+
+                info!(
+                    "{}\n| Worker       | Inst  |      Hash |  Diff | SPM/tgt   | Trnd | Acc/Stl/Inv | Blocks |   Time |\n{}\n{}\n| {:<12} | {:<5} | {:>9} | {:>5} | {:>4}/{:<4.1} | {:<4} | {:>10} | {:>6} | {:>6.1}m |\n",
                     prefix,
+                    "|------------|------|-----------|------|-----------|------|------------|--------|--------|",
                     lines.join("\n"),
+                    "TOTAL",
+                    "ALL",
                     format_hashrate(total_rate),
-                    format!("{}/{}/{}",
+                    "-",
+                    overall_spm,
+                    target_spm,
+                    "-",
+                    format!(
+                        "{}/{}/{}",
                         *overall.shares_found.lock(),
                         *overall.stale_shares.lock(),
-                        *overall.invalid_shares.lock()),
+                        *overall.invalid_shares.lock()
+                    ),
                     *overall.blocks_found.lock(),
-                    format!("{:?}", start.elapsed())
+                    total_uptime_mins
                 );
             }
         });
