@@ -83,7 +83,7 @@ impl PruningProofManager {
         let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
         let (transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level) = self
-            .calc_ghostdag_and_relations_for_all_levels(&pp_header, temp_db)
+            .calc_all_level_proof_stores(&pp_header, temp_db)
             .into_iter()
             .fold((vec![], vec![], vec![], vec![]), |(mut a, mut b, mut c, mut d), (x0, x1, x2, x3)| {
                 a.push(x0);
@@ -196,7 +196,7 @@ impl PruningProofManager {
             .collect_vec()
     }
 
-    fn calc_ghostdag_and_relations_for_all_levels(&self, pp_header: &HeaderWithBlockLevel, temp_db: Arc<DB>) -> Vec<LevelProofStores> {
+    fn calc_all_level_proof_stores(&self, pp_header: &HeaderWithBlockLevel, temp_db: Arc<DB>) -> Vec<LevelProofStores> {
         // TODO: Uncomment line and send as argument to find_sufficiently_deep_level_root
         // once full fix to minimize proof sizes comes
         // let current_dag_level = self.find_current_dag_level(&pp_header.header);

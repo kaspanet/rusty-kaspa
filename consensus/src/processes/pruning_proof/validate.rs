@@ -144,13 +144,14 @@ impl PruningProofManager {
                 continue;
             }
 
-            let parents_at_level = self.parents_manager.parents_at_level(&current_pp_header, level);
-            if parents_at_level
+            let parents_at_level: Vec<_> = self
+                .parents_manager
+                .parents_at_level(&current_pp_header, level)
                 .iter()
                 .copied()
                 .filter_map(|parent| current_consensus_ghostdag_stores[level_idx].get_blue_score(parent).unwrap_option())
-                .any(|parent_bscore| parent_bscore < 2 * self.pruning_proof_m)
-            {
+                .collect();
+            if parents_at_level.iter().copied().any(|parent_bscore| parent_bscore < 2 * self.pruning_proof_m) {
                 return Ok(());
             }
 

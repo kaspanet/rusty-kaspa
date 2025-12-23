@@ -320,7 +320,7 @@ impl HeaderProcessor {
                         .iter()
                         .copied()
                         // TODO(relaxed): revisit a more transparent filtering condition
-                        .filter(|&parent| relations_read.has(parent).unwrap_option().unwrap_or(false))
+                        .filter(|&parent| relations_read.has(parent).unwrap())
                         .collect_vec()
                         // This kicks-in only for trusted blocks. If an ordinary block is 
                         // missing direct parents it will fail validation.
