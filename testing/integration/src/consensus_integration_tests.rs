@@ -46,7 +46,7 @@ use kaspa_rpc_core::RpcHeader;
 use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
-use crate::common::json::{json_line_to_block, json_line_to_utxo_pairs, json_line_to_trusted_block};
+use crate::common::json::{json_line_to_block, json_line_to_trusted_block, json_line_to_utxo_pairs};
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
