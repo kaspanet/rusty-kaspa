@@ -586,37 +586,40 @@ async fn main() -> Result<(), anyhow::Error> {
         let file_appender = tracing_appender::rolling::never(".", &log_filename);
         let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
-        eprintln!("Logging to file: {}", log_path.display());
-
-        // Setup logging with both console and file
-        // Use default formatter for console (preserves ANSI codes) but with custom target formatting
-        tracing_subscriber::registry()
+        let subscriber = tracing_subscriber::registry()
             .with(filter)
             .with(
                 tracing_subscriber::fmt::layer()
-                    .with_ansi(LogColors::should_colorize()) // Enable ANSI colors for console conditionally
+                    .with_ansi(LogColors::should_colorize())
                     .event_format(CustomFormatter { apply_colors: LogColors::should_colorize() }),
             )
             .with(
                 tracing_subscriber::fmt::layer()
                     .with_writer(non_blocking)
-                    .with_ansi(false) // Disable ANSI colors in file
+                    .with_ansi(false)
                     .event_format(CustomFormatter { apply_colors: false }),
-            )
-            .init();
+            );
 
-        Some(_guard)
+        match subscriber.try_init() {
+            Ok(()) => {
+                eprintln!("Logging to file: {}", log_path.display());
+                Some(_guard)
+            }
+            Err(e) => {
+                eprintln!("Failed to initialize tracing subscriber (already initialized?): {}", e);
+                None
+            }
+        }
     } else {
-        // Setup logging with console only
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .with_ansi(LogColors::should_colorize()) // Enable ANSI colors for console conditionally
-                    .event_format(CustomFormatter { apply_colors: LogColors::should_colorize() }), // Use default formatter to preserve ANSI codes in messages
-                                                                                                   // .event_format(CustomFormatter)
-            )
-            .init();
+        let subscriber = tracing_subscriber::registry().with(filter).with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(LogColors::should_colorize())
+                .event_format(CustomFormatter { apply_colors: LogColors::should_colorize() }),
+        );
+
+        if let Err(e) = subscriber.try_init() {
+            eprintln!("Failed to initialize tracing subscriber (already initialized?): {}", e);
+        }
 
         None
     };
