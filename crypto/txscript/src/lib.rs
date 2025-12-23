@@ -419,7 +419,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         if is_p2sh {
             self.check_error_condition(false)?;
             self.dstack = saved_stack.ok_or(TxScriptError::EmptyStack)?;
-            let script = self.dstack.pop().ok_or(TxScriptError::EmptyStack)?;
+            let script = self.dstack.pop()?;
             self.execute_script(script.as_slice(), false)?
         }
 
