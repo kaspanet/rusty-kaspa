@@ -563,29 +563,18 @@ async fn median_time_test() {
         config: Config,
     }
 
-    let tests = vec![
-        Test {
-            name: "MAINNET with full window",
-            config: ConfigBuilder::new(MAINNET_PARAMS)
-                .skip_proof_of_work()
-                .edit_consensus_params(|p| {
-                    p.crescendo_activation = ForkActivation::never();
-                })
-                .build(),
-        },
-        Test {
-            name: "MAINNET with sampled window",
-            config: ConfigBuilder::new(MAINNET_PARAMS)
-                .skip_proof_of_work()
-                .edit_consensus_params(|p| {
-                    p.crescendo_activation = ForkActivation::always();
-                    p.timestamp_deviation_tolerance = 120;
-                    p.crescendo.past_median_time_sample_rate = 3;
-                    p.crescendo.past_median_time_sampled_window_size = (2 * 120 - 1) / 3;
-                })
-                .build(),
-        },
-    ];
+    let tests = vec![Test {
+        name: "MAINNET with sampled window",
+        config: ConfigBuilder::new(MAINNET_PARAMS)
+            .skip_proof_of_work()
+            .edit_consensus_params(|p| {
+                p.crescendo_activation = ForkActivation::always();
+                p.timestamp_deviation_tolerance = 120;
+                p.crescendo.past_median_time_sample_rate = 3;
+                p.crescendo.past_median_time_sampled_window_size = (2 * 120 - 1) / 3;
+            })
+            .build(),
+    }];
 
     for test in tests {
         let consensus = TestConsensus::new(&test.config);
@@ -1078,7 +1067,6 @@ async fn difficulty_test() {
         config: Config,
     }
 
-    const FULL_WINDOW_SIZE: usize = 90;
     const SAMPLED_WINDOW_SIZE: u64 = 11;
     const SAMPLE_RATE: u64 = 6;
     const PMT_DEVIATION_TOLERANCE: u64 = 20;
@@ -1087,21 +1075,6 @@ async fn difficulty_test() {
     const HIGH_BPS_SAMPLED_WINDOW_SIZE: u64 = 12;
     const HIGH_BPS: u64 = 4;
     let tests = [
-        Test {
-            name: "MAINNET with full window",
-            enabled: true,
-            config: ConfigBuilder::new(MAINNET_PARAMS)
-                .skip_proof_of_work()
-                .edit_consensus_params(|p| {
-                    p.prior_ghostdag_k = 1;
-                    p.prior_difficulty_window_size = FULL_WINDOW_SIZE;
-                    p.crescendo_activation = ForkActivation::never();
-                    // Define past median time so that calls to add_block_with_min_time create blocks
-                    // which timestamps fit within the min-max timestamps found in the difficulty window
-                    p.timestamp_deviation_tolerance = 60;
-                })
-                .build(),
-        },
         Test {
             name: "MAINNET with sampled window",
             enabled: true,

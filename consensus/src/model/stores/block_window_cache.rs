@@ -10,33 +10,20 @@ use std::{
     sync::Arc,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum WindowOrigin {
-    Full,
-    Sampled,
-}
-
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct BlockWindowHeap {
     pub blocks: BinaryHeap<Reverse<SortableBlock>>,
-    origin: WindowOrigin,
 }
 
 impl MemSizeEstimator for BlockWindowHeap {}
 
 impl BlockWindowHeap {
-    pub fn new(origin: WindowOrigin) -> Self {
-        Self { blocks: Default::default(), origin }
+    pub fn new() -> Self {
+        Self { blocks: Default::default() }
     }
 
-    pub fn with_capacity(origin: WindowOrigin, capacity: usize) -> Self {
-        Self { blocks: BinaryHeap::with_capacity(capacity), origin }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn origin(&self) -> WindowOrigin {
-        self.origin
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self { blocks: BinaryHeap::with_capacity(capacity) }
     }
 }
 
@@ -78,13 +65,20 @@ impl BlockWindowCacheStore {
 pub trait BlockWindowCacheReader {
     /// Get the cache entry to this hash conditioned that *it matches the provided origin*.
     /// We demand the origin to be provided in order to prevent reader errors.
-    fn get(&self, hash: &Hash, origin: WindowOrigin) -> Option<Arc<BlockWindowHeap>>;
+    fn get(&self, hash: &Hash) -> Option<Arc<BlockWindowHeap>>;
 }
 
 impl BlockWindowCacheReader for BlockWindowCacheStore {
     #[inline(always)]
-    fn get(&self, hash: &Hash, origin: WindowOrigin) -> Option<Arc<BlockWindowHeap>> {
-        self.inner.get(hash).and_then(|win| if win.origin() == origin { Some(win) } else { None })
+    fn get(&self, hash: &Hash) -> Option<Arc<BlockWindowHeap>> {
+        self.inner.get(hash)
+    }
+}
+
+impl<U: BlockWindowCacheReader> BlockWindowCacheReader for Option<&Arc<U>> {
+    #[inline(always)]
+    fn get(&self, hash: &Hash) -> Option<Arc<BlockWindowHeap>> {
+        self.and_then(|inner| inner.get(hash))
     }
 }
 

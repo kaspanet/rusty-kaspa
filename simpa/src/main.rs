@@ -275,6 +275,10 @@ fn main_impl(mut args: Args) {
         (consensus, lifetime)
     };
 
+    if let Some(blocks_json_output_path) = args.blocks_json_gz_output_path {
+        blocks_json::write_blocks_json(&config.params, &consensus, &blocks_json_output_path);
+    }
+
     if args.test_pruning {
         let hashes = topologically_ordered_hashes(&consensus, consensus.pruning_point(), false);
         let num_blocks = hashes.len();
@@ -318,10 +322,6 @@ fn main_impl(mut args: Args) {
 
         drop(consensus);
         return;
-    }
-
-    if let Some(blocks_json_output_path) = args.blocks_json_gz_output_path {
-        blocks_json::write_blocks_json(&config.params, &consensus, &blocks_json_output_path);
     }
 
     // Benchmark the DAG validation time
@@ -389,7 +389,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         info!("2Dλ={}, GHOSTDAG K={}, DAA window size={}", 2.0 * args.delay * args.bps, k, params.difficulty_window_size().before());
     }
     if args.test_pruning {
-        params.crescendo_activation = ForkActivation::new(1250.min(args.target_blocks.map(|x| x / 2).unwrap_or(900)));
+        // params.crescendo_activation = ForkActivation::new(1250.min(args.target_blocks.map(|x| x / 2).unwrap_or(900)));
 
         params.pruning_proof_m = 16;
         params.min_difficulty_window_size = 16;
