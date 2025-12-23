@@ -128,8 +128,6 @@ impl MiningRuleEngine {
         // We consider the node close to being synced if the sink (virtual selected parent) block
         // timestamp is within a quarter of the DAA window duration far in the past. Blocks mined over such DAG state would
         // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
-        //
-        // [Crescendo]: both durations are nearly equal so this decision is negligible
         let synced_threshold = self.config.expected_difficulty_window_duration_in_milliseconds() / 4;
 
         // Roughly 10mins in all networks

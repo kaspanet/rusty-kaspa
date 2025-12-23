@@ -517,7 +517,6 @@ impl Consensus {
         // a header is validated whose blue_score is greater than P.B+p:
         let syncer_pp_bscore = self.get_header(new_pruning_point).unwrap().blue_score;
         let syncer_virtual_bscore = self.get_header(syncer_sink).unwrap().blue_score;
-        // [Crescendo]: Remove after()
         if syncer_virtual_bscore < syncer_pp_bscore + self.config.pruning_depth() {
             return Err(ConsensusError::General("declared pruning point is not of sufficient depth"));
         }

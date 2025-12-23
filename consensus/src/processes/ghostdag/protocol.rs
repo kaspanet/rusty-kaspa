@@ -220,8 +220,6 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             // This is a sanity check that validates that a blue
             // block's blue anticone is not already larger than K.
             assert!(peer_blue_anticone_size <= k, "found blue anticone larger than K");
-            // [Crescendo]: this ^ is a valid assert since we are increasing k. Had we decreased k, this line would
-            //              need to be removed and the condition above would need to be changed to >= k
         }
 
         ColoringState::Pending

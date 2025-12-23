@@ -81,7 +81,6 @@ pub(crate) struct TransactionsPool {
 
 impl TransactionsPool {
     pub(crate) fn new(config: Arc<Config>) -> Self {
-        // [Crescendo] Delete `after()` after cleanup.
         let target_time_per_block = 1.0 / (config.network_blocks_per_second as f64);
         Self {
             config,
