@@ -386,11 +386,12 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
             is_db_reset_needed = request_database_deletion_approval(args.yes);
             continue 'db_upgrade;
         }
-        if version <= 4 {
-            let msg = "NOTE: Node database is from an older version. Proceeding with the upgrade is instant and safe.
+
+        let msg = "NOTE: Node database is from an older version. Proceeding with the upgrade is instant and safe.
 However, downgrading to an older node version later will require deleting the database.
 Do you confirm? (y/n)";
-            get_user_approval_or_exit(msg, args.yes);
+        get_user_approval_or_exit(msg, args.yes);
+        if version <= 4 {
             mcms.set_version(5).unwrap();
         }
         if version <= 5 {
@@ -400,10 +401,6 @@ Do you confirm? (y/n)";
                 Some(current_consensus_db) => {
                     // Apply soft upgrade logic: delete relation data from higher levels
                     // and then update DB version to 6
-
-                    let msg =
-                        "Node database currently at or below version 5. Upgrade process to version 6 needs to be applied. Continue? (y/n)";
-                    get_user_approval_or_exit(msg, args.yes);
 
                     let consensus_db = kaspa_database::prelude::ConnBuilder::default()
                         .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
