@@ -146,6 +146,7 @@ pub fn get_sig_op_count<T: VerifiableTransaction>(tx: &T, input_idx: usize) -> R
         tx.utxo(input_idx).ok_or_else(|| TxScriptError::InvalidInputIndex(input_idx as i32, tx.inputs().len()))?,
         &reused_values,
         &sig_cache,
+        Default::default(),
     );
     vm.execute()?;
     Ok(vm.used_sig_ops())
@@ -228,8 +229,7 @@ pub fn is_unspendable<T: VerifiableTransaction, Reused: SigHashReusedValues>(scr
 }
 
 impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'a, T, Reused> {
-    pub fn new(reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
-        let flags = EngineFlags::default(); // TODO: set flags appropriately
+    pub fn new(reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>, flags: EngineFlags) -> Self {
         Self {
             dstack: Self::new_stack(flags),
             astack: Self::new_stack(flags),
@@ -276,12 +276,12 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         utxo_entry: &'a UtxoEntry,
         reused_values: &'a Reused,
         sig_cache: &'a Cache<SigCacheKey, bool>,
+        flags: EngineFlags,
     ) -> Self {
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
         // the user provides
         let is_p2sh = ScriptClass::is_pay_to_script_hash(script_public_key);
-        let flags = EngineFlags::default(); // TODO: set flags appropriately
         assert!(input_idx < tx.tx().inputs.len());
         Self {
             dstack: Self::new_stack(flags),
@@ -296,8 +296,12 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         }
     }
 
-    pub fn from_script(script: &'a [u8], reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
-        let flags = EngineFlags::default(); // TODO: set flags appropriately
+    pub fn from_script(
+        script: &'a [u8],
+        reused_values: &'a Reused,
+        sig_cache: &'a Cache<SigCacheKey, bool>,
+        flags: EngineFlags,
+    ) -> Self {
         Self {
             dstack: Self::new_stack(flags),
             astack: Self::new_stack(flags),
@@ -702,7 +706,15 @@ mod tests {
 
             let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
 
-            let mut vm = TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &reused_values, &sig_cache);
+            let mut vm = TxScriptEngine::from_transaction_input(
+                &populated_tx,
+                &input,
+                0,
+                &utxo_entry,
+                &reused_values,
+                &sig_cache,
+                Default::default(),
+            );
             assert_eq!(vm.execute(), test.expected_result);
         }
     }
@@ -1261,7 +1273,15 @@ mod tests {
 
             // Execute script
             let tx = tx.as_verifiable();
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &reused_values, &sig_cache);
+            let mut vm = TxScriptEngine::from_transaction_input(
+                &tx,
+                &tx.inputs()[0],
+                0,
+                &utxo_entry,
+                &reused_values,
+                &sig_cache,
+                Default::default(),
+            );
 
             let result = vm.execute().map(|_| vm.used_sig_ops());
 
@@ -1399,6 +1419,7 @@ mod bitcoind_tests {
                 &populated_tx.entries[0],
                 &reused_values,
                 &sig_cache,
+                Default::default(),
             );
             vm.execute().map_err(UnifiedError::TxScriptError)
         }
