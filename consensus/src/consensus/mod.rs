@@ -1373,9 +1373,6 @@ impl ConsensusApi for Consensus {
     }
 
     fn verify_is_pruning_sample(&self, pruning_candidate: Hash) -> ConsensusResult<()> {
-        if pruning_candidate == self.config.genesis.hash {
-            return Ok(());
-        }
         let Ok(candidate_ghostdag_data) = self.get_ghostdag_data(pruning_candidate) else {
             return Err(ConsensusError::General("pruning candidate missing ghostdag data"));
         };
