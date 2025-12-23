@@ -364,7 +364,7 @@ impl PruningProofManager {
                 Some(block_at_depth_m_at_next_level),
                 level,
                 &transient_relation_store,
-                self.ghostdag_k.get(pp_header.header.daa_score),
+                self.ghostdag_k.after(),
             );
 
             // Step 4 - Check if we actually have enough depth.
