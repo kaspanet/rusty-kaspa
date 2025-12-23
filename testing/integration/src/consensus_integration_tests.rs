@@ -42,11 +42,11 @@ use kaspa_core::task::tick::TickService;
 use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::Hash;
+use kaspa_rpc_core::RpcHeader;
 use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
-use crate::common::json::{json_line_to_block, json_line_to_utxo_pairs, json_trusted_line_to_block_and_gd};
-use common::json::{rpc_header_to_header, KaspadGoParams, RPCBlockHeader};
+use crate::common::json::{json_line_to_block, json_line_to_utxo_pairs, json_line_to_trusted_block};
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
@@ -685,36 +685,6 @@ async fn goref_tx_small_concurrent_test() {
     json_test("testdata/dags_for_json_tests/goref-1060-tx-265-blocks", true).await
 }
 
-#[ignore]
-#[tokio::test]
-async fn goref_tx_big_test() {
-    init_allocator_with_default_settings();
-    // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", false).await
-}
-
-#[ignore]
-#[tokio::test]
-async fn goref_tx_big_concurrent_test() {
-    init_allocator_with_default_settings();
-    // TODO: add this file to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", true).await
-}
-
-#[tokio::test]
-#[ignore = "long"]
-async fn goref_mainnet_test() {
-    // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-mainnet", false).await
-}
-
-#[tokio::test]
-#[ignore = "long"]
-async fn goref_mainnet_concurrent_test() {
-    // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-mainnet", true).await
-}
-
 fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
     let file = common::open_file(path);
     let decoder = GzDecoder::new(file);
@@ -731,8 +701,6 @@ async fn json_test(file_path: &str, concurrency: bool) {
         let first_line = lines.next().unwrap();
         let parsed_params = if let Ok(override_params) = serde_json::from_str::<OverrideParams>(&first_line) {
             Some(DEVNET_PARAMS.override_params(override_params))
-        } else if let Ok(go_params) = serde_json::from_str::<KaspadGoParams>(&first_line) {
-            Some(go_params.into_params())
         } else {
             None
         };
@@ -792,12 +760,12 @@ async fn json_test(file_path: &str, concurrency: bool) {
         let proof_lines = gzip_file_lines(&main_path.join("proof.json.gz"));
         let proof = proof_lines
             .map(|line| {
-                let rpc_headers: Vec<RPCBlockHeader> = serde_json::from_str(&line).unwrap();
-                rpc_headers.iter().map(|rh| Arc::new(rpc_header_to_header(rh))).collect_vec()
+                let rpc_headers: Vec<RpcHeader> = serde_json::from_str(&line).unwrap();
+                rpc_headers.iter().map(|rh| Arc::new(rh.try_into().unwrap())).collect_vec()
             })
             .collect_vec();
 
-        let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_trusted_line_to_block_and_gd).collect_vec();
+        let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_line_to_trusted_block).collect_vec();
         tc.apply_pruning_proof(proof, &trusted_blocks).unwrap();
 
         let past_pruning_points =
