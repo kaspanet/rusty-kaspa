@@ -428,7 +428,8 @@ async fn header_in_isolation_validation_test() {
         block.header.hash = 2.into();
 
         let now = unix_now();
-        let block_ts = now + config.timestamp_deviation_tolerance * config.target_time_per_block() + 2000;
+        // Timestamp deviation tolerance is in seconds so we multiply by 1000 to get milliseconds (without BPS dependency)
+        let block_ts = now + config.timestamp_deviation_tolerance * 1000 + 2000;
         block.header.timestamp = block_ts;
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TimeTooFarIntoTheFuture(ts, _)) => {

@@ -389,8 +389,6 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         info!("2Dλ={}, GHOSTDAG K={}, DAA window size={}", 2.0 * args.delay * args.bps, k, params.difficulty_window_size());
     }
     if args.test_pruning {
-        // params.crescendo_activation = ForkActivation::new(1250.min(args.target_blocks.map(|x| x / 2).unwrap_or(900)));
-
         params.pruning_proof_m = 16;
         params.min_difficulty_window_size = 16;
         params.timestamp_deviation_tolerance = 16;
