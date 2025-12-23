@@ -21,7 +21,6 @@ impl LogColors {
         let is_terminal = io::stderr().is_terminal();
 
         // On Windows, enable virtual terminal processing
-        #[cfg(windows)]
         let _ = Self::enable_windows_vt();
 
         // Enable colors only if:
