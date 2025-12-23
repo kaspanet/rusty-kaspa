@@ -10,7 +10,6 @@ use kaspa_rpc_core::{
     api::rpc::RpcApi, GetBlockDagInfoRequest, GetBlockTemplateRequest, GetConnectedPeerInfoRequest, GetInfoRequest,
     GetServerInfoRequest, Notification, RpcRawBlock, SubmitBlockRequest, SubmitBlockResponse,
 };
-use kaspa_utils_tower::counters::TowerConnectionCounters;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -69,7 +68,7 @@ impl KaspaApi {
                 None,
                 false,
                 Some(500_000),
-                Arc::new(TowerConnectionCounters::default()),
+                Default::default(),
             )
             .await
             .context("Failed to connect to Kaspa node")?,
