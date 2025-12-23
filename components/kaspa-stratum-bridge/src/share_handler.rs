@@ -10,9 +10,12 @@ use kaspa_consensus_core::block::Block;
 // kaspa_pow used inline for PoW validation
 use num_bigint::BigUint;
 use num_traits::{ToPrimitive, Zero};
+use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde_json::Value;
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
@@ -23,6 +26,18 @@ const VAR_DIFF_THREAD_SLEEP: u64 = 10;
 const WORK_WINDOW: u64 = 80;
 const STATS_PRUNE_INTERVAL: Duration = Duration::from_secs(60);
 const STATS_PRINT_INTERVAL: Duration = Duration::from_secs(10);
+
+struct StatsPrinterEntry {
+    instance_id: String,
+    inst_short: String,
+    target_spm: f64,
+    start: Instant,
+    stats: Arc<Mutex<HashMap<String, WorkStats>>>,
+    overall: Arc<WorkStats>,
+}
+
+static STATS_PRINTER_REGISTRY: Lazy<Mutex<Vec<StatsPrinterEntry>>> = Lazy::new(|| Mutex::new(Vec::new()));
+static STATS_PRINTER_STARTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone)]
 pub struct WorkStats {
@@ -898,107 +913,210 @@ impl ShareHandler {
     }
 
     pub fn start_print_stats_thread(&self, target_spm: u32) {
-        let stats = Arc::clone(&self.stats);
-        let overall = Arc::clone(&self.overall);
-        let prefix = self.log_prefix();
+        let target_spm = if target_spm == 0 { 20.0 } else { target_spm as f64 };
+        let instance_id = self.instance_id.clone();
         let inst_short = {
-            let instance = prefix.trim_matches(|c| c == '[' || c == ']').to_string();
-            if let Some(num_str) = instance.strip_prefix("Instance ") {
-                if let Ok(n) = num_str.parse::<u32>() {
-                    format!("Ins{:02}", n)
-                } else {
-                    "Ins??".to_string()
-                }
+            let digits: String = instance_id.chars().filter(|c| c.is_ascii_digit()).collect();
+            if let Ok(n) = digits.parse::<u32>() {
+                format!("Ins{:02}", n)
             } else {
                 "Ins??".to_string()
             }
         };
+
+        {
+            let mut registry = STATS_PRINTER_REGISTRY.lock();
+            if !registry.iter().any(|e| e.instance_id == instance_id) {
+                registry.push(StatsPrinterEntry {
+                    instance_id,
+                    inst_short,
+                    target_spm,
+                    start: Instant::now(),
+                    stats: Arc::clone(&self.stats),
+                    overall: Arc::clone(&self.overall),
+                });
+            }
+        }
+
+        if STATS_PRINTER_STARTED.swap(true, Ordering::AcqRel) {
+            return;
+        }
+
         tokio::spawn(async move {
+            fn trunc<'a>(s: &'a str, max: usize) -> Cow<'a, str> {
+                if s.len() <= max {
+                    Cow::Borrowed(s)
+                } else {
+                    Cow::Owned(s.chars().take(max).collect())
+                }
+            }
+
+            const WORKER_W: usize = 16;
+            const INST_W: usize = 5;
+            const HASH_W: usize = 11;
+            const DIFF_W: usize = 6;
+            const SPM_W: usize = 11;
+            const TRND_W: usize = 4;
+            const ACC_W: usize = 12;
+            const BLK_W: usize = 6;
+            const TIME_W: usize = 7;
+
+            fn border() -> String {
+                format!(
+                    "+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+",
+                    "-".repeat(WORKER_W),
+                    "-".repeat(INST_W),
+                    "-".repeat(HASH_W),
+                    "-".repeat(DIFF_W),
+                    "-".repeat(SPM_W),
+                    "-".repeat(TRND_W),
+                    "-".repeat(ACC_W),
+                    "-".repeat(BLK_W),
+                    "-".repeat(TIME_W)
+                )
+            }
+
+            fn header() -> String {
+                format!(
+                    "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
+                    "Worker",
+                    "Inst",
+                    "Hash",
+                    "Diff",
+                    "SPM/tgt",
+                    "Trnd",
+                    "Acc/Stl/Inv",
+                    "Blocks",
+                    "Time",
+                )
+            }
+
             let mut interval = tokio::time::interval(STATS_PRINT_INTERVAL);
-            let start = Instant::now();
             loop {
                 interval.tick().await;
 
-                let stats_map = stats.lock();
-                let mut lines = Vec::new();
-                let mut total_rate = 0.0;
+                let entries = {
+                    let registry = STATS_PRINTER_REGISTRY.lock();
+                    registry
+                        .iter()
+                        .map(|e| (e.inst_short.clone(), e.target_spm, e.start, Arc::clone(&e.stats), Arc::clone(&e.overall)))
+                        .collect::<Vec<_>>()
+                };
 
-                let target_spm = if target_spm == 0 { 20.0 } else { target_spm as f64 };
-
-                for (_, v) in stats_map.iter() {
-                    let elapsed = v.start_time.elapsed().as_secs_f64();
-                    // Calculate hashrate: total_hashValue / elapsed_time
-                    // shares_diff contains accumulated hashValue (not diffValue)
-                    // hashValue = (minHash * diff) / bigGig = (2^32 * diff) / 1e9
-                    // So hashrate = total_hashValue / time (already in GH/s units)
-                    let rate = if elapsed > 0.0 {
-                        let total_hash_value = *v.shares_diff.lock();
-                        total_hash_value / elapsed
-                    } else {
-                        0.0
-                    };
-                    total_rate += rate;
-                    let shares = *v.shares_found.lock();
-                    let stales = *v.stale_shares.lock();
-                    let invalids = *v.invalid_shares.lock();
-                    let blocks = *v.blocks_found.lock();
-
-                    let min_diff = *v.min_diff.lock();
-                    let spm = if elapsed > 0.0 { (shares as f64) / (elapsed / 60.0) } else { 0.0 };
-                    let trend = if spm > target_spm * 1.2 {
-                        "up"
-                    } else if spm < target_spm * 0.8 {
-                        "down"
-                    } else {
-                        "flat"
-                    };
-
-                    let uptime = v.start_time.elapsed();
-                    let uptime_mins = uptime.as_secs_f64() / 60.0;
-
-                    lines.push(format!(
-                        "| {:<12} | {:<5} | {:>9} | {:>5} | {:>4.1}/{:<4.1} | {:<4} | {:>10} | {:>6} | {:>6.1}m |",
-                        &*v.worker_name.lock(),
-                        inst_short,
-                        format_hashrate(rate),
-                        min_diff.round() as u64,
-                        spm,
-                        target_spm,
-                        trend,
-                        format!("{}/{}/{}", shares, stales, invalids),
-                        blocks,
-                        uptime_mins
-                    ));
+                if entries.is_empty() {
+                    continue;
                 }
 
-                lines.sort();
-                drop(stats_map);
+                let mut rows: Vec<(String, String)> = Vec::new();
+                let mut total_rate = 0.0;
+                let mut total_shares: i64 = 0;
+                let mut total_stales: i64 = 0;
+                let mut total_invalids: i64 = 0;
+                let mut total_blocks: i64 = 0;
 
-                let total_uptime_mins = start.elapsed().as_secs_f64() / 60.0;
-                let overall_spm =
-                    if total_uptime_mins > 0.0 { (*overall.shares_found.lock()) as f64 / total_uptime_mins } else { 0.0 };
+                let now = Instant::now();
+                let start = entries.iter().map(|(_, _, start, _, _)| *start).max_by_key(|t| t.elapsed()).unwrap_or_else(Instant::now);
+                let total_uptime_mins = now.duration_since(start).as_secs_f64() / 60.0;
 
-                info!(
-                    "{}\n| Worker       | Inst  |      Hash |  Diff | SPM/tgt   | Trnd | Acc/Stl/Inv | Blocks |   Time |\n{}\n{}\n| {:<12} | {:<5} | {:>9} | {:>5} | {:>4}/{:<4.1} | {:<4} | {:>10} | {:>6} | {:>6.1}m |\n",
-                    prefix,
-                    "|------------|------|-----------|------|-----------|------|------------|--------|--------|",
-                    lines.join("\n"),
+                let mut total_target: Option<f64> = Some(entries[0].1);
+                for (inst_short, target_spm, _, stats, overall) in entries.iter() {
+                    if let Some(t) = total_target {
+                        if (t - *target_spm).abs() > 0.0001 {
+                            total_target = None;
+                        }
+                    }
+
+                    total_shares += *overall.shares_found.lock();
+                    total_stales += *overall.stale_shares.lock();
+                    total_invalids += *overall.invalid_shares.lock();
+                    total_blocks += *overall.blocks_found.lock();
+
+                    let stats_map = stats.lock();
+                    for (_, v) in stats_map.iter() {
+                        let elapsed = v.start_time.elapsed().as_secs_f64();
+                        let rate = if elapsed > 0.0 {
+                            let total_hash_value = *v.shares_diff.lock();
+                            total_hash_value / elapsed
+                        } else {
+                            0.0
+                        };
+                        total_rate += rate;
+
+                        let shares = *v.shares_found.lock();
+                        let stales = *v.stale_shares.lock();
+                        let invalids = *v.invalid_shares.lock();
+                        let blocks = *v.blocks_found.lock();
+                        let min_diff = *v.min_diff.lock();
+
+                        let spm = if elapsed > 0.0 { (shares as f64) / (elapsed / 60.0) } else { 0.0 };
+                        let trend = if spm > *target_spm * 1.2 {
+                            "up"
+                        } else if spm < *target_spm * 0.8 {
+                            "down"
+                        } else {
+                            "flat"
+                        };
+
+                        let uptime_mins = v.start_time.elapsed().as_secs_f64() / 60.0;
+                        let worker = v.worker_name.lock().clone();
+
+                        let spm_tgt = format!("{:>4.1}/{:<4.1}", spm, *target_spm);
+
+                        let line = format!(
+                            "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
+                            trunc(&worker, WORKER_W),
+                            inst_short,
+                            format_hashrate(rate),
+                            min_diff.round() as u64,
+                            spm_tgt,
+                            trend,
+                            format!("{}/{}/{}", shares, stales, invalids),
+                            blocks,
+                            format!("{:.1}m", uptime_mins)
+                        );
+                        let sort_key = format!("{}:{}", inst_short, worker);
+                        rows.push((sort_key, line));
+                    }
+                }
+
+                rows.sort_by(|a, b| a.0.cmp(&b.0));
+
+                let top = border();
+                let sep = border();
+                let hdr = header();
+
+                let mut out = Vec::new();
+                out.push(top.clone());
+                out.push(hdr);
+                out.push(sep.clone());
+
+                for (_, line) in rows.iter() {
+                    out.push(line.clone());
+                }
+
+                out.push(sep.clone());
+
+                let overall_spm = if total_uptime_mins > 0.0 { (total_shares as f64) / total_uptime_mins } else { 0.0 };
+                let total_spm_tgt = match total_target {
+                    Some(t) => format!("{:>4.1}/{:<4.1}", overall_spm, t),
+                    None => format!("{:>4.1}/-", overall_spm),
+                };
+
+                out.push(format!(
+                    "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
                     "TOTAL",
                     "ALL",
                     format_hashrate(total_rate),
                     "-",
-                    overall_spm,
-                    target_spm,
+                    total_spm_tgt,
                     "-",
-                    format!(
-                        "{}/{}/{}",
-                        *overall.shares_found.lock(),
-                        *overall.stale_shares.lock(),
-                        *overall.invalid_shares.lock()
-                    ),
-                    *overall.blocks_found.lock(),
-                    total_uptime_mins
-                );
+                    format!("{}/{}/{}", total_shares, total_stales, total_invalids),
+                    total_blocks,
+                    format!("{:.1}m", total_uptime_mins)
+                ));
+
+                out.push(top);
+                info!("{}", out.join("\n"));
             }
         });
     }
