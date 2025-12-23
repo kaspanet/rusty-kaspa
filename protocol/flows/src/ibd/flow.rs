@@ -238,7 +238,17 @@ impl IbdFlow {
                     // agree as well, so we perform a simple sync IBD and only download the missing data
                     return Ok(IbdType::Sync);
                 } else {
-                    consensus.async_verify_is_pruning_sample(syncer_pruning_point).await?;
+                    let is_valid_sample = consensus.async_verify_is_pruning_sample(syncer_pruning_point).await;
+                    if let Err(e) = is_valid_sample {
+                        let past_pruning_points: Vec<_> =
+                            consensus.async_pruning_point_headers().await.iter().map(|header| header.hash).collect();
+                        if past_pruning_points.contains(&syncer_pruning_point) {
+                            // We already checked if it is the current pruning point, so it must be a past one.
+                            return Err(ProtocolError::Other("syncer pruning point is outdated"));
+                        } else {
+                            return Err(ProtocolError::ConsensusError(e));
+                        }
+                    }
                     // The node is missing a segment in the near future of its current pruning point, but the syncer is ahead
                     // and already pruned the current pruning point.
 
