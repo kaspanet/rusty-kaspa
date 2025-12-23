@@ -7,27 +7,39 @@ use crate::{
     stratum_context::StratumContext,
 };
 use kaspa_consensus_core::block::Block;
+use kaspa_consensus_core::hashing::header;
 // kaspa_pow used inline for PoW validation
 use num_bigint::BigUint;
 use num_traits::{ToPrimitive, Zero};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde_json::Value;
-use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
+
+use crate::constants::{STATS_PRINT_INTERVAL, STATS_PRUNE_INTERVAL};
+
+// Global aggregation for single consolidated print across instances (formatting only)
+struct PrintSnapshot {
+    lines: Vec<String>,
+    total_rate: f64,
+    shares: i64,
+    stales: i64,
+    invalids: i64,
+    blocks: i64,
+    uptime: String,
+}
+
+static GLOBAL_PRINT_SNAPSHOTS: Lazy<Mutex<HashMap<String, PrintSnapshot>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[allow(dead_code)]
 const VAR_DIFF_THREAD_SLEEP: u64 = 10;
 #[allow(dead_code)]
 const WORK_WINDOW: u64 = 80;
-const STATS_PRUNE_INTERVAL: Duration = Duration::from_secs(60);
-const STATS_PRINT_INTERVAL: Duration = Duration::from_secs(10);
 
-// VarDiff tunables
+// VarDiff tunables (kept conservative to avoid oscillation across miner brands)
 const VARDIFF_MIN_ELAPSED_SECS: f64 = 30.0;
 const VARDIFF_MAX_ELAPSED_SECS_NO_SHARES: f64 = 90.0;
 const VARDIFF_MIN_SHARES: f64 = 3.0;
@@ -41,7 +53,11 @@ fn vardiff_pow2_clamp_towards(current: f64, next: f64) -> f64 {
         return 1.0;
     }
 
+    // Keep updates monotonic when clamping:
+    // - If we are increasing (next >= current): clamp up to the next power-of-two (ceil).
+    // - If we are decreasing (next < current): clamp down to the previous power-of-two (floor).
     let exp = if next >= current { next.log2().ceil() } else { next.log2().floor() };
+
     let clamped = 2_f64.powi(exp as i32);
     if clamped < 1.0 {
         1.0
@@ -58,6 +74,7 @@ fn vardiff_compute_next_diff(current: f64, shares: f64, elapsed_secs: f64, expec
         return None;
     }
 
+    // No shares fallback: if a miner stops submitting, we likely overshot difficulty.
     if shares == 0.0 && elapsed_secs >= VARDIFF_MAX_ELAPSED_SECS_NO_SHARES {
         let mut next = current * VARDIFF_MAX_STEP_DOWN;
         if next < 1.0 {
@@ -66,23 +83,29 @@ fn vardiff_compute_next_diff(current: f64, shares: f64, elapsed_secs: f64, expec
         if clamp_pow2 {
             next = vardiff_pow2_clamp_towards(current, next);
         }
-        return if (next - current).abs() > f64::EPSILON { Some(next) } else { None };
+        return if next != current { Some(next) } else { None };
     }
 
+    // Need enough observation time and data.
     if elapsed_secs < VARDIFF_MIN_ELAPSED_SECS || shares < VARDIFF_MIN_SHARES {
         return None;
     }
 
     let observed_spm = (shares / elapsed_secs) * 60.0;
     let ratio = observed_spm / expected_spm.max(1.0);
-    if !ratio.is_finite() || ratio <= 0.0 {
+
+    if !(ratio.is_finite()) || ratio <= 0.0 {
         return None;
     }
+
+    // Only adjust when we’re meaningfully away from target.
     if ratio > VARDIFF_LOWER_RATIO && ratio < VARDIFF_UPPER_RATIO {
         return None;
     }
 
+    // Dampen the adjustment to avoid oscillation: step = sqrt(ratio)
     let step = ratio.sqrt().clamp(VARDIFF_MAX_STEP_DOWN, VARDIFF_MAX_STEP_UP);
+
     let mut next = current * step;
     if next < 1.0 {
         next = 1.0;
@@ -91,28 +114,18 @@ fn vardiff_compute_next_diff(current: f64, shares: f64, elapsed_secs: f64, expec
         next = vardiff_pow2_clamp_towards(current, next);
     }
 
+    // Avoid tiny churn updates.
     let rel_change = (next - current).abs() / current.max(1.0);
     if rel_change < 0.10 {
         return None;
     }
-    if (next - current).abs() > f64::EPSILON {
+
+    if next != current {
         Some(next)
     } else {
         None
     }
 }
-
-struct StatsPrinterEntry {
-    instance_id: String,
-    inst_short: String,
-    target_spm: f64,
-    start: Instant,
-    stats: Arc<Mutex<HashMap<String, WorkStats>>>,
-    overall: Arc<WorkStats>,
-}
-
-static STATS_PRINTER_REGISTRY: Lazy<Mutex<Vec<StatsPrinterEntry>>> = Lazy::new(|| Mutex::new(Vec::new()));
-static STATS_PRINTER_STARTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone)]
 pub struct WorkStats {
@@ -155,6 +168,7 @@ pub struct ShareHandler {
     stats: Arc<Mutex<HashMap<String, WorkStats>>>,
     overall: Arc<WorkStats>,
     instance_id: String, // Instance identifier for logging
+    target_spm: Arc<Mutex<Option<f64>>>,
 }
 
 impl ShareHandler {
@@ -164,11 +178,16 @@ impl ShareHandler {
             stats: Arc::new(Mutex::new(HashMap::new())),
             overall: Arc::new(WorkStats::new("overall".to_string())),
             instance_id,
+            target_spm: Arc::new(Mutex::new(None)),
         }
     }
 
     fn log_prefix(&self) -> String {
         format!("[{}]", self.instance_id)
+    }
+
+    pub fn set_target_spm(&self, spm: f64) {
+        *self.target_spm.lock() = Some(spm);
     }
 
     pub fn get_create_stats(&self, ctx: &StratumContext) -> WorkStats {
@@ -606,19 +625,6 @@ impl ShareHandler {
                 let block = Block::from_arcs(Arc::new(header_clone), Arc::new(transactions_vec));
                 let blue_score = block.header.blue_score;
 
-                // Calculate block hash immediately after block creation
-                // Use kaspa_consensus_core::hashing::header::hash() for block hash calculation
-                // In Kaspa, the block hash is the header hash (transactions are represented by hash_merkle_root in header)
-                use kaspa_consensus_core::hashing::header;
-                let block_hash = header::hash(&block.header).to_string();
-
-                // Log prominent "Block Found" message with hash
-                info!("{} {}", prefix, LogColors::block(&format!("🎉 BLOCK FOUND! Hash: {}", block_hash)));
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Hash:"), block_hash);
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Wallet:"), wallet_addr);
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Nonce:"), format!("{:x}", nonce_val));
-
                 // Log block submission details before submission (moved to debug level)
                 tracing::debug!("{} {}", LogColors::block("[BLOCK]"), LogColors::block("=== SUBMITTING BLOCK TO NODE ==="));
                 tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
@@ -656,11 +662,24 @@ impl ShareHandler {
                     LogColors::label("Client:"),
                     format!("{}:{}", ctx.remote_addr(), ctx.remote_port())
                 );
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Block Hash:"), block_hash);
+
+                // Calculate block hash BEFORE submission (for logging)
+                // Go calculates blockhash AFTER submit to get it submitted faster, but we log it before for debugging
+                // Use kaspa_consensus_core::hashing::header::hash() for block hash calculation
+                // In Kaspa, the block hash is the header hash (transactions are represented by hash_merkle_root in header)
+                let block_hash_before_submit = header::hash(&block.header).to_string();
+                tracing::debug!(
+                    "{} {} {}",
+                    LogColors::block("[BLOCK]"),
+                    LogColors::label("Block Hash (before submit):"),
+                    block_hash_before_submit
+                );
                 tracing::debug!("{} {}", LogColors::block("[BLOCK]"), "Calling kaspa_api.submit_block()...");
 
                 // Submit block to node
                 let block_submit_result = kaspa_api.submit_block(block.clone()).await;
+                // Use header::hash() for block hash calculation
+                let blockhash = header::hash(&block.header).to_string();
 
                 match block_submit_result {
                     Ok(_response) => {
@@ -670,13 +689,13 @@ impl ShareHandler {
                             "{} {} {}",
                             prefix,
                             LogColors::block("[BLOCK]"),
-                            LogColors::block(&format!("✓ Block submitted successfully! Hash: {}", block_hash))
+                            LogColors::block(&format!("✓ Submitted block {}", blockhash))
                         );
                         info!(
                             "{} {} {}",
                             prefix,
                             LogColors::block("[BLOCK]"),
-                            LogColors::block(&format!("🎉🎉🎉 BLOCK ACCEPTED BY NODE! 🎉🎉🎉 Hash: {}", block_hash))
+                            LogColors::block(&format!("🎉🎉🎉 BLOCK ACCEPTED BY NODE! 🎉🎉🎉 Hash: {}", blockhash))
                         );
                         info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("  - Worker:"), worker_name);
                         info!(
@@ -701,7 +720,7 @@ impl ShareHandler {
                             },
                             nonce_val,
                             blue_score,
-                            block_hash.clone(),
+                            blockhash.clone(),
                         );
 
                         // Return allows HandleSubmit to record share (blocks are shares too!)
@@ -717,7 +736,7 @@ impl ShareHandler {
                         let error_str = e.to_string();
                         error!("{} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("✗ Block submission FAILED"));
                         error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
-                        error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Blockhash:"), block_hash);
+                        error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Blockhash:"), blockhash);
                         error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("Error:"), error_str);
 
                         if error_str.contains("ErrDuplicateBlock") {
@@ -962,10 +981,10 @@ impl ShareHandler {
 
     pub fn start_client_vardiff(&self, ctx: &StratumContext) {
         let stats = self.get_create_stats(ctx);
-        if stats.var_diff_start_time.lock().is_none() {
-            *stats.var_diff_start_time.lock() = Some(Instant::now());
-            *stats.var_diff_shares_found.lock() = 0;
-        }
+        // Reset window (used after applying a new difficulty)
+        *stats.var_diff_start_time.lock() = Some(Instant::now());
+        *stats.var_diff_shares_found.lock() = 0;
+        *stats.var_diff_window.lock() = 0;
     }
 
     pub fn start_prune_stats_thread(&self) {
@@ -974,234 +993,239 @@ impl ShareHandler {
             let mut interval = tokio::time::interval(STATS_PRUNE_INTERVAL);
             loop {
                 interval.tick().await;
+                use crate::constants::{WORKER_INACTIVITY_TIMEOUT, WORKER_INITIAL_GRACE_PERIOD};
                 let mut stats_map = stats.lock();
                 let now = Instant::now();
                 stats_map.retain(|_, v| {
                     let last_share = *v.last_share.lock();
                     let shares = *v.shares_found.lock();
-                    (shares > 0 || now.duration_since(v.start_time) < Duration::from_secs(180))
-                        && now.duration_since(last_share) < Duration::from_secs(600)
+                    (shares > 0 || now.duration_since(v.start_time) < Duration::from_secs(WORKER_INITIAL_GRACE_PERIOD))
+                        && now.duration_since(last_share) < Duration::from_secs(WORKER_INACTIVITY_TIMEOUT)
                 });
                 // Note: Pruning is silent, no logs needed
             }
         });
     }
 
-    pub fn start_print_stats_thread(&self, target_spm: u32) {
-        let target_spm = if target_spm == 0 { 20.0 } else { target_spm as f64 };
-        let instance_id = self.instance_id.clone();
-        let inst_short = {
-            let digits: String = instance_id.chars().filter(|c| c.is_ascii_digit()).collect();
-            if let Ok(n) = digits.parse::<u32>() {
+    pub fn start_print_stats_thread(&self) {
+        let stats = Arc::clone(&self.stats);
+        let overall = Arc::clone(&self.overall);
+        let prefix = self.log_prefix();
+        let target_spm = Arc::clone(&self.target_spm);
+        // Derive a compact instance label like "Ins01" from the instance_id
+        let instance_id_src = self.instance_id.clone();
+        let instance_col = {
+            let digits: String = instance_id_src.chars().filter(|c| c.is_ascii_digit()).collect();
+            if let Ok(n) = digits.parse::<usize>() {
                 format!("Ins{:02}", n)
             } else {
-                "Ins??".to_string()
+                instance_id_src
             }
         };
-
-        {
-            let mut registry = STATS_PRINTER_REGISTRY.lock();
-            if !registry.iter().any(|e| e.instance_id == instance_id) {
-                registry.push(StatsPrinterEntry {
-                    instance_id,
-                    inst_short,
-                    target_spm,
-                    start: Instant::now(),
-                    stats: Arc::clone(&self.stats),
-                    overall: Arc::clone(&self.overall),
-                });
-            }
-        }
-
-        if STATS_PRINTER_STARTED.swap(true, Ordering::AcqRel) {
-            return;
-        }
-
         tokio::spawn(async move {
-            fn trunc<'a>(s: &'a str, max: usize) -> Cow<'a, str> {
-                if s.len() <= max {
-                    Cow::Borrowed(s)
-                } else {
-                    Cow::Owned(s.chars().take(max).collect())
-                }
-            }
-
-            const WORKER_W: usize = 16;
-            const INST_W: usize = 5;
-            const HASH_W: usize = 11;
-            const DIFF_W: usize = 6;
-            const SPM_W: usize = 11;
-            const TRND_W: usize = 4;
-            const ACC_W: usize = 12;
-            const BLK_W: usize = 6;
-            const TIME_W: usize = 7;
-
-            fn border() -> String {
-                format!(
-                    "+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+",
-                    "-".repeat(WORKER_W),
-                    "-".repeat(INST_W),
-                    "-".repeat(HASH_W),
-                    "-".repeat(DIFF_W),
-                    "-".repeat(SPM_W),
-                    "-".repeat(TRND_W),
-                    "-".repeat(ACC_W),
-                    "-".repeat(BLK_W),
-                    "-".repeat(TIME_W)
-                )
-            }
-
-            fn header() -> String {
-                format!(
-                    "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
-                    "Worker",
-                    "Inst",
-                    "Hash",
-                    "Diff",
-                    "SPM/tgt",
-                    "Trnd",
-                    "Acc/Stl/Inv",
-                    "Blocks",
-                    "Time",
-                )
-            }
-
             let mut interval = tokio::time::interval(STATS_PRINT_INTERVAL);
+            let start = Instant::now();
             loop {
                 interval.tick().await;
 
-                let entries = {
-                    let registry = STATS_PRINTER_REGISTRY.lock();
-                    registry
-                        .iter()
-                        .map(|e| (e.inst_short.clone(), e.target_spm, e.start, Arc::clone(&e.stats), Arc::clone(&e.overall)))
-                        .collect::<Vec<_>>()
-                };
+                let now = Instant::now();
+                let target_spm_val = *target_spm.lock();
+                let stats_map = stats.lock();
+                let mut lines = Vec::new();
+                let mut total_rate = 0.0;
 
-                if entries.is_empty() {
-                    continue;
+                for (_, v) in stats_map.iter() {
+                    let elapsed = v.start_time.elapsed().as_secs_f64();
+                    // Calculate hashrate: total_hashValue / elapsed_time
+                    // shares_diff contains accumulated hashValue (not diffValue)
+                    // hashValue = (minHash * diff) / bigGig = (2^32 * diff) / 1e9
+                    // So hashrate = total_hashValue / time (already in GH/s units)
+                    let rate = if elapsed > 0.0 {
+                        let total_hash_value = *v.shares_diff.lock();
+                        total_hash_value / elapsed
+                    } else {
+                        0.0
+                    };
+                    total_rate += rate;
+                    let shares = *v.shares_found.lock();
+                    let stales = *v.stale_shares.lock();
+                    let invalids = *v.invalid_shares.lock();
+                    let blocks = *v.blocks_found.lock();
+                    let uptime_secs = v.start_time.elapsed().as_secs_f64();
+                    let uptime = format!("{:.1}m", uptime_secs / 60.0);
+                    let diff = *v.min_diff.lock();
+
+                    let (spm, window_secs) = match *v.var_diff_start_time.lock() {
+                        Some(start_window) => {
+                            let window_elapsed = now.duration_since(start_window).as_secs_f64().max(0.0);
+                            let window_shares = *v.var_diff_shares_found.lock() as f64;
+                            let spm_val = if window_elapsed > 0.0 { (window_shares / window_elapsed) * 60.0 } else { 0.0 };
+                            (spm_val, window_elapsed)
+                        }
+                        None => (0.0, 0.0),
+                    };
+
+                    let (trend, _status) = if let Some(target) = target_spm_val {
+                        if window_secs == 0.0 {
+                            ("-", "warmup")
+                        } else if target > 0.0 {
+                            let ratio = spm / target;
+                            if ratio > VARDIFF_UPPER_RATIO {
+                                ("up", "vardiff")
+                            } else if ratio < VARDIFF_LOWER_RATIO {
+                                ("down", "vardiff")
+                            } else {
+                                ("flat", "vardiff")
+                            }
+                        } else {
+                            ("-", "vardiff")
+                        }
+                    } else {
+                        ("-", "fixed")
+                    };
+
+                    let worker_name = &*v.worker_name.lock();
+                    // Clamp worker name to fixed display width to preserve column alignment
+                    let worker_disp: String = {
+                        let s = worker_name.as_str();
+                        let mut it = s.chars();
+                        let mut out = String::with_capacity(16);
+                        for _ in 0..16 {
+                            if let Some(c) = it.next() {
+                                out.push(c);
+                            } else {
+                                break;
+                            }
+                        }
+                        out
+                    };
+                    let diff_str = if diff > 0.0 { format!("{:.0}", diff) } else { "-".to_string() };
+                    let _spm_str = if target_spm_val.is_some() && window_secs > 0.0 { format!("{:.1}", spm) } else { "-".to_string() };
+                    let target_str = if let Some(target) = target_spm_val { format!("{:.1}", target) } else { "-".to_string() };
+
+                    // Compose compact SPM/target column for white-style table
+                    let spm_target = if target_spm_val.is_some() && window_secs > 0.0 {
+                        format!("{:.1}/{}", spm, target_str)
+                    } else if target_spm_val.is_some() {
+                        format!("-/{}", target_str)
+                    } else {
+                        "-".to_string()
+                    };
+
+                    // White-style row formatting (visual-only change)
+                    lines.push(format!(
+                        " | {:<16} | {:<5} | {:>10} | {:>6} | {:>10} | {:>5} | {:>12} | {:>6} | {:>7} |",
+                        worker_disp,
+                        instance_col,
+                        format_hashrate(rate),
+                        diff_str,
+                        spm_target,
+                        trend,
+                        format!("{}/{}/{}", shares, stales, invalids),
+                        blocks,
+                        uptime
+                    ));
                 }
 
-                let mut rows: Vec<(String, String)> = Vec::new();
-                let mut total_rate = 0.0;
-                let mut total_shares: i64 = 0;
-                let mut total_stales: i64 = 0;
-                let mut total_invalids: i64 = 0;
-                let mut total_blocks: i64 = 0;
+                lines.sort();
+                drop(stats_map);
 
-                let now = Instant::now();
-                let start = entries.iter().map(|(_, _, start, _, _)| *start).max_by_key(|t| t.elapsed()).unwrap_or_else(Instant::now);
-                let total_uptime_mins = now.duration_since(start).as_secs_f64() / 60.0;
+                // Build header and separators dynamically to keep perfect alignment and full-width borders
+                let header_line = format!(
+                    " | {:<16} | {:<5} | {:>10} | {:>6} | {:>10} | {:>5} | {:>12} | {:>6} | {:>7} |",
+                    "Worker", "Inst", "Hash", "Diff", "SPM/tgt", "Trend", "Acc/Stl/Inv", "Blocks", "Time"
+                );
+                let width = header_line.len();
+                let sep_eq = "=".repeat(width);
+                let sep_dash = "-".repeat(width);
 
-                let mut total_target: Option<f64> = Some(entries[0].1);
-                for (inst_short, target_spm, _, stats, overall) in entries.iter() {
-                    if let Some(t) = total_target {
-                        if (t - *target_spm).abs() > 0.0001 {
-                            total_target = None;
+                // Update global snapshot for this instance
+                let inst_num_opt = instance_col.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse::<usize>().ok();
+                let snapshot = PrintSnapshot {
+                    lines: lines.clone(),
+                    total_rate,
+                    shares: *overall.shares_found.lock(),
+                    stales: *overall.stale_shares.lock(),
+                    invalids: *overall.invalid_shares.lock(),
+                    blocks: *overall.blocks_found.lock(),
+                    uptime: {
+                        let overall_secs = start.elapsed().as_secs_f64();
+                        format!("{:.1}m", overall_secs / 60.0)
+                    },
+                };
+                {
+                    let mut map = GLOBAL_PRINT_SNAPSHOTS.lock();
+                    map.insert(instance_col.clone(), snapshot);
+                }
+
+                // Only the first instance prints the consolidated table
+                let is_printer = inst_num_opt == Some(1);
+                if is_printer {
+                    let map = GLOBAL_PRINT_SNAPSHOTS.lock();
+                    let mut all_lines: Vec<String> = Vec::new();
+                    let mut sum_rate = 0.0;
+                    let mut sum_shares: i64 = 0;
+                    let mut sum_stales: i64 = 0;
+                    let mut sum_invalids: i64 = 0;
+                    let mut sum_blocks: i64 = 0;
+                    let mut max_uptime_secs: f64 = 0.0;
+
+                    // Deterministic order by instance label then row text
+                    let mut inst_keys: Vec<&String> = map.keys().collect();
+                    inst_keys.sort();
+                    for key in inst_keys {
+                        if let Some(snap) = map.get(key) {
+                            all_lines.extend(snap.lines.iter().cloned());
+                            sum_rate += snap.total_rate;
+                            sum_shares += snap.shares;
+                            sum_stales += snap.stales;
+                            sum_invalids += snap.invalids;
+                            sum_blocks += snap.blocks;
+                            if let Some(stripped) = snap.uptime.strip_suffix('m') {
+                                if let Ok(v) = stripped.parse::<f64>() {
+                                    max_uptime_secs = max_uptime_secs.max(v * 60.0);
+                                }
+                            }
                         }
                     }
 
-                    total_shares += *overall.shares_found.lock();
-                    total_stales += *overall.stale_shares.lock();
-                    total_invalids += *overall.invalid_shares.lock();
-                    total_blocks += *overall.blocks_found.lock();
+                    // Totals row uses the exact same formatter so columns line up 1:1
+                    let total_row = format!(
+                        " | {:<16} | {:<5} | {:>10} | {:>6} | {:>10} | {:>5} | {:>12} | {:>6} | {:>7} |",
+                        "TOTAL",
+                        "ALL",
+                        format_hashrate(sum_rate),
+                        "-",
+                        if let Some(target) = target_spm_val { format!("-/{:.1}", target) } else { "-".to_string() },
+                        "-",
+                        format!("{}/{}/{}", sum_shares, sum_stales, sum_invalids),
+                        sum_blocks,
+                        format!("{:.1}m", max_uptime_secs / 60.0)
+                    );
 
-                    let stats_map = stats.lock();
-                    for (_, v) in stats_map.iter() {
-                        let elapsed = v.start_time.elapsed().as_secs_f64();
-                        let rate = if elapsed > 0.0 {
-                            let total_hash_value = *v.shares_diff.lock();
-                            total_hash_value / elapsed
-                        } else {
-                            0.0
-                        };
-                        total_rate += rate;
-
-                        let shares = *v.shares_found.lock();
-                        let stales = *v.stale_shares.lock();
-                        let invalids = *v.invalid_shares.lock();
-                        let blocks = *v.blocks_found.lock();
-                        let min_diff = *v.min_diff.lock();
-
-                        let spm = if elapsed > 0.0 { (shares as f64) / (elapsed / 60.0) } else { 0.0 };
-                        let trend = if spm > *target_spm * 1.2 {
-                            "up"
-                        } else if spm < *target_spm * 0.8 {
-                            "down"
-                        } else {
-                            "flat"
-                        };
-
-                        let uptime_mins = v.start_time.elapsed().as_secs_f64() / 60.0;
-                        let worker = v.worker_name.lock().clone();
-
-                        let spm_tgt = format!("{:>4.1}/{:<4.1}", spm, *target_spm);
-
-                        let line = format!(
-                            "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
-                            trunc(&worker, WORKER_W),
-                            inst_short,
-                            format_hashrate(rate),
-                            min_diff.round() as u64,
-                            spm_tgt,
-                            trend,
-                            format!("{}/{}/{}", shares, stales, invalids),
-                            blocks,
-                            format!("{:.1}m", uptime_mins)
-                        );
-                        let sort_key = format!("{}:{}", inst_short, worker);
-                        rows.push((sort_key, line));
-                    }
+                    info!(
+                        "{} \n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+                        prefix,
+                        sep_eq,
+                        header_line,
+                        sep_dash,
+                        all_lines.join("\n"),
+                        sep_dash,
+                        total_row,
+                        sep_eq
+                    );
                 }
-
-                rows.sort_by(|a, b| a.0.cmp(&b.0));
-
-                let top = border();
-                let sep = border();
-                let hdr = header();
-
-                let mut out = Vec::new();
-                out.push(top.clone());
-                out.push(hdr);
-                out.push(sep.clone());
-
-                for (_, line) in rows.iter() {
-                    out.push(line.clone());
-                }
-
-                out.push(sep.clone());
-
-                let overall_spm = if total_uptime_mins > 0.0 { (total_shares as f64) / total_uptime_mins } else { 0.0 };
-                let total_spm_tgt = match total_target {
-                    Some(t) => format!("{:>4.1}/{:<4.1}", overall_spm, t),
-                    None => format!("{:>4.1}/-", overall_spm),
-                };
-
-                out.push(format!(
-                    "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
-                    "TOTAL",
-                    "ALL",
-                    format_hashrate(total_rate),
-                    "-",
-                    total_spm_tgt,
-                    "-",
-                    format!("{}/{}/{}", total_shares, total_stales, total_invalids),
-                    total_blocks,
-                    format!("{:.1}m", total_uptime_mins)
-                ));
-
-                out.push(top);
-                info!("{}", out.join("\n"));
             }
         });
     }
 
-    pub fn start_vardiff_thread(&self, _expected_share_rate: u32, _log_stats: bool, _clamp: bool) {
+    pub fn start_vardiff_thread(&self, expected_share_rate: u32, log_stats: bool, clamp: bool) {
+        // VarDiff controller:
+        // - Uses accepted share rate per worker to converge towards `expected_share_rate` shares/minute
+        // - Adjusts difficulty smoothly (sqrt damping + max step per tick)
+        // - Optional pow2 clamp (matches startup clamp behavior)
         let stats = Arc::clone(&self.stats);
         let prefix = self.log_prefix();
-        let expected_share_rate = _expected_share_rate;
-        let log_stats = _log_stats;
-        let clamp = _clamp;
 
         tokio::spawn(async move {
             let expected_spm = expected_share_rate.max(1) as f64;
@@ -1233,14 +1257,20 @@ impl ShareHandler {
 
                 for (_worker_id, v) in stats_map.iter_mut() {
                     let start_opt = *v.var_diff_start_time.lock();
-                    let Some(start) = start_opt else { continue };
+                    let Some(start) = start_opt else {
+                        continue;
+                    };
 
                     let elapsed = now.duration_since(start).as_secs_f64().max(0.0);
                     let shares = *v.var_diff_shares_found.lock() as f64;
                     let current = *v.min_diff.lock();
                     let next_opt = vardiff_compute_next_diff(current, shares, elapsed, expected_spm, clamp);
-                    let Some(next) = next_opt else { continue };
+                    let Some(next) = next_opt else {
+                        continue;
+                    };
 
+                    // Update the stored target difficulty, then reset the observation window so we
+                    // don't repeatedly adjust before the miner actually receives the new diff.
                     *v.min_diff.lock() = next;
                     *v.var_diff_start_time.lock() = Some(now);
                     *v.var_diff_shares_found.lock() = 0;
@@ -1301,4 +1331,53 @@ pub trait KaspaApiTrait: Send + Sync {
 pub struct WorkerContext<'a> {
     pub worker_name: &'a str,
     pub wallet_addr: &'a str,
+}
+
+#[cfg(test)]
+mod vardiff_tests {
+    use super::*;
+
+    // These tests validate that VarDiff captures the key information it needs:
+    // - accepted share count over a time window
+    // - current diff
+    // and produces stable, bounded diff updates (independent of ASIC model identity).
+
+    #[test]
+    fn vardiff_increases_diff_when_share_rate_is_high() {
+        // current=8192, observed=100 spm, target=20 spm -> ratio=5 -> sqrt(ratio)=2.236 -> clamped to 2x
+        let next = vardiff_compute_next_diff(8192.0, 100.0, 60.0, 20.0, false);
+        assert_eq!(next, Some(16384.0));
+    }
+
+    #[test]
+    fn vardiff_decreases_diff_when_share_rate_is_low() {
+        // current=8192, observed=2.5 spm, target=20 spm -> ratio=0.125 -> sqrt=0.353 -> clamped to 0.5x
+        let next = vardiff_compute_next_diff(8192.0, 5.0, 120.0, 20.0, false);
+        assert_eq!(next, Some(4096.0));
+    }
+
+    #[test]
+    fn vardiff_no_change_when_within_target_band() {
+        // Exactly at target: should not recommend change.
+        let next = vardiff_compute_next_diff(8192.0, 20.0, 60.0, 20.0, false);
+        assert_eq!(next, None);
+    }
+
+    #[test]
+    fn vardiff_decreases_diff_when_no_shares_timeout() {
+        // No accepted shares for long enough => drop diff by 50% to recover submissions.
+        let next = vardiff_compute_next_diff(8192.0, 0.0, 100.0, 20.0, false);
+        assert_eq!(next, Some(4096.0));
+    }
+
+    #[test]
+    fn vardiff_pow2_clamp_should_not_reverse_direction_on_increase() {
+        // If pow2 clamp floors unconditionally, it can accidentally *lower* difficulty on an increase.
+        // Example: current=5000, next_suggested=7500 -> we must clamp UP (8192), not DOWN (4096).
+        //
+        // Choose shares/elapsed such that next_suggested = 5000 * 1.5 = 7500:
+        // step = sqrt(ratio) => ratio = 2.25 => observed_spm = 45 (if target=20)
+        let next = vardiff_compute_next_diff(5000.0, 45.0, 60.0, 20.0, true);
+        assert_eq!(next, Some(8192.0));
+    }
 }
