@@ -19,7 +19,7 @@ pub struct P2pService {
     connect_peers: Vec<NetAddress>,
     add_peers: Vec<NetAddress>,
     listen: NetAddress,
-    outbound_target: usize,
+    random_graph_target: usize,
     inbound_limit: usize,
     dns_seeders: &'static [&'static str],
     default_port: u16,
@@ -33,7 +33,7 @@ impl P2pService {
         connect_peers: Vec<NetAddress>,
         add_peers: Vec<NetAddress>,
         listen: NetAddress,
-        outbound_target: usize,
+        random_graph_target: usize,
         inbound_limit: usize,
         dns_seeders: &'static [&'static str],
         default_port: u16,
@@ -45,7 +45,7 @@ impl P2pService {
             add_peers,
             shutdown: SingleTrigger::default(),
             listen,
-            outbound_target,
+            random_graph_target,
             inbound_limit,
             dns_seeders,
             default_port,
@@ -71,9 +71,11 @@ impl AsyncService for P2pService {
             Adaptor::bidirectional(self.listen, self.flow_context.hub().clone(), self.flow_context.clone(), self.counters.clone())
                 .unwrap()
         };
+
         let connection_manager = ConnectionManager::new(
             p2p_adaptor.clone(),
-            self.outbound_target,
+            self.random_graph_target,
+            self.flow_context.perigee_manager.clone(),
             self.inbound_limit,
             self.dns_seeders,
             self.default_port,

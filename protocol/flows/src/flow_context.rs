@@ -36,6 +36,7 @@ use kaspa_p2p_lib::{
     ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
 };
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
+use kaspa_perigeemanager::{PerigeeConfig, PerigeeManager};
 use kaspa_utils::iter::IterExtensions;
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
@@ -218,7 +219,7 @@ pub struct FlowContextInner {
     shared_block_requests: Arc<Mutex<HashMap<Hash, RequestScopeMetadata>>>,
     transactions_spread: AsyncRwLock<TransactionsSpread>,
     shared_transaction_requests: Arc<Mutex<HashMap<TransactionId, RequestScopeMetadata>>>,
-    is_ibd_running: Arc<AtomicBool>,
+    pub is_ibd_running: Arc<AtomicBool>,
     ibd_metadata: Arc<RwLock<Option<IbdMetadata>>>,
     pub address_manager: Arc<Mutex<AddressManager>>,
     connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
@@ -237,6 +238,9 @@ pub struct FlowContextInner {
 
     // Mining rule engine
     mining_rule_engine: Arc<MiningRuleEngine>,
+
+    // perigee manager
+    pub perigee_manager: Option<Arc<Mutex<PerigeeManager>>>,
 }
 
 #[derive(Clone)]
@@ -256,9 +260,9 @@ impl Drop for IbdRunningGuard {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct IbdMetadata {
+pub struct IbdMetadata {
     /// The peer from which current IBD is syncing from
-    peer: PeerKey,
+    pub peer: PeerKey,
     /// The DAA score of the relay block which triggered the current IBD
     daa_score: u64,
 }
@@ -311,6 +315,7 @@ impl FlowContext {
         notification_root: Arc<ConsensusNotificationRoot>,
         hub: Hub,
         mining_rule_engine: Arc<MiningRuleEngine>,
+        perigee_manager: Option<Arc<Mutex<PerigeeManager>>>,
     ) -> Self {
         let bps = config.bps().after() as usize;
         let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps as f64).log2().ceil() as u32;
@@ -341,6 +346,7 @@ impl FlowContext {
                 max_orphans,
                 config,
                 mining_rule_engine,
+                perigee_manager,
             }),
         }
     }
@@ -705,6 +711,30 @@ impl FlowContext {
     /// after a predefined interval or when the queue length is larger than the Inv message capacity.
     pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(&self, transaction_ids: I, should_throttle: bool) {
         self.transactions_spread.write().await.broadcast_transactions(transaction_ids, should_throttle).await
+    }
+
+    pub fn is_perigee_active(&self) -> bool {
+        self.perigee_manager.is_some()
+    }
+
+    pub async fn maybe_add_perigee_timestamp(&self, router: Arc<Router>, hash: Hash, timestamp: Instant, verify: bool) {
+        match self.perigee_manager {
+            Some(ref manager) => {
+                let mut manager = manager.lock();
+                manager.insert_perigee_timestamp(&router, hash, timestamp, verify);
+            }
+            None => {}
+        }
+    }
+
+    pub fn perigee_config(&self) -> Option<PerigeeConfig> {
+        match self.perigee_manager {
+            Some(ref manager) => {
+                let manager = manager.lock();
+                Some(manager.config().clone())
+            }
+            None => None,
+        }
     }
 }
 

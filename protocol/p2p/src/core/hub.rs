@@ -1,4 +1,5 @@
 use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, Peer, Router};
+use kaspa_consensus_core::Hash;
 use kaspa_core::{debug, info, warn};
 use parking_lot::RwLock;
 use std::{
@@ -175,6 +176,10 @@ impl Hub {
     /// Returns a list of all currently active peers
     pub fn active_peers(&self) -> Vec<Peer> {
         self.peers.read().values().map(|r| r.as_ref().into()).collect()
+    }
+
+    pub fn perigee_routers(&self) -> Vec<Arc<Router>> {
+        self.peers.read().values().filter(|r| r.is_perigee()).map(|r| r.clone()).collect()
     }
 
     /// Returns the number of currently active peers

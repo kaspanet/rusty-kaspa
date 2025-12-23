@@ -11,7 +11,8 @@ use futures_util::future::{join_all, try_join_all};
 use itertools::Itertools;
 use kaspa_addressmanager::{AddressManager, NetAddress};
 use kaspa_core::{debug, info, warn};
-use kaspa_p2p_lib::{common::ProtocolError, ConnectionError, Peer};
+use kaspa_p2p_lib::{common::ProtocolError, ConnectionError, Peer, PeerOutboundType};
+use kaspa_perigeemanager::{PerigeeConfig, PerigeeManager};
 use kaspa_utils::triggers::SingleTrigger;
 use parking_lot::Mutex as ParkingLotMutex;
 use rand::{seq::SliceRandom, thread_rng};
@@ -26,7 +27,9 @@ use tokio::{
 
 pub struct ConnectionManager {
     p2p_adaptor: Arc<kaspa_p2p_lib::Adaptor>,
-    outbound_target: usize,
+    random_graph_target: usize,
+
+    //note: Outbound target - perigee target will remain under the standard random graph connection.
     inbound_limit: usize,
     dns_seeders: &'static [&'static str],
     default_port: u16,
@@ -34,6 +37,8 @@ pub struct ConnectionManager {
     connection_requests: TokioMutex<HashMap<SocketAddr, ConnectionRequest>>,
     force_next_iteration: UnboundedSender<()>,
     shutdown_signal: SingleTrigger,
+    perigee_manager: Option<Arc<ParkingLotMutex<PerigeeManager>>>,
+    perigee_config: Option<PerigeeConfig>,
 }
 
 #[derive(Clone, Debug)]
@@ -52,16 +57,20 @@ impl ConnectionRequest {
 impl ConnectionManager {
     pub fn new(
         p2p_adaptor: Arc<kaspa_p2p_lib::Adaptor>,
-        outbound_target: usize,
+        random_graph_target: usize,
+
+        // perigee parameters
+        perigee_manager: Option<Arc<ParkingLotMutex<PerigeeManager>>>,
         inbound_limit: usize,
         dns_seeders: &'static [&'static str],
         default_port: u16,
         address_manager: Arc<ParkingLotMutex<AddressManager>>,
     ) -> Arc<Self> {
         let (tx, rx) = unbounded_channel::<()>();
+        let perigee_config = perigee_manager.as_ref().map(|pm| pm.clone().lock().config());
         let manager = Arc::new(Self {
             p2p_adaptor,
-            outbound_target,
+            random_graph_target,
             inbound_limit,
             address_manager,
             connection_requests: Default::default(),
@@ -69,6 +78,8 @@ impl ConnectionManager {
             shutdown_signal: SingleTrigger::new(),
             dns_seeders,
             default_port,
+            perigee_config,
+            perigee_manager,
         });
         manager.clone().start_event_loop(rx);
         manager.force_next_iteration.send(()).unwrap();
@@ -93,14 +104,58 @@ impl ConnectionManager {
         });
     }
 
+    async fn maybe_evaluate_perigee_round(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
+        let (to_exploit, to_evict) = match &self.perigee_manager {
+            Some(perigee_manager) => {
+                let mut perigee_manager = perigee_manager.lock();
+                if !perigee_manager.should_evaluate() {
+                    return;
+                }
+                perigee_manager.evaluate_round()
+            }
+            None => return,
+        };
+
+        info!(
+            "[PerigeeManager]: Exploiting peers: {:?}, Evicting peers: {:?}",
+            peer_by_address
+                .iter()
+                .filter_map(|(addr, p)| if to_exploit.contains(&p.key()) { Some(addr) } else { None })
+                .collect::<Vec<&SocketAddr>>(),
+            peer_by_address
+                .iter()
+                .filter_map(|(addr, p)| if to_evict.contains(&p.key()) { Some(addr) } else { None })
+                .collect::<Vec<&SocketAddr>>()
+        );
+
+        let mut to_terminate = Vec::new();
+
+        for peer_key in to_evict {
+            if let Some(peer) = peer_by_address.values().find(|p| p.key() == peer_key) {
+                to_terminate.push(peer);
+            }
+        }
+
+        self.terminate_peers(to_terminate).await;
+    }
+
+    async fn maybe_start_new_perigee_round(self: &Arc<Self>) {
+        if let Some(perigee_manager) = &self.perigee_manager {
+            let mut perigee_manager = perigee_manager.lock();
+            perigee_manager.start_new_round();
+        }
+    }
+
     async fn handle_event(self: Arc<Self>) {
         debug!("Starting connection loop iteration");
         let peers = self.p2p_adaptor.active_peers();
         let peer_by_address: HashMap<SocketAddr, Peer> = peers.into_iter().map(|peer| (peer.net_address(), peer)).collect();
 
+        self.maybe_evaluate_perigee_round(&peer_by_address).await;
         self.handle_connection_requests(&peer_by_address).await;
         self.handle_outbound_connections(&peer_by_address).await;
         self.handle_inbound_connections(&peer_by_address).await;
+        self.maybe_start_new_perigee_round().await;
     }
 
     pub async fn add_connection_request(&self, address: SocketAddr, is_permanent: bool) {
@@ -127,7 +182,7 @@ impl ConnectionManager {
 
             if !is_connected && request.next_attempt <= SystemTime::now() {
                 debug!("Connecting to peer request {}", address);
-                match self.p2p_adaptor.connect_peer(address.to_string()).await {
+                match self.p2p_adaptor.connect_peer(address.to_string(), None).await {
                     Err(err) => {
                         debug!("Failed connecting to peer request: {}, {}", address, err);
                         if request.is_permanent {
@@ -159,25 +214,46 @@ impl ConnectionManager {
         *requests = new_requests;
     }
 
+    async fn handle_random_graph_outbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
+        
+    }
+
     async fn handle_outbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
-        let active_outbound: HashSet<kaspa_addressmanager::NetAddress> =
-            peer_by_address.values().filter(|peer| peer.is_outbound()).map(|peer| peer.net_address().into()).collect();
-        if active_outbound.len() >= self.outbound_target {
+        let (active_perigee_outbound, active_random_graph_outbound): (HashSet<NetAddress>, HashSet<NetAddress>) =
+            peer_by_address.values().filter(|peer| peer.is_outbound()).partition_map(|peer| {
+                let net_addr = NetAddress::new(peer.net_address().ip().into(), peer.net_address().port());
+                match peer.outbound_type() {
+                    Some(PeerOutboundType::Perigee) => itertools::Either::Left(net_addr),
+                    Some(PeerOutboundType::RandomGraph) => itertools::Either::Right(net_addr),
+                    _ => unreachable!(),
+                }
+            });
+
+        // Combine both perigee and random-graph outbound addresses for the address manager
+        let mut active_outbound = active_perigee_outbound.clone();
+        active_outbound.extend(active_random_graph_outbound.iter().cloned());
+        
+        info!("active outbound connections: perigee {}, random graph {}, total {}", active_perigee_outbound.len(), active_random_graph_outbound.len(), active_outbound.len());
+        if active_outbound.len() >= self.outbound_target() {
             return;
         }
 
-        let mut missing_connections = self.outbound_target - active_outbound.len();
+        let mut missing_perigee_connections = self.perigee_outbound_target() - active_perigee_outbound.len();
+        let mut missing_random_graph_connections = self.random_graph_target - active_random_graph_outbound.len();
+
         let mut addr_iter = self.address_manager.lock().iterate_prioritized_random_addresses(active_outbound);
 
         let mut progressing = true;
         let mut connecting = true;
-        while connecting && missing_connections > 0 {
+
+        // Fill random graph designated peers first
+        while connecting && missing_random_graph_connections > 0 {
             if self.shutdown_signal.trigger.is_triggered() {
                 return;
             }
-            let mut addrs_to_connect = Vec::with_capacity(missing_connections);
-            let mut jobs = Vec::with_capacity(missing_connections);
-            for _ in 0..missing_connections {
+            let mut addrs_to_connect = Vec::with_capacity(missing_random_graph_connections);
+            let mut jobs = Vec::with_capacity(missing_random_graph_connections);
+            for _ in 0..missing_random_graph_connections {
                 let Some(net_addr) = addr_iter.next() else {
                     connecting = false;
                     break;
@@ -185,23 +261,23 @@ impl ConnectionManager {
                 let socket_addr = SocketAddr::new(net_addr.ip.into(), net_addr.port).to_string();
                 debug!("Connecting to {}", &socket_addr);
                 addrs_to_connect.push(net_addr);
-                jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone()));
+                jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone(), Some(PeerOutboundType::RandomGraph)));
             }
 
             if progressing && !jobs.is_empty() {
                 // Log only if progress was made
                 info!(
-                    "Connection manager: has {}/{} outgoing P2P connections, trying to obtain {} additional connection(s)...",
-                    self.outbound_target - missing_connections,
-                    self.outbound_target,
+                    "Connection manager: has {}/{} outgoing random graph P2P connections, trying to obtain {} additional connection(s)...",
+                    self.random_graph_target - missing_random_graph_connections,
+                    self.random_graph_target,
                     jobs.len(),
                 );
                 progressing = false;
             } else {
                 debug!(
-                    "Connection manager: outgoing: {}/{} , connecting: {}, iterator: {}",
-                    self.outbound_target - missing_connections,
-                    self.outbound_target,
+                    "Connection manager: outgoing random graph: {}/{} , connecting: {}, iterator: {}",
+                    self.random_graph_target - missing_random_graph_connections,
+                    self.random_graph_target,
                     jobs.len(),
                     addr_iter.len(),
                 );
@@ -211,7 +287,7 @@ impl ConnectionManager {
                 match res {
                     Ok(_) => {
                         self.address_manager.lock().mark_connection_success(net_addr);
-                        missing_connections -= 1;
+                        missing_random_graph_connections -= 1;
                         progressing = true;
                     }
                     Err(ConnectionError::ProtocolError(ProtocolError::PeerAlreadyExists(_))) => {
@@ -226,14 +302,84 @@ impl ConnectionManager {
             }
         }
 
-        if missing_connections > 0 && !self.dns_seeders.is_empty() {
-            if missing_connections > self.outbound_target / 2 {
+        if missing_random_graph_connections > 0 && !self.dns_seeders.is_empty() {
+            if missing_random_graph_connections > (self.random_graph_target / 2) {
                 // If we are missing more than half of our target, query all in parallel.
                 // This will always be the case on new node start-up and is the most resilient strategy in such a case.
                 self.dns_seed_many(self.dns_seeders.len()).await;
             } else {
                 // Try to obtain at least twice the number of missing connections
-                self.dns_seed_with_address_target(2 * missing_connections).await;
+                self.dns_seed_with_address_target(2 * missing_random_graph_connections).await;
+            }
+        }
+
+        // Fill perigee designated peers second
+        progressing = true;
+        connecting = true;
+
+        while connecting && missing_perigee_connections > 0 {
+            if self.shutdown_signal.trigger.is_triggered() {
+                return;
+            }
+            let mut addrs_to_connect = Vec::with_capacity(missing_perigee_connections);
+            let mut jobs = Vec::with_capacity(missing_perigee_connections);
+            for _ in 0..missing_perigee_connections {
+                let Some(net_addr) = addr_iter.next() else {
+                    connecting = false;
+                    break;
+                };
+                let socket_addr = SocketAddr::new(net_addr.ip.into(), net_addr.port).to_string();
+                debug!("Connecting to {}", &socket_addr);
+                addrs_to_connect.push(net_addr);
+                jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone(), Some(PeerOutboundType::Perigee)));
+            }
+
+            if progressing && !jobs.is_empty() {
+                // Log only if progress was made
+                info!(
+                    "Connection manager: has {}/{} outgoing perigee P2P connections, trying to obtain {} additional connection(s)...",
+                    self.perigee_outbound_target() - missing_perigee_connections,
+                    self.perigee_outbound_target(),
+                    jobs.len(),
+                );
+                progressing = false;
+            } else {
+                debug!(
+                    "Connection manager: outgoing perigee: {}/{} , connecting: {}, iterator: {}",
+                    self.perigee_outbound_target() - missing_perigee_connections,
+                    self.perigee_outbound_target(),
+                    jobs.len(),
+                    addr_iter.len(),
+                );
+            }
+
+            for (res, net_addr) in (join_all(jobs).await).into_iter().zip(addrs_to_connect) {
+                match res {
+                    Ok(_) => {
+                        self.address_manager.lock().mark_connection_success(net_addr);
+                        missing_perigee_connections -= 1;
+                        progressing = true;
+                    }
+                    Err(ConnectionError::ProtocolError(ProtocolError::PeerAlreadyExists(_))) => {
+                        // We avoid marking the existing connection as connection failure
+                        debug!("Failed connecting to {:?}, peer already exists", net_addr);
+                    }
+                    Err(err) => {
+                        debug!("Failed connecting to {:?}, err: {}", net_addr, err);
+                        self.address_manager.lock().mark_connection_failure(net_addr);
+                    }
+                }
+            }
+        }
+
+        if missing_perigee_connections > 0 && !self.dns_seeders.is_empty() {
+            if missing_perigee_connections > (self.perigee_outbound_target() / 2) {
+                // If we are missing more than half of our target, query all in parallel.
+                // This will always be the case on new node start-up and is the most resilient strategy in such a case.
+                self.dns_seed_many(self.dns_seeders.len()).await;
+            } else {
+                // Try to obtain at least twice the number of missing connections
+                self.dns_seed_with_address_target(2 * missing_perigee_connections).await;
             }
         }
     }
@@ -245,12 +391,16 @@ impl ConnectionManager {
             return;
         }
 
-        let mut futures = Vec::with_capacity(active_inbound_len - self.inbound_limit);
-        for peer in active_inbound.choose_multiple(&mut thread_rng(), active_inbound_len - self.inbound_limit) {
-            debug!("Disconnecting from {} because we're above the inbound limit", peer.net_address());
-            futures.push(self.p2p_adaptor.terminate(peer.key()));
-        }
-        join_all(futures).await;
+        let to_terminate = active_inbound
+            .choose_multiple(&mut thread_rng(), active_inbound_len - self.inbound_limit)
+            .cloned()
+            .collect::<Vec<&Peer>>();
+        debug!(
+            "Terminating peers: {:?} to respect the inbound limit of {}",
+            to_terminate.iter().map(|p| p.net_address()).collect_vec(),
+            self.inbound_limit
+        );
+        self.terminate_peers(to_terminate).await;
     }
 
     /// Queries DNS seeders in random order, one after the other, until obtaining `min_addresses_to_fetch` addresses
@@ -336,5 +486,23 @@ impl ConnectionManager {
     /// Returns whether the given IP has some permanent request.
     pub async fn ip_has_permanent_connection(&self, ip: IpAddr) -> bool {
         self.connection_requests.lock().await.iter().any(|(address, request)| request.is_permanent && address.ip() == ip)
+    }
+
+    pub fn outbound_target(&self) -> usize {
+        self.random_graph_target + self.perigee_outbound_target()
+    }
+
+    pub fn perigee_outbound_target(&self) -> usize {
+        let result = self.perigee_config.as_ref().map_or(0, |config| config.perigee_outbound_target);
+        info!("Perigee outbound target: {}", result);
+        result
+    }
+
+    async fn terminate_peers(&self, peers: Vec<&Peer>) {
+        let mut futures = Vec::with_capacity(peers.len());
+        for peer in peers {
+            futures.push(self.p2p_adaptor.terminate(peer.key()));
+        }
+        join_all(futures).await;
     }
 }

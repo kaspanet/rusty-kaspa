@@ -15,6 +15,7 @@ use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
 use kaspa_p2p_lib::Hub;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
+use kaspa_perigeemanager::{PerigeeConfig, PerigeeManager};
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::git;
@@ -427,6 +428,39 @@ Do you confirm? (y/n)";
     let p2p_server_addr = args.listen.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
     // connect_peers means no DNS seeding and no outbound/inbound peers
     let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
+
+    let perigee_target = if connect_peers.is_empty() { args.perigee_target } else { 0 };
+    let random_graph_target = if perigee_target > outbound_target {
+        panic!("Perigee target ({}) cannot be greater than outbound target ({}).", perigee_target, outbound_target);
+    } else {
+        outbound_target - perigee_target
+    };
+    let perigee_exploration_target =
+        if connect_peers.is_empty() { (perigee_target as f64 * args.perigee_exploration_rate).ceil() as usize } else { 0 };
+    let perigee_exploitation_target =
+        if connect_peers.is_empty() { (perigee_target as f64 * args.perigee_exploitation_rate).ceil() as usize } else { 0 };
+    if perigee_target < (perigee_exploitation_target + perigee_exploration_target) {
+        panic!(
+            "Perigee target ({}) cannot be less than the sum of exploitation ({}) and exploration ({}) targets.",
+            perigee_target, perigee_exploitation_target, perigee_exploration_target
+        );
+    };
+
+    let perigee_config = PerigeeConfig::new(
+        perigee_target,
+        perigee_exploitation_target,
+        perigee_exploration_target,
+        args.perigee_round_length.try_into().unwrap(),
+    );
+
+    if perigee_config.should_initiate_perigee() {
+        info!(
+            "Perigee targets - Total: {}, Exploitation: {}, Exploration: {}",
+            perigee_config.perigee_outbound_target, perigee_config.exploitation_target, perigee_config.exploration_target
+        );
+    }
+
+    let perigee_round_length_in_secs = if connect_peers.is_empty() { args.perigee_round_length } else { 0 };
     let inbound_limit = if connect_peers.is_empty() { args.inbound_limit } else { 0 };
     let dns_seeders = if connect_peers.is_empty() && !args.disable_dns_seeding { config.dns_seeders } else { &[] };
 
@@ -520,6 +554,10 @@ Do you confirm? (y/n)";
         hub.clone(),
         mining_rules,
     ));
+
+    let perigee_manager =
+        if perigee_config.should_initiate_perigee() { Some(Arc::new(PerigeeManager::new(hub.clone(), perigee_config))) } else { None };
+
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
         address_manager,
@@ -529,13 +567,15 @@ Do you confirm? (y/n)";
         notification_root,
         hub.clone(),
         mining_rule_engine.clone(),
+        perigee_manager,
     ));
+
     let p2p_service = Arc::new(P2pService::new(
         flow_context.clone(),
         connect_peers,
         add_peers,
         p2p_server_addr,
-        outbound_target,
+        random_graph_target,
         inbound_limit,
         dns_seeders,
         config.default_p2p_port(),

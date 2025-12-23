@@ -179,6 +179,21 @@ macro_rules! unwrap_message_with_request_id {
     }};
 }
 
+#[macro_export]
+macro_rules! unwrap_message_with_timestamp {
+    ($op:expr, $pattern:path) => {{
+        if let Some(msg) = $op {
+            if let Some($pattern(inner_msg)) = msg.payload {
+                Ok((inner_msg, Instant::now()))
+            } else {
+                Err($crate::common::ProtocolError::UnexpectedMessage(stringify!($pattern), msg.payload.as_ref().map(|v| v.into())))
+            }
+        } else {
+            Err($crate::common::ProtocolError::ConnectionClosed)
+        }
+    }};
+}
+
 /// Macro to await a channel `Receiver<pb::KaspadMessage>::recv` call with a default/specified timeout and expect a specific payload type.
 /// Usage:
 /// ```ignore
@@ -215,6 +230,13 @@ macro_rules! dequeue_with_timeout {
 macro_rules! dequeue {
     ($receiver:expr, $pattern:path) => {{
         $crate::unwrap_message!($receiver.recv().await, $pattern)
+    }};
+}
+
+#[macro_export]
+macro_rules! dequeue_with_timestamp {
+    ($receiver:expr, $pattern:path) => {{
+        $crate::unwrap_message_with_timestamp!($receiver.recv().await, $pattern)
     }};
 }
 
