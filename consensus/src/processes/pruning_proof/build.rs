@@ -49,6 +49,7 @@ impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for R
                 hashes
                     .iter()
                     .copied()
+                    //TODO(relaxed): consider retightening to is_dag_ancestor_of
                     .filter(|h| self.reachability_service.is_dag_ancestor_of_result(self.root, *h).unwrap_or(false))
                     .collect_vec(),
             )
@@ -243,6 +244,7 @@ impl PruningProofManager {
         level_relation_store.write().insert(ORIGIN, BlockHashes::new(vec![])).unwrap();
 
         while let Some(hash) = queue.pop_front() {
+            //TODO(relaxed): consider tightening to is_dag_ancestor_of
             if !self.reachability_service.is_dag_ancestor_of_result(root, hash).unwrap_or(false) {
                 continue;
             }
@@ -258,7 +260,7 @@ impl PruningProofManager {
                     .parents_at_level(&header, level)
                     .iter()
                     .copied()
-                    .filter(|&p| self.headers_store.has(p).unwrap_or(false))
+                    .filter(|&p| self.headers_store.has(p).unwrap())
                     .collect::<Vec<_>>()
                     .push_if_empty(ORIGIN),
             );
