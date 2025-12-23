@@ -422,6 +422,14 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_blocks_acceptance_data(&hashes, merged_blocks_limit)).await
     }
 
+    /// Returns the UTXO diff of a chain block.
+    pub async fn async_get_chain_block_utxo_diff(
+        &self,
+        chain_block: Hash,
+    ) -> ConsensusResult<Arc<kaspa_consensus_core::utxo::utxo_diff::UtxoDiff>> {
+        self.clone().spawn_blocking(move |c| c.get_chain_block_utxo_diff(chain_block)).await
+    }
+
     pub async fn async_is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
         self.clone().spawn_blocking(move |c| c.is_chain_block(hash)).await
     }

@@ -1070,9 +1070,16 @@ message RpcOptionalTransaction {
   optional RpcOptionalTransactionVerboseData verboseData = 10;
 }
 
+message RpcConflictingTransaction {
+  RpcTransaction rejectedTransaction = 1;
+  string acceptedTransactionId = 2;
+  string acceptingChainBlockHash = 3;
+}
+
 message RpcChainBlockAcceptedTransactions {
   RpcOptionalHeader chainBlockHeader = 2;
   repeated RpcOptionalTransaction acceptedTransactions = 3;
+  repeated RpcConflictingTransaction conflictingTransactions = 4;
 }
 
 /// GetVirtualChainFromBlockV2RequestMessage requests the virtual selected

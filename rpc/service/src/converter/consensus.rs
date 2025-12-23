@@ -7,9 +7,10 @@ use kaspa_consensus_core::{
     hashing::tx::hash,
     header::Header,
     tx::{
-        MutableTransaction, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput,
-        TransactionQueryResult, TransactionType, UtxoEntry,
+        MutableTransaction, PopulatedTransaction, SignableTransaction, Transaction, TransactionId, TransactionInput,
+        TransactionOutput, TransactionQueryResult, TransactionType, UtxoEntry,
     },
+    utxo::utxo_diff::ImmutableUtxoDiff,
     ChainPath,
 };
 use kaspa_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
@@ -20,12 +21,12 @@ use kaspa_mining::model::{owner_txs::OwnerTransactions, TransactionIdSet};
 use kaspa_notify::converter::Converter;
 use kaspa_rpc_core::{
     BlockAddedNotification, Notification, RpcAcceptanceDataVerbosity, RpcAcceptedTransactionIds, RpcBlock, RpcBlockVerboseData,
-    RpcChainBlockAcceptedTransactions, RpcError, RpcHash, RpcHeaderVerbosity, RpcMempoolEntry, RpcMempoolEntryByAddress,
-    RpcMergesetBlockAcceptanceDataVerbosity, RpcOptionalHeader, RpcOptionalTransaction, RpcOptionalTransactionInput,
-    RpcOptionalTransactionInputVerboseData, RpcOptionalTransactionOutput, RpcOptionalTransactionOutputVerboseData,
-    RpcOptionalTransactionVerboseData, RpcOptionalUtxoEntry, RpcOptionalUtxoEntryVerboseData, RpcResult, RpcTransaction,
-    RpcTransactionInput, RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity, RpcTransactionOutput,
-    RpcTransactionOutputVerboseData, RpcTransactionOutputVerboseDataVerbosity, RpcTransactionOutputVerbosity,
+    RpcChainBlockAcceptedTransactions, RpcConflictingTransaction, RpcError, RpcHash, RpcHeaderVerbosity, RpcMempoolEntry,
+    RpcMempoolEntryByAddress, RpcMergesetBlockAcceptanceDataVerbosity, RpcOptionalHeader, RpcOptionalTransaction,
+    RpcOptionalTransactionInput, RpcOptionalTransactionInputVerboseData, RpcOptionalTransactionOutput,
+    RpcOptionalTransactionOutputVerboseData, RpcOptionalTransactionVerboseData, RpcOptionalUtxoEntry, RpcOptionalUtxoEntryVerboseData,
+    RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity,
+    RpcTransactionOutput, RpcTransactionOutputVerboseData, RpcTransactionOutputVerboseDataVerbosity, RpcTransactionOutputVerbosity,
     RpcTransactionVerboseData, RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerboseDataVerbosity,
     RpcUtxoEntryVerbosity,
 };
@@ -599,6 +600,207 @@ impl ConsensusConverter {
         Ok(mergeset_accepted_transactions)
     }
 
+    /// Searches the selected parent chain for a transaction that spent the given outpoint.
+    ///
+    /// Traverses backwards from `starting_chain_block_hash` through the selected parent chain.
+    /// Stops the search if:
+    /// 1. The `conflicting_block_hash` is reached (if the tx was not found untill this block, it will not be found at all).
+    /// 2. The blue score delta from `starting_chain_block_hash` exceeds `4 * ghostdag_k` .
+    ///
+    /// Returns the transaction ID and the block hash if found, or `None` if no spender is found.
+    async fn find_spending_tx_in_selected_chain(
+        &self,
+        consensus: &ConsensusProxy,
+        conflicting_block_hash: Hash,
+        starting_chain_block_hash: Hash,
+        outpoint: &kaspa_consensus_core::tx::TransactionOutpoint,
+    ) -> Option<(TransactionId, Hash)> {
+        let starting_ghostdag_data = match consensus.async_get_ghostdag_data(starting_chain_block_hash).await {
+            Ok(data) => data,
+            Err(_) => return None,
+        };
+        let starting_blue_score = starting_ghostdag_data.blue_score;
+        let mut current_hash = starting_ghostdag_data.selected_parent;
+        let search_depth = self.config.ghostdag_k().upper_bound() as u64 * 4;
+
+        loop {
+            let ghostdag = match consensus.async_get_ghostdag_data(current_hash).await {
+                Ok(data) => data,
+                Err(_) => return None,
+            };
+
+            // If we reached a chain ancestor of the conflicting block, stop the search (= there is no spender tx in the selected chain)
+            if consensus.async_is_chain_ancestor_of(current_hash, conflicting_block_hash).await.unwrap_or(true) {
+                return None;
+            }
+
+            // Check if we've exceeded the blue depth limit
+            if starting_blue_score.saturating_sub(ghostdag.blue_score) >= search_depth {
+                return None;
+            }
+
+            // Get acceptance data for the current block
+            let acceptance_data = match consensus.async_get_block_acceptance_data(current_hash).await {
+                Ok(data) => data,
+                Err(_) => return None,
+            };
+
+            // Search through all accepted transactions in the mergeset
+            for merged_block_data in acceptance_data.iter() {
+                let block = match consensus.async_get_block(merged_block_data.block_hash).await {
+                    Ok(b) => b,
+                    Err(_) => continue,
+                };
+
+                for accepted_tx in &merged_block_data.accepted_transactions {
+                    if let Some(tx) = block.transactions.get(accepted_tx.index_within_block as usize) {
+                        for input in &tx.inputs {
+                            if &input.previous_outpoint == outpoint {
+                                return Some((tx.id(), current_hash));
+                            }
+                        }
+                    }
+                }
+            }
+
+            current_hash = ghostdag.selected_parent;
+        }
+    }
+
+    /// Finds the transaction that spent a conflicting outpoint, if any.
+    ///
+    /// Returns the accepted transaction ID and the chain block hash where it was accepted.
+    /// First checks for concurrent conflicts in the same mergeset, then searches historical blocks.
+    async fn find_conflicting_spender(
+        &self,
+        consensus: &ConsensusProxy,
+        tx: &Transaction,
+        chain_block_hash: Hash,
+        conflicting_block_hash: Hash,
+        accepted_outpoints: &HashMap<kaspa_consensus_core::tx::TransactionOutpoint, TransactionId>,
+    ) -> Option<(TransactionId, Hash)> {
+        for input in &tx.inputs {
+            // Check concurrent conflicts in the same mergeset
+            if let Some(accepted_tx_id) = accepted_outpoints.get(&input.previous_outpoint) {
+                return Some((*accepted_tx_id, chain_block_hash));
+            }
+
+            // Check historical conflicts in ancestor chain blocks
+            if let Some((spending_tx_id, spender_block_hash)) = self
+                .find_spending_tx_in_selected_chain(consensus, conflicting_block_hash, chain_block_hash, &input.previous_outpoint)
+                .await
+            {
+                return Some((spending_tx_id, spender_block_hash));
+            }
+        }
+        None
+    }
+
+    /// Verifies that a conflicting transaction has valid signatures by populating it with
+    /// UTXO entries from the chain block's utxo diff and running script verification.
+    ///
+    /// Returns true if all inputs have valid signatures, false otherwise.
+    async fn verify_conflicting_transaction_scripts(
+        &self,
+        consensus: &ConsensusProxy,
+        tx: &Transaction,
+        accepting_block_hash: Hash,
+    ) -> bool {
+        if tx.is_coinbase() {
+            return false;
+        }
+
+        let utxo_diff = match consensus.async_get_chain_block_utxo_diff(accepting_block_hash).await {
+            Ok(diff) => diff,
+            Err(_) => return false,
+        };
+
+        // Populate the transaction with UTXO entries from the diff's removed set
+        let mut entries = Vec::with_capacity(tx.inputs.len());
+        for input in &tx.inputs {
+            if let Some(entry) = utxo_diff.removed().get(&input.previous_outpoint) {
+                entries.push(entry.clone());
+            } else {
+                // If we can't find the UTXO entry, we can't verify this transaction
+                return false;
+            }
+        }
+
+        let populated_tx = PopulatedTransaction::new(tx, entries);
+
+        kaspa_consensus_core::sign::verify(&populated_tx).is_ok()
+    }
+
+    /// Detects transactions within the mergeset rejected due to UTXO conflicts (double-spends).
+    ///
+    /// Checks for conflicts against transactions accepted in the same mergeset or in recent chain ancestors
+    /// (limited by search depth). Returns rejected transactions paired with the accepted spending transaction ID.
+    async fn detect_conflicting_transactions(
+        &self,
+        consensus: &ConsensusProxy,
+        chain_block_hash: Hash,
+        chain_block_mergeset_acceptance_data: &Arc<AcceptanceData>,
+    ) -> RpcResult<Vec<RpcConflictingTransaction>> {
+        let mut all_blocks = HashMap::new();
+        let mut accepted_tx_ids = std::collections::HashSet::new();
+        let mut accepted_outpoints = HashMap::new(); // outpoint -> accepted_tx_id
+
+        for block_data in chain_block_mergeset_acceptance_data.iter() {
+            let block = consensus.async_get_block(block_data.block_hash).await?;
+
+            // Index accepted transactions
+            for accepted_tx in &block_data.accepted_transactions {
+                if let Some(tx) = block.transactions.get(accepted_tx.index_within_block as usize) {
+                    accepted_tx_ids.insert(tx.id());
+                    for input in &tx.inputs {
+                        accepted_outpoints.insert(input.previous_outpoint, tx.id());
+                    }
+                }
+            }
+
+            all_blocks.insert(block_data.block_hash, block);
+        }
+
+        // Find rejected transactions that conflict with accepted ones
+        let mut conflicting_transactions = Vec::new();
+        let mut seen_conflicting_tx_ids = std::collections::HashSet::<TransactionId>::new();
+
+        for block_data in chain_block_mergeset_acceptance_data.iter() {
+            if let Some(block) = all_blocks.get(&block_data.block_hash) {
+                for tx in block.transactions.iter() {
+                    let tx_id = tx.id();
+
+                    // If the tx is accepted or already reported as conflicting, skip it
+                    if accepted_tx_ids.contains(&tx_id) || seen_conflicting_tx_ids.contains(&tx_id) {
+                        continue;
+                    }
+
+                    // Try to find a conflict, either in same mergeset or in ancestor chain
+                    let conflict = self
+                        .find_conflicting_spender(consensus, tx, chain_block_hash, block_data.block_hash, &accepted_outpoints)
+                        .await;
+
+                    if let Some((accepted_tx_id, accepting_block_hash)) = conflict {
+                        // Only report legitimate double-spends where the rejected tx had valid signatures
+                        if !self.verify_conflicting_transaction_scripts(consensus, tx, accepting_block_hash).await {
+                            continue;
+                        }
+
+                        seen_conflicting_tx_ids.insert(tx_id);
+                        let full_tx = self.get_transaction(consensus, tx, Some(&block.header), true);
+                        conflicting_transactions.push(RpcConflictingTransaction {
+                            rejected_transaction: full_tx,
+                            accepted_transaction_id: accepted_tx_id,
+                            accepting_chain_block_hash: accepting_block_hash,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(conflicting_transactions)
+    }
+
     pub async fn get_chain_blocks_accepted_transactions(
         &self,
         consensus: &ConsensusProxy,
@@ -646,14 +848,20 @@ impl ConsensusConverter {
                     )
                     .await?;
 
+                let conflicting_transactions = self
+                    .detect_conflicting_transactions(consensus, *accepting_chain_hash, chain_block_mergeset_acceptance_data)
+                    .await?;
+
                 rpc_acceptance_data.push(RpcChainBlockAcceptedTransactions {
                     chain_block_header: accepting_chain_header_with_verbosity,
                     accepted_transactions: mergeset_transactions_with_verbosity,
+                    conflicting_transactions,
                 });
             } else {
                 rpc_acceptance_data.push(RpcChainBlockAcceptedTransactions {
                     chain_block_header: accepting_chain_header_with_verbosity,
                     accepted_transactions: Default::default(),
+                    conflicting_transactions: Default::default(),
                 });
             };
         }

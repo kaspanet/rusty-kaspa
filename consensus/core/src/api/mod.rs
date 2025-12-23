@@ -354,6 +354,11 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    /// Returns the UTXO diff of a chain block.
+    fn get_chain_block_utxo_diff(&self, chain_block: Hash) -> ConsensusResult<Arc<crate::utxo::utxo_diff::UtxoDiff>> {
+        unimplemented!()
+    }
+
     fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
         unimplemented!()
     }

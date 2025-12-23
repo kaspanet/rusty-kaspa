@@ -25,6 +25,7 @@ use crate::{
             selected_chain::SelectedChainStore,
             statuses::StatusesStoreReader,
             tips::{TipsStore, TipsStoreReader},
+            utxo_diffs::UtxoDiffsStoreReader,
             utxo_set::{UtxoSetStore, UtxoSetStoreReader},
             virtual_state::VirtualState,
             DB,
@@ -1287,6 +1288,10 @@ impl ConsensusApi for Consensus {
                 }
             })
             .collect::<ConsensusResult<Vec<_>>>()
+    }
+
+    fn get_chain_block_utxo_diff(&self, chain_block: Hash) -> ConsensusResult<Arc<kaspa_consensus_core::utxo::utxo_diff::UtxoDiff>> {
+        self.utxo_diffs_store.get(chain_block).unwrap_option().ok_or(ConsensusError::MissingData(chain_block))
     }
 
     fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
