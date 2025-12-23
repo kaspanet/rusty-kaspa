@@ -172,7 +172,8 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
 
     // Start stats printing thread if enabled
     if config.print_stats {
-        share_handler.start_print_stats_thread();
+        let shares_per_min = if config.shares_per_min > 0 { config.shares_per_min } else { 20 };
+        share_handler.start_print_stats_thread(shares_per_min);
     }
 
     // Start stats pruning thread
