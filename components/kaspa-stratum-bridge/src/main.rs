@@ -354,15 +354,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let inferred_mode = if !node_args.is_empty() { NodeMode::Inprocess } else { NodeMode::External };
     let node_mode = cli.node_mode.unwrap_or(inferred_mode);
 
-    let mut inprocess_node: Option<InProcessNode> = None;
-    if node_mode == NodeMode::Inprocess {
-        let mut argv: Vec<OsString> = Vec::with_capacity(node_args.len() + 1);
-        argv.push(OsString::from("kaspad"));
-        argv.extend(node_args.iter().map(OsString::from));
-        let args = kaspad_args::Args::parse(argv).map_err(|e| anyhow::anyhow!("{}", e))?;
-        inprocess_node = Some(InProcessNode::start_from_args(args)?);
-    }
-
     // Load config first to check if file logging is enabled
     let config_path = cli.config.as_path();
     let config = if config_path.exists() {
@@ -381,7 +372,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // To see more details, set RUST_LOG=info or RUST_LOG=debug
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         // Default: warn level, but allow info from rustbridge module for important messages
-        EnvFilter::new("warn,rustbridge=info")
+        EnvFilter::new("warn,kaspa_stratum_bridge=info")
     });
 
     // Custom formatter that applies colors directly to the Writer (like tracing-subscriber does for levels)
@@ -590,6 +581,17 @@ async fn main() -> Result<(), anyhow::Error> {
 
         None
     };
+
+    // Start in-process node after tracing is initialized so bridge logs (including the stats table)
+    // are not filtered out by a tracing subscriber installed by kaspad.
+    let mut inprocess_node: Option<InProcessNode> = None;
+    if node_mode == NodeMode::Inprocess {
+        let mut argv: Vec<OsString> = Vec::with_capacity(node_args.len() + 1);
+        argv.push(OsString::from("kaspad"));
+        argv.extend(node_args.iter().map(OsString::from));
+        let args = kaspad_args::Args::parse(argv).map_err(|e| anyhow::anyhow!("{}", e))?;
+        inprocess_node = Some(InProcessNode::start_from_args(args)?);
+    }
 
     if !config_path.exists() {
         tracing::warn!("config.yaml not found, using defaults");
