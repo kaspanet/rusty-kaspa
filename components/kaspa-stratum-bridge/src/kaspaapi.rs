@@ -5,10 +5,12 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::block::Block;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::{listener::ListenerId, scope::NewBlockTemplateScope};
+use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_rpc_core::{
     api::rpc::RpcApi, GetBlockDagInfoRequest, GetBlockTemplateRequest, GetConnectedPeerInfoRequest, GetInfoRequest,
     GetServerInfoRequest, Notification, RpcRawBlock, SubmitBlockRequest, SubmitBlockResponse,
 };
+use kaspa_utils_tower::counters::TowerConnectionCounters;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -57,8 +59,21 @@ impl KaspaApi {
         tracing::debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Address:"), &grpc_address);
         tracing::debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Protocol:"), "gRPC (via RPC client wrapper)");
 
-        // Connect to Kaspa node with grpc:// prefix
-        let client = Arc::new(GrpcClient::connect(grpc_address.clone()).await.context("Failed to connect to Kaspa node")?);
+        // Connect to Kaspa node with grpc:// prefix, using extended request timeout and reconnection support
+        let client = Arc::new(
+            GrpcClient::connect_with_args(
+                NotificationMode::Direct,
+                grpc_address.clone(),
+                None,
+                true,
+                None,
+                false,
+                Some(500_000),
+                Arc::new(TowerConnectionCounters::default()),
+            )
+            .await
+            .context("Failed to connect to Kaspa node")?,
+        );
 
         // Log successful connection (detailed logs moved to debug)
         tracing::debug!("{} {}", LogColors::api("[API]"), LogColors::block("✓ RPC Connection Established Successfully"));
