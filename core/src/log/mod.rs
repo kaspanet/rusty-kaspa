@@ -52,7 +52,7 @@ pub fn init_logger(log_dir: Option<&str>, filters: &str) {
         )
         .unwrap();
 
-    let _handle = log4rs::init_config(config).unwrap();
+    let _ = log4rs::init_config(config);
 
     set_log_level(level);
 }
