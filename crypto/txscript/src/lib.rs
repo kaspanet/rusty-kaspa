@@ -1391,6 +1391,12 @@ mod bitcoind_tests {
                 }
             };
 
+            if let JsonTestRow::TestWithComment(_, _, _, _, comment) = self.clone() {
+                if comment.contains("OpTxSubnetId") {
+                    eprintln!("debug");
+                }
+            }
+
             let result = Self::run_test(sig_script, script_pub_key, flags);
 
             match Self::result_name(result.clone()).contains(&expected_result.as_str()) {

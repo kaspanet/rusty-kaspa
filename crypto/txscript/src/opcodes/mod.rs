@@ -523,7 +523,7 @@ opcode_list! {
 
     opcode OpSubStr<0x7f, 1>(self, vm){
         if vm.flags.covenants_enabled{
-            let [end, start]: [i32; 2] = vm.dstack.pop_items()?;
+            let [start, end]: [i32; 2] = vm.dstack.pop_items()?;
             let data = vm.dstack.pop()?;
             let end = i32_to_usize(end)?;
             let start = i32_to_usize(start)?;
@@ -1076,7 +1076,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
-                    let [end, start]: [i32; 2] = vm.dstack.pop_items()?;
+                    let [start, end]: [i32; 2] = vm.dstack.pop_items()?;
                     let end = i32_to_usize(end)?;
                     let start = i32_to_usize(start)?;
                     let substr = substring(&tx.tx().payload, start, end)?;
@@ -1131,7 +1131,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
-                    let [end, start, idx]: [i32; 3] = vm.dstack.pop_items()?;
+                    let [idx, start, end]: [i32; 3] = vm.dstack.pop_items()?;
                     let idx = i32_to_usize(idx)?;
                     let start = i32_to_usize(start)?;
                     let end = i32_to_usize(end)?;
@@ -1263,7 +1263,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
-                    let [end, start, idx]: [i32; 3] = vm.dstack.pop_items()?;
+                    let [idx, start, end]: [i32; 3] = vm.dstack.pop_items()?;
                     let idx = i32_to_usize(idx)?;
                     let start = i32_to_usize(start)?;
                     let end = i32_to_usize(end)?;
@@ -1301,7 +1301,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
-                    let [end, start, idx]: [i32; 3] = vm.dstack.pop_items()?;
+                    let [idx, start, end]: [i32; 3] = vm.dstack.pop_items()?;
                     let idx = i32_to_usize(idx)?;
                     let start = i32_to_usize(start)?;
                     let end = i32_to_usize(end)?;
@@ -1337,7 +1337,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
-                    let [end, start, idx]: [i32; 3] = vm.dstack.pop_items()?;
+                    let [idx, start, end]: [i32; 3] = vm.dstack.pop_items()?;
                     let idx = i32_to_usize(idx)?;
                     let start = i32_to_usize(start)?;
                     let end = i32_to_usize(end)?;

@@ -3697,10 +3697,10 @@
   ],
   [
     "1",
-    "IF 0xb2 ELSE 1 ENDIF",
+    "IF TXVERSION ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE",
-    "OpTxVersion is reserved"
+    "OK",
+    "OpTxVersion is enabled post covenants activation"
   ],
   [
     "1",
@@ -3718,31 +3718,31 @@
   ],
   [
     "1",
-    "IF 0xb5 ELSE 1 ENDIF",
+    "IF TXLOCKTIME 0 EQUAL ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE",
-    "OpTxLockTime is reserved"
+    "OK",
+    "OpTxLockTime is enabled post covenants activation"
   ],
   [
     "1",
-    "IF 0xb6 ELSE 1 ENDIF",
+    "IF TXSUBNETID 0x14 0x0000000000000000000000000000000000000000 EQUAL ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE",
-    "OpTxSubnetId is reserved"
+    "OK",
+    "OpTxSubnetId is enabled post covenants activation"
   ],
   [
     "1",
-    "IF 0xb7 ELSE 1 ENDIF",
+    "IF TXGAS 0 EQUAL ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE",
-    "OpTxGas is reserved"
+    "OK",
+    "OpTxGas is enabled post covenants activation"
   ],
   [
     "1",
-    "IF 0xb8 ELSE 1 ENDIF",
+    "IF 0 0 TXPAYLOADSUBSTR '' EQUAL ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE",
-    "OpTxPayload is reserved"
+    "OK",
+    "OpTxPayloadSubstr is enabled post covenants activation"
   ],
   [
     "1",
@@ -3753,31 +3753,31 @@
   ],
   [
     "1",
-    "IF 0xba ELSE 1 ENDIF",
+    "0 OUTPOINTTXID DROP",
     "",
-    "BAD_OPCODE",
-    "OpOutpointTxId is reserved"
+    "OK",
+    "OpOutpointTxId is enabled post covenants activation"
   ],
   [
     "1",
-    "IF 0xbb ELSE 1 ENDIF",
+    "0 OUTPOINTINDEX DROP",
     "",
-    "BAD_OPCODE",
-    "OpOutpointOutputIdx is reserved"
+    "OK",
+    "OpOutpointIndex is enabled post covenants activation"
   ],
   [
     "1",
-    "IF 0xbc ELSE 1 ENDIF",
+    "0 0 1 TX_INPUT_SCRIPT_SIG_SUBSTR 0x01 0x51 EQUALVERIFY",
     "",
-    "BAD_OPCODE",
-    "OpTxInputScriptSig is reserved"
+    "OK",
+    "OpTxInputScriptSigSubstr is enabled post covenants activation"
   ],
   [
     "1",
-    "IF 0xbd ELSE 1 ENDIF",
+    "0 TX_INPUT_SEQ DROP",
     "",
-    "BAD_OPCODE",
-    "OpTxInputSeq is reserved"
+    "OK",
+    "OpTxInputSeq is enabled post covenants activation"
   ],
   [
     "0 1",
@@ -3802,10 +3802,10 @@
   ],
   [
     "1",
-    "IF 0xc1 ELSE 1 ENDIF",
+    "0 TX_INPUT_IS_COINBASE DROP",
     "",
-    "BAD_OPCODE",
-    "OpTxInputIsCoinbase is reserved"
+    "OK",
+    "OpTxInputIsCoinbase is enabled post covenants activation"
   ],
   [
     "0 1",
@@ -3822,53 +3822,14 @@
     "OpTxOutputSpk is enabled since kip10"
   ],
   [
-    "1",
-    "IF 0xc4 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE",
-    "opcodes above OpTxOutputSpk invalid if executed"
-  ],
-  [
-    "1",
-    "IF 0xc5 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xc6 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xc7 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xc8 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xc9 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xca ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
+    "TODO (before merge): Add tests for the missing range 0xc4 to 0xca"
   ],
   [
     "1",
     "IF 0xcb ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "opcodes above OpTxInputScriptSigSubstr invalid if executed"
   ],
   [
     "1",
@@ -4302,13 +4263,6 @@
     "",
     "BAD_OPCODE",
     "OP_RESERVED2 is reserved"
-  ],
-  [
-    "1",
-    "0xb2",
-    "",
-    "BAD_OPCODE",
-    "0xb2 == OP_CHECKSEQUENCEVERIFY + 1"
   ],
   [
     "2147483648",
