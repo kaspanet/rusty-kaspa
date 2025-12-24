@@ -49,7 +49,8 @@ impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for R
                 hashes
                     .iter()
                     .copied()
-                    //TODO(relaxed): consider retightening to is_dag_ancestor_of
+                    // TODO(relaxed): consider removing this filtering altogether - in the context this is currently called
+                    // blocks should not be inserted if they do not fulfill this condition
                     .filter(|h| self.reachability_service.is_dag_ancestor_of_result(self.root, *h).unwrap_or(false))
                     .collect_vec(),
             )
@@ -235,19 +236,21 @@ impl PruningProofManager {
     ) -> Arc<RwLock<DbRelationsStore>> {
         //TODO(relaxed): currently we rebuild the relation store in its entirety for each try.
         // A more efficient implementation could instead extend the store constructed in the previous try
+        //TODO: Remove sanity checks when convinced code is stable and correct
         let mut queue = VecDeque::new();
         let mut visited = BlockHashSet::new();
         queue.push_back(tip);
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
         let level_relation_store =
             Arc::new(RwLock::new(DbRelationsStore::new_temp(temp_db.clone(), level, try_number, cache_policy, cache_policy)));
-        level_relation_store.write().insert(ORIGIN, BlockHashes::new(vec![])).unwrap();
+        let mut relations_write = level_relation_store.write();
 
+        relations_write.insert(ORIGIN, BlockHashes::new(vec![])).unwrap();
+
+        // sanity check
+        assert!(self.reachability_service.is_dag_ancestor_of(root, tip));
         while let Some(hash) = queue.pop_front() {
             //TODO(relaxed): consider tightening to is_dag_ancestor_of
-            if !self.reachability_service.is_dag_ancestor_of_result(root, hash).unwrap_or(false) {
-                continue;
-            }
             if !visited.insert(hash) {
                 continue;
             }
@@ -261,12 +264,16 @@ impl PruningProofManager {
                     .iter()
                     .copied()
                     .filter(|&p| self.headers_store.has(p).unwrap())
+                    .filter(|&p| self.reachability_service.is_dag_ancestor_of_result(root, p).unwrap_or(false))
                     .collect::<Vec<_>>()
                     .push_if_empty(ORIGIN),
             );
-
+            // sanity check
+            if hash == root {
+                assert_eq!(parents.len(), 1);
+                assert_eq!(parents[0], ORIGIN);
+            }
             // Write parents to the relations store
-            let mut relations_write = level_relation_store.write();
             relations_write.insert(hash, parents.clone()).unwrap();
 
             // Enqueue parents to fill full upper chain
@@ -274,6 +281,15 @@ impl PruningProofManager {
                 queue.push_back(p);
             }
         }
+        //sanity checks
+        for hash in visited {
+            assert!(relations_write.has(hash).unwrap());
+        }
+        let children_read = relations_write.get_children(ORIGIN).unwrap();
+        let origin_children = children_read.read();
+        assert!(origin_children.len() == 1);
+        assert!(origin_children.contains(&root));
+
         level_relation_store.clone()
     }
 
