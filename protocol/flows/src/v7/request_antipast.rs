@@ -33,6 +33,8 @@ impl HandleAntipastRequests {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
+        let header_format = kaspa_p2p_lib::convert::header::determine_header_format(self.router.properties().protocol_version);
+
         loop {
             let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestAntipast)?;
             let (block, context): (Hash, Hash) = msg.try_into()?;
@@ -59,7 +61,9 @@ impl HandleAntipastRequests {
             self.router
                 .enqueue(make_response!(
                     Payload::BlockHeaders,
-                    BlockHeadersMessage { block_headers: headers.into_iter().map(|header| header.as_ref().into()).collect() },
+                    BlockHeadersMessage {
+                        block_headers: headers.into_iter().map(|header| (header_format, header.as_ref()).into()).collect()
+                    },
                     request_id
                 ))
                 .await?;
