@@ -238,32 +238,20 @@ impl IbdFlow {
                     // agree as well, so we perform a simple sync IBD and only download the missing data
                     return Ok(IbdType::Sync);
                 } else {
-                    let is_valid_sample = consensus.async_verify_is_pruning_sample(syncer_pruning_point).await;
-                    if let Err(e) = is_valid_sample {
-                        let past_pruning_points: Vec<_> =
-                            consensus.async_pruning_point_headers().await.iter().map(|header| header.hash).collect();
-                        if past_pruning_points.contains(&syncer_pruning_point) {
-                            // We already checked if it is the current pruning point, so it must be a past one.
-                            return Err(ProtocolError::Other("syncer pruning point is outdated"));
-                        } else {
-                            return Err(ProtocolError::ConsensusError(e));
-                        }
-                    }
-                    // The node is missing a segment in the near future of its current pruning point, but the syncer is ahead
-                    // and already pruned the current pruning point.
+                    // The node is missing a segment in the near future of its current pruning point, but the syncer presumably is ahead
+                    // is either behindor already pruned the current pruning point.
 
                     if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body())
                         && !consensus.async_is_consensus_in_transitional_ibd_state().await
                     {
-                        // The data pruned by the syncer is already available from within the node (from relay or past ibd attempts)
-                        // and the consensus is not in a transitional state requiring data on the previous pruning point,
+                        // The data needed to sync forwards is already available from within the node (from relay or past ibd attempts)
+                        // and the consensus is not in a transitional state requiring data on the existing pruning point,
                         // hence we can carry on syncing as normal.
                         return Ok(IbdType::Sync);
                     } else {
                         // Two options:
                         // 1: syncer_pruning_point is in the future, and there is a need to partially resync from syncer_pruning_point
-                        // 2: syncer_pruning_point is in the past of current pruning point, or is unknown on which case the syncing node is flawed,
-                        // and IBD should be stopped
+                        // 2: syncer_pruning_point is in the past of current pruning point, or is unknown on which case the syncing node IBD should be stopped
 
                         if consensus
                             .async_is_chain_ancestor_of(pruning_point, syncer_pruning_point)
@@ -272,7 +260,7 @@ impl IbdFlow {
                         {
                             return Ok(IbdType::PruningCatchUp);
                         } else {
-                            return Err(ProtocolError::Other("syncer pruning point is outdated"));
+                            return Err(ProtocolError::Other("IBD catchup is required but syncer pruning point is outdated"));
                         }
                     }
                 }
