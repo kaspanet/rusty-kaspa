@@ -1379,7 +1379,7 @@ mod bitcoind_tests {
     }
 
     impl JsonTestRow {
-        fn test_row(&self) -> Result<(), TestError> {
+        fn test_row(&self, flags: EngineFlags) -> Result<(), TestError> {
             // Parse test to objects
             let (sig_script, script_pub_key, expected_result) = match self.clone() {
                 JsonTestRow::Test(sig_script, sig_pub_key, _, expected_result) => (sig_script, sig_pub_key, expected_result),
@@ -1391,7 +1391,7 @@ mod bitcoind_tests {
                 }
             };
 
-            let result = Self::run_test(sig_script, script_pub_key);
+            let result = Self::run_test(sig_script, script_pub_key, flags);
 
             match Self::result_name(result.clone()).contains(&expected_result.as_str()) {
                 true => Ok(()),
@@ -1399,7 +1399,7 @@ mod bitcoind_tests {
             }
         }
 
-        fn run_test(sig_script: String, script_pub_key: String) -> Result<(), UnifiedError> {
+        fn run_test(sig_script: String, script_pub_key: String, flags: EngineFlags) -> Result<(), UnifiedError> {
             let script_sig = opcodes::parse_short_form(sig_script).map_err(UnifiedError::ScriptBuilderError)?;
             let script_pub_key =
                 ScriptPublicKey::from_vec(0, opcodes::parse_short_form(script_pub_key).map_err(UnifiedError::ScriptBuilderError)?);
@@ -1419,7 +1419,7 @@ mod bitcoind_tests {
                 &populated_tx.entries[0],
                 &reused_values,
                 &sig_cache,
-                Default::default(),
+                flags,
             );
             vm.execute().map_err(UnifiedError::TxScriptError)
         }
@@ -1498,31 +1498,7 @@ mod bitcoind_tests {
         }
     }
 
-    #[test]
-    fn test_bitcoind_tests() {
-        // Script test files are split into two versions to test behavior after KIP-10:
-        //
-        // - script_tests.json: Tests expanded functionality with KIP-10 enabled
-        //
-        // KIP-10 introduces two major changes:
-        //
-        // 1. Support for 8-byte integer arithmetic (previously limited to 4 bytes)
-        //    This enables working with larger numbers in scripts and reduces artificial constraints
-        //
-        // 2. Transaction introspection opcodes:
-        //    - OpTxInputCount (0xb3): Get number of inputs
-        //    - OpTxOutputCount (0xb4): Get number of outputs
-        //    - OpTxInputIndex (0xb9): Get current input index
-        //    - OpTxInputAmount (0xbe): Get input amount
-        //    - OpTxInputSpk (0xbf): Get input script public key
-        //    - OpTxOutputAmount (0xc2): Get output amount
-        //    - OpTxOutputSpk (0xc3): Get output script public key
-        //
-        // These changes were added to support mutual transactions and auto-compounding addresses.
-        // When KIP-10 is disabled (pre-activation), the new opcodes will return an InvalidOpcode error
-        // and arithmetic is limited to 4 bytes. When enabled, scripts gain full access to transaction
-        // data and 8-byte arithmetic capabilities.
-        let file_name = "script_tests.json";
+    fn run_json_test_file(file_name: &str, flags: EngineFlags) {
         let file =
             File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name)).expect("Could not find test file");
         let reader = BufReader::new(file);
@@ -1530,9 +1506,19 @@ mod bitcoind_tests {
         // Read the JSON contents of the file as an instance of `User`.
         let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
         for row in tests {
-            if let Err(error) = row.test_row() {
+            if let Err(error) = row.test_row(flags) {
                 panic!("Test: {:?} failed for {}: {:?}", row.clone(), file_name, error);
             }
         }
+    }
+
+    #[test]
+    fn test_pre_covenants_bitcoind_tests() {
+        run_json_test_file("script_tests.json", Default::default());
+    }
+
+    #[test]
+    fn test_covenants_bitcoind_tests() {
+        run_json_test_file("script_tests_covenants.json", EngineFlags { covenants_enabled: true });
     }
 }
