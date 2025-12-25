@@ -416,6 +416,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
                     // [Crescendo]: for each block in the original window save its selected parent as well
                     // since it is required for checking whether the block was activated (when building the
                     // window by the syncee or when rebuilding following pruning)
+                    // TODO (relaxed): remove this once most of the network upgrades from crescendo version
                     cover.insert(self.ghostdag_store.get_selected_parent(merged).unwrap());
                 }
             }
