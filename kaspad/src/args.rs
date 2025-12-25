@@ -114,9 +114,9 @@ impl Default for Args {
             reset_db: false,
             outbound_target: 8,
             perigee_target: 0,
-            perigee_exploitation_rate: 0.5,
+            perigee_exploitation_rate: 0.625,
             perigee_exploration_rate: 0.125,
-            perigee_round_frequency: 2, // Round duration will be 60 secs
+            perigee_round_frequency: 4, // Round duration will be 30 secs
             perigee_statistics: false,
             inbound_limit: 128,
             rpc_max_clients: 128,

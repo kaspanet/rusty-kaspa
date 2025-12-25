@@ -30,7 +30,7 @@ use tokio::{
 };
 
 pub enum ConnectionManagerEvent {
-    Tick,
+    Tick(usize),
     Signal,
 }
 
@@ -106,8 +106,8 @@ impl ConnectionManager {
                     break;
                 }
                 select! {
+                    _ = ticker.tick() => self.clone().handle_event(ConnectionManagerEvent::Tick(self.tick_counter.fetch_add(1, Ordering::SeqCst))),
                     _ = rx.recv() =>  self.clone().handle_event(ConnectionManagerEvent::Signal),
-                    _ = ticker.tick() => self.clone().handle_event(ConnectionManagerEvent::Tick),
                     _ = self.shutdown_signal.listener.clone() => break,
                 }
                 .await
@@ -121,40 +121,32 @@ impl ConnectionManager {
         peer_by_address: &HashMap<SocketAddr, Peer>,
         event: ConnectionManagerEvent,
     ) -> bool {
-        if matches!(event, ConnectionManagerEvent::Signal) {
-            // we only eval perigee on round / tick based behavior.
-            return false;
-        }
+        let tick_count = match event {
+            ConnectionManagerEvent::Tick(count) => count,
+            ConnectionManagerEvent::Signal => return false,
+        };
 
-        let perigee_config = match &self.perigee_config {
-            Some(pc) => pc,
+        match &self.perigee_config {
+            Some(pc) => {
+                if !pc.round_frequency == 0 || tick_count % pc.round_frequency != 0 {
+                    return false;
+                }
+            }
             None => return false,
         };
 
-        if perigee_config.round_frequency == 0 {
-            return false;
-        }
+        let (to_exploit, to_evict) = {
+            let mut perigee_manager = self.perigee_manager.as_ref().unwrap().lock();
 
-        let (to_exploit, to_evict) = match &self.perigee_manager {
-            Some(perigee_manager) => {
-                if self.tick_counter.load(Ordering::SeqCst) % perigee_config.round_frequency != 0 {
-                    // if perigee manager is some we expect the config to be some as well.
-                    return false;
-                }
-
-                let mut perigee_manager = perigee_manager.lock();
-
-                if !perigee_manager.should_evaluate() {
-                    return false;
-                }
-
-                if perigee_manager.config().statistics {
-                    perigee_manager.log_statistics();
-                };
-
-                perigee_manager.evaluate_round()
+            if !perigee_manager.should_evaluate() {
+                return false;
             }
-            None => return false,
+
+            if perigee_manager.config().statistics {
+                perigee_manager.log_statistics();
+            }
+
+            perigee_manager.evaluate_round(false)
         };
 
         info!(
@@ -193,9 +185,6 @@ impl ConnectionManager {
 
     async fn handle_event(self: Arc<Self>, event: ConnectionManagerEvent) {
         debug!("Starting connection loop iteration");
-        if matches!(event, ConnectionManagerEvent::Tick) {
-            self.tick_counter.fetch_add(1, Ordering::SeqCst);
-        };
 
         let peers = self.p2p_adaptor.active_peers();
         let peer_by_address: HashMap<SocketAddr, Peer> = peers.into_iter().map(|peer| (peer.net_address(), peer)).collect();
@@ -274,8 +263,8 @@ impl ConnectionManager {
 
     async fn handle_outbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
         let mut active_outbound = HashSet::new();
-        let mut active_perigee_outbound = HashSet::new();
-        let mut active_random_graph_outbound = HashSet::new();
+        let mut num_active_perigee_outbound = 0usize;
+        let mut num_active_random_graph_outbound = 0usize;
 
         for peer in peer_by_address.values() {
             match peer.outbound_type() {
@@ -283,8 +272,8 @@ impl ConnectionManager {
                     let net_addr = NetAddress::new(peer.net_address().ip().into(), peer.net_address().port());
                     active_outbound.insert(net_addr);
                     match obt {
-                        PeerOutboundType::Perigee => active_perigee_outbound.insert(net_addr),
-                        PeerOutboundType::RandomGraph => active_random_graph_outbound.insert(net_addr),
+                        PeerOutboundType::Perigee => num_active_perigee_outbound += 1,
+                        PeerOutboundType::RandomGraph => num_active_random_graph_outbound += 1,
                         _ => continue,
                     };
                 }
@@ -292,39 +281,52 @@ impl ConnectionManager {
             };
         }
 
-        let active_outbound_respecting_peers_len = active_perigee_outbound.len() + active_random_graph_outbound.len();
+        let num_active_outbound_respecting_peers = num_active_perigee_outbound + num_active_random_graph_outbound;
 
         info!(
             "Connection manager: outbound respecting connections: {}/{} (Perigee: {}/{}, RandomGraph: {}/{}); Others: {} )",
-            active_outbound_respecting_peers_len,
+            num_active_outbound_respecting_peers,
             self.outbound_target(),
-            active_perigee_outbound.len(),
+            num_active_perigee_outbound,
             self.perigee_outbound_target(),
-            active_random_graph_outbound.len(),
+            num_active_random_graph_outbound,
             self.random_graph_target,
-            active_outbound.len().saturating_sub(active_outbound_respecting_peers_len)
+            active_outbound.len().saturating_sub(num_active_outbound_respecting_peers)
         );
 
-        let mut missing_connections = self.outbound_target().saturating_sub(active_outbound_respecting_peers_len);
+        let mut missing_connections = self.outbound_target().saturating_sub(num_active_outbound_respecting_peers);
 
         if missing_connections == 0 {
-            let random_graph_overflow = active_random_graph_outbound.len().saturating_sub(self.random_graph_target);
+            let random_graph_overflow = num_active_random_graph_outbound.saturating_sub(self.random_graph_target);
             if random_graph_overflow > 0 {
                 info!(
                     "Connection manager: terminating {} excess random graph outbound connections to respect the target of {}",
                     random_graph_overflow, self.random_graph_target
                 );
-                let to_terminate = active_random_graph_outbound
-                    .into_iter()
-                    .filter_map(|addr| peer_by_address.get(&SocketAddr::new(addr.ip.into(), addr.port)))
+                let to_terminate = active_outbound
+                    .iter()
+                    .filter_map(|addr| match peer_by_address.get(&SocketAddr::new(addr.ip.into(), addr.port)) {
+                        Some(peer) if peer.is_random_graph() => Some(peer),
+                        _ => None,
+                    })
                     .choose_multiple(&mut thread_rng(), random_graph_overflow);
+
                 self.terminate_peers(to_terminate).await;
             };
-            //perigee overflow handles internally.
-            return;
+            let perigee_overflow = num_active_perigee_outbound.saturating_sub(self.perigee_outbound_target());
+            if perigee_overflow > 0 {
+                info!(
+                    "Connection manager: terminating {} excess perigee outbound connections to respect the target of {}",
+                    perigee_overflow,
+                    self.perigee_outbound_target()
+                );
+                let mut pm = self.perigee_manager.as_ref().unwrap().lock();
+                pm.evaluate_round(true);
+                return;
+            }
         }
 
-        let mut missing_random_graph_connections = self.random_graph_target.saturating_sub(active_random_graph_outbound.len());
+        let mut missing_random_graph_connections = self.random_graph_target.saturating_sub(num_active_random_graph_outbound);
 
         let mut missing_perigee_connections = missing_connections.saturating_sub(missing_random_graph_connections);
 

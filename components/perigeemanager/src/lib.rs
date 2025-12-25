@@ -35,7 +35,7 @@ impl PerigeeConfig {
 
     pub fn should_initiate_perigee(&self) -> bool {
         (self.perigee_outbound_target > 0 && self.exploration_target > 0 && self.exploitation_target < self.perigee_outbound_target)
-            && !self.round_frequency == 0
+            && self.round_frequency > 0
     }
 }
 
@@ -71,14 +71,16 @@ impl PerigeeManager {
         self.maybe_insert_first_seen(hash, timestamp);
     }
 
-    pub fn evaluate_round(&mut self) -> (Vec<PeerKey>, Vec<PeerKey>) {
+    pub fn evaluate_round(&mut self, trim_excess_only: bool) -> (Vec<PeerKey>, Vec<PeerKey>) {
+        debug!("PerigeeManager: evaluating round");
         self.round_counter += 1;
 
         let (mut peer_table, perigee_routers) = self.build_table();
 
         if peer_table.len() <= self.config.exploitation_target {
+            debug!("PerigeeManager: not enough peers for round");
             //need to wait for more peers
-            return (vec![], vec![]);
+            return (peer_table.keys().cloned().collect(), vec![]);
         };
 
         let active_perigee_amount = peer_table.len();
@@ -111,17 +113,29 @@ impl PerigeeManager {
         }
 
         let remaining_peers = peer_table.into_keys().collect::<Vec<PeerKey>>();
-        let excused_peers = self.get_excused_peers(&perigee_routers);
+        let mut excused_peers = self.get_excused_peers(&perigee_routers);
 
-        let to_remove_target = usize::max(
-            (active_perigee_amount + self.config.exploration_target).saturating_sub(self.config.perigee_outbound_target),
-            self.config.exploration_target,
-        );
+        let to_remove_target = if trim_excess_only {
+            active_perigee_amount.saturating_sub(self.config.perigee_outbound_target)
+        } else {
+            usize::max(
+                (active_perigee_amount + self.config.exploration_target).saturating_sub(self.config.perigee_outbound_target),
+                self.config.exploration_target,
+            )
+        };
 
-        let eviction_candidates = remaining_peers.into_iter().filter(|p| !excused_peers.contains(p)).collect::<Vec<PeerKey>>();
+        let mut eviction_candidates = remaining_peers.into_iter().filter(|p| !excused_peers.contains(p)).collect::<Vec<PeerKey>>();
 
-        if eviction_candidates.len() < self.config.exploration_target {
-            // we explore as much as we can.
+        if eviction_candidates.len() < to_remove_target {
+            while eviction_candidates.len() < to_remove_target {
+                if !excused_peers.is_empty() {
+                    // We take from excused only if we have to
+                    eviction_candidates.push(excused_peers.pop().unwrap());
+                } else if !exploitation_peers.is_empty() {
+                    // We take from exploited, from lowest to highest impact, as last resort
+                    eviction_candidates.push(exploitation_peers.pop().unwrap());
+                }
+            }
             (exploitation_peers, eviction_candidates)
         } else {
             // choose peers to evict from perigee at random from the remaining candidates.
@@ -137,7 +151,8 @@ impl PerigeeManager {
     }
 
     pub fn should_evaluate(&mut self) -> bool {
-        self.verified_blocks.is_empty()
+        debug!("PerigeeManager: Checking if round should be evaluated: {}", !self.verified_blocks.is_empty());
+        !self.verified_blocks.is_empty()
     }
 
     pub fn log_statistics(&self) {
@@ -157,8 +172,11 @@ impl PerigeeManager {
                 return DelayStats { count: 0, mean: 0.0, median: 0, min: 0, max: 0, p90: 0, p95: 0, p99: 0 };
             }
 
-            let mut sorted = delays.to_vec();
-            sorted.sort_unstable();
+            let sorted = {
+                let mut s = delays.to_vec();
+                s.sort_unstable();
+                s
+            };
 
             let count = sorted.len();
             let mean = sorted.iter().sum::<u64>() as f64 / count as f64;
@@ -193,31 +211,39 @@ impl PerigeeManager {
             .hub
             .perigee_routers()
             .iter()
-            .flat_map(|r| {
+            .map(|r| {
                 number_of_perigee_peers += 1;
-                r.perigee_timestamps()
+                (r.key(), r.perigee_timestamps())
             })
-            .collect::<HashMap<Hash, Instant>>();
+            .collect::<Vec<_>>();
         let mut number_of_random_graph_peers = 0;
         let random_graph_timestamps = self
             .hub
             .random_graph_routers()
             .iter()
-            .flat_map(|r| {
+            .map(|r| {
                 number_of_random_graph_peers += 1;
-                r.perigee_timestamps()
+                (r.key(), r.perigee_timestamps())
             })
-            .collect::<HashMap<Hash, Instant>>();
+            .collect::<Vec<_>>();
 
         let mut perigee_delays = Vec::new();
         let mut random_graph_delays = Vec::new();
         let mut perigee_wins = 0;
+        let mut perigee_total_blocks_seen = 0;
         let mut random_graph_wins = 0;
+        let mut random_graph_total_blocks_seen = 0;
         let mut ties = 0;
 
         for (hash, timestamp) in self.iterate_verified_first_seen() {
-            let perigee_delay = perigee_timestamps.get(hash).map(|ts| ts.duration_since(*timestamp).as_millis() as u64);
-            let rg_delay = random_graph_timestamps.get(hash).map(|ts| ts.duration_since(*timestamp).as_millis() as u64);
+            let perigee_delay = perigee_timestamps
+                .iter()
+                .filter_map(|(_, hm)| hm.get(hash).map(|ts| ts.duration_since(*timestamp).as_millis() as u64))
+                .min();
+            let rg_delay = random_graph_timestamps
+                .iter()
+                .filter_map(|(_, hm)| hm.get(hash).map(|ts| ts.duration_since(*timestamp).as_millis() as u64))
+                .min();
 
             match (perigee_delay, rg_delay) {
                 (Some(p_delay), Some(rg_delay)) => {
@@ -305,9 +331,9 @@ impl PerigeeManager {
          ===========================================================\n",
             self.round_counter,
             number_of_perigee_peers,
-            perigee_timestamps.len(),
+            perigee_timestamps.iter().map(|(_, hm)| hm.len()).sum::<usize>(),
             number_of_random_graph_peers,
-            random_graph_timestamps.len(),
+            random_graph_timestamps.iter().map(|(_, hm)| hm.len()).sum::<usize>(),
             self.config.perigee_outbound_target,
             self.config.exploitation_target,
             self.config.exploration_target,
@@ -363,7 +389,6 @@ impl PerigeeManager {
     }
 
     fn verify_block(&mut self, hash: Hash) {
-        //debug!("PerigeeManager: Marking block {:?} as verified", hash);
         self.verified_blocks.insert(hash);
     }
 
@@ -386,6 +411,11 @@ impl PerigeeManager {
     }
 
     fn rate_peer(&self, values: &[u64]) -> u64 {
+        if values.is_empty() {
+            // note this is also important so that the return doesn't subtract with overflow.
+            return u64::MAX;
+        };
+
         let sorted_values = {
             let mut sv = values.to_owned();
             sv.sort_unstable();

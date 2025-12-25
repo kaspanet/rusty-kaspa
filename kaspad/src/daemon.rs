@@ -430,7 +430,7 @@ Do you confirm? (y/n)";
     let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
 
     let perigee_target = if connect_peers.is_empty() { args.perigee_target } else { 0 };
-    let random_graph_target = if perigee_target > outbound_target {
+    let mut random_graph_target = if perigee_target > outbound_target {
         panic!("Perigee target ({}) cannot be greater than outbound target ({}).", perigee_target, outbound_target);
     } else {
         outbound_target - perigee_target
@@ -456,9 +456,18 @@ Do you confirm? (y/n)";
 
     if perigee_config.should_initiate_perigee() {
         info!(
-            "Perigee targets - Total: {}, Exploitation: {}, Exploration: {}",
-            perigee_config.perigee_outbound_target, perigee_config.exploitation_target, perigee_config.exploration_target
+            "Perigee Active - Perigee Params: Outbound Perigee Target: {}, Exploitation: {}, Exploration: {}, Round length {} Secs",
+            perigee_config.perigee_outbound_target,
+            perigee_config.exploitation_target,
+            perigee_config.exploration_target,
+            perigee_config.round_frequency * 30,
         );
+    } else {
+        info!(
+            "Perigee Inactive - Perigee Params: Outbound Perigee Target: {}, Exploitation Target: {}, Exploration Target: {}, Round length {} Secs is not sustainable",
+            perigee_config.perigee_outbound_target, perigee_config.exploitation_target, perigee_config.exploration_target, perigee_config.round_frequency * 30,
+        );
+        random_graph_target += perigee_config.perigee_outbound_target;
     }
 
     let inbound_limit = if connect_peers.is_empty() { args.inbound_limit } else { 0 };
