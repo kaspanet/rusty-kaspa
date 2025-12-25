@@ -337,7 +337,7 @@ pub fn cli() -> Command {
                 .help("Proportion of Perigee peers dedicated to exploitation i.e. number of top performing perigee peers to keep per round of perigee (default: 0.5)."),
         )
         .arg(
-            Arg::new("perigee_round_frequency")
+            Arg::new("perigee-round-frequency")
                 .long("perigee-round-frequency")
                 .env("KASPAD_PERIGEE_ROUND_FREQUENCY")
                 .require_equals(true)
