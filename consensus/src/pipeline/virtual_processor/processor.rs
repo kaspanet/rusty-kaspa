@@ -23,8 +23,8 @@ use crate::{
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningStoreReader},
+            pruning_meta::PruningMetaStores,
             pruning_samples::DbPruningSamplesStore,
-            pruning_utxoset::PruningUtxosetStores,
             reachability::DbReachabilityStore,
             relations::{DbRelationsStore, RelationsStoreReader},
             selected_chain::{DbSelectedChainStore, SelectedChainStore},
@@ -54,10 +54,7 @@ use kaspa_consensus_core::{
     block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     blockstatus::BlockStatus::{StatusDisqualifiedFromChain, StatusUTXOValid},
     coinbase::MinerData,
-    config::{
-        genesis::GenesisBlock,
-        params::{ForkActivation, ForkedParam},
-    },
+    config::{genesis::GenesisBlock, params::ForkActivation},
     header::Header,
     merkle::calc_hash_merkle_root,
     mining_rules::MiningRules,
@@ -120,8 +117,8 @@ pub struct VirtualStateProcessor {
 
     // Config
     pub(super) genesis: GenesisBlock,
-    pub(super) max_block_parents: ForkedParam<u8>,
-    pub(super) mergeset_size_limit: ForkedParam<u64>,
+    pub(super) max_block_parents: u8,
+    pub(super) mergeset_size_limit: u64,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -141,7 +138,7 @@ pub struct VirtualStateProcessor {
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
     pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
-    pub(super) pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
+    pub(super) pruning_meta_stores: Arc<RwLock<PruningMetaStores>>,
 
     /// The "last known good" virtual state. To be used by any logic which does not want to wait
     /// for a possible virtual state write to complete but can rather settle with the last known state
@@ -223,7 +220,7 @@ impl VirtualStateProcessor {
             utxo_multisets_store: storage.utxo_multisets_store.clone(),
             acceptance_data_store: storage.acceptance_data_store.clone(),
             virtual_stores: storage.virtual_stores.clone(),
-            pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
+            pruning_meta_stores: storage.pruning_meta_stores.clone(),
             lkg_virtual_state: storage.lkg_virtual_state.clone(),
 
             block_window_cache_for_difficulty: storage.block_window_cache_for_difficulty.clone(),
@@ -709,9 +706,8 @@ impl VirtualStateProcessor {
         // we might touch such data prior to validating the bounded merge rule. All in all, this function is short
         // enough so we avoid making further optimizations
         let _prune_guard = self.pruning_lock.blocking_read();
-        let selected_parent_daa_score = self.headers_store.get_daa_score(selected_parent).unwrap();
-        let max_block_parents = self.max_block_parents.get(selected_parent_daa_score) as usize;
-        let mergeset_size_limit = self.mergeset_size_limit.get(selected_parent_daa_score);
+        let max_block_parents = self.max_block_parents as usize;
+        let mergeset_size_limit = self.mergeset_size_limit;
         let max_candidates = self.max_virtual_parent_candidates(max_block_parents);
 
         // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
@@ -941,13 +937,8 @@ impl VirtualStateProcessor {
             virtual_state.daa_score,
             virtual_state.past_median_time,
         )?;
-        let ValidatedTransaction { calculated_fee, .. } = self.validate_transaction_in_utxo_context(
-            tx,
-            utxo_view,
-            virtual_state.daa_score,
-            virtual_state.daa_score,
-            TxValidationFlags::Full,
-        )?;
+        let ValidatedTransaction { calculated_fee, .. } =
+            self.validate_transaction_in_utxo_context(tx, utxo_view, virtual_state.daa_score, TxValidationFlags::Full)?;
         Ok(calculated_fee)
     }
 
@@ -1054,9 +1045,9 @@ impl VirtualStateProcessor {
         // [`calc_block_parents`] can use deep blocks below the pruning point for this calculation, so we
         // need to hold the pruning lock.
         let _prune_guard = self.pruning_lock.blocking_read();
-        let pruning_info = self.pruning_point_store.read().get().unwrap();
+        let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
         let header_pruning_point =
-            self.pruning_point_manager.expected_header_pruning_point_v2(virtual_state.ghostdag_data.to_compact()).pruning_point;
+            self.pruning_point_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact()).pruning_point;
         let coinbase = self
             .coinbase_manager
             .expected_coinbase_transaction(
@@ -1069,17 +1060,11 @@ impl VirtualStateProcessor {
             .unwrap();
         txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
-        let parents_by_level = self.parents_manager.calc_block_parents(pruning_info.pruning_point, &virtual_state.parents);
+        let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
+        let hash_merkle_root = calc_hash_merkle_root(txs.iter());
 
-        // Hash according to hardfork activation
-        let storage_mass_activated = self.crescendo_activation.is_active(virtual_state.daa_score);
-        let hash_merkle_root = calc_hash_merkle_root(txs.iter(), storage_mass_activated);
-
-        let accepted_id_merkle_root = self.calc_accepted_id_merkle_root(
-            virtual_state.daa_score,
-            virtual_state.accepted_tx_ids.iter().copied(),
-            virtual_state.ghostdag_data.selected_parent,
-        );
+        let accepted_id_merkle_root = self
+            .calc_accepted_id_merkle_root(virtual_state.accepted_tx_ids.iter().copied(), virtual_state.ghostdag_data.selected_parent);
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;
@@ -1116,16 +1101,16 @@ impl VirtualStateProcessor {
         let pruning_point_read = self.pruning_point_store.upgradable_read();
         if pruning_point_read.pruning_point().unwrap_option().is_none() {
             let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
-            let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
+            let mut pruning_meta_write = self.pruning_meta_stores.write();
             let mut batch = WriteBatch::default();
             self.past_pruning_points_store.insert_batch(&mut batch, 0, self.genesis.hash).unwrap_or_exists();
-            pruning_point_write.set_batch(&mut batch, self.genesis.hash, self.genesis.hash, 0).unwrap();
+            pruning_point_write.set_batch(&mut batch, self.genesis.hash, 0).unwrap();
             pruning_point_write.set_retention_checkpoint(&mut batch, self.genesis.hash).unwrap();
             pruning_point_write.set_retention_period_root(&mut batch, self.genesis.hash).unwrap();
-            pruning_utxoset_write.set_utxoset_position(&mut batch, self.genesis.hash).unwrap();
+            pruning_meta_write.set_utxoset_position(&mut batch, self.genesis.hash).unwrap();
             self.db.write(batch).unwrap();
             drop(pruning_point_write);
-            drop(pruning_utxoset_write);
+            drop(pruning_meta_write);
         }
     }
 
@@ -1170,19 +1155,19 @@ impl VirtualStateProcessor {
         {
             // Set the pruning point utxoset position to the new point we just verified
             let mut batch = WriteBatch::default();
-            let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
-            pruning_utxoset_write.set_utxoset_position(&mut batch, new_pruning_point).unwrap();
+            let mut pruning_meta_write = self.pruning_meta_stores.write();
+            pruning_meta_write.set_utxoset_position(&mut batch, new_pruning_point).unwrap();
             self.db.write(batch).unwrap();
-            drop(pruning_utxoset_write);
+            drop(pruning_meta_write);
         }
 
         {
             // Copy the pruning-point UTXO set into virtual's UTXO set
-            let pruning_utxoset_read = self.pruning_utxoset_stores.read();
+            let pruning_meta_read = self.pruning_meta_stores.read();
             let mut virtual_write = self.virtual_stores.write();
 
             virtual_write.utxo_set.clear().unwrap();
-            for chunk in &pruning_utxoset_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(1000) {
+            for chunk in &pruning_meta_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(1000) {
                 virtual_write.utxo_set.write_from_iterator_without_cache(chunk).unwrap();
             }
         }
@@ -1194,7 +1179,6 @@ impl VirtualStateProcessor {
         let validated_transactions = self.validate_transactions_in_parallel(
             &new_pruning_point_transactions,
             &virtual_read.utxo_set,
-            new_pruning_point_header.daa_score,
             new_pruning_point_header.daa_score,
             TxValidationFlags::Full,
         );

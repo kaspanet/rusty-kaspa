@@ -3601,25 +3601,39 @@
     "2147483648 0",
     "ADD NOP",
     "",
-    "UNKNOWN_ERROR",
-    "arithmetic operands must be in range [-2^31...2^31] "
+    "OK",
+    "numbers up to 8 bytes are supported since kip10"
   ],
   [
     "-2147483648 0",
     "ADD NOP",
     "",
+    "OK",
+    "numbers up to 8 bytes are supported since kip10"
+  ],
+  [
+    "-9223372036854775808 0",
+    "ADD NOP",
+    "",
     "UNKNOWN_ERROR",
-    "arithmetic operands must be in range [-2^31...2^31] "
+    ""
   ],
   [
     "2147483647",
     "DUP ADD 4294967294 NUMEQUAL",
     "",
-    "UNKNOWN_ERROR",
-    "NUMEQUAL must be in numeric range"
+    "OK",
+    "NUMEQUAL is in numeric range since kip10"
   ],
   [
     "'abcdef'",
+    "NOT 0 EQUAL",
+    "",
+    "OK",
+    "numbers up to 8 bytes are supported since kip10"
+  ],
+  [
+    "'abcdefghi'",
     "NOT 0 EQUAL",
     "",
     "UNKNOWN_ERROR",
@@ -3686,115 +3700,133 @@
     "IF 0xb2 ELSE 1 ENDIF",
     "",
     "BAD_OPCODE",
-    "opcodes above OP_CHECKSEQUENCEVERIFY invalid if executed"
+    "OpTxVersion is reserved"
   ],
   [
     "1",
     "IF 0xb3 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "OK",
+    "OpTxInputCount is enabled since kip10"
   ],
   [
     "1",
     "IF 0xb4 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "OK",
+    "OpTxOutputCount is enabled since kip10"
   ],
   [
     "1",
     "IF 0xb5 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxLockTime is reserved"
   ],
   [
     "1",
     "IF 0xb6 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxSubnetId is reserved"
   ],
   [
     "1",
     "IF 0xb7 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxGas is reserved"
   ],
   [
     "1",
     "IF 0xb8 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxPayload is reserved"
   ],
   [
     "1",
-    "IF 0xb9 ELSE 1 ENDIF",
+    "IF 0xb9 0 NUMEQUAL ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "OK",
+    "OpTxInputIndex is enabled since kip10"
   ],
   [
     "1",
     "IF 0xba ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpOutpointTxId is reserved"
   ],
   [
     "1",
     "IF 0xbb ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpOutpointOutputIdx is reserved"
   ],
   [
     "1",
     "IF 0xbc ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxInputScriptSig is reserved"
   ],
   [
     "1",
     "IF 0xbd ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxInputSeq is reserved"
   ],
   [
-    "1",
-    "IF 0xbe ELSE 1 ENDIF",
+    "0 1",
+    "IF 0xbe 0 NUMEQUAL ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "OK",
+    "OpTxInputAmount is enabled since kip10"
   ],
   [
-    "1",
+    "0 1",
     "IF 0xbf ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "OK",
+    "OpTxInputSpk is enabled since kip10"
   ],
   [
     "1",
     "IF 0xc0 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxInputBlockDaaScore is reserved"
   ],
   [
     "1",
     "IF 0xc1 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxInputIsCoinbase is reserved"
   ],
   [
-    "1",
-    "IF 0xc2 ELSE 1 ENDIF",
+    "0 1",
+    "IF 0xc2 0 NUMEQUAL ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "OK",
+    "OpTxOutputAmount is enabled since kip10"
   ],
   [
-    "1",
-    "IF 0xc3 ELSE 1 ENDIF",
+    "0 1",
+    "IF 0xc3 0x02 0x0000 EQUAL ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "OK",
+    "OpTxOutputSpk is enabled since kip10"
   ],
   [
     "1",
     "IF 0xc4 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "opcodes above OpTxOutputSpk invalid if executed"
   ],
   [
     "1",
@@ -4280,52 +4312,108 @@
   ],
   [
     "2147483648",
-    "1ADD 1",
+    "1ADD 2147483649 NUMEQUAL",
     "",
-    "UNKNOWN_ERROR",
-    "We cannot do math on 5-byte integers"
+    "OK",
+    "We can do math on 5-byte integers since kip10"
   ],
   [
     "2147483648",
-    "NEGATE 1",
+    "NEGATE -2147483648 NUMEQUAL",
     "",
-    "UNKNOWN_ERROR",
-    "We cannot do math on 5-byte integers"
+    "OK",
+    "We can do math on 5-byte integers since kip10"
   ],
   [
     "-2147483648",
-    "1ADD 1",
+    "1ADD -2147483647 NUMEQUAL",
     "",
-    "UNKNOWN_ERROR",
-    "Because we use a sign bit, -2147483648 is also 5 bytes"
+    "OK",
+    "We can do math on 5-byte integers since kip10"
   ],
   [
     "2147483647",
-    "1ADD 1SUB 1",
+    "DUP 1ADD 1SUB NUMEQUAL",
     "",
-    "UNKNOWN_ERROR",
-    "We cannot do math on 5-byte integers, even if the result is 4-bytes"
+    "OK",
+    "We can do math on 5-byte integers since kip10"
   ],
   [
     "2147483648",
+    "1SUB 2147483647 NUMEQUAL",
+    "",
+    "OK",
+    "We can do math on 5-byte integers since kip10"
+  ],
+  [
+    "2147483648 1",
+    "BOOLOR 1 EQUAL",
+    "",
+    "OK",
+    "We can do math on 5-byte integers since kip10"
+  ],
+  [
+    "2147483648 1",
+    "BOOLAND 1 EQUAL",
+    "",
+    "OK",
+    "We can do math on 5-byte integers since kip10"
+  ],
+  [
+    "-9223372036854775808",
+    "1ADD 1",
+    "",
+    "UNKNOWN_ERROR",
+    "We cannot do math on 9-byte integers"
+  ],
+  [
+    "-9223372036854775808",
+    "NEGATE 1",
+    "",
+    "UNKNOWN_ERROR",
+    "We cannot do math on 9-byte integers"
+  ],
+  [
+    "-9223372036854775808",
+    "1ADD 1",
+    "",
+    "UNKNOWN_ERROR",
+    "Because we use a sign bit, -9223372036854775808 is also 9 bytes"
+  ],
+  [
+    "-9223372036854775808",
+    "1ADD 1SUB 1",
+    "",
+    "UNKNOWN_ERROR",
+    "We cannot do math on 9-byte integers, even if the result is 8-bytes"
+  ],
+  [
+    "-9223372036854775808",
     "1SUB 1",
     "",
     "UNKNOWN_ERROR",
-    "We cannot do math on 5-byte integers, even if the result is 4-bytes"
+    "We cannot do math on 9-byte integers, even if the result is 8-bytes"
   ],
   [
-    "2147483648 1",
+    "-9223372036854775808 1",
     "BOOLOR 1",
     "",
     "UNKNOWN_ERROR",
-    "We cannot do BOOLOR on 5-byte integers (but we can still do IF etc)"
+    "We cannot do BOOLOR on 9-byte integers (but we can still do IF etc)"
   ],
   [
-    "2147483648 1",
+    "-9223372036854775808 1",
     "BOOLAND 1",
     "",
     "UNKNOWN_ERROR",
-    "We cannot do BOOLAND on 5-byte integers"
+    "We cannot do BOOLAND on 9-byte integers"
+  ],
+  [
+    "-9223372036854775807",
+    "1SUB",
+    "",
+    "UNKNOWN_ERROR",
+    "result of math operation can't exceed 8 bytes"
   ],
   [
     "1",

@@ -1,7 +1,7 @@
 use std::iter::once;
 
 use crate::{
-    data_stack::{Kip10I64, OpcodeData},
+    data_stack::OpcodeData,
     opcodes::{codes::*, OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL},
     MAX_SCRIPTS_SIZE, MAX_SCRIPT_ELEMENT_SIZE,
 };
@@ -231,7 +231,7 @@ impl ScriptBuilder {
             return Ok(self);
         }
 
-        let bytes: Vec<_> = OpcodeData::<Kip10I64>::serialize(&val.into())?;
+        let bytes: Vec<_> = OpcodeData::<i64>::serialize(&val)?;
         self.add_data(&bytes)
     }
 
@@ -291,7 +291,7 @@ mod tests {
             expected: Vec<u8>,
         }
 
-        let tests = vec![
+        let tests = [
             Test { name: "push OP_FALSE", opcodes: vec![OpFalse], expected: vec![OpFalse] },
             Test { name: "push OP_TRUE", opcodes: vec![OpTrue], expected: vec![OpTrue] },
             Test { name: "push OP_0", opcodes: vec![Op0], expected: vec![Op0] },

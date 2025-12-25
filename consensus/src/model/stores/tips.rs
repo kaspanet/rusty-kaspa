@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use itertools::Itertools;
 use kaspa_consensus_core::BlockHashSet;
 use kaspa_consensus_core::BlockHasher;
 use kaspa_database::prelude::CachedDbSetItem;
@@ -38,6 +39,7 @@ pub trait TipsStore: TipsStoreReader {
         self.prune_tips_with_writer(BatchDbWriter::new(batch), pruned_tips)
     }
     fn prune_tips_with_writer(&mut self, writer: impl DbWriter, pruned_tips: &[Hash]) -> StoreResult<()>;
+    fn delete_all_tips(&mut self, writer: &mut WriteBatch) -> StoreResult<()>;
 }
 
 /// A DB + cache implementation of `TipsStore` trait
@@ -92,6 +94,11 @@ impl TipsStore for DbTipsStore {
             return Ok(());
         }
         self.access.update(writer, &[], pruned_tips)?;
+        Ok(())
+    }
+    fn delete_all_tips(&mut self, writer: &mut WriteBatch) -> StoreResult<()> {
+        let tips = self.get()?.read().iter().copied().collect_vec();
+        self.access.update(BatchDbWriter::new(writer), &[], &tips)?;
         Ok(())
     }
 }

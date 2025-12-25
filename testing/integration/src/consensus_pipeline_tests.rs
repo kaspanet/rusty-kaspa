@@ -34,7 +34,7 @@ async fn test_concurrent_pipeline() {
 
     for (hash, parents) in blocks {
         // Submit to consensus twice to make sure duplicates are handled
-        let b: kaspa_consensus_core::block::Block = consensus.build_block_with_parents(hash, parents).to_immutable();
+        let b: kaspa_consensus_core::block::Block = consensus.build_header_only_block_with_parents(hash, parents).to_immutable();
         let results = join!(
             consensus.validate_and_insert_block(b.clone()).virtual_state_task,
             consensus.validate_and_insert_block(b).virtual_state_task
@@ -94,7 +94,7 @@ async fn test_concurrent_pipeline_random() {
     let mut tips = vec![genesis];
     let mut total = 1000i64;
     while total > 0 {
-        let v = min(config.prior_max_block_parents as i64, poi.sample(&mut thread_rng) as i64);
+        let v = min(config.max_block_parents() as i64, poi.sample(&mut thread_rng) as i64);
         if v == 0 {
             continue;
         }
