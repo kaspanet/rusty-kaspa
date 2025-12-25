@@ -219,7 +219,7 @@ pub struct FlowContextInner {
     shared_block_requests: Arc<Mutex<HashMap<Hash, RequestScopeMetadata>>>,
     transactions_spread: AsyncRwLock<TransactionsSpread>,
     shared_transaction_requests: Arc<Mutex<HashMap<TransactionId, RequestScopeMetadata>>>,
-    pub is_ibd_running: Arc<AtomicBool>,
+    is_ibd_running: Arc<AtomicBool>,
     ibd_metadata: Arc<RwLock<Option<IbdMetadata>>>,
     pub address_manager: Arc<Mutex<AddressManager>>,
     connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
@@ -262,7 +262,7 @@ impl Drop for IbdRunningGuard {
 #[derive(Debug, Clone, Copy)]
 pub struct IbdMetadata {
     /// The peer from which current IBD is syncing from
-    pub peer: PeerKey,
+    peer: PeerKey,
     /// The DAA score of the relay block which triggered the current IBD
     daa_score: u64,
 }

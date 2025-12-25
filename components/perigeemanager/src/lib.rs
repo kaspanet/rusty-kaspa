@@ -230,9 +230,7 @@ impl PerigeeManager {
         let mut perigee_delays = Vec::new();
         let mut random_graph_delays = Vec::new();
         let mut perigee_wins = 0;
-        let mut perigee_total_blocks_seen = 0;
         let mut random_graph_wins = 0;
-        let mut random_graph_total_blocks_seen = 0;
         let mut ties = 0;
 
         for (hash, timestamp) in self.iterate_verified_first_seen() {

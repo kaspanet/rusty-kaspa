@@ -37,8 +37,6 @@ pub enum ConnectionManagerEvent {
 pub struct ConnectionManager {
     p2p_adaptor: Arc<kaspa_p2p_lib::Adaptor>,
     random_graph_target: usize,
-
-    //note: Outbound target - perigee target will remain under the standard random graph connection.
     inbound_limit: usize,
     dns_seeders: &'static [&'static str],
     default_port: u16,
