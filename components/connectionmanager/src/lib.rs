@@ -273,20 +273,39 @@ impl ConnectionManager {
     }
 
     async fn handle_outbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
-        let (active_perigee_outbound, active_random_graph_outbound): (HashSet<NetAddress>, HashSet<NetAddress>) =
-            peer_by_address.values().filter(|peer| peer.is_outbound()).partition_map(|peer| {
-                let net_addr = NetAddress::new(peer.net_address().ip().into(), peer.net_address().port());
-                match peer.outbound_type() {
-                    Some(PeerOutboundType::Perigee) => itertools::Either::Left(net_addr),
-                    Some(PeerOutboundType::RandomGraph) => itertools::Either::Right(net_addr),
-                    _ => unreachable!(),
+        let mut active_outbound = HashSet::new();
+        let mut active_perigee_outbound = HashSet::new();
+        let mut active_random_graph_outbound = HashSet::new();
+
+        for peer in peer_by_address.values() {
+            match peer.outbound_type() {
+                Some(obt) => {
+                    let net_addr = NetAddress::new(peer.net_address().ip().into(), peer.net_address().port());
+                    active_outbound.insert(net_addr);
+                    match obt {
+                        PeerOutboundType::Perigee => active_perigee_outbound.insert(net_addr),
+                        PeerOutboundType::RandomGraph => active_random_graph_outbound.insert(net_addr),
+                        _ => continue,
+                    };
                 }
-            });
+                None => continue,
+            };
+        }
 
-        let active_outbound: HashSet<kaspa_addressmanager::NetAddress> =
-            active_perigee_outbound.union(&active_random_graph_outbound).cloned().collect();
+        let active_outbound_respecting_peers_len = active_perigee_outbound.len() + active_random_graph_outbound.len();
 
-        let mut missing_connections = self.outbound_target().saturating_sub(active_outbound.len());
+        info!(
+            "Connection manager: outbound respecting connections: {}/{} (Perigee: {}/{}, RandomGraph: {}/{}); Others: {} )",
+            active_outbound_respecting_peers_len,
+            self.outbound_target(),
+            active_perigee_outbound.len(),
+            self.perigee_outbound_target(),
+            active_random_graph_outbound.len(),
+            self.random_graph_target,
+            active_outbound.len().saturating_sub(active_outbound_respecting_peers_len)
+        );
+
+        let mut missing_connections = self.outbound_target().saturating_sub(active_outbound_respecting_peers_len);
 
         if missing_connections == 0 {
             let random_graph_overflow = active_random_graph_outbound.len().saturating_sub(self.random_graph_target);
@@ -308,16 +327,6 @@ impl ConnectionManager {
         let mut missing_random_graph_connections = self.random_graph_target.saturating_sub(active_random_graph_outbound.len());
 
         let mut missing_perigee_connections = missing_connections.saturating_sub(missing_random_graph_connections);
-
-        info!(
-            "Connection manager: outbound connections: {}/{} (Perigee: {}/{}, RandomGraph: {}/{})",
-            active_outbound.len(),
-            self.outbound_target(),
-            active_perigee_outbound.len(),
-            self.perigee_outbound_target(),
-            active_random_graph_outbound.len(),
-            self.random_graph_target
-        );
 
         let mut addr_iter = self.address_manager.lock().iterate_prioritized_random_addresses(active_outbound);
 
