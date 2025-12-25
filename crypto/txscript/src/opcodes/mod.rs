@@ -1,6 +1,6 @@
 #[macro_use]
 mod macros;
-
+use crate::zk_precompiles::{parse_tag, verify_zk};
 use crate::{
     data_stack::{DataStack, OpcodeData},
     ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE,
@@ -995,8 +995,22 @@ opcode_list! {
             _ => Err(TxScriptError::InvalidSource("OpOutputSpk only applies to transaction inputs".to_string()))
         }
     }
+    opcode OpZkPrecompile<0xc4, 1>(self, vm) {
+        // Parse the ZK Precompile tag
+        let tag = parse_tag(&mut vm.dstack)?;
+
+        // Consume sigop cost
+        vm.runtime_sig_op_counter.consume_sig_ops(tag.sigop_cost())?;
+
+        // Verify the ZK proof
+        verify_zk(tag,&mut vm.dstack)?;
+
+        // If no errors, push true to the stack
+        vm.dstack.push_item(true)?;
+        Ok(())
+    }
+
     // Undefined opcodes
-    opcode OpUnknown196<0xc4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown197<0xc5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown198<0xc6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown199<0xc7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1197,7 +1211,6 @@ mod test {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpUnknown166::empty().expect("Should accept empty"),
             opcodes::OpUnknown167::empty().expect("Should accept empty"),
-            opcodes::OpUnknown196::empty().expect("Should accept empty"),
             opcodes::OpUnknown197::empty().expect("Should accept empty"),
             opcodes::OpUnknown198::empty().expect("Should accept empty"),
             opcodes::OpUnknown199::empty().expect("Should accept empty"),
