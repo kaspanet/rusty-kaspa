@@ -279,9 +279,9 @@ impl IbdFlow {
         }
 
         let hst_header = consensus.async_get_header(consensus.async_get_headers_selected_tip().await).await.unwrap();
-        let pruning_depth = self.ctx.config.pruning_depth().after();
+        let pruning_depth = self.ctx.config.pruning_depth();
         if relay_header.blue_score >= hst_header.blue_score + pruning_depth && relay_header.blue_work > hst_header.blue_work {
-            let finality_duration_in_milliseconds = self.ctx.config.finality_duration_in_milliseconds().after();
+            let finality_duration_in_milliseconds = self.ctx.config.finality_duration_in_milliseconds();
             if unix_now() > consensus.async_creation_timestamp().await + finality_duration_in_milliseconds {
                 let fp = consensus.async_finality_point().await;
                 let fp_ts = consensus.async_get_header(fp).await?.timestamp;

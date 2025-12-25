@@ -26,10 +26,7 @@ use crossbeam_channel::{Receiver, Sender};
 use kaspa_consensus_core::{
     block::Block,
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-    config::{
-        genesis::GenesisBlock,
-        params::{ForkedParam, Params},
-    },
+    config::{genesis::GenesisBlock, params::Params},
     mass::{Mass, MassCalculator, MassOps},
     tx::Transaction,
     KType,
@@ -60,7 +57,7 @@ pub struct BlockBodyProcessor {
     // Config
     pub(super) max_block_mass: u64,
     pub(super) genesis: GenesisBlock,
-    pub(super) ghostdag_k: ForkedParam<KType>,
+    pub(super) ghostdag_k: KType,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,

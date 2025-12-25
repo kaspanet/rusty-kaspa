@@ -176,7 +176,7 @@ impl PruningProofManager {
             return Err(PruningImportError::PruningProofNotEnoughHeaders);
         }
 
-        let ghostdag_k = self.ghostdag_k.after();
+        let ghostdag_k = self.ghostdag_k;
 
         let headers_estimate = self.estimate_proof_unique_size(proof);
 

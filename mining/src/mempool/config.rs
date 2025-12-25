@@ -1,4 +1,4 @@
-use kaspa_consensus_core::{config::params::ForkedParam, constants::TX_VERSION};
+use kaspa_consensus_core::constants::TX_VERSION;
 
 pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: usize = 1_000_000;
 pub(crate) const DEFAULT_MEMPOOL_SIZE_LIMIT: usize = 1_000_000_000;
@@ -30,14 +30,14 @@ pub struct Config {
     pub maximum_transaction_count: usize,
     pub mempool_size_limit: usize,
     pub maximum_build_block_template_attempts: u64,
-    pub transaction_expire_interval_daa_score: ForkedParam<u64>,
-    pub transaction_expire_scan_interval_daa_score: ForkedParam<u64>,
+    pub transaction_expire_interval_daa_score: u64,
+    pub transaction_expire_scan_interval_daa_score: u64,
     pub transaction_expire_scan_interval_milliseconds: u64,
-    pub accepted_transaction_expire_interval_daa_score: ForkedParam<u64>,
-    pub accepted_transaction_expire_scan_interval_daa_score: ForkedParam<u64>,
+    pub accepted_transaction_expire_interval_daa_score: u64,
+    pub accepted_transaction_expire_scan_interval_daa_score: u64,
     pub accepted_transaction_expire_scan_interval_milliseconds: u64,
-    pub orphan_expire_interval_daa_score: ForkedParam<u64>,
-    pub orphan_expire_scan_interval_daa_score: ForkedParam<u64>,
+    pub orphan_expire_interval_daa_score: u64,
+    pub orphan_expire_scan_interval_daa_score: u64,
     pub maximum_orphan_transaction_mass: u64,
     pub maximum_orphan_transaction_count: u64,
     pub accept_non_standard: bool,
@@ -45,7 +45,7 @@ pub struct Config {
     pub minimum_relay_transaction_fee: u64,
     pub minimum_standard_transaction_version: u16,
     pub maximum_standard_transaction_version: u16,
-    pub network_blocks_per_second: ForkedParam<u64>,
+    pub network_blocks_per_second: u64,
 }
 
 impl Config {
@@ -54,14 +54,14 @@ impl Config {
         maximum_transaction_count: usize,
         mempool_size_limit: usize,
         maximum_build_block_template_attempts: u64,
-        transaction_expire_interval_daa_score: ForkedParam<u64>,
-        transaction_expire_scan_interval_daa_score: ForkedParam<u64>,
+        transaction_expire_interval_daa_score: u64,
+        transaction_expire_scan_interval_daa_score: u64,
         transaction_expire_scan_interval_milliseconds: u64,
-        accepted_transaction_expire_interval_daa_score: ForkedParam<u64>,
-        accepted_transaction_expire_scan_interval_daa_score: ForkedParam<u64>,
+        accepted_transaction_expire_interval_daa_score: u64,
+        accepted_transaction_expire_scan_interval_daa_score: u64,
         accepted_transaction_expire_scan_interval_milliseconds: u64,
-        orphan_expire_interval_daa_score: ForkedParam<u64>,
-        orphan_expire_scan_interval_daa_score: ForkedParam<u64>,
+        orphan_expire_interval_daa_score: u64,
+        orphan_expire_scan_interval_daa_score: u64,
         maximum_orphan_transaction_mass: u64,
         maximum_orphan_transaction_count: u64,
         accept_non_standard: bool,
@@ -69,7 +69,7 @@ impl Config {
         minimum_relay_transaction_fee: u64,
         minimum_standard_transaction_version: u16,
         maximum_standard_transaction_version: u16,
-        network_blocks_per_second: ForkedParam<u64>,
+        network_blocks_per_second: u64,
     ) -> Self {
         Self {
             maximum_transaction_count,
@@ -96,28 +96,22 @@ impl Config {
 
     /// Build a default config.
     /// The arguments should be obtained from the current consensus [`kaspa_consensus_core::config::params::Params`] instance.
-    pub fn build_default(
-        target_milliseconds_per_block: ForkedParam<u64>,
-        relay_non_std_transactions: bool,
-        max_block_mass: u64,
-    ) -> Self {
+    pub fn build_default(target_milliseconds_per_block: u64, relay_non_std_transactions: bool, max_block_mass: u64) -> Self {
         Self {
             maximum_transaction_count: DEFAULT_MAXIMUM_TRANSACTION_COUNT,
             mempool_size_limit: DEFAULT_MEMPOOL_SIZE_LIMIT,
             maximum_build_block_template_attempts: DEFAULT_MAXIMUM_BUILD_BLOCK_TEMPLATE_ATTEMPTS,
-            transaction_expire_interval_daa_score: target_milliseconds_per_block
-                .map(|v| DEFAULT_TRANSACTION_EXPIRE_INTERVAL_SECONDS * 1000 / v),
-            transaction_expire_scan_interval_daa_score: target_milliseconds_per_block
-                .map(|v| DEFAULT_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000 / v),
+            transaction_expire_interval_daa_score: DEFAULT_TRANSACTION_EXPIRE_INTERVAL_SECONDS * 1000 / target_milliseconds_per_block,
+            transaction_expire_scan_interval_daa_score: DEFAULT_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000
+                / target_milliseconds_per_block,
             transaction_expire_scan_interval_milliseconds: DEFAULT_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000,
-            accepted_transaction_expire_interval_daa_score: target_milliseconds_per_block
-                .map(|v| DEFAULT_ACCEPTED_TRANSACTION_EXPIRE_INTERVAL_SECONDS * 1000 / v),
-            accepted_transaction_expire_scan_interval_daa_score: target_milliseconds_per_block
-                .map(|v| DEFAULT_ACCEPTED_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000 / v),
+            accepted_transaction_expire_interval_daa_score: DEFAULT_ACCEPTED_TRANSACTION_EXPIRE_INTERVAL_SECONDS * 1000
+                / target_milliseconds_per_block,
+            accepted_transaction_expire_scan_interval_daa_score: DEFAULT_ACCEPTED_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000
+                / target_milliseconds_per_block,
             accepted_transaction_expire_scan_interval_milliseconds: DEFAULT_ACCEPTED_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000,
-            orphan_expire_interval_daa_score: target_milliseconds_per_block.map(|v| DEFAULT_ORPHAN_EXPIRE_INTERVAL_SECONDS * 1000 / v),
-            orphan_expire_scan_interval_daa_score: target_milliseconds_per_block
-                .map(|v| DEFAULT_ORPHAN_EXPIRE_SCAN_INTERVAL_SECONDS * 1000 / v),
+            orphan_expire_interval_daa_score: DEFAULT_ORPHAN_EXPIRE_INTERVAL_SECONDS * 1000 / target_milliseconds_per_block,
+            orphan_expire_scan_interval_daa_score: DEFAULT_ORPHAN_EXPIRE_SCAN_INTERVAL_SECONDS * 1000 / target_milliseconds_per_block,
             maximum_orphan_transaction_mass: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_MASS,
             maximum_orphan_transaction_count: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_COUNT,
             accept_non_standard: relay_non_std_transactions,
@@ -125,7 +119,7 @@ impl Config {
             minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
             minimum_standard_transaction_version: DEFAULT_MINIMUM_STANDARD_TRANSACTION_VERSION,
             maximum_standard_transaction_version: DEFAULT_MAXIMUM_STANDARD_TRANSACTION_VERSION,
-            network_blocks_per_second: target_milliseconds_per_block.map(|v| 1000 / v),
+            network_blocks_per_second: 1000 / target_milliseconds_per_block,
         }
     }
 

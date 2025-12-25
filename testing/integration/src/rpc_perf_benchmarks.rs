@@ -71,15 +71,7 @@ async fn bench_rpc_high_load() {
 
     // Continuous mining
     tasks = tasks.task(
-        MinerGroupTask::build(
-            network,
-            client_manager.clone(),
-            SUBMIT_BLOCK_CLIENTS,
-            params.bps().upper_bound(),
-            BLOCK_COUNT,
-            Stopper::Signal,
-        )
-        .await,
+        MinerGroupTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT, Stopper::Signal).await,
     );
 
     // Transaction generator/simulator

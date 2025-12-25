@@ -31,7 +31,7 @@ pub struct CoinbaseManager {
     max_coinbase_payload_len: usize,
     deflationary_phase_daa_score: u64,
     pre_deflationary_phase_base_subsidy: u64,
-    bps: ForkedParam<u64>,
+    bps_history: ForkedParam<u64>,
 
     /// Precomputed subsidy by month tables (for before and after the Crescendo hardfork)
     subsidy_by_month_table_before: SubsidyByMonthTable,
@@ -67,31 +67,31 @@ impl CoinbaseManager {
         max_coinbase_payload_len: usize,
         deflationary_phase_daa_score: u64,
         pre_deflationary_phase_base_subsidy: u64,
-        bps: ForkedParam<u64>,
+        bps_history: ForkedParam<u64>,
     ) -> Self {
         // Precomputed subsidy by month table for the actual block per second rate
         // Here values are rounded up so that we keep the same number of rewarding months as in the original 1 BPS table.
         // In a 10 BPS network, the induced increase in total rewards is 51 KAS (see tests::calc_high_bps_total_rewards_delta())
         let subsidy_by_month_table_before: SubsidyByMonthTable =
-            core::array::from_fn(|i| SUBSIDY_BY_MONTH_TABLE[i].div_ceil(bps.before()));
+            core::array::from_fn(|i| SUBSIDY_BY_MONTH_TABLE[i].div_ceil(bps_history.before()));
         let subsidy_by_month_table_after: SubsidyByMonthTable =
-            core::array::from_fn(|i| SUBSIDY_BY_MONTH_TABLE[i].div_ceil(bps.after()));
+            core::array::from_fn(|i| SUBSIDY_BY_MONTH_TABLE[i].div_ceil(bps_history.after()));
         Self {
             coinbase_payload_script_public_key_max_len,
             max_coinbase_payload_len,
             deflationary_phase_daa_score,
             pre_deflationary_phase_base_subsidy,
-            bps,
+            bps_history,
             subsidy_by_month_table_before,
             subsidy_by_month_table_after,
-            crescendo_activation_daa_score: bps.activation().daa_score(),
+            crescendo_activation_daa_score: bps_history.activation().daa_score(),
         }
     }
 
     #[cfg(test)]
     #[inline]
     pub fn bps(&self) -> ForkedParam<u64> {
-        self.bps
+        self.bps_history
     }
 
     pub fn expected_coinbase_transaction<T: AsRef<[u8]>>(
@@ -118,19 +118,11 @@ impl CoinbaseManager {
         // single output rewarding all to the current block (the "merging" block)
         let mut red_reward = 0u64;
 
-        // bps activation = crescendo activation
-        if self.bps.activation().is_active(daa_score) {
-            for red in ghostdag_data.mergeset_reds.iter() {
-                let reward_data = mergeset_rewards.get(red).unwrap();
-                if mergeset_non_daa.contains(red) {
-                    red_reward += reward_data.total_fees;
-                } else {
-                    red_reward += reward_data.subsidy + reward_data.total_fees;
-                }
-            }
-        } else {
-            for red in ghostdag_data.mergeset_reds.iter().filter(|h| !mergeset_non_daa.contains(h)) {
-                let reward_data = mergeset_rewards.get(red).unwrap();
+        for red in ghostdag_data.mergeset_reds.iter() {
+            let reward_data = mergeset_rewards.get(red).unwrap();
+            if mergeset_non_daa.contains(red) {
+                red_reward += reward_data.total_fees;
+            } else {
                 red_reward += reward_data.subsidy + reward_data.total_fees;
             }
         }
@@ -233,7 +225,7 @@ impl CoinbaseManager {
         }
 
         let subsidy_month = self.subsidy_month(daa_score) as usize;
-        let subsidy_table = if self.bps.activation().is_active(daa_score) {
+        let subsidy_table = if self.bps_history.activation().is_active(daa_score) {
             &self.subsidy_by_month_table_after
         } else {
             &self.subsidy_by_month_table_before
@@ -247,15 +239,15 @@ impl CoinbaseManager {
     fn subsidy_month(&self, daa_score: u64) -> u64 {
         let seconds_since_deflationary_phase_started = if self.crescendo_activation_daa_score < self.deflationary_phase_daa_score {
             // crescendo_activation < deflationary_phase <= daa_score (activated before deflation)
-            (daa_score - self.deflationary_phase_daa_score) / self.bps.after()
+            (daa_score - self.deflationary_phase_daa_score) / self.bps_history.after()
         } else if daa_score < self.crescendo_activation_daa_score {
             // deflationary_phase <= daa_score < crescendo_activation (pre activation)
-            (daa_score - self.deflationary_phase_daa_score) / self.bps.before()
+            (daa_score - self.deflationary_phase_daa_score) / self.bps_history.before()
         } else {
             // Else - deflationary_phase <= crescendo_activation <= daa_score.
             // Count seconds differently before and after Crescendo activation
-            (self.crescendo_activation_daa_score - self.deflationary_phase_daa_score) / self.bps.before()
-                + (daa_score - self.crescendo_activation_daa_score) / self.bps.after()
+            (self.crescendo_activation_daa_score - self.deflationary_phase_daa_score) / self.bps_history.before()
+                + (daa_score - self.crescendo_activation_daa_score) / self.bps_history.after()
         };
 
         seconds_since_deflationary_phase_started / SECONDS_PER_MONTH
@@ -322,7 +314,7 @@ mod tests {
         let legacy_cbm = create_legacy_manager();
         let pre_deflationary_rewards = legacy_cbm.pre_deflationary_phase_base_subsidy * legacy_cbm.deflationary_phase_daa_score;
         let total_rewards: u64 = pre_deflationary_rewards + SUBSIDY_BY_MONTH_TABLE.iter().map(|x| x * SECONDS_PER_MONTH).sum::<u64>();
-        let testnet_11_bps = SIMNET_PARAMS.bps().after();
+        let testnet_11_bps = SIMNET_PARAMS.bps();
         let total_high_bps_rewards_rounded_up: u64 = pre_deflationary_rewards
             + SUBSIDY_BY_MONTH_TABLE.iter().map(|x| (x.div_ceil(testnet_11_bps) * testnet_11_bps) * SECONDS_PER_MONTH).sum::<u64>();
 
@@ -445,7 +437,7 @@ mod tests {
                 params.crescendo_activation = ForkActivation::never();
             }
             let cbm = create_manager(&params);
-            let bps = params.bps().before();
+            let bps = params.bps_history().before();
 
             let pre_deflationary_phase_base_subsidy = PRE_DEFLATIONARY_PHASE_BASE_SUBSIDY / bps;
             let deflationary_phase_initial_subsidy = DEFLATIONARY_PHASE_INITIAL_SUBSIDY / bps;
@@ -603,7 +595,7 @@ mod tests {
             params.max_coinbase_payload_len,
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
-            params.bps(),
+            params.bps_history(),
         )
     }
 

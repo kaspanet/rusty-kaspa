@@ -49,7 +49,7 @@ impl HeaderProcessor {
             return Err(RuleError::NoParents);
         }
 
-        let max_block_parents = self.max_block_parents.after() as usize;
+        let max_block_parents = self.max_block_parents as usize;
         if header.direct_parents().len() > max_block_parents {
             return Err(RuleError::TooManyParents(header.direct_parents().len(), max_block_parents));
         }

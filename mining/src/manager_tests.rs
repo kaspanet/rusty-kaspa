@@ -20,7 +20,6 @@ mod tests {
         api::ConsensusApi,
         block::TemplateBuildMode,
         coinbase::MinerData,
-        config::params::ForkedParam,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         errors::tx::TxRuleError,
         mass::{transaction_estimated_serialized_size, NonContextualMasses},
@@ -902,7 +901,7 @@ mod tests {
         ];
 
         let consensus = Arc::new(ConsensusMock::new());
-        let mut config = Config::build_default(ForkedParam::new_const(TARGET_TIME_PER_BLOCK), false, MAX_BLOCK_MASS);
+        let mut config = Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS);
         // Limit the orphan pool to 2 transactions
         config.maximum_orphan_transaction_count = 2;
         let counters = Arc::new(MiningCounters::default());
@@ -1130,7 +1129,7 @@ mod tests {
 
         let consensus = Arc::new(ConsensusMock::new());
         let counters = Arc::new(MiningCounters::default());
-        let mut config = Config::build_default(ForkedParam::new_const(TARGET_TIME_PER_BLOCK), false, MAX_BLOCK_MASS);
+        let mut config = Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS);
         let tx_size = txs[0].mempool_estimated_bytes();
         let size_limit = TX_COUNT * tx_size;
         config.mempool_size_limit = size_limit;

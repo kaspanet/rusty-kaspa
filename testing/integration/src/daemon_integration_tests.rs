@@ -142,7 +142,7 @@ async fn daemon_utxos_propagation_test() {
     };
     let total_fd_limit = 10;
 
-    let coinbase_maturity = SIMNET_PARAMS.coinbase_maturity().before();
+    let coinbase_maturity = SIMNET_PARAMS.coinbase_maturity();
     let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
     let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
     let rpc_client1 = kaspad1.start().await;
@@ -218,7 +218,7 @@ async fn daemon_utxos_propagation_test() {
             async fn daa_score_reached(client: GrpcClient) -> bool {
                 let virtual_daa_score = client.get_server_info().await.unwrap().virtual_daa_score;
                 trace!("Virtual DAA score: {}", virtual_daa_score);
-                virtual_daa_score == SIMNET_PARAMS.coinbase_maturity().before()
+                virtual_daa_score == SIMNET_PARAMS.coinbase_maturity()
             }
             Box::pin(daa_score_reached(check_client.clone()))
         },

@@ -99,12 +99,12 @@ impl ConsensusServices {
             storage.block_window_cache_for_difficulty.clone(),
             storage.block_window_cache_for_past_median_time.clone(),
             params.max_difficulty_target,
-            params.crescendo.target_time_per_block,
-            params.crescendo.sampled_difficulty_window_size as usize,
-            params.min_difficulty_window_size.min(params.crescendo.sampled_difficulty_window_size as usize),
-            params.crescendo.difficulty_sample_rate,
-            params.sampled_past_median_time_window_size(),
-            params.crescendo.past_median_time_sample_rate,
+            params.target_time_per_block(),
+            params.difficulty_window_size,
+            params.min_difficulty_window_size.min(params.difficulty_window_size),
+            params.difficulty_sample_rate,
+            params.past_median_time_window_size,
+            params.past_median_time_sample_rate,
         );
         let depth_manager = BlockDepthManager::new(
             params.merge_depth(),
@@ -129,7 +129,7 @@ impl ConsensusServices {
             params.max_coinbase_payload_len,
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
-            params.bps(),
+            params.bps_history(),
         );
 
         let mass_calculator = MassCalculator::new(
@@ -140,16 +140,15 @@ impl ConsensusServices {
         );
 
         let transaction_validator = TransactionValidator::new(
-            params.max_tx_inputs(),
-            params.max_tx_outputs(),
-            params.max_signature_script_len(),
-            params.max_script_public_key_len(),
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
-            params.ghostdag_k().after(),
+            params.ghostdag_k(),
             tx_script_cache_counters,
             mass_calculator.clone(),
-            params.crescendo_activation,
         );
 
         let pruning_point_manager = PruningPointManager::new(

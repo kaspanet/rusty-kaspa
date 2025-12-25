@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Represents semi-trusted externally provided Ghostdag data (by a network peer)
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExternalGhostdagData {
     pub blue_score: u64,
     pub blue_work: BlueWorkType,
