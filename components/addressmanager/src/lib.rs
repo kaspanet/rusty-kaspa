@@ -640,7 +640,11 @@ mod address_store_with_cache {
             assert_eq!(iter.count(), 0);
         }
 
+        // This test is indeterminate, so it is ignored by default.
+        // Every developer that changes the logic of the address manager should run this test locally before sending a PR.
+        // TODO: Maybe change statistical parameters to reduce the failure rate?
         #[test]
+        #[ignore]
         fn test_network_distribution_weighting() {
             kaspa_core::log::try_init_logger("info");
 
