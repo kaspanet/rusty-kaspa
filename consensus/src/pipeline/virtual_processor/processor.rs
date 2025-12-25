@@ -54,10 +54,7 @@ use kaspa_consensus_core::{
     block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     blockstatus::BlockStatus::{StatusDisqualifiedFromChain, StatusUTXOValid},
     coinbase::MinerData,
-    config::{
-        genesis::GenesisBlock,
-        params::{ForkActivation, ForkedParam},
-    },
+    config::{genesis::GenesisBlock, params::ForkActivation},
     header::Header,
     merkle::calc_hash_merkle_root,
     mining_rules::MiningRules,
@@ -120,8 +117,8 @@ pub struct VirtualStateProcessor {
 
     // Config
     pub(super) genesis: GenesisBlock,
-    pub(super) max_block_parents: ForkedParam<u8>,
-    pub(super) mergeset_size_limit: ForkedParam<u64>,
+    pub(super) max_block_parents: u8,
+    pub(super) mergeset_size_limit: u64,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -709,8 +706,8 @@ impl VirtualStateProcessor {
         // we might touch such data prior to validating the bounded merge rule. All in all, this function is short
         // enough so we avoid making further optimizations
         let _prune_guard = self.pruning_lock.blocking_read();
-        let max_block_parents = self.max_block_parents.after() as usize;
-        let mergeset_size_limit = self.mergeset_size_limit.after();
+        let max_block_parents = self.max_block_parents as usize;
+        let mergeset_size_limit = self.mergeset_size_limit;
         let max_candidates = self.max_virtual_parent_candidates(max_block_parents);
 
         // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes

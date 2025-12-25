@@ -105,7 +105,7 @@ async fn bench_bbt_latency() {
     let bbt_client = daemon.new_client().await;
 
     // The time interval between Poisson(lambda) events distributes ~Exp(lambda)
-    let dist: Exp<f64> = Exp::new(params.bps().upper_bound() as f64).unwrap();
+    let dist: Exp<f64> = Exp::new(params.bps() as f64).unwrap();
     let comm_delay = 1000;
 
     // Mining key and address
@@ -347,15 +347,8 @@ async fn bench_bbt_latency_2() {
         .launch()
         .await
         .task(
-            MinerGroupTask::build(
-                network,
-                client_manager.clone(),
-                SUBMIT_BLOCK_CLIENTS,
-                params.bps().upper_bound(),
-                BLOCK_COUNT,
-                Stopper::Signal,
-            )
-            .await,
+            MinerGroupTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT, Stopper::Signal)
+                .await,
         )
         .task(
             TxSenderGroupTask::build(

@@ -1,10 +1,7 @@
 use std::{cmp::min, ops::Deref, sync::Arc};
 
 use itertools::Itertools;
-use kaspa_consensus_core::{
-    config::params::ForkedParam,
-    errors::sync::{SyncManagerError, SyncManagerResult},
-};
+use kaspa_consensus_core::errors::sync::{SyncManagerError, SyncManagerResult};
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_math::uint::malachite_base::num::arithmetic::traits::CeilingLogBase2;
@@ -31,7 +28,7 @@ pub struct SyncManager<
     X: PruningStoreReader,
     Y: StatusesStoreReader,
 > {
-    mergeset_size_limit: ForkedParam<u64>,
+    mergeset_size_limit: u64,
     reachability_service: MTReachabilityService<T>,
     traversal_manager: DagTraversalManager<U, T, S>,
     ghostdag_store: Arc<U>,
@@ -52,7 +49,7 @@ impl<
     > SyncManager<S, T, U, V, W, X, Y>
 {
     pub fn new(
-        mergeset_size_limit: ForkedParam<u64>,
+        mergeset_size_limit: u64,
         reachability_service: MTReachabilityService<T>,
         traversal_manager: DagTraversalManager<U, T, S>,
         ghostdag_store: Arc<U>,
@@ -78,7 +75,7 @@ impl<
     /// because it returns blocks with MergeSet granularity, so if MergeSet > max_blocks, the function will return nothing which is undesired behavior.
     pub fn antipast_hashes_between(&self, low: Hash, high: Hash, max_blocks: Option<usize>) -> (Vec<Hash>, Hash) {
         let max_blocks = max_blocks.unwrap_or(usize::MAX);
-        assert!(max_blocks >= self.mergeset_size_limit.after() as usize);
+        assert!(max_blocks >= self.mergeset_size_limit as usize);
 
         // If low is not in the chain of high - forward_chain_iterator will fail.
         // Therefore, we traverse down low's chain until we reach a block that is in
