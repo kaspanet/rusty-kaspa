@@ -116,7 +116,7 @@ impl Default for Args {
             perigee_target: 0,
             perigee_exploitation_rate: 0.5,
             perigee_exploration_rate: 0.125,
-            perigee_round_frequency: 0, // min round duration will be 29 + (30 * perigee_round_frequency) secs
+            perigee_round_frequency: 2, // Round duration will be 60 secs
             perigee_statistics: false,
             inbound_limit: 128,
             rpc_max_clients: 128,

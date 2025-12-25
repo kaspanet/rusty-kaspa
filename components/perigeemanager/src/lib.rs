@@ -35,7 +35,7 @@ impl PerigeeConfig {
 
     pub fn should_initiate_perigee(&self) -> bool {
         (self.perigee_outbound_target > 0 && self.exploration_target > 0 && self.exploitation_target < self.perigee_outbound_target)
-            || self.round_frequency == 0
+            && !self.round_frequency == 0
     }
 }
 
