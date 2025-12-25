@@ -517,7 +517,7 @@ impl Args {
             perigee_target: arg_match_unwrap_or::<usize>(&m, "perigeepeers", defaults.perigee_target),
             perigee_exploration_rate: arg_match_unwrap_or::<f64>(&m, "perigee-exploration-rate", defaults.perigee_exploration_rate),
             perigee_exploitation_rate: arg_match_unwrap_or::<f64>(&m, "perigee-exploitation-rate", defaults.perigee_exploitation_rate),
-            perigee_round_frequency: arg_match_unwrap_or::<usize>(&m, "perigee-round-frequancy", defaults.perigee_round_frequency),
+            perigee_round_frequency: arg_match_unwrap_or::<usize>(&m, "perigee-round-frequency", defaults.perigee_round_frequency),
             perigee_statistics: arg_match_unwrap_or::<bool>(&m, "perigee-statistics", defaults.perigee_statistics),
             inbound_limit: arg_match_unwrap_or::<usize>(&m, "maxinpeers", defaults.inbound_limit),
             rpc_max_clients: arg_match_unwrap_or::<usize>(&m, "rpcmaxclients", defaults.rpc_max_clients),
