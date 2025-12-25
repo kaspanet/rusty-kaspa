@@ -340,6 +340,12 @@ impl RpcClient {
         self.inner.resolver.clone()
     }
 
+    /// Current nerwork id
+    #[wasm_bindgen(getter, js_name = networkId)]
+    pub fn network_id(&self) -> Option<NetworkId> {
+        self.inner.client.network_id()
+    }
+
     /// Set the resolver for the RPC client.
     /// This setting will take effect on the next connection.
     #[wasm_bindgen(js_name = setResolver)]

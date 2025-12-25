@@ -82,7 +82,7 @@ include = [
 ]
 
 [workspace.dependencies]
-# kaspa-testing-integration = { version = "1.0.0", path = "testing/integration" }
+kaspa-testing-integration = { version = "1.0.1", path = "testing/integration" }
 kaspa-addresses = { version = "1.0.1", path = "crypto/addresses" }
 kaspa-addressmanager = { version = "1.0.1", path = "components/addressmanager" }
 kaspa-bip32 = { version = "1.0.1", path = "wallet/bip32" }
