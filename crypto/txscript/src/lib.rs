@@ -346,7 +346,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     fn execute_script(&mut self, script: &[u8], verify_only_push: bool) -> Result<(), TxScriptError> {
         let script_result = parse_script(script).try_for_each(|opcode| {
             let opcode = opcode?;
-            if opcode.is_disabled() {
+            if opcode.is_disabled(self.flags) {
                 return Err(TxScriptError::OpcodeDisabled(format!("{:?}", opcode)));
             }
 
@@ -1482,6 +1482,8 @@ mod bitcoind_tests {
                         TxScriptError::InvalidStackOperation(_, _) => vec!["INVALID_STACK_OPERATION", "INVALID_ALTSTACK_OPERATION"],
                         TxScriptError::InvalidState(s) if s == "pick at an invalid location" => vec!["INVALID_STACK_OPERATION"],
                         TxScriptError::InvalidState(s) if s == "roll at an invalid location" => vec!["INVALID_STACK_OPERATION"],
+                        TxScriptError::OutOfBoundsSubstring(_, _, _) => vec!["UNKNOWN_ERROR"],
+                        TxScriptError::InvalidIndex(_) => vec!["UNKNOWN_ERROR"],
                         TxScriptError::OpcodeDisabled(_) => vec!["DISABLED_OPCODE"],
                         TxScriptError::ElementTooBig(_, _) => vec!["PUSH_SIZE"],
                         TxScriptError::TooManyOperations(_) => vec!["OP_COUNT"],
@@ -1492,6 +1494,7 @@ mod bitcoind_tests {
                         //ErrNegativeLockTime
                         TxScriptError::UnsatisfiedLockTime(_) => vec!["UNSATISFIED_LOCKTIME"],
                         TxScriptError::InvalidState(s) if s == "expected boolean" => vec!["MINIMALIF"],
+                        TxScriptError::InvalidState(_) => vec!["UNKNOWN_ERROR"],
                         TxScriptError::ScriptSize(_, _) => vec!["SCRIPT_SIZE"],
                         _ => vec![],
                     },

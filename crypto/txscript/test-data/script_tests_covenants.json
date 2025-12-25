@@ -1217,6 +1217,20 @@
     "OK"
   ],
   [
+    "'data' 'key'",
+    "BLAKE2B_WITH_KEY 0x20 0x0b05c30009bdbad5c1a1e7013a2e85ea700731cf9dda9d45eb12ea6ac755485a EQUAL",
+    "",
+    "OK",
+    "OpBlake2bWithKey hashes data with a key"
+  ],
+  [
+    "'data' 'other'",
+    "BLAKE2B_WITH_KEY 0x20 0x2ccf4b06ec46954c7a594ae9fb799ddb06cf264560eaa75ef24a8cf6d4a59b4e EQUAL",
+    "",
+    "OK",
+    "OpBlake2bWithKey output depends on the key"
+  ],
+  [
     "0",
     "IF 0xb2 ELSE 1 ENDIF",
     "",
@@ -3434,32 +3448,39 @@
     "INVALID_STACK_OPERATION"
   ],
   [
-    "'a' 'b'",
-    "CAT",
+    "'ab' 'cd'",
+    "CAT 'abcd' EQUAL",
     "",
-    "DISABLED_OPCODE",
-    "CAT disabled"
+    "OK",
+    "OpCat concatenates byte strings"
   ],
   [
-    "'a' 'b' 0",
-    "IF CAT ELSE 1 ENDIF",
+    "'aaaa'",
+    "DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT",
     "",
-    "DISABLED_OPCODE",
-    "CAT disabled"
+    "PUSH_SIZE",
+    "OpCat errors when result exceeds MAX_SCRIPT_ELEMENT_SIZE"
   ],
   [
-    "'abc' 1 1",
+    "'kaspa' 1 4",
+    "SUBSTR 'asp' EQUAL",
+    "",
+    "OK",
+    "OpSubstr returns inclusive start / exclusive end"
+  ],
+  [
+    "'prefix' -1 2",
     "SUBSTR",
     "",
-    "DISABLED_OPCODE",
-    "SUBSTR disabled"
+    "UNKNOWN_ERROR",
+    "OpSubstr errors for out-of-bounds ranges"
   ],
   [
-    "'abc' 1 1 0",
-    "IF SUBSTR ELSE 1 ENDIF",
+    "'short' 0 600",
+    "SUBSTR",
     "",
-    "DISABLED_OPCODE",
-    "SUBSTR disabled"
+    "PUSH_SIZE",
+    "OpSubstr errors when requested length exceeds MAX_SCRIPT_ELEMENT_SIZE"
   ],
   [
     "'abc' 2 0",
@@ -3489,32 +3510,74 @@
     "Checks EMPTY_STACK error"
   ],
   [
-    "'abc'",
-    "INVERT VERIFY TRUE",
+    "0x03 0xf0f0f0",
+    "INVERT 0x03 0x0f0f0f EQUAL",
     "",
-    "DISABLED_OPCODE",
-    "INVERT disabled"
+    "OK",
+    "OpInvert returns bitwise NOT"
   ],
   [
-    "1 2 0",
-    "IF AND ELSE 1 ENDIF NOP",
+    "0x02 0x0f0f 0x02 0x3333",
+    "AND 0x02 0x0303 EQUAL",
     "",
-    "DISABLED_OPCODE",
-    "AND disabled"
+    "OK",
+    "OpAnd computes bitwise AND"
   ],
   [
-    "1 2 0",
-    "IF OR ELSE 1 ENDIF NOP",
+    "0x01 0xff 0x02 0x0000",
+    "AND",
     "",
-    "DISABLED_OPCODE",
-    "OR disabled"
+    "UNKNOWN_ERROR",
+    "OpAnd errors when operand lengths differ"
   ],
   [
-    "1 2 0",
-    "IF XOR ELSE 1 ENDIF NOP",
+    "0x03 0xf0f0f0 0x03 0x0f0f0f",
+    "OR 0x03 0xffffff EQUAL",
     "",
-    "DISABLED_OPCODE",
-    "XOR disabled"
+    "OK",
+    "OpOr computes bitwise OR"
+  ],
+  [
+    "0x01 0xaa 0x01 0xaa",
+    "OR 0x01 0xaa EQUAL",
+    "",
+    "OK",
+    "OpOr with identical operands returns the same bytes"
+  ],
+  [
+    "0x01 0xaa 0x02 0xbbcc",
+    "OR",
+    "",
+    "UNKNOWN_ERROR",
+    "OpOr errors when operand lengths differ"
+  ],
+  [
+    "0x02 0xf0f0 0x02 0x0f0f",
+    "XOR 0x02 0xffff EQUAL",
+    "",
+    "OK",
+    "OpXor computes bitwise XOR"
+  ],
+  [
+    "0x02 0xf0f0 0x02 0x00ff",
+    "XOR 0x02 0xf00f EQUAL",
+    "",
+    "OK",
+    "OpXor example with 1 XOR 1 bits"
+  ],
+  [
+    "0x01 0xaa 0x01 0xaa",
+    "XOR 0x01 0x00 EQUAL",
+    "",
+    "OK",
+    "OpXor with identical operands yields zero"
+  ],
+  [
+    "0x01 0xff 0x03 0x000000",
+    "XOR",
+    "",
+    "UNKNOWN_ERROR",
+    "OpXor errors when operand lengths differ"
   ],
   [
     "2 0",
@@ -3531,25 +3594,25 @@
     "2DIV disabled"
   ],
   [
-    "2 2 0",
-    "IF MUL ELSE 1 ENDIF NOP",
+    "1",
+    "IF 2 2 MUL 4 EQUAL ELSE 0 ENDIF",
     "",
-    "DISABLED_OPCODE",
-    "MUL disabled"
+    "OK",
+    "OpMul works when executed inside condition"
   ],
   [
-    "2 2 0",
-    "IF DIV ELSE 1 ENDIF NOP",
+    "1",
+    "IF 7 2 DIV 3 EQUAL ELSE 0 ENDIF",
     "",
-    "DISABLED_OPCODE",
-    "DIV disabled"
+    "OK",
+    "OpDiv works when executed inside condition"
   ],
   [
-    "2 2 0",
-    "IF MOD ELSE 1 ENDIF NOP",
+    "1",
+    "IF 7 3 MOD 1 EQUAL ELSE 0 ENDIF",
     "",
-    "DISABLED_OPCODE",
-    "MOD disabled"
+    "OK",
+    "OpMod works when executed inside condition"
   ],
   [
     "2 2 0",
@@ -3640,18 +3703,18 @@
     "NOT is an arithmetic operand"
   ],
   [
-    "2",
-    "DUP MUL 4 EQUAL",
+    "2 3",
+    "MUL 6 EQUAL",
     "",
-    "DISABLED_OPCODE",
-    "disabled"
+    "OK",
+    "OpMul multiplies two numbers"
   ],
   [
-    "2",
-    "DUP DIV 1 EQUAL",
+    "7 2",
+    "DIV 3 EQUAL",
     "",
-    "DISABLED_OPCODE",
-    "disabled"
+    "OK",
+    "OpDiv performs integer division"
   ],
   [
     "2",
@@ -3671,8 +3734,50 @@
     "7 3",
     "MOD 1 EQUAL",
     "",
-    "DISABLED_OPCODE",
-    "disabled"
+    "OK",
+    "OpMod returns remainder"
+  ],
+  [
+    "-7 3",
+    "MOD -1 EQUAL",
+    "",
+    "OK",
+    "OpMod keeps dividend sign (negative dividend, positive divisor)"
+  ],
+  [
+    "7 -3",
+    "MOD 1 EQUAL",
+    "",
+    "OK",
+    "OpMod keeps dividend sign (positive dividend, negative divisor)"
+  ],
+  [
+    "-7 -3",
+    "MOD -1 EQUAL",
+    "",
+    "OK",
+    "OpMod keeps dividend sign (negative dividend, negative divisor)"
+  ],
+  [
+    "9223372036854775807 2",
+    "MUL",
+    "",
+    "UNKNOWN_ERROR",
+    "OpMul errors on signed 64-bit overflow"
+  ],
+  [
+    "10 0",
+    "DIV",
+    "",
+    "UNKNOWN_ERROR",
+    "OpDiv errors on division by zero"
+  ],
+  [
+    "10 0",
+    "MOD",
+    "",
+    "UNKNOWN_ERROR",
+    "OpMod errors on modulo by zero"
   ],
   [
     "2 2",

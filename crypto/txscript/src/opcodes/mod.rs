@@ -2,8 +2,8 @@
 mod macros;
 
 use crate::{
-    data_stack::OpcodeData, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_SCRIPT_ELEMENT_SIZE,
-    MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
+    data_stack::OpcodeData, EngineFlags, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD,
+    MAX_SCRIPT_ELEMENT_SIZE, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
 };
 use blake2b_simd::Params;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
@@ -65,7 +65,7 @@ pub trait OpCodeMetadata: Debug {
     // For push data- check if we can use shorter encoding
     fn check_minimal_data_push(&self) -> Result<(), TxScriptError>;
 
-    fn is_disabled(&self) -> bool;
+    fn is_disabled(&self, flags: EngineFlags) -> bool;
     fn always_illegal(&self) -> bool;
     fn is_push_opcode(&self) -> bool;
     fn get_data(&self) -> &[u8];
@@ -106,25 +106,29 @@ impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
         CODE
     }
 
-    fn is_disabled(&self) -> bool {
-        matches!(
-            CODE,
-            codes::OpCat
-                | codes::OpSubStr
-                | codes::OpLeft
-                | codes::OpRight
-                | codes::OpInvert
-                | codes::OpAnd
-                | codes::OpOr
-                | codes::OpXor
-                | codes::Op2Mul
-                | codes::Op2Div
-                | codes::OpMul
-                | codes::OpDiv
-                | codes::OpMod
-                | codes::OpLShift
-                | codes::OpRShift
-        )
+    fn is_disabled(&self, flags: EngineFlags) -> bool {
+        if flags.covenants_enabled {
+            matches!(CODE, codes::OpLeft | codes::OpRight | codes::Op2Mul | codes::Op2Div | codes::OpLShift | codes::OpRShift)
+        } else {
+            matches!(
+                CODE,
+                codes::OpCat
+                    | codes::OpSubStr
+                    | codes::OpLeft
+                    | codes::OpRight
+                    | codes::OpInvert
+                    | codes::OpAnd
+                    | codes::OpOr
+                    | codes::OpXor
+                    | codes::Op2Mul
+                    | codes::Op2Div
+                    | codes::OpMul
+                    | codes::OpDiv
+                    | codes::OpMod
+                    | codes::OpLShift
+                    | codes::OpRShift
+            )
+        }
     }
 
     fn always_illegal(&self) -> bool {
