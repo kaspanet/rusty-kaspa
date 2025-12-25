@@ -181,10 +181,10 @@ mod tests {
         params.max_tx_inputs = 10;
         params.max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.max_tx_inputs(),
-            params.max_tx_outputs(),
-            params.max_signature_script_len(),
-            params.max_script_public_key_len(),
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity(),
             params.ghostdag_k(),
@@ -285,19 +285,19 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NoTxInputs));
 
         let mut tx = valid_tx.clone();
-        tx.inputs = (0..params.max_tx_inputs() + 1).map(|_| valid_tx.inputs[0].clone()).collect();
+        tx.inputs = (0..params.max_tx_inputs + 1).map(|_| valid_tx.inputs[0].clone()).collect();
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyInputs(_, _)));
 
         let mut tx = valid_tx.clone();
-        tx.inputs[0].signature_script = vec![0; params.max_signature_script_len() + 1];
+        tx.inputs[0].signature_script = vec![0; params.max_signature_script_len + 1];
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigSignatureScript(_, _)));
 
         let mut tx = valid_tx.clone();
-        tx.outputs = (0..params.max_tx_outputs() + 1).map(|_| valid_tx.outputs[0].clone()).collect();
+        tx.outputs = (0..params.max_tx_outputs + 1).map(|_| valid_tx.outputs[0].clone()).collect();
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyOutputs(_, _)));
 
         let mut tx = valid_tx.clone();
-        tx.outputs[0].script_public_key = ScriptPublicKey::new(0, scriptvec![0u8; params.max_script_public_key_len() + 1]);
+        tx.outputs[0].script_public_key = ScriptPublicKey::new(0, scriptvec![0u8; params.max_script_public_key_len + 1]);
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigScriptPublicKey(_, _)));
 
         let mut tx = valid_tx.clone();

@@ -193,10 +193,10 @@ pub struct OverrideParams {
     pub pre_crescendo_target_time_per_block: Option<u64>,
 
     /// Size of the sampled block window that is used to calculate the past median time of each block
-    pub past_median_time_window_size: Option<u64>,
+    pub past_median_time_window_size: Option<usize>,
 
     /// Size of the sampled block window that is used to calculate the required difficulty of each block
-    pub difficulty_window_size: Option<u64>,
+    pub difficulty_window_size: Option<usize>,
 
     /// The minimum size a difficulty window (full or sampled) must have to trigger a DAA calculation
     pub min_difficulty_window_size: Option<usize>,
@@ -281,12 +281,12 @@ pub struct Params {
     pub max_difficulty_target_f64: f64,
 
     /// Size of the sampled block window that is used to calculate the past median time of each block
-    pub past_median_time_window_size: u64,
+    pub past_median_time_window_size: usize,
 
     /// Size of the sampled block window that is used to calculate the required difficulty of each block
-    pub difficulty_window_size: u64,
+    pub difficulty_window_size: usize,
 
-    /// The minimum size a difficulty window (full or sampled) must have to trigger a DAA calculation
+    /// The minimum size a difficulty window must have to trigger a DAA calculation
     pub min_difficulty_window_size: usize,
 
     pub coinbase_payload_script_public_key_max_len: u8,
@@ -318,25 +318,11 @@ pub struct Params {
 }
 
 impl Params {
-    /// Returns the size of the sampled block window that is inspected to calculate the past median time
-    #[inline]
-    #[must_use]
-    pub fn past_median_time_window_size(&self) -> usize {
-        self.past_median_time_window_size as usize
-    }
-
     /// Returns the past median time sample rate
     #[inline]
     #[must_use]
     pub fn past_median_time_sample_rate(&self) -> u64 {
         self.blockrate.past_median_time_sample_rate
-    }
-
-    /// Returns the size of the sampled block window that is inspected to calculate the difficulty
-    #[inline]
-    #[must_use]
-    pub fn difficulty_window_size(&self) -> usize {
-        self.difficulty_window_size as usize
     }
 
     /// Returns the difficulty sample rate
@@ -404,11 +390,11 @@ impl Params {
     }
 
     pub fn difficulty_window_duration_in_block_units(&self) -> u64 {
-        self.blockrate.difficulty_sample_rate * self.difficulty_window_size
+        self.blockrate.difficulty_sample_rate * self.difficulty_window_size as u64
     }
 
     pub fn expected_difficulty_window_duration_in_milliseconds(&self) -> u64 {
-        self.blockrate.target_time_per_block * self.blockrate.difficulty_sample_rate * self.difficulty_window_size
+        self.blockrate.target_time_per_block * self.blockrate.difficulty_sample_rate * self.difficulty_window_size as u64
     }
 
     /// Returns the depth at which the anticone of a chain block is final (i.e., is a permanently closed set).
@@ -427,22 +413,6 @@ impl Params {
         // the two to avoid a situation where a block can be pruned and
         // not finalized.
         min(self.blockrate.pruning_depth, anticone_finalization_depth)
-    }
-
-    pub fn max_tx_inputs(&self) -> usize {
-        self.max_tx_inputs
-    }
-
-    pub fn max_tx_outputs(&self) -> usize {
-        self.max_tx_outputs
-    }
-
-    pub fn max_signature_script_len(&self) -> usize {
-        self.max_signature_script_len
-    }
-
-    pub fn max_script_public_key_len(&self) -> usize {
-        self.max_script_public_key_len
     }
 
     pub fn network_name(&self) -> String {
@@ -582,8 +552,8 @@ pub const MAINNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
+    past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE as usize,
+    difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
@@ -636,8 +606,8 @@ pub const TESTNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
+    past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE as usize,
+    difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
@@ -681,8 +651,8 @@ pub const SIMNET_PARAMS: Params = Params {
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
+    past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE as usize,
+    difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
 
     pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
@@ -720,8 +690,8 @@ pub const DEVNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE,
+    past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE as usize,
+    difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,

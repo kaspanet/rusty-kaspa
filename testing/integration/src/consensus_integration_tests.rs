@@ -264,7 +264,7 @@ async fn ghostdag_test() {
             .edit_consensus_params(|p| {
                 p.genesis.hash = string_to_hash(&test.genesis_id);
                 p.ghostdag_k = test.k;
-                p.min_difficulty_window_size = p.difficulty_window_size();
+                p.min_difficulty_window_size = p.difficulty_window_size;
             })
             .build();
         let consensus = TestConsensus::new(&config);
@@ -580,7 +580,7 @@ async fn median_time_test() {
         let consensus = TestConsensus::new(&test.config);
         let wait_handles = consensus.init();
 
-        let num_blocks = test.config.past_median_time_window_size() as u64 * test.config.past_median_time_sample_rate();
+        let num_blocks = test.config.past_median_time_window_size as u64 * test.config.past_median_time_sample_rate();
         let timestamp_deviation_tolerance = test.config.timestamp_deviation_tolerance;
         for i in 1..(num_blocks + 1) {
             let parent = if i == 1 { test.config.genesis.hash } else { (i - 1).into() };
@@ -716,7 +716,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
             let genesis_block = json_line_to_block(first_line);
             let mut params = DEVNET_PARAMS;
             params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
-            params.min_difficulty_window_size = params.difficulty_window_size();
+            params.min_difficulty_window_size = params.difficulty_window_size;
             params
         }
     };
@@ -1016,7 +1016,7 @@ async fn difficulty_test() {
     }
 
     fn full_window_bits(consensus: &TestConsensus, hash: Hash) -> u32 {
-        let window_size = consensus.params().difficulty_window_size() * consensus.params().difficulty_sample_rate() as usize;
+        let window_size = consensus.params().difficulty_window_size * consensus.params().difficulty_sample_rate() as usize;
         let ghostdag_data = &consensus.ghostdag_store().get_data(hash).unwrap();
         let window = consensus.window_manager().block_window(ghostdag_data, WindowType::VaryingWindow(window_size)).unwrap();
         assert_eq!(window.blocks.len(), window_size);
@@ -1030,12 +1030,12 @@ async fn difficulty_test() {
         config: Config,
     }
 
-    const SAMPLED_WINDOW_SIZE: u64 = 11;
+    const SAMPLED_WINDOW_SIZE: usize = 11;
     const SAMPLE_RATE: u64 = 6;
     const PMT_DEVIATION_TOLERANCE: u64 = 20;
     const PMT_SAMPLE_RATE: u64 = 3;
-    const PMT_SAMPLED_WINDOW_SIZE: u64 = 13;
-    const HIGH_BPS_SAMPLED_WINDOW_SIZE: u64 = 12;
+    const PMT_SAMPLED_WINDOW_SIZE: usize = 13;
+    const HIGH_BPS_SAMPLED_WINDOW_SIZE: usize = 12;
     const HIGH_BPS: u64 = 4;
     let tests = [
         Test {
@@ -1085,7 +1085,7 @@ async fn difficulty_test() {
         let wait_handles = consensus.init();
 
         let sample_rate = test.config.difficulty_sample_rate();
-        let expanded_window_size = test.config.difficulty_window_size() * sample_rate as usize;
+        let expanded_window_size = test.config.difficulty_window_size * sample_rate as usize;
 
         let fake_genesis = Header {
             hash: test.config.genesis.hash,
@@ -1300,7 +1300,7 @@ async fn selected_chain_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.min_difficulty_window_size = p.difficulty_window_size();
+            p.min_difficulty_window_size = p.difficulty_window_size;
         })
         .build();
     let consensus = TestConsensus::new(&config);

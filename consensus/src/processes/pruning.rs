@@ -23,8 +23,7 @@ pub struct PruningPointReply {
     /// The most recent pruning sample from POV of the queried block (with distance up to ~F)
     pub pruning_sample: Hash,
 
-    /// The pruning point of the queried block. I.e., the most recent pruning sample with
-    /// depth P (except for shortly after the fork where the new P' is gradually reached)
+    /// The pruning point of the queried block. I.e., the most recent pruning sample with depth P
     pub pruning_point: Hash,
 }
 
@@ -143,7 +142,7 @@ impl<
             if current_blue_score + pruning_depth <= ghostdag_data.blue_score {
                 break current;
             }
-            // For samples: special clamp for the period right after a fork (where we reach ceiling(P/F) steps before reaching P' depth)
+            // For samples: special clamp for the period right after a blockrate hardfork (where we might reach ceiling(P/F) steps before reaching the new pruning depth)
             if is_self_pruning_sample && steps == self.pruning_samples_steps {
                 break current;
             }
@@ -221,8 +220,7 @@ impl<
         }
 
         let tip_bs = self.ghostdag_store.get_blue_score(tip).unwrap();
-        let pruning_depth = self.pruning_depth;
-        self.is_pruning_point_in_pruning_depth(tip_bs, pp_candidate, pruning_depth)
+        self.is_pruning_point_in_pruning_depth(tip_bs, pp_candidate, self.pruning_depth)
     }
 
     // Function returns the pruning points on the path
