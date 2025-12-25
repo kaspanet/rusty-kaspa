@@ -76,7 +76,6 @@ enum PruningProofManagerInternalError {
     NotEnoughHeadersToBuildProof(String),
 }
 type PruningProofManagerInternalResult<T> = std::result::Result<T, PruningProofManagerInternalError>;
-type LevelProofStores = (Arc<DbGhostdagStore>, Arc<RwLock<DbRelationsStore>>, Hash, Hash);
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
     data: Arc<T>,

@@ -28,12 +28,20 @@ use crate::{
     },
     processes::{
         ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
-        pruning_proof::{LevelProofStores, PruningProofManagerInternalError},
+        pruning_proof::PruningProofManagerInternalError,
         relations::RelationsStoreExtensions,
     },
 };
 
 use super::{PruningProofManager, PruningProofManagerInternalResult};
+type LevelProofContext = (Arc<DbGhostdagStore>, Arc<RwLock<DbRelationsStore>>, Hash, Hash);
+
+struct MultiLevelProofContext {
+    transient_ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
+    transient_relations_stores: Vec<Arc<RwLock<DbRelationsStore>>>,
+    selected_tip_by_level: Vec<Hash>,
+    roots_by_level: Vec<Hash>,
+}
 
 #[derive(Clone)]
 struct RelationsStoreInFutureOfRoot<T: RelationsStoreReader, U: ReachabilityService> {
@@ -84,16 +92,8 @@ impl PruningProofManager {
 
         let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
-        let (transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level) = self
-            .calc_all_level_proof_stores(&pp_header, temp_db)
-            .into_iter()
-            .fold((vec![], vec![], vec![], vec![]), |(mut a, mut b, mut c, mut d), (x0, x1, x2, x3)| {
-                a.push(x0);
-                b.push(x1);
-                c.push(x2);
-                d.push(x3);
-                (a, b, c, d)
-            });
+        let MultiLevelProofContext { transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level } =
+            self.calc_all_level_proof_stores(&pp_header, temp_db);
 
         // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
         // to make sure we hold a single Arc per header
@@ -198,11 +198,11 @@ impl PruningProofManager {
             .collect_vec()
     }
 
-    fn calc_all_level_proof_stores(&self, pp_header: &HeaderWithBlockLevel, temp_db: Arc<DB>) -> Vec<LevelProofStores> {
+    fn calc_all_level_proof_stores(&self, pp_header: &HeaderWithBlockLevel, temp_db: Arc<DB>) -> MultiLevelProofContext {
         // TODO: Uncomment line and send as argument to find_sufficiently_deep_level_root
         // once full fix to minimize proof sizes comes
         // let current_dag_level = self.find_current_dag_level(&pp_header.header);
-        let mut level_proof_stores_vec: Vec<Option<LevelProofStores>> = vec![None; (self.max_block_level + 1).into()];
+        let mut level_proof_stores_vec: Vec<Option<LevelProofContext>> = vec![None; (self.max_block_level + 1).into()];
         for level in (0..=self.max_block_level).rev() {
             let level_usize = level as usize;
             let required_block = if level != self.max_block_level {
@@ -223,7 +223,10 @@ impl PruningProofManager {
             );
         }
 
-        level_proof_stores_vec.into_iter().map(Option::unwrap).collect_vec()
+        let (transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level) =
+            level_proof_stores_vec.into_iter().map(Option::unwrap).multiunzip();
+
+        MultiLevelProofContext { transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level }
     }
 
     fn populate_relation_store_at_level(
@@ -250,7 +253,6 @@ impl PruningProofManager {
         // sanity check
         assert!(self.reachability_service.is_dag_ancestor_of(root, tip));
         while let Some(hash) = queue.pop_front() {
-            //TODO(relaxed): consider tightening to is_dag_ancestor_of
             if !visited.insert(hash) {
                 continue;
             }
@@ -263,7 +265,6 @@ impl PruningProofManager {
                     .parents_at_level(&header, level)
                     .iter()
                     .copied()
-                    .filter(|&p| self.headers_store.has(p).unwrap())
                     .filter(|&p| self.reachability_service.is_dag_ancestor_of_result(root, p).unwrap_or(false))
                     .collect::<Vec<_>>()
                     .push_if_empty(ORIGIN),
@@ -307,7 +308,7 @@ impl PruningProofManager {
         level: BlockLevel,
         required_block: Option<Hash>,
         temp_db: Arc<DB>,
-    ) -> PruningProofManagerInternalResult<LevelProofStores> {
+    ) -> PruningProofManagerInternalResult<LevelProofContext> {
         // Step 1: Determine which selected tip to use
         let selected_tip = if pp_header.block_level >= level {
             pp_header.header.hash
