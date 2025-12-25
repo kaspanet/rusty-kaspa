@@ -189,9 +189,6 @@ pub struct OverrideParams {
     /// Timestamp deviation tolerance (in seconds)
     pub timestamp_deviation_tolerance: Option<u64>,
 
-    /// Target time per block prior to the crescendo hardfork (in milliseconds)
-    pub pre_crescendo_target_time_per_block: Option<u64>,
-
     /// Size of the sampled block window that is used to calculate the past median time of each block
     pub past_median_time_window_size: Option<usize>,
 
@@ -224,7 +221,13 @@ pub struct OverrideParams {
     pub max_block_level: Option<BlockLevel>,
     pub pruning_proof_m: Option<u64>,
 
+    /// Blockrate-related params
     pub blockrate: Option<BlockrateParams>,
+
+    /// Target time per block prior to the crescendo hardfork (in milliseconds)
+    pub pre_crescendo_target_time_per_block: Option<u64>,
+
+    /// Crescendo activation DAA score
     pub crescendo_activation: Option<ForkActivation>,
 }
 
@@ -270,10 +273,6 @@ pub struct Params {
     /// Timestamp deviation tolerance (in seconds)
     pub timestamp_deviation_tolerance: u64,
 
-    /// Target time per block prior to the crescendo hardfork (in milliseconds)
-    /// Required permanently in order to calculate the subsidy month from the current DAA score
-    pub pre_crescendo_target_time_per_block: u64,
-
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
     pub max_difficulty_target: Uint256,
 
@@ -313,7 +312,14 @@ pub struct Params {
     pub max_block_level: BlockLevel,
     pub pruning_proof_m: u64,
 
+    /// Blockrate-related params
     pub blockrate: BlockrateParams,
+
+    /// Target time per block prior to the crescendo hardfork (in milliseconds).
+    /// Required permanently in order to calculate the subsidy month from the current DAA score
+    pub pre_crescendo_target_time_per_block: u64,
+
+    /// Crescendo activation DAA score
     pub crescendo_activation: ForkActivation,
 }
 
@@ -439,10 +445,6 @@ impl Params {
 
             timestamp_deviation_tolerance: overrides.timestamp_deviation_tolerance.unwrap_or(self.timestamp_deviation_tolerance),
 
-            pre_crescendo_target_time_per_block: overrides
-                .pre_crescendo_target_time_per_block
-                .unwrap_or(self.pre_crescendo_target_time_per_block),
-
             max_difficulty_target: self.max_difficulty_target,
             max_difficulty_target_f64: self.max_difficulty_target_f64,
 
@@ -480,6 +482,11 @@ impl Params {
             pruning_proof_m: overrides.pruning_proof_m.unwrap_or(self.pruning_proof_m),
 
             blockrate: overrides.blockrate.clone().unwrap_or(self.blockrate.clone()),
+
+            pre_crescendo_target_time_per_block: overrides
+                .pre_crescendo_target_time_per_block
+                .unwrap_or(self.pre_crescendo_target_time_per_block),
+
             crescendo_activation: overrides.crescendo_activation.unwrap_or(self.crescendo_activation),
         }
     }
@@ -549,7 +556,6 @@ pub const MAINNET_PARAMS: Params = Params {
     net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
-    pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE as usize,
@@ -587,6 +593,9 @@ pub const MAINNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 
     blockrate: BlockrateParams::new::<10>(),
+
+    pre_crescendo_target_time_per_block: 1000,
+
     // Roughly 2025-05-05 1500 UTC
     crescendo_activation: ForkActivation::new(110_165_000),
 };
@@ -603,7 +612,6 @@ pub const TESTNET_PARAMS: Params = Params {
     net: NetworkId::with_suffix(NetworkType::Testnet, 10),
     genesis: TESTNET_GENESIS,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
-    pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE as usize,
@@ -640,6 +648,9 @@ pub const TESTNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 
     blockrate: BlockrateParams::new::<10>(),
+
+    pre_crescendo_target_time_per_block: 1000,
+
     // 18:30 UTC, March 6, 2025
     crescendo_activation: ForkActivation::new(88_657_000),
 };
@@ -655,7 +666,6 @@ pub const SIMNET_PARAMS: Params = Params {
     difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     min_difficulty_window_size: MIN_DIFFICULTY_WINDOW_SIZE,
 
-    pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
     deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
     pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
     coinbase_payload_script_public_key_max_len: 150,
@@ -679,6 +689,9 @@ pub const SIMNET_PARAMS: Params = Params {
 
     // For simnet, we deviate from default 10BPS configuration and allow at least 64 parents in order to support mempool benchmarks out of the box
     blockrate: BlockrateParams::new::<10>().increase_max_block_parents(64),
+
+    pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
+
     crescendo_activation: ForkActivation::always(),
 };
 
@@ -687,7 +700,6 @@ pub const DEVNET_PARAMS: Params = Params {
     net: NetworkId::new(NetworkType::Devnet),
     genesis: DEVNET_GENESIS,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
-    pre_crescendo_target_time_per_block: 1000,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     past_median_time_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE as usize,
@@ -715,5 +727,8 @@ pub const DEVNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 
     blockrate: BlockrateParams::new::<10>(),
+
+    pre_crescendo_target_time_per_block: 1000,
+
     crescendo_activation: ForkActivation::always(),
 };
