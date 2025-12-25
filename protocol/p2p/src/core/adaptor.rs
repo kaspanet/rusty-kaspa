@@ -71,11 +71,7 @@ impl Adaptor {
     }
 
     /// Connect to a new peer (no retries)
-    pub async fn connect_peer(
-        &self,
-        peer_address: String,
-        outbound_type: Option<PeerOutboundType>,
-    ) -> Result<PeerKey, ConnectionError> {
+    pub async fn connect_peer(&self, peer_address: String, outbound_type: PeerOutboundType) -> Result<PeerKey, ConnectionError> {
         self.connection_handler.connect_with_retry(peer_address, 1, Default::default(), outbound_type).await.map(|r| r.key())
     }
 
@@ -85,7 +81,7 @@ impl Adaptor {
         peer_address: String,
         retry_attempts: u8,
         retry_interval: Duration,
-        outbound_type: Option<PeerOutboundType>,
+        outbound_type: PeerOutboundType,
     ) -> Result<PeerKey, ConnectionError> {
         self.connection_handler.connect_with_retry(peer_address, retry_attempts, retry_interval, outbound_type).await.map(|r| r.key())
     }

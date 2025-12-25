@@ -450,7 +450,7 @@ Do you confirm? (y/n)";
         perigee_target,
         perigee_exploitation_target,
         perigee_exploration_target,
-        30 + (30 * args.perigee_round_frequency),
+        args.perigee_round_frequency,
         args.perigee_statistics,
     );
 

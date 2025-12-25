@@ -6,6 +6,12 @@ use std::{fmt::Display, net::SocketAddr, sync::Arc, time::Instant};
 pub enum PeerOutboundType {
     Perigee,
     RandomGraph,
+    /// this is a user-specifed persistent connection, established either via command line `--connectpeer`, or the add_peer RPC (whereby is_permanent=true).
+    /// These peers do not count towards the outbound limit, if they disconnect, the node will keep trying to reconnect to them indefinitely.
+    Persistent,
+    /// this is a user-specifed temporary connection, established either via command line `--addpeer`, or the add_peer RPC (whereby is_permanent=false).
+    /// These peers do not count towards the outbound limit, if they disconnect, no effort will be made to reconnect.
+    Temporary,
 }
 
 impl Display for PeerOutboundType {
@@ -13,6 +19,8 @@ impl Display for PeerOutboundType {
         match self {
             PeerOutboundType::Perigee => write!(f, "perigee"),
             PeerOutboundType::RandomGraph => write!(f, "random graph"),
+            PeerOutboundType::Persistent => write!(f, "persistent"),
+            PeerOutboundType::Temporary => write!(f, "temporary"),
         }
     }
 }
@@ -71,6 +79,14 @@ impl Peer {
     /// Indicates whether this connection is an outbound connection
     pub fn is_outbound(&self) -> bool {
         self.outbound_type.is_some()
+    }
+
+    pub fn is_temporary(&self) -> bool {
+        matches!(self.outbound_type, Some(PeerOutboundType::Temporary))
+    }
+
+    pub fn is_persistent(&self) -> bool {
+        matches!(self.outbound_type, Some(PeerOutboundType::Persistent))
     }
 
     pub fn is_perigee(&self) -> bool {

@@ -60,7 +60,7 @@ pub struct Args {
     pub perigee_target: usize,
     pub perigee_exploration_rate: f64,
     pub perigee_exploitation_rate: f64,
-    pub perigee_round_frequency: u64, // frequency * 30  = round duration in secs
+    pub perigee_round_frequency: usize, // evaluation frequency = 30 * perigee_round_frequency secs, note: if zero perigee will not start.
     pub perigee_statistics: bool,
     #[serde(rename = "maxinpeers")]
     pub inbound_limit: usize,
@@ -342,14 +342,14 @@ pub fn cli() -> Command {
                 .env("KASPAD_PERIGEE_ROUND_FREQUENCY")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
-                .help("min round duration will be 29 + (30 * perigee_round_frequency) secs"),
+                .help("evaluation frequency = (30 * perigee_round_frequency) secs. Note: if zero perigee will not start."),
         )
         .arg(
             Arg::new( "perigee-statistics" )
                 .long("perigee-statistics")
                 .env("KASPAD_PERIGEE_STATISTICS")
                 .action(ArgAction::SetTrue)
-                .help("log perigee statistics after each round.. note: this evaluates and compares against other outbound peers, as such, this requires significantly more resources. For optimal comparison `perigeepeers` should equal `outboundpeers / 2`"
+                .help("log perigee statistics after each round. Note: this evaluates and compares against other outbound peers, as such, this requires significantly more resources. For optimal comparison `perigeepeers` should equal `outboundpeers / 2`"
             )
         )
         .arg(
@@ -517,7 +517,7 @@ impl Args {
             perigee_target: arg_match_unwrap_or::<usize>(&m, "perigeepeers", defaults.perigee_target),
             perigee_exploration_rate: arg_match_unwrap_or::<f64>(&m, "perigee-exploration-rate", defaults.perigee_exploration_rate),
             perigee_exploitation_rate: arg_match_unwrap_or::<f64>(&m, "perigee-exploitation-rate", defaults.perigee_exploitation_rate),
-            perigee_round_frequency: arg_match_unwrap_or::<u64>(&m, "perigee-round-frequancy", defaults.perigee_round_frequency),
+            perigee_round_frequency: arg_match_unwrap_or::<usize>(&m, "perigee-round-frequancy", defaults.perigee_round_frequency),
             perigee_statistics: arg_match_unwrap_or::<bool>(&m, "perigee-statistics", defaults.perigee_statistics),
             inbound_limit: arg_match_unwrap_or::<usize>(&m, "maxinpeers", defaults.inbound_limit),
             rpc_max_clients: arg_match_unwrap_or::<usize>(&m, "rpcmaxclients", defaults.rpc_max_clients),

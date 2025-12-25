@@ -18,7 +18,7 @@ pub struct PerigeeConfig {
     pub perigee_outbound_target: usize,
     pub exploitation_target: usize,
     pub exploration_target: usize,
-    pub min_round_duration_in_secs: u64,
+    pub round_frequency: usize,
     pub statistics: bool,
 }
 
@@ -27,14 +27,15 @@ impl PerigeeConfig {
         perigee_outbound_target: usize,
         exploitation_target: usize,
         exploration_target: usize,
-        min_round_duration_in_secs: u64,
+        round_frequency: usize,
         statistics: bool,
     ) -> Self {
-        Self { perigee_outbound_target, exploitation_target, exploration_target, min_round_duration_in_secs, statistics }
+        Self { perigee_outbound_target, exploitation_target, exploration_target, round_frequency, statistics }
     }
 
     pub fn should_initiate_perigee(&self) -> bool {
-        self.perigee_outbound_target > 0 && self.exploration_target > 0 && self.exploitation_target < self.perigee_outbound_target
+        (self.perigee_outbound_target > 0 && self.exploration_target > 0 && self.exploitation_target < self.perigee_outbound_target)
+            || self.round_frequency == 0
     }
 }
 
@@ -70,7 +71,9 @@ impl PerigeeManager {
         self.maybe_insert_first_seen(hash, timestamp);
     }
 
-    pub fn evaluate_round(&self) -> (Vec<PeerKey>, Vec<PeerKey>) {
+    pub fn evaluate_round(&mut self) -> (Vec<PeerKey>, Vec<PeerKey>) {
+        self.round_counter += 1;
+
         let (mut peer_table, perigee_routers) = self.build_table();
 
         if peer_table.len() <= self.config.exploitation_target {
@@ -134,8 +137,7 @@ impl PerigeeManager {
     }
 
     pub fn should_evaluate(&mut self) -> bool {
-        Instant::now().duration_since(self.round_start).as_secs() > self.config.min_round_duration_in_secs
-            && !self.verified_blocks.is_empty()
+        self.verified_blocks.is_empty()
     }
 
     pub fn log_statistics(&self) {
@@ -265,7 +267,7 @@ impl PerigeeManager {
             Outbound Target:     {}\n
             Exploitation Target: {}\n
             Exploration Target:  {}\n
-            Min Round Duration:  {} secs\n
+            Round Duration:  {} secs\n
 
          Total verified blocks: {}\n
          Total seen blocks: {}\n
@@ -309,7 +311,7 @@ impl PerigeeManager {
             self.config.perigee_outbound_target,
             self.config.exploitation_target,
             self.config.exploration_target,
-            self.config.min_round_duration_in_secs,
+            self.config.round_frequency * 30,
             self.verified_blocks.len(),
             self.first_seen.len(),
             perigee_wins,
@@ -345,10 +347,6 @@ impl PerigeeManager {
 
     pub fn config(&self) -> PerigeeConfig {
         self.config.clone()
-    }
-
-    pub fn increment_round_counter(&mut self) {
-        self.round_counter += 1;
     }
 
     fn maybe_insert_first_seen(&mut self, hash: Hash, timestamp: Instant) {

@@ -95,11 +95,7 @@ impl ConnectionHandler {
     }
 
     /// Connect to a new peer
-    pub(crate) async fn connect(
-        &self,
-        peer_address: String,
-        outbound_type: Option<PeerOutboundType>,
-    ) -> Result<Arc<Router>, ConnectionError> {
+    pub(crate) async fn connect(&self, peer_address: String, outbound_type: PeerOutboundType) -> Result<Arc<Router>, ConnectionError> {
         let Some(socket_address) = peer_address.to_socket_addrs()?.next() else {
             return Err(ConnectionError::NoAddress);
         };
@@ -125,7 +121,7 @@ impl ConnectionHandler {
         let (outgoing_route, outgoing_receiver) = mpsc_channel(Self::outgoing_network_channel_size());
         let incoming_stream = client.message_stream(ReceiverStream::new(outgoing_receiver)).await?.into_inner();
 
-        let router = Router::new(socket_address, outbound_type, self.hub_sender.clone(), incoming_stream, outgoing_route).await;
+        let router = Router::new(socket_address, Some(outbound_type), self.hub_sender.clone(), incoming_stream, outgoing_route).await;
 
         // For outbound peers, we perform the initialization as part of the connect logic
         match self.initializer.initialize_connection(router.clone()).await {
@@ -152,27 +148,27 @@ impl ConnectionHandler {
         address: String,
         retry_attempts: u8,
         retry_interval: Duration,
-        outbound_type: Option<PeerOutboundType>,
+        outbound_type: PeerOutboundType,
     ) -> Result<Arc<Router>, ConnectionError> {
         let mut counter = 0;
         loop {
             counter += 1;
             match self.connect(address.clone(), outbound_type).await {
                 Ok(router) => {
-                    debug!("P2P, Client connected, peer: {:?}, outbound type: {:#?} ", address, outbound_type);
+                    debug!("P2P, Client connected, peer: {:?}, outbound type: {} ", address, outbound_type);
                     return Ok(router);
                 }
                 Err(ConnectionError::ProtocolError(err)) => {
                     // On protocol errors we avoid retrying
                     debug!(
-                        "P2P, connect retry #{} failed with error {:?}, peer: {:?}, outbound type: {:#?}",
+                        "P2P, connect retry #{} failed with error {:?}, peer: {:?}, outbound type: {}",
                         counter, err, address, outbound_type
                     );
                     return Err(ConnectionError::ProtocolError(err));
                 }
                 Err(err) => {
                     debug!(
-                        "P2P, connect retry #{} failed with error {:?}, peer: {:?}, outbound type: {:#?}",
+                        "P2P, connect retry #{} failed with error {:?}, peer: {:?}, outbound type: {}",
                         counter, err, address, outbound_type
                     );
                     if counter < retry_attempts {

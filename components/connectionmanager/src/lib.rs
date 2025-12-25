@@ -2,7 +2,8 @@ use std::{
     cmp::min,
     collections::{HashMap, HashSet},
     net::{IpAddr, SocketAddr, ToSocketAddrs},
-    sync::Arc,
+    sync::atomic::Ordering,
+    sync::{atomic::AtomicUsize, Arc},
     time::{Duration, SystemTime},
 };
 
@@ -28,6 +29,11 @@ use tokio::{
     time::{interval, MissedTickBehavior},
 };
 
+pub enum ConnectionManagerEvent {
+    Tick,
+    Signal,
+}
+
 pub struct ConnectionManager {
     p2p_adaptor: Arc<kaspa_p2p_lib::Adaptor>,
     random_graph_target: usize,
@@ -40,6 +46,7 @@ pub struct ConnectionManager {
     connection_requests: TokioMutex<HashMap<SocketAddr, ConnectionRequest>>,
     force_next_iteration: UnboundedSender<()>,
     shutdown_signal: SingleTrigger,
+    tick_counter: AtomicUsize,
     perigee_manager: Option<Arc<ParkingLotMutex<PerigeeManager>>>,
     perigee_config: Option<PerigeeConfig>,
 }
@@ -79,6 +86,7 @@ impl ConnectionManager {
             connection_requests: Default::default(),
             force_next_iteration: tx,
             shutdown_signal: SingleTrigger::new(),
+            tick_counter: AtomicUsize::new(0),
             dns_seeders,
             default_port,
             perigee_config,
@@ -98,18 +106,42 @@ impl ConnectionManager {
                     break;
                 }
                 select! {
-                    _ = rx.recv() => self.clone().handle_event().await,
-                    _ = ticker.tick() => self.clone().handle_event().await,
+                    _ = rx.recv() =>  self.clone().handle_event(ConnectionManagerEvent::Signal),
+                    _ = ticker.tick() => self.clone().handle_event(ConnectionManagerEvent::Tick),
                     _ = self.shutdown_signal.listener.clone() => break,
                 }
+                .await
             }
             debug!("Connection manager event loop exiting");
         });
     }
 
-    async fn maybe_evaluate_perigee_round(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) -> bool {
+    async fn maybe_evaluate_perigee_round(
+        self: &Arc<Self>,
+        peer_by_address: &HashMap<SocketAddr, Peer>,
+        event: ConnectionManagerEvent,
+    ) -> bool {
+        if matches!(event, ConnectionManagerEvent::Signal) {
+            // we only eval perigee on round / tick based behavior.
+            return false;
+        }
+
+        let perigee_config = match &self.perigee_config {
+            Some(pc) => pc,
+            None => return false,
+        };
+
+        if perigee_config.round_frequency == 0 {
+            return false;
+        }
+
         let (to_exploit, to_evict) = match &self.perigee_manager {
             Some(perigee_manager) => {
+                if self.tick_counter.load(Ordering::SeqCst) % perigee_config.round_frequency != 0 {
+                    // if perigee manager is some we expect the config to be some as well.
+                    return false;
+                }
+
                 let mut perigee_manager = perigee_manager.lock();
 
                 if !perigee_manager.should_evaluate() {
@@ -120,7 +152,6 @@ impl ConnectionManager {
                     perigee_manager.log_statistics();
                 };
 
-                perigee_manager.increment_round_counter();
                 perigee_manager.evaluate_round()
             }
             None => return false,
@@ -160,12 +191,16 @@ impl ConnectionManager {
         }
     }
 
-    async fn handle_event(self: Arc<Self>) {
+    async fn handle_event(self: Arc<Self>, event: ConnectionManagerEvent) {
         debug!("Starting connection loop iteration");
+        if matches!(event, ConnectionManagerEvent::Tick) {
+            self.tick_counter.fetch_add(1, Ordering::SeqCst);
+        };
+
         let peers = self.p2p_adaptor.active_peers();
         let peer_by_address: HashMap<SocketAddr, Peer> = peers.into_iter().map(|peer| (peer.net_address(), peer)).collect();
 
-        let perigee_executed = self.maybe_evaluate_perigee_round(&peer_by_address).await;
+        let perigee_executed = self.maybe_evaluate_perigee_round(&peer_by_address, event).await;
         self.handle_connection_requests(&peer_by_address).await;
         self.handle_outbound_connections(&peer_by_address).await;
         self.handle_inbound_connections(&peer_by_address).await;
@@ -198,7 +233,14 @@ impl ConnectionManager {
 
             if !is_connected && request.next_attempt <= SystemTime::now() {
                 debug!("Connecting to peer request {}", address);
-                match self.p2p_adaptor.connect_peer(address.to_string(), None).await {
+                match self
+                    .p2p_adaptor
+                    .connect_peer(
+                        address.to_string(),
+                        if request.is_permanent { PeerOutboundType::Persistent } else { PeerOutboundType::Temporary },
+                    )
+                    .await
+                {
                     Err(err) => {
                         debug!("Failed connecting to peer request: {}, {}", address, err);
                         if request.is_permanent {
@@ -300,7 +342,7 @@ impl ConnectionManager {
                 debug!("Connecting to {}", &socket_addr);
                 addrs_to_connect.push(net_addr);
                 random_graph_addrs.insert(net_addr);
-                jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone(), Some(PeerOutboundType::RandomGraph)));
+                jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone(), PeerOutboundType::RandomGraph));
             }
 
             for _ in 0..missing_perigee_connections {
@@ -312,7 +354,7 @@ impl ConnectionManager {
                 debug!("Connecting to {}", &socket_addr);
                 addrs_to_connect.push(net_addr);
                 perigee_addrs.insert(net_addr);
-                jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone(), Some(PeerOutboundType::Perigee)));
+                jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone(), PeerOutboundType::Perigee));
             }
 
             if progressing && !jobs.is_empty() {
