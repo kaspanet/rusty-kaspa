@@ -4166,4 +4166,285 @@ mod test {
             }
         }
     }
+
+    #[cfg(test)]
+    mod introspection {
+        use super::*;
+        use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
+        use crate::{opcodes::codes, EngineFlags, SpkEncoding};
+        use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
+        use kaspa_consensus_core::subnets::SubnetworkId;
+        use kaspa_consensus_core::tx::{
+            PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+        };
+        use kaspa_hashes::Hash;
+
+        fn payload_bytes(len: usize) -> Vec<u8> {
+            (0..len).map(|i| (i % 256) as u8).collect()
+        }
+
+        fn base_transaction(payload_len: usize) -> (Transaction, Vec<UtxoEntry>) {
+            let version: u16 = 5;
+            let lock_time: u64 = 123;
+            let subnetwork_id = SubnetworkId::from_bytes([9u8; 20]);
+            let gas: u64 = 777;
+            let payload = payload_bytes(payload_len);
+
+            let sig_script_0 = ScriptBuilder::new().add_data(&[0xaa, 0xbb, 0xcc]).expect("sig script build").drain();
+            let sig_script_1 = ScriptBuilder::new().add_data(&[0x11]).expect("sig script build").drain();
+
+            let inputs = vec![
+                TransactionInput::new(TransactionOutpoint::new(Hash::default(), 0), sig_script_0, 0x1122334455667788, 0),
+                TransactionInput::new(TransactionOutpoint::new(Hash::default(), 1), sig_script_1, 0x0fedcba987654321, 0),
+            ];
+
+            let output_spk_0 = ScriptBuilder::new().add_ops(&[codes::OpTrue, codes::Op2, codes::Op3]).expect("spk build").drain();
+            let output_spk_1 = ScriptBuilder::new().add_ops(&[codes::Op4, codes::Op5]).expect("spk build").drain();
+
+            let outputs = vec![
+                TransactionOutput::new(11, ScriptPublicKey::new(0, output_spk_0.into())),
+                TransactionOutput::new(22, ScriptPublicKey::new(0, output_spk_1.into())),
+            ];
+
+            let mut tx = Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload);
+            tx.finalize();
+
+            let utxo_spk_0 = ScriptBuilder::new().add_ops(&[codes::OpTrue, codes::Op1]).expect("spk build").drain();
+            let utxo_spk_1 = ScriptBuilder::new().add_ops(&[codes::Op2, codes::Op3]).expect("spk build").drain();
+
+            let entries = vec![
+                UtxoEntry::new(1000, ScriptPublicKey::new(0, utxo_spk_0.into()), 0, true),
+                UtxoEntry::new(2000, ScriptPublicKey::new(0, utxo_spk_1.into()), 0, false),
+            ];
+
+            (tx, entries)
+        }
+
+        fn script<F>(build: F) -> Vec<u8>
+        where
+            F: FnOnce(&mut ScriptBuilder) -> ScriptBuilderResult<&mut ScriptBuilder>,
+        {
+            let mut sb = ScriptBuilder::new();
+            // Add a drop at the start to remove the initial sigscript data
+            sb.add_op(codes::OpDrop).expect("builder failure");
+            build(&mut sb).expect("builder failure");
+            sb.drain()
+        }
+
+        fn run_script(tx: &Transaction, mut entries: Vec<UtxoEntry>, idx: usize, script: Vec<u8>) -> Result<(), TxScriptError> {
+            entries[idx].script_public_key = ScriptPublicKey::new(0, script.into());
+            let populated_tx = PopulatedTransaction::new(tx, entries);
+            let reused_values = SigHashReusedValuesUnsync::new();
+            let sig_cache = Cache::new(10_000);
+            let mut vm = TxScriptEngine::from_transaction_input(
+                &populated_tx,
+                &populated_tx.tx.inputs[idx],
+                idx,
+                &populated_tx.entries[idx],
+                &reused_values,
+                &sig_cache,
+                EngineFlags { covenants_enabled: true },
+            );
+            vm.execute()
+        }
+
+        #[test]
+        fn tx_level_introspection() {
+            let (tx, entries) = base_transaction(100);
+            let (tx_large, entries_large) = base_transaction(600);
+            let expected_subnet: Vec<u8> = tx.subnetwork_id.into();
+
+            let spk_version = script(|sb| sb.add_op(codes::OpTxVersion)?.add_i64(tx.version as i64)?.add_op(codes::OpEqual));
+            run_script(&tx, entries.clone(), 0, spk_version).expect("tx version");
+
+            let spk_lock_time = script(|sb| sb.add_op(codes::OpTxLockTime)?.add_i64(tx.lock_time as i64)?.add_op(codes::OpEqual));
+            run_script(&tx, entries.clone(), 0, spk_lock_time).expect("tx locktime");
+
+            let spk_subnet = script(|sb| sb.add_op(codes::OpTxSubnetId)?.add_data(&expected_subnet)?.add_op(codes::OpEqual));
+            run_script(&tx, entries.clone(), 0, spk_subnet).expect("tx subnet id");
+
+            let spk_gas = script(|sb| sb.add_op(codes::OpTxGas)?.add_i64(tx.gas as i64)?.add_op(codes::OpEqual));
+            run_script(&tx, entries.clone(), 0, spk_gas).expect("tx gas");
+
+            let spk_payload_len =
+                script(|sb| sb.add_op(codes::OpTxPayloadLen)?.add_i64(tx.payload.len() as i64)?.add_op(codes::OpEqual));
+            run_script(&tx, entries.clone(), 0, spk_payload_len).expect("tx payload len");
+
+            let expected_payload_full = tx.payload.clone();
+            let spk_payload_substr_full = script(|sb| {
+                sb.add_i64(0)?
+                    .add_op(codes::OpTxPayloadLen)?
+                    .add_op(codes::OpTxPayloadSubstr)?
+                    .add_data(&expected_payload_full)?
+                    .add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_payload_substr_full).expect("payload substr full");
+
+            let expected_substr = tx.payload[1..4].to_vec();
+            let spk_payload_substr = script(|sb| {
+                sb.add_i64(1)?.add_i64(4)?.add_op(codes::OpTxPayloadSubstr)?.add_data(&expected_substr)?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_payload_substr).expect("payload substr ok");
+
+            let spk_payload_substr_oob = script(|sb| sb.add_i64(1000)?.add_i64(1002)?.add_op(codes::OpTxPayloadSubstr));
+            let err =
+                run_script(&tx_large, entries_large.clone(), 0, spk_payload_substr_oob).expect_err("payload substr out of bounds");
+            assert!(matches!(err, TxScriptError::OutOfBoundsSubstring(_, _, _)));
+
+            let spk_payload_substr_too_long = script(|sb| sb.add_i64(0)?.add_i64(600)?.add_op(codes::OpTxPayloadSubstr));
+            let err = run_script(&tx_large, entries_large.clone(), 0, spk_payload_substr_too_long).expect_err("payload substr >520");
+            assert!(matches!(err, TxScriptError::ElementTooBig(_, _)));
+        }
+
+        #[test]
+        fn input_input_output_introspection() {
+            let (tx, entries) = base_transaction(40);
+            let input_spk_bytes_1 = entries[1].script_public_key.to_bytes();
+            let out_spk_bytes_0 = tx.outputs[0].script_public_key.to_bytes();
+            let sig_script_0 = tx.inputs[0].signature_script.clone();
+
+            let spk_input_spk_len = script(|sb| {
+                sb.add_i64(1)?.add_op(codes::OpTxInputSpkLen)?.add_i64(input_spk_bytes_1.len() as i64)?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_input_spk_len).expect("input spk len");
+
+            let expected_spk_full = input_spk_bytes_1.clone();
+            let spk_input_spk_substr_full = script(|sb| {
+                sb.add_i64(1)?
+                    .add_i64(0)?
+                    .add_i64(1)?
+                    .add_op(codes::OpTxInputSpkLen)?
+                    .add_op(codes::OpTxInputSpkSubstr)?
+                    .add_data(&expected_spk_full)?
+                    .add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_input_spk_substr_full).expect("input spk substr full");
+
+            let expected_spk_suffix = input_spk_bytes_1[1..].to_vec();
+            let spk_input_spk_substr_suffix = script(|sb| {
+                sb.add_i64(1)?
+                    .add_i64(1)?
+                    .add_i64(1)?
+                    .add_op(codes::OpTxInputSpkLen)?
+                    .add_op(codes::OpTxInputSpkSubstr)?
+                    .add_data(&expected_spk_suffix)?
+                    .add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_input_spk_substr_suffix).expect("input spk substr suffix");
+
+            let spk_input_spk_substr_oob = script(|sb| sb.add_i64(1)?.add_i64(100)?.add_i64(101)?.add_op(codes::OpTxInputSpkSubstr));
+            let err = run_script(&tx, entries.clone(), 0, spk_input_spk_substr_oob).expect_err("input spk substr oob");
+            assert!(matches!(err, TxScriptError::OutOfBoundsSubstring(_, _, _)));
+
+            let spk_output_spk_len = script(|sb| {
+                sb.add_i64(0)?.add_op(codes::OpTxOutputSpkLen)?.add_i64(out_spk_bytes_0.len() as i64)?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_output_spk_len).expect("output spk len");
+
+            let expected_out_spk_full = out_spk_bytes_0.clone();
+            let spk_output_spk_substr_full = script(|sb| {
+                sb.add_i64(0)?
+                    .add_i64(0)?
+                    .add_i64(0)?
+                    .add_op(codes::OpTxOutputSpkLen)?
+                    .add_op(codes::OpTxOutputSpkSubstr)?
+                    .add_data(&expected_out_spk_full)?
+                    .add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_output_spk_substr_full).expect("output spk substr full");
+
+            let expected_out_spk_tail = out_spk_bytes_0[1..3].to_vec();
+            let spk_output_spk_substr_tail = script(|sb| {
+                sb.add_i64(0)?
+                    .add_i64(1)?
+                    .add_i64(3)?
+                    .add_op(codes::OpTxOutputSpkSubstr)?
+                    .add_data(&expected_out_spk_tail)?
+                    .add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_output_spk_substr_tail).expect("output spk substr tail");
+
+            let spk_input_sig_len = script(|sb| {
+                sb.add_i64(0)?.add_op(codes::OpTxInputScriptSigLen)?.add_i64(sig_script_0.len() as i64)?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_input_sig_len).expect("input sig len");
+
+            let expected_sig_full = sig_script_0.clone();
+            let spk_input_sig_substr_full = script(|sb| {
+                sb.add_i64(0)?
+                    .add_i64(0)?
+                    .add_i64(0)?
+                    .add_op(codes::OpTxInputScriptSigLen)?
+                    .add_op(codes::OpTxInputScriptSigSubstr)?
+                    .add_data(&expected_sig_full)?
+                    .add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_input_sig_substr_full).expect("input sig substr full");
+
+            let expected_sig_substr = sig_script_0[1..3].to_vec();
+            let spk_input_sig_substr = script(|sb| {
+                sb.add_i64(0)?
+                    .add_i64(1)?
+                    .add_i64(3)?
+                    .add_op(codes::OpTxInputScriptSigSubstr)?
+                    .add_data(&expected_sig_substr)?
+                    .add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_input_sig_substr).expect("input sig substr");
+
+            let spk_outpoint_txid = script(|sb| {
+                sb.add_i64(1)?
+                    .add_op(codes::OpOutpointTxId)?
+                    .add_data(&tx.inputs[1].previous_outpoint.transaction_id.as_bytes())?
+                    .add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_outpoint_txid).expect("outpoint txid");
+
+            let spk_outpoint_index = script(|sb| sb.add_i64(1)?.add_op(codes::OpOutpointIndex)?.add_i64(1)?.add_op(codes::OpEqual));
+            run_script(&tx, entries.clone(), 0, spk_outpoint_index).expect("outpoint index");
+
+            let seq_bytes = tx.inputs[0].sequence.to_le_bytes();
+            let spk_seq = script(|sb| sb.add_i64(0)?.add_op(codes::OpTxInputSeq)?.add_data(&seq_bytes)?.add_op(codes::OpEqual));
+            run_script(&tx, entries.clone(), 0, spk_seq).expect("input seq");
+
+            let spk_is_coinbase_true =
+                script(|sb| sb.add_i64(0)?.add_op(codes::OpTxInputIsCoinbase)?.add_i64(1)?.add_op(codes::OpEqual));
+            run_script(&tx, entries.clone(), 0, spk_is_coinbase_true).expect("is coinbase true");
+
+            let spk_is_coinbase_false =
+                script(|sb| sb.add_i64(1)?.add_op(codes::OpTxInputIsCoinbase)?.add_i64(0)?.add_op(codes::OpEqual));
+            run_script(&tx, entries, 0, spk_is_coinbase_false).expect("is coinbase false");
+        }
+
+        #[test]
+        fn error_paths_for_indices_and_sizes() {
+            let (tx, entries) = base_transaction(600);
+
+            let spk_bad_input_index = script(|sb| sb.add_i64(5)?.add_op(codes::OpTxInputSpkLen));
+            let err = run_script(&tx, entries.clone(), 0, spk_bad_input_index).expect_err("invalid input index");
+            assert!(matches!(err, TxScriptError::InvalidInputIndex(_, _)));
+
+            let spk_bad_output_index = script(|sb| sb.add_i64(9)?.add_op(codes::OpTxOutputSpkLen));
+            let err = run_script(&tx, entries.clone(), 0, spk_bad_output_index).expect_err("invalid output index");
+            assert!(matches!(err, TxScriptError::InvalidOutputIndex(_, _)));
+
+            // Large input SPK to trigger ElementTooBig via substring length
+            let mut large_entries = entries.clone();
+            large_entries[1].script_public_key = ScriptPublicKey::new(0, vec![0u8; 600].into());
+            let spk_large_spk_substr = script(|sb| sb.add_i64(1)?.add_i64(0)?.add_i64(600)?.add_op(codes::OpTxInputSpkSubstr));
+            let err = run_script(&tx, large_entries.clone(), 0, spk_large_spk_substr).expect_err("input spk substr too long");
+            assert!(matches!(err, TxScriptError::ElementTooBig(_, _)));
+
+            // Large input signature script to trigger ElementTooBig via substring length
+            let mut tx_large_sig = tx.clone();
+            let mut large_sig_script = Vec::with_capacity(1 + 2 + 600);
+            large_sig_script.push(codes::OpPushData2);
+            large_sig_script.extend_from_slice(&(600u16).to_le_bytes());
+            large_sig_script.extend(std::iter::repeat(0u8).take(600));
+            tx_large_sig.inputs[0].signature_script = large_sig_script;
+            let spk_large_sig_substr = script(|sb| sb.add_i64(0)?.add_i64(0)?.add_i64(600)?.add_op(codes::OpTxInputScriptSigSubstr));
+            let err = run_script(&tx_large_sig, entries.clone(), 0, spk_large_sig_substr).expect_err("sig substr too long");
+            assert!(matches!(err, TxScriptError::ElementTooBig(_, _)));
+        }
+    }
 }
