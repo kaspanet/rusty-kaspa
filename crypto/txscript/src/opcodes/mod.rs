@@ -817,7 +817,7 @@ opcode_list! {
     // Crypto opcodes.
     opcode OpBlake2bWithKey<0xa7, 1>(self, vm) {
         if vm.flags.covenants_enabled {
-            let [key, data] = vm.dstack.pop_raw()?;
+            let [data, key] = vm.dstack.pop_raw()?;
             let hash = Params::new().hash_length(32).key(&key).to_state().update(&data).finalize();
             vm.dstack.push(hash.as_bytes().to_vec())
         } else {
