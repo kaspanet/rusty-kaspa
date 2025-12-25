@@ -129,7 +129,7 @@ impl ConsensusServices {
             params.max_coinbase_payload_len,
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
-            params.forked_bps(),
+            params.bps_history(),
         );
 
         let mass_calculator = MassCalculator::new(

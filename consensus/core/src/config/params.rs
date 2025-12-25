@@ -352,10 +352,11 @@ impl Params {
         1000 / self.blockrate.target_time_per_block
     }
 
-    /// Returns the expected number of blocks per second (as forked param)
+    /// Returns the expected number of blocks per second throughout history (currently represented as [`ForkedParam`]).
+    /// Required permanently in order to calculate the subsidy month from the current DAA score.
     #[inline]
     #[must_use]
-    pub fn forked_bps(&self) -> ForkedParam<u64> {
+    pub fn bps_history(&self) -> ForkedParam<u64> {
         ForkedParam::new(
             1000 / self.pre_crescendo_target_time_per_block,
             1000 / self.blockrate.target_time_per_block,
