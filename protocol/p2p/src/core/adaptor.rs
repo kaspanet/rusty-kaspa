@@ -3,13 +3,11 @@ use crate::core::hub::Hub;
 use crate::core::peer::PeerOutboundType;
 use crate::ConnectionError;
 use crate::{core::connection_handler::ConnectionHandler, Router};
-use kaspa_consensus_core::{BlockHashMap, BlockHashSet};
-use kaspa_hashes::Hash;
 use kaspa_utils::networking::NetAddress;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use std::ops::Deref;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::mpsc::channel as mpsc_channel;
 use tokio::sync::oneshot::Sender as OneshotSender;
 

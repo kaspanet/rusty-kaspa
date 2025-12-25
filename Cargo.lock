@@ -3068,6 +3068,7 @@ name = "kaspa-perigeemanager"
 version = "1.0.1"
 dependencies = [
  "kaspa-consensus-core",
+ "kaspa-core",
  "kaspa-hashes",
  "kaspa-p2p-lib",
  "log",

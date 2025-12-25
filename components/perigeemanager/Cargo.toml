@@ -13,6 +13,7 @@ repository.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-p2p-lib.workspace = true
 kaspa-hashes.workspace = true
+kaspa-core.workspace = true
 
 log.workspace = true
 parking_lot.workspace = true

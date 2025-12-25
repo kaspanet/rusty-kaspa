@@ -148,9 +148,10 @@ mod tests {
     use std::{str::FromStr, time::Duration};
 
     use super::*;
-    use crate::{Adaptor, Hub};
+    use crate::{Adaptor, Hub, PeerOutboundType};
     use kaspa_core::debug;
     use kaspa_utils::networking::NetAddress;
+    use rand::seq::SliceRandom;
 
     #[tokio::test]
     async fn test_handshake() {
@@ -164,7 +165,12 @@ mod tests {
 
         // Initiate the connection from `adaptor1` (outbound) to `adaptor2` (inbound)
         let peer2_id = adaptor1
-            .connect_peer_with_retries(String::from("[::1]:50054"), 16, Duration::from_secs(1), None)
+            .connect_peer_with_retries(
+                String::from("[::1]:50054"),
+                16,
+                Duration::from_secs(1),
+                [PeerOutboundType::RandomGraph, PeerOutboundType::Perigee].choose(&mut rand::thread_rng()).cloned(),
+            )
             .await
             .expect("peer connection failed");
 

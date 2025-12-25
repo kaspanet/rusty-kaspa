@@ -1,6 +1,6 @@
-use kaspa_consensus_core::{subnets::SubnetworkId, Hash};
+use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_utils::networking::{IpAddress, PeerId};
-use std::{collections::HashMap, fmt::Display, net::SocketAddr, sync::Arc, time::Instant};
+use std::{fmt::Display, net::SocketAddr, sync::Arc, time::Instant};
 
 #[derive(Copy, Debug, Clone)]
 pub enum PeerOutboundType {

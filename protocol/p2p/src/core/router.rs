@@ -4,7 +4,7 @@ use crate::pb::RejectMessage;
 use crate::pb::{kaspad_message::Payload as KaspadMessagePayload, KaspadMessage};
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
 use crate::{make_message, Peer};
-use kaspa_consensus_core::{BlockHashMap, Hash, HashMapCustomHasher};
+use kaspa_consensus_core::Hash;
 use kaspa_core::{debug, error, info, trace, warn};
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
@@ -162,7 +162,7 @@ impl From<&Router> for Peer {
         Self::new(
             router.identity(),
             router.net_address,
-            router.outbound_type.clone(),
+            router.outbound_type,
             router.connection_started,
             router.properties(),
             router.last_ping_duration(),
@@ -275,6 +275,10 @@ impl Router {
 
     pub fn is_perigee(&self) -> bool {
         matches!(self.outbound_type, Some(PeerOutboundType::Perigee))
+    }
+
+    pub fn is_random_graph(&self) -> bool {
+        matches!(self.outbound_type, Some(PeerOutboundType::RandomGraph))
     }
 
     pub fn connection_started(&self) -> Instant {

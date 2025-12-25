@@ -718,12 +718,9 @@ impl FlowContext {
     }
 
     pub async fn maybe_add_perigee_timestamp(&self, router: Arc<Router>, hash: Hash, timestamp: Instant, verify: bool) {
-        match self.perigee_manager {
-            Some(ref manager) => {
-                let mut manager = manager.lock();
-                manager.insert_perigee_timestamp(&router, hash, timestamp, verify);
-            }
-            None => {}
+        if let Some(ref manager) = self.perigee_manager {
+            let mut manager = manager.lock();
+            manager.insert_perigee_timestamp(&router, hash, timestamp, verify);
         }
     }
 

@@ -450,7 +450,8 @@ Do you confirm? (y/n)";
         perigee_target,
         perigee_exploitation_target,
         perigee_exploration_target,
-        args.perigee_round_length.try_into().unwrap(),
+        30 + (30 * args.perigee_round_frequency),
+        args.perigee_statistics,
     );
 
     if perigee_config.should_initiate_perigee() {
@@ -460,7 +461,6 @@ Do you confirm? (y/n)";
         );
     }
 
-    let perigee_round_length_in_secs = if connect_peers.is_empty() { args.perigee_round_length } else { 0 };
     let inbound_limit = if connect_peers.is_empty() { args.inbound_limit } else { 0 };
     let dns_seeders = if connect_peers.is_empty() && !args.disable_dns_seeding { config.dns_seeders } else { &[] };
 
