@@ -95,7 +95,6 @@ impl CrescendoLogger {
         if self.steps.compare_exchange(step, step + 1, AtomicOrdering::SeqCst, AtomicOrdering::SeqCst).is_ok() {
             match step {
                 Self::ACTIVATE => {
-                    // TODO (Crescendo): finalize mainnet ascii art
                     info!(target: CRESCENDO_KEYWORD,
                         r#"
         ____                                  _             

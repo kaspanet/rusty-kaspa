@@ -305,8 +305,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     if !args.archival && args.retention_period_days.is_some() {
         let retention_period_days = args.retention_period_days.unwrap();
         // Look only at post-fork values (which are the worst-case)
-        let finality_depth = config.finality_depth().after();
-        let target_time_per_block = config.target_time_per_block().after(); // in ms
+        let finality_depth = config.finality_depth();
+        let target_time_per_block = config.target_time_per_block(); // in ms
 
         let retention_period_milliseconds = (retention_period_days * 24.0 * 60.0 * 60.0 * 1000.0).ceil() as u64;
         if MINIMUM_RETENTION_PERIOD_DAYS <= retention_period_days {
