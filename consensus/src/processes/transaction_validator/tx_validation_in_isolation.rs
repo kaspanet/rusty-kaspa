@@ -157,7 +157,7 @@ fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
     if tx.is_coinbase() || tx.subnetwork_id.is_native() {
         Ok(())
     } else {
-        Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id.clone()))
+        Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id))
     }
 }
 

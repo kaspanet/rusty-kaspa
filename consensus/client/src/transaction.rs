@@ -351,16 +351,8 @@ impl From<&Transaction> for cctx::Transaction {
             inner.inputs.clone().into_iter().map(|input| input.as_ref().into()).collect::<Vec<cctx::TransactionInput>>();
         let outputs: Vec<cctx::TransactionOutput> =
             inner.outputs.clone().into_iter().map(|output| output.as_ref().into()).collect::<Vec<cctx::TransactionOutput>>();
-        cctx::Transaction::new(
-            inner.version,
-            inputs,
-            outputs,
-            inner.lock_time,
-            inner.subnetwork_id.clone(),
-            inner.gas,
-            inner.payload.clone(),
-        )
-        .with_mass(inner.mass)
+        cctx::Transaction::new(inner.version, inputs, outputs, inner.lock_time, inner.subnetwork_id, inner.gas, inner.payload.clone())
+            .with_mass(inner.mass)
     }
 }
 
@@ -392,7 +384,7 @@ impl Transaction {
             gas: tx.gas,
             payload: tx.payload.clone(),
             mass: tx.mass(),
-            subnetwork_id: tx.subnetwork_id.clone(),
+            subnetwork_id: tx.subnetwork_id,
         })
     }
 
@@ -415,7 +407,7 @@ impl Transaction {
             inputs,
             outputs,
             inner.lock_time,
-            inner.subnetwork_id.clone(),
+            inner.subnetwork_id,
             inner.gas,
             inner.payload.clone(),
         )
