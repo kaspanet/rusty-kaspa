@@ -297,7 +297,7 @@ impl PruningProofManager {
                 &ghostdag_store,
                 Some(block_at_depth_m_at_next_level),
                 level,
-                self.ghostdag_k.get(pp_header.header.daa_score),
+                self.ghostdag_k,
             );
 
             // Step 4 - Check if we actually have enough depth.

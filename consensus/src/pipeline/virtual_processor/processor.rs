@@ -54,10 +54,7 @@ use kaspa_consensus_core::{
     block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     blockstatus::BlockStatus::{StatusDisqualifiedFromChain, StatusUTXOValid},
     coinbase::MinerData,
-    config::{
-        genesis::GenesisBlock,
-        params::{ForkActivation, ForkedParam},
-    },
+    config::{genesis::GenesisBlock, params::ForkActivation},
     header::Header,
     merkle::calc_hash_merkle_root,
     mining_rules::MiningRules,
@@ -120,8 +117,8 @@ pub struct VirtualStateProcessor {
 
     // Config
     pub(super) genesis: GenesisBlock,
-    pub(super) max_block_parents: ForkedParam<u8>,
-    pub(super) mergeset_size_limit: ForkedParam<u64>,
+    pub(super) max_block_parents: u8,
+    pub(super) mergeset_size_limit: u64,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -709,8 +706,8 @@ impl VirtualStateProcessor {
         // we might touch such data prior to validating the bounded merge rule. All in all, this function is short
         // enough so we avoid making further optimizations
         let _prune_guard = self.pruning_lock.blocking_read();
-        let max_block_parents = self.max_block_parents.after() as usize;
-        let mergeset_size_limit = self.mergeset_size_limit.after();
+        let max_block_parents = self.max_block_parents as usize;
+        let mergeset_size_limit = self.mergeset_size_limit;
         let max_candidates = self.max_virtual_parent_candidates(max_block_parents);
 
         // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
@@ -940,13 +937,8 @@ impl VirtualStateProcessor {
             virtual_state.daa_score,
             virtual_state.past_median_time,
         )?;
-        let ValidatedTransaction { calculated_fee, .. } = self.validate_transaction_in_utxo_context(
-            tx,
-            utxo_view,
-            virtual_state.daa_score,
-            virtual_state.daa_score,
-            TxValidationFlags::Full,
-        )?;
+        let ValidatedTransaction { calculated_fee, .. } =
+            self.validate_transaction_in_utxo_context(tx, utxo_view, virtual_state.daa_score, TxValidationFlags::Full)?;
         Ok(calculated_fee)
     }
 
@@ -1071,11 +1063,8 @@ impl VirtualStateProcessor {
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter());
 
-        let accepted_id_merkle_root = self.calc_accepted_id_merkle_root(
-            virtual_state.daa_score,
-            virtual_state.accepted_tx_ids.iter().copied(),
-            virtual_state.ghostdag_data.selected_parent,
-        );
+        let accepted_id_merkle_root = self
+            .calc_accepted_id_merkle_root(virtual_state.accepted_tx_ids.iter().copied(), virtual_state.ghostdag_data.selected_parent);
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;
@@ -1190,7 +1179,6 @@ impl VirtualStateProcessor {
         let validated_transactions = self.validate_transactions_in_parallel(
             &new_pruning_point_transactions,
             &virtual_read.utxo_set,
-            new_pruning_point_header.daa_score,
             new_pruning_point_header.daa_score,
             TxValidationFlags::Full,
         );

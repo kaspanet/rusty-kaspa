@@ -44,7 +44,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
-    acceptance_data::AcceptanceData,
+    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     api::{
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         stats::BlockCount,
@@ -70,8 +70,10 @@ use kaspa_consensus_core::{
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    utxo::utxo_inquirer::UtxoInquirerError,
+    tx::{
+        MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, TransactionQueryResult,
+        TransactionType, UtxoEntry,
+    },
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -87,12 +89,14 @@ use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
+use kaspa_utils::arc::ArcExtensions;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rocksdb::WriteBatch;
 
 use std::{
-    cmp::{self, Reverse},
-    collections::{BinaryHeap, VecDeque},
+    cmp,
+    cmp::Reverse,
+    collections::{BinaryHeap, HashSet, VecDeque},
     future::Future,
     iter::once,
     ops::Deref,
@@ -513,8 +517,7 @@ impl Consensus {
         // a header is validated whose blue_score is greater than P.B+p:
         let syncer_pp_bscore = self.get_header(new_pruning_point).unwrap().blue_score;
         let syncer_virtual_bscore = self.get_header(syncer_sink).unwrap().blue_score;
-        // [Crescendo]: Remove after()
-        if syncer_virtual_bscore < syncer_pp_bscore + self.config.pruning_depth().after() {
+        if syncer_virtual_bscore < syncer_pp_bscore + self.config.pruning_depth() {
             return Err(ConsensusError::General("declared pruning point is not of sufficient depth"));
         }
         // 3) The syncer pruning point is on the selected chain from that header.
@@ -741,7 +744,7 @@ impl ConsensusApi for Consensus {
     /// Estimates the number of blocks and headers stored in the node database.
     ///
     /// This is an estimation based on the DAA score difference between the node's `retention root` and `virtual`'s DAA score,
-    /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.  
+    /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.
     fn estimate_block_count(&self) -> BlockCount {
         // PRUNE SAFETY: retention root is always a current or past pruning point which its header is kept permanently
         let retention_period_root_score = self.headers_store.get_daa_score(self.get_retention_period_root()).unwrap();
@@ -845,11 +848,133 @@ impl ConsensusApi for Consensus {
 
         sample_headers
     }
-
-    fn get_populated_transaction(&self, txid: Hash, accepting_block_daa_score: u64) -> Result<SignableTransaction, UtxoInquirerError> {
-        // We need consistency between the pruning_point_store, utxo_diffs_store, block_transactions_store, selected chain and headers store reads
+    fn get_transactions_by_accepting_daa_score(
+        &self,
+        accepting_daa_score: u64,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        // We need consistency between the acceptance store and the block transaction store,
         let _guard = self.pruning_lock.blocking_read();
-        self.virtual_processor.get_populated_transaction(txid, accepting_block_daa_score, self.get_retention_period_root())
+        let accepting_block = self
+            .virtual_processor
+            .find_accepting_chain_block_hash_at_daa_score(accepting_daa_score, self.get_retention_period_root())?;
+        self.get_transactions_by_accepting_block(accepting_block, tx_ids, tx_type)
+    }
+
+    fn get_transactions_by_block_acceptance_data(
+        &self,
+        accepting_block: Hash,
+        block_acceptance_data: MergesetBlockAcceptanceData,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        // Need consistency between the acceptance store and the block transaction store.
+        let _guard = self.pruning_lock.blocking_read();
+
+        match tx_type {
+            TransactionType::Transaction => {
+                if let Some(tx_ids) = tx_ids {
+                    let mut tx_ids_filter = HashSet::with_capacity(tx_ids.len());
+                    tx_ids_filter.extend(tx_ids);
+
+                    Ok(TransactionQueryResult::Transaction(Arc::new(
+                        self.get_block_transactions(
+                            block_acceptance_data.block_hash,
+                            Some(
+                                block_acceptance_data
+                                    .accepted_transactions
+                                    .into_iter()
+                                    .filter_map(|atx| {
+                                        if tx_ids_filter.contains(&atx.transaction_id) {
+                                            Some(atx.index_within_block)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect(),
+                            ),
+                        )?,
+                    )))
+                } else {
+                    Ok(TransactionQueryResult::Transaction(Arc::new(self.get_block_transactions(
+                        block_acceptance_data.block_hash,
+                        Some(block_acceptance_data.accepted_transactions.iter().map(|atx| atx.index_within_block).collect()),
+                    )?)))
+                }
+            }
+            TransactionType::SignableTransaction => Ok(TransactionQueryResult::SignableTransaction(Arc::new(
+                self.virtual_processor.get_populated_transactions_by_block_acceptance_data(
+                    tx_ids,
+                    block_acceptance_data,
+                    accepting_block,
+                )?,
+            ))),
+        }
+    }
+
+    fn get_transactions_by_accepting_block(
+        &self,
+        accepting_block: Hash,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        // need consistency between the acceptance store and the block transaction store,
+        let _guard = self.pruning_lock.blocking_read();
+
+        match tx_type {
+            TransactionType::Transaction => {
+                let accepting_block_mergeset_acceptance_data_iter = self
+                    .acceptance_data_store
+                    .get(accepting_block)
+                    .map_err(|_| ConsensusError::MissingData(accepting_block))?
+                    .unwrap_or_clone()
+                    .into_iter();
+
+                if let Some(tx_ids) = tx_ids {
+                    let mut tx_ids_filter = HashSet::with_capacity(tx_ids.len());
+                    tx_ids_filter.extend(tx_ids);
+
+                    Ok(TransactionQueryResult::Transaction(Arc::new(
+                        accepting_block_mergeset_acceptance_data_iter
+                            .flat_map(|mbad| {
+                                self.get_block_transactions(
+                                    mbad.block_hash,
+                                    Some(
+                                        mbad.accepted_transactions
+                                            .into_iter()
+                                            .filter_map(|atx| {
+                                                if tx_ids_filter.contains(&atx.transaction_id) {
+                                                    Some(atx.index_within_block)
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                            .collect(),
+                                    ),
+                                )
+                            })
+                            .flatten()
+                            .collect::<Vec<_>>(),
+                    )))
+                } else {
+                    Ok(TransactionQueryResult::Transaction(Arc::new(
+                        accepting_block_mergeset_acceptance_data_iter
+                            .flat_map(|mbad| {
+                                self.get_block_transactions(
+                                    mbad.block_hash,
+                                    Some(mbad.accepted_transactions.iter().map(|atx| atx.index_within_block).collect()),
+                                )
+                            })
+                            .flatten()
+                            .collect::<Vec<_>>(),
+                    )))
+                }
+            }
+            TransactionType::SignableTransaction => Ok(TransactionQueryResult::SignableTransaction(Arc::new(
+                self.virtual_processor.get_populated_transactions_by_accepting_block(tx_ids, accepting_block)?,
+            ))),
+        }
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
@@ -971,7 +1096,7 @@ impl ConsensusApi for Consensus {
     // max_blocks has to be greater than the merge set size limit
     fn get_hashes_between(&self, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
         let _guard = self.pruning_lock.blocking_read();
-        assert!(max_blocks as u64 > self.config.mergeset_size_limit().after());
+        assert!(max_blocks as u64 > self.config.mergeset_size_limit());
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
 
@@ -1047,6 +1172,33 @@ impl ConsensusApi for Consensus {
             header: self.headers_store.get_header(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))?,
             transactions: self.block_transactions_store.get(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))?,
         })
+    }
+
+    fn get_block_transactions(&self, hash: Hash, indices: Option<Vec<TransactionIndexType>>) -> ConsensusResult<Vec<Transaction>> {
+        let transactions = self.block_transactions_store.get(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))?;
+        let tx_len = transactions.len();
+
+        if let Some(indices) = indices {
+            if tx_len < indices.len() {
+                return Err(ConsensusError::TransactionQueryTooLarge(indices.len(), hash, transactions.len()));
+            }
+
+            let res = transactions
+                .unwrap_or_clone()
+                .into_iter()
+                .enumerate()
+                .filter(|(index, _tx)| indices.contains(&(*index as TransactionIndexType)))
+                .map(|(_, tx)| tx)
+                .collect::<Vec<_>>();
+
+            if res.len() != indices.len() {
+                Err(ConsensusError::TransactionIndexOutOfBounds(*indices.iter().max().unwrap(), tx_len, hash))
+            } else {
+                Ok(res)
+            }
+        } else {
+            Ok(transactions.unwrap_or_clone())
+        }
     }
 
     fn get_block_body(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
@@ -1234,7 +1386,7 @@ impl ConsensusApi for Consensus {
             .is_pruning_sample(
                 candidate_ghostdag_data.blue_score,
                 selected_parent_ghostdag_data.blue_score,
-                self.config.params.finality_depth().after(),
+                self.config.params.finality_depth(),
             )
             .then_some(())
             .ok_or(ConsensusError::General("pruning candidate is not a pruning sample"))
