@@ -11,7 +11,7 @@ use kaspa_core::info;
 use kaspa_p2p_lib::{Hub, PeerKey, Router};
 use log::debug;
 use parking_lot::Mutex;
-use rand::seq::SliceRandom;
+use rand::{seq::SliceRandom, thread_rng};
 
 const PERCENTILE_RANK: f64 = 0.9;
 
@@ -85,9 +85,25 @@ impl PerigeeManager {
             debug!("PerigeeManager: not enough peers for round");
             //need to wait for more peers
             return (peer_table.keys().cloned().collect(), vec![]);
-        };
+        } else if self.verified_blocks.is_empty() {
+            debug!("PerigeeManager: no data to evaluate round");
+            if trim_excess_only {
+                return (
+                    vec![],
+                    perigee_routers
+                        .choose_multiple(&mut thread_rng(), perigee_routers.len().saturating_sub(self.config.perigee_outbound_target))
+                        .map(|r| r.key())
+                        .collect(),
+                );
+            }
+            return (vec![], vec![]);
+        }
 
-        assert!(active_perigee_amount == peer_table.len());
+        if active_perigee_amount <= self.config.exploitation_target {
+            debug!("PerigeeManager: not enough peers for round");
+            //need to wait for more peers
+            return (peer_table.keys().cloned().collect(), vec![]);
+        };
 
         let mut remaining_table = peer_table;
         let mut selected_table = HashMap::new();
@@ -95,15 +111,8 @@ impl PerigeeManager {
 
         for _ in 0..self.config.exploitation_target {
             let top_ranked = match self.get_top_ranked_peer(&remaining_table) {
-                (Some(peer), score) => {
-                    if score == u64::MAX {
-                        // we expect all remaining peers to score the same u64::MAX score, so we abort.
-                        break;
-                    } else {
-                        peer
-                    }
-                }
-                (None, _) => break, // we have exhausted the peer table, abort.
+                (Some(peer), score) if score.0 != u64::MAX => peer,
+                _ => break,
             };
 
             selected_table.insert(top_ranked, remaining_table.remove(&top_ranked).unwrap());
@@ -126,8 +135,7 @@ impl PerigeeManager {
         };
 
         let mut excused_peers = self.get_excused_peers(&perigee_routers);
-        let mut eviction_candidates =
-            remaining_table.keys().cloned().filter(|p| !excused_peers.contains(p)).collect::<Vec<_>>();
+        let mut eviction_candidates = remaining_table.keys().cloned().filter(|p| !excused_peers.contains(p)).collect::<Vec<_>>();
 
         if eviction_candidates.len() < to_remove_target {
             while eviction_candidates.len() < to_remove_target {
@@ -411,26 +419,32 @@ impl PerigeeManager {
         perigee_routers.iter().filter(|r| r.connection_started() > self.round_start).map(|r| r.key()).collect()
     }
 
-    fn rate_peer(&self, values: &[u64]) -> u64 {
+    fn rate_peer(&self, values: &[u64]) -> (u64, u64, u64, u64, u64, u64, u64) {
         if values.is_empty() {
-            // note this is also important so that the return doesn't subtract with overflow.
-            return u64::MAX;
-        };
+            return (u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX);
+        }
 
         let sorted_values = {
             let mut sv = values.to_owned();
             sv.sort_unstable();
             sv
         };
-        sorted_values[
-            ((PERCENTILE_RANK * (sorted_values.len() as f64).ceil()) as usize)
-            .min(sorted_values.len() - 1) // So we don't out-of-bounds small vecs
-            ]
+
+        let len = sorted_values.len();
+        let p90 = sorted_values[((0.90 * len as f64) as usize).min(len - 1)];
+        let p95 = sorted_values[((0.95 * len as f64) as usize).min(len - 1)];
+        let p97_5 = sorted_values[((0.975 * len as f64) as usize).min(len - 1)];
+        let p98_25 = sorted_values[((0.9825 * len as f64) as usize).min(len - 1)];
+        let p99_125 = sorted_values[((0.99125 * len as f64) as usize).min(len - 1)];
+        let p99_6875 = sorted_values[((0.996875 * len as f64) as usize).min(len - 1)];
+        let last = sorted_values[len - 1];
+
+        (p90, p95, p97_5, p98_25, p99_125, p99_6875, last)
     }
 
-    fn get_top_ranked_peer(&self, peer_table: &HashMap<PeerKey, Vec<u64>>) -> (Option<PeerKey>, u64) {
+    fn get_top_ranked_peer(&self, peer_table: &HashMap<PeerKey, Vec<u64>>) -> (Option<PeerKey>, (u64, u64, u64, u64, u64, u64, u64)) {
         let mut best_peer: Option<PeerKey> = None;
-        let mut best_score = u64::MAX;
+        let mut best_score = (u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX);
         for (peer, delays) in peer_table.iter() {
             let score = self.rate_peer(delays);
             if score < best_score {
@@ -439,10 +453,15 @@ impl PerigeeManager {
             }
         }
         debug!(
-            "PerigeeManager: Top ranked peer from current peer table is {:?} with score {} - ranked {} values",
+            "PerigeeManager: Top ranked peer from current peer table is {:?} with score p90:{}, p95:{}, p97.5:{}, p98.25:{}, p99.125:{}, p99.6875:{}, last: {}",
             best_peer,
-            best_score,
-            peer_table.iter().next().unwrap().1.len()
+            best_score.0,
+            best_score.1,
+            best_score.2,
+            best_score.3,
+            best_score.4,
+            best_score.5,
+            best_score.6,
         );
         (best_peer, best_score)
     }
@@ -457,10 +476,11 @@ impl PerigeeManager {
             self.verified_blocks.len()
         );
 
-        for j in 0..self.verified_blocks.len()  {
+        for j in 0..self.verified_blocks.len() {
+            let selected_min_j = selected_peers.values().map(|vec| vec[j]).min().unwrap();
             for candidate in candidates.values_mut() {
                 // we transform the delay of candidate at pos j to min(candidate_delay_score[j], min(selected_peers_delay_score_at_pos[j])).
-                candidate[j] = min(candidate[j], selected_peers.values().map(|vec| vec[j]).min().unwrap());
+                candidate[j] = min(candidate[j], selected_min_j);
             }
         }
     }
