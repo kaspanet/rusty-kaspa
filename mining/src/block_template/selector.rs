@@ -145,8 +145,8 @@ impl RebalancingWeightedTransactionSelector {
             // Enforce maximum gas per subnetwork per block.
             // Also check for overflow.
             if !selected_tx.tx.subnetwork_id.is_builtin_or_native() {
-                let subnetwork_id = selected_tx.tx.subnetwork_id.clone();
-                let gas_usage = self.gas_usage_map.entry(subnetwork_id.clone()).or_insert(0);
+                let subnetwork_id = selected_tx.tx.subnetwork_id;
+                let gas_usage = self.gas_usage_map.entry(subnetwork_id).or_insert(0);
                 let tx_gas = selected_tx.tx.gas;
                 let next_gas_usage = (*gas_usage).checked_add(tx_gas);
                 if next_gas_usage.is_none() || next_gas_usage.unwrap() > self.selectable_txs[selected_candidate.index].gas_limit {

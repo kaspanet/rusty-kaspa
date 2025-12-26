@@ -357,7 +357,7 @@ impl Stack {
     }
 
     pub fn pop(&mut self) -> Result<Vec<u8>, TxScriptError> {
-        self.inner.pop().ok_or_else(|| TxScriptError::EmptyStack)
+        self.inner.pop().ok_or(TxScriptError::EmptyStack)
     }
 
     pub fn split_off(&mut self, at: usize) -> Vec<Vec<u8>> {

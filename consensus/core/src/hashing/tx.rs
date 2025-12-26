@@ -53,7 +53,7 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
         write_output(hasher, output);
     }
 
-    hasher.update(tx.lock_time.to_le_bytes()).update(&tx.subnetwork_id).update(tx.gas.to_le_bytes()).write_var_bytes(&tx.payload);
+    hasher.update(tx.lock_time.to_le_bytes()).update(tx.subnetwork_id).update(tx.gas.to_le_bytes()).write_var_bytes(&tx.payload);
 
     /*
        Design principles (mostly related to the new mass commitment field; see KIP-0009):

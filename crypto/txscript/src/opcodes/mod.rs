@@ -222,7 +222,7 @@ fn substring(data: &[u8], start: usize, end: usize) -> Result<Vec<u8>, TxScriptE
     if end - start > MAX_SCRIPT_ELEMENT_SIZE {
         return Err(TxScriptError::ElementTooBig(end - start, MAX_SCRIPT_ELEMENT_SIZE));
     }
-    data.get(start..end).map(|substr| substr.to_vec()).ok_or_else(|| TxScriptError::OutOfBoundsSubstring(start, end, data.len()))
+    data.get(start..end).map(|substr| substr.to_vec()).ok_or(TxScriptError::OutOfBoundsSubstring(start, end, data.len()))
 }
 
 fn i32_to_usize(value: i32) -> Result<usize, TxScriptError> {
@@ -4440,7 +4440,7 @@ mod test {
             let mut large_sig_script = Vec::with_capacity(1 + 2 + 600);
             large_sig_script.push(codes::OpPushData2);
             large_sig_script.extend_from_slice(&(600u16).to_le_bytes());
-            large_sig_script.extend(std::iter::repeat(0u8).take(600));
+            large_sig_script.extend(std::iter::repeat_n(0u8, 600));
             tx_large_sig.inputs[0].signature_script = large_sig_script;
             let spk_large_sig_substr = script(|sb| sb.add_i64(0)?.add_i64(0)?.add_i64(600)?.add_op(codes::OpTxInputScriptSigSubstr));
             let err = run_script(&tx_large_sig, entries.clone(), 0, spk_large_sig_substr).expect_err("sig substr too long");
