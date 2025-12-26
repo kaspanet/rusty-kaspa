@@ -719,7 +719,7 @@ opcode_list! {
         if vm.flags.covenants_enabled{
             let [ a, b ]: [i64; 2] = vm.dstack.pop_items()?;
             // TODO (before merge): Check with other implementations if they handle negative numbers differently.
-            let r = a.checked_rem(b).ok_or_else(|| TxScriptError::InvalidState("Remainder exceeds 64-bit signed integer range, or there was a division by zero".to_string()))?;
+            let r = a.checked_rem(b).ok_or_else(|| TxScriptError::InvalidState("Illegal modulo by zero".to_string()))?;
             vm.dstack.push_item(r)?;
             Ok(())
         } else {
