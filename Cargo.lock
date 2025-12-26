@@ -3504,6 +3504,7 @@ dependencies = [
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
+ "kaspa-wallet-keys",
  "secp256k1",
  "separator",
  "serde",
