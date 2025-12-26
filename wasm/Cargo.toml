@@ -71,7 +71,7 @@ folder = "setup"
 # Workaround for Rust 1.87.0
 # https://github.com/rust-lang/rust/issues/141048
 [package.metadata.wasm-pack.profile.release]
-wasm-opt = ["-O","--enable-bulk-memory"]
+wasm-opt = ["-O", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]
 
 [lints]
 workspace = true
