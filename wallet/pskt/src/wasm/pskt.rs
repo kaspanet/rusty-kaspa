@@ -514,9 +514,9 @@ impl PSKT {
 
                 // only allow p2pk script class
                 match script_class {
-                    ScriptClass::NonStandard => return Err(Error::InvalidScriptClassError(ScriptClass::PubKey, script_class)),
-                    ScriptClass::PubKeyECDSA => return Err(Error::InvalidScriptClassError(ScriptClass::PubKey, script_class)),
-                    ScriptClass::ScriptHash => return Err(Error::InvalidScriptClassError(ScriptClass::PubKey, script_class)),
+                    ScriptClass::NonStandard => return Err(Error::UnexpectedScriptClassError(ScriptClass::PubKey, script_class)),
+                    ScriptClass::PubKeyECDSA => return Err(Error::UnexpectedScriptClassError(ScriptClass::PubKey, script_class)),
+                    ScriptClass::ScriptHash => return Err(Error::UnexpectedScriptClassError(ScriptClass::PubKey, script_class)),
                     ScriptClass::PubKey => (),
                 }
             } else {

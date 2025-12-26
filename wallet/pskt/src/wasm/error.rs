@@ -33,7 +33,7 @@ pub enum Error {
     NotInitialized,
 
     #[error("Invalid ScriptClass, expected {0}, got {1}")]
-    InvalidScriptClassError(ScriptClass, ScriptClass),
+    UnexpectedScriptClassError(ScriptClass, ScriptClass),
 
     #[error(transparent)]
     ConsensusClient(#[from] kaspa_consensus_client::error::Error),
