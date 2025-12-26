@@ -16,6 +16,7 @@ kaspa-hashes.workspace = true
 kaspa-core.workspace = true
 
 log.workspace = true
+itertools.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
 

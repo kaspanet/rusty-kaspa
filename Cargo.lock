@@ -3067,6 +3067,7 @@ dependencies = [
 name = "kaspa-perigeemanager"
 version = "1.0.1"
 dependencies = [
+ "itertools 0.13.0",
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-hashes",

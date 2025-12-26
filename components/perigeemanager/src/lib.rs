@@ -1,9 +1,11 @@
 use std::{
+    cmp::min,
     collections::{hash_map::Entry, HashMap},
     sync::Arc,
     time::Instant,
 };
 
+use itertools::Itertools;
 use kaspa_consensus_core::{BlockHashSet, Hash, HashMapCustomHasher};
 use kaspa_core::info;
 use kaspa_p2p_lib::{Hub, PeerKey, Router};
@@ -75,22 +77,24 @@ impl PerigeeManager {
         debug!("PerigeeManager: evaluating round");
         self.round_counter += 1;
 
-        let (mut peer_table, perigee_routers) = self.build_table();
+        let (peer_table, perigee_routers) = self.build_table();
 
-        if peer_table.len() <= self.config.exploitation_target {
+        let active_perigee_amount = perigee_routers.len();
+
+        if active_perigee_amount <= self.config.exploitation_target {
             debug!("PerigeeManager: not enough peers for round");
             //need to wait for more peers
             return (peer_table.keys().cloned().collect(), vec![]);
         };
 
-        let active_perigee_amount = peer_table.len();
+        assert!(active_perigee_amount == peer_table.len());
 
-        assert!(active_perigee_amount == perigee_routers.len());
-
-        let mut exploitation_peers = Vec::with_capacity(self.config.exploitation_target);
+        let mut remaining_table = peer_table;
+        let mut selected_table = HashMap::new();
+        let mut selected_peers = Vec::new(); // We use this instead of selected_table, to maintain ordering.
 
         for _ in 0..self.config.exploitation_target {
-            let top_ranked = match self.get_top_ranked_peer(&peer_table) {
+            let top_ranked = match self.get_top_ranked_peer(&remaining_table) {
                 (Some(peer), score) => {
                     if score == u64::MAX {
                         // we expect all remaining peers to score the same u64::MAX score, so we abort.
@@ -101,19 +105,16 @@ impl PerigeeManager {
                 }
                 (None, _) => break, // we have exhausted the peer table, abort.
             };
-            exploitation_peers.push(top_ranked);
 
-            if exploitation_peers.len() == self.config.exploitation_target {
-                peer_table.remove(&top_ranked);
+            selected_table.insert(top_ranked, remaining_table.remove(&top_ranked).unwrap());
+            selected_peers.push(top_ranked);
+
+            if selected_peers.len() == self.config.exploitation_target {
                 break;
             }
 
-            let top_ranked_table = peer_table.remove(&top_ranked).unwrap();
-            self.transform_peer_table(&(top_ranked, top_ranked_table), &mut peer_table);
+            self.transform_peer_table(&mut selected_table, &mut remaining_table);
         }
-
-        let remaining_peers = peer_table.into_keys().collect::<Vec<PeerKey>>();
-        let mut excused_peers = self.get_excused_peers(&perigee_routers);
 
         let to_remove_target = if trim_excess_only {
             active_perigee_amount.saturating_sub(self.config.perigee_outbound_target)
@@ -124,24 +125,26 @@ impl PerigeeManager {
             )
         };
 
-        let mut eviction_candidates = remaining_peers.into_iter().filter(|p| !excused_peers.contains(p)).collect::<Vec<PeerKey>>();
+        let mut excused_peers = self.get_excused_peers(&perigee_routers);
+        let mut eviction_candidates =
+            remaining_table.keys().cloned().filter(|p| !excused_peers.contains(p)).collect::<Vec<_>>();
 
         if eviction_candidates.len() < to_remove_target {
             while eviction_candidates.len() < to_remove_target {
                 if !excused_peers.is_empty() {
                     // We take from excused only if we have to
                     eviction_candidates.push(excused_peers.pop().unwrap());
-                } else if !exploitation_peers.is_empty() {
+                } else if !selected_table.is_empty() {
                     // We take from exploited, from lowest to highest impact, as last resort
-                    eviction_candidates.push(exploitation_peers.pop().unwrap());
+                    eviction_candidates.push(selected_peers.pop().unwrap());
                 }
             }
-            (exploitation_peers, eviction_candidates)
+            (selected_peers, eviction_candidates)
         } else {
             // choose peers to evict from perigee at random from the remaining candidates.
             let eviction_candidates =
                 eviction_candidates.choose_multiple(&mut rand::thread_rng(), to_remove_target).cloned().collect();
-            (exploitation_peers, eviction_candidates)
+            (selected_peers, eviction_candidates)
         }
     }
 
@@ -444,21 +447,20 @@ impl PerigeeManager {
         (best_peer, best_score)
     }
 
-    fn transform_peer_table(&self, to_remove: &(PeerKey, Vec<u64>), candidates: &mut HashMap<PeerKey, Vec<u64>>) {
-        debug!("PerigeeManager: Transforming peer table by removing peer {:?}", to_remove.0);
-
-        let len = to_remove.1.len();
+    fn transform_peer_table(&self, selected_peers: &mut HashMap<PeerKey, Vec<u64>>, candidates: &mut HashMap<PeerKey, Vec<u64>>) {
+        debug!("PerigeeManager: Transforming peer table");
 
         // sanity check
-        assert!(candidates.values().all(|v| v.len() == len));
+        // assert all vecs are of equal length
+        assert_eq!(
+            candidates.values().map(|v| v.len()).chain(selected_peers.values().map(|v| v.len())).all_equal_value().unwrap(),
+            self.verified_blocks.len()
+        );
 
-        for j in (0..len).rev() {
-            let values_at_position: Vec<u64> = candidates.values().map(|vec| vec[j]).collect();
-            if values_at_position.iter().all(|&x| x >= to_remove.1[j]) {
-                // if all vals are greater, pos is covered by the removed peer, so we may remove from the candidates
-                for vec in candidates.values_mut() {
-                    vec.remove(j);
-                }
+        for j in 0..self.verified_blocks.len()  {
+            for candidate in candidates.values_mut() {
+                // we transform the delay of candidate at pos j to min(candidate_delay_score[j], min(selected_peers_delay_score_at_pos[j])).
+                candidate[j] = min(candidate[j], selected_peers.values().map(|vec| vec[j]).min().unwrap());
             }
         }
     }
