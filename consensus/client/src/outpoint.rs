@@ -188,6 +188,12 @@ impl From<&TransactionOutpoint> for cctx::TransactionOutpoint {
     }
 }
 
+impl PartialEq<cctx::TransactionOutpoint> for TransactionOutpoint {
+    fn eq(&self, other: &cctx::TransactionOutpoint) -> bool {
+        self.inner.transaction_id == other.transaction_id && self.inner.index == other.index
+    }
+}
+
 impl TransactionOutpoint {
     pub fn simulated() -> Self {
         Self::new(TransactionId::from_slice(&rand::random::<[u8; kaspa_hashes::HASH_SIZE]>()), 0)
