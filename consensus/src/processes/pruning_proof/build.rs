@@ -381,7 +381,7 @@ impl PruningProofManager {
                 Some(block_at_depth_m_at_next_level),
                 level,
                 &transient_relation_store,
-                self.ghostdag_k.after(),
+                self.ghostdag_k,
             );
 
             // Step 4 - Check if we actually have enough depth.

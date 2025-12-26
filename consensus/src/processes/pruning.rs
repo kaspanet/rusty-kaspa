@@ -13,7 +13,6 @@ use crate::model::{
 };
 use kaspa_consensus_core::{
     blockhash::BlockHashExtensions,
-    config::params::ForkedParam,
     errors::pruning::{PruningImportError, PruningImportResult},
 };
 use kaspa_database::prelude::StoreResultEmptyTuple;
@@ -24,8 +23,7 @@ pub struct PruningPointReply {
     /// The most recent pruning sample from POV of the queried block (with distance up to ~F)
     pub pruning_sample: Hash,
 
-    /// The pruning point of the queried block. I.e., the most recent pruning sample with
-    /// depth P (except for shortly after the fork where the new P' is gradually reached)
+    /// The pruning point of the queried block. I.e., the most recent pruning sample with depth P
     pub pruning_point: Hash,
 }
 
@@ -38,13 +36,13 @@ pub struct PruningPointManager<
     W: HeadersSelectedTipStoreReader,
     Y: PruningSamplesStore,
 > {
-    /// Forked pruning depth param. Throughout this file we use P, P' to indicate the pre, post activation depths respectively
-    pruning_depth: ForkedParam<u64>,
+    /// Pruning depth param. Throughout this file we use P to indicate this depth
+    pruning_depth: u64,
 
-    /// Forked finality depth param. Throughout this file we use F, F' to indicate the pre, post activation depths respectively.
+    /// Finality depth param. Throughout this file we use F to indicate this depth
     /// Note that this quantity represents here the interval between pruning point samples and is not tightly coupled with the
     /// actual concept of finality as used by virtual processor to reject deep reorgs   
-    finality_depth: ForkedParam<u64>,
+    finality_depth: u64,
 
     genesis_hash: Hash,
 
@@ -69,8 +67,8 @@ impl<
     > PruningPointManager<S, T, U, V, W, Y>
 {
     pub fn new(
-        pruning_depth: ForkedParam<u64>,
-        finality_depth: ForkedParam<u64>,
+        pruning_depth: u64,
+        finality_depth: u64,
         genesis_hash: Hash,
         reachability_service: MTReachabilityService<T>,
         ghostdag_store: Arc<S>,
@@ -79,7 +77,7 @@ impl<
         header_selected_tip_store: Arc<RwLock<W>>,
         pruning_samples_store: Arc<Y>,
     ) -> Self {
-        let pruning_samples_steps = pruning_depth.after().div_ceil(finality_depth.after());
+        let pruning_samples_steps = pruning_depth.div_ceil(finality_depth);
 
         Self {
             pruning_depth,
@@ -110,8 +108,8 @@ impl<
         // store entry, se we only use these stores here (and specifically do not use the ghostdag store)
         //
 
-        let pruning_depth = self.pruning_depth.after();
-        let finality_depth = self.finality_depth.after();
+        let pruning_depth = self.pruning_depth;
+        let finality_depth = self.finality_depth;
 
         let selected_parent_blue_score = self.headers_store.get_blue_score(ghostdag_data.selected_parent).unwrap();
 
@@ -144,7 +142,7 @@ impl<
             if current_blue_score + pruning_depth <= ghostdag_data.blue_score {
                 break current;
             }
-            // For samples: special clamp for the period right after the fork (where we reach ceiling(P/F) steps before reaching P' depth)
+            // For samples: special clamp for the period right after a blockrate hardfork (where we might reach ceiling(P/F) steps before reaching the new pruning depth)
             if is_self_pruning_sample && steps == self.pruning_samples_steps {
                 break current;
             }
@@ -177,7 +175,7 @@ impl<
         let current_pruning_point_blue_score = self.headers_store.get_blue_score(current_pruning_point).unwrap();
 
         // Sanity check #1: global pruning point depth from sink >= P
-        if current_pruning_point_blue_score + self.pruning_depth.after() > sink_ghostdag.blue_score {
+        if current_pruning_point_blue_score + self.pruning_depth > sink_ghostdag.blue_score {
             // During initial IBD the sink can be close to the global pruning point.
             return vec![];
         }
@@ -222,12 +220,7 @@ impl<
         }
 
         let tip_bs = self.ghostdag_store.get_blue_score(tip).unwrap();
-        // [Crescendo]: for new nodes syncing right after the fork, it might be difficult to determine whether the
-        // new pruning depth is expected, so we use the DAA score of the pruning point itself as an indicator.
-        // This means that in the first few days following the fork we err on the side of a shorter period which is
-        // a weaker requirement
-        let pruning_depth = self.pruning_depth.after();
-        self.is_pruning_point_in_pruning_depth(tip_bs, pp_candidate, pruning_depth)
+        self.is_pruning_point_in_pruning_depth(tip_bs, pp_candidate, self.pruning_depth)
     }
 
     // Function returns the pruning points on the path
@@ -352,11 +345,8 @@ mod tests {
             let ghostdag_k = params.ghostdag_k();
 
             // Assert P is not a multiple of F +- noise(K)
-            let mod_before = pruning_depth.before() % finality_depth.before();
-            assert!((ghostdag_k.before() as u64) < mod_before && mod_before < finality_depth.before() - ghostdag_k.before() as u64);
-
-            let mod_after = pruning_depth.after() % finality_depth.after();
-            assert!((ghostdag_k.after() as u64) < mod_after && mod_after < finality_depth.after() - ghostdag_k.after() as u64);
+            let mod_after = pruning_depth % finality_depth;
+            assert!((ghostdag_k as u64) < mod_after && mod_after < finality_depth - ghostdag_k as u64);
         }
     }
 }
