@@ -173,9 +173,10 @@ mod tests {
 
         // Test #6
         tests.push(Test {
-            tx: Transaction::new(2, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_COINBASE, 3, Vec::new()),
-            expected_id: "3fad809b11bd5a4af027aa4ac3fbde97e40624fd40965ba3ee1ee1b57521ad10",
-            expected_hash: "b4eb5f0cab5060bf336af5dcfdeb2198cc088b693b35c87309bd3dda04f1cfb9",
+            // Valid coinbase transactions have no inputs.
+            tx: Transaction::new(2, vec![], outputs.clone(), 54, subnets::SUBNETWORK_ID_COINBASE, 3, Vec::new()),
+            expected_id: "f16306e20f6a28576e526092979b2bf3fc53b933fa6482c71b7a06c489495910",
+            expected_hash: "968b9effa67001baa5a3016449211bf59a8db3721314bd8a64723eac2cff4552",
         });
 
         // Test #7
