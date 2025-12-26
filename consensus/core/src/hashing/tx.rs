@@ -1,6 +1,6 @@
 use super::HasherExtensions;
 use crate::tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput};
-use kaspa_hashes::{Hash, Hasher};
+use kaspa_hashes::{Hash, HasherBase};
 
 bitflags::bitflags! {
     /// A bitmask defining which transaction fields we want to encode and which to ignore.
@@ -28,15 +28,19 @@ pub fn hash_pre_crescendo(tx: &Transaction) -> Hash {
 
 /// Not intended for direct use by clients. Instead use `tx.id()`
 pub(crate) fn id(tx: &Transaction) -> TransactionId {
-    // Encode the transaction, replace signature script with an empty array, skip
-    // sigop counts and mass commitment and hash the result.
     let mut hasher = kaspa_hashes::TransactionID::new();
-    write_transaction(&mut hasher, tx, TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT);
+    write_transaction_for_transaction_id(&mut hasher, tx);
     hasher.finalize()
 }
 
+fn write_transaction_for_transaction_id<T: HasherBase>(hasher: &mut T, tx: &Transaction) {
+    // Encode the transaction, replace signature script with an empty array, skip
+    // sigop counts and mass commitment and hash the result.
+    write_transaction(hasher, tx, TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT)
+}
+
 /// Write the transaction into the provided hasher according to the encoding flags
-fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags: TxEncodingFlags) {
+fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_flags: TxEncodingFlags) {
     hasher.update(tx.version.to_le_bytes()).write_len(tx.inputs.len());
     for input in tx.inputs.iter() {
         // Write the tx input
@@ -77,7 +81,7 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
 }
 
 #[inline(always)]
-fn write_input<T: Hasher>(hasher: &mut T, input: &TransactionInput, encoding_flags: TxEncodingFlags) {
+fn write_input<T: HasherBase>(hasher: &mut T, input: &TransactionInput, encoding_flags: TxEncodingFlags) {
     write_outpoint(hasher, &input.previous_outpoint);
     if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT) {
         hasher.write_var_bytes(input.signature_script.as_slice()).update([input.sig_op_count]);
@@ -88,16 +92,33 @@ fn write_input<T: Hasher>(hasher: &mut T, input: &TransactionInput, encoding_fla
 }
 
 #[inline(always)]
-fn write_outpoint<T: Hasher>(hasher: &mut T, outpoint: &TransactionOutpoint) {
+fn write_outpoint<T: HasherBase>(hasher: &mut T, outpoint: &TransactionOutpoint) {
     hasher.update(outpoint.transaction_id).update(outpoint.index.to_le_bytes());
 }
 
 #[inline(always)]
-fn write_output<T: Hasher>(hasher: &mut T, output: &TransactionOutput) {
+fn write_output<T: HasherBase>(hasher: &mut T, output: &TransactionOutput) {
     hasher
         .update(output.value.to_le_bytes())
         .update(output.script_public_key.version().to_le_bytes())
         .write_var_bytes(output.script_public_key.script());
+}
+
+struct PreimageHasher {
+    buff: Vec<u8>,
+}
+
+impl HasherBase for PreimageHasher {
+    fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
+        self.buff.extend_from_slice(data.as_ref());
+        self
+    }
+}
+
+pub fn transaction_id_preimage(tx: &Transaction) -> Vec<u8> {
+    let mut hasher = PreimageHasher { buff: vec![] };
+    write_transaction_for_transaction_id(&mut hasher, tx);
+    hasher.buff
 }
 
 #[cfg(test)]
@@ -190,6 +211,12 @@ mod tests {
         for (i, test) in tests.iter().enumerate() {
             assert_eq!(test.tx.id(), Hash::from_str(test.expected_id).unwrap(), "transaction id failed for test {}", i + 1);
             assert_eq!(hash(&test.tx), Hash::from_str(test.expected_hash).unwrap(), "transaction hash failed for test {}", i + 1);
+
+            let preimage = transaction_id_preimage(&test.tx);
+            let mut hasher = kaspa_hashes::TransactionID::new();
+            hasher.update(&preimage);
+            let preimage_hash = hasher.finalize();
+            assert_eq!(preimage_hash, test.tx.id(), "transaction id preimage failed for test {}", i + 1);
         }
 
         // Avoid compiler warnings on the last clone
