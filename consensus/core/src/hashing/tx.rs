@@ -30,14 +30,8 @@ pub fn hash_pre_crescendo(tx: &Transaction) -> Hash {
 pub(crate) fn id(tx: &Transaction) -> TransactionId {
     // Encode the transaction, replace signature script with an empty array, skip
     // sigop counts and mass commitment and hash the result.
-
-    let encoding_flags = if tx.is_coinbase() {
-        TxEncodingFlags::FULL
-    } else {
-        TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT
-    };
     let mut hasher = kaspa_hashes::TransactionID::new();
-    write_transaction(&mut hasher, tx, encoding_flags);
+    write_transaction(&mut hasher, tx, TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT);
     hasher.finalize()
 }
 
