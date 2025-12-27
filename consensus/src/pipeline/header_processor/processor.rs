@@ -316,7 +316,7 @@ impl HeaderProcessor {
         let relations_read = self.relations_store.read();
         Arc::new(
             self.parents_manager
-                        .parents_at_level(header,0)
+                        .parents_at_level(header, 0)
                         .iter()
                         .copied()
                         // TODO(relaxed): revisit a more transparent filtering condition
