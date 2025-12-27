@@ -1,0 +1,98 @@
+# RustBridge Multi-Instance Test Configuration
+# This configuration runs 4 instances for testing the multi-instance feature
+# All instances share the same Kaspa node (kaspad_address)
+
+# ============================================
+# GLOBAL SETTINGS (shared by all instances)
+# ============================================
+
+# Kaspa node gRPC address (SHARED - all instances use the same node)
+# Format: "HOST:PORT" or "grpc://HOST:PORT"
+# Default HTTP gRPC port is typically 16110
+# Use 127.0.0.1 instead of localhost to force IPv4
+kaspad_address: "127.0.0.1:16110"
+
+# Block template wait time in milliseconds (shared)
+# How long to wait between checking for new block templates
+block_wait_time: 1000
+
+# Print statistics to console (shared)
+print_stats: true
+
+# Default log to file setting (can be overridden per-instance)
+log_to_file: true
+
+# Health check server port (optional, leave empty to disable)
+# This is a GLOBAL health check endpoint
+health_check_port: ""
+
+# Variable difficulty settings (defaults, can be overridden per-instance)
+var_diff: false
+shares_per_min: 20
+var_diff_stats: false
+
+# Power-of-2 difficulty clamping (default, can be overridden per-instance)
+pow2_clamp: true
+
+# Extranonce size (auto-detected per client, this is just for backward compatibility)
+extranonce_size: 2
+
+# ============================================
+# INSTANCE CONFIGURATIONS
+# ============================================
+# Each instance runs independently with its own:
+# - Stratum port (REQUIRED, must be unique)
+# - Minimum share difficulty (REQUIRED)
+# - Prometheus port (OPTIONAL, per-instance)
+# - Log to file (OPTIONAL, per-instance, defaults to global setting)
+
+instances:
+  # Instance 1: Low difficulty pool (for smaller miners or testing)
+  - stratum_port: ":5555"
+    min_share_diff: 2048
+    prom_port: ":2114"
+    log_to_file: true
+
+  # Instance 2: Medium difficulty pool
+  - stratum_port: ":5556"
+    min_share_diff: 4096
+    prom_port: ":2115"
+    log_to_file: true
+
+  # Instance 3: High difficulty pool (for powerful miners)
+  - stratum_port: ":5557"
+    min_share_diff: 8192
+    prom_port: ":2116"
+    log_to_file: true
+
+  # Instance 4: Very high difficulty pool (for very powerful miners)
+  - stratum_port: ":5558"
+    min_share_diff: 16384
+    prom_port: ":2117"
+    log_to_file: true
+    # Optional: instance-specific overrides
+    # var_diff: true
+    # shares_per_min: 30
+
+# ============================================
+# TESTING NOTES
+# ============================================
+# To test this configuration:
+# 1. Ensure your Kaspa node is running on 127.0.0.1:16110
+# 2. Run: cargo run --release (or ./target/release/rustbridge.exe on Windows)
+# 3. You should see logs showing all 4 instances starting:
+#    - [Instance 1] Starting on stratum port :5555
+#    - [Instance 2] Starting on stratum port :5556
+#    - [Instance 3] Starting on stratum port :5557
+#    - [Instance 4] Starting on stratum port :5558
+# 4. Connect miners to:
+#    - Instance 1: localhost:5555 (min_share_diff: 2048) - Low difficulty
+#    - Instance 2: localhost:5556 (min_share_diff: 4096) - Medium difficulty
+#    - Instance 3: localhost:5557 (min_share_diff: 8192) - High difficulty
+#    - Instance 4: localhost:5558 (min_share_diff: 16384) - Very high difficulty
+# 5. Check Prometheus metrics:
+#    - Instance 1: http://localhost:2114/metrics
+#    - Instance 2: http://localhost:2115/metrics
+#    - Instance 3: http://localhost:2116/metrics
+#    - Instance 4: http://localhost:2117/metrics
+# 6. All logs will include instance identifiers like [Instance 1], [Instance 2], etc.

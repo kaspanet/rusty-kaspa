@@ -1,0 +1,62 @@
+[package]
+name = "kaspa-stratum-bridge"
+version = "1.0.1"
+edition = "2021"
+authors = ["Kaspa developers"]
+description = "Kaspa Stratum Bridge - Mining pool connectivity for Kaspa ASIC miners"
+license = "ISC"
+repository = "https://github.com/kaspanet/rusty-kaspa"
+
+[dependencies]
+# Kaspa dependencies - using workspace versions
+kaspa-consensus-core = { workspace = true }
+kaspa-hashes = { workspace = true }
+kaspa-pow = { workspace = true }
+kaspa-addresses = { workspace = true }
+kaspa-rpc-core = { workspace = true }
+kaspa-rpc-service = { workspace = true }
+kaspa-grpc-client = { workspace = true }
+kaspa-notify = { workspace = true }
+kaspa-core = { workspace = true }
+kaspa-utils = { workspace = true }
+kaspad = { workspace = true }
+
+# External dependencies - using workspace versions where available
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+hex = { workspace = true }
+num-traits = { workspace = true }
+async-trait = { workspace = true }
+once_cell = { workspace = true }
+futures-util = { workspace = true }
+parking_lot = { workspace = true }
+regex = { workspace = true }
+uuid = { workspace = true }
+
+# CLI
+clap = { workspace = true, features = ["derive"] }
+
+# External dependencies not in workspace (add specific versions)
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+blake2 = "0.10"
+num-bigint = "0.4"
+prometheus = "0.13"
+yaml-rust = "0.4"
+faster-hex = "0.1"
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Console"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[[bin]]
+name = "kaspa-stratum-bridge"
+path = "src/main.rs"
+
+[[bin]]
+name = "stratum-bridge"
+path = "src/main.rs"
