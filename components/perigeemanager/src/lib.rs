@@ -13,7 +13,7 @@ use log::debug;
 use parking_lot::Mutex;
 use rand::{seq::SliceRandom, thread_rng};
 
-const PERCENTILE_RANK: f64 = 0.9;
+pub type PeerScore = (u64, u64, u64, u64, u64, u64, u64); // (p90, p95, p97, p99, min, max, mean)
 
 #[derive(Debug, Clone)]
 pub struct PerigeeConfig {
@@ -419,7 +419,7 @@ impl PerigeeManager {
         perigee_routers.iter().filter(|r| r.connection_started() > self.round_start).map(|r| r.key()).collect()
     }
 
-    fn rate_peer(&self, values: &[u64]) -> (u64, u64, u64, u64, u64, u64, u64) {
+    fn rate_peer(&self, values: &[u64]) -> PeerScore {
         if values.is_empty() {
             return (u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX);
         }
@@ -442,7 +442,7 @@ impl PerigeeManager {
         (p90, p95, p97_5, p98_25, p99_125, p99_6875, last)
     }
 
-    fn get_top_ranked_peer(&self, peer_table: &HashMap<PeerKey, Vec<u64>>) -> (Option<PeerKey>, (u64, u64, u64, u64, u64, u64, u64)) {
+    fn get_top_ranked_peer(&self, peer_table: &HashMap<PeerKey, Vec<u64>>) -> (Option<PeerKey>, PeerScore) {
         let mut best_peer: Option<PeerKey> = None;
         let mut best_score = (u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX);
         for (peer, delays) in peer_table.iter() {

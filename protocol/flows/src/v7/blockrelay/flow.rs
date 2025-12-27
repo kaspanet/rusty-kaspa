@@ -100,7 +100,6 @@ impl HandleRelayInvsFlow {
             // Loop over incoming block inv messages
             let inv = self.invs_route.dequeue().await?;
             let session = self.ctx.consensus().unguarded_session();
-            let is_nearly_synced = !self.ctx.is_ibd_running() && self.ctx.should_mine(&session).await;
             let is_ibd_in_transitional_state = session.async_is_consensus_in_transitional_ibd_state().await;
 
             match session.async_get_block_status(inv.hash).await {
@@ -111,7 +110,7 @@ impl HandleRelayInvsFlow {
                 }
                 _ => {
                     debug!("Relay block {} already exists, continuing...", inv.hash);
-                    if should_signal_perigee(&self.ctx, &inv, is_nearly_synced) {
+                    if should_signal_perigee(&self.ctx, &inv, self.ctx.is_ibd_running()) {
                         self.spawn_perigee_timestamp_signal(inv.hash, inv.timestamp.unwrap(), false);
                     }
                     continue;
@@ -121,21 +120,21 @@ impl HandleRelayInvsFlow {
             match self.ctx.get_orphan_roots_if_known(&session, inv.hash).await {
                 OrphanOutput::Unknown => {} // Keep processing this inv
                 OrphanOutput::NoRoots(_) => {
-                    if should_signal_perigee(&self.ctx, &inv, is_nearly_synced) {
+                    if should_signal_perigee(&self.ctx, &inv, self.ctx.is_ibd_running()) {
                         self.spawn_perigee_timestamp_signal(inv.hash, inv.timestamp.unwrap(), false);
                     }
                 } // Existing orphan w/o missing roots
                 OrphanOutput::Roots(roots) => {
                     // Known orphan with roots to enqueue
                     self.enqueue_orphan_roots(inv.hash, roots, inv.known_within_range);
-                    if should_signal_perigee(&self.ctx, &inv, is_nearly_synced) {
+                    if should_signal_perigee(&self.ctx, &inv, self.ctx.is_ibd_running()) {
                         self.spawn_perigee_timestamp_signal(inv.hash, inv.timestamp.unwrap(), false);
                     }
                     continue;
                 }
             }
 
-            if !is_nearly_synced {
+            if self.ctx.is_ibd_running() && !self.ctx.should_mine(&session).await {
                 // Note: If the node is considered nearly synced we continue processing relay blocks even though an IBD is in progress.
                 // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks.
                 debug!("Got relay block {} while in IBD and the node is out of sync, continuing...", inv.hash);
@@ -145,7 +144,7 @@ impl HandleRelayInvsFlow {
             // We keep the request scope alive until consensus processes the block
             let Some((block, request_scope)) = self.request_block(inv.hash, self.msg_route.id()).await? else {
                 debug!("Relay block {} was already requested from another peer, continuing...", inv.hash);
-                if should_signal_perigee(&self.ctx, &inv, is_nearly_synced) {
+                if should_signal_perigee(&self.ctx, &inv, self.ctx.is_ibd_running()) {
                     self.spawn_perigee_timestamp_signal(inv.hash, inv.timestamp.unwrap(), false);
                 }
                 continue;
@@ -210,7 +209,7 @@ impl HandleRelayInvsFlow {
                         }
                         ancestor_batch
                     } else {
-                        if should_signal_perigee(&self.ctx, &inv, is_nearly_synced) {
+                        if should_signal_perigee(&self.ctx, &inv, self.ctx.is_ibd_running()) {
                             self.spawn_perigee_timestamp_signal(inv.hash, inv.timestamp.unwrap(), false);
                         }
                         continue;
@@ -242,7 +241,7 @@ impl HandleRelayInvsFlow {
             let router = self.router.clone();
             tokio::spawn(async move {
                 ctx.on_new_block(&session, ancestor_batch, block, virtual_state_task).await;
-                if should_signal_perigee(&ctx, &inv, is_nearly_synced) {
+                if should_signal_perigee(&ctx, &inv, ctx.is_ibd_running()) {
                     ctx.maybe_add_perigee_timestamp(router, inv.hash, inv.timestamp.unwrap(), true).await;
                 }
                 ctx.log_block_event(BlockLogEvent::Relay(inv.hash));
@@ -405,6 +404,6 @@ impl HandleRelayInvsFlow {
     }
 }
 
-fn should_signal_perigee(ctx: &FlowContext, inv: &RelayInvMessage, is_nearly_synced: bool) -> bool {
-    !inv.is_orphan_root && ctx.is_perigee_active() && is_nearly_synced
+fn should_signal_perigee(ctx: &FlowContext, inv: &RelayInvMessage, is_ibd_running: bool) -> bool {
+    !inv.is_orphan_root && ctx.is_perigee_active() && !is_ibd_running
 }
