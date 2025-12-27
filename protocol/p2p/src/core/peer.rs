@@ -2,6 +2,29 @@ use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_utils::networking::{IpAddress, PeerId};
 use std::{fmt::Display, net::SocketAddr, sync::Arc, time::Instant};
 
+#[derive(Copy, Debug, Clone)]
+pub enum PeerOutboundType {
+    Perigee,
+    RandomGraph,
+    /// this is a user-specifed persistent connection, established either via command line `--connectpeer`, or the add_peer RPC (whereby is_permanent=true).
+    /// These peers do not count towards the outbound limit, if they disconnect, the node will keep trying to reconnect to them indefinitely.
+    Persistent,
+    /// this is a user-specifed temporary connection, established either via command line `--addpeer`, or the add_peer RPC (whereby is_permanent=false).
+    /// These peers do not count towards the outbound limit, if they disconnect, no effort will be made to reconnect.
+    Temporary,
+}
+
+impl Display for PeerOutboundType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PeerOutboundType::Perigee => write!(f, "perigee"),
+            PeerOutboundType::RandomGraph => write!(f, "random graph"),
+            PeerOutboundType::Persistent => write!(f, "persistent"),
+            PeerOutboundType::Temporary => write!(f, "temporary"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct PeerProperties {
     pub user_agent: String,
@@ -17,7 +40,7 @@ pub struct PeerProperties {
 pub struct Peer {
     identity: PeerId,
     net_address: SocketAddr,
-    is_outbound: bool,
+    outbound_type: Option<PeerOutboundType>,
     connection_started: Instant,
     properties: Arc<PeerProperties>,
     last_ping_duration: u64,
@@ -27,12 +50,12 @@ impl Peer {
     pub fn new(
         identity: PeerId,
         net_address: SocketAddr,
-        is_outbound: bool,
+        outbound_type: Option<PeerOutboundType>,
         connection_started: Instant,
         properties: Arc<PeerProperties>,
         last_ping_duration: u64,
     ) -> Self {
-        Self { identity, net_address, is_outbound, connection_started, properties, last_ping_duration }
+        Self { identity, net_address, outbound_type, connection_started, properties, last_ping_duration }
     }
 
     /// Internal identity of this peer
@@ -49,9 +72,29 @@ impl Peer {
         self.into()
     }
 
+    pub fn outbound_type(&self) -> Option<PeerOutboundType> {
+        self.outbound_type
+    }
+
     /// Indicates whether this connection is an outbound connection
     pub fn is_outbound(&self) -> bool {
-        self.is_outbound
+        self.outbound_type.is_some()
+    }
+
+    pub fn is_temporary(&self) -> bool {
+        matches!(self.outbound_type, Some(PeerOutboundType::Temporary))
+    }
+
+    pub fn is_persistent(&self) -> bool {
+        matches!(self.outbound_type, Some(PeerOutboundType::Persistent))
+    }
+
+    pub fn is_perigee(&self) -> bool {
+        matches!(self.outbound_type, Some(PeerOutboundType::Perigee))
+    }
+
+    pub fn is_random_graph(&self) -> bool {
+        matches!(self.outbound_type, Some(PeerOutboundType::RandomGraph))
     }
 
     pub fn time_connected(&self) -> u64 {
