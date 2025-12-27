@@ -24,6 +24,9 @@ INTEGRATION_PLAN.md
 SETUP_RUSTY_KASPA.md
 README.md
 
+!docs/
+!docs/README.md
+
 # Configuration files (will use rusty-kaspa's instead)
 rustfmt.toml
 clippy.toml
