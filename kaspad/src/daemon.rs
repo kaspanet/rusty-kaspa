@@ -432,8 +432,8 @@ Do you confirm? (y/n)";
 
                     //  update the version to one higher:
                     mcms.set_version(6).unwrap();
-                    info!("deprecated stores have been removed from database, storage will be gradually cleared in due time.");
-                    info!("database is now in version 6");
+                    info!("Deprecated stores have been removed from database, storage will be gradually cleared in due time.");
+                    info!("Database is now in version 6");
                 }
                 None => {
                     is_db_reset_needed = request_database_deletion_approval(args.yes);
