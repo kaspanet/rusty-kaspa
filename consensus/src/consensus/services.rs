@@ -16,7 +16,6 @@ use crate::{
         transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager, window::SampledWindowManager,
     },
 };
-use itertools::Itertools;
 use kaspa_consensus_core::mass::MassCalculator;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use std::sync::{atomic::AtomicBool, Arc};
@@ -81,9 +80,7 @@ impl ConsensusServices {
         let params = &config.params;
 
         let statuses_service = MTStatusesService::new(storage.statuses_store.clone());
-        let relations_services =
-            (0..=params.max_block_level).map(|level| MTRelationsService::new(storage.relations_stores.clone(), level)).collect_vec();
-        let relations_service = relations_services[0].clone();
+        let relations_service = MTRelationsService::new(storage.relations_store.clone());
         let reachability_service = MTReachabilityService::new(storage.reachability_store.clone());
         let dag_traversal_manager = DagTraversalManager::new(
             params.genesis.hash,
@@ -119,7 +116,7 @@ impl ConsensusServices {
             params.genesis.hash,
             params.ghostdag_k(),
             storage.ghostdag_store.clone(),
-            relations_services[0].clone(),
+            relations_service.clone(),
             storage.headers_store.clone(),
             reachability_service.clone(),
         );
