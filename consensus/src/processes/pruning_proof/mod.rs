@@ -26,7 +26,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::info;
-use kaspa_database::{prelude::StoreResultExtensions, utils::DbLifetime};
+use kaspa_database::{prelude::StoreResultExt, utils::DbLifetime};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use thiserror::Error;

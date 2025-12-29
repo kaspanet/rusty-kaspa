@@ -8,9 +8,7 @@ use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
 use kaspa_core::{debug, time::unix_now, warn};
 use kaspa_database::{
-    prelude::{
-        BatchDbWriter, CachePolicy, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB,
-    },
+    prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExt, DB},
     registry::DatabaseStorePrefixes,
 };
 

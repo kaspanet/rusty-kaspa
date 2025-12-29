@@ -27,27 +27,42 @@ pub enum StoreError {
 
 pub type StoreResult<T> = std::result::Result<T, StoreError>;
 
-pub trait ErrorTraits {
+/// Predicates that classify store errors into common semantic buckets.
+///
+/// This is used by result extension methods (e.g. `optional`, `idempotent`)
+/// to treat certain expected error conditions as benign outcomes.
+pub trait StoreErrorPredicates {
+    /// Returns `true` if this error represents a missing entry (e.g. key not found).
     fn is_key_not_found(&self) -> bool;
-    fn is_key_already_exists(&self) -> bool;
+
+    /// Returns `true` if this error represents a duplicate write (e.g. key/hash already exists).
+    fn is_already_exists(&self) -> bool;
 }
 
-impl ErrorTraits for StoreError {
+impl StoreErrorPredicates for StoreError {
     fn is_key_not_found(&self) -> bool {
         matches!(self, StoreError::KeyNotFound(_))
     }
 
-    fn is_key_already_exists(&self) -> bool {
+    fn is_already_exists(&self) -> bool {
         matches!(self, StoreError::KeyAlreadyExists(_) | StoreError::HashAlreadyExists(_))
     }
 }
 
-pub trait StoreResultExtensions<T, E: ErrorTraits> {
-    /// Unwrap or assert that the error is key not fund in which case `None` is returned
+/// Extension methods for store results.
+pub trait StoreResultExt<T, E: StoreErrorPredicates> {
+    /// Converts a "key not found" error into absence.
+    ///
+    /// Mapping:
+    /// - `Ok(v)` -> `Ok(Some(v))`
+    /// - `Err(e)` where `e.is_key_not_found()` -> `Ok(None)`
+    /// - any other `Err(e)` -> `Err(e)`
+    ///
+    /// This method does **not** panic.
     fn optional(self) -> Result<Option<T>, E>;
 }
 
-impl<T, E: ErrorTraits> StoreResultExtensions<T, E> for Result<T, E> {
+impl<T, E: StoreErrorPredicates> StoreResultExt<T, E> for Result<T, E> {
     fn optional(self) -> Result<Option<T>, E> {
         match self {
             Ok(value) => Ok(Some(value)),
@@ -57,16 +72,24 @@ impl<T, E: ErrorTraits> StoreResultExtensions<T, E> for Result<T, E> {
     }
 }
 
-pub trait StoreResultEmptyTuple {
-    /// Unwrap or assert that the error is key already exists
-    fn idempotent(self) -> StoreResult<()>;
+/// Extension methods for unit (`()`) store results, typically produced by write operations.
+pub trait StoreResultUnitExt<E: StoreErrorPredicates> {
+    /// Treats a duplicate-write error as success, making the operation idempotent.
+    ///
+    /// Mapping:
+    /// - `Ok(())` -> `Ok(())`
+    /// - `Err(e)` where `e.is_already_exists()` -> `Ok(())`
+    /// - any other `Err(e)` -> `Err(e)`
+    ///
+    /// This method does **not** panic.
+    fn idempotent(self) -> Result<(), E>;
 }
 
-impl StoreResultEmptyTuple for StoreResult<()> {
-    fn idempotent(self) -> StoreResult<()> {
+impl<E: StoreErrorPredicates> StoreResultUnitExt<E> for Result<(), E> {
+    fn idempotent(self) -> Result<(), E> {
         match self {
             Ok(()) => Ok(()),
-            Err(err) if err.is_key_already_exists() => Ok(()),
+            Err(err) if err.is_already_exists() => Ok(()),
             Err(err) => Err(err),
         }
     }

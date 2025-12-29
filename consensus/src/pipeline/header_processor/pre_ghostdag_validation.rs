@@ -8,7 +8,7 @@ use kaspa_consensus_core::blockstatus::BlockStatus::StatusInvalid;
 use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::BlockLevel;
 use kaspa_core::time::unix_now;
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_pow::calc_level_from_pow;
 
 impl HeaderProcessor {

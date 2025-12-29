@@ -15,7 +15,7 @@ use kaspa_consensus_core::{
     blockhash::BlockHashExtensions,
     errors::pruning::{PruningImportError, PruningImportResult},
 };
-use kaspa_database::prelude::StoreResultEmptyTuple;
+use kaspa_database::prelude::StoreResultUnitExt;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 

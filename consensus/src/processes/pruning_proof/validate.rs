@@ -12,7 +12,7 @@ use kaspa_consensus_core::{
     BlockLevel,
 };
 use kaspa_core::info;
-use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreResultExt, StoreResultUnitExt};
 use kaspa_hashes::Hash;
 use kaspa_pow::{calc_block_level, calc_block_level_check_pow};
 use kaspa_utils::vec::VecExtensions;

@@ -75,7 +75,7 @@ use kaspa_consensus_notify::{
 };
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, time::unix_now, trace, warn};
-use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::prelude::{StoreError, StoreResultExt, StoreResultUnitExt};
 use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::MuHash;
 use kaspa_notify::{events::EventType, notifier::Notify};

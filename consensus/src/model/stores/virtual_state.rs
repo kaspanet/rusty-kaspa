@@ -7,7 +7,7 @@ use kaspa_consensus_core::{
     block::VirtualStateApproxId, coinbase::BlockRewardData, config::genesis::GenesisBlock, tx::TransactionId,
     utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
-use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter, StoreResultExtensions};
+use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter, StoreResultExt};
 use kaspa_database::prelude::{CachePolicy, StoreResult};
 use kaspa_database::prelude::{StoreError, DB};
 use kaspa_database::registry::DatabaseStorePrefixes;

@@ -8,7 +8,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::debug;
-use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions, DB};
+use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultExt, StoreResultUnitExt, DB};
 use kaspa_hashes::Hash;
 
 use crate::{

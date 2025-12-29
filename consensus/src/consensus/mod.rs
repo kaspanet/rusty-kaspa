@@ -85,7 +85,7 @@ use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
 use kaspa_core::info;
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;

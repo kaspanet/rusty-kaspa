@@ -15,7 +15,7 @@ use itertools::{
 };
 use kaspa_consensus_core::config::Config;
 use kaspa_core::{debug, info, task::tick::TickService, time::unix_now, warn};
-use kaspa_database::prelude::{CachePolicy, StoreResultExtensions, DB};
+use kaspa_database::prelude::{CachePolicy, StoreResultExt, DB};
 use kaspa_utils::networking::IpAddress;
 use local_ip_address::list_afinet_netifas;
 use parking_lot::Mutex;

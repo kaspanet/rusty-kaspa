@@ -23,13 +23,13 @@ pub enum ReachabilityError {
     BadQuery,
 }
 
-impl kaspa_database::prelude::ErrorTraits for ReachabilityError {
+impl kaspa_database::prelude::StoreErrorPredicates for ReachabilityError {
     fn is_key_not_found(&self) -> bool {
         matches!(self, ReachabilityError::StoreError(err) if err.is_key_not_found())
     }
 
-    fn is_key_already_exists(&self) -> bool {
-        matches!(self, ReachabilityError::StoreError(err) if err.is_key_already_exists())
+    fn is_already_exists(&self) -> bool {
+        matches!(self, ReachabilityError::StoreError(err) if err.is_already_exists())
     }
 }
 

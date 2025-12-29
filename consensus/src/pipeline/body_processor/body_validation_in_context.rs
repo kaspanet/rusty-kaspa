@@ -11,7 +11,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::block::Block;
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use once_cell::unsync::Lazy;
 use std::sync::Arc;
