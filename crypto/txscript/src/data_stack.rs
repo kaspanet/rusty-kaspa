@@ -77,6 +77,7 @@ impl Index<usize> for Stack {
     }
 }
 
+#[cfg(test)]
 impl From<Vec<Vec<u8>>> for Stack {
     fn from(inner: Vec<Vec<u8>>) -> Self {
         // TODO: Replace with the correct max element size after the fork.
@@ -251,8 +252,8 @@ impl Stack {
     }
 
     #[cfg(test)]
-    pub(crate) fn get_inner(&self) -> Vec<Vec<u8>> {
-        self.inner.clone()
+    pub(crate) fn inner(&self) -> &[Vec<u8>] {
+        &self.inner
     }
 
     #[inline]

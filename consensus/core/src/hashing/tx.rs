@@ -1,5 +1,8 @@
 use super::HasherExtensions;
-use crate::tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput};
+use crate::{
+    mass::transaction_estimated_serialized_size,
+    tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
+};
 use kaspa_hashes::{Hash, HasherBase};
 
 bitflags::bitflags! {
@@ -116,7 +119,7 @@ impl HasherBase for PreimageHasher {
 }
 
 pub fn transaction_id_preimage(tx: &Transaction) -> Vec<u8> {
-    let mut hasher = PreimageHasher { buff: vec![] };
+    let mut hasher = PreimageHasher { buff: Vec::with_capacity(transaction_estimated_serialized_size(tx) as usize) };
     write_transaction_for_transaction_id(&mut hasher, tx);
     hasher.buff
 }

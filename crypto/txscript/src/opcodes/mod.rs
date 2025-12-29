@@ -380,12 +380,10 @@ opcode_list! {
                 return Err(TxScriptError::InvalidState("expected boolean".to_string()));
             }
             cond = match cond_buf.pop() {
-                Some(stack_cond) => match stack_cond {
-                    1 => OpCond::True,
-                    _ => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
-                }
-                None => OpCond::False,
-            }
+              Some(1) => OpCond::True,
+              Some(_) => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
+              None => OpCond::False,
+            };
         }
         vm.cond_stack.push(cond);
         Ok(())
@@ -399,10 +397,8 @@ opcode_list! {
                 return Err(TxScriptError::InvalidState("expected boolean".to_string()));
             }
             cond = match cond_buf.pop() {
-                Some(stack_cond) => match stack_cond {
-                    1 => OpCond::False,
-                    _ => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
-                }
+                Some(1) => OpCond::False,
+                Some(_) => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
                 None => OpCond::True,
             }
         }
@@ -555,7 +551,7 @@ opcode_list! {
     opcode OpInvert<0x83, 1>(self, vm){
         if vm.flags.covenants_enabled{
             let data = vm.dstack.pop()?;
-            let r: Vec<u8> = data.iter().map(|b| !b).collect();
+            let r: Vec<u8> = data.into_iter().map(|b| !b).collect();
             vm.dstack.push(r)
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
@@ -569,7 +565,7 @@ opcode_list! {
             if a.len() != b.len() {
                 return Err(TxScriptError::InvalidState("AND operands must be of equal length".to_string()));
             }
-            let r: Vec<u8> = a.iter().zip(b.iter()).map(|(a_byte, b_byte)| a_byte & b_byte).collect();
+            let r: Vec<u8> = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte & b_byte).collect();
             vm.dstack.push(r)
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
@@ -583,7 +579,7 @@ opcode_list! {
             if a.len() != b.len() {
                 return Err(TxScriptError::InvalidState("OR operands must be of equal length".to_string()));
             }
-            let r: Vec<u8> = a.iter().zip(b.iter()).map(|(a_byte, b_byte)| a_byte | b_byte).collect();
+            let r: Vec<u8> = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte | b_byte).collect();
             vm.dstack.push(r)
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
@@ -597,7 +593,7 @@ opcode_list! {
             if a.len() != b.len() {
                 return Err(TxScriptError::InvalidState("XOR operands must be of equal length".to_string()));
             }
-            let r: Vec<u8> = a.iter().zip(b.iter()).map(|(a_byte, b_byte)| a_byte ^ b_byte).collect();
+            let r: Vec<u8> = a.into_iter().zip(b.into_iter()).map(|(a_byte, b_byte)| a_byte ^ b_byte).collect();
             vm.dstack.push(r)
         } else {
             Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
@@ -718,7 +714,6 @@ opcode_list! {
     opcode OpMod<0x97, 1>(self, vm){
         if vm.flags.covenants_enabled{
             let [ a, b ]: [i64; 2] = vm.dstack.pop_items()?;
-            // TODO (before merge): Check with other implementations if they handle negative numbers differently.
             let r = a.checked_rem(b).ok_or_else(|| TxScriptError::InvalidState("Illegal modulo by zero".to_string()))?;
             vm.dstack.push_item(r)?;
             Ok(())
@@ -1216,7 +1211,7 @@ opcode_list! {
                     .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
                 push_number(output.value.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(e.to_string()))?, vm)
             },
-            _ => Err(TxScriptError::InvalidSource("OpOutputAmount only applies to transaction inputs".to_string()))
+            _ => Err(TxScriptError::InvalidSource("OpTxOutputAmount only applies to transaction inputs".to_string()))
         }
     }
     opcode OpTxOutputSpk<0xc3, 1>(self, vm) {
@@ -1228,7 +1223,7 @@ opcode_list! {
                     .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
                 vm.dstack.push(output.script_public_key.to_bytes())
             },
-            _ => Err(TxScriptError::InvalidSource("OpOutputSpk only applies to transaction inputs".to_string()))
+            _ => Err(TxScriptError::InvalidSource("OpTxOutputSpk only applies to transaction inputs".to_string()))
         }
     }
 
@@ -3471,10 +3466,10 @@ mod test {
 
                             // Check the result matches expectations
                             if let Some(ref expected_spk) = expected_result.expected_spk {
-                                assert_eq!(vm.dstack.get_inner(), vec![expected_spk.clone()]);
+                                assert_eq!(vm.dstack.inner(), vec![expected_spk.clone()]);
                             }
                             if let Some(ref expected_amount) = expected_result.expected_amount {
-                                assert_eq!(vm.dstack.get_inner(), vec![expected_amount.clone()]);
+                                assert_eq!(vm.dstack.inner(), vec![expected_amount.clone()]);
                             }
                             vm.dstack.clear();
                         }
@@ -3681,7 +3676,7 @@ mod test {
                 // Test input count
                 op_input_count.execute(&mut vm).unwrap();
                 assert_eq!(
-                    vm.dstack.get_inner(),
+                    vm.dstack.inner(),
                     vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(input_count as i64)).unwrap()],
                     "Input count mismatch for {} inputs",
                     input_count
@@ -3691,7 +3686,7 @@ mod test {
                 // Test output count
                 op_output_count.execute(&mut vm).unwrap();
                 assert_eq!(
-                    vm.dstack.get_inner(),
+                    vm.dstack.inner(),
                     vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(output_count as i64)).unwrap()],
                     "Output count mismatch for {} outputs",
                     output_count
