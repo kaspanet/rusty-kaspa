@@ -750,6 +750,7 @@ impl ConsensusApi for Consensus {
         // PRUNE SAFETY: retention root is always a current or past pruning point which its header is kept permanently
         let retention_period_root_score = self.headers_store.get_daa_score(self.get_retention_period_root()).unwrap();
         let virtual_score = self.get_virtual_daa_score();
+        // TODO(relaxed): change virtual's 0 daa initialization, and revert to normal subtraction
         let header_count = self
             .headers_store
             .get_daa_score(self.get_headers_selected_tip())
@@ -1429,34 +1430,55 @@ impl ConsensusApi for Consensus {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
 
-    /// Test for issue #769: Integer overflow in estimate_block_count()
-    /// Verifies that saturating_sub prevents panic when virtual_score < retention_period_root_score
+    use kaspa_consensus_core::api::ConsensusApi;
+    use kaspa_consensus_core::{config::params::MAINNET_PARAMS, config::ConfigBuilder};
+    use kaspa_hashes::Hash;
+    use rocksdb::WriteBatch;
+
+    use crate::{
+        consensus::test_consensus::TestConsensus,
+        model::stores::{
+            headers::HeaderStore,
+            virtual_state::{VirtualStateStore, VirtualStateStoreReader},
+        },
+        test_helpers::header_from_precomputed_hash,
+    };
+
     #[test]
-    fn test_estimate_block_count_overflow_protection() {
-        // Test the overflow scenario: virtual_score < retention_period_root_score
-        // This simulates the edge case that caused the panic in issue #769
+    fn test_estimate_block_count_does_not_panic_on_underflow() {
+        let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
+        let tc = TestConsensus::new(&config);
+        let consensus = tc.consensus_clone();
 
-        let virtual_score: u64 = 100;
-        let retention_period_root_score: u64 = 200; // Larger than virtual_score
+        let genesis_hash = config.genesis.hash;
+        let retention_period_root = Hash::from_u64_word(1);
 
-        // Before fix: This would panic with "attempt to subtract with overflow"
-        // After fix: saturating_sub returns 0 instead of panicking
-        let block_count = virtual_score.saturating_sub(retention_period_root_score);
+        let mut retention_header = header_from_precomputed_hash(retention_period_root, vec![genesis_hash]);
+        retention_header.daa_score = u64::MAX;
+        retention_header.bits = config.genesis.bits;
+        retention_header.timestamp = config.genesis.timestamp;
+        retention_header.blue_score = 0;
+        retention_header.blue_work = Default::default();
+        retention_header.pruning_point = genesis_hash;
+        consensus.headers_store.insert(retention_period_root, Arc::new(retention_header), 0).unwrap();
 
-        // Verify that saturating_sub returns 0 (not a panic) when subtraction would overflow
-        assert_eq!(block_count, 0, "saturating_sub should return 0 when virtual_score < retention_period_root_score");
+        {
+            let mut batch = WriteBatch::default();
+            consensus.pruning_point_store.write().set_retention_period_root(&mut batch, retention_period_root).unwrap();
+            consensus.db.write(batch).unwrap();
+        }
 
-        // Test normal case: virtual_score > retention_period_root_score
-        let virtual_score_normal: u64 = 200;
-        let retention_period_root_score_normal: u64 = 100;
-        let block_count_normal = virtual_score_normal.saturating_sub(retention_period_root_score_normal);
-        assert_eq!(block_count_normal, 100, "saturating_sub should work normally when no overflow");
+        {
+            let mut virtual_write = consensus.virtual_stores.write();
+            let mut state = (*virtual_write.state.get().unwrap()).clone();
+            state.daa_score = 100;
+            virtual_write.state.set(Arc::new(state)).unwrap();
+        }
 
-        // Test edge case: virtual_score == retention_period_root_score
-        let virtual_score_equal: u64 = 150;
-        let retention_period_root_score_equal: u64 = 150;
-        let block_count_equal = virtual_score_equal.saturating_sub(retention_period_root_score_equal);
-        assert_eq!(block_count_equal, 0, "saturating_sub should return 0 when values are equal");
+        let counts = consensus.estimate_block_count();
+        assert_eq!(counts.block_count, 0);
+        assert_eq!(counts.header_count, 0);
     }
 }

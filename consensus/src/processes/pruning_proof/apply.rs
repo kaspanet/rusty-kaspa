@@ -141,6 +141,10 @@ impl PruningProofManager {
         let virtual_state = Arc::new(VirtualState {
             parents: virtual_parents.clone(),
             ghostdag_data: self.ghostdag_manager.ghostdag(&virtual_parents),
+            daa_score: pruning_point_header.daa_score,
+            bits: pruning_point_header.bits,
+            past_median_time: pruning_point_header.timestamp,
+            mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(pruning_point)),
             ..VirtualState::default()
         });
         self.virtual_stores.write().state.set(virtual_state).unwrap();
