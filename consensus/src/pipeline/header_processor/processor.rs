@@ -319,7 +319,6 @@ impl HeaderProcessor {
                 .direct_parents()
                         .iter()
                         .copied()
-                        // TODO(relaxed): revisit a more transparent filtering condition
                         .filter(|&parent| relations_read.has(parent).unwrap())
                         .collect_vec()
                         // This kicks-in only for trusted blocks. If an ordinary block is 
