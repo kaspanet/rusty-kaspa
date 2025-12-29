@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use kaspa_database::prelude::CachePolicy;
 use kaspa_database::prelude::StoreResult;
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem};
 use kaspa_database::registry::DatabaseStorePrefixes;
@@ -48,7 +48,7 @@ impl PruningMetaStores {
     /// Read the flag; default to true if missing - this is important because a node upgrading should have this value true
     /// as all non staging consensuses had a stable utxoset previously
     pub fn pruning_utxoset_stable_flag(&self) -> bool {
-        self.utxoset_stable_flag_access.read().unwrap_option().unwrap_or(true)
+        self.utxoset_stable_flag_access.read().optional().unwrap().unwrap_or(true)
     }
 
     /// Represents blocks in the anticone of the current pruning point which may lack a block body
@@ -61,7 +61,7 @@ impl PruningMetaStores {
     /// Default to empty if missing - this is important because a node upgrading should have this value empty
     /// since all non staging consensuses had no missing body anticone previously
     pub fn get_body_missing_anticone(&self) -> Vec<Hash> {
-        self.body_missing_anticone_blocks.read().unwrap_option().unwrap_or(vec![])
+        self.body_missing_anticone_blocks.read().optional().unwrap().unwrap_or(vec![])
     }
 
     // check if there are any body missing blocks remaining in the anticone of the current pruning point

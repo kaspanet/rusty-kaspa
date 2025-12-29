@@ -8,7 +8,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::debug;
-use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions, DB};
+use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultExt, StoreResultUnitExt, DB};
 use kaspa_hashes::Hash;
 
 use crate::{
@@ -387,7 +387,7 @@ impl PruningProofManager {
 
             let current_gd = gd_manager.ghostdag(&relations_service.get_parents(current_hash).unwrap());
 
-            ghostdag_store.insert(current_hash, Arc::new(current_gd)).unwrap_or_exists();
+            ghostdag_store.insert(current_hash, Arc::new(current_gd)).idempotent().unwrap();
 
             for child in relations_service.get_children(current_hash).unwrap().read().iter().copied() {
                 topological_heap
@@ -440,7 +440,7 @@ impl PruningProofManager {
             .iter()
             .copied()
             .filter(|p| self.level_relations_services[level as usize].has(*p).unwrap())
-            .filter_map(|p| self.headers_store.get_header(p).unwrap_option().map(|h| SortableBlock::new(p, h.blue_work)))
+            .filter_map(|p| self.headers_store.get_header(p).optional().unwrap().map(|h| SortableBlock::new(p, h.blue_work)))
             .max()
             .ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof("no parents with header".to_string()))?;
         Ok(self.headers_store.get_header(sp.hash).expect("unwrapped above"))

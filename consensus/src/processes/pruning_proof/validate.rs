@@ -12,7 +12,7 @@ use kaspa_consensus_core::{
     BlockLevel,
 };
 use kaspa_core::info;
-use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreResultExt, StoreResultUnitExt};
 use kaspa_hashes::Hash;
 use kaspa_pow::{calc_block_level, calc_block_level_check_pow};
 use kaspa_utils::vec::VecExtensions;
@@ -111,7 +111,8 @@ impl PruningProofManager {
                 let proof_level_blue_work_diff = proof_selected_tip_gd.blue_work.saturating_sub(proof_common_ancestor_gd.blue_work);
                 for parent in self.parents_manager.parents_at_level(&current_pp_header, level).iter().copied() {
                     // Not all parents by level are guaranteed to be GD populated, but at least one of them will (the proof level selected tip)
-                    if let Some(parent_blue_work) = current_consensus_ghostdag_stores[level_idx].get_blue_work(parent).unwrap_option()
+                    if let Some(parent_blue_work) =
+                        current_consensus_ghostdag_stores[level_idx].get_blue_work(parent).optional().unwrap()
                     {
                         let parent_blue_work_diff = parent_blue_work.saturating_sub(common_ancestor_gd.blue_work);
                         if parent_blue_work_diff.saturating_add(pruning_period_work)
@@ -145,7 +146,7 @@ impl PruningProofManager {
                 continue;
             }
 
-            match relations_read[level_idx].get_parents(current_pp).unwrap_option() {
+            match relations_read[level_idx].get_parents(current_pp).optional().unwrap() {
                 Some(parents) => {
                     if parents.iter().copied().any(|parent| {
                         current_consensus_ghostdag_stores[level_idx].get_blue_score(parent).unwrap() < 2 * self.pruning_proof_m
@@ -266,7 +267,7 @@ impl PruningProofManager {
                     return Err(PruningImportError::ProofOfWorkFailed(header.hash, level));
                 }
 
-                headers_store.insert(header.hash, header.clone(), header_level).unwrap_or_exists();
+                headers_store.insert(header.hash, header.clone(), header_level).idempotent().unwrap();
 
                 // filter out parents that do not appear at the pruning proof:
                 let parents = self
@@ -379,7 +380,7 @@ impl PruningProofManager {
         let mut proof_current = proof_selected_tip;
         let mut proof_current_gd = proof_selected_tip_gd;
         loop {
-            match current_consensus_ghostdag_stores[level as usize].get_compact_data(proof_current).unwrap_option() {
+            match current_consensus_ghostdag_stores[level as usize].get_compact_data(proof_current).optional().unwrap() {
                 Some(current_gd) => {
                     break Some((proof_current_gd, current_gd));
                 }

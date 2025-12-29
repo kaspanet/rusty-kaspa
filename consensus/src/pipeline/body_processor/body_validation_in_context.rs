@@ -11,7 +11,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::block::Block;
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use once_cell::unsync::Lazy;
 use std::sync::Arc;
@@ -49,7 +49,7 @@ impl BlockBodyProcessor {
             .iter()
             .copied()
             .filter(|parent| {
-                let status_option = statuses_read_guard.get(*parent).unwrap_option();
+                let status_option = statuses_read_guard.get(*parent).optional().unwrap();
                 status_option.is_none_or(|s| !s.has_block_body())
             })
             .collect();
