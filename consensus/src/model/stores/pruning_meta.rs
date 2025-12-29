@@ -48,7 +48,7 @@ impl PruningMetaStores {
     /// Read the flag; default to true if missing - this is important because a node upgrading should have this value true
     /// as all non staging consensuses had a stable utxoset previously
     pub fn pruning_utxoset_stable_flag(&self) -> bool {
-        self.utxoset_stable_flag_access.read().optional().transpose().unwrap().unwrap_or(true)
+        self.utxoset_stable_flag_access.read().optional().unwrap().unwrap_or(true)
     }
 
     /// Represents blocks in the anticone of the current pruning point which may lack a block body
