@@ -315,8 +315,8 @@ impl HeaderProcessor {
     fn collect_known_direct_parents(&self, header: &Header) -> BlockHashes {
         let relations_read = self.relations_store.read();
         Arc::new(
-            self.parents_manager
-                        .parents_at_level(header, 0)
+            header
+                .direct_parents()
                         .iter()
                         .copied()
                         // TODO(relaxed): revisit a more transparent filtering condition
