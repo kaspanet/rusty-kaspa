@@ -164,7 +164,7 @@ impl DbVirtualStateStore {
     pub fn new(db: Arc<DB>, lkg_virtual_state: LkgVirtualState) -> Self {
         let access = CachedDbItem::new(db.clone(), DatabaseStorePrefixes::VirtualState.into());
         // Init the LKG cache from DB store data
-        lkg_virtual_state.store(access.read().unwrap_option().unwrap_or_default());
+        lkg_virtual_state.store(access.read().optional().unwrap().unwrap_or_default());
         Self { db, access, lkg_virtual_state }
     }
 

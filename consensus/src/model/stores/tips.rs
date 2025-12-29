@@ -59,7 +59,7 @@ impl DbTipsStore {
     }
 
     pub fn is_initialized(&self) -> bool {
-        self.access.read().unwrap_option().is_some()
+        self.access.read().optional().unwrap().is_some()
     }
 
     pub fn init_batch(&mut self, batch: &mut WriteBatch, initial_tips: &[Hash]) -> StoreResult<()> {

@@ -337,7 +337,7 @@ impl PruningProcessor {
             let mut batch = WriteBatch::default();
             // At this point keep_relations only holds level-0 relations which is the correct filtering criteria for primary GHOSTDAG
             for kept in keep_relations.keys().copied() {
-                let Some(ghostdag) = self.ghostdag_store.get_data(kept).unwrap_option() else {
+                let Some(ghostdag) = self.ghostdag_store.get_data(kept).optional().unwrap() else {
                     continue;
                 };
                 if ghostdag.unordered_mergeset().any(|h| !keep_relations.contains_key(&h)) {
@@ -427,7 +427,7 @@ impl PruningProcessor {
             //                               hence we verify its existence first and only then proceed.
             // TODO (in upcoming versions): remove this temp condition
             if retention_period_root == new_pruning_point
-                || selected_chain_write.get_by_hash(retention_period_root).unwrap_option().is_some()
+                || selected_chain_write.get_by_hash(retention_period_root).optional().unwrap().is_some()
             {
                 selected_chain_write.prune_below_point(BatchDbWriter::new(&mut batch), retention_period_root).unwrap();
             }
@@ -490,7 +490,7 @@ impl PruningProcessor {
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
 
                 if let Some(&affiliated_proof_level) = keep_relations.get(&current) {
-                    if statuses_write.get(current).unwrap_option().is_some_and(|s| s.is_valid()) {
+                    if statuses_write.get(current).optional().unwrap().is_some_and(|s| s.is_valid()) {
                         // We set the status to header-only only if it was previously set to a valid
                         // status. This is important since some proof headers might not have their status set
                         // and we would like to preserve this semantic (having a valid status implies that
@@ -502,11 +502,11 @@ impl PruningProcessor {
                     // This preserves the semantic that for each level, relations represent a contiguous DAG area in that level
                     for lower_level in 0..affiliated_proof_level as usize {
                         let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[lower_level]);
-                        relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
+                        relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).optional().unwrap();
                         staging_level_relations.commit(&mut batch).unwrap();
 
                         if lower_level == 0 {
-                            self.ghostdag_store.delete_batch(&mut batch, current).unwrap_option();
+                            self.ghostdag_store.delete_batch(&mut batch, current).optional().unwrap();
                         }
                     }
                     // while we keep headers for keep relation blocks regardless,
@@ -530,11 +530,11 @@ impl PruningProcessor {
                     let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
                     (0..=block_level as usize).for_each(|level| {
                         let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[level]);
-                        relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
+                        relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).optional().unwrap();
                         staging_level_relations.commit(&mut batch).unwrap();
                     });
 
-                    self.ghostdag_store.delete_batch(&mut batch, current).unwrap_option();
+                    self.ghostdag_store.delete_batch(&mut batch, current).optional().unwrap();
 
                     // Remove additional header related data
                     self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();

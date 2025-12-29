@@ -241,7 +241,7 @@ impl<
                 return Err(PruningImportError::WrongHeaderPruningPoint(current_header.pruning_point, current));
             }
             // Save so that following blocks can recursively use this value
-            self.pruning_samples_store.insert(current, reply.pruning_sample).unwrap_or_exists();
+            self.pruning_samples_store.insert(current, reply.pruning_sample).idempotent().unwrap();
             // Going up the chain from the pruning point to the sink. The goal is to exit this loop with a queue [P(k),...,P(0), P(-1), P(-2), ..., P(-n)]
             // where P(0) is the new pruning point, P(-1) is the point before it and P(-n) is the pruning point of P(0). That is,
             // ceiling(P/F) = n (where n is usually 3).

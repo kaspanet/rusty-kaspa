@@ -127,12 +127,12 @@ impl<
             return Ok(vec![low]);
         }
 
-        let low_index = match sc_read.get_by_hash(low).unwrap_option() {
+        let low_index = match sc_read.get_by_hash(low).optional().unwrap() {
             Some(index) => index,
             None => return Err(SyncManagerError::BlockNotInSelectedParentChain(low)),
         };
 
-        let high_index = match sc_read.get_by_hash(high).unwrap_option() {
+        let high_index = match sc_read.get_by_hash(high).optional().unwrap() {
             Some(index) => index,
             None => return Err(SyncManagerError::BlockNotInSelectedParentChain(high)),
         };

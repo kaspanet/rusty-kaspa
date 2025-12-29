@@ -92,7 +92,7 @@ impl MultiConsensusManagementStore {
     }
 
     fn init(&mut self) {
-        if self.metadata.read().unwrap_option().is_none() {
+        if self.metadata.read().optional().unwrap().is_none() {
             let mut batch = WriteBatch::default();
             let metadata = MultiConsensusMetadata::default();
             self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();

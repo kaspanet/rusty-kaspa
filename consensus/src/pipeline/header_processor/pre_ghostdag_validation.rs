@@ -68,7 +68,7 @@ impl HeaderProcessor {
     fn check_parents_exist(&self, header: &Header) -> BlockProcessResult<()> {
         let mut missing_parents = Vec::new();
         for parent in header.direct_parents() {
-            match self.statuses_store.read().get(*parent).unwrap_option() {
+            match self.statuses_store.read().get(*parent).optional().unwrap() {
                 None => missing_parents.push(*parent),
                 Some(StatusInvalid) => {
                     return Err(RuleError::InvalidParent(*parent));

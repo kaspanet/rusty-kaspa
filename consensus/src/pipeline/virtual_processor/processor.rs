@@ -499,7 +499,7 @@ impl VirtualStateProcessor {
         self.utxo_multisets_store.insert_batch(&mut batch, current, multiset).unwrap();
         self.acceptance_data_store.insert_batch(&mut batch, current, Arc::new(acceptance_data)).unwrap();
         // Note we call unwrap_or_exists since this field can be populated during IBD with headers proof
-        self.pruning_samples_store.insert_batch(&mut batch, current, pruning_sample_from_pov).unwrap_or_exists();
+        self.pruning_samples_store.insert_batch(&mut batch, current, pruning_sample_from_pov).idempotent().unwrap();
         let write_guard = self.statuses_store.set_batch(&mut batch, current, StatusUTXOValid).unwrap();
         self.db.write(batch).unwrap();
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
@@ -1099,11 +1099,11 @@ impl VirtualStateProcessor {
     /// Make sure pruning point-related stores are initialized
     pub fn init(self: &Arc<Self>) {
         let pruning_point_read = self.pruning_point_store.upgradable_read();
-        if pruning_point_read.pruning_point().unwrap_option().is_none() {
+        if pruning_point_read.pruning_point().optional().unwrap().is_none() {
             let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
             let mut pruning_meta_write = self.pruning_meta_stores.write();
             let mut batch = WriteBatch::default();
-            self.past_pruning_points_store.insert_batch(&mut batch, 0, self.genesis.hash).unwrap_or_exists();
+            self.past_pruning_points_store.insert_batch(&mut batch, 0, self.genesis.hash).idempotent().unwrap();
             pruning_point_write.set_batch(&mut batch, self.genesis.hash, 0).unwrap();
             pruning_point_write.set_retention_checkpoint(&mut batch, self.genesis.hash).unwrap();
             pruning_point_write.set_retention_period_root(&mut batch, self.genesis.hash).unwrap();
@@ -1228,7 +1228,7 @@ impl VirtualStateProcessor {
         let vf = self.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, current_pp);
         let vff = self.depth_manager.calc_finality_point(&self.ghostdag_store.get_data(vf).unwrap(), current_pp);
 
-        let last_known_pp = pp_list.iter().rev().find(|pp| match self.statuses_store.read().get(pp.hash).unwrap_option() {
+        let last_known_pp = pp_list.iter().rev().find(|pp| match self.statuses_store.read().get(pp.hash).optional().unwrap() {
             Some(status) => status.is_valid(),
             None => false,
         });

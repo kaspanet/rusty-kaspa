@@ -142,7 +142,7 @@ impl DbUtxoSetStore {
 
 impl UtxoView for DbUtxoSetStore {
     fn get(&self, outpoint: &TransactionOutpoint) -> Option<UtxoEntry> {
-        UtxoSetStoreReader::get(self, outpoint).map(|v| v.as_ref().clone()).unwrap_option()
+        UtxoSetStoreReader::get(self, outpoint).map(|v| v.as_ref().clone()).optional().unwrap()
     }
 }
 

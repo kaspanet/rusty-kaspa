@@ -278,7 +278,7 @@ impl PruningProofManager {
         let mut current = hash;
         for _ in 0..=ghostdag_k {
             hashes.push(current);
-            let Some(parent) = self.ghostdag_store.get_selected_parent(current).unwrap_option() else {
+            let Some(parent) = self.ghostdag_store.get_selected_parent(current).optional().unwrap() else {
                 break;
             };
             if parent == self.genesis_hash || parent == blockhash::ORIGIN {

@@ -305,7 +305,7 @@ impl AddressManager {
 
     pub fn is_banned(&mut self, ip: IpAddress) -> bool {
         const MAX_BANNED_TIME: u64 = 24 * 60 * 60 * 1000;
-        match self.banned_address_store.get(ip.into()).unwrap_option() {
+        match self.banned_address_store.get(ip.into()).optional().unwrap() {
             Some(timestamp) => {
                 if unix_now() - timestamp.0 > MAX_BANNED_TIME {
                     self.unban(ip);
