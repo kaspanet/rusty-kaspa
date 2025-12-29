@@ -498,7 +498,7 @@ impl PruningProcessor {
                         statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
                     }
 
-                    // delete level 0 relations and ghostdag only unless those are in the 0 level of the pruning proof
+                    // delete relations and ghostdag unless current is in level 0 of the pruning proof
                     if affiliated_proof_level > 0 {
                         let mut staging_relations = StagingRelationsStore::new(&mut relations_write);
                         relations::delete_level_relations(MemoryWriter, &mut staging_relations, current).unwrap_option();
