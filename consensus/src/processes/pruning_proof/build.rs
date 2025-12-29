@@ -265,7 +265,7 @@ impl PruningProofManager {
                     .parents_at_level(&header, level)
                     .iter()
                     .copied()
-                    .filter(|&p| self.reachability_service.is_dag_ancestor_of_result(root, p).unwrap_or(false))
+                    .filter(|&p| self.reachability_service.is_dag_ancestor_of_result(root, p).unwrap_option().unwrap_or(false))
                     .collect::<Vec<_>>()
                     .push_if_empty(ORIGIN),
             );
