@@ -1616,7 +1616,7 @@ async fn push_limit_activation_test() {
     let mut next_id: u64 = 1;
     let mut tip = config.genesis.hash;
 
-    // Redeem script that uses OpCat (disabled before covenants activation, enabled after)
+    // Redeem script that pushes the script pubkey onto the stack
     let redeem_script = ScriptBuilder::new()
         .add_op(Op0)
         .unwrap()
@@ -1667,9 +1667,9 @@ async fn push_limit_activation_test() {
     }
     assert_eq!(consensus.get_virtual_daa_score(), ACTIVATION_DAA_SCORE - 1);
 
-    // Pre-activation: inserting block with the covenant opcode should be rejected
+    // Pre-activation: inserting block with a transaction that pushes more than 520 bytes onto the stack should be accepted
     {
-        // Transaction spending the UTXO that pushes more than 520 bytes onto the stack
+        // Transaction spending the UTXO that pushes more than 520 bytes onto the stack (since it has an SPK of 1000 bytes)
         let mut tx = Transaction::new(
             0,
             vec![TransactionInput::new(funding_outpoint2, ScriptBuilder::new().add_data(&redeem_script).unwrap().drain(), 0, 0)],
@@ -1707,7 +1707,7 @@ async fn push_limit_activation_test() {
 
     // Post-activation: a similar transaction should now be rejected
     {
-        // Transaction spending the UTXO that pushes more than 520 bytes onto the stack
+        // Transaction spending the UTXO that pushes more than 520 bytes onto the stack (since it has an SPK of 1000 bytes)
         let mut tx = Transaction::new(
             0,
             vec![TransactionInput::new(funding_outpoint1, ScriptBuilder::new().add_data(&redeem_script).unwrap().drain(), 0, 0)],
