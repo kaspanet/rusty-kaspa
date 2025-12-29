@@ -27,16 +27,31 @@ pub enum StoreError {
 
 pub type StoreResult<T> = std::result::Result<T, StoreError>;
 
-pub trait StoreResultExtensions<T> {
-    /// Unwrap or assert that the error is key not fund in which case `None` is returned
-    fn optional(self) -> StoreResult<Option<T>>;
+pub trait ErrorTraits {
+    fn is_key_not_found(&self) -> bool;
+    fn is_key_already_exists(&self) -> bool;
 }
 
-impl<T> StoreResultExtensions<T> for StoreResult<T> {
-    fn optional(self) -> StoreResult<Option<T>> {
+impl ErrorTraits for StoreError {
+    fn is_key_not_found(&self) -> bool {
+        matches!(self, StoreError::KeyNotFound(_))
+    }
+
+    fn is_key_already_exists(&self) -> bool {
+        matches!(self, StoreError::KeyAlreadyExists(_) | StoreError::HashAlreadyExists(_))
+    }
+}
+
+pub trait StoreResultExtensions<T, E: ErrorTraits> {
+    /// Unwrap or assert that the error is key not fund in which case `None` is returned
+    fn optional(self) -> Result<Option<T>, E>;
+}
+
+impl<T, E: ErrorTraits> StoreResultExtensions<T, E> for Result<T, E> {
+    fn optional(self) -> Result<Option<T>, E> {
         match self {
             Ok(value) => Ok(Some(value)),
-            Err(StoreError::KeyNotFound(_)) => Ok(None),
+            Err(err) if err.is_key_not_found() => Ok(None),
             Err(err) => Err(err),
         }
     }
@@ -50,7 +65,8 @@ pub trait StoreResultEmptyTuple {
 impl StoreResultEmptyTuple for StoreResult<()> {
     fn idempotent(self) -> StoreResult<()> {
         match self {
-            Ok(_) | Err(StoreError::KeyAlreadyExists(_)) | Err(StoreError::HashAlreadyExists(_)) => Ok(()),
+            Ok(()) => Ok(()),
+            Err(err) if err.is_key_already_exists() => Ok(()),
             Err(err) => Err(err),
         }
     }

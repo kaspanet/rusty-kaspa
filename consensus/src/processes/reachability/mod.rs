@@ -23,25 +23,14 @@ pub enum ReachabilityError {
     BadQuery,
 }
 
-impl ReachabilityError {
-    pub fn is_key_not_found(&self) -> bool {
-        matches!(self, ReachabilityError::StoreError(e) if matches!(e, StoreError::KeyNotFound(_)))
+impl kaspa_database::prelude::ErrorTraits for ReachabilityError {
+    fn is_key_not_found(&self) -> bool {
+        matches!(self, ReachabilityError::StoreError(err) if err.is_key_not_found())
+    }
+
+    fn is_key_already_exists(&self) -> bool {
+        matches!(self, ReachabilityError::StoreError(err) if err.is_key_already_exists())
     }
 }
 
 pub type Result<T> = std::result::Result<T, ReachabilityError>;
-
-pub trait ReachabilityResultExtensions<T> {
-    /// Unwraps the error into `None` if the internal error is `StoreError::KeyNotFound` or panics otherwise
-    fn unwrap_option(self) -> Option<T>;
-}
-
-impl<T> ReachabilityResultExtensions<T> for Result<T> {
-    fn unwrap_option(self) -> Option<T> {
-        match self {
-            Ok(value) => Some(value),
-            Err(err) if err.is_key_not_found() => None,
-            Err(err) => panic!("Unexpected reachability error: {err:?}"),
-        }
-    }
-}
