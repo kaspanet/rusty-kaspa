@@ -425,7 +425,7 @@ impl HeaderProcessor {
         self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).unwrap_or_exists();
 
         let mut relations_write = self.relations_store.write();
-        relations_write.insert_batch(&mut batch, ctx.hash, ctx.known_direct_parents.to_vec().into()).unwrap_or_exists();
+        relations_write.insert_batch(&mut batch, ctx.hash, ctx.known_direct_parents).unwrap_or_exists();
 
         let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
