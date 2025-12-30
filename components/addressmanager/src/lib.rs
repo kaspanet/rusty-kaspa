@@ -15,7 +15,7 @@ use itertools::{
 };
 use kaspa_consensus_core::config::Config;
 use kaspa_core::{debug, info, task::tick::TickService, time::unix_now, warn};
-use kaspa_database::prelude::{CachePolicy, StoreResultExtensions, DB};
+use kaspa_database::prelude::{CachePolicy, StoreResultExt, DB};
 use kaspa_utils::networking::IpAddress;
 use local_ip_address::list_afinet_netifas;
 use parking_lot::Mutex;
@@ -309,7 +309,7 @@ impl AddressManager {
 
     pub fn is_banned(&mut self, ip: IpAddress) -> bool {
         const MAX_BANNED_TIME: u64 = 24 * 60 * 60 * 1000;
-        match self.banned_address_store.get(ip.into()).unwrap_option() {
+        match self.banned_address_store.get(ip.into()).optional().unwrap() {
             Some(timestamp) => {
                 if unix_now() - timestamp.0 > MAX_BANNED_TIME {
                     self.unban(ip);
