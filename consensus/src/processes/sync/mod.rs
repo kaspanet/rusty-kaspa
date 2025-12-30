@@ -2,7 +2,7 @@ use std::{cmp::min, ops::Deref, sync::Arc};
 
 use itertools::Itertools;
 use kaspa_consensus_core::errors::sync::{SyncManagerError, SyncManagerResult};
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use kaspa_math::uint::malachite_base::num::arithmetic::traits::CeilingLogBase2;
 use parking_lot::RwLock;
@@ -127,12 +127,12 @@ impl<
             return Ok(vec![low]);
         }
 
-        let low_index = match sc_read.get_by_hash(low).unwrap_option() {
+        let low_index = match sc_read.get_by_hash(low).optional().unwrap() {
             Some(index) => index,
             None => return Err(SyncManagerError::BlockNotInSelectedParentChain(low)),
         };
 
-        let high_index = match sc_read.get_by_hash(high).unwrap_option() {
+        let high_index = match sc_read.get_by_hash(high).optional().unwrap() {
             Some(index) => index,
             None => return Err(SyncManagerError::BlockNotInSelectedParentChain(high)),
         };
