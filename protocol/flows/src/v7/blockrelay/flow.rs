@@ -9,7 +9,7 @@ use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    convert::{header::determine_header_format, header::Versioned},
+    convert::header::{HeaderFormat, Versioned},
     dequeue, dequeue_with_timeout, make_message, make_request,
     pb::{kaspad_message::Payload, InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage},
     IncomingRoute, Router, SharedIncomingRoute,
@@ -243,7 +243,7 @@ impl HandleRelayInvsFlow {
             ))
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::Block)?;
-        let header_format = determine_header_format(self.router.properties().protocol_version);
+        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
         let block: Block = Versioned(header_format, msg).try_into()?;
         if block.hash() != requested_hash {
             Err(ProtocolError::OtherOwned(format!("requested block hash {} but got block {}", requested_hash, block.hash())))

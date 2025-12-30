@@ -12,11 +12,13 @@ pub enum HeaderFormat {
 }
 
 /// Determines the header format based on the protocol version.
-pub fn determine_header_format(version: u32) -> HeaderFormat {
-    if version >= 9 {
-        HeaderFormat::Compressed
-    } else {
-        HeaderFormat::Legacy
+impl From<u32> for HeaderFormat {
+    fn from(version: u32) -> Self {
+        if version >= 9 {
+            Self::Compressed
+        } else {
+            Self::Legacy
+        }
     }
 }
 

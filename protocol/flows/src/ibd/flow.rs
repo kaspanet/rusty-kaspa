@@ -20,7 +20,10 @@ use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    convert::{header::determine_header_format, header::Versioned, model::trusted::TrustedDataPackage},
+    convert::{
+        header::{HeaderFormat, Versioned},
+        model::trusted::TrustedDataPackage,
+    },
     dequeue_with_timeout, make_message, make_request,
     pb::{
         kaspad_message::Payload, RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
@@ -354,7 +357,7 @@ impl IbdFlow {
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPointProof, Duration::from_secs(600))?;
-        let header_format = determine_header_format(self.router.properties().protocol_version);
+        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
         let proof: PruningPointProof = Versioned(header_format, msg).try_into()?;
         info!(
             "Received headers proof with overall {} headers ({} unique)",
@@ -387,7 +390,7 @@ impl IbdFlow {
             .await?;
         // First, all pruning points up to the last  are sent
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPoints)?;
-        let header_format = determine_header_format(self.router.properties().protocol_version);
+        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
         let pruning_points: PruningPointsList = Versioned(header_format, msg).try_into()?;
 
         if pruning_points.is_empty() || pruning_points.last().unwrap().hash != proof_pruning_point {
@@ -411,7 +414,7 @@ impl IbdFlow {
         // The latter, the trusted data entries, each represent a block (with daa) from the anticone of the pruning point
         // (including the PP itself), alongside indexing denoting the respective metadata headers or ghostdag data
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
-        let header_format = determine_header_format(self.router.properties().protocol_version);
+        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
         let pkg: TrustedDataPackage = Versioned(header_format, msg).try_into()?;
         debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
 
@@ -517,7 +520,7 @@ impl IbdFlow {
                 }
             ))
             .await?;
-        let header_format = determine_header_format(self.router.properties().protocol_version);
+        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
         let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route, header_format);
 
         if let Some(chunk) = chunk_stream.next().await? {
@@ -600,7 +603,7 @@ impl IbdFlow {
             .await?;
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::BlockHeaders)?;
-        let header_format = determine_header_format(self.router.properties().protocol_version);
+        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
         let chunk: HeadersChunk = Versioned(header_format, msg).try_into()?;
         let jobs: Vec<BlockValidationFuture> =
             chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task).collect();
@@ -731,7 +734,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             for &hash in chunk.iter() {
                 // TODO: change to BodyOnly requests when incorporated
                 let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-                let header_format = determine_header_format(self.router.properties().protocol_version);
+                let header_format = HeaderFormat::from(self.router.properties().protocol_version);
                 let block: Block = Versioned(header_format, msg).try_into()?;
                 if block.hash() != hash {
                     return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", hash, block.hash())));
@@ -831,7 +834,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             .await?;
         for &expected_hash in chunk {
             let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-            let header_format = determine_header_format(self.router.properties().protocol_version);
+            let header_format = HeaderFormat::from(self.router.properties().protocol_version);
             let block: Block = Versioned(header_format, msg).try_into()?;
             if block.hash() != expected_hash {
                 return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", expected_hash, block.hash())));
