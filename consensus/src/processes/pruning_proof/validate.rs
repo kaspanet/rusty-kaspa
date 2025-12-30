@@ -98,7 +98,7 @@ impl PruningProofManager {
             // old current consensus's tips and the common ancestor is less than the blue work difference between the
             // proof's tip and the common ancestor.
             if let Some((challenger_common_ancestor_gd, defender_common_ancestor_gd)) = self
-                .find_proof_and_consensus_common_ancestor_ghostdag_data(
+                .find_challenger_and_defender_common_ancestor_ghostdag_data(
                     &challenger_ghostdag_stores,
                     &defender_ghostdag_stores,
                     selected_tip,
@@ -357,27 +357,27 @@ impl PruningProofManager {
     // find_proof_and_consensus_common_chain_ancestor_ghostdag_data returns an option of a tuple
     // that contains the ghostdag data of the proof and current consensus common ancestor. If no
     // such ancestor exists, it returns None.
-    fn find_proof_and_consensus_common_ancestor_ghostdag_data(
+    fn find_challenger_and_defender_common_ancestor_ghostdag_data(
         &self,
-        proof_ghostdag_stores: &[Arc<DbGhostdagStore>],
-        current_consensus_ghostdag_stores: &[Arc<DbGhostdagStore>],
-        proof_selected_tip: Hash,
+        challenger_ghostdag_stores: &[Arc<DbGhostdagStore>],
+        defender_ghostdag_stores: &[Arc<DbGhostdagStore>],
+        challenger_selected_tip: Hash,
         level: BlockLevel,
-        proof_selected_tip_gd: CompactGhostdagData,
+        challenger_selected_tip_gd: CompactGhostdagData,
     ) -> Option<(CompactGhostdagData, CompactGhostdagData)> {
-        let mut proof_current = proof_selected_tip;
-        let mut proof_current_gd = proof_selected_tip_gd;
+        let mut current = challenger_selected_tip;
+        let mut challenger_gd_of_current = challenger_selected_tip_gd;
         loop {
-            match current_consensus_ghostdag_stores[level as usize].get_compact_data(proof_current).optional().unwrap() {
-                Some(current_gd) => {
-                    break Some((proof_current_gd, current_gd));
+            match defender_ghostdag_stores[level as usize].get_compact_data(current).optional().unwrap() {
+                Some(defender_gd_of_current) => {
+                    break Some((challenger_gd_of_current, defender_gd_of_current));
                 }
                 None => {
-                    proof_current = proof_current_gd.selected_parent;
-                    if proof_current.is_origin() {
+                    current = challenger_gd_of_current.selected_parent;
+                    if current.is_origin() {
                         break None;
                     }
-                    proof_current_gd = proof_ghostdag_stores[level as usize].get_compact_data(proof_current).unwrap();
+                    challenger_gd_of_current = challenger_ghostdag_stores[level as usize].get_compact_data(current).unwrap();
                 }
             };
         }
