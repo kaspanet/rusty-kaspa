@@ -35,7 +35,6 @@ impl TransactionValidator {
         &self,
         tx: &(impl VerifiableTransaction + Sync),
         pov_daa_score: u64,
-        block_daa_score: u64,
         flags: TxValidationFlags,
         mass_and_feerate_threshold: Option<(u64, f64)>,
     ) -> TxResult<u64> {
@@ -43,8 +42,7 @@ impl TransactionValidator {
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         let fee = total_in - total_out;
-        if flags != TxValidationFlags::SkipMassCheck && self.crescendo_activation.is_active(block_daa_score) {
-            // Storage mass hardfork was activated
+        if flags != TxValidationFlags::SkipMassCheck {
             self.check_mass_commitment(tx)?;
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;
@@ -78,14 +76,14 @@ impl TransactionValidator {
         if let Some((index, (input, entry))) = tx
             .populated_inputs()
             .enumerate()
-            .find(|(_, (_, entry))| entry.is_coinbase && entry.block_daa_score + self.coinbase_maturity.after() > pov_daa_score)
+            .find(|(_, (_, entry))| entry.is_coinbase && entry.block_daa_score + self.coinbase_maturity > pov_daa_score)
         {
             return Err(TxRuleError::ImmatureCoinbaseSpend(
                 index,
                 input.previous_outpoint,
                 entry.block_daa_score,
                 pov_daa_score,
-                self.coinbase_maturity.after(),
+                self.coinbase_maturity,
             ));
         }
 
@@ -245,16 +243,16 @@ mod tests {
     #[test]
     fn check_signature_test() {
         let mut params = MAINNET_PARAMS.clone();
-        params.prior_max_tx_inputs = 10;
-        params.prior_max_tx_outputs = 15;
+        params.max_tx_inputs = 10;
+        params.max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.prior_max_tx_inputs,
-            params.prior_max_tx_outputs,
-            params.prior_max_signature_script_len,
-            params.prior_max_script_public_key_len,
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.prior_coinbase_maturity,
-            params.ghostdag_k().after(),
+            params.coinbase_maturity(),
+            params.ghostdag_k(),
             Default::default(),
         );
 
@@ -314,16 +312,16 @@ mod tests {
     #[test]
     fn check_incorrect_signature_test() {
         let mut params = MAINNET_PARAMS.clone();
-        params.prior_max_tx_inputs = 10;
-        params.prior_max_tx_outputs = 15;
+        params.max_tx_inputs = 10;
+        params.max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.prior_max_tx_inputs,
-            params.prior_max_tx_outputs,
-            params.prior_max_signature_script_len,
-            params.prior_max_script_public_key_len,
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.prior_coinbase_maturity,
-            params.ghostdag_k().after(),
+            params.coinbase_maturity(),
+            params.ghostdag_k(),
             Default::default(),
         );
 
@@ -387,16 +385,16 @@ mod tests {
     #[test]
     fn check_multi_signature_test() {
         let mut params = MAINNET_PARAMS.clone();
-        params.prior_max_tx_inputs = 10;
-        params.prior_max_tx_outputs = 15;
+        params.max_tx_inputs = 10;
+        params.max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.prior_max_tx_inputs,
-            params.prior_max_tx_outputs,
-            params.prior_max_signature_script_len,
-            params.prior_max_script_public_key_len,
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.prior_coinbase_maturity,
-            params.ghostdag_k().after(),
+            params.coinbase_maturity(),
+            params.ghostdag_k(),
             Default::default(),
         );
 
@@ -457,16 +455,16 @@ mod tests {
     #[test]
     fn check_last_sig_incorrect_multi_signature_test() {
         let mut params = MAINNET_PARAMS.clone();
-        params.prior_max_tx_inputs = 10;
-        params.prior_max_tx_outputs = 15;
+        params.max_tx_inputs = 10;
+        params.max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.prior_max_tx_inputs,
-            params.prior_max_tx_outputs,
-            params.prior_max_signature_script_len,
-            params.prior_max_script_public_key_len,
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.prior_coinbase_maturity,
-            params.ghostdag_k().after(),
+            params.coinbase_maturity(),
+            params.ghostdag_k(),
             Default::default(),
         );
 
@@ -527,16 +525,16 @@ mod tests {
     #[test]
     fn check_first_sig_incorrect_multi_signature_test() {
         let mut params = MAINNET_PARAMS.clone();
-        params.prior_max_tx_inputs = 10;
-        params.prior_max_tx_outputs = 15;
+        params.max_tx_inputs = 10;
+        params.max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.prior_max_tx_inputs,
-            params.prior_max_tx_outputs,
-            params.prior_max_signature_script_len,
-            params.prior_max_script_public_key_len,
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.prior_coinbase_maturity,
-            params.ghostdag_k().after(),
+            params.coinbase_maturity(),
+            params.ghostdag_k(),
             Default::default(),
         );
 
@@ -597,16 +595,16 @@ mod tests {
     #[test]
     fn check_empty_incorrect_multi_signature_test() {
         let mut params = MAINNET_PARAMS.clone();
-        params.prior_max_tx_inputs = 10;
-        params.prior_max_tx_outputs = 15;
+        params.max_tx_inputs = 10;
+        params.max_tx_outputs = 15;
         let tv = TransactionValidator::new_for_tests(
-            params.prior_max_tx_inputs,
-            params.prior_max_tx_outputs,
-            params.prior_max_signature_script_len,
-            params.prior_max_script_public_key_len,
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.prior_coinbase_maturity,
-            params.ghostdag_k().after(),
+            params.coinbase_maturity(),
+            params.ghostdag_k(),
             Default::default(),
         );
 
@@ -669,13 +667,13 @@ mod tests {
         // We test a situation where the script itself is valid, but the script signature is not push only
         let params = MAINNET_PARAMS.clone();
         let tv = TransactionValidator::new_for_tests(
-            params.prior_max_tx_inputs,
-            params.prior_max_tx_outputs,
-            params.prior_max_signature_script_len,
-            params.prior_max_script_public_key_len,
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.prior_coinbase_maturity,
-            params.ghostdag_k().after(),
+            params.coinbase_maturity(),
+            params.ghostdag_k(),
             Default::default(),
         );
 
@@ -729,13 +727,13 @@ mod tests {
     fn test_sign() {
         let params = MAINNET_PARAMS.clone();
         let tv = TransactionValidator::new_for_tests(
-            params.prior_max_tx_inputs,
-            params.prior_max_tx_outputs,
-            params.prior_max_signature_script_len,
-            params.prior_max_script_public_key_len,
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
             params.coinbase_payload_script_public_key_max_len,
-            params.prior_coinbase_maturity,
-            params.ghostdag_k().after(),
+            params.coinbase_maturity(),
+            params.ghostdag_k(),
             Default::default(),
         );
 
