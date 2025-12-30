@@ -19,7 +19,7 @@ use parking_lot::RwLock;
 
 use crate::{
     model::{
-        services::reachability::ReachabilityService,
+        services::{reachability::ReachabilityService, relations::MTRelationsService},
         stores::{
             ghostdag::{DbGhostdagStore, GhostdagStore, GhostdagStoreReader},
             headers::{HeaderStoreReader, HeaderWithBlockLevel},
@@ -27,9 +27,7 @@ use crate::{
         },
     },
     processes::{
-        ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
-        pruning_proof::PruningProofManagerInternalError,
-        relations::RelationsStoreExtensions,
+        ghostdag::{ordering::SortableBlock, protocol::GhostdagManager}, pruning_proof::PruningProofManagerInternalError, reachability::ReachabilityResultExtensions, relations::RelationsStoreExtensions
     },
 };
 
@@ -59,7 +57,7 @@ impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for R
                     .copied()
                     // TODO(relaxed): consider removing this filtering altogether - in the context this is currently called
                     // blocks should not be inserted if they do not fulfill this condition
-                    .filter(|h| self.reachability_service.is_dag_ancestor_of_result(self.root, *h).unwrap_or(false))
+                    .filter(|h| self.reachability_service.is_dag_ancestor_of_result(self.root, *h).unwrap_option().unwrap_or(false))
                     .collect_vec(),
             )
         })
@@ -207,10 +205,10 @@ impl PruningProofManager {
             let level_usize = level as usize;
             let required_block = if level != self.max_block_level {
                 let (next_level_gd_store, _relation_store_at_next_level, selected_tip_at_next_level, _root_at_next_level) =
-                    level_proof_stores_vec[level_usize + 1].as_ref().unwrap().clone();
+                    level_proof_stores_vec[level_usize + 1].as_ref().unwrap();
 
                 let block_at_depth_m_at_next_level = self
-                    .block_at_depth(&*next_level_gd_store, selected_tip_at_next_level, self.pruning_proof_m)
+                    .block_at_depth(next_level_gd_store.as_ref(), *selected_tip_at_next_level, self.pruning_proof_m)
                     .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
                     .unwrap();
                 Some(block_at_depth_m_at_next_level)
@@ -229,6 +227,13 @@ impl PruningProofManager {
         MultiLevelProofContext { transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level }
     }
 
+
+    /// Builds and returns a store of parents-children relations at a given level
+    /// to facilitate forward traversal of a snippet of the Dag at that level.
+    /// This relation store contains all reachable blocks
+    /// that belong in the future of root and the past of tip.
+    /// Non reachable blocks are filtered out as they are not conceptually a part of the Dag at that level
+    /// but simply remain in node storage for other reasons.
     fn populate_relation_store_at_level(
         &self,
         temp_db: Arc<DB>,
@@ -427,7 +432,7 @@ impl PruningProofManager {
         ghostdag_k: KType,
     ) -> bool {
         let transient_relations_service = RelationsStoreInFutureOfRoot {
-            relations_store: transient_relations_store.read().clone(),
+            relations_store: MTRelationsService::new(transient_relations_store.clone()),
             reachability_service: self.reachability_service.clone(),
             root,
         };
@@ -526,6 +531,8 @@ impl PruningProofManager {
             .parents_at_level(header, level)
             .iter()
             .copied()
+            // filtering by the existence of headers alone does not suffice because we store the headers of all past pruning points, but these are not conceptually a part of the DAG
+            // or the pruning proof and are not reachable under normal means. 
             .filter(|&p| self.reachability_service.has_reachability_data(p))
             .filter_map(|p| self.headers_store.get_header(p).unwrap_option().map(|h| SortableBlock::new(p, h.blue_work)))
             .max()
