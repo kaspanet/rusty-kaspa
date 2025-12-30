@@ -66,7 +66,7 @@ impl PruningProofManager {
         }
         let mut current_consensus_stores_and_processes =
             self.init_validate_pruning_point_proof_stores_and_processes(&current_consensus_proof)?;
-        let _ = self.populate_stores_for_validate_pruning_point_proof(
+        let current_consensus_selected_tip_by_level = self.populate_stores_for_validate_pruning_point_proof(
             &current_consensus_proof,
             &mut current_consensus_stores_and_processes,
             false,
@@ -145,19 +145,9 @@ impl PruningProofManager {
                 continue;
             }
 
-            let parents_at_level: Vec<_> = self
-                .parents_manager
-                .parents_at_level(&current_pp_header, level)
-                .iter()
-                .copied()
-                .filter_map(|parent| current_consensus_ghostdag_stores[level_idx].get_blue_score(parent).optional().unwrap())
-                .collect();
-            if parents_at_level.iter().copied().any(|parent_bscore| parent_bscore < 2 * self.pruning_proof_m) {
-                return Ok(());
-            }
-
-            if parents_at_level.is_empty() {
-                // If the current pruning point doesn't have a parent at this level, we consider the proof state to be better.
+            if current_consensus_ghostdag_stores[level_idx].get_blue_score(current_consensus_selected_tip_by_level[level_idx]).unwrap()
+                < 2 * self.pruning_proof_m
+            {
                 return Ok(());
             }
         }

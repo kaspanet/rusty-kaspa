@@ -317,13 +317,13 @@ impl HeaderProcessor {
         Arc::new(
             header
                 .direct_parents()
-                        .iter()
-                        .copied()
-                        .filter(|&parent| relations_read.has(parent).unwrap())
-                        .collect_vec()
-                        // This kicks-in only for trusted blocks. If an ordinary block is 
-                        // missing direct parents it will fail validation.
-                        .push_if_empty(ORIGIN),
+                .iter()
+                .copied()
+                .filter(|&parent| relations_read.has(parent).unwrap())
+                .collect_vec()
+                // This kicks-in only for trusted blocks. If an ordinary block is 
+                // missing direct parents it will fail validation.
+                .push_if_empty(ORIGIN),
         )
     }
 
