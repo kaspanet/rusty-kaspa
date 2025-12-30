@@ -511,11 +511,21 @@ impl Consensus {
         // The new pruning point P can be "finalized" into consensus if:
         // 1) P satisfies P.blue_score>Nf and selected_parent(P).blue_score<=NF
         // where N is some integer (i.e. it is a valid pruning point based on score)
-        if !self.verify_is_pruning_sample(new_pruning_point) {
+        let Ok(candidate_ghostdag_data) = self.get_ghostdag_data(new_pruning_point) else {
             return Err(ConsensusError::General(
-                "Catchup cannot be continued since the syncer pruning point could not be confirmed to be a pruning point",
-            ));
-        }
+                "Catchup cannot be continued since the syncer pruning point could not be confirmed to be a valid pruning point",
+            ));        };
+        let Ok(selected_parent_ghostdag_data) = self.get_ghostdag_data(candidate_ghostdag_data.selected_parent) else {
+            return Err(ConsensusError::General(
+                "Catchup cannot be continued since the syncer pruning point could not be confirmed to be a valid pruning point",
+            ));        };
+        self.services.pruning_point_manager.is_pruning_sample(
+            candidate_ghostdag_data.blue_score,
+            selected_parent_ghostdag_data.blue_score,
+            self.config.params.finality_depth().after(),
+        )           .then_some(())
+            .ok_or(ConsensusError::General("the alleged pruning point is not a valid pruning point, aborting catchup attempt"))?;
+
         // 2) There are sufficient headers built on top of it, specifically,
         // a header is validated whose blue_score is greater than P.B+p:
         let syncer_pp_bscore = self.get_header(new_pruning_point).unwrap().blue_score;
@@ -1373,20 +1383,6 @@ impl ConsensusApi for Consensus {
         pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
         self.db.write(batch).unwrap();
         pruning_meta_write.utxo_set.clear().unwrap();
-    }
-
-    fn verify_is_pruning_sample(&self, pruning_candidate: Hash) -> bool {
-        let Ok(candidate_ghostdag_data) = self.get_ghostdag_data(pruning_candidate) else {
-            return false;
-        };
-        let Ok(selected_parent_ghostdag_data) = self.get_ghostdag_data(candidate_ghostdag_data.selected_parent) else {
-            return false;
-        };
-        self.services.pruning_point_manager.is_pruning_sample(
-            candidate_ghostdag_data.blue_score,
-            selected_parent_ghostdag_data.blue_score,
-            self.config.params.finality_depth().after(),
-        )
     }
 
     /// The usual flow consists of the pruning point naturally updating during pruning, and hence maintains consistency by default

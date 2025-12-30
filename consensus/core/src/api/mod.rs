@@ -422,10 +422,6 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn verify_is_pruning_sample(&self, candidate_hash: Hash) -> bool {
-        unimplemented!()
-    }
-
     fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
         unimplemented!()
     }
