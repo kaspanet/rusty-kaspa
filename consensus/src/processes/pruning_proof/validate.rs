@@ -106,14 +106,12 @@ impl PruningProofManager {
                     challenger_selected_tip_gd,
                 )
             {
-                let defender_level_blue_score = defender_ghostdag_stores[level_idx]
+                let defender_level_blue_work = defender_ghostdag_stores[level_idx]
                     .get_blue_work(defender_selected_tip_by_level[level_idx])
-                    .optional()
-                    .unwrap()
                     .unwrap();
                 let challenger_level_blue_work_diff =
                     challenger_selected_tip_gd.blue_work.saturating_sub(challenger_common_ancestor_gd.blue_work);
-                let defender_level_blue_work_diff = defender_level_blue_score.saturating_sub(defender_common_ancestor_gd.blue_work);
+                let defender_level_blue_work_diff = defender_level_blue_work.saturating_sub(defender_common_ancestor_gd.blue_work);
                 if defender_level_blue_work_diff.saturating_add(defender_pruning_period_work)
                     >= challenger_level_blue_work_diff.saturating_add(challenger_claimed_pruning_period_work)
                 {
