@@ -242,7 +242,7 @@ impl PruningProofManager {
         root: Hash,
         level: BlockLevel,
         try_number: u8,
-    ) -> Arc<RwLock<DbRelationsStore>> {
+    ) -> DbRelationsStore {
         //TODO(relaxed): currently we rebuild the relation store in its entirety for each try.
         // A more efficient implementation could instead extend the store constructed in the previous try
         //TODO: Remove sanity checks when convinced code is stable and correct
@@ -250,11 +250,9 @@ impl PruningProofManager {
         let mut visited = BlockHashSet::new();
         queue.push_back(tip);
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
-        let level_relation_store =
-            Arc::new(RwLock::new(DbRelationsStore::new_temp(temp_db.clone(), level, try_number, cache_policy, cache_policy)));
-        let mut relations_write = level_relation_store.write();
+        let mut level_relation_store = DbRelationsStore::new_temp(temp_db.clone(), level, try_number, cache_policy, cache_policy);
 
-        relations_write.insert(ORIGIN, BlockHashes::new(vec![])).unwrap();
+        level_relation_store.insert(ORIGIN, BlockHashes::new(vec![])).unwrap();
 
         // sanity check
         assert!(self.reachability_service.is_dag_ancestor_of(root, tip));
@@ -281,7 +279,7 @@ impl PruningProofManager {
                 assert_eq!(parents[0], ORIGIN);
             }
             // Write parents to the relations store
-            relations_write.insert(hash, parents.clone()).unwrap();
+            level_relation_store.insert(hash, parents.clone()).unwrap();
 
             // Enqueue parents to fill full upper chain
             for &p in parents.iter() {
@@ -290,14 +288,14 @@ impl PruningProofManager {
         }
         //sanity checks
         for hash in visited {
-            assert!(relations_write.has(hash).unwrap());
+            assert!(level_relation_store.has(hash).unwrap());
         }
-        let children_read = relations_write.get_children(ORIGIN).unwrap();
+        let children_read = level_relation_store.get_children(ORIGIN).unwrap();
         let origin_children = children_read.read();
         assert!(origin_children.len() == 1);
         assert!(origin_children.contains(&root));
 
-        level_relation_store.clone()
+        level_relation_store
     }
 
     /// Find a sufficient root at a given level by going through the headers store and looking
@@ -376,7 +374,8 @@ impl PruningProofManager {
             // Step 3 - Fill the ghostdag data from root to tip.
             //
             // First, derive the relevant relations down to the candidate root.
-            let transient_relation_store = self.populate_relation_store_at_level(temp_db.clone(), selected_tip, root, level, tries);
+            let transient_relation_store =
+                Arc::new(RwLock::new(self.populate_relation_store_at_level(temp_db.clone(), selected_tip, root, level, tries)));
 
             let transient_ghostdag_store =
                 Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, tries));
