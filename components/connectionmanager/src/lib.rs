@@ -125,10 +125,7 @@ impl ConnectionManager {
 
         tick_count.is_some()
             && self.perigee_manager.is_some()
-            && self
-                .perigee_config
-                .as_ref()
-                .is_some_and(|pc| pc.round_frequency != 0 && tick_count.unwrap() % pc.round_frequency == 0)
+            && self.perigee_config.as_ref().is_some_and(|pc| pc.round_frequency != 0 && tick_count.unwrap() % pc.round_frequency == 0)
     }
 
     async fn evaluate_perigee_round(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) -> bool {
