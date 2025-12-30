@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
 
 use async_channel::unbounded;
+use kaspa_connectionmanager::EVENT_LOOP_TIMER;
 use kaspa_consensus_core::{
     config::ConfigBuilder,
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
@@ -451,16 +452,20 @@ Do you confirm? (y/n)";
         perigee_exploitation_target,
         perigee_exploration_target,
         args.perigee_round_frequency,
+        EVENT_LOOP_TIMER,
         args.perigee_statistics,
+        args.perigee_persistence,
+        config.bps() as usize,
     );
 
     if perigee_config.should_initiate_perigee() {
         info!(
-            "Perigee Active - Perigee Params: Outbound Perigee Target: {}, Exploitation: {}, Exploration: {}, Round length {} Secs",
+            "Perigee Active - Perigee Params: Outbound Perigee Target: {}, Exploitation: {}, Exploration: {}, Round length {} Secs, Persistence: {}",
             perigee_config.perigee_outbound_target,
             perigee_config.exploitation_target,
             perigee_config.exploration_target,
-            perigee_config.round_frequency * 30,
+            perigee_config.round_duration_seconds.as_secs(),
+            perigee_config.persistence,
         );
     } else {
         info!(
@@ -564,8 +569,12 @@ Do you confirm? (y/n)";
         mining_rules,
     ));
 
-    let perigee_manager =
-        if perigee_config.should_initiate_perigee() { Some(Arc::new(PerigeeManager::new(hub.clone(), perigee_config))) } else { None };
+    let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::default());
+    let perigee_manager = if perigee_config.should_initiate_perigee() {
+        Some(Arc::new(PerigeeManager::new(hub.clone(), perigee_config, is_ibd_running.clone())))
+    } else {
+        None
+    };
 
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
@@ -576,6 +585,7 @@ Do you confirm? (y/n)";
         notification_root,
         hub.clone(),
         mining_rule_engine.clone(),
+        is_ibd_running,
         perigee_manager,
     ));
 

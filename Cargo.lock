@@ -3736,6 +3736,7 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-addressmanager",
  "kaspa-alloc",
+ "kaspa-connectionmanager",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",

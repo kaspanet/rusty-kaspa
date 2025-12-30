@@ -1,7 +1,5 @@
 use kaspa_database::{
-    prelude::DB,
-    prelude::{CachePolicy, StoreError, StoreResult},
-    prelude::{CachedDbAccess, DirectDbWriter},
+    prelude::{CachePolicy, CachedDbAccess, DirectDbWriter, StoreError, StoreResult, DB},
     registry::DatabaseStorePrefixes,
 };
 use kaspa_utils::mem_size::MemSizeEstimator;
@@ -20,13 +18,23 @@ pub struct Entry {
 
 impl MemSizeEstimator for Entry {}
 
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct PerigeeEntry {
+    pub rank: u16,
+    pub address: NetAddress,
+}
+
+impl MemSizeEstimator for PerigeeEntry {}
+
 pub trait AddressesStoreReader {
     #[allow(dead_code)]
     fn get(&self, key: AddressKey) -> Result<Entry, StoreError>;
+    fn get_perigee_addresses(&self) -> Result<Vec<NetAddress>, StoreError>;
 }
 
 pub trait AddressesStore: AddressesStoreReader {
     fn set(&mut self, key: AddressKey, entry: Entry) -> StoreResult<()>;
+    fn set_new_perigee_addresses(&mut self, entries: Vec<NetAddress>) -> StoreResult<()>;
     #[allow(dead_code)]
     fn set_failed_count(&mut self, key: AddressKey, connection_failed_count: u64) -> StoreResult<()>;
     fn remove(&mut self, key: AddressKey) -> StoreResult<()>;
@@ -76,11 +84,16 @@ impl From<DbAddressKey> for AddressKey {
 pub struct DbAddressesStore {
     db: Arc<DB>,
     access: CachedDbAccess<DbAddressKey, Entry>,
+    perigee_access: CachedDbAccess<DbAddressKey, PerigeeEntry>,
 }
 
 impl DbAddressesStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::Addresses.into()) }
+        Self {
+            db: Arc::clone(&db),
+            access: CachedDbAccess::new(db.clone(), cache_policy, DatabaseStorePrefixes::Addresses.into()),
+            perigee_access: CachedDbAccess::new(db.clone(), cache_policy, DatabaseStorePrefixes::PerigeeAddresses.into()),
+        }
     }
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(AddressKey, Entry), Box<dyn Error>>> + '_ {
@@ -102,11 +115,33 @@ impl AddressesStoreReader for DbAddressesStore {
     fn get(&self, key: AddressKey) -> Result<Entry, StoreError> {
         self.access.read(key.into())
     }
+
+    fn get_perigee_addresses(&self) -> StoreResult<Vec<NetAddress>> {
+        self.perigee_access
+            .iterator()
+            .map(|res| {
+                res.map(|(_, perigee_entry)| perigee_entry.address).map_err(|err| StoreError::DataInconsistency(err.to_string()))
+            })
+            .collect::<StoreResult<Vec<NetAddress>>>()
+    }
 }
 
 impl AddressesStore for DbAddressesStore {
     fn set(&mut self, key: AddressKey, entry: Entry) -> StoreResult<()> {
         self.access.write(DirectDbWriter::new(&self.db), key.into(), entry)
+    }
+
+    fn set_new_perigee_addresses(&mut self, entries: Vec<NetAddress>) -> StoreResult<()> {
+        // First, clear existing perigee addresses
+        self.perigee_access.delete_all(DirectDbWriter::new(&self.db))?;
+
+        let mut key_iter = entries.iter().enumerate().map(|(rank, address)| {
+            let perigee_entry = PerigeeEntry { rank: rank as u16, address: *address };
+            let db_key = DbAddressKey::from(AddressKey::from(*address));
+            (db_key, perigee_entry)
+        });
+
+        self.perigee_access.write_many(DirectDbWriter::new(&self.db), &mut key_iter)
     }
 
     fn remove(&mut self, key: AddressKey) -> StoreResult<()> {

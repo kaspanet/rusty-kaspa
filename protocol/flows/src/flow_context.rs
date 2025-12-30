@@ -315,6 +315,7 @@ impl FlowContext {
         notification_root: Arc<ConsensusNotificationRoot>,
         hub: Hub,
         mining_rule_engine: Arc<MiningRuleEngine>,
+        is_ibd_running: Arc<AtomicBool>,
         perigee_manager: Option<Arc<Mutex<PerigeeManager>>>,
     ) -> Self {
         let bps = config.bps() as usize;
@@ -331,7 +332,7 @@ impl FlowContext {
                 shared_block_requests: Arc::new(Mutex::new(HashMap::new())),
                 transactions_spread: AsyncRwLock::new(TransactionsSpread::new(hub.clone())),
                 shared_transaction_requests: Arc::new(Mutex::new(HashMap::new())),
-                is_ibd_running: Default::default(),
+                is_ibd_running,
                 ibd_metadata: Default::default(),
                 hub,
                 address_manager,

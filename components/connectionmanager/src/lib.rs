@@ -29,6 +29,8 @@ use tokio::{
     time::{interval, MissedTickBehavior},
 };
 
+pub const EVENT_LOOP_TIMER: Duration = Duration::from_secs(30);
+
 pub enum ConnectionManagerEvent {
     Tick(usize),
     Signal,
@@ -90,13 +92,14 @@ impl ConnectionManager {
             perigee_config,
             perigee_manager,
         });
+        
         manager.clone().start_event_loop(rx);
         manager.force_next_iteration.send(()).unwrap();
         manager
     }
 
     fn start_event_loop(self: Arc<Self>, mut rx: UnboundedReceiver<()>) {
-        let mut ticker = interval(Duration::from_secs(30));
+        let mut ticker = interval(EVENT_LOOP_TIMER);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
         tokio::spawn(async move {
             loop {
@@ -108,44 +111,62 @@ impl ConnectionManager {
                     _ = rx.recv() =>  self.clone().handle_event(ConnectionManagerEvent::Signal),
                     _ = self.shutdown_signal.listener.clone() => break,
                 }
-                .await
+                .await;
             }
             debug!("Connection manager event loop exiting");
         });
     }
 
-    async fn maybe_evaluate_perigee_round(
-        self: &Arc<Self>,
-        peer_by_address: &HashMap<SocketAddr, Peer>,
-        event: ConnectionManagerEvent,
-    ) -> bool {
+    async fn should_evaluate_perigee_round(self: &Arc<Self>, event: ConnectionManagerEvent) -> bool {
         let tick_count = match event {
-            ConnectionManagerEvent::Tick(count) => count,
-            ConnectionManagerEvent::Signal => return false,
+            ConnectionManagerEvent::Tick(count) => Some(count),
+            ConnectionManagerEvent::Signal => None,
         };
 
-        match &self.perigee_config {
-            Some(pc) => {
-                if !pc.round_frequency == 0 || tick_count % pc.round_frequency != 0 {
-                    return false;
-                }
+        tick_count.is_some()
+            && self.perigee_manager.is_some()
+            && self
+                .perigee_config
+                .as_ref()
+                .map_or(false, |pc| pc.round_frequency != 0 && tick_count.unwrap() % pc.round_frequency == 0)
+    }
+
+    async fn evaluate_perigee_round(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) -> bool {
+        let (to_exploit, to_evict, has_exploited_changed) = {
+            let perigee_manager = self.perigee_manager.as_ref().unwrap();
+            let mut perigee_manager_guard = perigee_manager.lock();
+
+            if perigee_manager_guard.config().statistics {
+                perigee_manager_guard.log_statistics();
             }
-            None => return false,
+
+            if perigee_manager_guard.is_first_round() {
+                let init = self.address_manager.lock().get_perigee_addresses();
+                info!("trying to init from {:?}", peer_by_address);
+                perigee_manager_guard.set_initial_persistent_peers(
+                    init.iter().filter_map(|addr| {
+                    peer_by_address.get(&SocketAddr::new(addr.ip.into(), addr.port))
+                }).map(|p| p.key()).take(self.perigee_config.as_ref().unwrap().perigee_outbound_target).collect()
+                );
+            }
+
+            perigee_manager_guard.evaluate_round()
         };
 
-        let (to_exploit, to_evict) = {
-            let mut perigee_manager = self.perigee_manager.as_ref().unwrap().lock();
-
-            if !perigee_manager.should_evaluate() {
-                return false;
-            }
-
-            if perigee_manager.config().statistics {
-                perigee_manager.log_statistics();
-            }
-
-            perigee_manager.evaluate_round(false)
-        };
+        if has_exploited_changed && self.perigee_config.as_ref().unwrap().persistence {
+            let am = &mut self.address_manager.lock();
+            am.set_new_perigee_addresses(
+                to_exploit
+                    .iter()
+                    .filter_map(|p| {
+                        peer_by_address
+                            .values()
+                            .find(|peer| peer.key() == *p)
+                            .map(|peer| NetAddress::new(peer.net_address().ip().into(), peer.net_address().port()))
+                    })
+                    .collect(),
+            );
+        }
 
         info!(
             "Connection manager: Perigee Round Completed - Exploiting peers: {:?}, Keeping peers: {:?}, Evicting peers: {:?}",
@@ -174,11 +195,8 @@ impl ConnectionManager {
         true
     }
 
-    async fn maybe_start_new_perigee_round(self: &Arc<Self>) {
-        if let Some(perigee_manager) = &self.perigee_manager {
-            let mut perigee_manager = perigee_manager.lock();
-            perigee_manager.start_new_round();
-        }
+    async fn setup_new_perigee_round(self: &Arc<Self>) {
+        self.perigee_manager.as_ref().unwrap().lock().start_new_round();
     }
 
     async fn handle_event(self: Arc<Self>, event: ConnectionManagerEvent) {
@@ -187,12 +205,16 @@ impl ConnectionManager {
         let peers = self.p2p_adaptor.active_peers();
         let peer_by_address: HashMap<SocketAddr, Peer> = peers.into_iter().map(|peer| (peer.net_address(), peer)).collect();
 
-        let perigee_executed = self.maybe_evaluate_perigee_round(&peer_by_address, event).await;
+        let should_eval_perigee = self.should_evaluate_perigee_round(event).await;
+
+        if should_eval_perigee {
+            self.evaluate_perigee_round(&peer_by_address).await;
+        }
         self.handle_connection_requests(&peer_by_address).await;
         self.handle_outbound_connections(&peer_by_address).await;
         self.handle_inbound_connections(&peer_by_address).await;
-        if perigee_executed {
-            self.maybe_start_new_perigee_round().await;
+        if should_eval_perigee {
+            self.setup_new_perigee_round().await;
         }
     }
 
@@ -318,9 +340,15 @@ impl ConnectionManager {
                     perigee_overflow,
                     self.perigee_outbound_target()
                 );
-                let mut pm = self.perigee_manager.as_ref().unwrap().lock();
-                pm.evaluate_round(true);
-                return;
+
+                let to_terminate_keys = {
+                    let mut pm = self.perigee_manager.as_ref().unwrap().lock();
+                    pm.trim_peers().into_iter().collect::<HashSet<_>>()
+                };
+
+                let to_terminate = peer_by_address.values().filter(|peer| to_terminate_keys.contains(&peer.key())).collect();
+
+                self.terminate_peers(to_terminate).await;
             }
         }
 
@@ -328,7 +356,24 @@ impl ConnectionManager {
 
         let mut missing_perigee_connections = missing_connections.saturating_sub(missing_random_graph_connections);
 
-        let mut addr_iter = self.address_manager.lock().iterate_prioritized_random_addresses(active_outbound);
+        // Use a boxed ExactSizeIterator so the `else` branch can return the
+        // address-manager iterator directly (no extra collect). Only the
+        // perigee branch builds a Vec which is necessary to prepend persisted
+        // addresses.
+        let mut addr_iter = if active_outbound.len() == 0 && self.perigee_config.as_ref().map_or(false, |pc| pc.persistence) {
+            // On fresh start-up (or on some other full peer clearing event), and with perigee persistence,
+            // we prioritize perigee peers saved to the db from some previous round 
+            let persistent_perigee_addresses = self.address_manager.lock().get_perigee_addresses();
+
+            let exploit_target = self.perigee_config.as_ref().unwrap().exploitation_target as usize;
+
+            // collect the persisted perigee addresses first
+            let priorities = persistent_perigee_addresses.iter().take(exploit_target).cloned().collect();
+
+            self.address_manager.lock().iterate_prioritized_random_addresses(priorities, active_outbound)
+        } else {
+            self.address_manager.lock().iterate_prioritized_random_addresses(vec![], active_outbound)
+        };
 
         let mut progressing = true;
         let mut connecting = true;
@@ -342,18 +387,7 @@ impl ConnectionManager {
             let mut random_graph_addrs = HashSet::new();
             let mut perigee_addrs = HashSet::new();
 
-            for _ in 0..missing_random_graph_connections {
-                let Some(net_addr) = addr_iter.next() else {
-                    connecting = false;
-                    break;
-                };
-                let socket_addr = SocketAddr::new(net_addr.ip.into(), net_addr.port).to_string();
-                debug!("Connecting to {}", &socket_addr);
-                addrs_to_connect.push(net_addr);
-                random_graph_addrs.insert(net_addr);
-                jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone(), PeerOutboundType::RandomGraph));
-            }
-
+            // because we potentially prioritized perigee connections to the start of the addr_iter, we should start with perigee peers.  
             for _ in 0..missing_perigee_connections {
                 let Some(net_addr) = addr_iter.next() else {
                     connecting = false;
@@ -364,6 +398,18 @@ impl ConnectionManager {
                 addrs_to_connect.push(net_addr);
                 perigee_addrs.insert(net_addr);
                 jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone(), PeerOutboundType::Perigee));
+            }
+
+            for _ in 0..missing_random_graph_connections {
+                let Some(net_addr) = addr_iter.next() else {
+                    connecting = false;
+                    break;
+                };
+                let socket_addr = SocketAddr::new(net_addr.ip.into(), net_addr.port).to_string();
+                debug!("Connecting to {}", &socket_addr);
+                addrs_to_connect.push(net_addr);
+                random_graph_addrs.insert(net_addr);
+                jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone(), PeerOutboundType::RandomGraph));
             }
 
             if progressing && !jobs.is_empty() {
