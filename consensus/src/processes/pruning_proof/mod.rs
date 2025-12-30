@@ -26,7 +26,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::info;
-use kaspa_database::{prelude::StoreResultExtensions, utils::DbLifetime};
+use kaspa_database::{prelude::StoreResultExt, utils::DbLifetime};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use thiserror::Error;
@@ -272,7 +272,7 @@ impl PruningProofManager {
         let mut current = hash;
         for _ in 0..=ghostdag_k {
             hashes.push(current);
-            let Some(parent) = self.ghostdag_store.get_selected_parent(current).unwrap_option() else {
+            let Some(parent) = self.ghostdag_store.get_selected_parent(current).optional().unwrap() else {
                 break;
             };
             if parent == self.genesis_hash || parent == blockhash::ORIGIN {

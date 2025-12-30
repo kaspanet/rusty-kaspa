@@ -12,7 +12,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::debug;
-use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions, DB};
+use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultExt, StoreResultUnitExt, DB};
 use kaspa_hashes::Hash;
 use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
@@ -27,7 +27,7 @@ use crate::{
         },
     },
     processes::{
-        ghostdag::{ordering::SortableBlock, protocol::GhostdagManager}, pruning_proof::PruningProofManagerInternalError, reachability::ReachabilityResultExtensions, relations::RelationsStoreExtensions
+        ghostdag::{ordering::SortableBlock, protocol::GhostdagManager}, pruning_proof::PruningProofManagerInternalError, relations::RelationsStoreExtensions
     },
 };
 
@@ -57,7 +57,7 @@ impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for R
                     .copied()
                     // TODO(relaxed): consider removing this filtering altogether - in the context this is currently called
                     // blocks should not be inserted if they do not fulfill this condition
-                    .filter(|h| self.reachability_service.is_dag_ancestor_of_result(self.root, *h).unwrap_option().unwrap_or(false))
+                    .filter(|h| self.reachability_service.is_dag_ancestor_of_result(self.root, *h).optional().unwrap().unwrap_or(false))
                     .collect_vec(),
             )
         })
@@ -270,7 +270,7 @@ impl PruningProofManager {
                     .parents_at_level(&header, level)
                     .iter()
                     .copied()
-                    .filter(|&p| self.reachability_service.is_dag_ancestor_of_result(root, p).unwrap_option().unwrap_or(false))
+                    .filter(|&p| self.reachability_service.is_dag_ancestor_of_result(root, p).optional().unwrap().unwrap_or(false))
                     .collect::<Vec<_>>()
                     .push_if_empty(ORIGIN),
             );
@@ -478,7 +478,7 @@ impl PruningProofManager {
 
             let current_gd = transient_gd_manager.ghostdag(&transient_relations_service.get_parents(current_hash).unwrap());
 
-            transient_ghostdag_store.insert(current_hash, Arc::new(current_gd)).unwrap_or_exists();
+            transient_ghostdag_store.insert(current_hash, Arc::new(current_gd)).idempotent().unwrap();
 
             for child in transient_relations_service.get_children(current_hash).unwrap().read().iter().copied() {
                 topological_heap
@@ -534,7 +534,7 @@ impl PruningProofManager {
             // filtering by the existence of headers alone does not suffice because we store the headers of all past pruning points, but these are not conceptually a part of the DAG
             // or the pruning proof and are not reachable under normal means. 
             .filter(|&p| self.reachability_service.has_reachability_data(p))
-            .filter_map(|p| self.headers_store.get_header(p).unwrap_option().map(|h| SortableBlock::new(p, h.blue_work)))
+            .filter_map(|p| self.headers_store.get_header(p).optional().unwrap().map(|h| SortableBlock::new(p, h.blue_work)))
             .max()
             .ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof("no parents with header".to_string()))?;
         Ok(self.headers_store.get_header(sp.hash).expect("unwrapped above"))
