@@ -27,7 +27,9 @@ use crate::{
         },
     },
     processes::{
-        ghostdag::{ordering::SortableBlock, protocol::GhostdagManager}, pruning_proof::PruningProofManagerInternalError, relations::RelationsStoreExtensions
+        ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
+        pruning_proof::PruningProofManagerInternalError,
+        relations::RelationsStoreExtensions,
     },
 };
 
@@ -226,7 +228,6 @@ impl PruningProofManager {
 
         MultiLevelProofContext { transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level }
     }
-
 
     /// Builds and returns a store of parents-children relations at a given level
     /// to facilitate forward traversal of a snippet of the Dag at that level.
