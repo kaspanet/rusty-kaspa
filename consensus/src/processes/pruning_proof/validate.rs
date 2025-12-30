@@ -87,12 +87,12 @@ impl PruningProofManager {
         let challenger_claimed_pruning_period_work =
             proof_metadata.relay_block_blue_work.saturating_sub(challenger_pp_header.blue_work);
 
-        for (level_idx, challnger_selected_tip_at_level) in challenger_selected_tip_by_level.iter().copied().enumerate() {
+        for (level_idx, challenger_selected_tip_at_level) in challenger_selected_tip_by_level.iter().copied().enumerate() {
             let level = level_idx as BlockLevel;
-            self.validate_proof_selected_tip(challnger_selected_tip_at_level, level, challenger_pp_header)?;
+            self.validate_proof_selected_tip(challenger_selected_tip_at_level, level, challenger_pp_header)?;
 
             let challenger_selected_tip_gd =
-                challenger_ghostdag_stores[level_idx].get_compact_data(challnger_selected_tip_at_level).unwrap();
+                challenger_ghostdag_stores[level_idx].get_compact_data(challenger_selected_tip_at_level).unwrap();
 
             // Next check is to see if the challenger's proof is "better" than the defender's
             // Step 1 - look at only levels that have a full proof (least 2m blocks in the proof)
@@ -109,12 +109,12 @@ impl PruningProofManager {
             // Step 2 - if we can find a common ancestor between the challenger's proof and defender's proof
             // we can determine if the challenger's is better. The challenger proof is better if the blue work difference between the
             // defender's tips and the common ancestor, combined with the pruning period work, is less than the blue work difference between the
-            // challnger's tip and the common ancestor (from its pov) combined with its own claimed pruning period work.
+            // challenger's tip and the common ancestor (from its pov) combined with its own claimed pruning period work.
             if let Some((challenger_common_ancestor_gd, defender_common_ancestor_gd)) = self
                 .find_challenger_and_defender_common_ancestor_ghostdag_data(
                     &challenger_ghostdag_stores,
                     &defender_ghostdag_stores,
-                    challnger_selected_tip_at_level,
+                    challenger_selected_tip_at_level,
                     level,
                     challenger_selected_tip_gd,
                 )
@@ -136,13 +136,13 @@ impl PruningProofManager {
 
         if defender_pp == self.genesis_hash {
             // If the challenger has better tips and the defender's pruning point is still
-            // genesis, we consider the challnger to be better.
+            // genesis, we consider the challenger to be better.
             return Ok(());
         }
 
         // If we got here it means there's no level with shared blocks
-        // between the challnger and the defender. In this case we
-        // consider the chanllenger to be better if it has at least one level
+        // between the challenger and the defender. In this case we
+        // consider the challenger to be better if it has at least one level
         // with 2*self.pruning_proof_m blue blocks where the defender doesn't.
         for level in (0..=self.max_block_level).rev() {
             let level_idx = level as usize;
