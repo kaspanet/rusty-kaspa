@@ -92,7 +92,7 @@ impl ConnectionManager {
             perigee_config,
             perigee_manager,
         });
-        
+
         manager.clone().start_event_loop(rx);
         manager.force_next_iteration.send(()).unwrap();
         manager
@@ -128,7 +128,7 @@ impl ConnectionManager {
             && self
                 .perigee_config
                 .as_ref()
-                .map_or(false, |pc| pc.round_frequency != 0 && tick_count.unwrap() % pc.round_frequency == 0)
+                .is_some_and(|pc| pc.round_frequency != 0 && tick_count.unwrap() % pc.round_frequency == 0)
     }
 
     async fn evaluate_perigee_round(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) -> bool {
@@ -144,9 +144,11 @@ impl ConnectionManager {
                 let init = self.address_manager.lock().get_perigee_addresses();
                 info!("trying to init from {:?}", peer_by_address);
                 perigee_manager_guard.set_initial_persistent_peers(
-                    init.iter().filter_map(|addr| {
-                    peer_by_address.get(&SocketAddr::new(addr.ip.into(), addr.port))
-                }).map(|p| p.key()).take(self.perigee_config.as_ref().unwrap().perigee_outbound_target).collect()
+                    init.iter()
+                        .filter_map(|addr| peer_by_address.get(&SocketAddr::new(addr.ip.into(), addr.port)))
+                        .map(|p| p.key())
+                        .take(self.perigee_config.as_ref().unwrap().perigee_outbound_target)
+                        .collect(),
                 );
             }
 
@@ -360,12 +362,12 @@ impl ConnectionManager {
         // address-manager iterator directly (no extra collect). Only the
         // perigee branch builds a Vec which is necessary to prepend persisted
         // addresses.
-        let mut addr_iter = if active_outbound.len() == 0 && self.perigee_config.as_ref().map_or(false, |pc| pc.persistence) {
+        let mut addr_iter = if active_outbound.is_empty() && self.perigee_config.as_ref().is_some_and(|pc| pc.persistence) {
             // On fresh start-up (or on some other full peer clearing event), and with perigee persistence,
-            // we prioritize perigee peers saved to the db from some previous round 
+            // we prioritize perigee peers saved to the db from some previous round
             let persistent_perigee_addresses = self.address_manager.lock().get_perigee_addresses();
 
-            let exploit_target = self.perigee_config.as_ref().unwrap().exploitation_target as usize;
+            let exploit_target = self.perigee_config.as_ref().unwrap().exploitation_target;
 
             // collect the persisted perigee addresses first
             let priorities = persistent_perigee_addresses.iter().take(exploit_target).cloned().collect();
@@ -387,7 +389,7 @@ impl ConnectionManager {
             let mut random_graph_addrs = HashSet::new();
             let mut perigee_addrs = HashSet::new();
 
-            // because we potentially prioritized perigee connections to the start of the addr_iter, we should start with perigee peers.  
+            // because we potentially prioritized perigee connections to the start of the addr_iter, we should start with perigee peers.
             for _ in 0..missing_perigee_connections {
                 let Some(net_addr) = addr_iter.next() else {
                     connecting = false;
