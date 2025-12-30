@@ -354,7 +354,9 @@ impl PruningProofManager {
                 let ghostdag = (&*self.ghostdag_store.get_data(current).unwrap()).into();
                 e.insert(TrustedHeader { header, ghostdag });
             }
-            // TODO(relaxed): revisit the need for relations store as opposed to a more precise (if any) filtering of the direct parents
+
+            // The relation store signifies precisely the node's contiguous Dag segment -
+            // direct parents not included in it are not taken into account in the bfs traversal
             let known_parents = self.relations_store.read().get_parents(current).unwrap();
             for parent in known_parents.iter().copied() {
                 if visited.insert(parent) {
