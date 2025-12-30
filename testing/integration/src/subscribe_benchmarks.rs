@@ -231,15 +231,8 @@ async fn utxos_changed_subscriptions_client(address_cycle_seconds: u64, address_
         .task(TickTask::build(tick_service.clone()))
         .task(MemoryMonitorTask::build(tick_service.clone(), "client", Duration::from_secs(5), MAX_MEMORY))
         .task(
-            MinerGroupTask::build(
-                network,
-                client_manager.clone(),
-                SUBMIT_BLOCK_CLIENTS,
-                params.bps().upper_bound(),
-                BLOCK_COUNT,
-                Stopper::Signal,
-            )
-            .await,
+            MinerGroupTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT, Stopper::Signal)
+                .await,
         )
         .task(
             TxSenderGroupTask::build(
@@ -257,7 +250,7 @@ async fn utxos_changed_subscriptions_client(address_cycle_seconds: u64, address_
             SubscriberGroupTask::build(
                 client_manager,
                 SUBSCRIBE_WORKERS,
-                params.bps().upper_bound(),
+                params.bps(),
                 vec![VirtualDaaScoreChangedScope {}.into()],
                 3,
                 subscribing_addresses,

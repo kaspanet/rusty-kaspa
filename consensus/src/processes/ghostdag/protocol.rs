@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use kaspa_consensus_core::{
     blockhash::{self, BlockHashExtensions, BlockHashes},
-    config::params::ForkedParam,
     BlockHashMap, BlockLevel, BlueWorkType, HashMapCustomHasher,
 };
 use kaspa_hashes::Hash;
@@ -25,7 +24,7 @@ use super::ordering::*;
 #[derive(Clone)]
 pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> {
     genesis_hash: Hash,
-    pub(super) k: ForkedParam<KType>,
+    pub(super) k: KType,
     pub(super) ghostdag_store: Arc<T>,
     pub(super) relations_store: S,
     pub(super) headers_store: Arc<V>,
@@ -44,7 +43,7 @@ pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: R
 impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
     pub fn new(
         genesis_hash: Hash,
-        k: ForkedParam<KType>,
+        k: KType,
         ghostdag_store: Arc<T>,
         relations_store: S,
         headers_store: Arc<V>,
@@ -66,7 +65,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
     ) -> Self {
         Self {
             genesis_hash,
-            k: ForkedParam::new_const(k),
+            k,
             ghostdag_store,
             relations_store,
             reachability_service,
@@ -134,7 +133,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             // ORIGIN is always a single parent so both blue score and work should remain zero
             return GhostdagData::new_with_selected_parent(selected_parent, 1); // k is only a capacity hint here
         }
-        let k = self.k.after();
+        let k = self.k;
         // Initialize new GHOSTDAG block data with the selected parent
         let mut new_block_data = GhostdagData::new_with_selected_parent(selected_parent, k);
         // Get the mergeset in consensus-agreed topological order (topological here means forward in time from blocks to children)
@@ -221,8 +220,6 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             // This is a sanity check that validates that a blue
             // block's blue anticone is not already larger than K.
             assert!(peer_blue_anticone_size <= k, "found blue anticone larger than K");
-            // [Crescendo]: this ^ is a valid assert since we are increasing k. Had we decreased k, this line would
-            //              need to be removed and the condition above would need to be changed to >= k
         }
 
         ColoringState::Pending
