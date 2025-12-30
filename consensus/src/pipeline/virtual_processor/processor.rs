@@ -54,10 +54,7 @@ use kaspa_consensus_core::{
     block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     blockstatus::BlockStatus::{StatusDisqualifiedFromChain, StatusUTXOValid},
     coinbase::MinerData,
-    config::{
-        genesis::GenesisBlock,
-        params::{ForkActivation, ForkedParam},
-    },
+    config::{genesis::GenesisBlock, params::ForkActivation},
     header::Header,
     merkle::calc_hash_merkle_root,
     mining_rules::MiningRules,
@@ -78,7 +75,7 @@ use kaspa_consensus_notify::{
 };
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, time::unix_now, trace, warn};
-use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::prelude::{StoreError, StoreResultExt, StoreResultUnitExt};
 use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::MuHash;
 use kaspa_notify::{events::EventType, notifier::Notify};
@@ -120,8 +117,8 @@ pub struct VirtualStateProcessor {
 
     // Config
     pub(super) genesis: GenesisBlock,
-    pub(super) max_block_parents: ForkedParam<u8>,
-    pub(super) mergeset_size_limit: ForkedParam<u64>,
+    pub(super) max_block_parents: u8,
+    pub(super) mergeset_size_limit: u64,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -502,7 +499,7 @@ impl VirtualStateProcessor {
         self.utxo_multisets_store.insert_batch(&mut batch, current, multiset).unwrap();
         self.acceptance_data_store.insert_batch(&mut batch, current, Arc::new(acceptance_data)).unwrap();
         // Note we call unwrap_or_exists since this field can be populated during IBD with headers proof
-        self.pruning_samples_store.insert_batch(&mut batch, current, pruning_sample_from_pov).unwrap_or_exists();
+        self.pruning_samples_store.insert_batch(&mut batch, current, pruning_sample_from_pov).idempotent().unwrap();
         let write_guard = self.statuses_store.set_batch(&mut batch, current, StatusUTXOValid).unwrap();
         self.db.write(batch).unwrap();
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
@@ -709,8 +706,8 @@ impl VirtualStateProcessor {
         // we might touch such data prior to validating the bounded merge rule. All in all, this function is short
         // enough so we avoid making further optimizations
         let _prune_guard = self.pruning_lock.blocking_read();
-        let max_block_parents = self.max_block_parents.after() as usize;
-        let mergeset_size_limit = self.mergeset_size_limit.after();
+        let max_block_parents = self.max_block_parents as usize;
+        let mergeset_size_limit = self.mergeset_size_limit;
         let max_candidates = self.max_virtual_parent_candidates(max_block_parents);
 
         // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
@@ -940,13 +937,8 @@ impl VirtualStateProcessor {
             virtual_state.daa_score,
             virtual_state.past_median_time,
         )?;
-        let ValidatedTransaction { calculated_fee, .. } = self.validate_transaction_in_utxo_context(
-            tx,
-            utxo_view,
-            virtual_state.daa_score,
-            virtual_state.daa_score,
-            TxValidationFlags::Full,
-        )?;
+        let ValidatedTransaction { calculated_fee, .. } =
+            self.validate_transaction_in_utxo_context(tx, utxo_view, virtual_state.daa_score, TxValidationFlags::Full)?;
         Ok(calculated_fee)
     }
 
@@ -1071,11 +1063,8 @@ impl VirtualStateProcessor {
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter());
 
-        let accepted_id_merkle_root = self.calc_accepted_id_merkle_root(
-            virtual_state.daa_score,
-            virtual_state.accepted_tx_ids.iter().copied(),
-            virtual_state.ghostdag_data.selected_parent,
-        );
+        let accepted_id_merkle_root = self
+            .calc_accepted_id_merkle_root(virtual_state.accepted_tx_ids.iter().copied(), virtual_state.ghostdag_data.selected_parent);
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;
@@ -1110,11 +1099,11 @@ impl VirtualStateProcessor {
     /// Make sure pruning point-related stores are initialized
     pub fn init(self: &Arc<Self>) {
         let pruning_point_read = self.pruning_point_store.upgradable_read();
-        if pruning_point_read.pruning_point().unwrap_option().is_none() {
+        if pruning_point_read.pruning_point().optional().unwrap().is_none() {
             let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
             let mut pruning_meta_write = self.pruning_meta_stores.write();
             let mut batch = WriteBatch::default();
-            self.past_pruning_points_store.insert_batch(&mut batch, 0, self.genesis.hash).unwrap_or_exists();
+            self.past_pruning_points_store.insert_batch(&mut batch, 0, self.genesis.hash).idempotent().unwrap();
             pruning_point_write.set_batch(&mut batch, self.genesis.hash, 0).unwrap();
             pruning_point_write.set_retention_checkpoint(&mut batch, self.genesis.hash).unwrap();
             pruning_point_write.set_retention_period_root(&mut batch, self.genesis.hash).unwrap();
@@ -1191,7 +1180,6 @@ impl VirtualStateProcessor {
             &new_pruning_point_transactions,
             &virtual_read.utxo_set,
             new_pruning_point_header.daa_score,
-            new_pruning_point_header.daa_score,
             TxValidationFlags::Full,
         );
         if validated_transactions.len() < new_pruning_point_transactions.len() - 1 {
@@ -1240,7 +1228,7 @@ impl VirtualStateProcessor {
         let vf = self.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, current_pp);
         let vff = self.depth_manager.calc_finality_point(&self.ghostdag_store.get_data(vf).unwrap(), current_pp);
 
-        let last_known_pp = pp_list.iter().rev().find(|pp| match self.statuses_store.read().get(pp.hash).unwrap_option() {
+        let last_known_pp = pp_list.iter().rev().find(|pp| match self.statuses_store.read().get(pp.hash).optional().unwrap() {
             Some(status) => status.is_valid(),
             None => false,
         });
