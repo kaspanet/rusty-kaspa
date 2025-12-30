@@ -253,14 +253,10 @@ impl IbdFlow {
                         // 1: syncer_pruning_point is in the future, and there is a need to partially resync from syncer_pruning_point
                         // 2: syncer_pruning_point is in the past of current pruning point, or is unknown on which case the syncing node IBD should be stopped
 
-                        if consensus
-                            .async_is_chain_ancestor_of(pruning_point, syncer_pruning_point)
-                            .await
-                            .map_err(|_| ProtocolError::Other("syncer pruning point is corrupted"))?
-                        {
+                        if consensus.async_is_chain_ancestor_of(pruning_point, syncer_pruning_point).await.unwrap_or(false) {
                             return Ok(IbdType::PruningCatchUp);
                         } else {
-                            return Err(ProtocolError::Other("IBD catchup is required but syncer pruning point is outdated"));
+                            return Err(ProtocolError::Other("A catchup to recent history is needed but the syncer's pruning point is not in the known future of the current consensus pruning point."));
                         }
                     }
                 }

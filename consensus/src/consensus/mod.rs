@@ -514,16 +514,21 @@ impl Consensus {
         let Ok(candidate_ghostdag_data) = self.get_ghostdag_data(new_pruning_point) else {
             return Err(ConsensusError::General(
                 "Catchup cannot be continued since the syncer pruning point could not be confirmed to be a valid pruning point",
-            ));        };
+            ));
+        };
         let Ok(selected_parent_ghostdag_data) = self.get_ghostdag_data(candidate_ghostdag_data.selected_parent) else {
             return Err(ConsensusError::General(
                 "Catchup cannot be continued since the syncer pruning point could not be confirmed to be a valid pruning point",
-            ));        };
-        self.services.pruning_point_manager.is_pruning_sample(
-            candidate_ghostdag_data.blue_score,
-            selected_parent_ghostdag_data.blue_score,
-            self.config.params.finality_depth().after(),
-        )           .then_some(())
+            ));
+        };
+        self.services
+            .pruning_point_manager
+            .is_pruning_sample(
+                candidate_ghostdag_data.blue_score,
+                selected_parent_ghostdag_data.blue_score,
+                self.config.params.finality_depth().after(),
+            )
+            .then_some(())
             .ok_or(ConsensusError::General("the alleged pruning point is not a valid pruning point, aborting catchup attempt"))?;
 
         // 2) There are sufficient headers built on top of it, specifically,
