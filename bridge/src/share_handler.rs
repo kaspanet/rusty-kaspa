@@ -1181,15 +1181,39 @@ impl ShareHandler {
                 let vdaa = node_status.virtual_daa_score.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string());
                 let blocks = node_status.block_count.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string());
                 let headers = node_status.header_count.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string());
-                let diff = node_status.difficulty.map(|d| format!("{:.2}", d)).unwrap_or_else(|| "-".to_string());
+                let diff = node_status.difficulty.map(|d| format!("{:.2e}", d)).unwrap_or_else(|| "-".to_string());
                 let tip = node_status.tip_hash.as_deref().unwrap_or("-");
                 let mempool = node_status.mempool_size.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string());
 
                 let tip_short = if tip.len() > 28 { format!("{}...{}", &tip[..16], &tip[tip.len() - 8..]) } else { tip.to_string() };
 
-                out.push(format!("[NODE] {}|{}", conn_str, sync_str));
-                out.push(format!("  {} | ver={} | peers={} | vdaa={}", net, ver, peers, vdaa));
-                out.push(format!("  blocks={}/{} | diff={} | mempool={} | tip={}", blocks, headers, diff, mempool, tip_short));
+                let net_short = {
+                    let mut network_type = None;
+                    let mut suffix = None;
+                    if let Some(pos) = net.find("network_type:") {
+                        let s = &net[pos + "network_type:".len()..];
+                        let s = s.trim_start();
+                        network_type = s.split(&[',', '}'][..]).next().map(|v| v.trim());
+                    }
+                    if let Some(pos) = net.find("suffix:") {
+                        let s = &net[pos + "suffix:".len()..];
+                        let s = s.trim_start();
+                        let raw = s.split(&[',', '}'][..]).next().map(|v| v.trim());
+                        if raw != Some("None") {
+                            suffix = raw;
+                        }
+                    }
+                    match (network_type, suffix) {
+                        (Some(nt), Some(suf)) => format!("{}-{}", nt, suf),
+                        (Some(nt), None) => nt.to_string(),
+                        _ => net.to_string(),
+                    }
+                };
+
+                out.push(format!(
+                    "[NODE] {}|{} | n={} | v={} | p={} | vd={} | blk={}/{} | d={} | mp={} | tip={}",
+                    conn_str, sync_str, net_short, ver, peers, vdaa, blocks, headers, diff, mempool, tip_short
+                ));
 
                 out.push(top.clone());
                 out.push(hdr);

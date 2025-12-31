@@ -1,3 +1,4 @@
+use chrono::Local;
 use clap::Parser;
 use futures_util::future::try_join_all;
 use kaspa_stratum_bridge::log_colors::LogColors;
@@ -404,6 +405,9 @@ async fn main() -> Result<(), anyhow::Error> {
         ) -> fmt::Result {
             let level = *event.metadata().level();
 
+            let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S.%3f%:z");
+            write!(writer, "{} ", timestamp)?;
+
             // Collect the message into a string first so we can analyze it for color patterns
             let mut message_buf = String::new();
             {
@@ -416,6 +420,34 @@ async fn main() -> Result<(), anyhow::Error> {
             let formatted_target =
                 if let Some(rest) = target.strip_prefix("rustbridge") { format!("rustbridge{}", rest) } else { target.to_string() };
             let is_multiline = original_message.contains('\n');
+
+            // Special-case the periodic stats output:
+            // - First line rendered as: `timestamp [NODE] KSB : ...` (no [INFO], no target prefix)
+            // - Table rendered below (green)
+            if is_multiline && original_message.contains("| Worker") && original_message.contains("| Inst") {
+                let mut lines = original_message.split('\n');
+                let first_line = lines.next().unwrap_or("");
+                let status_payload = first_line.strip_prefix("[NODE] ").unwrap_or(first_line);
+
+                if self.apply_colors {
+                    write!(writer, "\x1b[97m[\x1b[0m\x1b[92mNODE\x1b[0m\x1b[97m]\x1b[0m KSB : {}", status_payload)?;
+                } else {
+                    write!(writer, "[NODE] KSB : {}", status_payload)?;
+                }
+                writeln!(writer)?;
+
+                for line in lines {
+                    let trimmed = line.trim_start();
+                    let is_table_line = trimmed.starts_with('+') || trimmed.starts_with('|');
+                    if self.apply_colors && is_table_line {
+                        writeln!(writer, "\x1b[92m{}\x1b[0m", line)?;
+                    } else {
+                        writeln!(writer, "{}", line)?;
+                    }
+                }
+
+                return Ok(());
+            }
 
             // Special-case forwarded node logs (from `tracing_log::LogTracer`) to match kaspad style:
             // `[INFO] Accepted ...` (white brackets), and omit the `log:` target prefix.
@@ -462,27 +494,49 @@ async fn main() -> Result<(), anyhow::Error> {
                 return Ok(());
             }
 
-            // Default prefix: `INFO target: ...` (for multiline payloads, start on a new line)
-            if self.apply_colors {
-                let level_ansi = match level {
-                    tracing::Level::ERROR => "\x1b[91m",
-                    tracing::Level::WARN => "\x1b[93m",
-                    tracing::Level::INFO => "\x1b[92m",
-                    tracing::Level::DEBUG => "\x1b[94m",
-                    tracing::Level::TRACE => "\x1b[90m",
-                };
-                write!(writer, "{}{:5}\x1b[0m ", level_ansi, level)?;
-            } else {
-                write!(writer, "{:5} ", level)?;
+            // Default prefix: `[INFO]  target: ...` (for multiline payloads, start on a new line)
+            match level {
+                tracing::Level::INFO => {
+                    if self.apply_colors {
+                        write!(writer, "\x1b[97m[\x1b[0m\x1b[92mINFO\x1b[0m\x1b[97m]\x1b[0m  ")?;
+                    } else {
+                        write!(writer, "[INFO]  ")?;
+                    }
+                }
+                tracing::Level::WARN => {
+                    if self.apply_colors {
+                        write!(writer, "\x1b[97m[\x1b[0m\x1b[93mWARN\x1b[0m\x1b[97m]\x1b[0m  ")?;
+                    } else {
+                        write!(writer, "[WARN]  ")?;
+                    }
+                }
+                tracing::Level::ERROR => {
+                    if self.apply_colors {
+                        write!(writer, "\x1b[97m[\x1b[0m\x1b[91mERROR\x1b[0m\x1b[97m]\x1b[0m  ")?;
+                    } else {
+                        write!(writer, "[ERROR]  ")?;
+                    }
+                }
+                tracing::Level::DEBUG => {
+                    if self.apply_colors {
+                        write!(writer, "\x1b[97m[\x1b[0m\x1b[94mDEBUG\x1b[0m\x1b[97m]\x1b[0m  ")?;
+                    } else {
+                        write!(writer, "[DEBUG]  ")?;
+                    }
+                }
+                tracing::Level::TRACE => {
+                    if self.apply_colors {
+                        write!(writer, "\x1b[97m[\x1b[0m\x1b[90mTRACE\x1b[0m\x1b[97m]\x1b[0m  ")?;
+                    } else {
+                        write!(writer, "[TRACE]  ")?;
+                    }
+                }
             }
 
             // Write target with capitalization. For multi-line messages (like the stats table),
             // start the payload on a new line to avoid wrapping the prefix into the table.
-            if is_multiline {
-                writeln!(writer, "{}:", formatted_target)?;
-            } else {
-                write!(writer, "{}: ", formatted_target)?;
-            }
+            let _ = is_multiline;
+            write!(writer, "{}: ", formatted_target)?;
 
             // Check global registry for instance number based on instance_id in message
             // This works across async boundaries and thread switches
@@ -543,6 +597,9 @@ async fn main() -> Result<(), anyhow::Error> {
                         let is_table_line = trimmed.starts_with('+') || trimmed.starts_with('|');
                         if is_table_line {
                             writeln!(writer, "\x1b[92m{}\x1b[0m", line)?;
+                        } else if line.contains("[NODE]") {
+                            let colored = line.replace("[NODE]", "\x1b[97m[\x1b[0m\x1b[92mNODE\x1b[0m\x1b[97m]\x1b[0m");
+                            writeln!(writer, "{}", colored)?;
                         } else {
                             writeln!(writer, "{}", line)?;
                         }
@@ -607,6 +664,9 @@ async fn main() -> Result<(), anyhow::Error> {
                     } else {
                         write!(writer, "{}", &message)?;
                     }
+                } else if message.contains("[NODE]") {
+                    let colored = message.replace("[NODE]", "\x1b[97m[\x1b[0m\x1b[92mNODE\x1b[0m\x1b[97m]\x1b[0m");
+                    write!(writer, "{}", colored)?;
                 } else {
                     write!(writer, "{}", &message)?; // No color
                 }
