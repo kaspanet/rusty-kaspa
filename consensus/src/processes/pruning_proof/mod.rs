@@ -26,7 +26,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::info;
-use kaspa_database::{prelude::StoreResultExt, utils::DbLifetime};
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use thiserror::Error;
@@ -58,7 +58,7 @@ use crate::{
     processes::window::WindowType,
 };
 
-use super::{ghostdag::protocol::GhostdagManager, window::WindowManager};
+use super::window::WindowManager;
 
 #[derive(Error, Debug)]
 enum PruningProofManagerInternalError {
@@ -74,7 +74,9 @@ enum PruningProofManagerInternalError {
     #[error("missing headers to build proof: {0}")]
     NotEnoughHeadersToBuildProof(String),
 }
+
 type PruningProofManagerInternalResult<T> = std::result::Result<T, PruningProofManagerInternalError>;
+
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
     data: Arc<T>,
@@ -84,16 +86,6 @@ impl<T> Clone for CachedPruningPointData<T> {
     fn clone(&self) -> Self {
         Self { pruning_point: self.pruning_point, data: self.data.clone() }
     }
-}
-
-struct TempProofContext {
-    headers_store: Arc<DbHeadersStore>,
-    ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
-    relations_stores: Vec<DbRelationsStore>,
-    reachability_stores: Vec<Arc<RwLock<DbReachabilityStore>>>,
-    ghostdag_managers:
-        Vec<GhostdagManager<DbGhostdagStore, DbRelationsStore, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>>,
-    db_lifetime: DbLifetime,
 }
 
 pub struct PruningProofManager {

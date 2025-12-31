@@ -12,11 +12,14 @@ use kaspa_consensus_core::{
     BlockLevel,
 };
 use kaspa_core::info;
-use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreResultExt, StoreResultUnitExt};
+use kaspa_database::{
+    prelude::{CachePolicy, ConnBuilder, StoreResultExt, StoreResultUnitExt},
+    utils::DbLifetime,
+};
 use kaspa_hashes::Hash;
 use kaspa_pow::{calc_block_level, calc_block_level_check_pow};
 use kaspa_utils::vec::VecExtensions;
-use parking_lot::lock_api::RwLock;
+use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 
 use crate::{
@@ -34,7 +37,200 @@ use crate::{
     processes::{ghostdag::protocol::GhostdagManager, reachability::inquirer as reachability, relations::RelationsStoreExtensions},
 };
 
-use super::{PruningProofManager, TempProofContext};
+use super::PruningProofManager;
+
+struct ProofContext {
+    headers_store: Arc<DbHeadersStore>,
+    ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
+    relations_stores: Vec<DbRelationsStore>,
+    reachability_stores: Vec<Arc<RwLock<DbReachabilityStore>>>,
+    ghostdag_managers:
+        Vec<GhostdagManager<DbGhostdagStore, DbRelationsStore, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>>,
+    db_lifetime: DbLifetime,
+}
+
+impl ProofContext {
+    fn from_proof(
+        ppm: &PruningProofManager,
+        proof: &PruningPointProof,
+        log_validating: bool,
+    ) -> PruningImportResult<(ProofContext, Vec<Hash>)> {
+        if proof[0].is_empty() {
+            return Err(PruningImportError::PruningProofNotEnoughHeaders);
+        }
+
+        let ghostdag_k = ppm.ghostdag_k;
+
+        let headers_estimate = ppm.estimate_proof_unique_size(proof);
+
+        let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let cache_policy = CachePolicy::Count(2 * ppm.pruning_proof_m as usize);
+        let headers_store =
+            Arc::new(DbHeadersStore::new(db.clone(), CachePolicy::Count(headers_estimate), CachePolicy::Count(headers_estimate)));
+        let ghostdag_stores = (0..=ppm.max_block_level)
+            .map(|level| Arc::new(DbGhostdagStore::new(db.clone(), level, cache_policy, cache_policy)))
+            .collect_vec();
+        let mut relations_stores =
+            (0..=ppm.max_block_level).map(|level| DbRelationsStore::new(db.clone(), level, cache_policy, cache_policy)).collect_vec();
+        let reachability_stores = (0..=ppm.max_block_level)
+            .map(|level| Arc::new(RwLock::new(DbReachabilityStore::with_block_level(db.clone(), cache_policy, cache_policy, level))))
+            .collect_vec();
+
+        let reachability_services = (0..=ppm.max_block_level)
+            .map(|level| MTReachabilityService::new(reachability_stores[level as usize].clone()))
+            .collect_vec();
+
+        let ghostdag_managers = ghostdag_stores
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(level, ghostdag_store)| {
+                GhostdagManager::with_level(
+                    ppm.genesis_hash,
+                    ghostdag_k,
+                    ghostdag_store,
+                    relations_stores[level].clone(),
+                    headers_store.clone(),
+                    reachability_services[level].clone(),
+                    level as BlockLevel,
+                    ppm.max_block_level,
+                )
+            })
+            .collect_vec();
+
+        {
+            let mut batch = WriteBatch::default();
+            for level in 0..=ppm.max_block_level {
+                let level = level as usize;
+                reachability::init(reachability_stores[level].write().deref_mut()).unwrap();
+                relations_stores[level].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
+                ghostdag_stores[level].insert(ORIGIN, ghostdag_managers[level].origin_ghostdag_data()).unwrap();
+            }
+
+            db.write(batch).unwrap();
+        }
+
+        let mut ctx =
+            ProofContext { db_lifetime, headers_store, ghostdag_stores, relations_stores, reachability_stores, ghostdag_managers };
+
+        let tips = ctx.populate_stores(ppm, proof, log_validating)?;
+
+        Ok((ctx, tips))
+    }
+
+    fn populate_stores(
+        &mut self,
+        ppm: &PruningProofManager,
+        proof: &PruningPointProof,
+        log_validating: bool,
+    ) -> PruningImportResult<Vec<Hash>> {
+        let headers_store = &self.headers_store;
+        let ghostdag_stores = &self.ghostdag_stores;
+        let mut relations_stores = self.relations_stores.clone();
+        let reachability_stores = &self.reachability_stores;
+        let ghostdag_managers = &self.ghostdag_managers;
+
+        let proof_pp_header = proof[0].last().expect("checked if empty");
+        let proof_pp = proof_pp_header.hash;
+
+        let mut selected_tip_by_level = vec![None; ppm.max_block_level as usize + 1];
+        for level in (0..=ppm.max_block_level).rev() {
+            // Before processing this level, check if the process is exiting so we can end early
+            if ppm.is_consensus_exiting.load(Ordering::Relaxed) {
+                return Err(PruningImportError::PruningValidationInterrupted);
+            }
+
+            if log_validating {
+                info!("Validating level {level} from the pruning point proof ({} headers)", proof[level as usize].len());
+            }
+            let level_idx = level as usize;
+            let mut selected_tip = None;
+            for (i, header) in proof[level as usize].iter().enumerate() {
+                let (header_level, pow_passes) = calc_block_level_check_pow(header, ppm.max_block_level);
+                if header_level < level {
+                    return Err(PruningImportError::PruningProofWrongBlockLevel(header.hash, header_level, level));
+                }
+                if !pow_passes {
+                    return Err(PruningImportError::ProofOfWorkFailed(header.hash, level));
+                }
+
+                headers_store.insert(header.hash, header.clone(), header_level).idempotent().unwrap();
+
+                // filter out parents that do not appear at the pruning proof:
+                let parents = ppm
+                    .parents_manager
+                    .parents_at_level(header, level)
+                    .iter()
+                    .copied()
+                    .filter(|parent| ghostdag_stores[level_idx].has(*parent).unwrap())
+                    .collect_vec();
+
+                // Only the first block at each level is allowed to have no known parents
+                if parents.is_empty() && i != 0 {
+                    return Err(PruningImportError::PruningProofHeaderWithNoKnownParents(header.hash, level));
+                }
+
+                let parents: BlockHashes = parents.push_if_empty(ORIGIN).into();
+
+                if relations_stores[level_idx].has(header.hash).unwrap() {
+                    return Err(PruningImportError::PruningProofDuplicateHeaderAtLevel(header.hash, level));
+                }
+
+                relations_stores[level_idx].insert(header.hash, parents.clone()).unwrap();
+                let ghostdag_data = Arc::new(ghostdag_managers[level_idx].ghostdag(&parents));
+                ghostdag_stores[level_idx].insert(header.hash, ghostdag_data.clone()).unwrap();
+                selected_tip = Some(match selected_tip {
+                    Some(tip) => ghostdag_managers[level_idx].find_selected_parent([tip, header.hash]),
+                    None => header.hash,
+                });
+
+                let mut reachability_mergeset = {
+                    let reachability_read = reachability_stores[level_idx].read();
+                    ghostdag_data
+                        .unordered_mergeset_without_selected_parent()
+                        .filter(|hash| reachability_read.has(*hash).unwrap())
+                        .collect_vec() // We collect to vector so reachability_read can be released and let `reachability::add_block` use a write lock.
+                        .into_iter()
+                };
+                reachability::add_block(
+                    reachability_stores[level_idx].write().deref_mut(),
+                    header.hash,
+                    ghostdag_data.selected_parent,
+                    &mut reachability_mergeset,
+                )
+                .unwrap();
+
+                if selected_tip.unwrap() == header.hash {
+                    reachability::hint_virtual_selected_parent(reachability_stores[level_idx].write().deref_mut(), header.hash)
+                        .unwrap();
+                }
+            }
+
+            if level < ppm.max_block_level {
+                let block_at_depth_m_at_next_level = ppm
+                    .block_at_depth(
+                        &*ghostdag_stores[level_idx + 1],
+                        selected_tip_by_level[level_idx + 1].unwrap(),
+                        ppm.pruning_proof_m,
+                    )
+                    .unwrap();
+                if !relations_stores[level_idx].has(block_at_depth_m_at_next_level).unwrap() {
+                    return Err(PruningImportError::PruningProofMissingBlockAtDepthMFromNextLevel(level, level + 1));
+                }
+            }
+
+            if selected_tip.unwrap() != proof_pp
+                && !ppm.parents_manager.parents_at_level(proof_pp_header, level).contains(&selected_tip.unwrap())
+            {
+                return Err(PruningImportError::PruningProofMissesBlocksBelowPruningPoint(selected_tip.unwrap(), level));
+            }
+
+            selected_tip_by_level[level_idx] = selected_tip;
+        }
+
+        Ok(selected_tip_by_level.into_iter().map(|selected_tip| selected_tip.unwrap()).collect())
+    }
+}
 
 impl PruningProofManager {
     /// Validates an incoming pruning point proof against the current consensus.
@@ -55,10 +251,8 @@ impl PruningProofManager {
         }
 
         // Initialize the stores for the incoming pruning proof (the challenger)
-        let mut challenger_stores_and_processes = self.init_validate_pruning_point_proof_stores_and_processes(proof)?;
+        let (challenger_stores_and_processes, challenger_selected_tip_by_level) = ProofContext::from_proof(self, proof, true)?;
         let challenger_pp_header = proof[0].last().expect("checked if empty");
-        let challenger_selected_tip_by_level =
-            self.populate_stores_for_validate_pruning_point_proof(proof, &mut challenger_stores_and_processes, true)?;
         let challenger_ghostdag_stores = challenger_stores_and_processes.ghostdag_stores;
 
         // Get the proof for the current consensus (the defender) and recreate the stores for it
@@ -70,9 +264,7 @@ impl PruningProofManager {
             let genesis_header = self.headers_store.get_header(self.genesis_hash).unwrap();
             defender_proof = Arc::new((0..=self.max_block_level).map(|_| vec![genesis_header.clone()]).collect_vec());
         }
-        let mut defender_stores_and_processes = self.init_validate_pruning_point_proof_stores_and_processes(&defender_proof)?;
-        let defender_selected_tip_by_level =
-            self.populate_stores_for_validate_pruning_point_proof(&defender_proof, &mut defender_stores_and_processes, false)?;
+        let (defender_stores_and_processes, defender_selected_tip_by_level) = ProofContext::from_proof(self, &defender_proof, false)?;
         let defender_ghostdag_stores = defender_stores_and_processes.ghostdag_stores;
 
         let pruning_read = self.pruning_point_store.read();
@@ -165,181 +357,6 @@ impl PruningProofManager {
         drop(defender_stores_and_processes.db_lifetime);
 
         Err(PruningImportError::PruningProofNotEnoughHeaders)
-    }
-
-    fn init_validate_pruning_point_proof_stores_and_processes(
-        &self,
-        proof: &PruningPointProof,
-    ) -> PruningImportResult<TempProofContext> {
-        if proof[0].is_empty() {
-            return Err(PruningImportError::PruningProofNotEnoughHeaders);
-        }
-
-        let ghostdag_k = self.ghostdag_k;
-
-        let headers_estimate = self.estimate_proof_unique_size(proof);
-
-        let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
-        let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
-        let headers_store =
-            Arc::new(DbHeadersStore::new(db.clone(), CachePolicy::Count(headers_estimate), CachePolicy::Count(headers_estimate)));
-        let ghostdag_stores = (0..=self.max_block_level)
-            .map(|level| Arc::new(DbGhostdagStore::new(db.clone(), level, cache_policy, cache_policy)))
-            .collect_vec();
-        let mut relations_stores =
-            (0..=self.max_block_level).map(|level| DbRelationsStore::new(db.clone(), level, cache_policy, cache_policy)).collect_vec();
-        let reachability_stores = (0..=self.max_block_level)
-            .map(|level| Arc::new(RwLock::new(DbReachabilityStore::with_block_level(db.clone(), cache_policy, cache_policy, level))))
-            .collect_vec();
-
-        let reachability_services = (0..=self.max_block_level)
-            .map(|level| MTReachabilityService::new(reachability_stores[level as usize].clone()))
-            .collect_vec();
-
-        let ghostdag_managers = ghostdag_stores
-            .iter()
-            .cloned()
-            .enumerate()
-            .map(|(level, ghostdag_store)| {
-                GhostdagManager::with_level(
-                    self.genesis_hash,
-                    ghostdag_k,
-                    ghostdag_store,
-                    relations_stores[level].clone(),
-                    headers_store.clone(),
-                    reachability_services[level].clone(),
-                    level as BlockLevel,
-                    self.max_block_level,
-                )
-            })
-            .collect_vec();
-
-        {
-            let mut batch = WriteBatch::default();
-            for level in 0..=self.max_block_level {
-                let level = level as usize;
-                reachability::init(reachability_stores[level].write().deref_mut()).unwrap();
-                relations_stores[level].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
-                ghostdag_stores[level].insert(ORIGIN, ghostdag_managers[level].origin_ghostdag_data()).unwrap();
-            }
-
-            db.write(batch).unwrap();
-        }
-
-        Ok(TempProofContext { db_lifetime, headers_store, ghostdag_stores, relations_stores, reachability_stores, ghostdag_managers })
-    }
-
-    fn populate_stores_for_validate_pruning_point_proof(
-        &self,
-        proof: &PruningPointProof,
-        ctx: &mut TempProofContext,
-        log_validating: bool,
-    ) -> PruningImportResult<Vec<Hash>> {
-        let headers_store = &ctx.headers_store;
-        let ghostdag_stores = &ctx.ghostdag_stores;
-        let mut relations_stores = ctx.relations_stores.clone();
-        let reachability_stores = &ctx.reachability_stores;
-        let ghostdag_managers = &ctx.ghostdag_managers;
-
-        let proof_pp_header = proof[0].last().expect("checked if empty");
-        let proof_pp = proof_pp_header.hash;
-
-        let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
-        for level in (0..=self.max_block_level).rev() {
-            // Before processing this level, check if the process is exiting so we can end early
-            if self.is_consensus_exiting.load(Ordering::Relaxed) {
-                return Err(PruningImportError::PruningValidationInterrupted);
-            }
-
-            if log_validating {
-                info!("Validating level {level} from the pruning point proof ({} headers)", proof[level as usize].len());
-            }
-            let level_idx = level as usize;
-            let mut selected_tip = None;
-            for (i, header) in proof[level as usize].iter().enumerate() {
-                let (header_level, pow_passes) = calc_block_level_check_pow(header, self.max_block_level);
-                if header_level < level {
-                    return Err(PruningImportError::PruningProofWrongBlockLevel(header.hash, header_level, level));
-                }
-                if !pow_passes {
-                    return Err(PruningImportError::ProofOfWorkFailed(header.hash, level));
-                }
-
-                headers_store.insert(header.hash, header.clone(), header_level).idempotent().unwrap();
-
-                // filter out parents that do not appear at the pruning proof:
-                let parents = self
-                    .parents_manager
-                    .parents_at_level(header, level)
-                    .iter()
-                    .copied()
-                    .filter(|parent| ghostdag_stores[level_idx].has(*parent).unwrap())
-                    .collect_vec();
-
-                // Only the first block at each level is allowed to have no known parents
-                if parents.is_empty() && i != 0 {
-                    return Err(PruningImportError::PruningProofHeaderWithNoKnownParents(header.hash, level));
-                }
-
-                let parents: BlockHashes = parents.push_if_empty(ORIGIN).into();
-
-                if relations_stores[level_idx].has(header.hash).unwrap() {
-                    return Err(PruningImportError::PruningProofDuplicateHeaderAtLevel(header.hash, level));
-                }
-
-                relations_stores[level_idx].insert(header.hash, parents.clone()).unwrap();
-                let ghostdag_data = Arc::new(ghostdag_managers[level_idx].ghostdag(&parents));
-                ghostdag_stores[level_idx].insert(header.hash, ghostdag_data.clone()).unwrap();
-                selected_tip = Some(match selected_tip {
-                    Some(tip) => ghostdag_managers[level_idx].find_selected_parent([tip, header.hash]),
-                    None => header.hash,
-                });
-
-                let mut reachability_mergeset = {
-                    let reachability_read = reachability_stores[level_idx].read();
-                    ghostdag_data
-                        .unordered_mergeset_without_selected_parent()
-                        .filter(|hash| reachability_read.has(*hash).unwrap())
-                        .collect_vec() // We collect to vector so reachability_read can be released and let `reachability::add_block` use a write lock.
-                        .into_iter()
-                };
-                reachability::add_block(
-                    reachability_stores[level_idx].write().deref_mut(),
-                    header.hash,
-                    ghostdag_data.selected_parent,
-                    &mut reachability_mergeset,
-                )
-                .unwrap();
-
-                if selected_tip.unwrap() == header.hash {
-                    reachability::hint_virtual_selected_parent(reachability_stores[level_idx].write().deref_mut(), header.hash)
-                        .unwrap();
-                }
-            }
-
-            if level < self.max_block_level {
-                let block_at_depth_m_at_next_level = self
-                    .block_at_depth(
-                        &*ghostdag_stores[level_idx + 1],
-                        selected_tip_by_level[level_idx + 1].unwrap(),
-                        self.pruning_proof_m,
-                    )
-                    .unwrap();
-                if !relations_stores[level_idx].has(block_at_depth_m_at_next_level).unwrap() {
-                    return Err(PruningImportError::PruningProofMissingBlockAtDepthMFromNextLevel(level, level + 1));
-                }
-            }
-
-            if selected_tip.unwrap() != proof_pp
-                && !self.parents_manager.parents_at_level(proof_pp_header, level).contains(&selected_tip.unwrap())
-            {
-                return Err(PruningImportError::PruningProofMissesBlocksBelowPruningPoint(selected_tip.unwrap(), level));
-            }
-
-            selected_tip_by_level[level_idx] = selected_tip;
-        }
-
-        Ok(selected_tip_by_level.into_iter().map(|selected_tip| selected_tip.unwrap()).collect())
     }
 
     fn validate_proof_selected_tip(
