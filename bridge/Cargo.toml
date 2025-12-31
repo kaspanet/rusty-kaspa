@@ -56,9 +56,5 @@ chrono = { workspace = true }
 tokio-test = "0.4"
 
 [[bin]]
-name = "kaspa-stratum-bridge"
-path = "src/main.rs"
-
-[[bin]]
 name = "stratum-bridge"
 path = "src/main.rs"
