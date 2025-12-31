@@ -425,6 +425,10 @@ pub trait ConsensusApi: Send + Sync {
     fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
         unimplemented!()
     }
+    /// Returns the n most recent pruning points *not* including the current pruning point
+    fn get_n_last_pruning_points(&self, amount: u64) -> Vec<Hash> {
+        unimplemented!()
+    }
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

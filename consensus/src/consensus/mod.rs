@@ -1424,4 +1424,8 @@ impl ConsensusApi for Consensus {
         let pruning_meta_read = self.pruning_meta_stores.read();
         pruning_meta_read.is_in_transitional_ibd_state()
     }
+    fn get_n_last_pruning_points(&self, n: u64) -> Vec<Hash> {
+        let (_pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
+        (0..n.min(pruning_index)).map(|ind| self.past_pruning_points_store.get(pruning_index - ind).unwrap()).collect_vec()
+    }
 }
