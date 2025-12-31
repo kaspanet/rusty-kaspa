@@ -3175,6 +3175,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "blake2",
+ "chrono",
  "clap 4.5.51",
  "faster-hex 0.1.1",
  "futures-util",
