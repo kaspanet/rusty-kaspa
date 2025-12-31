@@ -426,7 +426,7 @@ Do you confirm? (y/n)";
                     let end_children_prefix_vec: Vec<_> =
                         DatabaseStorePrefixes::RelationsChildren.into_iter().chain(end_level_bytes).collect();
 
-                    // Apply delete of range from level 1 to max (+1) for Ghostdag and GhostdagCompact:
+                    // Apply delete of range from level 1 to max (+1) for RelationsParents and RelationsChildren:
                     writer.delete_range(start_parents_prefix_vec.clone(), end_parents_prefix_vec.clone()).unwrap();
                     writer.delete_range(start_children_prefix_vec.clone(), end_children_prefix_vec.clone()).unwrap();
 
