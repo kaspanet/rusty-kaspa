@@ -373,8 +373,13 @@ async fn main() -> Result<(), anyhow::Error> {
     // Can be overridden with RUST_LOG environment variable (e.g., RUST_LOG=info,debug)
     // To see more details, set RUST_LOG=info or RUST_LOG=debug
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        // Default: warn level, but allow info from rustbridge module for important messages
-        EnvFilter::new("warn,kaspa_stratum_bridge=info")
+        // Default: warn level, but allow info from the bridge. In inprocess mode we also
+        // enable info-level logs from the embedded node (which uses the `log` crate).
+        if node_mode == NodeMode::Inprocess {
+            EnvFilter::new("warn,kaspa_stratum_bridge=info,kaspa=info,kaspad=info,kaspad_lib=info,log=info")
+        } else {
+            EnvFilter::new("warn,kaspa_stratum_bridge=info")
+        }
     });
 
     // Custom formatter that applies colors directly to the Writer (like tracing-subscriber does for levels)
@@ -397,15 +402,7 @@ async fn main() -> Result<(), anyhow::Error> {
             mut writer: Writer<'_>,
             event: &tracing::Event<'_>,
         ) -> fmt::Result {
-            // Write level (with built-in ANSI colors from tracing-subscriber)
             let level = *event.metadata().level();
-            write!(writer, "{:5} ", level)?;
-
-            // Write target with capitalization
-            let target = event.metadata().target();
-            let formatted_target =
-                if let Some(rest) = target.strip_prefix("rustbridge") { format!("rustbridge{}", rest) } else { target.to_string() };
-            write!(writer, "{}: ", formatted_target)?;
 
             // Collect the message into a string first so we can analyze it for color patterns
             let mut message_buf = String::new();
@@ -414,6 +411,78 @@ async fn main() -> Result<(), anyhow::Error> {
                 ctx.format_fields(message_writer.by_ref(), event)?;
             }
             let original_message = message_buf;
+
+            let target = event.metadata().target();
+            let formatted_target =
+                if let Some(rest) = target.strip_prefix("rustbridge") { format!("rustbridge{}", rest) } else { target.to_string() };
+            let is_multiline = original_message.contains('\n');
+
+            // Special-case forwarded node logs (from `tracing_log::LogTracer`) to match kaspad style:
+            // `[INFO] Accepted ...` (white brackets), and omit the `log:` target prefix.
+            if target == "log" && !is_multiline {
+                match level {
+                    tracing::Level::INFO => {
+                        if self.apply_colors {
+                            write!(writer, "\x1b[97m[\x1b[0m\x1b[92mINFO\x1b[0m\x1b[97m]\x1b[0m ")?;
+                        } else {
+                            write!(writer, "[INFO] ")?;
+                        }
+                    }
+                    tracing::Level::WARN => {
+                        if self.apply_colors {
+                            write!(writer, "\x1b[97m[\x1b[0m\x1b[93mWARN\x1b[0m\x1b[97m]\x1b[0m ")?;
+                        } else {
+                            write!(writer, "[WARN] ")?;
+                        }
+                    }
+                    tracing::Level::ERROR => {
+                        if self.apply_colors {
+                            write!(writer, "\x1b[97m[\x1b[0m\x1b[91mERROR\x1b[0m\x1b[97m]\x1b[0m ")?;
+                        } else {
+                            write!(writer, "[ERROR] ")?;
+                        }
+                    }
+                    tracing::Level::DEBUG => {
+                        if self.apply_colors {
+                            write!(writer, "\x1b[97m[\x1b[0m\x1b[94mDEBUG\x1b[0m\x1b[97m]\x1b[0m ")?;
+                        } else {
+                            write!(writer, "[DEBUG] ")?;
+                        }
+                    }
+                    tracing::Level::TRACE => {
+                        if self.apply_colors {
+                            write!(writer, "\x1b[97m[\x1b[0m\x1b[90mTRACE\x1b[0m\x1b[97m]\x1b[0m ")?;
+                        } else {
+                            write!(writer, "[TRACE] ")?;
+                        }
+                    }
+                }
+
+                writeln!(writer, "{}", original_message)?;
+                return Ok(());
+            }
+
+            // Default prefix: `INFO target: ...` (for multiline payloads, start on a new line)
+            if self.apply_colors {
+                let level_ansi = match level {
+                    tracing::Level::ERROR => "\x1b[91m",
+                    tracing::Level::WARN => "\x1b[93m",
+                    tracing::Level::INFO => "\x1b[92m",
+                    tracing::Level::DEBUG => "\x1b[94m",
+                    tracing::Level::TRACE => "\x1b[90m",
+                };
+                write!(writer, "{}{:5}\x1b[0m ", level_ansi, level)?;
+            } else {
+                write!(writer, "{:5} ", level)?;
+            }
+
+            // Write target with capitalization. For multi-line messages (like the stats table),
+            // start the payload on a new line to avoid wrapping the prefix into the table.
+            if is_multiline {
+                writeln!(writer, "{}:", formatted_target)?;
+            } else {
+                write!(writer, "{}: ", formatted_target)?;
+            }
 
             // Check global registry for instance number based on instance_id in message
             // This works across async boundaries and thread switches
@@ -466,6 +535,21 @@ async fn main() -> Result<(), anyhow::Error> {
 
             // Apply colors based on message content patterns (only if this formatter has colors enabled)
             if self.apply_colors {
+                // Special-case the stats output (multi-line). Color the table itself green but keep the
+                // preceding [NODE] lines uncolored so brackets remain white and the layout stays clean.
+                if is_multiline && message.contains("| Worker") && message.contains("| Inst") {
+                    for line in message.split('\n') {
+                        let trimmed = line.trim_start();
+                        let is_table_line = trimmed.starts_with('+') || trimmed.starts_with('|');
+                        if is_table_line {
+                            writeln!(writer, "\x1b[92m{}\x1b[0m", line)?;
+                        } else {
+                            writeln!(writer, "{}", line)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
                 // First priority: Use instance number from thread-local (applies to ALL logs from that instance)
                 if let Some(inst_num) = instance_num {
                     // Apply instance color to the entire message
@@ -475,6 +559,11 @@ async fn main() -> Result<(), anyhow::Error> {
                     return Ok(());
                 }
 
+                if (message.contains("| Worker") && message.contains("| Inst")) || message.contains("| TOTAL") {
+                    write!(writer, "\x1b[92m{}\x1b[0m", &message)?;
+                    writeln!(writer)?;
+                    return Ok(());
+                } else
                 // Fallback: Check for instance pattern in message
                 if let Some(instance_start) = message.find("[Instance ") {
                     if let Some(instance_end) = message[instance_start..].find("]") {
@@ -583,6 +672,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
         None
     };
+
+    // In inprocess mode, the embedded node primarily uses the `log` crate (via kaspa_core::* macros).
+    // Forward those events into our tracing subscriber so users can see node startup/performance logs.
+    if node_mode == NodeMode::Inprocess {
+        let _ = tracing_log::LogTracer::init();
+    }
 
     // Start in-process node after tracing is initialized so bridge logs (including the stats table)
     // are not filtered out by a tracing subscriber installed by kaspad.

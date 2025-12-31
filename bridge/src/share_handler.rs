@@ -1185,10 +1185,11 @@ impl ShareHandler {
                 let tip = node_status.tip_hash.as_deref().unwrap_or("-");
                 let mempool = node_status.mempool_size.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string());
 
-                out.push(format!(
-                    "[NODE] {} / {} | net={} | ver={} | peers={} | vdaa={} | blocks={}/{} | diff={} | mempool={} | tip={}",
-                    conn_str, sync_str, net, ver, peers, vdaa, blocks, headers, diff, mempool, tip
-                ));
+                let tip_short = if tip.len() > 28 { format!("{}...{}", &tip[..16], &tip[tip.len() - 8..]) } else { tip.to_string() };
+
+                out.push(format!("[NODE] {}|{}", conn_str, sync_str));
+                out.push(format!("  {} | ver={} | peers={} | vdaa={}", net, ver, peers, vdaa));
+                out.push(format!("  blocks={}/{} | diff={} | mempool={} | tip={}", blocks, headers, diff, mempool, tip_short));
 
                 out.push(top.clone());
                 out.push(hdr);
