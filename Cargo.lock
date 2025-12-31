@@ -3203,6 +3203,7 @@ dependencies = [
  "tokio-test",
  "tracing",
  "tracing-appender",
+ "tracing-log",
  "tracing-subscriber",
  "uuid 1.18.1",
  "windows-sys 0.52.0",
