@@ -495,11 +495,11 @@ impl ConsensusSessionOwned {
     pub async fn async_set_pruning_utxoset_stable(&self) {
         self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable_flag(true)).await
     }
-    pub async fn async_verify_is_pruning_sample(&self, candidate_hash: Hash) -> ConsensusResult<()> {
-        self.clone().spawn_blocking(move |c| c.verify_is_pruning_sample(candidate_hash)).await
-    }
     pub async fn async_intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
         self.clone().spawn_blocking(move |c| c.intrusive_pruning_point_update(new_pruning_point, syncer_sink)).await
+    }
+    pub async fn async_get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
+        self.clone().spawn_blocking(move |c| c.get_n_last_pruning_points(n)).await
     }
 }
 
