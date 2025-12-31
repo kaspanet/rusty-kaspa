@@ -422,11 +422,12 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn verify_is_pruning_sample(&self, candidate_hash: Hash) -> ConsensusResult<()> {
+    fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
         unimplemented!()
     }
 
-    fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
+    /// Returns the n most recent pruning points (including the current pruning point)
+    fn get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
         unimplemented!()
     }
 }

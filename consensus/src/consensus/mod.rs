@@ -511,7 +511,25 @@ impl Consensus {
         // The new pruning point P can be "finalized" into consensus if:
         // 1) P satisfies P.blue_score>Nf and selected_parent(P).blue_score<=NF
         // where N is some integer (i.e. it is a valid pruning point based on score)
-        // *this condition is assumed to have already been checked externally and we do not repeat it here*.
+        let Ok(candidate_ghostdag_data) = self.get_ghostdag_data(new_pruning_point) else {
+            return Err(ConsensusError::General(
+                "Catchup cannot be continued since the syncer pruning point could not be confirmed to be a valid pruning point",
+            ));
+        };
+        let Ok(selected_parent_ghostdag_data) = self.get_ghostdag_data(candidate_ghostdag_data.selected_parent) else {
+            return Err(ConsensusError::General(
+                "Catchup cannot be continued since the syncer pruning point could not be confirmed to be a valid pruning point",
+            ));
+        };
+        self.services
+            .pruning_point_manager
+            .is_pruning_sample(
+                candidate_ghostdag_data.blue_score,
+                selected_parent_ghostdag_data.blue_score,
+                self.config.params.finality_depth(),
+            )
+            .then_some(())
+            .ok_or(ConsensusError::General("the alleged pruning point is not a valid pruning point, aborting catchup attempt"))?;
 
         // 2) There are sufficient headers built on top of it, specifically,
         // a header is validated whose blue_score is greater than P.B+p:
@@ -1374,27 +1392,6 @@ impl ConsensusApi for Consensus {
         pruning_meta_write.utxo_set.clear().unwrap();
     }
 
-    fn verify_is_pruning_sample(&self, pruning_candidate: Hash) -> ConsensusResult<()> {
-        if pruning_candidate == self.config.genesis.hash {
-            return Ok(());
-        }
-        let Ok(candidate_ghostdag_data) = self.get_ghostdag_data(pruning_candidate) else {
-            return Err(ConsensusError::General("pruning candidate missing ghostdag data"));
-        };
-        let Ok(selected_parent_ghostdag_data) = self.get_ghostdag_data(candidate_ghostdag_data.selected_parent) else {
-            return Err(ConsensusError::General("pruning candidate selected parent missing ghostdag data"));
-        };
-        self.services
-            .pruning_point_manager
-            .is_pruning_sample(
-                candidate_ghostdag_data.blue_score,
-                selected_parent_ghostdag_data.blue_score,
-                self.config.params.finality_depth(),
-            )
-            .then_some(())
-            .ok_or(ConsensusError::General("pruning candidate is not a pruning sample"))
-    }
-
     /// The usual flow consists of the pruning point naturally updating during pruning, and hence maintains consistency by default
     /// During pruning catchup, we need to manually update the pruning point and
     /// make sure that consensus looks "as if" it has just moved to a new pruning point.
@@ -1426,5 +1423,10 @@ impl ConsensusApi for Consensus {
     fn is_consensus_in_transitional_ibd_state(&self) -> bool {
         let pruning_meta_read = self.pruning_meta_stores.read();
         pruning_meta_read.is_in_transitional_ibd_state()
+    }
+
+    fn get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
+        let (_pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
+        (0..=pruning_index).rev().take(n).map(|ind| self.past_pruning_points_store.get(ind).unwrap()).collect_vec()
     }
 }

@@ -10,7 +10,7 @@ pub enum StoreError {
     #[error("key {0} already exists in store")]
     KeyAlreadyExists(String),
 
-    /// Specialization of key not found for the common `Hash` case.
+    /// Specialization of key already exists for the common `Hash` case.
     /// Added for avoiding the `String` allocation
     #[error("hash {0} already exists in store")]
     HashAlreadyExists(Hash),
