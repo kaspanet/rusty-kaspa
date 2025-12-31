@@ -230,6 +230,33 @@ impl ProofContext {
 
         Ok(selected_tip_by_level.into_iter().map(|selected_tip| selected_tip.unwrap()).collect())
     }
+
+    /// Returns an option of a tuple that contains the ghostdag data of the challenger (self)
+    /// and defender's common ancestor. If no such ancestor exists, it returns None.
+    fn find_proofs_common_ancestor_at_level(
+        challenger: &Self,
+        defender: &Self,
+        challenger_selected_tip: Hash,
+        challenger_selected_tip_gd: CompactGhostdagData,
+        level: BlockLevel,
+    ) -> Option<(CompactGhostdagData, CompactGhostdagData)> {
+        let mut current = challenger_selected_tip;
+        let mut challenger_gd_of_current = challenger_selected_tip_gd;
+        loop {
+            match defender.ghostdag_stores[level as usize].get_compact_data(current).optional().unwrap() {
+                Some(defender_gd_of_current) => {
+                    break Some((challenger_gd_of_current, defender_gd_of_current));
+                }
+                None => {
+                    current = challenger_gd_of_current.selected_parent;
+                    if current.is_origin() {
+                        break None;
+                    }
+                    challenger_gd_of_current = challenger.ghostdag_stores[level as usize].get_compact_data(current).unwrap();
+                }
+            };
+        }
+    }
 }
 
 impl PruningProofManager {
@@ -251,9 +278,8 @@ impl PruningProofManager {
         }
 
         // Initialize the stores for the incoming pruning proof (the challenger)
-        let (challenger_stores_and_processes, challenger_selected_tip_by_level) = ProofContext::from_proof(self, proof, true)?;
+        let (challenger, challenger_selected_tip_by_level) = ProofContext::from_proof(self, proof, true)?;
         let challenger_pp_header = proof[0].last().expect("checked if empty");
-        let challenger_ghostdag_stores = challenger_stores_and_processes.ghostdag_stores;
 
         // Get the proof for the current consensus (the defender) and recreate the stores for it
         // This is expected to be fast because if a proof exists, it will be cached.
@@ -264,8 +290,7 @@ impl PruningProofManager {
             let genesis_header = self.headers_store.get_header(self.genesis_hash).unwrap();
             defender_proof = Arc::new((0..=self.max_block_level).map(|_| vec![genesis_header.clone()]).collect_vec());
         }
-        let (defender_stores_and_processes, defender_selected_tip_by_level) = ProofContext::from_proof(self, &defender_proof, false)?;
-        let defender_ghostdag_stores = defender_stores_and_processes.ghostdag_stores;
+        let (defender, defender_selected_tip_by_level) = ProofContext::from_proof(self, &defender_proof, false)?;
 
         let pruning_read = self.pruning_point_store.read();
         let defender_pp = pruning_read.pruning_point().unwrap();
@@ -284,7 +309,7 @@ impl PruningProofManager {
             self.validate_proof_selected_tip(challenger_selected_tip_at_level, level, challenger_pp_header)?;
 
             let challenger_selected_tip_gd =
-                challenger_ghostdag_stores[level_idx].get_compact_data(challenger_selected_tip_at_level).unwrap();
+                challenger.ghostdag_stores[level_idx].get_compact_data(challenger_selected_tip_at_level).unwrap();
 
             // Next check is to see if the challenger's proof is "better" than the defender's
             // Step 1 - look at only levels that have a full proof (least 2m blocks in the proof)
@@ -302,17 +327,17 @@ impl PruningProofManager {
             // we can determine if the challenger's is better. The challenger proof is better if the blue work difference between the
             // defender's tips and the common ancestor, combined with the pruning period work, is less than the blue work difference between the
             // challenger's tip and the common ancestor (from its pov) combined with its own claimed pruning period work.
-            if let Some((challenger_common_ancestor_gd, defender_common_ancestor_gd)) = self
-                .find_challenger_and_defender_common_ancestor_ghostdag_data(
-                    &challenger_ghostdag_stores,
-                    &defender_ghostdag_stores,
+            if let Some((challenger_common_ancestor_gd, defender_common_ancestor_gd)) =
+                ProofContext::find_proofs_common_ancestor_at_level(
+                    &challenger,
+                    &defender,
                     challenger_selected_tip_at_level,
-                    level,
                     challenger_selected_tip_gd,
+                    level,
                 )
             {
                 let defender_level_blue_work =
-                    defender_ghostdag_stores[level_idx].get_blue_work(defender_selected_tip_by_level[level_idx]).unwrap();
+                    defender.ghostdag_stores[level_idx].get_blue_work(defender_selected_tip_by_level[level_idx]).unwrap();
                 let challenger_level_blue_work_diff =
                     challenger_selected_tip_gd.blue_work.saturating_sub(challenger_common_ancestor_gd.blue_work);
                 let defender_level_blue_work_diff = defender_level_blue_work.saturating_sub(defender_common_ancestor_gd.blue_work);
@@ -340,12 +365,12 @@ impl PruningProofManager {
             let level_idx = level as usize;
 
             let challenger_selected_tip = challenger_selected_tip_by_level[level_idx];
-            let challenger_selected_tip_gd = challenger_ghostdag_stores[level_idx].get_compact_data(challenger_selected_tip).unwrap();
+            let challenger_selected_tip_gd = challenger.ghostdag_stores[level_idx].get_compact_data(challenger_selected_tip).unwrap();
             if challenger_selected_tip_gd.blue_score < 2 * self.pruning_proof_m {
                 continue;
             }
 
-            if defender_ghostdag_stores[level_idx].get_blue_score(defender_selected_tip_by_level[level_idx]).unwrap()
+            if defender.ghostdag_stores[level_idx].get_blue_score(defender_selected_tip_by_level[level_idx]).unwrap()
                 < 2 * self.pruning_proof_m
             {
                 return Ok(());
@@ -353,8 +378,8 @@ impl PruningProofManager {
         }
 
         drop(pruning_read);
-        drop(challenger_stores_and_processes.db_lifetime);
-        drop(defender_stores_and_processes.db_lifetime);
+        drop(challenger.db_lifetime);
+        drop(defender.db_lifetime);
 
         Err(PruningImportError::PruningProofNotEnoughHeaders)
     }
@@ -379,34 +404,5 @@ impl PruningProofManager {
         }
 
         Ok(())
-    }
-
-    // find_challenger_and_defender_common_ancestor_ghostdag_data returns an option of a tuple
-    // that contains the ghostdag data of the challenger and defender's common ancestor. If no
-    // such ancestor exists, it returns None.
-    fn find_challenger_and_defender_common_ancestor_ghostdag_data(
-        &self,
-        challenger_ghostdag_stores: &[Arc<DbGhostdagStore>],
-        defender_ghostdag_stores: &[Arc<DbGhostdagStore>],
-        challenger_selected_tip: Hash,
-        level: BlockLevel,
-        challenger_selected_tip_gd: CompactGhostdagData,
-    ) -> Option<(CompactGhostdagData, CompactGhostdagData)> {
-        let mut current = challenger_selected_tip;
-        let mut challenger_gd_of_current = challenger_selected_tip_gd;
-        loop {
-            match defender_ghostdag_stores[level as usize].get_compact_data(current).optional().unwrap() {
-                Some(defender_gd_of_current) => {
-                    break Some((challenger_gd_of_current, defender_gd_of_current));
-                }
-                None => {
-                    current = challenger_gd_of_current.selected_parent;
-                    if current.is_origin() {
-                        break None;
-                    }
-                    challenger_gd_of_current = challenger_ghostdag_stores[level as usize].get_compact_data(current).unwrap();
-                }
-            };
-        }
     }
 }
