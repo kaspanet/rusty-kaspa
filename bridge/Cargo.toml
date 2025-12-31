@@ -41,6 +41,7 @@ clap = { workspace = true, features = ["derive"] }
 # External dependencies not in workspace (add specific versions)
 anyhow = "1.0"
 tracing = "0.1"
+tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 blake2 = "0.10"
