@@ -242,37 +242,35 @@ impl IbdFlow {
             if consensus.async_is_chain_ancestor_of(pruning_point, highest_known_syncer_chain_hash).await? {
                 const SYNCER_LAGGING_TOLERANCE: u64 = 3;
                 let recent_pruning_points = consensus.async_get_n_last_pruning_points(SYNCER_LAGGING_TOLERANCE).await;
+
                 if syncer_pruning_point == pruning_point {
                     return Ok(IbdType::Sync { highest_known_syncer_chain_hash, syncer_skew: SyncerSkew::Aligned });
                 }
                 // If the node is just missing a segment in the future of its current pruning point which is available to the syncer,
                 // we can perform a simple sync IBD and only download the missing data.
                 // The syncer being lagging has no effect if we do not require data on its pruning point
-                if recent_pruning_points.contains(&syncer_pruning_point)
+                else if recent_pruning_points.contains(&syncer_pruning_point)
                     && !consensus.async_is_consensus_in_transitional_ibd_state().await
                 {
                     return Ok(IbdType::Sync { highest_known_syncer_chain_hash, syncer_skew: SyncerSkew::Lagging });
                 }
-
                 // If reached here, the node is missing a segment in the near future of its current pruning point, but the syncer presumably
                 //  already pruned the current pruning point.
-                if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body())
+                else if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body())
                     && !consensus.async_is_consensus_in_transitional_ibd_state().await
                 {
                     // The data needed to sync forwards is already available from within the node (from relay or past ibd attempts)
                     // and the consensus is not in a transitional state requiring data on the existing pruning point,
                     // hence we can carry on a standard sync
                     return Ok(IbdType::Sync { highest_known_syncer_chain_hash, syncer_skew: SyncerSkew::Leading });
+                }
+                // Two options remain:
+                // 1: syncer_pruning_point is in the future, and there is a need to perform a partial resync to the syncer_pruning_point
+                // 2: syncer_pruning_point is in the past of current pruning point, or is unknown on which case the syncing node IBD is stopped
+                else if consensus.async_is_chain_ancestor_of(pruning_point, syncer_pruning_point).await.unwrap_or(false) {
+                    return Ok(IbdType::PruningCatchUp { highest_known_syncer_chain_hash });
                 } else {
-                    // Two options:
-                    // 1: syncer_pruning_point is in the future, and there is a need to partially resync from syncer_pruning_point
-                    // 2: syncer_pruning_point is in the past of current pruning point, or is unknown on which case the syncing node IBD is stopped
-
-                    if consensus.async_is_chain_ancestor_of(pruning_point, syncer_pruning_point).await.unwrap_or(false) {
-                        return Ok(IbdType::PruningCatchUp { highest_known_syncer_chain_hash });
-                    } else {
-                        return Err(ProtocolError::Other("A catchup to recent history is needed but the syncer's pruning point is not in the known future of the current consensus pruning point."));
-                    }
+                    return Err(ProtocolError::Other("A catchup to recent history is needed but the syncer's pruning point is not in the known future of the current consensus pruning point."));
                 }
             }
 
