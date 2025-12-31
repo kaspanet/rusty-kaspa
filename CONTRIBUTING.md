@@ -55,7 +55,7 @@ If you can meaningfully review a pull request, please do so even if you have not
 ## Using Issues and Pull Requests for discussion
 
 - Use a GitHub Issue to propose or discuss ideas before writing code if the change affects APIs, consensus, or requires design feedback.
-- You can also contribute 
+- You can also contribute by participating in existing discussions.
 - When you start implementing, link the Issue in your Pull Request and mention any related discussions.
 - If a PR is experimental or a work in progress, create the Pull Request in your fork of the repository first.
 
