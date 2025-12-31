@@ -59,7 +59,7 @@ impl Flow for IbdFlow {
         self.start_impl().await
     }
 }
-#[derive(PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncerSkew {
     Lagging,
     Aligned,
@@ -240,24 +240,44 @@ impl IbdFlow {
             info!("current sink is:{}", sink);
             info!("current pruning point is:{}", pruning_point);
             if consensus.async_is_chain_ancestor_of(pruning_point, highest_known_syncer_chain_hash).await? {
-                const SYNCER_LAGGING_TOLERANCE: u64 = 3;
-                let recent_pruning_points = consensus.async_get_n_last_pruning_points(SYNCER_LAGGING_TOLERANCE).await;
+                let syncer_skew = if syncer_pruning_point == pruning_point {
+                    SyncerSkew::Aligned
+                } else if consensus.async_is_chain_ancestor_of(pruning_point, syncer_pruning_point).await.unwrap_or(false) {
+                    SyncerSkew::Leading
+                } else if consensus.async_get_n_last_pruning_points(4 /*syncer lag tolerance*/).await.contains(&syncer_pruning_point) {
+                    SyncerSkew::Lagging
+                } else {
+                    return Err(ProtocolError::Other("TODO"));
+                };
+                let is_transitional = consensus.async_is_consensus_in_transitional_ibd_state().await;
 
+                return match (syncer_skew, is_transitional) {
+                    (SyncerSkew::Aligned, _) => Ok(IbdType::Sync { highest_known_syncer_chain_hash, syncer_skew }),
+                    (SyncerSkew::Lagging, true) => Err(ProtocolError::Other("TODO")),
+                    (SyncerSkew::Lagging, false) => Ok(IbdType::Sync { highest_known_syncer_chain_hash, syncer_skew }),
+                    (SyncerSkew::Leading, true) => Ok(IbdType::PruningCatchUp { highest_known_syncer_chain_hash }),
+                    (SyncerSkew::Leading, false) => {
+                        if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body()) {
+                            Ok(IbdType::Sync { highest_known_syncer_chain_hash, syncer_skew })
+                        } else {
+                            Ok(IbdType::PruningCatchUp { highest_known_syncer_chain_hash })
+                        }
+                    }
+                };
+                /*
                 if syncer_pruning_point == pruning_point {
                     return Ok(IbdType::Sync { highest_known_syncer_chain_hash, syncer_skew: SyncerSkew::Aligned });
                 }
                 // If the node is just missing a segment in the future of its current pruning point which is available to the syncer,
                 // we can perform a simple sync IBD and only download the missing data.
                 // The syncer being lagging has no effect if we do not require data on its pruning point
-                else if recent_pruning_points.contains(&syncer_pruning_point)
-                    && !consensus.async_is_consensus_in_transitional_ibd_state().await
-                {
+                else if recent_pruning_points.contains(&syncer_pruning_point) && !is_transitional {
                     return Ok(IbdType::Sync { highest_known_syncer_chain_hash, syncer_skew: SyncerSkew::Lagging });
                 }
                 // If reached here, the node is missing a segment in the near future of its current pruning point, but the syncer presumably
-                //  already pruned the current pruning point.
+                // already pruned the current pruning point.
                 else if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body())
-                    && !consensus.async_is_consensus_in_transitional_ibd_state().await
+                    && !is_transitional
                 {
                     // The data needed to sync forwards is already available from within the node (from relay or past ibd attempts)
                     // and the consensus is not in a transitional state requiring data on the existing pruning point,
@@ -272,6 +292,7 @@ impl IbdFlow {
                 } else {
                     return Err(ProtocolError::Other("A catchup to recent history is needed but the syncer's pruning point is not in the known future of the current consensus pruning point."));
                 }
+                */
             }
 
             // If the pruning point is not in the chain of `highest_known_syncer_chain_hash`, it
