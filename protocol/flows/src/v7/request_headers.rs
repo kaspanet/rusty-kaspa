@@ -37,7 +37,7 @@ impl RequestHeadersFlow {
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         const MAX_BLOCKS: usize = 1 << 10;
         // Internal consensus logic requires that `max_blocks > mergeset_size_limit`
-        let max_blocks = max(MAX_BLOCKS, self.ctx.config.mergeset_size_limit().after() as usize + 1);
+        let max_blocks = max(MAX_BLOCKS, self.ctx.config.mergeset_size_limit() as usize + 1);
         let header_format = kaspa_p2p_lib::convert::header::HeaderFormat::from(self.router.properties().protocol_version);
 
         loop {

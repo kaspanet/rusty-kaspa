@@ -8,7 +8,7 @@ use kaspa_consensus_core::blockstatus::BlockStatus::StatusInvalid;
 use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::BlockLevel;
 use kaspa_core::time::unix_now;
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_pow::calc_level_from_pow;
 
 impl HeaderProcessor {
@@ -49,7 +49,7 @@ impl HeaderProcessor {
             return Err(RuleError::NoParents);
         }
 
-        let max_block_parents = self.max_block_parents.after() as usize;
+        let max_block_parents = self.max_block_parents as usize;
         if header.direct_parents().len() > max_block_parents {
             return Err(RuleError::TooManyParents(header.direct_parents().len(), max_block_parents));
         }
@@ -68,7 +68,7 @@ impl HeaderProcessor {
     fn check_parents_exist(&self, header: &Header) -> BlockProcessResult<()> {
         let mut missing_parents = Vec::new();
         for parent in header.direct_parents() {
-            match self.statuses_store.read().get(*parent).unwrap_option() {
+            match self.statuses_store.read().get(*parent).optional().unwrap() {
                 None => missing_parents.push(*parent),
                 Some(StatusInvalid) => {
                     return Err(RuleError::InvalidParent(*parent));

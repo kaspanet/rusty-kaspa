@@ -83,8 +83,8 @@ impl ConsensusStorage {
         let perf_params = &config.perf;
 
         // Lower and upper bounds
-        let pruning_depth = params.pruning_depth().after() as usize;
-        let pruning_size_for_caches = pruning_depth + params.finality_depth().after() as usize; // Upper bound for any block/header related data
+        let pruning_depth = params.pruning_depth() as usize;
+        let pruning_size_for_caches = pruning_depth + params.finality_depth() as usize; // Upper bound for any block/header related data
         let level_lower_bound = 2 * params.pruning_proof_m as usize; // Number of items lower bound for level-related caches
 
         // Budgets in bytes. All byte budgets overall sum up to ~1GB of memory (which obviously takes more low level alloc space)
@@ -111,8 +111,8 @@ impl ConsensusStorage {
         let headers_compact_bytes = size_of::<Hash>() + size_of::<CompactHeaderData>();
 
         // If the fork is already scheduled, prefer the long-term, permanent values
-        let difficulty_window_bytes = params.difficulty_window_size().after() * size_of::<SortableBlock>();
-        let median_window_bytes = params.past_median_time_window_size().after() * size_of::<SortableBlock>();
+        let difficulty_window_bytes = params.difficulty_window_size * size_of::<SortableBlock>();
+        let median_window_bytes = params.past_median_time_window_size * size_of::<SortableBlock>();
 
         // Cache policy builders
         let daa_excluded_builder =

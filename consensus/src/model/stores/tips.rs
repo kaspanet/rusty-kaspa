@@ -7,7 +7,7 @@ use kaspa_database::prelude::CachedDbSetItem;
 use kaspa_database::prelude::DbWriter;
 use kaspa_database::prelude::ReadLock;
 use kaspa_database::prelude::StoreResult;
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, DirectDbWriter};
 use kaspa_database::registry::DatabaseStorePrefixes;
@@ -59,7 +59,7 @@ impl DbTipsStore {
     }
 
     pub fn is_initialized(&self) -> bool {
-        self.access.read().unwrap_option().is_some()
+        self.access.read().optional().unwrap().is_some()
     }
 
     pub fn init_batch(&mut self, batch: &mut WriteBatch, initial_tips: &[Hash]) -> StoreResult<()> {

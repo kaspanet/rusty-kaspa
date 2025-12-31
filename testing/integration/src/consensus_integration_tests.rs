@@ -42,11 +42,11 @@ use kaspa_core::task::tick::TickService;
 use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::Hash;
+use kaspa_rpc_core::RpcHeader;
 use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
-use crate::common::json::{json_line_to_block, json_line_to_utxo_pairs, json_trusted_line_to_block_and_gd};
-use common::json::{rpc_header_to_header, KaspadGoParams, RPCBlockHeader};
+use crate::common::json::{json_line_to_block, json_line_to_trusted_block, json_line_to_utxo_pairs};
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
@@ -263,9 +263,8 @@ async fn ghostdag_test() {
             .skip_proof_of_work()
             .edit_consensus_params(|p| {
                 p.genesis.hash = string_to_hash(&test.genesis_id);
-                p.prior_ghostdag_k = test.k;
-                p.crescendo.ghostdag_k = test.k;
-                p.min_difficulty_window_size = p.prior_difficulty_window_size;
+                p.ghostdag_k = test.k;
+                p.min_difficulty_window_size = p.difficulty_window_size;
             })
             .build();
         let consensus = TestConsensus::new(&config);
@@ -339,7 +338,7 @@ async fn block_window_test() {
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.genesis.hash = string_to_hash("A");
-            p.prior_ghostdag_k = 1;
+            p.ghostdag_k = 1;
         })
         .build();
     let consensus = TestConsensus::new(&config);
@@ -429,7 +428,8 @@ async fn header_in_isolation_validation_test() {
         block.header.hash = 2.into();
 
         let now = unix_now();
-        let block_ts = now + config.timestamp_deviation_tolerance * config.prior_target_time_per_block + 2000;
+        // Timestamp deviation tolerance is in seconds so we multiply by 1000 to get milliseconds (without BPS dependency)
+        let block_ts = now + config.timestamp_deviation_tolerance * 1000 + 2000;
         block.header.timestamp = block_ts;
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TimeTooFarIntoTheFuture(ts, _)) => {
@@ -456,7 +456,7 @@ async fn header_in_isolation_validation_test() {
     {
         let mut block = block.clone();
         block.header.hash = 4.into();
-        let max_block_parents = config.max_block_parents().after() as usize;
+        let max_block_parents = config.max_block_parents() as usize;
         let parents = std::iter::repeat_n(config.genesis.hash, max_block_parents + 1).collect();
         block.header.parents_by_level.set_direct_parents(parents);
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
@@ -563,36 +563,24 @@ async fn median_time_test() {
         config: Config,
     }
 
-    let tests = vec![
-        Test {
-            name: "MAINNET with full window",
-            config: ConfigBuilder::new(MAINNET_PARAMS)
-                .skip_proof_of_work()
-                .edit_consensus_params(|p| {
-                    p.crescendo_activation = ForkActivation::never();
-                })
-                .build(),
-        },
-        Test {
-            name: "MAINNET with sampled window",
-            config: ConfigBuilder::new(MAINNET_PARAMS)
-                .skip_proof_of_work()
-                .edit_consensus_params(|p| {
-                    p.crescendo_activation = ForkActivation::always();
-                    p.timestamp_deviation_tolerance = 120;
-                    p.crescendo.past_median_time_sample_rate = 3;
-                    p.crescendo.past_median_time_sampled_window_size = (2 * 120 - 1) / 3;
-                })
-                .build(),
-        },
-    ];
+    let tests = vec![Test {
+        name: "MAINNET with sampled window",
+        config: ConfigBuilder::new(MAINNET_PARAMS)
+            .skip_proof_of_work()
+            .edit_consensus_params(|p| {
+                p.crescendo_activation = ForkActivation::always();
+                p.timestamp_deviation_tolerance = 120;
+                p.past_median_time_sample_rate = 3;
+                p.past_median_time_window_size = (2 * 120 - 1) / 3;
+            })
+            .build(),
+    }];
 
     for test in tests {
         let consensus = TestConsensus::new(&test.config);
         let wait_handles = consensus.init();
 
-        let num_blocks =
-            test.config.past_median_time_window_size().before() as u64 * test.config.past_median_time_sample_rate().before();
+        let num_blocks = test.config.past_median_time_window_size as u64 * test.config.past_median_time_sample_rate();
         let timestamp_deviation_tolerance = test.config.timestamp_deviation_tolerance;
         for i in 1..(num_blocks + 1) {
             let parent = if i == 1 { test.config.genesis.hash } else { (i - 1).into() };
@@ -637,7 +625,7 @@ async fn mergeset_size_limit_test() {
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
-    let num_blocks_per_chain = config.mergeset_size_limit().after() + 1;
+    let num_blocks_per_chain = config.mergeset_size_limit() + 1;
 
     let mut tip1_hash = config.genesis.hash;
     for i in 1..(num_blocks_per_chain + 1) {
@@ -656,8 +644,8 @@ async fn mergeset_size_limit_test() {
     let block = consensus.build_header_only_block_with_parents((3 * num_blocks_per_chain + 1).into(), vec![tip1_hash, tip2_hash]);
     match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
         Err(RuleError::MergeSetTooBig(a, b)) => {
-            assert_eq!(a, config.mergeset_size_limit().after() + 1);
-            assert_eq!(b, config.mergeset_size_limit().after());
+            assert_eq!(a, config.mergeset_size_limit() + 1);
+            assert_eq!(b, config.mergeset_size_limit());
         }
         res => {
             panic!("Unexpected result: {res:?}")
@@ -697,36 +685,6 @@ async fn goref_tx_small_concurrent_test() {
     json_test("testdata/dags_for_json_tests/goref-1060-tx-265-blocks", true).await
 }
 
-#[ignore]
-#[tokio::test]
-async fn goref_tx_big_test() {
-    init_allocator_with_default_settings();
-    // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", false).await
-}
-
-#[ignore]
-#[tokio::test]
-async fn goref_tx_big_concurrent_test() {
-    init_allocator_with_default_settings();
-    // TODO: add this file to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", true).await
-}
-
-#[tokio::test]
-#[ignore = "long"]
-async fn goref_mainnet_test() {
-    // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-mainnet", false).await
-}
-
-#[tokio::test]
-#[ignore = "long"]
-async fn goref_mainnet_concurrent_test() {
-    // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-mainnet", true).await
-}
-
 fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
     let file = common::open_file(path);
     let decoder = GzDecoder::new(file);
@@ -743,8 +701,6 @@ async fn json_test(file_path: &str, concurrency: bool) {
         let first_line = lines.next().unwrap();
         let parsed_params = if let Ok(override_params) = serde_json::from_str::<OverrideParams>(&first_line) {
             Some(DEVNET_PARAMS.override_params(override_params))
-        } else if let Ok(go_params) = serde_json::from_str::<KaspadGoParams>(&first_line) {
-            Some(go_params.into_params())
         } else {
             None
         };
@@ -760,7 +716,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
             let genesis_block = json_line_to_block(first_line);
             let mut params = DEVNET_PARAMS;
             params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
-            params.min_difficulty_window_size = params.prior_difficulty_window_size;
+            params.min_difficulty_window_size = params.difficulty_window_size;
             params
         }
     };
@@ -804,12 +760,12 @@ async fn json_test(file_path: &str, concurrency: bool) {
         let proof_lines = gzip_file_lines(&main_path.join("proof.json.gz"));
         let proof = proof_lines
             .map(|line| {
-                let rpc_headers: Vec<RPCBlockHeader> = serde_json::from_str(&line).unwrap();
-                rpc_headers.iter().map(|rh| Arc::new(rpc_header_to_header(rh))).collect_vec()
+                let rpc_headers: Vec<RpcHeader> = serde_json::from_str(&line).unwrap();
+                rpc_headers.iter().map(|rh| Arc::new(rh.try_into().unwrap())).collect_vec()
             })
             .collect_vec();
 
-        let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_trusted_line_to_block_and_gd).collect_vec();
+        let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_line_to_trusted_block).collect_vec();
         tc.apply_pruning_proof(proof, &trusted_blocks).unwrap();
 
         let past_pruning_points =
@@ -951,21 +907,18 @@ async fn bounded_merge_depth_test() {
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.crescendo.ghostdag_k = 5;
-            p.crescendo.merge_depth = 7;
+            p.ghostdag_k = 5;
+            p.merge_depth = 7;
         })
         .build();
 
-    assert!(
-        (config.ghostdag_k().after() as u64) < config.merge_depth().after(),
-        "K must be smaller than merge depth for this test to run"
-    );
+    assert!((config.ghostdag_k() as u64) < config.merge_depth(), "K must be smaller than merge depth for this test to run");
 
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
     let mut selected_chain = vec![config.genesis.hash];
-    for i in 1..(config.crescendo.merge_depth + 3) {
+    for i in 1..(config.merge_depth + 3) {
         let hash: Hash = (i + 1).into();
         consensus.add_header_only_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
@@ -973,8 +926,8 @@ async fn bounded_merge_depth_test() {
 
     // The length of block_chain_2 is shorter by one than selected_chain, so selected_chain will remain the selected chain.
     let mut block_chain_2 = vec![config.genesis.hash];
-    for i in 1..(config.crescendo.merge_depth + 2) {
-        let hash: Hash = (i + config.crescendo.merge_depth + 3).into();
+    for i in 1..(config.merge_depth + 2) {
+        let hash: Hash = (i + config.merge_depth + 3).into();
         consensus.add_header_only_block_with_parents(hash, vec![*block_chain_2.last().unwrap()]).await.unwrap();
         block_chain_2.push(hash);
     }
@@ -1013,7 +966,7 @@ async fn bounded_merge_depth_test() {
         .unwrap();
 
     // We extend the selected chain until kosherizing_hash will be red from the virtual POV.
-    for i in 0..config.ghostdag_k().before() {
+    for i in 0..config.ghostdag_k() {
         let hash = Hash::from_u64_word((i + 1) as u64 * 1000);
         consensus.add_header_only_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
@@ -1040,7 +993,7 @@ async fn difficulty_test() {
     async fn add_block(consensus: &TestConsensus, block_time: Option<u64>, parents: Vec<Hash>) -> Header {
         let selected_parent = consensus.ghostdag_manager().find_selected_parent(parents.iter().copied());
         let block_time = block_time.unwrap_or_else(|| {
-            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params().prior_target_time_per_block
+            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params().target_time_per_block()
         });
         let mut header = consensus.build_header_with_parents(new_unique(), parents);
         header.timestamp = block_time;
@@ -1063,8 +1016,7 @@ async fn difficulty_test() {
     }
 
     fn full_window_bits(consensus: &TestConsensus, hash: Hash) -> u32 {
-        let window_size =
-            consensus.params().difficulty_window_size().before() * consensus.params().difficulty_sample_rate().before() as usize;
+        let window_size = consensus.params().difficulty_window_size * consensus.params().difficulty_sample_rate() as usize;
         let ghostdag_data = &consensus.ghostdag_store().get_data(hash).unwrap();
         let window = consensus.window_manager().block_window(ghostdag_data, WindowType::VaryingWindow(window_size)).unwrap();
         assert_eq!(window.blocks.len(), window_size);
@@ -1078,46 +1030,29 @@ async fn difficulty_test() {
         config: Config,
     }
 
-    const FULL_WINDOW_SIZE: usize = 90;
-    const SAMPLED_WINDOW_SIZE: u64 = 11;
+    const SAMPLED_WINDOW_SIZE: usize = 11;
     const SAMPLE_RATE: u64 = 6;
     const PMT_DEVIATION_TOLERANCE: u64 = 20;
     const PMT_SAMPLE_RATE: u64 = 3;
-    const PMT_SAMPLED_WINDOW_SIZE: u64 = 13;
-    const HIGH_BPS_SAMPLED_WINDOW_SIZE: u64 = 12;
+    const PMT_SAMPLED_WINDOW_SIZE: usize = 13;
+    const HIGH_BPS_SAMPLED_WINDOW_SIZE: usize = 12;
     const HIGH_BPS: u64 = 4;
     let tests = [
-        Test {
-            name: "MAINNET with full window",
-            enabled: true,
-            config: ConfigBuilder::new(MAINNET_PARAMS)
-                .skip_proof_of_work()
-                .edit_consensus_params(|p| {
-                    p.prior_ghostdag_k = 1;
-                    p.prior_difficulty_window_size = FULL_WINDOW_SIZE;
-                    p.crescendo_activation = ForkActivation::never();
-                    // Define past median time so that calls to add_block_with_min_time create blocks
-                    // which timestamps fit within the min-max timestamps found in the difficulty window
-                    p.timestamp_deviation_tolerance = 60;
-                })
-                .build(),
-        },
         Test {
             name: "MAINNET with sampled window",
             enabled: true,
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.prior_ghostdag_k = 1;
-                    p.crescendo.ghostdag_k = 1;
-                    p.crescendo.sampled_difficulty_window_size = SAMPLED_WINDOW_SIZE;
-                    p.crescendo.difficulty_sample_rate = SAMPLE_RATE;
+                    p.ghostdag_k = 1;
+                    p.ghostdag_k = 1;
+                    p.difficulty_window_size = SAMPLED_WINDOW_SIZE;
+                    p.difficulty_sample_rate = SAMPLE_RATE;
                     p.crescendo_activation = ForkActivation::always();
-                    p.prior_target_time_per_block = p.crescendo.target_time_per_block;
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
-                    p.crescendo.past_median_time_sample_rate = PMT_SAMPLE_RATE;
-                    p.crescendo.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
+                    p.past_median_time_sample_rate = PMT_SAMPLE_RATE;
+                    p.past_median_time_window_size = PMT_SAMPLED_WINDOW_SIZE;
                     p.timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
                 })
                 .build(),
@@ -1128,17 +1063,16 @@ async fn difficulty_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.prior_ghostdag_k = 1;
-                    p.crescendo.ghostdag_k = 1;
-                    p.prior_target_time_per_block /= HIGH_BPS;
-                    p.crescendo.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
-                    p.crescendo.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
+                    p.ghostdag_k = 1;
+                    p.ghostdag_k = 1;
+                    p.target_time_per_block /= HIGH_BPS;
+                    p.difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
+                    p.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
                     p.crescendo_activation = ForkActivation::always();
-                    p.prior_target_time_per_block = p.crescendo.target_time_per_block;
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
-                    p.crescendo.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;
-                    p.crescendo.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
+                    p.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;
+                    p.past_median_time_window_size = PMT_SAMPLED_WINDOW_SIZE;
                     p.timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
                 })
                 .build(),
@@ -1150,8 +1084,8 @@ async fn difficulty_test() {
         let consensus = TestConsensus::new(&test.config);
         let wait_handles = consensus.init();
 
-        let sample_rate = test.config.difficulty_sample_rate().before();
-        let expanded_window_size = test.config.difficulty_window_size().before() * sample_rate as usize;
+        let sample_rate = test.config.difficulty_sample_rate();
+        let expanded_window_size = test.config.difficulty_window_size * sample_rate as usize;
 
         let fake_genesis = Header {
             hash: test.config.genesis.hash,
@@ -1267,7 +1201,7 @@ async fn difficulty_test() {
         for _ in 0..sample_rate {
             if (tip.daa_score + 1) % sample_rate == 0 {
                 // This block should be part of the sampled window
-                let slow_block_time = tip.timestamp + test.config.prior_target_time_per_block * 3;
+                let slow_block_time = tip.timestamp + test.config.target_time_per_block() * 3;
                 let slow_block = add_block(&consensus, Some(slow_block_time), vec![tip.hash]).await;
                 tip = slow_block;
                 break;
@@ -1366,7 +1300,7 @@ async fn selected_chain_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.min_difficulty_window_size = p.prior_difficulty_window_size;
+            p.min_difficulty_window_size = p.difficulty_window_size;
         })
         .build();
     let consensus = TestConsensus::new(&config);
@@ -1556,8 +1490,7 @@ async fn payload_test() {
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.prior_coinbase_maturity = 0;
-            p.crescendo.coinbase_maturity = 0;
+            p.coinbase_maturity = 0;
             p.crescendo_activation = ForkActivation::always()
         })
         .build();
@@ -1803,21 +1736,15 @@ async fn pruning_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.prior_finality_depth = 2;
-            p.prior_mergeset_size_limit = 2;
-            p.prior_ghostdag_k = 2;
-            p.prior_merge_depth = 3;
-            p.prior_pruning_depth = 100;
-
-            p.crescendo.finality_depth = 2;
-            p.crescendo.mergeset_size_limit = 2;
-            p.crescendo.ghostdag_k = 2;
-            p.crescendo.merge_depth = 3;
-            p.crescendo.pruning_depth = 100;
+            p.finality_depth = 2;
+            p.mergeset_size_limit = 2;
+            p.ghostdag_k = 2;
+            p.merge_depth = 3;
+            p.pruning_depth = 100;
         })
         .build();
 
-    assert!((config.prior_ghostdag_k as u64) < config.prior_merge_depth, "K must be smaller than merge depth for this test to run");
+    assert!((config.ghostdag_k() as u64) < config.merge_depth(), "K must be smaller than merge depth for this test to run");
 
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
@@ -1834,7 +1761,7 @@ async fn pruning_test() {
     selected_chain.push(genesis_child_child);
     let genesis_child_child_block = consensus.get_block(genesis_child_child).unwrap();
 
-    for i in 3..config.prior_pruning_depth + config.prior_finality_depth + 100 {
+    for i in 3..config.pruning_depth() + config.finality_depth() + 100 {
         let hash: Hash = i.into();
         consensus.add_empty_utxo_valid_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);

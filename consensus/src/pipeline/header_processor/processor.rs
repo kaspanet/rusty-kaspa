@@ -32,12 +32,12 @@ use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::{BlockHashes, ORIGIN},
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-    config::{genesis::GenesisBlock, params::ForkedParam},
+    config::genesis::GenesisBlock,
     header::Header,
     BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::prelude::{StoreResultExt, StoreResultUnitExt};
 use kaspa_hashes::Hash;
 use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
@@ -109,8 +109,8 @@ pub struct HeaderProcessor {
     // Config
     pub(super) genesis: GenesisBlock,
     pub(super) timestamp_deviation_tolerance: u64,
-    pub(super) max_block_parents: ForkedParam<u8>,
-    pub(super) mergeset_size_limit: ForkedParam<u64>,
+    pub(super) max_block_parents: u8,
+    pub(super) mergeset_size_limit: u64,
     pub(super) skip_proof_of_work: bool,
     pub(super) max_block_level: BlockLevel,
 
@@ -258,7 +258,7 @@ impl HeaderProcessor {
     fn process_header(&self, task: &BlockTask) -> BlockProcessResult<BlockStatus> {
         let _prune_guard = self.pruning_lock.blocking_read();
         let header = &task.block().header;
-        let status_option = self.statuses_store.read().get(header.hash).unwrap_option();
+        let status_option = self.statuses_store.read().get(header.hash).optional().unwrap();
 
         match status_option {
             Some(StatusInvalid) => return Err(RuleError::KnownInvalid),
@@ -342,7 +342,8 @@ impl HeaderProcessor {
         let ghostdag_data = self
             .ghostdag_store
             .get_data(ctx.hash)
-            .unwrap_option()
+            .optional()
+            .unwrap()
             .unwrap_or_else(|| Arc::new(self.ghostdag_manager.ghostdag(&ctx.known_parents[0])));
         self.counters.mergeset_counts.fetch_add(ghostdag_data.mergeset_size() as u64, Ordering::Relaxed);
         ctx.ghostdag_data = Some(ghostdag_data);
@@ -435,12 +436,12 @@ impl HeaderProcessor {
         let mut batch = WriteBatch::default();
 
         // This data might have been already written when applying the pruning proof.
-        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).unwrap_or_exists();
+        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).idempotent().unwrap();
 
         let mut relations_write = self.relations_stores.write();
         ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
             // This data might have been already written when applying the pruning proof.
-            relations_write[level].insert_batch(&mut batch, ctx.hash, parents_by_level).unwrap_or_exists();
+            relations_write[level].insert_batch(&mut batch, ctx.hash, parents_by_level).idempotent().unwrap();
         });
 
         let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
