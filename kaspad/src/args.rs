@@ -420,8 +420,8 @@ a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance
                 .env("KASPAD_ROCKSDB_PRESET")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(String))
-                .help("RocksDB configuration preset: 'default' (SSD/NVMe) or 'archive' (HDD with BlobDB, compression, rate limiting). \
-                       Archive preset optimized for archival nodes on HDD storage (see docs/archival.md).")
+                .help("RocksDB configuration preset: 'default' (SSD/NVMe) or 'hdd' (optimized for hard disk drives with BlobDB, compression, rate limiting). \
+                       HDD preset recommended for archival nodes on HDD storage (see docs/archival.md).")
         )
         .arg(
             Arg::new("rocksdb-wal-dir")
@@ -438,7 +438,7 @@ a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance
                 .env("KASPAD_ROCKSDB_CACHE_SIZE")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
-                .help("RocksDB block cache size in MB. Default: 256MB for archive preset (scales with --ram-scale). \
+                .help("RocksDB block cache size in MB. Default: 256MB for HDD preset (scales with --ram-scale). \
                        Increase for public RPC nodes with heavy query loads. Example: --rocksdb-cache-size=2048 for 2GB cache.")
         )
         ;

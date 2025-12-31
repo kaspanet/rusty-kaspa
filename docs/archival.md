@@ -4,12 +4,13 @@ This guide explains how to run a Kaspa archive node with HDD-optimized RocksDB c
 
 ## What is an Archive Node?
 
-An **archive node** stores the complete blockchain history, including all pruned data that normal nodes discard. Archive nodes are essential for:
+An **archive node** stores the complete blockchain history, including all pruned data that normal nodes discard. Archive nodes can be useful for specialized use cases such as:
 
-- **Blockchain explorers** - Need complete transaction history
-- **Research and analytics** - Require access to historical data
-- **Compliance and auditing** - Legal requirements for data retention
-- **Network resilience** - Provide historical data to syncing peers
+- **Blockchain explorers** - Complete transaction history access
+- **Research and analytics** - Historical data analysis
+- **Compliance and auditing** - Data retention requirements
+
+**Important**: Running archive nodes is resource-intensive and **not officially supported** by the Kaspa development team. Archive functionality is provided as-is for advanced users with specific requirements. Most users should run standard pruned nodes instead.
 
 Normal Kaspa nodes are **pruned** and only keep recent blocks (determined by finality depth). Archive nodes keep everything.
 
@@ -17,7 +18,7 @@ Normal Kaspa nodes are **pruned** and only keep recent blocks (determined by fin
 
 ### Minimum Requirements
 - **Storage:** 500GB HDD minimum (2TB+ recommended)
-- **RAM:** 4GB minimum (8GB+ recommended with `--rocksdb-preset=archive`)
+- **RAM:** 4GB minimum (8GB+ recommended with `--rocksdb-preset=hdd`)
 - **CPU:** 4 cores
 - **Network:** Stable connection with sufficient bandwidth
 
@@ -40,9 +41,9 @@ kaspad --archival --rocksdb-preset=default
 
 **Best for:** Archive nodes on SSD/NVMe storage
 
-### Archive Preset (HDD)
+### HDD Preset
 ```bash
-kaspad --archival --rocksdb-preset=archive
+kaspad --archival --rocksdb-preset=hdd
 ```
 
 **Configuration:**
@@ -74,7 +75,7 @@ kaspad --archival \
 
 ### HDD-Optimized Archive Node
 ```bash
-# Archive preset with HDD optimizations
+# HDD preset with HDD optimizations
 kaspad --archival \
   --rocksdb-preset=archive \
   --ram-scale=1.0 \
@@ -112,30 +113,30 @@ Adjust memory allocation based on available RAM:
 
 ```bash
 # Limited RAM (4GB system)
-kaspad --archival --rocksdb-preset=archive --ram-scale=0.2
+kaspad --archival --rocksdb-preset=hdd --ram-scale=0.2
 
 # Normal RAM (8GB system)
-kaspad --archival --rocksdb-preset=archive --ram-scale=0.5
+kaspad --archival --rocksdb-preset=hdd --ram-scale=0.5
 
 # High RAM (16GB+ system)
-kaspad --archival --rocksdb-preset=archive --ram-scale=1.0
+kaspad --archival --rocksdb-preset=hdd --ram-scale=1.0
 ```
 
-**Note:** Archive preset requires ~4GB minimum even with `--ram-scale=0.2`. The cache size scales with `--ram-scale` (minimum 64MB).
+**Note:** HDD preset requires ~4GB minimum even with `--ram-scale=0.2`. The cache size scales with `--ram-scale` (minimum 64MB).
 
 ### RocksDB Cache Configuration
 
-The archive preset uses a 256MB block cache by default, which automatically scales with `--ram-scale`:
+The HDD preset uses a 256MB block cache by default, which automatically scales with `--ram-scale`:
 
 ```bash
 # Default cache (256MB)
-kaspad --archival --rocksdb-preset=archive
+kaspad --archival --rocksdb-preset=hdd
 
 # Scaled cache with ram-scale=0.2 (~51MB cache)
-kaspad --archival --rocksdb-preset=archive --ram-scale=0.2
+kaspad --archival --rocksdb-preset=hdd --ram-scale=0.2
 
 # Custom cache size (useful for public RPC nodes)
-kaspad --archival --rocksdb-preset=archive --rocksdb-cache-size=2048  # 2GB cache
+kaspad --archival --rocksdb-preset=hdd --rocksdb-cache-size=2048  # 2GB cache
 ```
 
 **Cache Sizing Guidelines:**
@@ -171,7 +172,7 @@ du -sh ~/.kaspa/kaspa-mainnet/datadir/
 ### Performance Metrics
 ```bash
 # Enable performance metrics
-kaspad --archival --rocksdb-preset=archive --perf-metrics --perf-metrics-interval-sec=60
+kaspad --archival --rocksdb-preset=hdd --perf-metrics --perf-metrics-interval-sec=60
 ```
 
 ### Disk I/O Monitoring
@@ -292,7 +293,7 @@ sudo systemctl status kaspad-archive
 **Symptoms:** System slow, high `iowait`
 
 **Solutions:**
-1. Verify archive preset is active:
+1. Verify HDD preset is active:
    ```bash
    journalctl -u kaspad-archive | grep "RocksDB preset"
    # Should show: "Using RocksDB preset: archive"
@@ -305,29 +306,29 @@ sudo systemctl status kaspad-archive
 **Symptoms:** Process killed by OOM
 
 **Solutions:**
-1. Archive preset needs minimum 4GB RAM
+1. HDD preset needs minimum 4GB RAM
 2. Reduce `--ram-scale` and cache size:
    ```bash
    # 4GB system
-   kaspad --archival --rocksdb-preset=archive --ram-scale=0.2
+   kaspad --archival --rocksdb-preset=hdd --ram-scale=0.2
 
    # 8GB system
-   kaspad --archival --rocksdb-preset=archive --ram-scale=0.5
+   kaspad --archival --rocksdb-preset=hdd --ram-scale=0.5
 
    # Custom cache reduction (if needed)
-   kaspad --archival --rocksdb-preset=archive --rocksdb-cache-size=64
+   kaspad --archival --rocksdb-preset=hdd --rocksdb-cache-size=64
    ```
 3. Check swap: `free -h` (4GB+ swap recommended for low-RAM systems)
 4. Consider default preset on SSD instead
 
 ### Slow Sync Speed
-**Expected:** 10-20 blocks/sec on HDD with archive preset
+**Expected:** 10-20 blocks/sec on HDD with HDD preset
 
 **If slower:**
 1. Verify HDD not failing: `sudo smartctl -a /dev/sda`
 2. Check disk utilization: `iostat -x 5` (should be ~70-95%)
 3. Ensure system tuning applied
-4. Monitor memory: Archive preset uses more RAM but reduces disk I/O
+4. Monitor memory: HDD preset uses more RAM but reduces disk I/O
 
 ### Preset Not Applied
 **Symptom:** Performance same as before
@@ -341,7 +342,7 @@ systemctl cat kaspad-archive | grep rocksdb-preset
 journalctl -u kaspad-archive -n 100 | grep -i rocksdb
 
 # Should see:
-# "Using RocksDB preset: archive - Archive preset - optimized for HDD"
+# "Using RocksDB preset: archive - HDD preset - optimized for HDD"
 ```
 
 ## Trade-offs
@@ -375,7 +376,7 @@ journalctl -u kaspad-archive -n 100 | grep -i rocksdb
 
 ## Performance Comparison
 
-Based on real-world testing (Issue #681):
+Based on real-world testing:
 
 **Before (Default on HDD):**
 - Sync time: ~3-5 days
@@ -391,21 +392,14 @@ Based on real-world testing (Issue #681):
 - 30-50% improvement in write throughput
 - Memory usage: ~4-6GB (reduced from 8-12GB with configurable cache)
 
-## Additional Resources
-
-- **Issue #681:** Original HDD optimization proposal
-- **System Tuning Guide:** Detailed kernel optimization guide
-- **Kaspa Discord:** #node-operators channel for support
-- **GitHub:** Report issues at kaspanet/rusty-kaspa
-
 ## Summary
 
 For **HDD-based archive nodes**, use:
 ```bash
-kaspad --archival --rocksdb-preset=archive
+kaspad --archival --rocksdb-preset=hdd
 ```
 
-This enables Callidon's HDD-optimized RocksDB configuration, providing:
+This enables HDD-optimized RocksDB configuration, providing:
 - ✅ 30-50% faster sync times on HDD
 - ✅ Reduced write amplification (50-60% reduction)
 - ✅ Better disk utilization (95%+ vs 60-80%)
@@ -418,6 +412,5 @@ For **SSD/NVMe**, the default preset is optimal.
 
 ---
 
-**Last updated:** November 2024
+**Last updated:** December 2025
 **Applies to:** Kaspad v1.0.0+
-**Related:** Issue #681 - HDD Archive Node Optimization

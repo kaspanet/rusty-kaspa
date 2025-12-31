@@ -208,6 +208,56 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
     create_core_with_runtime(&rt, &args, fd_total_budget)
 }
 
+/// Configure RocksDB parameters from CLI arguments.
+///
+/// Returns: (preset, cache_budget, wal_directory)
+fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathBuf>) {
+    // Parse preset
+    let preset = if let Some(preset_str) = &args.rocksdb_preset {
+        match preset_str.parse::<RocksDbPreset>() {
+            Ok(p) => {
+                info!("Using RocksDB preset: {} - {}", p, p.description());
+                info!("  Use case: {}", p.use_case());
+                info!("  Memory requirements: {}", p.memory_requirements());
+                p
+            }
+            Err(err) => {
+                println!("Invalid RocksDB preset: {}", err);
+                exit(1);
+            }
+        }
+    } else {
+        RocksDbPreset::Default
+    };
+
+    // Calculate cache budget for HDD preset
+    let cache_budget = if matches!(preset, RocksDbPreset::Hdd) {
+        if let Some(cache_mb) = args.rocksdb_cache_size {
+            let cache_bytes = cache_mb * 1024 * 1024;
+            info!("Custom RocksDB cache size: {} MB", cache_mb);
+            Some(cache_bytes)
+        } else {
+            let base_cache = 256 * 1024 * 1024;
+            let scaled_cache = (base_cache as f64 * args.ram_scale) as usize;
+            let min_cache = 64 * 1024 * 1024;
+            let final_cache = scaled_cache.max(min_cache);
+            info!("RocksDB cache size: {} MB (scaled by ram-scale)", final_cache / 1024 / 1024);
+            Some(final_cache)
+        }
+    } else {
+        None
+    };
+
+    // Setup WAL directory if specified
+    let wal_dir = args.rocksdb_wal_dir.as_ref().map(|custom_wal_dir| {
+        let wal_path = PathBuf::from(custom_wal_dir);
+        info!("Custom WAL directory: {}", wal_path.display());
+        wal_path
+    });
+
+    (preset, cache_budget, wal_dir)
+}
+
 /// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
 ///
 /// Usage semantics:
@@ -230,54 +280,8 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
         0
     };
 
-    // Parse RocksDB preset configuration
-    let rocksdb_preset = if let Some(preset_str) = &args.rocksdb_preset {
-        match preset_str.parse::<RocksDbPreset>() {
-            Ok(preset) => {
-                info!("Using RocksDB preset: {} - {}", preset, preset.description());
-                info!("  Use case: {}", preset.use_case());
-                info!("  Memory requirements: {}", preset.memory_requirements());
-                preset
-            }
-            Err(err) => {
-                println!("Invalid RocksDB preset: {}", err);
-                exit(1);
-            }
-        }
-    } else {
-        RocksDbPreset::Default
-    };
-
-    // Calculate cache budget for archive preset
-    let cache_budget = if matches!(rocksdb_preset, RocksDbPreset::Archive) {
-        if let Some(cache_mb) = args.rocksdb_cache_size {
-            // User specified explicit cache size in MB
-            let cache_bytes = cache_mb * 1024 * 1024;
-            info!("Custom RocksDB cache size: {} MB", cache_mb);
-            Some(cache_bytes)
-        } else {
-            // Scale default 256MB by ram_scale
-            let base_cache = 256 * 1024 * 1024; // 256MB base
-            let scaled_cache = (base_cache as f64 * args.ram_scale) as usize;
-            let min_cache = 64 * 1024 * 1024; // Minimum 64MB
-            let final_cache = scaled_cache.max(min_cache);
-            info!("RocksDB cache size: {} MB (scaled by ram-scale)", final_cache / 1024 / 1024);
-            Some(final_cache)
-        }
-    } else {
-        None
-    };
-
-    // Setup WAL directory if specified
-    let wal_dir = if let Some(custom_wal_dir) = &args.rocksdb_wal_dir {
-        // Custom WAL directory (e.g., NVMe for hybrid setups)
-        let wal_path = PathBuf::from(custom_wal_dir);
-        info!("Custom WAL directory: {}", wal_path.display());
-        Some(wal_path)
-    } else {
-        // No custom WAL - use default (same directory as database)
-        None
-    };
+    // Configure RocksDB parameters
+    let (rocksdb_preset, cache_budget, wal_dir) = configure_rocksdb(args);
 
     // Make sure args forms a valid set of properties
     if let Err(err) = validate_args(args) {

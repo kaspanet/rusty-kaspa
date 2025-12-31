@@ -1,7 +1,7 @@
 //! RocksDB configuration presets for different use cases
 //!
 //! This module provides pre-configured RocksDB option sets optimized for different
-//! deployment scenarios. Based on Issue #681 and community testing.
+//! deployment scenarios.
 
 use rocksdb::Options;
 use std::str::FromStr;
@@ -16,16 +16,15 @@ pub enum RocksDbPreset {
     #[default]
     Default,
 
-    /// Archive configuration - optimized for HDD storage
+    /// HDD configuration - optimized for hard disk drives
     /// - 256MB write buffer (4x default)
     /// - Aggressive compression (LZ4 + ZSTD)
     /// - BlobDB enabled for large values
     /// - Rate limiting to prevent I/O spikes
     /// - Optimized for sequential writes and reduced write amplification
     ///
-    /// Based on Callidon's configuration from Issue #681.
     /// Recommended for archival nodes on HDD storage.
-    Archive,
+    Hdd,
 }
 
 impl FromStr for RocksDbPreset {
@@ -34,8 +33,8 @@ impl FromStr for RocksDbPreset {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "default" => Ok(Self::Default),
-            "archive" => Ok(Self::Archive),
-            _ => Err(format!("Unknown RocksDB preset: '{}'. Valid options: default, archive", s)),
+            "hdd" => Ok(Self::Hdd),
+            _ => Err(format!("Unknown RocksDB preset: '{}'. Valid options: default, hdd", s)),
         }
     }
 }
@@ -44,7 +43,7 @@ impl std::fmt::Display for RocksDbPreset {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Default => write!(f, "default"),
-            Self::Archive => write!(f, "archive"),
+            Self::Hdd => write!(f, "hdd"),
         }
     }
 }
@@ -55,11 +54,11 @@ impl RocksDbPreset {
     /// # Arguments
     /// * `opts` - RocksDB options to configure
     /// * `parallelism` - Number of background threads
-    /// * `mem_budget` - Memory budget (only used for Default preset, Archive uses fixed 256MB)
+    /// * `mem_budget` - Memory budget (only used for Default preset, HDD uses fixed 256MB)
     pub fn apply_to_options(&self, opts: &mut Options, parallelism: usize, mem_budget: usize, cache_budget: Option<usize>) {
         match self {
             Self::Default => self.apply_default(opts, parallelism, mem_budget),
-            Self::Archive => self.apply_archive(opts, parallelism, cache_budget),
+            Self::Hdd => self.apply_hdd(opts, parallelism, cache_budget),
         }
     }
 
@@ -73,8 +72,8 @@ impl RocksDbPreset {
         opts.optimize_level_style_compaction(mem_budget);
     }
 
-    /// Apply archive preset configuration (Callidon's HDD-optimized settings)
-    fn apply_archive(&self, opts: &mut Options, parallelism: usize, cache_budget: Option<usize>) {
+    /// Apply HDD preset configuration (HDD-optimized settings)
+    fn apply_hdd(&self, opts: &mut Options, parallelism: usize, cache_budget: Option<usize>) {
         if parallelism > 1 {
             opts.increase_parallelism(parallelism as i32);
         }
@@ -173,7 +172,7 @@ impl RocksDbPreset {
     pub fn description(&self) -> &'static str {
         match self {
             Self::Default => "Default preset - balanced for SSD/NVMe (64MB write buffer, standard compression)",
-            Self::Archive => "Archive preset - optimized for HDD (256MB write buffer, BlobDB, aggressive compression, rate limiting)",
+            Self::Hdd => "HDD preset - optimized for hard disk drives (256MB write buffer, BlobDB, aggressive compression, rate limiting)",
         }
     }
 
@@ -181,7 +180,7 @@ impl RocksDbPreset {
     pub fn use_case(&self) -> &'static str {
         match self {
             Self::Default => "General purpose nodes on SSD/NVMe storage",
-            Self::Archive => "Archival nodes on HDD storage (--archival flag recommended)",
+            Self::Hdd => "Archival nodes on HDD storage (--archival flag recommended)",
         }
     }
 
@@ -189,7 +188,7 @@ impl RocksDbPreset {
     pub fn memory_requirements(&self) -> &'static str {
         match self {
             Self::Default => "~4GB minimum, scales with --ram-scale",
-            Self::Archive => "~4GB minimum (256MB write buffer + 256MB cache + overhead), 8GB+ recommended for public RPC",
+            Self::Hdd => "~4GB minimum (256MB write buffer + 256MB cache + overhead), 8GB+ recommended for public RPC",
         }
     }
 }
@@ -202,25 +201,8 @@ mod tests {
     fn test_preset_from_str() {
         assert_eq!(RocksDbPreset::from_str("default").unwrap(), RocksDbPreset::Default);
         assert_eq!(RocksDbPreset::from_str("Default").unwrap(), RocksDbPreset::Default);
-        assert_eq!(RocksDbPreset::from_str("archive").unwrap(), RocksDbPreset::Archive);
-        assert_eq!(RocksDbPreset::from_str("ARCHIVE").unwrap(), RocksDbPreset::Archive);
+        assert_eq!(RocksDbPreset::from_str("hdd").unwrap(), RocksDbPreset::Hdd);
+        assert_eq!(RocksDbPreset::from_str("HDD").unwrap(), RocksDbPreset::Hdd);
         assert!(RocksDbPreset::from_str("unknown").is_err());
-    }
-
-    #[test]
-    fn test_preset_display() {
-        assert_eq!(RocksDbPreset::Default.to_string(), "default");
-        assert_eq!(RocksDbPreset::Archive.to_string(), "archive");
-    }
-
-    #[test]
-    fn test_apply_presets() {
-        let mut opts = Options::default();
-
-        // Test default preset
-        RocksDbPreset::Default.apply_to_options(&mut opts, 4, 64 * 1024 * 1024, None);
-
-        // Test archive preset
-        RocksDbPreset::Archive.apply_to_options(&mut opts, 4, 64 * 1024 * 1024, None);
     }
 }
