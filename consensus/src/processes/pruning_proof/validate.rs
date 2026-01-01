@@ -46,15 +46,12 @@ struct ProofContext {
     reachability_stores: Vec<Arc<RwLock<DbReachabilityStore>>>,
     ghostdag_managers:
         Vec<GhostdagManager<DbGhostdagStore, DbRelationsStore, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>>,
+    selected_tip_by_level: Vec<Hash>,
     db_lifetime: DbLifetime,
 }
 
 impl ProofContext {
-    fn from_proof(
-        ppm: &PruningProofManager,
-        proof: &PruningPointProof,
-        log_validating: bool,
-    ) -> PruningImportResult<(ProofContext, Vec<Hash>)> {
+    fn from_proof(ppm: &PruningProofManager, proof: &PruningPointProof, log_validating: bool) -> PruningImportResult<ProofContext> {
         if proof[0].is_empty() {
             return Err(PruningImportError::PruningProofNotEnoughHeaders);
         }
@@ -62,6 +59,10 @@ impl ProofContext {
         let ghostdag_k = ppm.ghostdag_k;
 
         let headers_estimate = ppm.estimate_proof_unique_size(proof);
+
+        //
+        // Initialize stores
+        //
 
         let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let cache_policy = CachePolicy::Count(2 * ppm.pruning_proof_m as usize);
@@ -110,28 +111,12 @@ impl ProofContext {
             db.write(batch).unwrap();
         }
 
-        let mut ctx =
-            ProofContext { db_lifetime, headers_store, ghostdag_stores, relations_stores, reachability_stores, ghostdag_managers };
-
-        let tips = ctx.populate_stores(ppm, proof, log_validating)?;
-
-        Ok((ctx, tips))
-    }
-
-    fn populate_stores(
-        &mut self,
-        ppm: &PruningProofManager,
-        proof: &PruningPointProof,
-        log_validating: bool,
-    ) -> PruningImportResult<Vec<Hash>> {
-        let headers_store = &self.headers_store;
-        let ghostdag_stores = &self.ghostdag_stores;
-        let mut relations_stores = self.relations_stores.clone();
-        let reachability_stores = &self.reachability_stores;
-        let ghostdag_managers = &self.ghostdag_managers;
-
         let proof_pp_header = proof[0].last().expect("checked if empty");
         let proof_pp = proof_pp_header.hash;
+
+        //
+        // Populate stores
+        //
 
         let mut selected_tip_by_level = vec![None; ppm.max_block_level as usize + 1];
         for level in (0..=ppm.max_block_level).rev() {
@@ -228,7 +213,19 @@ impl ProofContext {
             selected_tip_by_level[level_idx] = selected_tip;
         }
 
-        Ok(selected_tip_by_level.into_iter().map(|selected_tip| selected_tip.unwrap()).collect())
+        let selected_tip_by_level = selected_tip_by_level.into_iter().map(|selected_tip| selected_tip.unwrap()).collect();
+
+        let ctx = ProofContext {
+            db_lifetime,
+            headers_store,
+            ghostdag_stores,
+            relations_stores,
+            reachability_stores,
+            ghostdag_managers,
+            selected_tip_by_level,
+        };
+
+        Ok(ctx)
     }
 
     /// Returns an option of a tuple that contains the ghostdag data of the challenger (self)
@@ -278,7 +275,7 @@ impl PruningProofManager {
         }
 
         // Initialize the stores for the incoming pruning proof (the challenger)
-        let (challenger, challenger_selected_tip_by_level) = ProofContext::from_proof(self, proof, true)?;
+        let challenger = ProofContext::from_proof(self, proof, true)?;
         let challenger_pp_header = proof[0].last().expect("checked if empty");
 
         // Get the proof for the current consensus (the defender) and recreate the stores for it
@@ -290,7 +287,7 @@ impl PruningProofManager {
             let genesis_header = self.headers_store.get_header(self.genesis_hash).unwrap();
             defender_proof = Arc::new((0..=self.max_block_level).map(|_| vec![genesis_header.clone()]).collect_vec());
         }
-        let (defender, defender_selected_tip_by_level) = ProofContext::from_proof(self, &defender_proof, false)?;
+        let defender = ProofContext::from_proof(self, &defender_proof, false)?;
 
         let pruning_read = self.pruning_point_store.read();
         let defender_pp = pruning_read.pruning_point().unwrap();
@@ -304,7 +301,7 @@ impl PruningProofManager {
         let challenger_claimed_pruning_period_work =
             proof_metadata.relay_block_blue_work.saturating_sub(challenger_pp_header.blue_work);
 
-        for (level_idx, challenger_selected_tip_at_level) in challenger_selected_tip_by_level.iter().copied().enumerate() {
+        for (level_idx, challenger_selected_tip_at_level) in challenger.selected_tip_by_level.iter().copied().enumerate() {
             let level = level_idx as BlockLevel;
             self.validate_proof_selected_tip(challenger_selected_tip_at_level, level, challenger_pp_header)?;
 
@@ -337,7 +334,7 @@ impl PruningProofManager {
                 )
             {
                 let defender_level_blue_work =
-                    defender.ghostdag_stores[level_idx].get_blue_work(defender_selected_tip_by_level[level_idx]).unwrap();
+                    defender.ghostdag_stores[level_idx].get_blue_work(defender.selected_tip_by_level[level_idx]).unwrap();
                 let challenger_level_blue_work_diff =
                     challenger_selected_tip_gd.blue_work.saturating_sub(challenger_common_ancestor_gd.blue_work);
                 let defender_level_blue_work_diff = defender_level_blue_work.saturating_sub(defender_common_ancestor_gd.blue_work);
@@ -364,13 +361,13 @@ impl PruningProofManager {
         for level in (0..=self.max_block_level).rev() {
             let level_idx = level as usize;
 
-            let challenger_selected_tip = challenger_selected_tip_by_level[level_idx];
+            let challenger_selected_tip = challenger.selected_tip_by_level[level_idx];
             let challenger_selected_tip_gd = challenger.ghostdag_stores[level_idx].get_compact_data(challenger_selected_tip).unwrap();
             if challenger_selected_tip_gd.blue_score < 2 * self.pruning_proof_m {
                 continue;
             }
 
-            if defender.ghostdag_stores[level_idx].get_blue_score(defender_selected_tip_by_level[level_idx]).unwrap()
+            if defender.ghostdag_stores[level_idx].get_blue_score(defender.selected_tip_by_level[level_idx]).unwrap()
                 < 2 * self.pruning_proof_m
             {
                 return Ok(());
@@ -378,8 +375,8 @@ impl PruningProofManager {
         }
 
         drop(pruning_read);
-        drop(challenger.db_lifetime);
-        drop(defender.db_lifetime);
+        drop(challenger);
+        drop(defender);
 
         Err(PruningImportError::PruningProofNotEnoughHeaders)
     }
