@@ -257,7 +257,7 @@ pub fn calc_schnorr_signature_hash(
         .write_u8(input.0.sig_op_count)
         .update(outputs_hash(tx, hash_type, reused_values, input_index))
         .write_u64(tx.lock_time)
-        .update(&tx.subnetwork_id)
+        .update(tx.subnetwork_id)
         .write_u64(tx.gas)
         .update(payload_hash(tx, reused_values))
         .write_u8(hash_type.to_u8());

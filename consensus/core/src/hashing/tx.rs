@@ -1,6 +1,9 @@
 use super::HasherExtensions;
-use crate::tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput};
-use kaspa_hashes::{Hash, Hasher};
+use crate::{
+    mass::transaction_estimated_serialized_size,
+    tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
+};
+use kaspa_hashes::{Hash, HasherBase};
 
 bitflags::bitflags! {
     /// A bitmask defining which transaction fields we want to encode and which to ignore.
@@ -28,21 +31,19 @@ pub fn hash_pre_crescendo(tx: &Transaction) -> Hash {
 
 /// Not intended for direct use by clients. Instead use `tx.id()`
 pub(crate) fn id(tx: &Transaction) -> TransactionId {
-    // Encode the transaction, replace signature script with an empty array, skip
-    // sigop counts and mass commitment and hash the result.
-
-    let encoding_flags = if tx.is_coinbase() {
-        TxEncodingFlags::FULL
-    } else {
-        TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT
-    };
     let mut hasher = kaspa_hashes::TransactionID::new();
-    write_transaction(&mut hasher, tx, encoding_flags);
+    write_transaction_for_transaction_id(&mut hasher, tx);
     hasher.finalize()
 }
 
+fn write_transaction_for_transaction_id<T: HasherBase>(hasher: &mut T, tx: &Transaction) {
+    // Encode the transaction, replace signature script with an empty array, skip
+    // sigop counts and mass commitment and hash the result.
+    write_transaction(hasher, tx, TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT)
+}
+
 /// Write the transaction into the provided hasher according to the encoding flags
-fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags: TxEncodingFlags) {
+fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_flags: TxEncodingFlags) {
     hasher.update(tx.version.to_le_bytes()).write_len(tx.inputs.len());
     for input in tx.inputs.iter() {
         // Write the tx input
@@ -55,7 +56,7 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
         write_output(hasher, output);
     }
 
-    hasher.update(tx.lock_time.to_le_bytes()).update(&tx.subnetwork_id).update(tx.gas.to_le_bytes()).write_var_bytes(&tx.payload);
+    hasher.update(tx.lock_time.to_le_bytes()).update(tx.subnetwork_id).update(tx.gas.to_le_bytes()).write_var_bytes(&tx.payload);
 
     /*
        Design principles (mostly related to the new mass commitment field; see KIP-0009):
@@ -83,7 +84,7 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
 }
 
 #[inline(always)]
-fn write_input<T: Hasher>(hasher: &mut T, input: &TransactionInput, encoding_flags: TxEncodingFlags) {
+fn write_input<T: HasherBase>(hasher: &mut T, input: &TransactionInput, encoding_flags: TxEncodingFlags) {
     write_outpoint(hasher, &input.previous_outpoint);
     if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT) {
         hasher.write_var_bytes(input.signature_script.as_slice()).update([input.sig_op_count]);
@@ -94,16 +95,33 @@ fn write_input<T: Hasher>(hasher: &mut T, input: &TransactionInput, encoding_fla
 }
 
 #[inline(always)]
-fn write_outpoint<T: Hasher>(hasher: &mut T, outpoint: &TransactionOutpoint) {
+fn write_outpoint<T: HasherBase>(hasher: &mut T, outpoint: &TransactionOutpoint) {
     hasher.update(outpoint.transaction_id).update(outpoint.index.to_le_bytes());
 }
 
 #[inline(always)]
-fn write_output<T: Hasher>(hasher: &mut T, output: &TransactionOutput) {
+fn write_output<T: HasherBase>(hasher: &mut T, output: &TransactionOutput) {
     hasher
         .update(output.value.to_le_bytes())
         .update(output.script_public_key.version().to_le_bytes())
         .write_var_bytes(output.script_public_key.script());
+}
+
+struct PreimageHasher {
+    buff: Vec<u8>,
+}
+
+impl HasherBase for PreimageHasher {
+    fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
+        self.buff.extend_from_slice(data.as_ref());
+        self
+    }
+}
+
+pub fn transaction_id_preimage(tx: &Transaction) -> Vec<u8> {
+    let mut hasher = PreimageHasher { buff: Vec::with_capacity(transaction_estimated_serialized_size(tx) as usize) };
+    write_transaction_for_transaction_id(&mut hasher, tx);
+    hasher.buff
 }
 
 #[cfg(test)]
@@ -173,9 +191,10 @@ mod tests {
 
         // Test #6
         tests.push(Test {
-            tx: Transaction::new(2, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_COINBASE, 3, Vec::new()),
-            expected_id: "3fad809b11bd5a4af027aa4ac3fbde97e40624fd40965ba3ee1ee1b57521ad10",
-            expected_hash: "b4eb5f0cab5060bf336af5dcfdeb2198cc088b693b35c87309bd3dda04f1cfb9",
+            // Valid coinbase transactions have no inputs.
+            tx: Transaction::new(2, vec![], outputs.clone(), 54, subnets::SUBNETWORK_ID_COINBASE, 3, Vec::new()),
+            expected_id: "f16306e20f6a28576e526092979b2bf3fc53b933fa6482c71b7a06c489495910",
+            expected_hash: "968b9effa67001baa5a3016449211bf59a8db3721314bd8a64723eac2cff4552",
         });
 
         // Test #7
@@ -195,6 +214,12 @@ mod tests {
         for (i, test) in tests.iter().enumerate() {
             assert_eq!(test.tx.id(), Hash::from_str(test.expected_id).unwrap(), "transaction id failed for test {}", i + 1);
             assert_eq!(hash(&test.tx), Hash::from_str(test.expected_hash).unwrap(), "transaction hash failed for test {}", i + 1);
+
+            let preimage = transaction_id_preimage(&test.tx);
+            let mut hasher = kaspa_hashes::TransactionID::new();
+            hasher.update(&preimage);
+            let preimage_hash = hasher.finalize();
+            assert_eq!(preimage_hash, test.tx.id(), "transaction id preimage failed for test {}", i + 1);
         }
 
         // Avoid compiler warnings on the last clone
