@@ -140,7 +140,7 @@ impl PruningProcessor {
     }
 
     fn recover_pruning_workflows_if_needed(&self) -> bool {
-        // returns true if recorvery was completed successfully or was not needed
+        // returns true if recovery was completed successfully or was not needed
         let pruning_point_read = self.pruning_point_store.read();
         let pruning_point = pruning_point_read.pruning_point().unwrap();
         let retention_checkpoint = pruning_point_read.retention_checkpoint().unwrap();
@@ -163,7 +163,7 @@ impl PruningProcessor {
                 return false;
             }
         }
-        // The following two chekcs are implicitly checked in advance_pruning_utxoset, and hence can theoretically
+        // The following two checks are implicitly checked in advance_pruning_utxoset, and hence can theoretically
         // be skipped if that function was called. As these checks are cheap, we  perform them regardless
         // as to not complicate the logic.
 
@@ -477,9 +477,9 @@ impl PruningProcessor {
 
             if !keep_blocks.contains(&current) {
                 let mut batch = WriteBatch::default();
-                let mut level_relations_write = self.relations_stores.write();
+                let mut relations_write = self.relations_store.write();
                 let mut reachability_relations_write = self.reachability_relations_store.write();
-                let mut staging_relations = StagingRelationsStore::new(&mut reachability_relations_write);
+                let mut staging_reachability_relations = StagingRelationsStore::new(&mut reachability_relations_write);
                 let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
                 let mut statuses_write = self.statuses_store.write();
 
@@ -498,16 +498,12 @@ impl PruningProcessor {
                         statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
                     }
 
-                    // Delete level-x relations for blocks which only belong to higher-than-x proof levels.
-                    // This preserves the semantic that for each level, relations represent a contiguous DAG area in that level
-                    for lower_level in 0..affiliated_proof_level as usize {
-                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[lower_level]);
-                        relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).optional().unwrap();
-                        staging_level_relations.commit(&mut batch).unwrap();
-
-                        if lower_level == 0 {
-                            self.ghostdag_store.delete_batch(&mut batch, current).optional().unwrap();
-                        }
+                    // delete relations and ghostdag unless current is in level 0 of the pruning proof
+                    if affiliated_proof_level > 0 {
+                        let mut staging_relations = StagingRelationsStore::new(&mut relations_write);
+                        relations::delete_level_relations(MemoryWriter, &mut staging_relations, current).optional().unwrap();
+                        staging_relations.commit(&mut batch).unwrap();
+                        self.ghostdag_store.delete_batch(&mut batch, current).optional().unwrap();
                     }
                     // while we keep headers for keep relation blocks regardless,
                     // some of those relations blocks may accidentally have a pruning sample stored,
@@ -521,18 +517,14 @@ impl PruningProcessor {
                     // Prune data related to headers: relations, reachability, ghostdag
                     let mergeset = relations::delete_reachability_relations(
                         MemoryWriter, // Both stores are staging so we just pass a dummy writer
-                        &mut staging_relations,
+                        &mut staging_reachability_relations,
                         &staging_reachability,
                         current,
                     );
                     reachability::delete_block(&mut staging_reachability, current, &mut mergeset.iter().copied()).unwrap();
-                    // TODO: consider adding block level to compact header data
-                    let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
-                    (0..=block_level as usize).for_each(|level| {
-                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[level]);
-                        relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).optional().unwrap();
-                        staging_level_relations.commit(&mut batch).unwrap();
-                    });
+                    let mut staging_relations = StagingRelationsStore::new(&mut relations_write);
+                    relations::delete_level_relations(MemoryWriter, &mut staging_relations, current).optional().unwrap();
+                    staging_relations.commit(&mut batch).unwrap();
 
                     self.ghostdag_store.delete_batch(&mut batch, current).optional().unwrap();
 
@@ -554,7 +546,7 @@ impl PruningProcessor {
                 }
 
                 let reachability_write = staging_reachability.commit(&mut batch).unwrap();
-                staging_relations.commit(&mut batch).unwrap();
+                staging_reachability_relations.commit(&mut batch).unwrap();
 
                 // Flush the batch to the DB
                 self.db.write(batch).unwrap();
@@ -563,7 +555,7 @@ impl PruningProcessor {
                 drop(reachability_write);
                 drop(statuses_write);
                 drop(reachability_relations_write);
-                drop(level_relations_write);
+                drop(relations_write);
 
                 reachability_read = self.reachability_store.upgradable_read();
             }
