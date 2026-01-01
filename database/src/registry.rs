@@ -49,6 +49,8 @@ pub enum DatabaseStorePrefixes {
     // ---- Ghostdag Proof
     TempGhostdag = 40,
     TempGhostdagCompact = 41,
+    TempRelationsParents = 42,
+    TempRelationsChildren = 43,
 
     // ---- Retention Period Root ----
     RetentionPeriodRoot = 50,

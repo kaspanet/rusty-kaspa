@@ -37,7 +37,7 @@ use crate::{
         storage::ConsensusStorage,
     },
     model::{
-        services::{reachability::MTReachabilityService, relations::MTRelationsService},
+        services::reachability::MTReachabilityService,
         stores::{
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagStoreReader},
@@ -75,7 +75,6 @@ enum PruningProofManagerInternalError {
     NotEnoughHeadersToBuildProof(String),
 }
 type PruningProofManagerInternalResult<T> = std::result::Result<T, PruningProofManagerInternalError>;
-
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
     data: Arc<T>,
@@ -105,8 +104,7 @@ pub struct PruningProofManager {
     reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     ghostdag_store: Arc<DbGhostdagStore>,
-    relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
-    level_relations_services: Vec<MTRelationsService<DbRelationsStore>>,
+    relations_store: Arc<RwLock<DbRelationsStore>>,
     pruning_point_store: Arc<RwLock<DbPruningStore>>,
     past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     virtual_stores: Arc<RwLock<VirtualStores>>,
@@ -158,7 +156,7 @@ impl PruningProofManager {
             reachability_relations_store: storage.reachability_relations_store.clone(),
             reachability_service,
             ghostdag_store: storage.ghostdag_store.clone(),
-            relations_stores: storage.relations_stores.clone(),
+            relations_store: storage.relations_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
             pruning_meta_stores: storage.pruning_meta_stores.clone(),
             past_pruning_points_store: storage.past_pruning_points_store.clone(),
@@ -184,10 +182,6 @@ impl PruningProofManager {
             ghostdag_manager,
 
             is_consensus_exiting,
-
-            level_relations_services: (0..=max_block_level)
-                .map(|level| MTRelationsService::new(storage.relations_stores.clone().clone(), level))
-                .collect_vec(),
         }
     }
 
@@ -360,8 +354,11 @@ impl PruningProofManager {
                 let ghostdag = (&*self.ghostdag_store.get_data(current).unwrap()).into();
                 e.insert(TrustedHeader { header, ghostdag });
             }
-            let parents = self.relations_stores.read()[0].get_parents(current).unwrap();
-            for parent in parents.iter().copied() {
+
+            // The relation store signifies precisely the node's contiguous Dag segment -
+            // direct parents not included in it are not taken into account in the bfs traversal
+            let known_parents = self.relations_store.read().get_parents(current).unwrap();
+            for parent in known_parents.iter().copied() {
                 if visited.insert(parent) {
                     queue.push_back(parent);
                 }
