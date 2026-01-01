@@ -50,6 +50,39 @@ struct ProofContext {
     db_lifetime: DbLifetime,
 }
 
+struct ProofLevelContext<'a> {
+    ghostdag_store: &'a DbGhostdagStore,
+    selected_tip: Hash,
+}
+
+impl ProofLevelContext<'_> {
+    /// Returns an option of a tuple that contains the ghostdag data of the challenger (self)
+    /// and defender's common ancestor at this level. If no such ancestor exists, it returns None.
+    fn find_proofs_common_ancestor(
+        challenger: &Self,
+        defender: &Self,
+        challenger_selected_tip: Hash,
+        challenger_selected_tip_gd: CompactGhostdagData,
+    ) -> Option<(CompactGhostdagData, CompactGhostdagData)> {
+        let mut current = challenger_selected_tip;
+        let mut challenger_gd_of_current = challenger_selected_tip_gd;
+        loop {
+            match defender.ghostdag_store.get_compact_data(current).optional().unwrap() {
+                Some(defender_gd_of_current) => {
+                    break Some((challenger_gd_of_current, defender_gd_of_current));
+                }
+                None => {
+                    current = challenger_gd_of_current.selected_parent;
+                    if current.is_origin() {
+                        break None;
+                    }
+                    challenger_gd_of_current = challenger.ghostdag_store.get_compact_data(current).unwrap();
+                }
+            };
+        }
+    }
+}
+
 impl ProofContext {
     fn from_proof(ppm: &PruningProofManager, proof: &PruningPointProof, log_validating: bool) -> PruningImportResult<ProofContext> {
         if proof[0].is_empty() {
@@ -228,30 +261,10 @@ impl ProofContext {
         Ok(ctx)
     }
 
-    /// Returns an option of a tuple that contains the ghostdag data of the challenger (self)
-    /// and defender's common ancestor. If no such ancestor exists, it returns None.
-    fn find_proofs_common_ancestor_at_level(
-        challenger: &Self,
-        defender: &Self,
-        challenger_selected_tip: Hash,
-        challenger_selected_tip_gd: CompactGhostdagData,
-        level: BlockLevel,
-    ) -> Option<(CompactGhostdagData, CompactGhostdagData)> {
-        let mut current = challenger_selected_tip;
-        let mut challenger_gd_of_current = challenger_selected_tip_gd;
-        loop {
-            match defender.ghostdag_stores[level as usize].get_compact_data(current).optional().unwrap() {
-                Some(defender_gd_of_current) => {
-                    break Some((challenger_gd_of_current, defender_gd_of_current));
-                }
-                None => {
-                    current = challenger_gd_of_current.selected_parent;
-                    if current.is_origin() {
-                        break None;
-                    }
-                    challenger_gd_of_current = challenger.ghostdag_stores[level as usize].get_compact_data(current).unwrap();
-                }
-            };
+    fn level(&self, level: BlockLevel) -> ProofLevelContext<'_> {
+        ProofLevelContext {
+            ghostdag_store: &self.ghostdag_stores[level as usize],
+            selected_tip: self.selected_tip_by_level[level as usize],
         }
     }
 }
@@ -324,15 +337,12 @@ impl PruningProofManager {
             // we can determine if the challenger's is better. The challenger proof is better if the blue work difference between the
             // defender's tips and the common ancestor, combined with the pruning period work, is less than the blue work difference between the
             // challenger's tip and the common ancestor (from its pov) combined with its own claimed pruning period work.
-            if let Some((challenger_common_ancestor_gd, defender_common_ancestor_gd)) =
-                ProofContext::find_proofs_common_ancestor_at_level(
-                    &challenger,
-                    &defender,
-                    challenger_selected_tip_at_level,
-                    challenger_selected_tip_gd,
-                    level,
-                )
-            {
+            if let Some((challenger_common_ancestor_gd, defender_common_ancestor_gd)) = ProofLevelContext::find_proofs_common_ancestor(
+                &challenger.level(level),
+                &defender.level(level),
+                challenger_selected_tip_at_level,
+                challenger_selected_tip_gd,
+            ) {
                 let defender_level_blue_work =
                     defender.ghostdag_stores[level_idx].get_blue_work(defender.selected_tip_by_level[level_idx]).unwrap();
                 let challenger_level_blue_work_diff =
