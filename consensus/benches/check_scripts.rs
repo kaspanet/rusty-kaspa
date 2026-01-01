@@ -78,6 +78,7 @@ fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload
 }
 
 fn benchmark_check_scripts(c: &mut Criterion) {
+    let flags = Default::default();
     for inputs_count in [100, 50, 25, 10, 5, 2] {
         for non_uniq_signatures in [0, inputs_count / 2] {
             let (tx, utxos) = mock_tx_with_payload(inputs_count, non_uniq_signatures, 0);
@@ -89,7 +90,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
                     cache.clear();
-                    check_scripts_sequential(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
+                    check_scripts_sequential(black_box(&cache), black_box(&tx.as_verifiable()), flags).unwrap();
                 })
             });
 
@@ -98,7 +99,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
                     cache.clear();
-                    check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
+                    check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable()), flags).unwrap();
                 })
             });
 
@@ -110,7 +111,8 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                         let cache = Cache::new(inputs_count as u64);
                         b.iter(|| {
                             cache.clear();
-                            check_scripts_par_iter_pool(black_box(&cache), black_box(&tx.as_verifiable()), black_box(&pool)).unwrap();
+                            check_scripts_par_iter_pool(black_box(&cache), black_box(&tx.as_verifiable()), black_box(&pool), flags)
+                                .unwrap();
                         })
                     });
                 }
@@ -146,7 +148,7 @@ fn benchmark_check_scripts_with_payload(c: &mut Criterion) {
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
                     cache.clear();
-                    check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
+                    check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable()), Default::default()).unwrap();
                 })
             });
         }

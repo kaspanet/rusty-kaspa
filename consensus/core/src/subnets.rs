@@ -10,7 +10,7 @@ use thiserror::Error;
 pub const SUBNETWORK_ID_SIZE: usize = 20;
 
 /// The domain representation of a Subnetwork ID
-#[derive(Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, BorshSerialize, BorshDeserialize, Copy)]
 pub struct SubnetworkId([u8; SUBNETWORK_ID_SIZE]);
 
 impl Debug for SubnetworkId {
@@ -37,6 +37,12 @@ impl AsRef<[u8]> for SubnetworkId {
 impl From<[u8; SUBNETWORK_ID_SIZE]> for SubnetworkId {
     fn from(value: [u8; SUBNETWORK_ID_SIZE]) -> Self {
         Self::from_bytes(value)
+    }
+}
+
+impl From<SubnetworkId> for Vec<u8> {
+    fn from(id: SubnetworkId) -> Self {
+        id.0.into()
     }
 }
 

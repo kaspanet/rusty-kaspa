@@ -17,7 +17,7 @@ impl From<&Transaction> for RpcTransaction {
             inputs: item.inputs.iter().map(RpcTransactionInput::from).collect(),
             outputs: item.outputs.iter().map(RpcTransactionOutput::from).collect(),
             lock_time: item.lock_time,
-            subnetwork_id: item.subnetwork_id.clone(),
+            subnetwork_id: item.subnetwork_id,
             gas: item.gas,
             payload: item.payload.clone(),
             mass: item.mass(),
@@ -62,7 +62,7 @@ impl TryFrom<RpcTransaction> for Transaction {
                 .map(kaspa_consensus_core::tx::TransactionOutput::try_from)
                 .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionOutput>>>()?,
             item.lock_time,
-            item.subnetwork_id.clone(),
+            item.subnetwork_id,
             item.gas,
             item.payload.clone(),
         );
@@ -96,7 +96,7 @@ impl From<&Transaction> for RpcOptionalTransaction {
             inputs: item.inputs.iter().map(RpcOptionalTransactionInput::from).collect(),
             outputs: item.outputs.iter().map(RpcOptionalTransactionOutput::from).collect(),
             lock_time: Some(item.lock_time),
-            subnetwork_id: Some(item.subnetwork_id.clone()),
+            subnetwork_id: Some(item.subnetwork_id),
             gas: Some(item.gas),
             payload: Some(item.payload.clone()),
             mass: Some(item.mass()),

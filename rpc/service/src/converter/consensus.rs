@@ -145,7 +145,7 @@ impl ConsensusConverter {
                 inputs: transaction.inputs.iter().map(|x| self.get_transaction_input(x)).collect(),
                 outputs: transaction.outputs.iter().map(|x| self.get_transaction_output(x)).collect(),
                 lock_time: transaction.lock_time,
-                subnetwork_id: transaction.subnetwork_id.clone(),
+                subnetwork_id: transaction.subnetwork_id,
                 gas: transaction.gas,
                 payload: transaction.payload.clone(),
                 mass: transaction.mass(),
@@ -417,7 +417,7 @@ impl ConsensusConverter {
             },
             lock_time: if verbosity.include_lock_time.unwrap_or(false) { Some(transaction.lock_time) } else { Default::default() },
             subnetwork_id: if verbosity.include_subnetwork_id.unwrap_or(false) {
-                Some(transaction.subnetwork_id.clone())
+                Some(transaction.subnetwork_id)
             } else {
                 Default::default()
             },
@@ -470,7 +470,7 @@ impl ConsensusConverter {
                 Default::default()
             },
             lock_time: if verbosity.include_lock_time.unwrap_or(false) { Some(transaction.tx.lock_time) } else { Default::default() },
-            subnetwork_id: Some(transaction.tx.subnetwork_id.clone()),
+            subnetwork_id: Some(transaction.tx.subnetwork_id),
             gas: Some(transaction.tx.gas),
             payload: Some(transaction.tx.payload.clone()),
             mass: Some(transaction.tx.mass()),
