@@ -147,6 +147,7 @@ impl ClientHandler {
         let wallet_addr = ctx.wallet_addr.lock().clone();
         let worker_name = ctx.worker_name.lock().clone();
         record_disconnect(&crate::prom::WorkerContext {
+            instance_id: self.instance_id.clone(),
             worker_name: worker_name.clone(),
             miner: String::new(),
             wallet: wallet_addr.clone(),
@@ -180,6 +181,7 @@ impl ClientHandler {
         let kaspa_api_clone = Arc::clone(&kaspa_api);
         let share_handler = Arc::clone(&self.share_handler);
         let min_diff = self.min_share_diff;
+        let instance_id = self.instance_id.clone();
 
         tokio::spawn(async move {
             // Get per-client mining state from context
@@ -236,11 +238,11 @@ impl ClientHandler {
                 }
                 Err(e) => {
                     if e.to_string().contains("Could not decode address") {
-                        record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::InvalidAddressFmt.as_str());
+                        record_worker_error(&instance_id, &wallet_addr, crate::errors::ErrorShortCode::InvalidAddressFmt.as_str());
                         error!("send_immediate_job: failed fetching block template, malformed address: {}", e);
                         client_clone.disconnect();
                     } else {
-                        record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::FailedBlockFetch.as_str());
+                        record_worker_error(&instance_id, &wallet_addr, crate::errors::ErrorShortCode::FailedBlockFetch.as_str());
                         error!("send_immediate_job: failed fetching block template: {}", e);
                     }
                     return;
@@ -259,7 +261,7 @@ impl ClientHandler {
                 Ok(h) => h,
                 Err(e) => {
                     let error_msg = e.to_string();
-                    record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::BadDataFromMiner.as_str());
+                    record_worker_error(&instance_id, &wallet_addr, crate::errors::ErrorShortCode::BadDataFromMiner.as_str());
                     error!("send_immediate_job: failed to serialize block header: {}", error_msg);
 
                     // Log block header details for debugging
@@ -314,7 +316,7 @@ impl ClientHandler {
             // Even if state is already initialized, we need to send difficulty to this specific client
             tracing::debug!("[DIFFICULTY] ===== SENDING DIFFICULTY TO {} =====", client_clone.remote_addr);
             tracing::debug!("[DIFFICULTY] Difficulty value: {}", min_diff);
-            send_client_diff(&client_clone, &state, min_diff);
+            send_client_diff(&instance_id, &client_clone, &state, min_diff);
             share_handler.set_client_vardiff(&client_clone, min_diff);
             tracing::debug!("[DIFFICULTY] ===== DIFFICULTY SENT TO {} =====", client_clone.remote_addr);
 
@@ -423,10 +425,10 @@ impl ClientHandler {
 
             if let Err(e) = send_result {
                 if e.to_string().contains("disconnected") {
-                    record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::Disconnected.as_str());
+                    record_worker_error(&instance_id, &wallet_addr, crate::errors::ErrorShortCode::Disconnected.as_str());
                     tracing::error!("[JOB] ERROR: Failed to send job {} - client disconnected", job_id);
                 } else {
-                    record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::FailedSendWork.as_str());
+                    record_worker_error(&instance_id, &wallet_addr, crate::errors::ErrorShortCode::FailedSendWork.as_str());
                     error!("[JOB] ERROR: Failed sending work packet {}: {}", job_id, e);
                 }
                 tracing::debug!("[JOB] ===== JOB SEND FAILED FOR {} =====", client_clone.remote_addr);
@@ -434,6 +436,7 @@ impl ClientHandler {
                 let wallet_addr_str = wallet_addr.clone();
                 let worker_name = client_clone.worker_name.lock().clone();
                 record_new_job(&crate::prom::WorkerContext {
+                    instance_id: instance_id.clone(),
                     worker_name: worker_name.clone(),
                     miner: String::new(),
                     wallet: wallet_addr_str.clone(),
@@ -486,6 +489,7 @@ impl ClientHandler {
             let kaspa_api_clone = Arc::clone(&kaspa_api);
             let share_handler = Arc::clone(&self.share_handler);
             let min_diff = self.min_share_diff;
+            let instance_id = self.instance_id.clone();
 
             tokio::spawn(async move {
                 // Get per-client mining state from context
@@ -500,7 +504,7 @@ impl ClientHandler {
                             if elapsed > CLIENT_TIMEOUT {
                                 warn!("client misconfigured, no miner address specified - disconnecting");
                                 let wallet_str = wallet_addr.clone();
-                                record_worker_error(&wallet_str, crate::errors::ErrorShortCode::NoMinerAddress.as_str());
+                                record_worker_error(&instance_id, &wallet_str, crate::errors::ErrorShortCode::NoMinerAddress.as_str());
                                 drop(wallet_addr); // Drop before disconnect
                                 client_clone.disconnect();
                             }
@@ -540,11 +544,11 @@ impl ClientHandler {
                     }
                     Err(e) => {
                         if e.to_string().contains("Could not decode address") {
-                            record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::InvalidAddressFmt.as_str());
+                            record_worker_error(&instance_id, &wallet_addr, crate::errors::ErrorShortCode::InvalidAddressFmt.as_str());
                             error!("failed fetching new block template from kaspa, malformed address: {}", e);
                             client_clone.disconnect();
                         } else {
-                            record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::FailedBlockFetch.as_str());
+                            record_worker_error(&instance_id, &wallet_addr, crate::errors::ErrorShortCode::FailedBlockFetch.as_str());
                             error!("failed fetching new block template from kaspa: {}", e);
                         }
                         return;
@@ -563,7 +567,7 @@ impl ClientHandler {
                     Ok(h) => h,
                     Err(e) => {
                         let error_msg = e.to_string();
-                        record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::BadDataFromMiner.as_str());
+                        record_worker_error(&instance_id, &wallet_addr, crate::errors::ErrorShortCode::BadDataFromMiner.as_str());
                         error!("failed to serialize block header: {}", error_msg);
 
                         // Log block header details for debugging
@@ -619,7 +623,7 @@ impl ClientHandler {
                         target_bytes.len(),
                         target_bytes.len() * 8
                     );
-                    send_client_diff(&client_clone, &state, min_diff);
+                    send_client_diff(&instance_id, &client_clone, &state, min_diff);
                     share_handler.set_client_vardiff(&client_clone, min_diff);
                 } else {
                     // Check for vardiff update
@@ -632,7 +636,7 @@ impl ClientHandler {
                             let remote_app = client_clone.remote_app.lock().clone();
                             stratum_diff.set_diff_value_for_miner(var_diff, &remote_app);
                             state.set_stratum_diff(stratum_diff);
-                            send_client_diff(&client_clone, &state, var_diff);
+                            send_client_diff(&instance_id, &client_clone, &state, var_diff);
                             share_handler.start_client_vardiff(&client_clone);
                         }
                     }
@@ -724,10 +728,10 @@ impl ClientHandler {
 
                 if let Err(e) = send_result {
                     if e.to_string().contains("disconnected") {
-                        record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::Disconnected.as_str());
+                        record_worker_error(&instance_id, &wallet_addr, crate::errors::ErrorShortCode::Disconnected.as_str());
                         tracing::warn!("new_block_available: failed to send job {} - client disconnected", job_id);
                     } else {
-                        record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::FailedSendWork.as_str());
+                        record_worker_error(&instance_id, &wallet_addr, crate::errors::ErrorShortCode::FailedSendWork.as_str());
                         error!("failed sending work packet {}: {}", job_id, e);
                         tracing::error!(
                             "new_block_available: failed to send job {} to client {}: {}",
@@ -740,6 +744,7 @@ impl ClientHandler {
                     let wallet_addr_str = wallet_addr.clone();
                     let worker_name = client_clone.worker_name.lock().clone();
                     record_new_job(&crate::prom::WorkerContext {
+                        instance_id: instance_id.clone(),
                         worker_name: worker_name.clone(),
                         miner: String::new(),
                         wallet: wallet_addr_str.clone(),
@@ -760,11 +765,12 @@ impl ClientHandler {
                 // Fetch balances via kaspa_api
                 let addresses_clone = addresses.clone();
                 let kaspa_api_clone = Arc::clone(&kaspa_api);
+                let instance_id = self.instance_id.clone();
                 tokio::spawn(async move {
                     match kaspa_api_clone.get_balances_by_addresses(&addresses_clone).await {
                         Ok(balances) => {
                             // Record balances
-                            crate::prom::record_balances(&balances);
+                            crate::prom::record_balances(&instance_id, &balances);
                         }
                         Err(e) => {
                             warn!("failed to get balances from kaspa, prom stats will be out of date: {}", e);
@@ -777,8 +783,10 @@ impl ClientHandler {
 }
 
 // Send difficulty update to client
-fn send_client_diff(client: &StratumContext, _state: &MiningState, diff: f64) {
+fn send_client_diff(instance_id: &str, client: &StratumContext, _state: &MiningState, diff: f64) {
     tracing::debug!("[DIFFICULTY] Building difficulty message for {}", client.remote_addr);
+
+    let instance_id = instance_id.to_string();
 
     // Send diffValue directly as a number
     let diff_value =
@@ -800,7 +808,7 @@ fn send_client_diff(client: &StratumContext, _state: &MiningState, diff: f64) {
 
         if let Err(e) = send_result {
             let wallet_addr = client_clone.wallet_addr.lock().clone();
-            record_worker_error(&wallet_addr, crate::errors::ErrorShortCode::FailedSetDiff.as_str());
+            record_worker_error(&instance_id, &wallet_addr, crate::errors::ErrorShortCode::FailedSetDiff.as_str());
             error!("[DIFFICULTY] ERROR: Failed sending difficulty: {}", e);
             return;
         }

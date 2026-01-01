@@ -1,22 +1,23 @@
+use prometheus::proto::MetricFamily;
 use prometheus::{register_counter_vec, register_gauge, register_gauge_vec, CounterVec, Gauge, GaugeVec};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 /// Worker labels for Prometheus metrics
-const WORKER_LABELS: &[&str] = &["worker", "miner", "wallet", "ip"];
+const WORKER_LABELS: &[&str] = &["instance", "worker", "miner", "wallet", "ip"];
 
 /// Invalid share type labels
-const INVALID_LABELS: &[&str] = &["worker", "miner", "wallet", "ip", "type"];
+const INVALID_LABELS: &[&str] = &["instance", "worker", "miner", "wallet", "ip", "type"];
 
 /// Block labels
-const BLOCK_LABELS: &[&str] = &["worker", "miner", "wallet", "ip", "nonce", "bluescore", "hash"];
+const BLOCK_LABELS: &[&str] = &["instance", "worker", "miner", "wallet", "ip", "nonce", "bluescore", "hash"];
 
 /// Error labels
-const ERROR_LABELS: &[&str] = &["wallet", "error"];
+const ERROR_LABELS: &[&str] = &["instance", "wallet", "error"];
 
 /// Balance labels
-const BALANCE_LABELS: &[&str] = &["wallet"];
+const BALANCE_LABELS: &[&str] = &["instance", "wallet"];
 
 /// Share counter - number of valid shares found by worker
 static SHARE_COUNTER: OnceLock<CounterVec> = OnceLock::new();
@@ -115,6 +116,7 @@ pub fn init_metrics() {
 
 /// Worker context for metrics
 pub struct WorkerContext {
+    pub instance_id: String,
     pub worker_name: String,
     pub miner: String,
     pub wallet: String,
@@ -123,7 +125,7 @@ pub struct WorkerContext {
 
 impl WorkerContext {
     pub fn labels(&self) -> Vec<&str> {
-        vec![&self.worker_name, &self.miner, &self.wallet, &self.ip]
+        vec![&self.instance_id, &self.worker_name, &self.miner, &self.wallet, &self.ip]
     }
 }
 
@@ -217,21 +219,47 @@ pub fn record_network_stats(hashrate: u64, block_count: u64, difficulty: f64) {
 }
 
 /// Record a worker error
-pub fn record_worker_error(wallet: &str, error: &str) {
+pub fn record_worker_error(instance_id: &str, wallet: &str, error: &str) {
     if let Some(counter) = ERROR_BY_WALLET.get() {
-        counter.with_label_values(&[wallet, error]).inc();
+        counter.with_label_values(&[instance_id, wallet, error]).inc();
     }
 }
 
 /// Record wallet balances
-pub fn record_balances(balances: &[(String, u64)]) {
+pub fn record_balances(instance_id: &str, balances: &[(String, u64)]) {
     if let Some(gauge) = BALANCE_GAUGE.get() {
         for (address, balance) in balances {
             // Convert from sompi to KAS (divide by 100000000)
             let balance_kas = *balance as f64 / 100_000_000.0;
-            gauge.with_label_values(&[address]).set(balance_kas);
+            gauge.with_label_values(&[instance_id, address]).set(balance_kas);
         }
     }
+}
+
+fn metric_matches_instance(metric: &prometheus::proto::Metric, instance_id: &str) -> bool {
+    metric.get_label().iter().any(|label| label.get_name() == "instance" && label.get_value() == instance_id)
+}
+
+fn filter_metric_families_for_instance(metric_families: Vec<MetricFamily>, instance_id: &str) -> Vec<MetricFamily> {
+    let mut out = Vec::with_capacity(metric_families.len());
+
+    for family in metric_families {
+        let has_instance_label =
+            family.get_metric().iter().any(|metric| metric.get_label().iter().any(|label| label.get_name() == "instance"));
+
+        if !has_instance_label {
+            out.push(family);
+            continue;
+        }
+
+        let mut filtered_family = family.clone();
+        filtered_family.mut_metric().retain(|metric| metric_matches_instance(metric, instance_id));
+        if !filtered_family.get_metric().is_empty() {
+            out.push(filtered_family);
+        }
+    }
+
+    out
 }
 
 /// Initialize worker counters (set to 0 to create the metric)
@@ -297,10 +325,10 @@ struct WorkerInfo {
 }
 
 /// Get stats as JSON
-async fn get_stats_json() -> StatsResponse {
+async fn get_stats_json(instance_id: &str) -> StatsResponse {
     use prometheus::gather;
 
-    let metric_families = gather();
+    let metric_families = filter_metric_families_for_instance(gather(), instance_id);
     let mut stats = StatsResponse {
         totalBlocks: 0,
         totalShares: 0,
@@ -704,12 +732,14 @@ async fn update_config_from_json(json_body: &str) -> Result<(), Box<dyn std::err
 }
 
 /// Start Prometheus metrics server
-pub async fn start_prom_server(port: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn start_prom_server(port: &str, instance_id: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use std::net::SocketAddr;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
     init_metrics();
+
+    let instance_id = instance_id.to_string();
 
     // Handle ":PORT" format by prepending "0.0.0.0"
     let addr_str = if port.starts_with(':') { format!("0.0.0.0{}", port) } else { port.to_string() };
@@ -729,7 +759,7 @@ pub async fn start_prom_server(port: &str) -> Result<(), Box<dyn std::error::Err
             if request.starts_with("GET /metrics") {
                 use prometheus::Encoder;
                 let encoder = prometheus::TextEncoder::new();
-                let metric_families = prometheus::gather();
+                let metric_families = filter_metric_families_for_instance(prometheus::gather(), &instance_id);
                 let mut buffer = Vec::new();
                 encoder.encode(&metric_families, &mut buffer)?;
 
@@ -742,7 +772,7 @@ pub async fn start_prom_server(port: &str) -> Result<(), Box<dyn std::error::Err
                 stream.write_all(response.as_bytes()).await?;
             } else if request.starts_with("GET /api/stats") {
                 // Return JSON stats
-                let stats = get_stats_json().await;
+                let stats = get_stats_json(&instance_id).await;
                 let json = serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string());
                 let response = format!(
                     "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",

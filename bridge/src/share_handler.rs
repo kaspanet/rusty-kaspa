@@ -196,6 +196,7 @@ impl ShareHandler {
         let wallet_addr = ctx.wallet_addr.lock().clone();
         let worker_name = stats.worker_name.lock().clone();
         init_worker_counters(&crate::prom::WorkerContext {
+            instance_id: self.instance_id.clone(),
             worker_name: worker_name.clone(),
             miner: String::new(),
             wallet: wallet_addr.clone(),
@@ -230,7 +231,7 @@ impl ShareHandler {
         if event.params.len() < 3 {
             tracing::error!("{} [SUBMIT] ERROR: Expected at least 3 params, got {}", prefix, event.params.len());
             let wallet_addr = ctx.wallet_addr.lock().clone();
-            record_worker_error(&wallet_addr, ErrorShortCode::BadDataFromMiner.as_str());
+            record_worker_error(&self.instance_id, &wallet_addr, ErrorShortCode::BadDataFromMiner.as_str());
             return Err("malformed event, expected at least 3 params".into());
         }
 
@@ -318,7 +319,7 @@ impl ShareHandler {
                 );
                 // Job doesn't exist - fail immediately
                 let wallet_addr = ctx.wallet_addr.lock().clone();
-                record_worker_error(&wallet_addr, ErrorShortCode::MissingJob.as_str());
+                record_worker_error(&self.instance_id, &wallet_addr, ErrorShortCode::MissingJob.as_str());
                 return Err("job does not exist. stale?".into());
             }
         };
@@ -695,6 +696,7 @@ impl ShareHandler {
 
                         record_block_found(
                             &crate::prom::WorkerContext {
+                                instance_id: self.instance_id.clone(),
                                 worker_name: worker_name.clone(),
                                 miner: String::new(),
                                 wallet: wallet_addr.clone(),
@@ -737,6 +739,7 @@ impl ShareHandler {
                             *self.overall.stale_shares.lock() += 1;
 
                             record_stale_share(&crate::prom::WorkerContext {
+                                instance_id: self.instance_id.clone(),
                                 worker_name: worker_name.clone(),
                                 miner: String::new(),
                                 wallet: wallet_addr.clone(),
@@ -766,6 +769,7 @@ impl ShareHandler {
                             *self.overall.invalid_shares.lock() += 1;
 
                             record_invalid_share(&crate::prom::WorkerContext {
+                                instance_id: self.instance_id.clone(),
                                 worker_name: worker_name.clone(),
                                 miner: String::new(),
                                 wallet: wallet_addr.clone(),
@@ -882,6 +886,7 @@ impl ShareHandler {
             let wallet_addr = ctx.wallet_addr.lock().clone();
             let worker_name = ctx.worker_name.lock().clone();
             record_weak_share(&crate::prom::WorkerContext {
+                instance_id: self.instance_id.clone(),
                 worker_name: worker_name.clone(),
                 miner: String::new(),
                 wallet: wallet_addr.clone(),
@@ -917,6 +922,7 @@ impl ShareHandler {
         let worker_name = ctx.worker_name.lock().clone();
         record_share_found(
             &crate::prom::WorkerContext {
+                instance_id: self.instance_id.clone(),
                 worker_name: worker_name.clone(),
                 miner: String::new(),
                 wallet: wallet_addr.clone(),

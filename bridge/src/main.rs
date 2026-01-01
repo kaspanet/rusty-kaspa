@@ -822,18 +822,20 @@ async fn main() -> Result<(), anyhow::Error> {
 
         let is_first_instance = idx == 0;
 
+        let instance_id_str = kaspa_stratum_bridge::log_colors::LogColors::format_instance_id(instance_num);
+
         if let Some(ref prom_port) = instance.prom_port {
             let prom_port = prom_port.clone();
             let instance_num_prom = instance_num;
+            let instance_id_prom = instance_id_str.clone();
             tokio::spawn(async move {
-                if let Err(e) = prom::start_prom_server(&prom_port).await {
+                if let Err(e) = prom::start_prom_server(&prom_port, &instance_id_prom).await {
                     tracing::error!("[Instance {}] Prometheus server error: {}", instance_num_prom, e);
                 }
             });
         }
 
         let handle = tokio::spawn(async move {
-            let instance_id_str = kaspa_stratum_bridge::log_colors::LogColors::format_instance_id(instance_num);
             {
                 if let Ok(mut registry) = INSTANCE_REGISTRY.lock() {
                     registry.insert(instance_id_str.clone(), instance_num);
