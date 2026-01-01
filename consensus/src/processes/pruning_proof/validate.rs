@@ -33,7 +33,10 @@ use crate::{
             relations::{DbRelationsStore, RelationsStoreReader},
         },
     },
-    processes::{ghostdag::protocol::GhostdagManager, reachability::inquirer as reachability, relations::RelationsStoreExtensions},
+    processes::{
+        ghostdag::protocol::GhostdagManager, pruning_proof::GhostdagReaderExt, reachability::inquirer as reachability,
+        relations::RelationsStoreExtensions,
+    },
 };
 
 use super::PruningProofManager;
@@ -236,12 +239,8 @@ impl ProofContext {
             }
 
             if level < ppm.max_block_level {
-                let block_at_depth_m_at_next_level = ppm
-                    .block_at_depth(
-                        &*ghostdag_stores[level_idx + 1],
-                        selected_tip_by_level[level_idx + 1].unwrap(),
-                        ppm.pruning_proof_m,
-                    )
+                let block_at_depth_m_at_next_level = ghostdag_stores[level_idx + 1]
+                    .block_at_depth(selected_tip_by_level[level_idx + 1].unwrap(), ppm.pruning_proof_m)
                     .unwrap();
                 if !relations_stores[level_idx].has(block_at_depth_m_at_next_level).unwrap() {
                     return Err(PruningImportError::PruningProofMissingBlockAtDepthMFromNextLevel(level, level + 1));

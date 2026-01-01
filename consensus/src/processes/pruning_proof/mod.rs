@@ -227,34 +227,6 @@ impl PruningProofManager {
         proof.iter().map(|l| l.len()).sum::<usize>().min((approx_unique_full_levels + 1) * self.pruning_proof_m as usize)
     }
 
-    // Used in build and validate
-    fn block_at_depth(
-        &self,
-        ghostdag_store: &impl GhostdagStoreReader,
-        high: Hash,
-        depth: u64,
-    ) -> Result<Hash, PruningProofManagerInternalError> {
-        let high_gd = ghostdag_store
-            .get_compact_data(high)
-            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
-        let mut current_gd = high_gd;
-        let mut current = high;
-        while current_gd.blue_score + depth >= high_gd.blue_score {
-            if current_gd.selected_parent.is_origin() {
-                break;
-            }
-            let prev = current;
-            current = current_gd.selected_parent;
-            current_gd = ghostdag_store.get_compact_data(current).map_err(|err| {
-                PruningProofManagerInternalError::BlockAtDepth(format!(
-                    "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
-                    high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
-                ))
-            })?;
-        }
-        Ok(current)
-    }
-
     /// Returns the k + 1 chain blocks below this hash (inclusive). If data is missing
     /// the search is halted and a partial chain is returned.
     ///
@@ -404,3 +376,33 @@ impl PruningProofManager {
         }
     }
 }
+
+trait GhostdagReaderExt
+where
+    Self: GhostdagStoreReader,
+{
+    /// Extension method to get the block at blue depth from `high` via this store reader. Used by build and validate.
+    fn block_at_depth(&self, high: Hash, depth: u64) -> Result<Hash, PruningProofManagerInternalError> {
+        let high_gd = self
+            .get_compact_data(high)
+            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
+        let mut current_gd = high_gd;
+        let mut current = high;
+        while current_gd.blue_score + depth >= high_gd.blue_score {
+            if current_gd.selected_parent.is_origin() {
+                break;
+            }
+            let prev = current;
+            current = current_gd.selected_parent;
+            current_gd = self.get_compact_data(current).map_err(|err| {
+                PruningProofManagerInternalError::BlockAtDepth(format!(
+                    "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
+                    high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
+                ))
+            })?;
+        }
+        Ok(current)
+    }
+}
+
+impl<T: GhostdagStoreReader> GhostdagReaderExt for T {}
