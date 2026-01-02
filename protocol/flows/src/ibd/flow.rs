@@ -234,7 +234,7 @@ impl IbdFlow {
             info!("current pruning point is:{}", pruning_point);
             if consensus.async_is_chain_ancestor_of(pruning_point, highest_known_syncer_chain_hash).await? {
                 /// Categorizes the syncer's pruning point position relative to local
-                pub enum SyncerSkew {
+                enum SyncerSkew {
                     Lagging,
                     Aligned,
                     Leading,
