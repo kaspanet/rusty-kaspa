@@ -381,7 +381,7 @@ trait GhostdagReaderExt
 where
     Self: GhostdagStoreReader,
 {
-    /// Extension method to get the block at blue `depth` from `high` via this store reader. Used by build and validate.
+    /// Extension method to get the block at blue depth `depth` from `high` via this store reader. Used by build and validate.
     fn block_at_depth(&self, high: Hash, depth: u64) -> Result<Hash, PruningProofManagerInternalError> {
         let high_gd = self
             .get_compact_data(high)
