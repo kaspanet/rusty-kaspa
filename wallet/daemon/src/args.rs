@@ -33,7 +33,7 @@ pub fn cli() -> Command {
     Command::new("kaspawalletd")
         .about(format!("{} (kaspawalletd) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
-        .arg(Arg::new("password").long("password").short('p').value_name("password").help("Path of password file"))
+        .arg(Arg::new("password").long("password").short('p').value_name("password").help("Path of password file").required(true))
         .arg(
             Arg::new("name")
                 .long("name")
