@@ -85,7 +85,7 @@ use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
 use kaspa_core::info;
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
@@ -329,7 +329,7 @@ impl Consensus {
 
     fn retention_root_database_upgrade(&self) {
         let mut pruning_point_store = self.pruning_point_store.write();
-        if pruning_point_store.retention_period_root().unwrap_option().is_none() {
+        if pruning_point_store.retention_period_root().optional().unwrap().is_none() {
             let mut batch = rocksdb::WriteBatch::default();
             if self.config.is_archival {
                 // The retention checkpoint is what was previously known as history root
@@ -424,7 +424,7 @@ impl Consensus {
 
     /// Validates that a valid block *header* exists for `hash`
     fn validate_block_exists(&self, hash: Hash) -> Result<(), ConsensusError> {
-        if match self.statuses_store.read().get(hash).unwrap_option() {
+        if match self.statuses_store.read().get(hash).optional().unwrap() {
             Some(status) => status.is_valid(),
             None => false,
         } {
@@ -511,14 +511,31 @@ impl Consensus {
         // The new pruning point P can be "finalized" into consensus if:
         // 1) P satisfies P.blue_score>Nf and selected_parent(P).blue_score<=NF
         // where N is some integer (i.e. it is a valid pruning point based on score)
-        // *this condition is assumed to have already been checked externally and we do not repeat it here*.
+        let Ok(candidate_ghostdag_data) = self.get_ghostdag_data(new_pruning_point) else {
+            return Err(ConsensusError::General(
+                "Catchup cannot be continued since the syncer pruning point could not be confirmed to be a valid pruning point",
+            ));
+        };
+        let Ok(selected_parent_ghostdag_data) = self.get_ghostdag_data(candidate_ghostdag_data.selected_parent) else {
+            return Err(ConsensusError::General(
+                "Catchup cannot be continued since the syncer pruning point could not be confirmed to be a valid pruning point",
+            ));
+        };
+        self.services
+            .pruning_point_manager
+            .is_pruning_sample(
+                candidate_ghostdag_data.blue_score,
+                selected_parent_ghostdag_data.blue_score,
+                self.config.params.finality_depth(),
+            )
+            .then_some(())
+            .ok_or(ConsensusError::General("the alleged pruning point is not a valid pruning point, aborting catchup attempt"))?;
 
         // 2) There are sufficient headers built on top of it, specifically,
         // a header is validated whose blue_score is greater than P.B+p:
         let syncer_pp_bscore = self.get_header(new_pruning_point).unwrap().blue_score;
         let syncer_virtual_bscore = self.get_header(syncer_sink).unwrap().blue_score;
-        // [Crescendo]: Remove after()
-        if syncer_virtual_bscore < syncer_pp_bscore + self.config.pruning_depth().after() {
+        if syncer_virtual_bscore < syncer_pp_bscore + self.config.pruning_depth() {
             return Err(ConsensusError::General("declared pruning point is not of sufficient depth"));
         }
         // 3) The syncer pruning point is on the selected chain from that header.
@@ -750,14 +767,16 @@ impl ConsensusApi for Consensus {
         // PRUNE SAFETY: retention root is always a current or past pruning point which its header is kept permanently
         let retention_period_root_score = self.headers_store.get_daa_score(self.get_retention_period_root()).unwrap();
         let virtual_score = self.get_virtual_daa_score();
+        // TODO(relaxed): change virtual's 0 daa initialization, and revert to normal subtraction
         let header_count = self
             .headers_store
             .get_daa_score(self.get_headers_selected_tip())
-            .unwrap_option()
+            .optional()
+            .unwrap()
             .unwrap_or(virtual_score)
             .max(virtual_score)
-            - retention_period_root_score;
-        let block_count = virtual_score - retention_period_root_score;
+            .saturating_sub(retention_period_root_score);
+        let block_count = virtual_score.saturating_sub(retention_period_root_score);
         BlockCount { header_count, block_count }
     }
 
@@ -834,7 +853,7 @@ impl ConsensusApi for Consensus {
         let high_index = sc_read.get_tip().unwrap().0;
         // The last pruning point is always expected in the selected chain store. However if due to some reason
         // this is not the case, we prefer not crashing but rather avoid sampling (hence set low index to high index)
-        let low_index = sc_read.get_by_hash(pp_headers.last().unwrap().0).unwrap_option().unwrap_or(high_index);
+        let low_index = sc_read.get_by_hash(pp_headers.last().unwrap().0).optional().unwrap().unwrap_or(high_index);
         let step_size = cmp::max((high_index - low_index) / (step_divisor as u64), 1);
 
         // We chain `high_index` to make sure we sample sink, and dedup to avoid sampling it twice
@@ -1097,7 +1116,7 @@ impl ConsensusApi for Consensus {
     // max_blocks has to be greater than the merge set size limit
     fn get_hashes_between(&self, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
         let _guard = self.pruning_lock.blocking_read();
-        assert!(max_blocks as u64 > self.config.mergeset_size_limit().after());
+        assert!(max_blocks as u64 > self.config.mergeset_size_limit());
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
 
@@ -1105,7 +1124,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>> {
-        self.headers_store.get_header(hash).unwrap_option().ok_or(ConsensusError::HeaderNotFound(hash))
+        self.headers_store.get_header(hash).optional().unwrap().ok_or(ConsensusError::HeaderNotFound(hash))
     }
 
     fn get_headers_selected_tip(&self) -> Hash {
@@ -1162,7 +1181,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_block(&self, hash: Hash) -> ConsensusResult<Block> {
-        if match self.statuses_store.read().get(hash).unwrap_option() {
+        if match self.statuses_store.read().get(hash).optional().unwrap() {
             Some(status) => !status.has_block_body(),
             None => true,
         } {
@@ -1170,13 +1189,13 @@ impl ConsensusApi for Consensus {
         }
 
         Ok(Block {
-            header: self.headers_store.get_header(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))?,
-            transactions: self.block_transactions_store.get(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))?,
+            header: self.headers_store.get_header(hash).optional().unwrap().ok_or(ConsensusError::BlockNotFound(hash))?,
+            transactions: self.block_transactions_store.get(hash).optional().unwrap().ok_or(ConsensusError::BlockNotFound(hash))?,
         })
     }
 
     fn get_block_transactions(&self, hash: Hash, indices: Option<Vec<TransactionIndexType>>) -> ConsensusResult<Vec<Transaction>> {
-        let transactions = self.block_transactions_store.get(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))?;
+        let transactions = self.block_transactions_store.get(hash).optional().unwrap().ok_or(ConsensusError::BlockNotFound(hash))?;
         let tx_len = transactions.len();
 
         if let Some(indices) = indices {
@@ -1203,26 +1222,26 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_block_body(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
-        if match self.statuses_store.read().get(hash).unwrap_option() {
+        if match self.statuses_store.read().get(hash).optional().unwrap() {
             Some(status) => !status.has_block_body(),
             None => true,
         } {
             return Err(ConsensusError::BlockNotFound(hash));
         }
 
-        self.block_transactions_store.get(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))
+        self.block_transactions_store.get(hash).optional().unwrap().ok_or(ConsensusError::BlockNotFound(hash))
     }
 
     fn get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
-        let Some(status) = self.statuses_store.read().get(hash).unwrap_option().filter(|&status| status.has_block_header()) else {
+        let Some(status) = self.statuses_store.read().get(hash).optional().unwrap().filter(|&status| status.has_block_header()) else {
             return Err(ConsensusError::HeaderNotFound(hash));
         };
         Ok(Block {
-            header: self.headers_store.get_header(hash).unwrap_option().ok_or(ConsensusError::HeaderNotFound(hash))?,
+            header: self.headers_store.get_header(hash).optional().unwrap().ok_or(ConsensusError::HeaderNotFound(hash))?,
             transactions: if status.is_header_only() {
                 Default::default()
             } else {
-                self.block_transactions_store.get(hash).unwrap_option().unwrap_or_default()
+                self.block_transactions_store.get(hash).optional().unwrap().unwrap_or_default()
             },
         })
     }
@@ -1233,7 +1252,7 @@ impl ConsensusApi for Consensus {
             Some(BlockStatus::StatusInvalid) => return Err(ConsensusError::InvalidBlock(hash)),
             _ => {}
         };
-        let ghostdag = self.ghostdag_store.get_data(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))?;
+        let ghostdag = self.ghostdag_store.get_data(hash).optional().unwrap().ok_or(ConsensusError::MissingData(hash))?;
         Ok((&*ghostdag).into())
     }
 
@@ -1241,20 +1260,21 @@ impl ConsensusApi for Consensus {
         self.services
             .relations_service
             .get_children(hash)
-            .unwrap_option()
+            .optional()
+            .unwrap()
             .map(|children| children.read().iter().copied().collect_vec())
     }
 
     fn get_block_parents(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
-        self.services.relations_service.get_parents(hash).unwrap_option()
+        self.services.relations_service.get_parents(hash).optional().unwrap()
     }
 
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
-        self.statuses_store.read().get(hash).unwrap_option()
+        self.statuses_store.read().get(hash).optional().unwrap()
     }
 
     fn get_block_acceptance_data(&self, hash: Hash) -> ConsensusResult<Arc<AcceptanceData>> {
-        self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))
+        self.acceptance_data_store.get(hash).optional().unwrap().ok_or(ConsensusError::MissingData(hash))
     }
 
     fn get_blocks_acceptance_data(
@@ -1268,7 +1288,7 @@ impl ConsensusApi for Consensus {
             return hashes
                 .iter()
                 .copied()
-                .map(|hash| self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash)))
+                .map(|hash| self.acceptance_data_store.get(hash).optional().unwrap().ok_or(ConsensusError::MissingData(hash)))
                 .collect::<ConsensusResult<Vec<_>>>();
         }
         let merged_blocks_limit = merged_blocks_limit.unwrap(); // we handle `is_none`, so may unwrap.
@@ -1278,7 +1298,7 @@ impl ConsensusApi for Consensus {
             .iter()
             .copied()
             .map_while(|hash| {
-                let entry = self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash));
+                let entry = self.acceptance_data_store.get(hash).optional().unwrap().ok_or(ConsensusError::MissingData(hash));
                 num_of_merged_blocks += entry.as_ref().map_or(0, |entry| entry.len());
                 if num_of_merged_blocks > merged_blocks_limit {
                     None
@@ -1372,27 +1392,6 @@ impl ConsensusApi for Consensus {
         pruning_meta_write.utxo_set.clear().unwrap();
     }
 
-    fn verify_is_pruning_sample(&self, pruning_candidate: Hash) -> ConsensusResult<()> {
-        if pruning_candidate == self.config.genesis.hash {
-            return Ok(());
-        }
-        let Ok(candidate_ghostdag_data) = self.get_ghostdag_data(pruning_candidate) else {
-            return Err(ConsensusError::General("pruning candidate missing ghostdag data"));
-        };
-        let Ok(selected_parent_ghostdag_data) = self.get_ghostdag_data(candidate_ghostdag_data.selected_parent) else {
-            return Err(ConsensusError::General("pruning candidate selected parent missing ghostdag data"));
-        };
-        self.services
-            .pruning_point_manager
-            .is_pruning_sample(
-                candidate_ghostdag_data.blue_score,
-                selected_parent_ghostdag_data.blue_score,
-                self.config.params.finality_depth().after(),
-            )
-            .then_some(())
-            .ok_or(ConsensusError::General("pruning candidate is not a pruning sample"))
-    }
-
     /// The usual flow consists of the pruning point naturally updating during pruning, and hence maintains consistency by default
     /// During pruning catchup, we need to manually update the pruning point and
     /// make sure that consensus looks "as if" it has just moved to a new pruning point.
@@ -1424,5 +1423,10 @@ impl ConsensusApi for Consensus {
     fn is_consensus_in_transitional_ibd_state(&self) -> bool {
         let pruning_meta_read = self.pruning_meta_stores.read();
         pruning_meta_read.is_in_transitional_ibd_state()
+    }
+
+    fn get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
+        let (_pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
+        (0..=pruning_index).rev().take(n).map(|ind| self.past_pruning_points_store.get(ind).unwrap()).collect_vec()
     }
 }

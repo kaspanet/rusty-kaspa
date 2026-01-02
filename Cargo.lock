@@ -3436,7 +3436,7 @@ version = "1.0.1"
 dependencies = [
  "async-std",
  "async-trait",
- "clap 4.5.19",
+ "clap 4.5.51",
  "futures-util",
  "kaspa-consensus-core",
  "kaspa-core",
@@ -5573,6 +5573,8 @@ dependencies = [
  "cfg-if 1.0.0",
  "clap 4.5.51",
  "dhat",
+ "faster-hex",
+ "flate2",
  "futures",
  "futures-util",
  "indexmap 2.6.0",
@@ -5585,6 +5587,7 @@ dependencies = [
  "kaspa-database",
  "kaspa-hashes",
  "kaspa-perf-monitor",
+ "kaspa-testing-integration",
  "kaspa-utils",
  "log",
  "num_cpus",
@@ -5592,6 +5595,7 @@ dependencies = [
  "rand_distr",
  "rayon",
  "secp256k1",
+ "serde",
  "serde_json",
  "tokio",
 ]
