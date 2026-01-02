@@ -27,6 +27,8 @@ const VAR_DIFF_THREAD_SLEEP: u64 = 10;
 const WORK_WINDOW: u64 = 80;
 const STATS_PRUNE_INTERVAL: Duration = Duration::from_secs(60);
 const STATS_PRINT_INTERVAL: Duration = Duration::from_secs(10);
+const BLOCK_CONFIRM_RETRY_DELAY: Duration = Duration::from_secs(2);
+const BLOCK_CONFIRM_MAX_ATTEMPTS: usize = 30;
 
 // VarDiff tunables
 const VARDIFF_MIN_ELAPSED_SECS: f64 = 30.0;
@@ -809,23 +811,60 @@ impl ShareHandler {
                             format!("{:x}", nonce_val)
                         );
 
-                        // Record block found statistics
                         let stats = self.get_create_stats(&ctx);
-                        *stats.blocks_found.lock() += 1;
-                        *self.overall.blocks_found.lock() += 1;
+                        let overall = self.overall.clone();
+                        let instance_id = self.instance_id.clone();
+                        let prom_worker = crate::prom::WorkerContext {
+                            instance_id: self.instance_id.clone(),
+                            worker_name: worker_name.clone(),
+                            miner: String::new(),
+                            wallet: wallet_addr.clone(),
+                            ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
+                        };
 
-                        record_block_found(
-                            &crate::prom::WorkerContext {
-                                instance_id: self.instance_id.clone(),
-                                worker_name: worker_name.clone(),
-                                miner: String::new(),
-                                wallet: wallet_addr.clone(),
-                                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-                            },
-                            nonce_val,
-                            blue_score,
-                            block_hash.clone(),
-                        );
+                        record_block_accepted_by_node(&prom_worker);
+
+                        let kaspa_api = Arc::clone(&kaspa_api);
+                        let block_hash_for_confirm = block_hash.clone();
+
+                        tokio::spawn(async move {
+                            for _ in 0..BLOCK_CONFIRM_MAX_ATTEMPTS {
+                                match kaspa_api.get_current_block_color(&block_hash_for_confirm).await {
+                                    Ok(true) => {
+                                        *stats.blocks_found.lock() += 1;
+                                        *overall.blocks_found.lock() += 1;
+                                        record_block_found(&prom_worker, nonce_val, blue_score, block_hash_for_confirm.clone());
+                                        info!(
+                                            "[{}] {} {}",
+                                            instance_id,
+                                            LogColors::block("[BLOCK]"),
+                                            LogColors::block(&format!(
+                                                "✓ Block confirmed BLUE in DAG! Hash: {}",
+                                                block_hash_for_confirm
+                                            ))
+                                        );
+                                        return;
+                                    }
+                                    Ok(false) => {
+                                        tokio::time::sleep(BLOCK_CONFIRM_RETRY_DELAY).await;
+                                    }
+                                    Err(_) => {
+                                        tokio::time::sleep(BLOCK_CONFIRM_RETRY_DELAY).await;
+                                    }
+                                }
+                            }
+
+                            record_block_not_confirmed_blue(&prom_worker);
+                            info!(
+                                "[{}] {} {}",
+                                instance_id,
+                                LogColors::block("[BLOCK]"),
+                                LogColors::label(&format!(
+                                    "ℹ Block not confirmed blue after {} attempts (not counted as Blocks). Hash: {}",
+                                    BLOCK_CONFIRM_MAX_ATTEMPTS, block_hash_for_confirm
+                                ))
+                            );
+                        });
 
                         // Return allows HandleSubmit to record share (blocks are shares too!)
                         // After successful block submission, continue to record the share
@@ -1508,6 +1547,8 @@ pub trait KaspaApiTrait: Send + Sync {
         &self,
         addresses: &[String],
     ) -> Result<Vec<(String, u64)>, Box<dyn std::error::Error + Send + Sync>>;
+
+    async fn get_current_block_color(&self, block_hash: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>>;
 }
 
 pub struct WorkerContext<'a> {

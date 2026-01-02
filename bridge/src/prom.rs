@@ -31,6 +31,10 @@ static INVALID_COUNTER: OnceLock<CounterVec> = OnceLock::new();
 /// Block counter - number of blocks mined
 static BLOCK_COUNTER: OnceLock<CounterVec> = OnceLock::new();
 
+static BLOCK_ACCEPTED_COUNTER: OnceLock<CounterVec> = OnceLock::new();
+
+static BLOCK_NOT_CONFIRMED_BLUE_COUNTER: OnceLock<CounterVec> = OnceLock::new();
+
 /// Block gauge - unique instances per block mined
 static BLOCK_GAUGE: OnceLock<GaugeVec> = OnceLock::new();
 
@@ -74,6 +78,24 @@ pub fn init_metrics() {
     });
 
     BLOCK_COUNTER.get_or_init(|| register_counter_vec!("ks_blocks_mined", "Number of blocks mined over time", WORKER_LABELS).unwrap());
+
+    BLOCK_ACCEPTED_COUNTER.get_or_init(|| {
+        register_counter_vec!(
+            "ks_blocks_accepted_by_node",
+            "Number of blocks accepted by the connected Kaspa node (may later be red)",
+            WORKER_LABELS
+        )
+        .unwrap()
+    });
+
+    BLOCK_NOT_CONFIRMED_BLUE_COUNTER.get_or_init(|| {
+        register_counter_vec!(
+            "ks_blocks_not_confirmed_blue",
+            "Number of node-accepted blocks that were not confirmed blue within the confirmation window",
+            WORKER_LABELS
+        )
+        .unwrap()
+    });
 
     BLOCK_GAUGE.get_or_init(|| {
         register_gauge_vec!("ks_mined_blocks_gauge", "Gauge containing 1 unique instance per block mined", BLOCK_LABELS).unwrap()
@@ -126,6 +148,18 @@ pub struct WorkerContext {
 impl WorkerContext {
     pub fn labels(&self) -> Vec<&str> {
         vec![&self.instance_id, &self.worker_name, &self.miner, &self.wallet, &self.ip]
+    }
+}
+
+pub fn record_block_accepted_by_node(worker: &WorkerContext) {
+    if let Some(counter) = BLOCK_ACCEPTED_COUNTER.get() {
+        counter.with_label_values(&worker.labels()).inc();
+    }
+}
+
+pub fn record_block_not_confirmed_blue(worker: &WorkerContext) {
+    if let Some(counter) = BLOCK_NOT_CONFIRMED_BLUE_COUNTER.get() {
+        counter.with_label_values(&worker.labels()).inc();
     }
 }
 
@@ -278,6 +312,12 @@ pub fn init_worker_counters(worker: &WorkerContext) {
         }
     }
     if let Some(counter) = BLOCK_COUNTER.get() {
+        counter.with_label_values(&worker.labels()).inc_by(0.0);
+    }
+    if let Some(counter) = BLOCK_ACCEPTED_COUNTER.get() {
+        counter.with_label_values(&worker.labels()).inc_by(0.0);
+    }
+    if let Some(counter) = BLOCK_NOT_CONFIRMED_BLUE_COUNTER.get() {
         counter.with_label_values(&worker.labels()).inc_by(0.0);
     }
     if let Some(counter) = DISCONNECT_COUNTER.get() {

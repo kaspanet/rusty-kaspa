@@ -7,11 +7,12 @@ use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::{listener::ListenerId, scope::NewBlockTemplateScope};
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_rpc_core::{
-    api::rpc::RpcApi, GetBlockDagInfoRequest, GetBlockTemplateRequest, GetConnectedPeerInfoRequest, GetInfoRequest,
-    GetServerInfoRequest, Notification, RpcRawBlock, SubmitBlockRequest, SubmitBlockResponse,
+    api::rpc::RpcApi, GetBlockDagInfoRequest, GetBlockTemplateRequest, GetConnectedPeerInfoRequest, GetCurrentBlockColorRequest,
+    GetInfoRequest, GetServerInfoRequest, Notification, RpcHash, RpcRawBlock, SubmitBlockRequest, SubmitBlockResponse,
 };
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -540,6 +541,16 @@ impl KaspaApi {
         Ok(balances)
     }
 
+    pub async fn get_current_block_color(&self, block_hash: &str) -> Result<bool> {
+        let hash = RpcHash::from_str(block_hash).context("Failed to parse block hash")?;
+        let resp = self
+            .client
+            .get_current_block_color_call(None, GetCurrentBlockColorRequest { hash })
+            .await
+            .context("Failed to query current block color")?;
+        Ok(resp.blue)
+    }
+
     /// Start listening for block template notifications
     /// Uses RegisterForNewBlockTemplateNotifications with ticker fallback
     /// This provides immediate notifications when new blocks are available, with polling as fallback
@@ -641,6 +652,12 @@ impl KaspaApiTrait for KaspaApi {
         addresses: &[String],
     ) -> Result<Vec<(String, u64)>, Box<dyn std::error::Error + Send + Sync>> {
         KaspaApi::get_balances_by_addresses(self, addresses)
+            .await
+            .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
+    }
+
+    async fn get_current_block_color(&self, block_hash: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+        KaspaApi::get_current_block_color(self, block_hash)
             .await
             .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
     }
