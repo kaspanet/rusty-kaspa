@@ -1729,6 +1729,211 @@ async fn runtime_sig_op_counting_test() {
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
 }
 
+#[tokio::test]
+async fn sighash_type_commitment_test() {
+    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
+    use kaspa_consensus_core::hashing::sighash_type::{
+        SigHashType, SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE,
+    };
+    use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+    use kaspa_txscript::opcodes::codes::*;
+    use kaspa_txscript::pay_to_script_hash_script;
+    use kaspa_txscript::script_builder::ScriptBuilder;
+    use secp256k1::Keypair;
+
+    init_allocator_with_default_settings();
+
+    let secp = secp256k1::Secp256k1::new();
+    let (secret_key, _) = secp.generate_keypair(&mut rand::thread_rng());
+    let keypair = Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
+    let pub_key = keypair.x_only_public_key().0.serialize();
+
+    // Basic redeem script: check a single Schnorr signature against the generated pubkey
+    let redeem_script = ScriptBuilder::new().add_data(&pub_key).unwrap().add_op(OpCheckSig).unwrap().drain();
+    let p2sh_script = pay_to_script_hash_script(&redeem_script);
+    let op_true_spk = ScriptPublicKey::from_vec(0, vec![OpTrue]);
+
+    let mut initial_utxo_collection: Vec<(TransactionOutpoint, UtxoEntry)> = Vec::new();
+    for i in 0..6 {
+        initial_utxo_collection.push((
+            TransactionOutpoint::new((i + 1).into(), 0),
+            UtxoEntry { amount: SOMPI_PER_KASPA / 10, script_public_key: p2sh_script.clone(), block_daa_score: 0, is_coinbase: false },
+        ));
+    }
+    for i in 0..3 {
+        initial_utxo_collection.push((
+            TransactionOutpoint::new((i + 7).into(), 0),
+            UtxoEntry { amount: SOMPI_PER_KASPA / 20, script_public_key: op_true_spk.clone(), block_daa_score: 0, is_coinbase: false },
+        ));
+    }
+
+    let config = ConfigBuilder::new(DEVNET_PARAMS)
+        .skip_proof_of_work()
+        .apply_args(|cfg| {
+            let mut genesis_multiset = MuHash::new();
+            initial_utxo_collection.iter().for_each(|(outpoint, utxo)| {
+                genesis_multiset.add_utxo(outpoint, utxo);
+            });
+            cfg.params.genesis.utxo_commitment = genesis_multiset.finalize();
+            let genesis_header: Header = (&cfg.params.genesis).into();
+            cfg.params.genesis.hash = genesis_header.hash;
+        })
+        .build();
+
+    let consensus = TestConsensus::new(&config);
+    let mut genesis_multiset = MuHash::new();
+    consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
+    consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
+    consensus.init();
+
+    let make_sig_script = |tx: &Transaction, utxo: &UtxoEntry, sig_hash: SigHashType| -> Vec<u8> {
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let mut tx_for_signing = MutableTransaction::from_tx(tx.clone());
+        tx_for_signing.entries[0] = Some(utxo.clone());
+        let hash = calc_schnorr_signature_hash(&tx_for_signing.as_verifiable(), 0, sig_hash, &reused_values);
+        let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).unwrap();
+        let sig = keypair.sign_schnorr(msg);
+        let mut signature = sig.as_ref().to_vec();
+        signature.push(sig_hash.to_u8());
+        ScriptBuilder::new().add_data(&signature).unwrap().add_data(&redeem_script).unwrap().drain()
+    };
+
+    let mut block_index: u64 = 0;
+
+    // SIGHASH_ALL commits to every input and output. Signed transaction is accepted as-is.
+    let mut tx_all = Transaction::new(
+        0,
+        vec![TransactionInput::new(initial_utxo_collection[0].0, vec![], 0, 1)],
+        vec![TransactionOutput::new(initial_utxo_collection[0].1.amount - 1_000, op_true_spk.clone())],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let sig_script = make_sig_script(&tx_all, &initial_utxo_collection[0].1, SIG_HASH_ALL);
+    tx_all.inputs[0].signature_script = sig_script;
+    tx_all.finalize();
+    let mut tx_all = MutableTransaction::from_tx(tx_all);
+    let _ = consensus.validate_mempool_transaction(&mut tx_all, &TransactionValidationArgs::default());
+    let tx_all = tx_all.tx.unwrap_or_clone();
+    let status = consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_all]).await;
+    block_index += 1;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+
+    // SIGHASH_NONE commits to inputs only; outputs can be added after signing.
+    let mut tx_none = Transaction::new(
+        0,
+        vec![TransactionInput::new(initial_utxo_collection[1].0, vec![], 0, 1)],
+        vec![],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let sig_script = make_sig_script(&tx_none, &initial_utxo_collection[1].1, SIG_HASH_NONE);
+    tx_none.inputs[0].signature_script = sig_script;
+    tx_none.outputs.push(TransactionOutput::new(initial_utxo_collection[1].1.amount - 2_000, op_true_spk.clone()));
+    tx_none.finalize();
+    let mut tx_none = MutableTransaction::from_tx(tx_none);
+    let _ = consensus.validate_mempool_transaction(&mut tx_none, &TransactionValidationArgs::default());
+    let tx_none = tx_none.tx.unwrap_or_clone();
+    let status = consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_none]).await;
+    block_index += 1;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+
+    // SIGHASH_SINGLE commits input 0 to output 0 only; later outputs do not invalidate the signature.
+    let mut tx_single = Transaction::new(
+        0,
+        vec![TransactionInput::new(initial_utxo_collection[2].0, vec![], 0, 1)],
+        vec![TransactionOutput::new(initial_utxo_collection[2].1.amount - 5_500_000, op_true_spk.clone())],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let sig_script = make_sig_script(&tx_single, &initial_utxo_collection[2].1, SIG_HASH_SINGLE);
+    tx_single.inputs[0].signature_script = sig_script;
+    tx_single.outputs.push(TransactionOutput::new(5_000_000, op_true_spk.clone()));
+    tx_single.finalize();
+    let mut tx_single = MutableTransaction::from_tx(tx_single);
+    let _ = consensus.validate_mempool_transaction(&mut tx_single, &TransactionValidationArgs::default());
+    let tx_single = tx_single.tx.unwrap_or_clone();
+    let status =
+        consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_single]).await;
+    block_index += 1;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+
+    // SIGHASH_ALL | ANYONECANPAY commits to this input and all outputs; adding inputs later remains valid.
+    let mut tx_all_acp = Transaction::new(
+        0,
+        vec![TransactionInput::new(initial_utxo_collection[3].0, vec![], 0, 1)],
+        vec![TransactionOutput::new(
+            initial_utxo_collection[3].1.amount + initial_utxo_collection[6].1.amount - 4_000, // The first inputs signs an output that will be feasible only after adding the second input
+            op_true_spk.clone(),
+        )],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let sig_script = make_sig_script(&tx_all_acp, &initial_utxo_collection[3].1, SIG_HASH_ALL | SIG_HASH_ANY_ONE_CAN_PAY);
+    tx_all_acp.inputs[0].signature_script = sig_script;
+    tx_all_acp.inputs.push(TransactionInput::new(initial_utxo_collection[6].0, vec![], 0, 0));
+    tx_all_acp.finalize();
+    let mut tx_all_acp = MutableTransaction::from_tx(tx_all_acp);
+    let _ = consensus.validate_mempool_transaction(&mut tx_all_acp, &TransactionValidationArgs::default());
+    let tx_all_acp = tx_all_acp.tx.unwrap_or_clone();
+    let status =
+        consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_all_acp]).await;
+    block_index += 1;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+
+    // SIGHASH_NONE | ANYONECANPAY commits to this input only; outputs and additional inputs may be appended after signing.
+    let mut tx_none_acp = Transaction::new(
+        0,
+        vec![TransactionInput::new(initial_utxo_collection[4].0, vec![], 0, 1)],
+        vec![],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let sig_script = make_sig_script(&tx_none_acp, &initial_utxo_collection[4].1, SIG_HASH_NONE | SIG_HASH_ANY_ONE_CAN_PAY);
+    tx_none_acp.inputs[0].signature_script = sig_script;
+    tx_none_acp.inputs.push(TransactionInput::new(initial_utxo_collection[7].0, vec![], 0, 0));
+    tx_none_acp.outputs.push(TransactionOutput::new(initial_utxo_collection[4].1.amount - 5_000, op_true_spk.clone()));
+    tx_none_acp.finalize();
+    let mut tx_none_acp = MutableTransaction::from_tx(tx_none_acp);
+    let _ = consensus.validate_mempool_transaction(&mut tx_none_acp, &TransactionValidationArgs::default());
+    let tx_none_acp = tx_none_acp.tx.unwrap_or_clone();
+    let status =
+        consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_none_acp]).await;
+    block_index += 1;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+
+    // SIGHASH_SINGLE | ANYONECANPAY commits to this input and its matching output; other outputs and inputs are free to change.
+    let mut tx_single_acp = Transaction::new(
+        0,
+        vec![TransactionInput::new(initial_utxo_collection[5].0, vec![], 0, 1)],
+        vec![TransactionOutput::new(initial_utxo_collection[5].1.amount - 5_500_000, op_true_spk.clone())],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let sig_script = make_sig_script(&tx_single_acp, &initial_utxo_collection[5].1, SIG_HASH_SINGLE | SIG_HASH_ANY_ONE_CAN_PAY);
+    tx_single_acp.inputs[0].signature_script = sig_script;
+    tx_single_acp.inputs.push(TransactionInput::new(initial_utxo_collection[8].0, vec![], 0, 0));
+    tx_single_acp.outputs.push(TransactionOutput::new(5_000_000, op_true_spk.clone()));
+    tx_single_acp.finalize();
+    let mut tx_single_acp = MutableTransaction::from_tx(tx_single_acp);
+    let _ = consensus.validate_mempool_transaction(&mut tx_single_acp, &TransactionValidationArgs::default());
+    let tx_single_acp = tx_single_acp.tx.unwrap_or_clone();
+    let status =
+        consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_single_acp]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+}
+
 // Checks that pruning works and that we do not allow attaching a body to a pruned block
 #[tokio::test]
 async fn pruning_test() {
