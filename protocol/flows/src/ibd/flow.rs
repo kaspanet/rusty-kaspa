@@ -331,7 +331,7 @@ impl IbdFlow {
         // A sanity check to confirm that following the intrusive addition of new pruning points,
         // the latest pruning point still correctly agrees with the DAG data,
         // and is the head of a pruning points "chain" leading all the way down to genesis
-        // TODO(relaxed): once the catchup functionality has sufficiently matured, consider only doing this test if sanity checks are enabled
+        // TODO (relaxed): once the catchup functionality has sufficiently matured, consider only doing this test if sanity checks are enabled
         info!("validating pruning points consistency");
         consensus.async_validate_pruning_points(syncer_sink).await.unwrap();
         info!("pruning points consistency validated");
