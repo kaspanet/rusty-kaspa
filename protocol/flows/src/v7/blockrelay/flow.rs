@@ -89,6 +89,8 @@ impl HandleRelayInvsFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
+        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
+
         loop {
             // Loop over incoming block inv messages
             let inv = self.invs_route.dequeue().await?;
@@ -126,7 +128,7 @@ impl HandleRelayInvsFlow {
             }
 
             // We keep the request scope alive until consensus processes the block
-            let Some((block, request_scope)) = self.request_block(inv.hash, self.msg_route.id()).await? else {
+            let Some((block, request_scope)) = self.request_block(inv.hash, self.msg_route.id(), header_format).await? else {
                 debug!("Relay block {} was already requested from another peer, continuing...", inv.hash);
                 continue;
             };
@@ -230,6 +232,7 @@ impl HandleRelayInvsFlow {
         &mut self,
         requested_hash: Hash,
         request_id: u32,
+        header_format: HeaderFormat,
     ) -> Result<Option<(Block, RequestScope<Hash>)>, ProtocolError> {
         // Note: the request scope is returned and should be captured until block processing is completed
         let Some(request_scope) = self.ctx.try_adding_block_request(requested_hash) else {
@@ -243,7 +246,6 @@ impl HandleRelayInvsFlow {
             ))
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::Block)?;
-        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
         let block: Block = Versioned(header_format, msg).try_into()?;
         if block.hash() != requested_hash {
             Err(ProtocolError::OtherOwned(format!("requested block hash {} but got block {}", requested_hash, block.hash())))
