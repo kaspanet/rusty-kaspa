@@ -59,12 +59,7 @@ impl Flow for IbdFlow {
         self.start_impl().await
     }
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SyncerSkew {
-    Lagging,
-    Aligned,
-    Leading,
-}
+
 pub enum IbdType {
     Sync { highest_known_syncer_chain_hash: Hash, is_utxo_stable: bool, is_pp_anticone_synced: bool },
     DownloadHeadersProof,
@@ -238,6 +233,13 @@ impl IbdFlow {
             info!("current sink is:{}", sink);
             info!("current pruning point is:{}", pruning_point);
             if consensus.async_is_chain_ancestor_of(pruning_point, highest_known_syncer_chain_hash).await? {
+                /// Categorizes the syncer's pruning point position relative to local
+                enum SyncerSkew {
+                    Lagging,
+                    Aligned,
+                    Leading,
+                }
+
                 let syncer_skew = if syncer_pruning_point == pruning_point {
                     SyncerSkew::Aligned
                 } else if consensus.async_is_chain_ancestor_of(pruning_point, syncer_pruning_point).await.unwrap_or(false) {
@@ -249,6 +251,7 @@ impl IbdFlow {
                         "The syncer purports to have data in the recent future but their pruning point could not be easily recognized",
                     ));
                 };
+
                 let is_utxo_stable = consensus.async_is_pruning_utxoset_stable().await;
                 let is_pp_anticone_synced = consensus.async_is_pruning_point_anticone_fully_synced().await;
 
@@ -259,7 +262,7 @@ impl IbdFlow {
                     (SyncerSkew::Lagging, true) => {
                         Ok(IbdType::Sync { highest_known_syncer_chain_hash, is_utxo_stable, is_pp_anticone_synced })
                     }
-                    (SyncerSkew::Lagging, false) => Err(ProtocolError::Other("Local node is in a transitional state requiring external data to stablize, but the syncer lags behind and is unable to provide said data")),
+                    (SyncerSkew::Lagging, false) => Err(ProtocolError::Other("Local node is in a transitional state requiring external data to stabilize, but the syncer lags behind and is unable to provide said data")),
                     (SyncerSkew::Leading, true) => {
                         if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body()) {
                             // While a leading syncer skew often indicates the need for catchup, in this case
@@ -318,8 +321,8 @@ impl IbdFlow {
         relay_block: &Block,
         highest_known_syncer_chain_hash: Hash,
     ) -> Result<(), ProtocolError> {
-        // Before attempting to update to the syncers pruning point, sync to the latest headers of the syncer,
-        // to ensure that  we will locally have sufficient headers on top of  the syncer's pruning point
+        // Before attempting to update to the syncer's pruning point, sync to the latest headers of the syncer,
+        // to ensure that we will locally have sufficient headers on top of the syncer's pruning point
         let syncer_pp = negotiation_output.syncer_pruning_point;
         let syncer_sink = negotiation_output.syncer_virtual_selected_parent;
         self.sync_headers(consensus, syncer_sink, highest_known_syncer_chain_hash, relay_block).await?;
@@ -390,7 +393,7 @@ impl IbdFlow {
         self.router
             .enqueue(make_message!(Payload::RequestPruningPointAndItsAnticone, RequestPruningPointAndItsAnticoneMessage {}))
             .await?;
-        // First, all pruning points up to the last  are sent
+        // First, all pruning points up to the last are sent
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPoints)?;
         let pruning_points: PruningPointsList = msg.try_into()?;
 

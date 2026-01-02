@@ -26,7 +26,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::info;
-use kaspa_database::{prelude::StoreResultExt, utils::DbLifetime};
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use thiserror::Error;
@@ -58,7 +58,7 @@ use crate::{
     processes::window::WindowType,
 };
 
-use super::{ghostdag::protocol::GhostdagManager, window::WindowManager};
+use super::window::WindowManager;
 
 #[derive(Error, Debug)]
 enum PruningProofManagerInternalError {
@@ -74,7 +74,9 @@ enum PruningProofManagerInternalError {
     #[error("missing headers to build proof: {0}")]
     NotEnoughHeadersToBuildProof(String),
 }
+
 type PruningProofManagerInternalResult<T> = std::result::Result<T, PruningProofManagerInternalError>;
+
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
     data: Arc<T>,
@@ -84,16 +86,6 @@ impl<T> Clone for CachedPruningPointData<T> {
     fn clone(&self) -> Self {
         Self { pruning_point: self.pruning_point, data: self.data.clone() }
     }
-}
-
-struct TempProofContext {
-    headers_store: Arc<DbHeadersStore>,
-    ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
-    relations_stores: Vec<DbRelationsStore>,
-    reachability_stores: Vec<Arc<RwLock<DbReachabilityStore>>>,
-    ghostdag_managers:
-        Vec<GhostdagManager<DbGhostdagStore, DbRelationsStore, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>>,
-    db_lifetime: DbLifetime,
 }
 
 pub struct PruningProofManager {
@@ -233,34 +225,6 @@ impl PruningProofManager {
         let approx_history_size = proof[0][0].daa_score;
         let approx_unique_full_levels = f64::log2(approx_history_size as f64 / self.pruning_proof_m as f64).max(0f64) as usize;
         proof.iter().map(|l| l.len()).sum::<usize>().min((approx_unique_full_levels + 1) * self.pruning_proof_m as usize)
-    }
-
-    // Used in build and validate
-    fn block_at_depth(
-        &self,
-        ghostdag_store: &impl GhostdagStoreReader,
-        high: Hash,
-        depth: u64,
-    ) -> Result<Hash, PruningProofManagerInternalError> {
-        let high_gd = ghostdag_store
-            .get_compact_data(high)
-            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
-        let mut current_gd = high_gd;
-        let mut current = high;
-        while current_gd.blue_score + depth >= high_gd.blue_score {
-            if current_gd.selected_parent.is_origin() {
-                break;
-            }
-            let prev = current;
-            current = current_gd.selected_parent;
-            current_gd = ghostdag_store.get_compact_data(current).map_err(|err| {
-                PruningProofManagerInternalError::BlockAtDepth(format!(
-                    "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
-                    high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
-                ))
-            })?;
-        }
-        Ok(current)
     }
 
     /// Returns the k + 1 chain blocks below this hash (inclusive). If data is missing
@@ -412,3 +376,33 @@ impl PruningProofManager {
         }
     }
 }
+
+trait GhostdagReaderExt
+where
+    Self: GhostdagStoreReader,
+{
+    /// Extension method to get the block at blue depth `depth` from `high` via this store reader. Used by build and validate.
+    fn block_at_depth(&self, high: Hash, depth: u64) -> Result<Hash, PruningProofManagerInternalError> {
+        let high_gd = self
+            .get_compact_data(high)
+            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
+        let mut current_gd = high_gd;
+        let mut current = high;
+        while current_gd.blue_score + depth >= high_gd.blue_score {
+            if current_gd.selected_parent.is_origin() {
+                break;
+            }
+            let prev = current;
+            current = current_gd.selected_parent;
+            current_gd = self.get_compact_data(current).map_err(|err| {
+                PruningProofManagerInternalError::BlockAtDepth(format!(
+                    "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
+                    high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
+                ))
+            })?;
+        }
+        Ok(current)
+    }
+}
+
+impl<T: GhostdagStoreReader> GhostdagReaderExt for T {}
