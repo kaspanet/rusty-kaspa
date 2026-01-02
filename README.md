@@ -288,10 +288,6 @@ The framework is compatible with all major desktop and mobile browsers.
 cargo run --release --bin kaspad -- --testnet
   ```
 
-## Stratum Bridge
-
-Check out the [README.md](bridge/docs/README.md) for instructions on how to run the stratum bridge.
-
 <details>
   <summary>
     Start a devnet node
@@ -387,6 +383,9 @@ wRPC
 
 </details>
 
+## Stratum Bridge
+
+Check out the [README.md](bridge/docs/README.md) for instructions on how to run the stratum bridge.
 
 ## Benchmarking & Testing
 
