@@ -28,7 +28,7 @@ use crate::{
     },
     processes::{
         ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
-        pruning_proof::PruningProofManagerInternalError,
+        pruning_proof::{GhostdagReaderExt, PruningProofManagerInternalError},
         relations::RelationsStoreExtensions,
     },
 };
@@ -104,8 +104,8 @@ impl PruningProofManager {
             .map(|level| {
                 let level = level as usize;
                 let selected_tip = selected_tip_by_level[level];
-                let block_at_depth_2m = self
-                    .block_at_depth(&*transient_ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m)
+                let block_at_depth_2m = transient_ghostdag_stores[level]
+                    .block_at_depth(selected_tip, 2 * self.pruning_proof_m)
                     .map_err(|err| format!("level: {}, err: {}", level, err))
                     .unwrap();
 
@@ -116,8 +116,8 @@ impl PruningProofManager {
                 // The root calc logic below is the original logic before the on-demand higher level GD calculation
                 // We only need old_root to sanity check the new logic
                 let old_root = if level != self.max_block_level as usize {
-                    let block_at_depth_m_at_next_level = self
-                        .block_at_depth(&*transient_ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m)
+                    let block_at_depth_m_at_next_level = transient_ghostdag_stores[level + 1]
+                        .block_at_depth(selected_tip_by_level[level + 1], self.pruning_proof_m)
                         .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
                         .unwrap();
                     if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m) {
@@ -209,8 +209,8 @@ impl PruningProofManager {
                 let (next_level_gd_store, _relation_store_at_next_level, selected_tip_at_next_level, _root_at_next_level) =
                     level_proof_stores_vec[level_usize + 1].as_ref().unwrap();
 
-                let block_at_depth_m_at_next_level = self
-                    .block_at_depth(next_level_gd_store.as_ref(), *selected_tip_at_next_level, self.pruning_proof_m)
+                let block_at_depth_m_at_next_level = next_level_gd_store
+                    .block_at_depth(*selected_tip_at_next_level, self.pruning_proof_m)
                     .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
                     .unwrap();
                 Some(block_at_depth_m_at_next_level)
