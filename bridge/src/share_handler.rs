@@ -15,7 +15,7 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -150,12 +150,86 @@ impl WorkStats {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DuplicateSubmitOutcome {
+    InFlight,
+    Accepted,
+    Stale,
+    LowDiff,
+    Bad,
+}
+
+struct DuplicateSubmitEntry {
+    ts: Instant,
+    outcome: DuplicateSubmitOutcome,
+}
+
+struct DuplicateSubmitGuard {
+    ttl: Duration,
+    max_entries: usize,
+    entries: HashMap<String, DuplicateSubmitEntry>,
+    order: VecDeque<String>,
+}
+
+impl DuplicateSubmitGuard {
+    fn new(ttl: Duration, max_entries: usize) -> Self {
+        Self { ttl, max_entries, entries: HashMap::new(), order: VecDeque::new() }
+    }
+
+    fn prune(&mut self, now: Instant) {
+        while let Some(front) = self.order.front() {
+            let remove = match self.entries.get(front) {
+                Some(e) => now.duration_since(e.ts) > self.ttl,
+                None => true,
+            };
+            if remove {
+                if let Some(key) = self.order.pop_front() {
+                    self.entries.remove(&key);
+                }
+            } else {
+                break;
+            }
+        }
+
+        while self.entries.len() > self.max_entries {
+            if let Some(key) = self.order.pop_front() {
+                self.entries.remove(&key);
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn get(&mut self, key: &str, now: Instant) -> Option<DuplicateSubmitOutcome> {
+        self.prune(now);
+        self.entries.get(key).map(|e| e.outcome)
+    }
+
+    fn insert_inflight(&mut self, key: String, now: Instant) {
+        self.prune(now);
+        if self.entries.contains_key(&key) {
+            return;
+        }
+        self.entries.insert(key.clone(), DuplicateSubmitEntry { ts: now, outcome: DuplicateSubmitOutcome::InFlight });
+        self.order.push_back(key);
+    }
+
+    fn set_outcome(&mut self, key: &str, now: Instant, outcome: DuplicateSubmitOutcome) {
+        self.prune(now);
+        if let Some(e) = self.entries.get_mut(key) {
+            e.ts = now;
+            e.outcome = outcome;
+        }
+    }
+}
+
 pub struct ShareHandler {
     #[allow(dead_code)]
     tip_blue_score: Arc<Mutex<u64>>,
     stats: Arc<Mutex<HashMap<String, WorkStats>>>,
     overall: Arc<WorkStats>,
     instance_id: String, // Instance identifier for logging
+    duplicate_submit_guard: Arc<Mutex<DuplicateSubmitGuard>>,
 }
 
 impl ShareHandler {
@@ -165,6 +239,7 @@ impl ShareHandler {
             stats: Arc::new(Mutex::new(HashMap::new())),
             overall: Arc::new(WorkStats::new("overall".to_string())),
             instance_id,
+            duplicate_submit_guard: Arc::new(Mutex::new(DuplicateSubmitGuard::new(Duration::from_secs(180), 50_000))),
         }
     }
 
@@ -180,7 +255,7 @@ impl ShareHandler {
             if !worker_name.is_empty() {
                 worker_name.clone()
             } else {
-                format!("{}:{}", ctx.remote_addr(), ctx.remote_port())
+                ctx.remote_addr().to_string()
             }
         };
 
@@ -364,6 +439,51 @@ impl ShareHandler {
 
         tracing::debug!("[SUBMIT] Parsed nonce value (u64): {}", nonce_val);
         tracing::debug!("[SUBMIT] Nonce hex: {:016x}", nonce_val);
+
+        let worker_id = {
+            let worker_name = ctx.worker_name.lock();
+            if !worker_name.is_empty() {
+                worker_name.clone()
+            } else {
+                format!("{}:{}", ctx.remote_addr(), ctx.remote_port())
+            }
+        };
+        let submit_key = format!("{}|{}|{}", worker_id, job_id, final_nonce_str);
+
+        let duplicate_outcome = {
+            let now = Instant::now();
+            let mut guard = self.duplicate_submit_guard.lock();
+            if let Some(outcome) = guard.get(&submit_key, now) {
+                Some(outcome)
+            } else {
+                guard.insert_inflight(submit_key.clone(), now);
+                None
+            }
+        };
+
+        if let Some(outcome) = duplicate_outcome {
+            match outcome {
+                DuplicateSubmitOutcome::Accepted | DuplicateSubmitOutcome::InFlight => {
+                    ctx.reply(JsonRpcResponse { id: event.id.clone(), result: Some(serde_json::Value::Bool(true)), error: None })
+                        .await?;
+                    return Ok(());
+                }
+                DuplicateSubmitOutcome::Stale => {
+                    ctx.reply_stale_share(event.id.clone()).await?;
+                    return Ok(());
+                }
+                DuplicateSubmitOutcome::LowDiff => {
+                    if let Some(id) = &event.id {
+                        let _ = ctx.reply_low_diff_share(id).await;
+                    }
+                    return Ok(());
+                }
+                DuplicateSubmitOutcome::Bad => {
+                    ctx.reply_bad_share(event.id.clone()).await?;
+                    return Ok(());
+                }
+            }
+        }
 
         // PoW validation with job ID workaround
         // Go validates the submitted job first, then tries previous jobs if share doesn't meet pool difficulty
@@ -708,7 +828,7 @@ impl ShareHandler {
                         );
 
                         // Return allows HandleSubmit to record share (blocks are shares too!)
-                        // After successful block submission, continue to record share at end of function
+                        // After successful block submission, continue to record the share
                         // Don't return early - let the code continue to record the share
                         invalid_share = false;
                         break;
@@ -733,6 +853,12 @@ impl ShareHandler {
                                 LogColors::label("REJECTION REASON:"),
                                 "Block was already submitted to the network (stale/duplicate)"
                             );
+
+                            {
+                                let now = Instant::now();
+                                let mut guard = self.duplicate_submit_guard.lock();
+                                guard.set_outcome(&submit_key, now, DuplicateSubmitOutcome::Stale);
+                            }
 
                             let stats = self.get_create_stats(&ctx);
                             *stats.stale_shares.lock() += 1;
@@ -775,6 +901,12 @@ impl ShareHandler {
                                 wallet: wallet_addr.clone(),
                                 ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
                             });
+
+                            {
+                                let now = Instant::now();
+                                let mut guard = self.duplicate_submit_guard.lock();
+                                guard.set_outcome(&submit_key, now, DuplicateSubmitOutcome::Bad);
+                            }
                             ctx.reply_bad_share(event.id.clone()).await?;
                             return Ok(());
                         }
@@ -896,6 +1028,12 @@ impl ShareHandler {
             if let Some(id) = &event.id {
                 let _ = ctx.reply_low_diff_share(id).await;
             }
+
+            {
+                let now = Instant::now();
+                let mut guard = self.duplicate_submit_guard.lock();
+                guard.set_outcome(&submit_key, now, DuplicateSubmitOutcome::LowDiff);
+            }
             return Ok(());
         }
 
@@ -930,6 +1068,12 @@ impl ShareHandler {
             },
             hash_value,
         );
+
+        {
+            let now = Instant::now();
+            let mut guard = self.duplicate_submit_guard.lock();
+            guard.set_outcome(&submit_key, now, DuplicateSubmitOutcome::Accepted);
+        }
 
         ctx.reply(JsonRpcResponse { id: event.id.clone(), result: Some(serde_json::Value::Bool(true)), error: None })
             .await
@@ -1033,6 +1177,15 @@ impl ShareHandler {
                 }
             }
 
+            fn format_uptime(d: Duration) -> String {
+                let total_secs = d.as_secs();
+                let days = total_secs / 86_400;
+                let hours = (total_secs % 86_400) / 3_600;
+                let mins = (total_secs % 3_600) / 60;
+                let secs = total_secs % 60;
+                format!("{:02}:{:02}:{:02}:{:02}", days, hours, mins, secs)
+            }
+
             const WORKER_W: usize = 16;
             const INST_W: usize = 5;
             const HASH_W: usize = 11;
@@ -1041,7 +1194,7 @@ impl ShareHandler {
             const TRND_W: usize = 4;
             const ACC_W: usize = 12;
             const BLK_W: usize = 6;
-            const TIME_W: usize = 7;
+            const TIME_W: usize = 11;
 
             fn border() -> String {
                 format!(
@@ -1065,11 +1218,11 @@ impl ShareHandler {
                     "Inst",
                     "Hash",
                     "Diff",
-                    "SPM/tgt",
+                    "SPM|TGT",
                     "Trnd",
-                    "Acc/Stl/Inv",
+                    "Acc|Stl|Inv",
                     "Blocks",
-                    "Time",
+                    "D|HR|M|S",
                 )
             }
 
@@ -1144,7 +1297,6 @@ impl ShareHandler {
                             "flat"
                         };
 
-                        let uptime_mins = v.start_time.elapsed().as_secs_f64() / 60.0;
                         let worker = v.worker_name.lock().clone();
 
                         let spm_tgt = format!("{:>4.1}/{:<4.1}", spm, *target_spm);
@@ -1159,7 +1311,7 @@ impl ShareHandler {
                             trend,
                             format!("{}/{}/{}", shares, stales, invalids),
                             blocks,
-                            format!("{:.1}m", uptime_mins)
+                            format_uptime(v.start_time.elapsed())
                         );
                         let sort_key = format!("{}:{}", inst_short, worker);
                         rows.push((sort_key, line));
@@ -1247,7 +1399,7 @@ impl ShareHandler {
                     "-",
                     format!("{}/{}/{}", total_shares, total_stales, total_invalids),
                     total_blocks,
-                    format!("{:.1}m", total_uptime_mins)
+                    format_uptime(now.duration_since(start))
                 ));
 
                 out.push(top);

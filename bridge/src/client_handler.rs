@@ -75,7 +75,9 @@ impl ClientHandler {
         let ctx_clone = Arc::clone(&ctx);
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
-            share_handler.get_create_stats(&ctx_clone);
+            if !ctx_clone.worker_name.lock().is_empty() {
+                share_handler.get_create_stats(&ctx_clone);
+            }
         });
     }
 
