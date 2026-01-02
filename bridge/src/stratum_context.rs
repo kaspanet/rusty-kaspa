@@ -571,7 +571,27 @@ impl StratumContext {
     /// Disconnect the client
     pub fn disconnect(&self) {
         if !self.disconnecting.swap(true, Ordering::Release) {
-            tracing::info!("disconnecting client {}", self.remote_addr);
+            let worker_name = self.worker_name.lock().clone();
+            let remote_app = self.remote_app.lock().clone();
+            let wallet_addr = self.wallet_addr.lock().clone();
+            let is_pre_handshake = worker_name.is_empty() && remote_app.is_empty() && wallet_addr.is_empty();
+            if is_pre_handshake {
+                tracing::debug!(
+                    "disconnecting client {}:{} worker='{}' app='{}'",
+                    self.remote_addr,
+                    self.remote_port,
+                    worker_name,
+                    remote_app
+                );
+            } else {
+                tracing::info!(
+                    "disconnecting client {}:{} worker='{}' app='{}'",
+                    self.remote_addr,
+                    self.remote_port,
+                    worker_name,
+                    remote_app
+                );
+            }
 
             // Close the write half
             let write_half_opt = {

@@ -201,7 +201,31 @@ impl StratumListener {
             match read_result {
                 Ok(Ok(0)) => {
                     // EOF - client closed connection
-                    tracing::debug!("[CONNECTION] Client {} closed connection (EOF)", ctx.remote_addr);
+                    let worker_name = ctx.worker_name.lock().clone();
+                    let remote_app = ctx.remote_app.lock().clone();
+                    let pending_buffer_bytes = line_buffer.len();
+                    let is_pre_handshake = worker_name.is_empty() && remote_app.is_empty();
+                    if is_pre_handshake && first_message && pending_buffer_bytes == 0 {
+                        tracing::debug!(
+                            "[CONNECTION] Client {}:{} closed connection (EOF) worker='{}' app='{}' first_message={} pending_buffer_bytes={}",
+                            ctx.remote_addr,
+                            ctx.remote_port,
+                            worker_name,
+                            remote_app,
+                            first_message,
+                            pending_buffer_bytes
+                        );
+                    } else {
+                        tracing::info!(
+                            "[CONNECTION] Client {}:{} closed connection (EOF) worker='{}' app='{}' first_message={} pending_buffer_bytes={}",
+                            ctx.remote_addr,
+                            ctx.remote_port,
+                            worker_name,
+                            remote_app,
+                            first_message,
+                            pending_buffer_bytes
+                        );
+                    }
                     break;
                 }
                 Ok(Ok(n)) => {
@@ -756,7 +780,30 @@ impl StratumListener {
                         || e.kind() == std::io::ErrorKind::ConnectionReset
                         || e.kind() == std::io::ErrorKind::BrokenPipe
                     {
-                        tracing::debug!("client disconnected: {}", ctx.remote_addr);
+                        let worker_name = ctx.worker_name.lock().clone();
+                        let remote_app = ctx.remote_app.lock().clone();
+                        let is_pre_handshake = worker_name.is_empty() && remote_app.is_empty();
+                        if is_pre_handshake {
+                            tracing::debug!(
+                                "[CONNECTION] Client {}:{} disconnected (reset/broken pipe) kind={:?} worker='{}' app='{}' msg='{}'",
+                                ctx.remote_addr,
+                                ctx.remote_port,
+                                e.kind(),
+                                worker_name,
+                                remote_app,
+                                error_msg
+                            );
+                        } else {
+                            tracing::info!(
+                                "[CONNECTION] Client {}:{} disconnected (reset/broken pipe) kind={:?} worker='{}' app='{}' msg='{}'",
+                                ctx.remote_addr,
+                                ctx.remote_port,
+                                e.kind(),
+                                worker_name,
+                                remote_app,
+                                error_msg
+                            );
+                        }
                     } else {
                         error!("error reading from socket: {}", e);
                     }

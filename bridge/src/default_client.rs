@@ -78,6 +78,13 @@ pub async fn handle_subscribe(
     tracing::debug!("[SUBSCRIBE] Event ID: {:?}", event.id);
     tracing::debug!("[SUBSCRIBE] Params count: {}", event.params.len());
 
+    tracing::info!(
+        "[HANDSHAKE] subscribe from {}:{} params_count={} (before app parse)",
+        ctx.remote_addr,
+        ctx.remote_port,
+        event.params.len()
+    );
+
     // Extract remote app from params if present
     if let Some(Value::String(app)) = event.params.first() {
         *ctx.remote_app.lock() = app.clone();
@@ -87,6 +94,8 @@ pub async fn handle_subscribe(
     }
 
     let remote_app = ctx.remote_app.lock().clone();
+
+    tracing::info!("[HANDSHAKE] subscribe parsed app='{}' from {}:{}", remote_app, ctx.remote_addr, ctx.remote_port);
 
     // Auto-detect miner type and assign appropriate extranonce
     if let Some(handler) = client_handler {
@@ -177,6 +186,8 @@ pub async fn handle_authorize(
     tracing::debug!("[AUTHORIZE] Params count: {}", event.params.len());
     tracing::debug!("[AUTHORIZE] Full params: {:?}", event.params);
 
+    tracing::info!("[HANDSHAKE] authorize from {}:{} params_count={}", ctx.remote_addr, ctx.remote_port, event.params.len());
+
     if event.params.is_empty() {
         tracing::error!("[AUTHORIZE] ERROR: Empty params from {}", ctx.remote_addr);
         return Err("malformed event from miner, expected param[0] to be address".into());
@@ -213,6 +224,9 @@ pub async fn handle_authorize(
 
     *ctx.wallet_addr.lock() = address.clone();
     *ctx.worker_name.lock() = worker_name.clone();
+
+    let remote_app = ctx.remote_app.lock().clone();
+    tracing::info!("[HANDSHAKE] authorized {}:{} worker='{}' app='{}'", ctx.remote_addr, ctx.remote_port, worker_name, remote_app);
 
     if !canxium_address.is_empty() {
         *ctx.canxium_addr.lock() = canxium_address.clone();

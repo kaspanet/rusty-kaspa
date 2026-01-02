@@ -148,13 +148,18 @@ impl ClientHandler {
         }
         let wallet_addr = ctx.wallet_addr.lock().clone();
         let worker_name = ctx.worker_name.lock().clone();
-        record_disconnect(&crate::prom::WorkerContext {
-            instance_id: self.instance_id.clone(),
-            worker_name: worker_name.clone(),
-            miner: String::new(),
-            wallet: wallet_addr.clone(),
-            ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-        });
+        let remote_app = ctx.remote_app.lock().clone();
+
+        let is_unauthed = wallet_addr.is_empty() && worker_name.is_empty();
+        if !is_unauthed {
+            record_disconnect(&crate::prom::WorkerContext {
+                instance_id: self.instance_id.clone(),
+                worker_name: worker_name.clone(),
+                miner: remote_app,
+                wallet: wallet_addr.clone(),
+                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
+            });
+        }
     }
 
     /// Send an immediate job to a specific client (for use after authorization)
