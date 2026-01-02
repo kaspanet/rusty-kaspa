@@ -77,7 +77,7 @@ kaspad --archival \
 ```bash
 # HDD preset with HDD optimizations
 kaspad --archival \
-  --rocksdb-preset=archive \
+  --rocksdb-preset=hdd \
   --ram-scale=1.0 \
   --rpclisten-borsh=0.0.0.0:17110 \
   --rpclisten-json=0.0.0.0:18110
@@ -199,7 +199,7 @@ services:
     restart: unless-stopped
     command:
       - --archival
-      - --rocksdb-preset=archive
+      - --rocksdb-preset=hdd
       - --ram-scale=1.0
       - --rpclisten-borsh=0.0.0.0:17110
       - --rpclisten-json=0.0.0.0:18110
@@ -242,7 +242,7 @@ docker run -d \
   -p 18110:18110 \
   kaspanet/kaspad:latest \
     --archival \
-    --rocksdb-preset=archive \
+    --rocksdb-preset=hdd \
     --ram-scale=1.0 \
     --rpclisten-borsh=0.0.0.0:17110 \
     --rpclisten-json=0.0.0.0:18110 \
@@ -265,7 +265,7 @@ User=kaspa
 Group=kaspa
 ExecStart=/usr/local/bin/kaspad \
   --archival \
-  --rocksdb-preset=archive \
+  --rocksdb-preset=hdd \
   --ram-scale=1.0 \
   --appdir=/mnt/hdd/kaspa-archive \
   --rpclisten-borsh=0.0.0.0:17110 \
@@ -296,7 +296,7 @@ sudo systemctl status kaspad-archive
 1. Verify HDD preset is active:
    ```bash
    journalctl -u kaspad-archive | grep "RocksDB preset"
-   # Should show: "Using RocksDB preset: archive"
+   # Should show: "Using RocksDB preset: hdd"
    ```
 2. Check I/O scheduler: `cat /sys/block/sda/queue/scheduler` (should be `mq-deadline`)
 3. Verify kernel tuning: `sysctl vm.dirty_ratio vm.swappiness`
@@ -342,7 +342,7 @@ systemctl cat kaspad-archive | grep rocksdb-preset
 journalctl -u kaspad-archive -n 100 | grep -i rocksdb
 
 # Should see:
-# "Using RocksDB preset: archive - HDD preset - optimized for HDD"
+# "Using RocksDB preset: hdd - HDD preset - optimized for HDD"
 ```
 
 ## Trade-offs
