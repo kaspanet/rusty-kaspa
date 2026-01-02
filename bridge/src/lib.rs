@@ -13,9 +13,6 @@ pub mod stratum_context;
 pub mod stratum_listener;
 pub mod stratum_server;
 
-#[cfg(test)]
-pub mod mock_connection;
-
 pub use client_handler::*;
 pub use default_client::*;
 pub use errors::*;
@@ -28,6 +25,3 @@ pub use share_handler::*;
 pub use stratum_context::*;
 pub use stratum_listener::*;
 pub use stratum_server::*;
-
-#[cfg(test)]
-pub use mock_connection::*;

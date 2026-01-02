@@ -1,6 +1,6 @@
 use crate::{
     client_handler::ClientHandler,
-    default_client::*,
+    default_client::{default_handlers, handle_authorize, handle_subscribe},
     jsonrpc_event::JsonRpcEvent,
     kaspaapi::KaspaApi,
     share_handler::{KaspaApiTrait, ShareHandler},
@@ -97,7 +97,7 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
             let ctx_clone = Arc::clone(&ctx);
             let event_clone = event.clone();
             Box::pin(async move {
-                crate::default_client::handle_subscribe(ctx_clone, event_clone, Some(client_handler))
+                handle_subscribe(ctx_clone, event_clone, Some(client_handler))
                     .await
                     .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
             })
@@ -116,7 +116,7 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
             let ctx_clone = Arc::clone(&ctx);
             let event_clone = event.clone();
             Box::pin(async move {
-                crate::default_client::handle_authorize(ctx_clone, event_clone, Some(client_handler), Some(kaspa_api))
+                handle_authorize(ctx_clone, event_clone, Some(client_handler), Some(kaspa_api))
                     .await
                     .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
             })

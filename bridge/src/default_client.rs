@@ -3,6 +3,7 @@ use crate::stratum_context::StratumContext;
 use kaspa_addresses::Address;
 use regex::Regex;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 
 /// Regex for matching miners that use big job format
@@ -19,8 +20,8 @@ pub fn default_logger() {
 }
 
 /// Default handler map
-pub fn default_handlers() -> std::collections::HashMap<String, crate::stratum_listener::EventHandler> {
-    let mut handlers = std::collections::HashMap::new();
+pub fn default_handlers() -> HashMap<String, crate::stratum_listener::EventHandler> {
+    let mut handlers = HashMap::new();
 
     handlers.insert(
         "mining.subscribe".to_string(),

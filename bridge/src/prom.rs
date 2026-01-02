@@ -1,7 +1,7 @@
 use prometheus::proto::MetricFamily;
 use prometheus::{register_counter_vec, register_gauge, register_gauge_vec, CounterVec, Gauge, GaugeVec};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
 /// Worker labels for Prometheus metrics
@@ -381,7 +381,7 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
     let mut worker_stats: HashMap<String, WorkerInfo> = HashMap::new();
     let mut worker_hash_values: HashMap<String, f64> = HashMap::new(); // Store hash values for hashrate calculation
     let mut worker_start_times: HashMap<String, f64> = HashMap::new(); // Store start times for hashrate calculation
-    let mut block_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut block_set: HashSet<String> = HashSet::new();
 
     for family in metric_families {
         let name = family.get_name();

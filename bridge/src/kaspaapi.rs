@@ -12,6 +12,7 @@ use kaspa_rpc_core::{
 };
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -527,7 +528,6 @@ impl KaspaApi {
 
         // Calculate balances from UTXOs
         // Group entries by address
-        use std::collections::HashMap;
         let mut balance_map: HashMap<String, u64> = HashMap::new();
         for entry in utxos.entries {
             if let Some(address) = entry.address {

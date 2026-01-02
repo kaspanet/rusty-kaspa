@@ -68,8 +68,10 @@ impl StratumListener {
         // If it starts with ':', prepend "0.0.0.0", otherwise format as "0.0.0.0:PORT"
         let addr_str = if self.config.port.starts_with(':') {
             format!("0.0.0.0{}", self.config.port)
-        } else {
+        } else if self.config.port.chars().all(|c| c.is_ascii_digit()) {
             format!("0.0.0.0:{}", self.config.port)
+        } else {
+            self.config.port.clone()
         };
 
         let listener =
