@@ -18,6 +18,8 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tracing::{error, info, warn};
 
+const STRATUM_COINBASE_TAG_BYTES: &[u8] = b"Kaspa Stratum Bridge";
+
 #[derive(Clone, Debug, Default)]
 pub struct NodeStatusSnapshot {
     pub last_updated: Option<std::time::Instant>,
@@ -433,7 +435,11 @@ impl KaspaApi {
                 Address::try_from(wallet_addr).map_err(|e| anyhow::anyhow!("Could not decode address {}: {}", wallet_addr, e))?;
 
             // Request block template using RPC client wrapper
-            let response = match self.client.get_block_template_call(None, GetBlockTemplateRequest::new(address, vec![])).await {
+            let response = match self
+                .client
+                .get_block_template_call(None, GetBlockTemplateRequest::new(address, STRATUM_COINBASE_TAG_BYTES.to_vec()))
+                .await
+            {
                 Ok(r) => r,
                 Err(e) => {
                     if attempt < max_retries - 1 {
