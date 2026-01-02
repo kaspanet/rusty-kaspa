@@ -47,6 +47,7 @@ pub struct IbdFlow {
     pub(super) router: Arc<Router>,
     pub(super) incoming_route: IncomingRoute,
     pub(super) body_only_ibd_permitted: bool,
+    header_format: HeaderFormat,
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
     relay_receiver: JobReceiver<Block>,
@@ -89,7 +90,8 @@ impl IbdFlow {
         relay_receiver: JobReceiver<Block>,
         body_only_ibd_permitted: bool,
     ) -> Self {
-        Self { ctx, router, incoming_route, relay_receiver, body_only_ibd_permitted }
+        let header_format = HeaderFormat::from(router.properties().protocol_version);
+        Self { ctx, router, incoming_route, relay_receiver, body_only_ibd_permitted, header_format }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -363,8 +365,7 @@ impl IbdFlow {
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPointProof, Duration::from_secs(600))?;
-        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
-        let proof: PruningPointProof = Versioned(header_format, msg).try_into()?;
+        let proof: PruningPointProof = Versioned(self.header_format, msg).try_into()?;
         info!(
             "Received headers proof with overall {} headers ({} unique)",
             proof.iter().map(|l| l.len()).sum::<usize>(),
@@ -396,8 +397,7 @@ impl IbdFlow {
             .await?;
         // First, all pruning points up to the last  are sent
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPoints)?;
-        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
-        let pruning_points: PruningPointsList = Versioned(header_format, msg).try_into()?;
+        let pruning_points: PruningPointsList = Versioned(self.header_format, msg).try_into()?;
 
         if pruning_points.is_empty() || pruning_points.last().unwrap().hash != proof_pruning_point {
             return Err(ProtocolError::Other("the proof pruning point is not equal to the last pruning point in the list"));
@@ -420,11 +420,10 @@ impl IbdFlow {
         // The latter, the trusted data entries, each represent a block (with daa) from the anticone of the pruning point
         // (including the PP itself), alongside indexing denoting the respective metadata headers or ghostdag data
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
-        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
-        let pkg: TrustedDataPackage = Versioned(header_format, msg).try_into()?;
+        let pkg: TrustedDataPackage = Versioned(self.header_format, msg).try_into()?;
         debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
 
-        let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route, header_format);
+        let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route, self.header_format);
         // The first entry of the trusted data is the pruning point itself.
         let Some(pruning_point_entry) = entry_stream.next().await? else {
             return Err(ProtocolError::Other("got `done` message before receiving the pruning point"));
@@ -526,8 +525,7 @@ impl IbdFlow {
                 }
             ))
             .await?;
-        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
-        let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route, header_format);
+        let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route, self.header_format);
 
         if let Some(chunk) = chunk_stream.next().await? {
             let (mut prev_daa_score, mut prev_timestamp) = {
@@ -609,8 +607,7 @@ impl IbdFlow {
             .await?;
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::BlockHeaders)?;
-        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
-        let chunk: HeadersChunk = Versioned(header_format, msg).try_into()?;
+        let chunk: HeadersChunk = Versioned(self.header_format, msg).try_into()?;
         let jobs: Vec<BlockValidationFuture> =
             chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task).collect();
         try_join_all(jobs).await?;
@@ -740,8 +737,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             for &hash in chunk.iter() {
                 // TODO: change to BodyOnly requests when incorporated
                 let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-                let header_format = HeaderFormat::from(self.router.properties().protocol_version);
-                let block: Block = Versioned(header_format, msg).try_into()?;
+                let block: Block = Versioned(self.header_format, msg).try_into()?;
                 if block.hash() != hash {
                     return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", hash, block.hash())));
                 }
@@ -840,8 +836,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             .await?;
         for &expected_hash in chunk {
             let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-            let header_format = HeaderFormat::from(self.router.properties().protocol_version);
-            let block: Block = Versioned(header_format, msg).try_into()?;
+            let block: Block = Versioned(self.header_format, msg).try_into()?;
             if block.hash() != expected_hash {
                 return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", expected_hash, block.hash())));
             }

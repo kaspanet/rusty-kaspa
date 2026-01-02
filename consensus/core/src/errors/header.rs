@@ -6,6 +6,8 @@ pub enum CompressedParentsError {
     LevelsExceeded,
     #[error("Parents by level are not strictly increasing")]
     LevelsNotStrictlyIncreasing,
+    #[error("CompressedParents contains two runs with the same parents")]
+    NotFullyCompressed,
 }
 
 pub type CompressedParentsResult<T> = std::result::Result<T, CompressedParentsError>;

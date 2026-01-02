@@ -2,6 +2,7 @@ use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
 use kaspa_p2p_lib::{
     common::ProtocolError,
+    convert::header::HeaderFormat,
     dequeue_with_request_id, make_message, make_response,
     pb::{kaspad_message::Payload, InvRelayBlockMessage},
     IncomingRoute, Router,
@@ -35,7 +36,7 @@ impl HandleRelayBlockRequests {
         // state even if no new blocks arrive for some reason.
         // Note: in go-kaspad this was done via a dedicated one-time flow.
         self.send_sink().await?;
-        let header_format = kaspa_p2p_lib::convert::header::HeaderFormat::from(self.router.properties().protocol_version);
+        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
 
         loop {
             let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestRelayBlocks)?;
