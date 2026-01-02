@@ -12,7 +12,7 @@ impl HeaderProcessor {
     }
 
     fn check_pruning_violation(&self, ctx: &HeaderProcessingContext) -> BlockProcessResult<()> {
-        let known_parents = ctx.direct_known_parents();
+        let known_parents = ctx.known_direct_parents.as_slice();
 
         // We check that the new block is in the future of the pruning point by verifying that at least
         // one of its parents is in the pruning point future (or the pruning point itself). Otherwise,

@@ -57,7 +57,7 @@ pub struct MultiConsensusMetadata {
     version: u32,
 }
 
-pub const LATEST_DB_VERSION: u32 = 5;
+pub const LATEST_DB_VERSION: u32 = 6;
 impl Default for MultiConsensusMetadata {
     fn default() -> Self {
         Self {
