@@ -22,13 +22,14 @@ static BIG_JOB_REGEX: once_cell::sync::Lazy<Regex> =
 const BALANCE_DELAY: Duration = Duration::from_secs(60);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(20);
 
+static GLOBAL_NEXT_EXTRANONCE: AtomicI32 = AtomicI32::new(0);
+
 pub struct ClientHandler {
     clients: Arc<Mutex<HashMap<i32, Arc<StratumContext>>>>,
     client_counter: AtomicI32,
     min_share_diff: f64,
     _extranonce_size: i8,       // Kept for backward compatibility, but now auto-detected per client (unused)
     _max_extranonce: i32,       // Kept for backward compatibility (unused)
-    next_extranonce: AtomicI32, // Used for extranonce_size=2 (IceRiver/BzMiner/Goldshell)
     last_template_time: Arc<Mutex<Instant>>,
     last_balance_check: Arc<Mutex<Instant>>,
     share_handler: Arc<ShareHandler>,
@@ -45,7 +46,6 @@ impl ClientHandler {
             min_share_diff,
             _extranonce_size: extranonce_size,
             _max_extranonce: max_extranonce,
-            next_extranonce: AtomicI32::new(0),
             last_template_time: Arc::new(Mutex::new(Instant::now())),
             last_balance_check: Arc::new(Mutex::new(Instant::now())),
             share_handler,
@@ -99,7 +99,7 @@ impl ClientHandler {
             // Calculate max extranonce for size 2
             let max_extranonce = (2_f64.powi(16) - 1.0) as i32; // 2 bytes = 16 bits = 65535
 
-            let next = self.next_extranonce.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |val| {
+            let next = GLOBAL_NEXT_EXTRANONCE.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |val| {
                 if val < max_extranonce {
                     Some(val + 1)
                 } else {

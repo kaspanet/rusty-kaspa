@@ -12,15 +12,70 @@ use kaspa_rpc_core::{
 };
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tracing::{error, info, warn};
 
 const STRATUM_COINBASE_TAG_BYTES: &[u8] = b"Kaspa Stratum Bridge";
+
+struct BlockSubmitGuard {
+    ttl: Duration,
+    max_entries: usize,
+    entries: HashMap<String, Instant>,
+    order: VecDeque<String>,
+}
+
+impl BlockSubmitGuard {
+    fn new(ttl: Duration, max_entries: usize) -> Self {
+        Self { ttl, max_entries, entries: HashMap::new(), order: VecDeque::new() }
+    }
+
+    fn prune(&mut self, now: Instant) {
+        while let Some(front) = self.order.front() {
+            let remove = match self.entries.get(front) {
+                Some(ts) => now.duration_since(*ts) > self.ttl,
+                None => true,
+            };
+            if remove {
+                if let Some(key) = self.order.pop_front() {
+                    self.entries.remove(&key);
+                }
+            } else {
+                break;
+            }
+        }
+
+        while self.entries.len() > self.max_entries {
+            if let Some(key) = self.order.pop_front() {
+                self.entries.remove(&key);
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn try_mark(&mut self, hash: &str, now: Instant) -> bool {
+        self.prune(now);
+        if self.entries.contains_key(hash) {
+            return false;
+        }
+        self.entries.insert(hash.to_string(), now);
+        self.order.push_back(hash.to_string());
+        true
+    }
+
+    fn remove(&mut self, hash: &str, now: Instant) {
+        self.prune(now);
+        self.entries.remove(hash);
+    }
+}
+
+static BLOCK_SUBMIT_GUARD: Lazy<Mutex<BlockSubmitGuard>> =
+    Lazy::new(|| Mutex::new(BlockSubmitGuard::new(Duration::from_secs(600), 50_000)));
 
 #[derive(Clone, Debug, Default)]
 pub struct NodeStatusSnapshot {
@@ -242,6 +297,14 @@ impl KaspaApi {
         let timestamp = block.header.timestamp;
         let nonce = block.header.nonce;
 
+        {
+            let now = Instant::now();
+            let mut guard = BLOCK_SUBMIT_GUARD.lock();
+            if !guard.try_mark(&block_hash, now) {
+                return Err(anyhow::anyhow!("ErrDuplicateBlock: block already submitted"));
+            }
+        }
+
         tracing::debug!(
             "{} {}",
             LogColors::api("[API]"),
@@ -261,6 +324,16 @@ impl KaspaApi {
         tracing::debug!("{} {}", LogColors::api("[API]"), "Calling submit_block via RPC client...");
         let result =
             self.client.submit_block_call(None, SubmitBlockRequest::new(rpc_block, false)).await.context("Failed to submit block");
+
+        if let Err(e) = &result {
+            let error_str = e.to_string();
+            let is_duplicate = error_str.contains("ErrDuplicateBlock") || error_str.contains("duplicate");
+            if !is_duplicate {
+                let now = Instant::now();
+                let mut guard = BLOCK_SUBMIT_GUARD.lock();
+                guard.remove(&block_hash, now);
+            }
+        }
 
         match &result {
             Ok(response) => {
