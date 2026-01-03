@@ -395,6 +395,9 @@ impl PruningProofManager {
                 && (root == self.genesis_hash
                     || transient_ghostdag_store.get_blue_score(selected_tip).unwrap() >= required_level_depth)
             {
+                if tries >= 1 {
+                    debug!("Found sufficient root for level {level} after {tries} tries.");
+                }
                 break Ok((transient_ghostdag_store, transient_relation_store, selected_tip, root));
             }
 
@@ -557,12 +560,33 @@ impl PruningProofManager {
         let mut current_header = high_header;
 
         let mut is_last_header = false;
+        // The current block is considered seen
+        // This counts all the blocks we've seen, including the anticone of the current header
+        // The anticone size of the root/current header can be removed from this to get the estimated number of blocks
+        // fully in the set of Future(root) ∩ Past(high)
+        let mut seen = 1;
 
-        while current_header.blue_score + base_depth >= high_header_score {
+        let mut anticone = Vec::new();
+        let depth_2m = 2 * self.pruning_proof_m as usize;
+
+        // The block is of sufficient depth if:
+        // 1. It has the required base depth AND
+        // 2. We've seen 2M+1 blocks in it's future (See other references to 2M+1 in this file)
+        while current_header.blue_score + base_depth >= high_header_score || seen - anticone.len() <= depth_2m {
             if current_header.direct_parents().is_empty() {
                 // Reached genesis
                 break;
             }
+
+            let mut known_parents = self
+                .parents_manager
+                .parents_at_level(&current_header, level)
+                .iter()
+                .copied()
+                .filter(|&p| self.reachability_service.has_reachability_data(p))
+                .collect_vec();
+
+            seen += known_parents.len();
 
             current_header = match self.find_approximate_selected_parent_header_at_level(&current_header, level) {
                 Ok(header) => header,
@@ -573,6 +597,15 @@ impl PruningProofManager {
                 }
                 Err(e) => return Err(e),
             };
+
+            // Maintain the anticone by adding all the known parents of the previous header
+            // and then removing all of those that are not ancestors of the current header
+            anticone.append(&mut known_parents);
+            anticone = anticone
+                .iter()
+                .filter(|&b| !self.reachability_service.is_dag_ancestor_of(current_header.hash, *b))
+                .copied()
+                .collect_vec();
         }
         Ok((current_header.hash, is_last_header))
     }
