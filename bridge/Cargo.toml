@@ -1,11 +1,13 @@
 [package]
 name = "kaspa-stratum-bridge"
-version = "1.0.1"
-edition = "2021"
-authors = ["Kaspa developers"]
-description = "Kaspa Stratum Bridge - Mining pool connectivity for Kaspa ASIC miners"
-license = "ISC"
-repository = "https://github.com/kaspanet/rusty-kaspa"
+description = "Kaspa Stratum Bridge - Mining connectivity for Kaspa Stratum miners"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 # Kaspa dependencies - using workspace versions
@@ -58,3 +60,6 @@ tokio-test = "0.4"
 [[bin]]
 name = "stratum-bridge"
 path = "src/main.rs"
+
+[lints]
+workspace = true
