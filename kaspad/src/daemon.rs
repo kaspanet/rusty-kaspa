@@ -443,7 +443,7 @@ Do you confirm? (y/n)";
                 }
             }
         }
-        // if  reached here, db should be upgraded fully and we should exit the loop next
+        // if we reached here, db should be upgraded fully and we should exit the loop next
         assert_eq!(mcms.version().unwrap(), LATEST_DB_VERSION);
     }
 
