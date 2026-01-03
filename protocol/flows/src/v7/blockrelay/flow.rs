@@ -64,6 +64,8 @@ pub struct HandleRelayInvsFlow {
     msg_route: IncomingRoute,
     /// A channel sender for sending blocks to be handled by the IBD flow (of this peer)
     ibd_sender: JobSender<Block>,
+    /// Header format determined by protocol version
+    header_format: HeaderFormat,
 }
 
 #[async_trait::async_trait]
@@ -84,13 +86,12 @@ impl HandleRelayInvsFlow {
         invs_route: SharedIncomingRoute,
         msg_route: IncomingRoute,
         ibd_sender: JobSender<Block>,
+        header_format: HeaderFormat,
     ) -> Self {
-        Self { ctx, router, invs_route: TwoWayIncomingRoute::new(invs_route), msg_route, ibd_sender }
+        Self { ctx, router, invs_route: TwoWayIncomingRoute::new(invs_route), msg_route, ibd_sender, header_format }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
-        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
-
         loop {
             // Loop over incoming block inv messages
             let inv = self.invs_route.dequeue().await?;
@@ -128,7 +129,7 @@ impl HandleRelayInvsFlow {
             }
 
             // We keep the request scope alive until consensus processes the block
-            let Some((block, request_scope)) = self.request_block(inv.hash, self.msg_route.id(), header_format).await? else {
+            let Some((block, request_scope)) = self.request_block(inv.hash, self.msg_route.id(), self.header_format).await? else {
                 debug!("Relay block {} was already requested from another peer, continuing...", inv.hash);
                 continue;
             };

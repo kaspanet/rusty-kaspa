@@ -4,6 +4,7 @@ use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
+    convert::header::HeaderFormat,
     dequeue_with_request_id, make_response,
     pb::{kaspad_message::Payload, BlockHeadersMessage, DoneHeadersMessage},
     IncomingRoute, Router,
@@ -14,6 +15,7 @@ pub struct HandleAntipastRequests {
     ctx: FlowContext,
     router: Arc<Router>,
     incoming_route: IncomingRoute,
+    header_format: HeaderFormat,
 }
 
 #[async_trait::async_trait]
@@ -28,13 +30,11 @@ impl Flow for HandleAntipastRequests {
 }
 
 impl HandleAntipastRequests {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
-        Self { ctx, router, incoming_route }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, header_format: HeaderFormat) -> Self {
+        Self { ctx, router, incoming_route, header_format }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
-        let header_format = kaspa_p2p_lib::convert::header::HeaderFormat::from(self.router.properties().protocol_version);
-
         loop {
             let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestAntipast)?;
             let (block, context): (Hash, Hash) = msg.try_into()?;
@@ -61,7 +61,7 @@ impl HandleAntipastRequests {
                 .enqueue(make_response!(
                     Payload::BlockHeaders,
                     BlockHeadersMessage {
-                        block_headers: headers.into_iter().map(|header| (header_format, header.as_ref()).into()).collect()
+                        block_headers: headers.into_iter().map(|header| (self.header_format, header.as_ref()).into()).collect()
                     },
                     request_id
                 ))

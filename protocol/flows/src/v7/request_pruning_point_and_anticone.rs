@@ -6,6 +6,7 @@
 use itertools::Itertools;
 use kaspa_p2p_lib::{
     common::ProtocolError,
+    convert::header::HeaderFormat,
     dequeue, dequeue_with_request_id, make_response,
     pb::{
         kaspad_message::Payload, BlockWithTrustedDataV4Message, DoneBlocksWithTrustedDataMessage, PruningPointsMessage,
@@ -22,6 +23,7 @@ pub struct PruningPointAndItsAnticoneRequestsFlow {
     ctx: FlowContext,
     router: Arc<Router>,
     incoming_route: IncomingRoute,
+    header_format: HeaderFormat,
 }
 
 #[async_trait::async_trait]
@@ -36,13 +38,11 @@ impl Flow for PruningPointAndItsAnticoneRequestsFlow {
 }
 
 impl PruningPointAndItsAnticoneRequestsFlow {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
-        Self { ctx, router, incoming_route }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, header_format: HeaderFormat) -> Self {
+        Self { ctx, router, incoming_route, header_format }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
-        let header_format = kaspa_p2p_lib::convert::header::HeaderFormat::from(self.router.properties().protocol_version);
-
         loop {
             let (_, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestPruningPointAndItsAnticone)?;
             debug!("Got request for pruning point and its anticone");
@@ -54,7 +54,9 @@ impl PruningPointAndItsAnticoneRequestsFlow {
             self.router
                 .enqueue(make_response!(
                     Payload::PruningPoints,
-                    PruningPointsMessage { headers: pp_headers.into_iter().map(|header| (header_format, &*header).into()).collect() },
+                    PruningPointsMessage {
+                        headers: pp_headers.into_iter().map(|header| (self.header_format, &*header).into()).collect()
+                    },
                     request_id
                 ))
                 .await?;
@@ -67,7 +69,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                         daa_window: trusted_data
                             .daa_window_blocks
                             .iter()
-                            .map(|daa_block| (header_format, daa_block).into())
+                            .map(|daa_block| (self.header_format, daa_block).into())
                             .collect_vec(),
                         ghostdag_data: trusted_data.ghostdag_blocks.iter().map(|gd| gd.into()).collect_vec()
                     },
@@ -82,7 +84,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                         .enqueue(make_response!(
                             Payload::BlockWithTrustedDataV4,
                             // No need to send window indices in v6
-                            BlockWithTrustedDataV4Message { block: Some((header_format, &block).into()), ..Default::default() },
+                            BlockWithTrustedDataV4Message { block: Some((self.header_format, &block).into()), ..Default::default() },
                             request_id
                         ))
                         .await?;

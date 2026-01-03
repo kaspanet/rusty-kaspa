@@ -4,6 +4,7 @@ use kaspa_consensus_core::api::ConsensusApi;
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
+    convert::header::HeaderFormat,
     dequeue, dequeue_with_request_id, make_response,
     pb::{self, kaspad_message::Payload, BlockHeadersMessage, DoneHeadersMessage},
     IncomingRoute, Router,
@@ -16,6 +17,7 @@ pub struct RequestHeadersFlow {
     ctx: FlowContext,
     router: Arc<Router>,
     incoming_route: IncomingRoute,
+    header_format: HeaderFormat,
 }
 
 #[async_trait::async_trait]
@@ -30,15 +32,15 @@ impl Flow for RequestHeadersFlow {
 }
 
 impl RequestHeadersFlow {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
-        Self { ctx, router, incoming_route }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, header_format: HeaderFormat) -> Self {
+        Self { ctx, router, incoming_route, header_format }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         const MAX_BLOCKS: usize = 1 << 10;
         // Internal consensus logic requires that `max_blocks > mergeset_size_limit`
         let max_blocks = max(MAX_BLOCKS, self.ctx.config.mergeset_size_limit() as usize + 1);
-        let header_format = kaspa_p2p_lib::convert::header::HeaderFormat::from(self.router.properties().protocol_version);
+        let header_format = self.header_format;
 
         loop {
             let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestHeaders)?;

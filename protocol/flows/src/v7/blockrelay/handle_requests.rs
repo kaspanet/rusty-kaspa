@@ -13,6 +13,7 @@ pub struct HandleRelayBlockRequests {
     ctx: FlowContext,
     router: Arc<Router>,
     incoming_route: IncomingRoute,
+    header_format: HeaderFormat,
 }
 
 #[async_trait::async_trait]
@@ -27,8 +28,8 @@ impl Flow for HandleRelayBlockRequests {
 }
 
 impl HandleRelayBlockRequests {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
-        Self { ctx, router, incoming_route }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, header_format: HeaderFormat) -> Self {
+        Self { ctx, router, incoming_route, header_format }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -36,7 +37,6 @@ impl HandleRelayBlockRequests {
         // state even if no new blocks arrive for some reason.
         // Note: in go-kaspad this was done via a dedicated one-time flow.
         self.send_sink().await?;
-        let header_format = HeaderFormat::from(self.router.properties().protocol_version);
 
         loop {
             let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestRelayBlocks)?;
@@ -46,7 +46,7 @@ impl HandleRelayBlockRequests {
 
             for hash in hashes {
                 let block = session.async_get_block(hash).await?;
-                self.router.enqueue(make_response!(Payload::Block, (header_format, &block).into(), request_id)).await?;
+                self.router.enqueue(make_response!(Payload::Block, (self.header_format, &block).into(), request_id)).await?;
                 debug!("relayed block with hash {} to peer {}", hash, self.router);
             }
         }

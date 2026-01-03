@@ -84,8 +84,8 @@ impl IbdFlow {
         incoming_route: IncomingRoute,
         relay_receiver: JobReceiver<Block>,
         body_only_ibd_permitted: bool,
+        header_format: HeaderFormat,
     ) -> Self {
-        let header_format = HeaderFormat::from(router.properties().protocol_version);
         Self { ctx, router, incoming_route, relay_receiver, body_only_ibd_permitted, header_format }
     }
 
