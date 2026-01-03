@@ -28,8 +28,8 @@ pub struct ClientHandler {
     clients: Arc<Mutex<HashMap<i32, Arc<StratumContext>>>>,
     client_counter: AtomicI32,
     min_share_diff: f64,
-    _extranonce_size: i8,       // Kept for backward compatibility, but now auto-detected per client (unused)
-    _max_extranonce: i32,       // Kept for backward compatibility (unused)
+    _extranonce_size: i8, // Kept for backward compatibility, but now auto-detected per client
+    _max_extranonce: i32, // Kept for backward compatibility
     last_template_time: Arc<Mutex<Instant>>,
     last_balance_check: Arc<Mutex<Instant>>,
     share_handler: Arc<ShareHandler>,
