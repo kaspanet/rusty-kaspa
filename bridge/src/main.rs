@@ -43,36 +43,28 @@ enum NodeMode {
 fn split_shell_words(input: &str) -> Result<Vec<String>, anyhow::Error> {
     let mut out = Vec::new();
     let mut cur = String::new();
-    let mut chars = input.chars().peekable();
+    let chars = input.chars().peekable();
     let mut quote: Option<char> = None;
 
-    while let Some(ch) = chars.next() {
+    for ch in chars {
         match quote {
-            Some(q) => {
-                if ch == q {
-                    quote = None;
-                } else if ch == '\\' {
-                    if let Some(next) = chars.next() {
-                        cur.push(next);
-                    }
-                } else {
-                    cur.push(ch);
+            Some(q) if ch == q => {
+                quote = None;
+            }
+            Some(_) => {
+                cur.push(ch);
+            }
+            None if ch == '"' || ch == '\'' => {
+                quote = Some(ch);
+            }
+            None if ch.is_whitespace() => {
+                if !cur.is_empty() {
+                    out.push(cur.clone());
+                    cur.clear();
                 }
             }
             None => {
-                if ch.is_whitespace() {
-                    if !cur.is_empty() {
-                        out.push(std::mem::take(&mut cur));
-                    }
-                } else if ch == '\'' || ch == '"' {
-                    quote = Some(ch);
-                } else if ch == '\\' {
-                    if let Some(next) = chars.next() {
-                        cur.push(next);
-                    }
-                } else {
-                    cur.push(ch);
-                }
+                cur.push(ch);
             }
         }
     }
@@ -86,6 +78,35 @@ fn split_shell_words(input: &str) -> Result<Vec<String>, anyhow::Error> {
     }
 
     Ok(out)
+}
+
+/// Log the bridge configuration at startup
+fn log_bridge_configuration(config: &app_config::BridgeConfig) {
+    let instance_count = config.instances.len();
+    tracing::info!("----------------------------------");
+    tracing::info!("initializing bridge ({} instance{})", instance_count, if instance_count > 1 { "s" } else { "" });
+    tracing::info!("\tkaspad:          {} (shared)", config.global.kaspad_address);
+    tracing::info!("\tblock wait:      {:?}", config.global.block_wait_time);
+    tracing::info!("\tprint stats:     {}", config.global.print_stats);
+    tracing::info!("\tvar diff:        {}", config.global.var_diff);
+    tracing::info!("\tshares per min:  {}", config.global.shares_per_min);
+    tracing::info!("\tvar diff stats:  {}", config.global.var_diff_stats);
+    tracing::info!("\tpow2 clamp:      {}", config.global.pow2_clamp);
+    tracing::info!("\textranonce:      auto-detected per client");
+    tracing::info!("\thealth check:    {}", config.global.health_check_port);
+
+    for (idx, instance) in config.instances.iter().enumerate() {
+        tracing::info!("\t--- Instance {} ---", idx + 1);
+        tracing::info!("\t  stratum:       {}", instance.stratum_port);
+        tracing::info!("\t  min diff:      {}", instance.min_share_diff);
+        if let Some(ref prom_port) = instance.prom_port {
+            tracing::info!("\t  prom:          {}", prom_port);
+        }
+        if let Some(log_to_file) = instance.log_to_file {
+            tracing::info!("\t  log to file:   {}", log_to_file);
+        }
+    }
+    tracing::info!("----------------------------------");
 }
 
 async fn kaspa_api_with_retry(kaspad_address: String, block_wait_time: Duration) -> Result<Arc<KaspaApi>, anyhow::Error> {
@@ -118,6 +139,10 @@ async fn main() -> Result<(), anyhow::Error> {
     // Load config first to check if file logging is enabled
     let config_path = cli.config.as_path();
     let fallback_path = std::path::Path::new("bridge").join(config_path);
+    // Build candidate paths for config file search:
+    // 1. Direct path as specified
+    // 2. Fallback path under ./bridge/
+    // 3-5. Paths relative to executable directory (for different deployment scenarios)
     let exe_base = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf()));
     let exe_root = exe_base.as_ref().and_then(|p| p.parent()).and_then(|p| p.parent()).map(|p| p.to_path_buf());
 
@@ -182,31 +207,7 @@ async fn main() -> Result<(), anyhow::Error> {
         tracing::warn!("config.yaml not found, using defaults (requested: {:?}, cwd: {:?})", config_path, cwd);
     }
 
-    let instance_count = config.instances.len();
-    tracing::info!("----------------------------------");
-    tracing::info!("initializing bridge ({} instance{})", instance_count, if instance_count > 1 { "s" } else { "" });
-    tracing::info!("\tkaspad:          {} (shared)", config.global.kaspad_address);
-    tracing::info!("\tblock wait:      {:?}", config.global.block_wait_time);
-    tracing::info!("\tprint stats:     {}", config.global.print_stats);
-    tracing::info!("\tvar diff:        {}", config.global.var_diff);
-    tracing::info!("\tshares per min:  {}", config.global.shares_per_min);
-    tracing::info!("\tvar diff stats:  {}", config.global.var_diff_stats);
-    tracing::info!("\tpow2 clamp:      {}", config.global.pow2_clamp);
-    tracing::info!("\textranonce:      auto-detected per client");
-    tracing::info!("\thealth check:    {}", config.global.health_check_port);
-
-    for (idx, instance) in config.instances.iter().enumerate() {
-        tracing::info!("\t--- Instance {} ---", idx + 1);
-        tracing::info!("\t  stratum:       {}", instance.stratum_port);
-        tracing::info!("\t  min diff:      {}", instance.min_share_diff);
-        if let Some(ref prom_port) = instance.prom_port {
-            tracing::info!("\t  prom:          {}", prom_port);
-        }
-        if let Some(log_to_file) = instance.log_to_file {
-            tracing::info!("\t  log to file:   {}", log_to_file);
-        }
-    }
-    tracing::info!("----------------------------------");
+    log_bridge_configuration(&config);
 
     // Start global health check server if port is specified
     if !config.global.health_check_port.is_empty() {
@@ -277,7 +278,7 @@ async fn main() -> Result<(), anyhow::Error> {
         instance_handles.push(handle);
     }
 
-    tracing::info!("All {} instance(s) started, waiting for completion...", instance_count);
+    tracing::info!("All {} instance(s) started, waiting for completion...", config.instances.len());
 
     let bridge_fut = async {
         let result = try_join_all(instance_handles).await;
