@@ -486,7 +486,7 @@ impl KaspaApi {
             if verbose {
                 warn!("Kaspa is not synced, waiting for sync before starting bridge");
             }
-            sleep(Duration::from_secs(5)).await;
+            sleep(Duration::from_secs(10)).await;
         }
 
         Ok(())
