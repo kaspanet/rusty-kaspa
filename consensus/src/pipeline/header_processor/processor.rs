@@ -37,7 +37,7 @@ use kaspa_consensus_core::{
     BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::prelude::{StoreResultExt, StoreResultUnitExt};
 use kaspa_hashes::Hash;
 use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
@@ -52,7 +52,7 @@ pub struct HeaderProcessingContext {
     pub header: Arc<Header>,
     pub pruning_point: Hash,
     pub block_level: BlockLevel,
-    pub known_parents: Vec<BlockHashes>,
+    pub known_direct_parents: BlockHashes,
 
     // Staging data
     pub ghostdag_data: Option<Arc<GhostdagData>>,
@@ -69,14 +69,14 @@ impl HeaderProcessingContext {
         header: Arc<Header>,
         block_level: BlockLevel,
         pruning_point: Hash,
-        known_parents: Vec<BlockHashes>,
+        known_direct_parents: BlockHashes,
     ) -> Self {
         Self {
             hash,
             header,
             block_level,
             pruning_point,
-            known_parents,
+            known_direct_parents,
             ghostdag_data: None,
             block_window_for_difficulty: None,
             mergeset_non_daa: None,
@@ -84,11 +84,6 @@ impl HeaderProcessingContext {
             merge_depth_root: None,
             finality_point: None,
         }
-    }
-
-    /// Returns the direct parents of this header after removal of unknown parents
-    pub fn direct_known_parents(&self) -> &[Hash] {
-        &self.known_parents[0]
     }
 
     /// Returns the primary (level 0) GHOSTDAG data of this header.
@@ -118,7 +113,7 @@ pub struct HeaderProcessor {
     db: Arc<DB>,
 
     // Stores
-    pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
+    pub(super) relations_store: Arc<RwLock<DbRelationsStore>>,
     pub(super) reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub(super) reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     pub(super) ghostdag_store: Arc<DbGhostdagStore>,
@@ -169,7 +164,7 @@ impl HeaderProcessor {
             genesis: params.genesis.clone(),
             db,
 
-            relations_stores: storage.relations_stores.clone(),
+            relations_store: storage.relations_store.clone(),
             reachability_store: storage.reachability_store.clone(),
             reachability_relations_store: storage.reachability_relations_store.clone(),
             ghostdag_store: storage.ghostdag_store.clone(),
@@ -258,7 +253,7 @@ impl HeaderProcessor {
     fn process_header(&self, task: &BlockTask) -> BlockProcessResult<BlockStatus> {
         let _prune_guard = self.pruning_lock.blocking_read();
         let header = &task.block().header;
-        let status_option = self.statuses_store.read().get(header.hash).unwrap_option();
+        let status_option = self.statuses_store.read().get(header.hash).optional().unwrap();
 
         match status_option {
             Some(StatusInvalid) => return Err(RuleError::KnownInvalid),
@@ -313,28 +308,24 @@ impl HeaderProcessor {
             header.clone(),
             block_level,
             self.pruning_point_store.read().pruning_point().unwrap(),
-            self.collect_known_parents(header, block_level),
+            self.collect_known_direct_parents(header),
         )
     }
 
-    /// Collects the known parents for all block levels
-    fn collect_known_parents(&self, header: &Header, block_level: BlockLevel) -> Vec<Arc<Vec<Hash>>> {
-        let relations_read = self.relations_stores.read();
-        (0..=block_level)
-            .map(|level| {
-                Arc::new(
-                    self.parents_manager
-                        .parents_at_level(header, level)
-                        .iter()
-                        .copied()
-                        .filter(|parent| relations_read[level as usize].has(*parent).unwrap())
-                        .collect_vec()
-                        // This kicks-in only for trusted blocks or for level > 0. If an ordinary block is 
-                        // missing direct parents it will fail validation.
-                        .push_if_empty(ORIGIN),
-                )
-            })
-            .collect_vec()
+    fn collect_known_direct_parents(&self, header: &Header) -> BlockHashes {
+        let relations_read = self.relations_store.read();
+        Arc::new(
+            header
+                .direct_parents()
+                .iter()
+                .copied()
+                // filter out parents not part of the kept contiguous Dag - which is representd by the stored relations 
+                .filter(|&parent| relations_read.has(parent).unwrap())
+                .collect_vec()
+                // This kicks-in only for trusted blocks. If an ordinary block is 
+                // missing direct parents it will fail validation.
+                .push_if_empty(ORIGIN),
+        )
     }
 
     /// Runs the GHOSTDAG algorithm and writes the data into the context (if hasn't run already)
@@ -342,8 +333,9 @@ impl HeaderProcessor {
         let ghostdag_data = self
             .ghostdag_store
             .get_data(ctx.hash)
-            .unwrap_option()
-            .unwrap_or_else(|| Arc::new(self.ghostdag_manager.ghostdag(&ctx.known_parents[0])));
+            .optional()
+            .unwrap()
+            .unwrap_or_else(|| Arc::new(self.ghostdag_manager.ghostdag(&ctx.known_direct_parents)));
         self.counters.mergeset_counts.fetch_add(ghostdag_data.mergeset_size() as u64, Ordering::Relaxed);
         ctx.ghostdag_data = Some(ghostdag_data);
     }
@@ -399,16 +391,12 @@ impl HeaderProcessor {
         // Relations and statuses
         //
 
-        let reachability_parents = ctx.known_parents[0].clone();
-
-        let mut relations_write = self.relations_stores.write();
-        ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
-            relations_write[level].insert_batch(&mut batch, header.hash, parents_by_level).unwrap();
-        });
+        let mut relations_write = self.relations_store.write();
+        relations_write.insert_batch(&mut batch, ctx.hash, ctx.known_direct_parents.clone()).unwrap();
 
         // Write reachability relations. These relations are only needed during header pruning
         let mut reachability_relations_write = self.reachability_relations_store.write();
-        reachability_relations_write.insert_batch(&mut batch, ctx.hash, reachability_parents).unwrap();
+        reachability_relations_write.insert_batch(&mut batch, ctx.hash, ctx.known_direct_parents).unwrap();
 
         let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
@@ -435,13 +423,10 @@ impl HeaderProcessor {
         let mut batch = WriteBatch::default();
 
         // This data might have been already written when applying the pruning proof.
-        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).unwrap_or_exists();
+        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).idempotent().unwrap();
 
-        let mut relations_write = self.relations_stores.write();
-        ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
-            // This data might have been already written when applying the pruning proof.
-            relations_write[level].insert_batch(&mut batch, ctx.hash, parents_by_level).unwrap_or_exists();
-        });
+        let mut relations_write = self.relations_store.write();
+        relations_write.insert_batch(&mut batch, ctx.hash, ctx.known_direct_parents).idempotent().unwrap();
 
         let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
@@ -473,7 +458,7 @@ impl HeaderProcessor {
             genesis_header.clone(),
             self.max_block_level,
             self.genesis.hash,
-            (0..=self.max_block_level).map(|_| BlockHashes::new(vec![ORIGIN])).collect(),
+            BlockHashes::new(vec![ORIGIN]),
         );
         ctx.ghostdag_data = Some(Arc::new(self.ghostdag_manager.genesis_ghostdag_data()));
         ctx.mergeset_non_daa = Some(Default::default());
@@ -484,14 +469,13 @@ impl HeaderProcessor {
     }
 
     pub fn init(&self) {
-        if self.relations_stores.read()[0].has(ORIGIN).unwrap() {
+        if self.relations_store.read().has(ORIGIN).unwrap() {
             return;
         }
 
         let mut batch = WriteBatch::default();
-        let mut relations_write = self.relations_stores.write();
-        (0..=self.max_block_level)
-            .for_each(|level| relations_write[level as usize].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap());
+        let mut relations_write = self.relations_store.write();
+        relations_write.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
         let mut hst_write = self.headers_selected_tip_store.write();
         hst_write.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
         self.db.write(batch).unwrap();

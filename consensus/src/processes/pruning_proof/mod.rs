@@ -26,7 +26,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::info;
-use kaspa_database::{prelude::StoreResultExtensions, utils::DbLifetime};
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use thiserror::Error;
@@ -37,7 +37,7 @@ use crate::{
         storage::ConsensusStorage,
     },
     model::{
-        services::{reachability::MTReachabilityService, relations::MTRelationsService},
+        services::reachability::MTReachabilityService,
         stores::{
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagStoreReader},
@@ -58,7 +58,7 @@ use crate::{
     processes::window::WindowType,
 };
 
-use super::{ghostdag::protocol::GhostdagManager, window::WindowManager};
+use super::window::WindowManager;
 
 #[derive(Error, Debug)]
 enum PruningProofManagerInternalError {
@@ -74,6 +74,7 @@ enum PruningProofManagerInternalError {
     #[error("missing headers to build proof: {0}")]
     NotEnoughHeadersToBuildProof(String),
 }
+
 type PruningProofManagerInternalResult<T> = std::result::Result<T, PruningProofManagerInternalError>;
 
 struct CachedPruningPointData<T: ?Sized> {
@@ -87,16 +88,6 @@ impl<T> Clone for CachedPruningPointData<T> {
     }
 }
 
-struct TempProofContext {
-    headers_store: Arc<DbHeadersStore>,
-    ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
-    relations_stores: Vec<DbRelationsStore>,
-    reachability_stores: Vec<Arc<RwLock<DbReachabilityStore>>>,
-    ghostdag_managers:
-        Vec<GhostdagManager<DbGhostdagStore, DbRelationsStore, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>>,
-    db_lifetime: DbLifetime,
-}
-
 pub struct PruningProofManager {
     db: Arc<DB>,
 
@@ -105,8 +96,7 @@ pub struct PruningProofManager {
     reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     ghostdag_store: Arc<DbGhostdagStore>,
-    relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
-    level_relations_services: Vec<MTRelationsService<DbRelationsStore>>,
+    relations_store: Arc<RwLock<DbRelationsStore>>,
     pruning_point_store: Arc<RwLock<DbPruningStore>>,
     past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     virtual_stores: Arc<RwLock<VirtualStores>>,
@@ -158,7 +148,7 @@ impl PruningProofManager {
             reachability_relations_store: storage.reachability_relations_store.clone(),
             reachability_service,
             ghostdag_store: storage.ghostdag_store.clone(),
-            relations_stores: storage.relations_stores.clone(),
+            relations_store: storage.relations_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
             pruning_meta_stores: storage.pruning_meta_stores.clone(),
             past_pruning_points_store: storage.past_pruning_points_store.clone(),
@@ -184,10 +174,6 @@ impl PruningProofManager {
             ghostdag_manager,
 
             is_consensus_exiting,
-
-            level_relations_services: (0..=max_block_level)
-                .map(|level| MTRelationsService::new(storage.relations_stores.clone().clone(), level))
-                .collect_vec(),
         }
     }
 
@@ -241,34 +227,6 @@ impl PruningProofManager {
         proof.iter().map(|l| l.len()).sum::<usize>().min((approx_unique_full_levels + 1) * self.pruning_proof_m as usize)
     }
 
-    // Used in build and validate
-    fn block_at_depth(
-        &self,
-        ghostdag_store: &impl GhostdagStoreReader,
-        high: Hash,
-        depth: u64,
-    ) -> Result<Hash, PruningProofManagerInternalError> {
-        let high_gd = ghostdag_store
-            .get_compact_data(high)
-            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
-        let mut current_gd = high_gd;
-        let mut current = high;
-        while current_gd.blue_score + depth >= high_gd.blue_score {
-            if current_gd.selected_parent.is_origin() {
-                break;
-            }
-            let prev = current;
-            current = current_gd.selected_parent;
-            current_gd = ghostdag_store.get_compact_data(current).map_err(|err| {
-                PruningProofManagerInternalError::BlockAtDepth(format!(
-                    "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
-                    high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
-                ))
-            })?;
-        }
-        Ok(current)
-    }
-
     /// Returns the k + 1 chain blocks below this hash (inclusive). If data is missing
     /// the search is halted and a partial chain is returned.
     ///
@@ -278,7 +236,7 @@ impl PruningProofManager {
         let mut current = hash;
         for _ in 0..=ghostdag_k {
             hashes.push(current);
-            let Some(parent) = self.ghostdag_store.get_selected_parent(current).unwrap_option() else {
+            let Some(parent) = self.ghostdag_store.get_selected_parent(current).optional().unwrap() else {
                 break;
             };
             if parent == self.genesis_hash || parent == blockhash::ORIGIN {
@@ -360,8 +318,11 @@ impl PruningProofManager {
                 let ghostdag = (&*self.ghostdag_store.get_data(current).unwrap()).into();
                 e.insert(TrustedHeader { header, ghostdag });
             }
-            let parents = self.relations_stores.read()[0].get_parents(current).unwrap();
-            for parent in parents.iter().copied() {
+
+            // The relation store signifies precisely the node's contiguous Dag segment -
+            // direct parents not included in it are not taken into account in the bfs traversal
+            let known_parents = self.relations_store.read().get_parents(current).unwrap();
+            for parent in known_parents.iter().copied() {
                 if visited.insert(parent) {
                     queue.push_back(parent);
                 }
@@ -415,3 +376,33 @@ impl PruningProofManager {
         }
     }
 }
+
+trait GhostdagReaderExt
+where
+    Self: GhostdagStoreReader,
+{
+    /// Extension method to get the block at blue depth `depth` from `high` via this store reader. Used by build and validate.
+    fn block_at_depth(&self, high: Hash, depth: u64) -> Result<Hash, PruningProofManagerInternalError> {
+        let high_gd = self
+            .get_compact_data(high)
+            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
+        let mut current_gd = high_gd;
+        let mut current = high;
+        while current_gd.blue_score + depth >= high_gd.blue_score {
+            if current_gd.selected_parent.is_origin() {
+                break;
+            }
+            let prev = current;
+            current = current_gd.selected_parent;
+            current_gd = self.get_compact_data(current).map_err(|err| {
+                PruningProofManagerInternalError::BlockAtDepth(format!(
+                    "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
+                    high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
+                ))
+            })?;
+        }
+        Ok(current)
+    }
+}
+
+impl<T: GhostdagStoreReader> GhostdagReaderExt for T {}
