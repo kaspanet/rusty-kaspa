@@ -84,6 +84,7 @@ message BlockHeader{
 
 message BlockLevelParents {
   repeated Hash parentHashes = 1;
+  uint32 cumulativeLevel = 2;
 }
 
 message Hash{
