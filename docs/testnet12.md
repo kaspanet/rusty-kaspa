@@ -2,8 +2,6 @@
 
 *Testnet 12* is the test network running Kaspa with covenants. The goal of this document is to provide a quick guide for anyone who wants to participate.
 
-In the future testnet 12 will act as a staging zone for all sorts of experiments, allowing us to stress test various approaches and ideas on a global scale with the participation of the community. The approaches we decide to adopt will then be stress tested for longer periods on testnet 10 before being incorporated into the mainnet.
-
 ## Overview
 
 On the software side, participating requires three components:
@@ -56,9 +54,9 @@ If you want to transmit transactions, first create a Rothschild wallet
 3. Put some money into the wallet. This could be done by either mining to that wallet (see below) or asking other participants to send money to your public address in the \#testnet Discord channel.
 4. Once the wallet has been funded, run Rothschild with the private key:
    ```
-   rothschild --private-key <private-key> -t=50
+   rothschild --private-key <private-key> -t=5
    ```
-  The last parameter ``-t=50`` means Rothschild will attempt broadcasting 50 transactions per second. We encourage participants to run with different TPS values. However, in order to encourage transaction spread and to simulate organic usage we highly recommend not to go above 100 TPS.
+  The last parameter ``-t=5`` means Rothschild will attempt broadcasting 5 transactions per second. We encourage participants to run with different TPS values. However, in order to encourage transaction spread and to simulate organic usage we highly recommend not to go above 100 TPS.
 
 Like kaspad, the Rothschild window should remain open and undisturbed.
 
