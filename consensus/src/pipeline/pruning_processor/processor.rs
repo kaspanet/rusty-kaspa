@@ -810,6 +810,8 @@ impl PruningProcessor {
         );
 
         if self.config.enable_sanity_checks {
+            // Ensure the pruning changes are persisted before rebuilding proofs from storage.
+            self.flush_prune_batch(&mut prune_batch, &mut metrics);
             self.assert_proof_rebuilding(proof, new_pruning_point);
             self.assert_data_rebuilding(data, new_pruning_point);
         }
