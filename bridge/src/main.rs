@@ -200,8 +200,6 @@ async fn main() -> Result<(), anyhow::Error> {
         argv.extend(node_args.iter().map(OsString::from));
         let args = kaspad_args::Args::parse(argv).map_err(|e| anyhow::anyhow!("{}", e))?;
         inprocess_node = Some(InProcessNode::start_from_args(args)?);
-
-        tracing_setup::try_init_log_tracer();
     }
 
     if loaded_from.is_none() {
