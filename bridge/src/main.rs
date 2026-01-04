@@ -133,6 +133,18 @@ async fn main() -> Result<(), anyhow::Error> {
     }
     node_args.extend(cli.node_arg.iter().cloned());
 
+    // If no node args provided (double-click mode), add default args for inprocess mode
+    // to avoid conflicts with external kaspad instances
+    if node_args.is_empty() {
+        node_args.extend_from_slice(&[
+            "--datadir".to_string(),
+            "bridge-datadir".to_string(),
+            "--rpclisten".to_string(),
+            "127.0.0.1:16111".to_string(), // Different port to avoid conflicts
+            "--utxoindex".to_string(),
+        ]);
+    }
+
     let inferred_mode = NodeMode::Inprocess;
     let node_mode = cli.node_mode.unwrap_or(inferred_mode);
 
