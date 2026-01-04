@@ -1,5 +1,6 @@
 use crate::{hashing, BlueWorkType};
 use borsh::{BorshDeserialize, BorshSerialize};
+use itertools::Itertools;
 use kaspa_hashes::Hash;
 use kaspa_utils::{
     iter::{IterExtensions, IterExtensionsRle},
@@ -92,6 +93,24 @@ impl TryFrom<Vec<Vec<Hash>>> for CompressedParents {
 
         // Casting count from usize to u8 is safe because of the check above
         Ok(Self(parents.into_iter().rle_cumulative().map(|(count, level)| (count as u8, level)).collect()))
+    }
+}
+
+impl TryFrom<Vec<(u8, Vec<Hash>)>> for CompressedParents {
+    type Error = CompressedParentsError;
+    fn try_from(parents: Vec<(u8, Vec<Hash>)>) -> Result<Self, Self::Error> {
+        for ((last_cumulative_level, last_parents), (cumulative_level, parents)) in parents.iter().tuple_windows() {
+            // Make sure any next cumulative_level is strictly greater than the last
+            if cumulative_level <= last_cumulative_level {
+                return Err(CompressedParentsError::LevelsNotStrictlyIncreasing);
+            }
+            // Verify compression, any consecutive runs must have different parents
+            if last_parents == parents {
+                return Err(CompressedParentsError::NotFullyCompressed);
+            }
+        }
+
+        Ok(Self(parents))
     }
 }
 
