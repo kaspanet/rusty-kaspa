@@ -133,7 +133,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
     node_args.extend(cli.node_arg.iter().cloned());
 
-    let inferred_mode = if !node_args.is_empty() { NodeMode::Inprocess } else { NodeMode::Inprocess };
+    let inferred_mode = NodeMode::Inprocess;
     let node_mode = cli.node_mode.unwrap_or(inferred_mode);
 
     // Load config first to check if file logging is enabled
