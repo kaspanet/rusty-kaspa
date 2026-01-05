@@ -23,7 +23,7 @@ fn compressed_parents_from_protowire(
         let parents = run.parent_hashes.iter().map(|h| RpcHash::from_str(h).map_err(RpcError::from)).collect::<RpcResult<Vec<_>>>()?;
         tuples.push((cumulative_level, parents));
     }
-    Ok(kaspa_rpc_core::RpcCompressedParents::new(tuples))
+    Ok(tuples.try_into()?)
 }
 
 // ----------------------------------------------------------------------------

@@ -428,7 +428,8 @@ mod mockery {
 
     impl Mock for RpcCompressedParents {
         fn mock() -> Self {
-            RpcCompressedParents::new(vec![])
+            let empty: Vec<(u8, Vec<Hash>)> = vec![];
+            empty.try_into().expect("It should not fail.")
         }
     }
 

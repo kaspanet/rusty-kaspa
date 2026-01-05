@@ -84,7 +84,7 @@ impl TryCastFromJs for CompressedParents {
                 })
                 .collect::<std::result::Result<Vec<(u8, Vec<Hash>)>, Error>>()?;
 
-            Ok(Self { inner: native::CompressedParents::new(runs) }.into())
+            Ok(Self { inner: runs.try_into()? }.into())
         })
     }
 }

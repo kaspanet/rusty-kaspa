@@ -19,12 +19,6 @@ use std::mem::size_of;
 pub struct CompressedParents(Vec<(u8, Vec<Hash>)>);
 
 impl CompressedParents {
-    /// Creates a `CompressedParents` from precomputed runs `(cumulative_level, parents)`.
-    /// The caller must guarantee the runs are valid (monotonic cumulative levels, <= 255, etc.).
-    pub fn new(runs: Vec<(u8, Vec<Hash>)>) -> Self {
-        Self(runs)
-    }
-
     pub fn expanded_len(&self) -> usize {
         self.0.last().map(|(cum, _)| *cum as usize).unwrap_or(0)
     }
