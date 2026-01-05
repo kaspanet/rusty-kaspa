@@ -8,9 +8,7 @@ use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
 use kaspa_core::{debug, time::unix_now, warn};
 use kaspa_database::{
-    prelude::{
-        BatchDbWriter, CachePolicy, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB,
-    },
+    prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExt, DB},
     registry::DatabaseStorePrefixes,
 };
 
@@ -59,7 +57,7 @@ pub struct MultiConsensusMetadata {
     version: u32,
 }
 
-pub const LATEST_DB_VERSION: u32 = 5;
+pub const LATEST_DB_VERSION: u32 = 6;
 impl Default for MultiConsensusMetadata {
     fn default() -> Self {
         Self {
@@ -92,7 +90,7 @@ impl MultiConsensusManagementStore {
     }
 
     fn init(&mut self) {
-        if self.metadata.read().unwrap_option().is_none() {
+        if self.metadata.read().optional().unwrap().is_none() {
             let mut batch = WriteBatch::default();
             let metadata = MultiConsensusMetadata::default();
             self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();
