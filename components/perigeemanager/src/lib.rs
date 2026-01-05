@@ -412,8 +412,8 @@ impl PerigeeManager {
 
         // 1. IBD is not running
         !is_ibd_running &&
-        // 2. We have at least one perigee peer to choose from
-        amount_of_perigee_peer.saturating_sub(self.config.leverage_target) > 0
+        // 2. We are within bounds to evict at least one peer - else we prefer to wait on more peers joining perigee first. 
+        amount_of_perigee_peer > (self.config.perigee_outbound_target - self.config.exploration_target)
     }
 
     fn block_threshold_reached(&self) -> bool {

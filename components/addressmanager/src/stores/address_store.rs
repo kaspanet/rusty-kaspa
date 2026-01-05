@@ -116,6 +116,7 @@ impl AddressesStoreReader for DbAddressesStore {
         self.access.read(key.into())
     }
 
+    /// Get persisted leveraged perigee addresses, ordered by their ascending perigee rank (low is better).
     fn get_perigee_addresses(&self) -> StoreResult<Vec<NetAddress>> {
         self.perigee_access
             .iterator()
@@ -131,6 +132,9 @@ impl AddressesStore for DbAddressesStore {
         self.access.write(DirectDbWriter::new(&self.db), key.into(), entry)
     }
 
+    /// Replaces all existing persisted perigee addresses with the given set of addresses.
+    /// note: the order of the given addresses determines their perigee rank (low is better).
+    /// this is important for order of retrieval of leveraged perigee addresses between restarts.
     fn set_new_perigee_addresses(&mut self, entries: Vec<NetAddress>) -> StoreResult<()> {
         // First, clear existing perigee addresses
         self.perigee_access.delete_all(DirectDbWriter::new(&self.db))?;

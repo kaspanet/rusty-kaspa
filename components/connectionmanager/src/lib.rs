@@ -124,12 +124,7 @@ impl ConnectionManager {
         );
     }
 
-    fn spawn_evaluate_perigee_round(self: &Arc<Self>, peer_by_address: Arc<HashMap<SocketAddr, Peer>>) -> JoinHandle<()> {
-        let (cmgr, pba) = (self.clone(), peer_by_address.clone());
-        tokio::spawn(async move { cmgr.evaluate_perigee_round(pba).await })
-    }
-
-    async fn evaluate_perigee_round(self: &Arc<Self>, peer_by_address: Arc<HashMap<SocketAddr, Peer>>) {
+    async fn evaluate_perigee_round(self: &Arc<Self>, peer_by_address: Arc<HashMap<SocketAddr, Peer>>) -> bool {
         // evaluate the round
         let (to_leverage, to_evict, has_leveraged_changed) = {
             let mut perigee_manager_guard = self.perigee_manager.as_ref().unwrap().lock();
@@ -143,12 +138,7 @@ impl ConnectionManager {
         // Terminate evicted peers
         let to_terminate = Vec::from_iter(to_evict.iter().filter_map(|p| peer_by_address.values().find(|peer| peer.key() == *p)));
         self.terminate_peers(&to_terminate).await;
-
-        // clear data for new round after terminating evictions.
-        {
-            let mut perigee_manager_guard = self.perigee_manager.as_ref().unwrap().lock();
-            perigee_manager_guard.start_new_round();
-        }
+        let peers_evicted = !to_terminate.is_empty();
 
         // save leveraged peers to db if persistence is enabled and there was a change in leveraged peers.
         if has_leveraged_changed && self.perigee_config.as_ref().unwrap().persistence {
@@ -188,6 +178,15 @@ impl ConnectionManager {
                 .filter_map(|(addr, p)| if to_evict.contains(&p.key()) { Some(addr) } else { None })
                 .collect::<Vec<&SocketAddr>>()
         );
+
+        peers_evicted
+    }
+
+    async fn reset_perigee_round(self: &Arc<Self>) {
+        if let Some(perigee_manager) = &self.perigee_manager {
+            let mut perigee_manager_guard = perigee_manager.lock();
+            perigee_manager_guard.start_new_round();
+        }
     }
 
     fn spawn_handle_event(self: Arc<Self>, event: ConnectionManagerEvent) -> JoinHandle<()> {
@@ -214,7 +213,7 @@ impl ConnectionManager {
                     // and perigee is active, and needs to be initialized via db persistence.
 
                     // first we await populating outbound connections
-                    self.spawn_handle_outbound_connections(peer_by_address.clone()).await.unwrap();
+                    self.handle_outbound_connections(peer_by_address.clone()).await;
 
                     // now we can reinstate peer_by_address to include the newly connected peers
                     let peer_by_address = self.get_peers_by_address();
@@ -230,19 +229,27 @@ impl ConnectionManager {
                 {
                     // This is a round where perigee should be evaluated and processed.
 
-                    // We await this, so that `spawn_handle_outbound_connections` is called after the perigee round evaluation is executed,
-                    // this will lead to `spawn_handle_outbound_connections` to handle perigee re-population in the aftermath of the round evaluation.
-                    self.spawn_evaluate_perigee_round(peer_by_address.clone()).await.unwrap();
+                    // We await this (not spawn), so that `spawn_handle_outbound_connections` is called after the perigee round evaluation is executed,
+                    let peers_evicted = self.evaluate_perigee_round(peer_by_address.clone()).await;
 
+                    let peer_by_address = if peers_evicted {
+                        // since we have terminated peers via perigee, we should re-query this.
+                        self.get_peers_by_address()
+                    } else {
+                        peer_by_address
+                    };
+
+                    // reset the perigee round state
+                    self.reset_perigee_round().await;
                     // continue with the regular congruent connection handling
-                    self.spawn_handle_connection_requests(peer_by_address.clone());
                     self.spawn_handle_outbound_connections(peer_by_address.clone());
                     self.spawn_handle_inbound_connections(peer_by_address.clone());
+                    self.spawn_handle_connection_requests(peer_by_address.clone());
                 } else {
                     // regular congruent connection handling
-                    self.spawn_handle_connection_requests(peer_by_address.clone());
                     self.spawn_handle_outbound_connections(peer_by_address.clone());
                     self.spawn_handle_inbound_connections(peer_by_address.clone());
+                    self.spawn_handle_connection_requests(peer_by_address.clone());
                 }
             }
             ConnectionManagerEvent::AddPeer => {
