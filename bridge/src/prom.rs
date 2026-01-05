@@ -11,7 +11,7 @@ const WORKER_LABELS: &[&str] = &["instance", "worker", "miner", "wallet", "ip"];
 const INVALID_LABELS: &[&str] = &["instance", "worker", "miner", "wallet", "ip", "type"];
 
 /// Block labels
-const BLOCK_LABELS: &[&str] = &["instance", "worker", "miner", "wallet", "ip", "nonce", "bluescore", "hash"];
+const BLOCK_LABELS: &[&str] = &["instance", "worker", "miner", "wallet", "ip", "nonce", "bluescore", "timestamp", "hash"];
 
 /// Error labels
 const ERROR_LABELS: &[&str] = &["instance", "wallet", "error"];
@@ -218,8 +218,11 @@ pub fn record_block_found(worker: &WorkerContext, nonce: u64, bluescore: u64, ha
         let mut labels = worker.labels();
         let nonce_str = nonce.to_string();
         let bluescore_str = bluescore.to_string();
+        let timestamp_str =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs().to_string();
         labels.push(&nonce_str);
         labels.push(&bluescore_str);
+        labels.push(&timestamp_str);
         labels.push(&hash);
         gauge.with_label_values(&labels).set(1.0);
     }
@@ -348,6 +351,7 @@ struct StatsResponse {
 struct BlockInfo {
     worker: String,
     wallet: String,
+    timestamp: String,
     hash: String,
     nonce: String,
     bluescore: String,
@@ -393,6 +397,7 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
                     let labels = metric.get_label();
                     let mut worker = String::new();
                     let mut wallet = String::new();
+                    let mut timestamp = String::new();
                     let mut hash = String::new();
                     let mut nonce = String::new();
                     let mut bluescore = String::new();
@@ -401,6 +406,7 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
                         match label.get_name() {
                             "worker" => worker = label.get_value().to_string(),
                             "wallet" => wallet = label.get_value().to_string(),
+                            "timestamp" => timestamp = label.get_value().to_string(),
                             "hash" => hash = label.get_value().to_string(),
                             "nonce" => nonce = label.get_value().to_string(),
                             "bluescore" => bluescore = label.get_value().to_string(),
@@ -410,7 +416,14 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
 
                     if !hash.is_empty() && !block_set.contains(&hash) {
                         block_set.insert(hash.clone());
-                        stats.blocks.push(BlockInfo { worker: worker.clone(), wallet: wallet.clone(), hash, nonce, bluescore });
+                        stats.blocks.push(BlockInfo {
+                            worker: worker.clone(),
+                            wallet: wallet.clone(),
+                            timestamp,
+                            hash,
+                            nonce,
+                            bluescore,
+                        });
                         stats.totalBlocks += 1;
                     }
                 }
