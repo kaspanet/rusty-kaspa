@@ -225,7 +225,7 @@ impl PerigeeManager {
         } else {
             for pk in &self.last_round_leveraged_peers {
                 peer_table.remove(pk);
-            };
+            }
             self.last_round_leveraged_peers.clone()
         };
 
