@@ -9,9 +9,8 @@ use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    dequeue_with_timeout, dequeue_with_timestamp, make_message, make_request,
     convert::header::{HeaderFormat, Versioned},
-    dequeue, dequeue_with_timeout, make_message, make_request,
+    dequeue_with_timeout, dequeue_with_timestamp, make_message, make_request,
     pb::{kaspad_message::Payload, InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage},
     IncomingRoute, Router, SharedIncomingRoute,
 };
