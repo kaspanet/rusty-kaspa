@@ -30,21 +30,20 @@ Testnet12 uses a dedicated P2P port (16311) so that nodes from the usual testnet
 We reiterate that only the included miner should be used to maintain a level playing field.
 
 First, we set-up a node:
-1. Download and extract the [rusty-kaspa binaries](https://github.com/kaspanet/rusty-kaspa/releases). Alternatively, you can compile it from source yourself by following the instructions [here](https://github.com/kaspanet/rusty-kaspa/blob/master/README.md). The rest of the instructions are written assuming the former option. If you choose to locally compile the code, replace any command of the form ``<program> <arguments>`` with ``cargo run --bin <program> --release -- <arguments>`` (see example in the next item). All actions described below should be performed on a command line window where you navigated to the directory into which the binaries were extracted.
+1. Clone the `covpp` branch of the `kaspad` repository:
+```
+git clone --branch covpp https://github.com/kaspanet/rusty-kaspa.git
+```
 2. Start the ``kaspad`` client with ``utxoindex`` enabled:
 
 ```
-kaspad --testnet --netsuffix=12 --utxoindex
+cargo run --release --bin kaspad -- --testnet --netsuffix=12 --utxoindex
 ```
   It is **very important** not to forget the ``--netsuffix=12`` flag, otherwise your node will connect to mainnet or to the default testnet.
-  If you complied the code yourself, you should instead run
-```
-cargo run --bin kaspad --release -- --testnet --netsuffix=12 --utxoindex
-```
   Leave this window open, there is no need to touch it as long as the node is running. Closing it will stop the node.
   
 If you want to transmit transactions, first create a Rothschild wallet
-1. Run ``rothschild`` to generate a wallet
+1. Run ``cargo run --release --bin rothschild`` to generate a wallet
 2. The output will provide you with a private key (that looks like a bunch of gibberish) and a public address (that looks like "kaspatest:" followed by a bunch of gibberish). For example, the output could look like this:
      ```
      2023-06-25 18:00:58.677+00:00 [INFO ] Connected to RPC
@@ -54,7 +53,7 @@ If you want to transmit transactions, first create a Rothschild wallet
 3. Put some money into the wallet. This could be done by either mining to that wallet (see below) or asking other participants to send money to your public address in the \#testnet Discord channel.
 4. Once the wallet has been funded, run Rothschild with the private key:
    ```
-   rothschild --private-key <private-key> -t=5
+   cargo run --release --bin rothschild -- --private-key <private-key> -t=5
    ```
   The last parameter ``-t=5`` means Rothschild will attempt broadcasting 5 transactions per second. We encourage participants to run with different TPS values. However, in order to encourage transaction spread and to simulate organic usage we highly recommend not to go above 100 TPS.
 
