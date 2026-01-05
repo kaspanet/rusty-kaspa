@@ -1,6 +1,7 @@
 use std::{
     cmp::{min, Ordering},
     collections::{hash_map::Entry, HashMap, HashSet},
+    net::SocketAddr,
     sync::{atomic::AtomicBool, Arc},
     time::{Duration, Instant},
 };
@@ -8,7 +9,7 @@ use std::{
 use itertools::Itertools;
 use kaspa_consensus_core::{BlockHashSet, Hash, HashMapCustomHasher};
 use kaspa_core::{info, trace};
-use kaspa_p2p_lib::{Hub, PeerKey, Router};
+use kaspa_p2p_lib::{Hub, Peer, PeerKey, Router};
 use log::debug;
 use parking_lot::Mutex;
 use rand::{seq::IteratorRandom, thread_rng, Rng};
@@ -167,10 +168,15 @@ impl PerigeeManager {
         self.round_counter == 0
     }
 
-    pub fn trim_peers(&mut self) -> Vec<PeerKey> {
+    pub fn trim_peers(&mut self, peers_by_address: Arc<HashMap<SocketAddr, Peer>>) -> Vec<PeerKey> {
         debug!("PerigeeManager: Trimming exceess peers from perigee");
 
-        let perigee_routers = self.hub.perigee_routers();
+        let perigee_routers = self
+            .hub
+            .perigee_routers()
+            .into_iter()
+            .filter(|r| peers_by_address.contains_key(&SocketAddr::new(r.net_address().ip(), r.net_address().port())))
+            .collect::<Vec<_>>();
         let to_remove_amount = perigee_routers.len().saturating_sub(self.config.perigee_outbound_target);
         let excused_peer: HashSet<PeerKey> = self.iter_excused_peers(&perigee_routers).into_iter().collect();
 
@@ -194,8 +200,8 @@ impl PerigeeManager {
 
         let is_ibd_running = self.is_ibd_running();
         self.excuse(&mut peer_table, &perigee_routers);
-        let should_leverage = self.should_leverage(is_ibd_running, peer_table.len());
-        let should_explore = self.should_explore(is_ibd_running, peer_table.len());
+        let should_leverage = self.should_leverage(is_ibd_running, perigee_routers.len());
+        let should_explore = self.should_explore(is_ibd_running, perigee_routers.len());
         let mut has_leveraged_changed = false;
 
         if !should_leverage && !should_explore {
@@ -217,11 +223,14 @@ impl PerigeeManager {
             }
             selected_peers
         } else {
-            self.last_round_leveraged_peers.iter().filter_map(|pk| peer_table.remove_entry(pk).map(|(k, _)| k)).collect()
+            for pk in &self.last_round_leveraged_peers {
+                peer_table.remove(pk);
+            };
+            self.last_round_leveraged_peers.clone()
         };
 
         // i.e. the peers that we mark as "to evict" this round.
-        let deselected_peers = if should_explore { self.explore(&mut peer_table) } else { vec![] };
+        let deselected_peers = if should_explore { self.explore(&mut peer_table, perigee_routers.len()) } else { vec![] };
 
         (selected_peers, deselected_peers, has_leveraged_changed)
     }
@@ -261,8 +270,11 @@ impl PerigeeManager {
         }
     }
 
-    fn explore(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>) -> Vec<PeerKey> {
-        let to_remove_target = min(self.config.exploration_target, peer_table.len());
+    fn explore(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, num_of_active_perigee: usize) -> Vec<PeerKey> {
+        let to_remove_target = min(
+            self.config.exploration_target,
+            num_of_active_perigee.saturating_sub(self.config.perigee_outbound_target - self.config.exploration_target),
+        );
 
         peer_table.keys().choose_multiple(&mut thread_rng(), to_remove_target).into_iter().cloned().collect()
     }

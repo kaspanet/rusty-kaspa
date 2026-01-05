@@ -2,8 +2,10 @@ use std::{
     cmp::min,
     collections::{HashMap, HashSet},
     net::{IpAddr, SocketAddr, ToSocketAddrs},
-    sync::atomic::Ordering,
-    sync::{atomic::AtomicUsize, Arc},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     time::{Duration, SystemTime},
 };
 
@@ -12,7 +14,7 @@ use futures_util::future::{join_all, try_join_all};
 use itertools::Itertools;
 use kaspa_addressmanager::{AddressManager, NetAddress};
 use kaspa_core::{debug, info, warn};
-use kaspa_p2p_lib::{common::ProtocolError, ConnectionError, Peer, PeerOutboundType};
+use kaspa_p2p_lib::{common::ProtocolError, ConnectionError, Peer, PeerKey, PeerOutboundType};
 use kaspa_perigeemanager::{PerigeeConfig, PerigeeManager};
 use kaspa_utils::triggers::SingleTrigger;
 use parking_lot::Mutex as ParkingLotMutex;
@@ -124,7 +126,7 @@ impl ConnectionManager {
         );
     }
 
-    async fn evaluate_perigee_round(self: &Arc<Self>, peer_by_address: Arc<HashMap<SocketAddr, Peer>>) -> bool {
+    async fn evaluate_perigee_round(self: &Arc<Self>, peer_by_address: Arc<HashMap<SocketAddr, Peer>>) -> HashSet<PeerKey> {
         // evaluate the round
         let (to_leverage, to_evict, has_leveraged_changed) = {
             let mut perigee_manager_guard = self.perigee_manager.as_ref().unwrap().lock();
@@ -138,7 +140,6 @@ impl ConnectionManager {
         // Terminate evicted peers
         let to_terminate = Vec::from_iter(to_evict.iter().filter_map(|p| peer_by_address.values().find(|peer| peer.key() == *p)));
         self.terminate_peers(&to_terminate).await;
-        let peers_evicted = !to_terminate.is_empty();
 
         // save leveraged peers to db if persistence is enabled and there was a change in leveraged peers.
         if has_leveraged_changed && self.perigee_config.as_ref().unwrap().persistence {
@@ -179,7 +180,7 @@ impl ConnectionManager {
                 .collect::<Vec<&SocketAddr>>()
         );
 
-        peers_evicted
+        to_evict.into_iter().collect()
     }
 
     async fn reset_perigee_round(self: &Arc<Self>) {
@@ -202,7 +203,7 @@ impl ConnectionManager {
     async fn handle_event(self: Arc<Self>, event: ConnectionManagerEvent) {
         debug!("Starting connection loop iteration");
 
-        let peer_by_address = self.get_peers_by_address();
+        let mut peer_by_address = self.get_peers_by_address();
 
         match event {
             ConnectionManagerEvent::Tick(tick_count) => {
@@ -213,10 +214,10 @@ impl ConnectionManager {
                     // and perigee is active, and needs to be initialized via db persistence.
 
                     // first we await populating outbound connections
-                    self.handle_outbound_connections(peer_by_address.clone()).await;
+                    self.handle_outbound_connections(peer_by_address.clone(), HashSet::new()).await;
 
                     // now we can reinstate peer_by_address to include the newly connected peers
-                    let peer_by_address = self.get_peers_by_address();
+                    peer_by_address = self.get_peers_by_address();
 
                     // with these peer_by_address, we can initiate perigee
                     self.initiate_perigee(&peer_by_address);
@@ -231,23 +232,15 @@ impl ConnectionManager {
 
                     // We await this (not spawn), so that `spawn_handle_outbound_connections` is called after the perigee round evaluation is executed,
                     let peers_evicted = self.evaluate_perigee_round(peer_by_address.clone()).await;
-
-                    let peer_by_address = if peers_evicted {
-                        // since we have terminated peers via perigee, we should re-query this.
-                        self.get_peers_by_address()
-                    } else {
-                        peer_by_address
-                    };
-
                     // reset the perigee round state
                     self.reset_perigee_round().await;
                     // continue with the regular congruent connection handling
-                    self.spawn_handle_outbound_connections(peer_by_address.clone());
+                    self.spawn_handle_outbound_connections(peer_by_address.clone(), peers_evicted);
                     self.spawn_handle_inbound_connections(peer_by_address.clone());
                     self.spawn_handle_connection_requests(peer_by_address.clone());
                 } else {
                     // regular congruent connection handling
-                    self.spawn_handle_outbound_connections(peer_by_address.clone());
+                    self.spawn_handle_outbound_connections(peer_by_address.clone(), HashSet::new());
                     self.spawn_handle_inbound_connections(peer_by_address.clone());
                     self.spawn_handle_connection_requests(peer_by_address.clone());
                 }
@@ -332,17 +325,37 @@ impl ConnectionManager {
         *requests = new_requests;
     }
 
-    fn spawn_handle_outbound_connections(self: &Arc<Self>, peer_by_address: Arc<HashMap<SocketAddr, Peer>>) -> JoinHandle<()> {
+    fn spawn_handle_outbound_connections(
+        self: &Arc<Self>,
+        peer_by_address: Arc<HashMap<SocketAddr, Peer>>,
+        terminated: HashSet<PeerKey>,
+    ) -> JoinHandle<()> {
         let cmgr = self.clone();
-        tokio::spawn(async move { cmgr.handle_outbound_connections(peer_by_address).await })
+        tokio::spawn(async move { cmgr.handle_outbound_connections(peer_by_address, terminated).await })
     }
 
-    async fn handle_outbound_connections(self: &Arc<Self>, peer_by_address: Arc<HashMap<SocketAddr, Peer>>) {
+    async fn handle_outbound_connections(
+        self: &Arc<Self>,
+        peer_by_address: Arc<HashMap<SocketAddr, Peer>>,
+        terminated: HashSet<PeerKey>,
+    ) {
         let mut active_outbound = HashSet::new();
         let mut num_active_perigee_outbound = 0usize;
         let mut num_active_random_graph_outbound = 0usize;
 
-        for peer in peer_by_address.values() {
+        let peers_by_address = if !terminated.is_empty() {
+            Arc::new(
+                peer_by_address
+                    .iter()
+                    .filter(|(_, peer)| !terminated.contains(&peer.key()))
+                    .map(|(addr, peer)| (*addr, peer.clone()))
+                    .collect::<HashMap<SocketAddr, Peer>>(),
+            )
+        } else {
+            peer_by_address.clone()
+        };
+
+        for peer in peers_by_address.values() {
             match peer.outbound_type() {
                 Some(obt) => {
                     let net_addr = NetAddress::new(peer.net_address().ip().into(), peer.net_address().port());
@@ -399,7 +412,7 @@ impl ConnectionManager {
 
                 let to_terminate_keys = {
                     let mut pm = self.perigee_manager.as_ref().unwrap().lock();
-                    pm.trim_peers().into_iter().collect::<HashSet<_>>()
+                    pm.trim_peers(peers_by_address).into_iter().collect::<HashSet<_>>()
                 };
 
                 let to_terminate = peer_by_address.values().filter(|peer| to_terminate_keys.contains(&peer.key())).collect::<Vec<_>>();

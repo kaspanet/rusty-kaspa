@@ -36,7 +36,7 @@ pub struct PeerProperties {
     pub time_offset: i64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Peer {
     identity: PeerId,
     net_address: SocketAddr,
