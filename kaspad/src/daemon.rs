@@ -490,18 +490,18 @@ Do you confirm? (y/n)";
     };
     let perigee_exploration_target =
         if connect_peers.is_empty() { (perigee_target as f64 * args.perigee_exploration_rate).ceil() as usize } else { 0 };
-    let perigee_exploitation_target =
-        if connect_peers.is_empty() { (perigee_target as f64 * args.perigee_exploitation_rate).ceil() as usize } else { 0 };
-    if perigee_target < (perigee_exploitation_target + perigee_exploration_target) {
+    let perigee_leverage_target =
+        if connect_peers.is_empty() { (perigee_target as f64 * args.perigee_leverage_rate).ceil() as usize } else { 0 };
+    if perigee_target < (perigee_leverage_target + perigee_exploration_target) {
         panic!(
-            "Perigee target ({}) cannot be less than the sum of exploitation ({}) and exploration ({}) targets.",
-            perigee_target, perigee_exploitation_target, perigee_exploration_target
+            "Perigee target ({}) cannot be less than the sum of leverage ({}) and exploration ({}) targets.",
+            perigee_target, perigee_leverage_target, perigee_exploration_target
         );
     };
 
     let perigee_config = PerigeeConfig::new(
         perigee_target,
-        perigee_exploitation_target,
+        perigee_leverage_target,
         perigee_exploration_target,
         args.perigee_round_frequency,
         EVENT_LOOP_TIMER,
@@ -512,17 +512,17 @@ Do you confirm? (y/n)";
 
     if perigee_config.should_initiate_perigee() {
         info!(
-            "Perigee Active - Perigee Params: Outbound Perigee Target: {}, Exploitation: {}, Exploration: {}, Round length {} Secs, Persistence: {}",
+            "Perigee Active - Perigee Params: Outbound Perigee Target: {}, Leverage: {}, Exploration: {}, Round length {} Secs, Persistence: {}",
             perigee_config.perigee_outbound_target,
-            perigee_config.exploitation_target,
+            perigee_config.leverage_target,
             perigee_config.exploration_target,
             perigee_config.round_duration_seconds.as_secs(),
             perigee_config.persistence,
         );
     } else {
         info!(
-            "Perigee Inactive - Perigee Params: Outbound Perigee Target: {}, Exploitation Target: {}, Exploration Target: {}, Round length {} Secs is not sustainable",
-            perigee_config.perigee_outbound_target, perigee_config.exploitation_target, perigee_config.exploration_target, perigee_config.round_frequency * 30,
+            "Perigee Inactive - Perigee Params: Outbound Perigee Target: {}, Leverage Target: {}, Exploration Target: {}, Round length {} Secs is not sustainable",
+            perigee_config.perigee_outbound_target, perigee_config.leverage_target, perigee_config.exploration_target, perigee_config.round_frequency * 30,
         );
         random_graph_target += perigee_config.perigee_outbound_target;
     }

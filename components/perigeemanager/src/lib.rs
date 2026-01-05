@@ -15,7 +15,7 @@ use rand::{seq::IteratorRandom, thread_rng, Rng};
 
 // Tolerance for the amount of blocks verified in a round to trigger evaluation.
 // For example, if We expect to see 100 blocks verified in a round, but less or more than [`BLOCKS_VERIFIED_TOLERANCE`]
-// (i.e., 15 / 85 blocks) are verified, we skip the evaluation for exploitation this round.
+// (i.e., 15 / 85 blocks) are verified, we skip the evaluation for leveraging this round.
 // reasoning is that network conditions are then not considered stable enough to make a good decision.
 // and we rather skip, and wait for the next round.
 // Note that exploration can still happen even if this threshold is not met.
@@ -78,17 +78,10 @@ impl Ord for PeerScore {
     }
 }
 
-pub struct PerigeeEvaluationResult {
-    pub selected_peers: Vec<PeerKey>,
-    pub eviction_peers: Vec<PeerKey>,
-    pub skipped_exploitation: bool,
-    pub skipped_exploration: bool,
-}
-
 #[derive(Debug, Clone)]
 pub struct PerigeeConfig {
     pub perigee_outbound_target: usize,
-    pub exploitation_target: usize,
+    pub leverage_target: usize,
     pub exploration_target: usize,
     pub round_frequency: usize,
     pub round_duration_seconds: Duration,
@@ -100,7 +93,7 @@ pub struct PerigeeConfig {
 impl PerigeeConfig {
     pub fn new(
         perigee_outbound_target: usize,
-        exploitation_target: usize,
+        leverage_target: usize,
         exploration_target: usize,
         round_frequency: usize,
         connection_manager_tick_duration: Duration,
@@ -113,7 +106,7 @@ impl PerigeeConfig {
         let expected_blocks_per_round = (bps as f64 * round_duration_seconds.as_secs_f64()) as usize;
         Self {
             perigee_outbound_target,
-            exploitation_target,
+            leverage_target,
             exploration_target,
             round_frequency,
             round_duration_seconds,
@@ -124,7 +117,7 @@ impl PerigeeConfig {
     }
 
     pub fn should_initiate_perigee(&self) -> bool {
-        (self.perigee_outbound_target > 0 && self.exploration_target > 0 && self.exploitation_target < self.perigee_outbound_target)
+        (self.perigee_outbound_target > 0 && self.exploration_target > 0 && self.leverage_target < self.perigee_outbound_target)
             && self.round_frequency > 0
     }
 }
@@ -133,7 +126,7 @@ impl PerigeeConfig {
 pub struct PerigeeManager {
     verified_blocks: BlockHashSet, // holds blocks that are consensus verified.
     first_seen: HashMap<Hash, Instant>,
-    last_round_exploited_peers: Vec<PeerKey>,
+    last_round_leveraged_peers: Vec<PeerKey>,
     round_start: Instant,
     round_counter: u64,
     config: PerigeeConfig,
@@ -146,7 +139,7 @@ impl PerigeeManager {
         Mutex::new(Self {
             verified_blocks: BlockHashSet::new(),
             first_seen: HashMap::new(),
-            last_round_exploited_peers: Vec::new(),
+            last_round_leveraged_peers: Vec::new(),
             round_start: Instant::now(),
             round_counter: 0,
             config,
@@ -167,7 +160,7 @@ impl PerigeeManager {
 
     pub fn set_initial_persistent_peers(&mut self, peer_keys: Vec<PeerKey>) {
         debug!("PerigeeManager: Setting initial persistent perigee peers for first round");
-        self.last_round_exploited_peers = peer_keys
+        self.last_round_leveraged_peers = peer_keys
     }
 
     pub fn is_first_round(&self) -> bool {
@@ -183,7 +176,7 @@ impl PerigeeManager {
 
         perigee_routers
             .iter()
-            .filter(|r| !self.last_round_exploited_peers.contains(&r.key()) && !excused_peer.contains(&r.key()))
+            .filter(|r| !self.last_round_leveraged_peers.contains(&r.key()) && !excused_peer.contains(&r.key()))
             .map(|r| r.key())
             .choose_multiple(&mut thread_rng(), to_remove_amount)
             .iter()
@@ -201,44 +194,44 @@ impl PerigeeManager {
 
         let is_ibd_running = self.is_ibd_running();
         self.excuse(&mut peer_table, &perigee_routers);
-        let should_exploit = self.should_exploit(is_ibd_running, peer_table.len());
+        let should_leverage = self.should_leverage(is_ibd_running, peer_table.len());
         let should_explore = self.should_explore(is_ibd_running, peer_table.len());
-        let mut has_exploited_changed = false;
+        let mut has_leveraged_changed = false;
 
-        if !should_exploit && !should_explore {
-            trace!("PerigeeManager: skipping exploitation and exploration this round");
-            return (self.last_round_exploited_peers.clone(), vec![], has_exploited_changed);
+        if !should_leverage && !should_explore {
+            trace!("PerigeeManager: skipping leveraging and exploration this round");
+            return (self.last_round_leveraged_peers.clone(), vec![], has_leveraged_changed);
         }
 
-        // i.e. the peers that we mark as "to exploit" this round.
-        let selected_peers = if should_exploit {
-            let selected_peers = self.exploit(&mut peer_table);
+        // i.e. the peers that we mark as "to leverage" this round.
+        let selected_peers = if should_leverage {
+            let selected_peers = self.leverage(&mut peer_table);
             debug!(
-                "PerigeeManager: Selected peers for exploitation this round: {:?}",
+                "PerigeeManager: Selected peers for leveraging this round: {:?}",
                 selected_peers.iter().map(|pk| pk.to_string()).collect_vec()
             );
-            if self.last_round_exploited_peers != selected_peers {
-                trace!("PerigeeManager: Exploited peers have changed this round");
-                has_exploited_changed = true;
-                self.last_round_exploited_peers = selected_peers.clone();
+            if self.last_round_leveraged_peers != selected_peers {
+                trace!("PerigeeManager: Leveraged peers have changed this round");
+                has_leveraged_changed = true;
+                self.last_round_leveraged_peers = selected_peers.clone();
             }
             selected_peers
         } else {
-            self.last_round_exploited_peers.iter().filter_map(|pk| peer_table.remove_entry(pk).map(|(k, _)| k)).collect()
+            self.last_round_leveraged_peers.iter().filter_map(|pk| peer_table.remove_entry(pk).map(|(k, _)| k)).collect()
         };
 
         // i.e. the peers that we mark as "to evict" this round.
         let deselected_peers = if should_explore { self.explore(&mut peer_table) } else { vec![] };
 
-        (selected_peers, deselected_peers, has_exploited_changed)
+        (selected_peers, deselected_peers, has_leveraged_changed)
     }
 
-    fn exploit(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>) -> Vec<PeerKey> {
+    fn leverage(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>) -> Vec<PeerKey> {
         let remaining_table = peer_table;
         let mut selected_table = HashMap::new();
         let mut selected_peers = Vec::new(); // We use this instead of selected_table, to maintain ordering.
         let mut last_score = PeerScore::default();
-        for _ in 0..self.config.exploitation_target {
+        for _ in 0..self.config.leverage_target {
             let (top_ranked, top_ranked_score) = match self.get_top_ranked_peer(remaining_table) {
                 (Some(peer), score) => (peer, score),
                 _ => break,
@@ -251,7 +244,7 @@ impl PerigeeManager {
             selected_table.insert(top_ranked, remaining_table.remove(&top_ranked).unwrap());
             selected_peers.push(top_ranked);
 
-            if selected_peers.len() == self.config.exploitation_target {
+            if selected_peers.len() == self.config.leverage_target {
                 break;
             }
 
@@ -403,15 +396,15 @@ impl PerigeeManager {
         }
     }
 
-    fn should_exploit(&self, is_ibd_running: bool, amount_of_perigee_peer: usize) -> bool {
-        // Conditions that need to be met to trigger exploitation:
+    fn should_leverage(&self, is_ibd_running: bool, amount_of_perigee_peer: usize) -> bool {
+        // Conditions that need to be met to trigger leveraging:
 
         // 1. IBD is not running
         !is_ibd_running &&
         // 2. Sufficient blocks have been verified this round
         self.block_threshold_reached() &&
         // 3. We have enough perigee peers to choose from
-        amount_of_perigee_peer > self.config.exploitation_target
+        amount_of_perigee_peer > self.config.leverage_target
     }
 
     fn should_explore(&self, is_ibd_running: bool, amount_of_perigee_peer: usize) -> bool {
@@ -420,7 +413,7 @@ impl PerigeeManager {
         // 1. IBD is not running
         !is_ibd_running &&
         // 2. We have at least one perigee peer to choose from
-        amount_of_perigee_peer.saturating_sub(self.config.exploitation_target) > 0
+        amount_of_perigee_peer.saturating_sub(self.config.leverage_target) > 0
     }
 
     fn block_threshold_reached(&self) -> bool {
@@ -593,7 +586,7 @@ impl PerigeeManager {
      ════════════════════════════════════════════════════════════════════════════ \n\
                            PERIGEE STATISTICS - Round {:4}                     \n\
      ════════════════════════════════════════════════════════════════════════════ \n\
-      Config: Out={:<2} Exploit={:<2} Explore={:<2} Duration={:<5}s                   \n\
+      Config: Out={:<2} Leverage={:<2} Explore={:<2} Duration={:<5}s                   \n\
       Peers:  Perigee={:<2} ({:<5} blks) | Random={:<2} ({:<5} blks)                 \n\
       Blocks: Verified={:<5} | Seen={:<5}                                           \n\
      ════════════════════════════════════════════════════════════════════════════ \n\
@@ -615,7 +608,7 @@ impl PerigeeManager {
      ════════════════════════════════════════════════════════════════════════════ ",
             self.round_counter,
             self.config.perigee_outbound_target,
-            self.config.exploitation_target,
+            self.config.leverage_target,
             self.config.exploration_target,
             self.config.round_frequency * 30,
             number_of_perigee_peers,

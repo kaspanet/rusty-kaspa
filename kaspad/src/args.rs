@@ -59,7 +59,7 @@ pub struct Args {
     #[serde(rename = "perigeepeers")]
     pub perigee_target: usize,
     pub perigee_exploration_rate: f64,
-    pub perigee_exploitation_rate: f64,
+    pub perigee_leverage_rate: f64,
     pub perigee_round_frequency: usize, // evaluation frequency = 30 * perigee_round_frequency secs, note: if zero perigee will not start.
     pub perigee_statistics: bool,
     pub perigee_persistence: bool, // whether to persist perigee data between restarts
@@ -115,7 +115,7 @@ impl Default for Args {
             reset_db: false,
             outbound_target: 8,
             perigee_target: 0,
-            perigee_exploitation_rate: 0.625,
+            perigee_leverage_rate: 0.625,
             perigee_exploration_rate: 0.125,
             perigee_round_frequency: 1, // Round duration will be 30 secs
             perigee_statistics: false,
@@ -331,12 +331,12 @@ pub fn cli() -> Command {
                 .help("Proportion of Perigee peers dedicated to exploration i.e. number of perigee peers to drop per round of perigee (default: 0.25)."),
         )
         .arg(
-            Arg::new("perigee-exploitation-rate")
-                .long("perigee-exploitation-rate")
-                .env("KASPAD_PERIGEE_EXPLOITATION_RATE")
+            Arg::new("perigee-leverage-rate")
+                .long("perigee-leverage-rate")
+                .env("KASPAD_PERIGEE_LEVERAGE_RATE")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(f64))
-                .help("Proportion of Perigee peers dedicated to exploitation i.e. number of top performing perigee peers to keep per round of perigee (default: 0.5)."),
+                .help("Proportion of Perigee peers dedicated to leverage i.e. number of top performing perigee peers to keep per round of perigee (default: 0.5)."),
         )
         .arg(
             Arg::new("perigee-round-frequency")
@@ -524,7 +524,7 @@ impl Args {
             outbound_target: arg_match_unwrap_or::<usize>(&m, "outpeers", defaults.outbound_target),
             perigee_target: arg_match_unwrap_or::<usize>(&m, "perigeepeers", defaults.perigee_target),
             perigee_exploration_rate: arg_match_unwrap_or::<f64>(&m, "perigee-exploration-rate", defaults.perigee_exploration_rate),
-            perigee_exploitation_rate: arg_match_unwrap_or::<f64>(&m, "perigee-exploitation-rate", defaults.perigee_exploitation_rate),
+            perigee_leverage_rate: arg_match_unwrap_or::<f64>(&m, "perigee-leverage-rate", defaults.perigee_leverage_rate),
             perigee_round_frequency: arg_match_unwrap_or::<usize>(&m, "perigee-round-frequency", defaults.perigee_round_frequency),
             perigee_statistics: arg_match_unwrap_or::<bool>(&m, "perigee-statistics", defaults.perigee_statistics),
             perigee_persistence: arg_match_unwrap_or::<bool>(&m, "perigee-persistence", defaults.perigee_persistence),

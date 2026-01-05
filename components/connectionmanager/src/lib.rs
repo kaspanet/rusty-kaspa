@@ -131,7 +131,7 @@ impl ConnectionManager {
 
     async fn evaluate_perigee_round(self: &Arc<Self>, peer_by_address: Arc<HashMap<SocketAddr, Peer>>) {
         // evaluate the round
-        let (to_exploit, to_evict, has_exploited_changed) = {
+        let (to_leverage, to_evict, has_leveraged_changed) = {
             let mut perigee_manager_guard = self.perigee_manager.as_ref().unwrap().lock();
             if perigee_manager_guard.config().statistics {
                 perigee_manager_guard.log_statistics();
@@ -150,15 +150,15 @@ impl ConnectionManager {
             perigee_manager_guard.start_new_round();
         }
 
-        // save exploited peers to db if persistence is enabled and there was a change in exploited peers.
-        if has_exploited_changed && self.perigee_config.as_ref().unwrap().persistence {
+        // save leveraged peers to db if persistence is enabled and there was a change in leveraged peers.
+        if has_leveraged_changed && self.perigee_config.as_ref().unwrap().persistence {
             let am = &mut self.address_manager.lock();
-            let to_exploit_hashset = to_exploit.iter().cloned().collect::<HashSet<_>>();
+            let to_leverage_hashset = to_leverage.iter().cloned().collect::<HashSet<_>>();
             am.set_new_perigee_addresses(
                 peer_by_address
                     .iter()
                     .filter_map(|(sock_addr, peer)| {
-                        if to_exploit_hashset.contains(&peer.key()) {
+                        if to_leverage_hashset.contains(&peer.key()) {
                             Some(NetAddress::new(sock_addr.ip().into(), sock_addr.port()))
                         } else {
                             None
@@ -170,14 +170,14 @@ impl ConnectionManager {
 
         // Log the results of the perigee round
         info!(
-            "Connection manager: Perigee Round Completed \n Exploiting peers: {:?}, \n Keeping peers: {:?}, \n Evicting peers: {:?}",
+            "Connection manager: Perigee Round Completed \n leveraging peers: {:?}, \n Keeping peers: {:?}, \n Evicting peers: {:?}",
             peer_by_address
                 .iter()
-                .filter_map(|(addr, p)| if to_exploit.contains(&p.key()) { Some(addr) } else { None })
+                .filter_map(|(addr, p)| if to_leverage.contains(&p.key()) { Some(addr) } else { None })
                 .collect::<Vec<&SocketAddr>>(),
             peer_by_address
                 .iter()
-                .filter_map(|(addr, p)| if p.is_perigee() && !to_exploit.contains(&p.key()) && !to_evict.contains(&p.key()) {
+                .filter_map(|(addr, p)| if p.is_perigee() && !to_leverage.contains(&p.key()) && !to_evict.contains(&p.key()) {
                     Some(addr)
                 } else {
                     None
@@ -207,38 +207,47 @@ impl ConnectionManager {
 
         match event {
             ConnectionManagerEvent::Tick(tick_count) => {
-                // check if this is the first tick (i.e. the initial connection set-up procedure)
-                // and if perigee is active and needs to be initialized via db persistence.
-                if tick_count == 0 && self.perigee_manager.is_some() && self.perigee_config.as_ref().is_some_and(|pc| pc.persistence) {
+               // This is a timer tick - which handles connection requests, outbound and inbound connections, at [`EVENT_LOOP_TIMER`] intervals.
+               // note: tick_count == 0 can be considered the intial setup of the conection manager`s handling procedures.`            
+               if tick_count == 0 && self.perigee_manager.is_some() && self.perigee_config.as_ref().is_some_and(|pc| pc.persistence) {
+                    // we are in the first "tick" (i.e. the initial connection set-up procedure)
+                    // and perigee is active, and needs to be initialized via db persistence.
+                
+                   
                     // first we await populating outbound connections
                     self.spawn_handle_outbound_connections(peer_by_address.clone()).await.unwrap();
+ 
                     // now we can reinstate peer_by_address to include the newly connected peers
                     let peer_by_address = self.get_peers_by_address();
-                    // with these peers, we can initiate perigee
+ 
+                    // with these peer_by_address, we can initiate perigee
                     self.initiate_perigee(&peer_by_address);
 
-                    // continue with the regular connection handling
+                    // continue with the regular congruent connection handling
                     self.spawn_handle_connection_requests(peer_by_address.clone());
                     self.spawn_handle_inbound_connections(peer_by_address.clone());
-                }
-                // check if perigee should be evaluated this tick
-                else if self.perigee_manager.is_some()
-                    && self.perigee_config.as_ref().is_some_and(|pc| pc.round_frequency != 0 && tick_count % pc.round_frequency == 0)
-                {
+                } else if self.perigee_manager.is_some()
+                    && self.perigee_config.as_ref().is_some_and(|pc| pc.round_frequency != 0 && tick_count % pc.round_frequency == 0) {
+                    // This is a round where perigee should be evaluated and processed. 
+
                     // We await this, so that `spawn_handle_outbound_connections` is called after the perigee round evaluation is executed,
                     // this will lead to `spawn_handle_outbound_connections` to handle perigee re-population in the aftermath of the round evaluation.
                     self.spawn_evaluate_perigee_round(peer_by_address.clone()).await.unwrap();
+                    
+                    // continue with the regular congruent connection handling
                     self.spawn_handle_connection_requests(peer_by_address.clone());
                     self.spawn_handle_outbound_connections(peer_by_address.clone());
                     self.spawn_handle_inbound_connections(peer_by_address.clone());
                 } else {
+                    // regular congruent connection handling
                     self.spawn_handle_connection_requests(peer_by_address.clone());
                     self.spawn_handle_outbound_connections(peer_by_address.clone());
                     self.spawn_handle_inbound_connections(peer_by_address.clone());
                 }
             }
             ConnectionManagerEvent::AddPeer => {
-                self.spawn_handle_connection_requests(peer_by_address);
+                // We only need to handle connection requests for this event.
+                self.spawn_handle_connection_requests(peer_by_address).await.unwrap();
             }
         };
     }
@@ -405,10 +414,10 @@ impl ConnectionManager {
             // we prioritize perigee peers saved to the db from some previous round
             let persistent_perigee_addresses = self.address_manager.lock().get_perigee_addresses();
 
-            let exploit_target = self.perigee_config.as_ref().unwrap().exploitation_target;
+            let leverage_target = self.perigee_config.as_ref().unwrap().leverage_target;
 
             // collect the persisted perigee addresses first
-            let priorities = persistent_perigee_addresses.iter().take(exploit_target).cloned().collect();
+            let priorities = persistent_perigee_addresses.iter().take(leverage_target).cloned().collect();
 
             self.address_manager.lock().iterate_prioritized_random_addresses(priorities, active_outbound)
         } else {
