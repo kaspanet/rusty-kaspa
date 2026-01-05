@@ -207,19 +207,18 @@ impl ConnectionManager {
 
         match event {
             ConnectionManagerEvent::Tick(tick_count) => {
-               // This is a timer tick - which handles connection requests, outbound and inbound connections, at [`EVENT_LOOP_TIMER`] intervals.
-               // note: tick_count == 0 can be considered the intial setup of the conection manager`s handling procedures.`            
-               if tick_count == 0 && self.perigee_manager.is_some() && self.perigee_config.as_ref().is_some_and(|pc| pc.persistence) {
+                // This is a timer tick - which handles connection requests, outbound and inbound connections, at [`EVENT_LOOP_TIMER`] intervals.
+                // note: tick_count == 0 can be considered the intial setup of the conection manager`s handling procedures.`
+                if tick_count == 0 && self.perigee_manager.is_some() && self.perigee_config.as_ref().is_some_and(|pc| pc.persistence) {
                     // we are in the first "tick" (i.e. the initial connection set-up procedure)
                     // and perigee is active, and needs to be initialized via db persistence.
-                
-                   
+
                     // first we await populating outbound connections
                     self.spawn_handle_outbound_connections(peer_by_address.clone()).await.unwrap();
- 
+
                     // now we can reinstate peer_by_address to include the newly connected peers
                     let peer_by_address = self.get_peers_by_address();
- 
+
                     // with these peer_by_address, we can initiate perigee
                     self.initiate_perigee(&peer_by_address);
 
@@ -227,13 +226,14 @@ impl ConnectionManager {
                     self.spawn_handle_connection_requests(peer_by_address.clone());
                     self.spawn_handle_inbound_connections(peer_by_address.clone());
                 } else if self.perigee_manager.is_some()
-                    && self.perigee_config.as_ref().is_some_and(|pc| pc.round_frequency != 0 && tick_count % pc.round_frequency == 0) {
-                    // This is a round where perigee should be evaluated and processed. 
+                    && self.perigee_config.as_ref().is_some_and(|pc| pc.round_frequency != 0 && tick_count % pc.round_frequency == 0)
+                {
+                    // This is a round where perigee should be evaluated and processed.
 
                     // We await this, so that `spawn_handle_outbound_connections` is called after the perigee round evaluation is executed,
                     // this will lead to `spawn_handle_outbound_connections` to handle perigee re-population in the aftermath of the round evaluation.
                     self.spawn_evaluate_perigee_round(peer_by_address.clone()).await.unwrap();
-                    
+
                     // continue with the regular congruent connection handling
                     self.spawn_handle_connection_requests(peer_by_address.clone());
                     self.spawn_handle_outbound_connections(peer_by_address.clone());
