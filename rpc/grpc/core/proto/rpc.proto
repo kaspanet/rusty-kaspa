@@ -43,9 +43,9 @@ message RpcBlockLevelParents {
 }
 
 message RpcCompressedBlockLevelParent {
+  repeated string parentHashes = 1;
   // must be <= 255 (u8)
-  uint32 cumulativeLevel = 1;
-  repeated string parentHashes = 2;
+  uint32 cumulativeLevel = 2;
 }
 
 message RpcBlockVerboseData {
