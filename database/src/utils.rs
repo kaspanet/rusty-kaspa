@@ -49,7 +49,7 @@ pub fn get_kaspa_tempdir() -> TempDir {
     db_tempdir
 }
 
-/// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/kaspa-rust`
+/// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/rusty-kaspa`
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB to exist.
 #[macro_export]
 macro_rules! create_temp_db {

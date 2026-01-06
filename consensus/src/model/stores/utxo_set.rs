@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
         utxo_view::UtxoView,
     },
 };
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::prelude::{CachePolicy, StoreError};
@@ -17,7 +17,7 @@ type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOut
 
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
-    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator;
+    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator<'_>;
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
@@ -142,7 +142,7 @@ impl DbUtxoSetStore {
 
 impl UtxoView for DbUtxoSetStore {
     fn get(&self, outpoint: &TransactionOutpoint) -> Option<UtxoEntry> {
-        UtxoSetStoreReader::get(self, outpoint).map(|v| v.as_ref().clone()).unwrap_option()
+        UtxoSetStoreReader::get(self, outpoint).map(|v| v.as_ref().clone()).optional().unwrap()
     }
 }
 
@@ -151,7 +151,7 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
         self.access.read((*outpoint).into())
     }
 
-    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator {
+    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator<'_> {
         let seek_key = from_outpoint.map(UtxoKey::from);
         Box::new(self.access.seek_iterator(None, seek_key, limit, skip_first).map(|res| {
             let (key, entry) = res?;

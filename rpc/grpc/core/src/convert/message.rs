@@ -24,11 +24,11 @@ use kaspa_consensus_core::{network::NetworkId, Hash};
 use kaspa_core::debug;
 use kaspa_notify::subscription::Command;
 use kaspa_rpc_core::{
-    RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
-    SubmitBlockRejectReason, SubmitBlockReport,
+    RpcContextualPeerAddress, RpcDataVerbosityLevel, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress,
+    RpcResult, SubmitBlockRejectReason, SubmitBlockReport,
 };
 use kaspa_utils::hex::*;
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 macro_rules! from {
     // Response capture
@@ -264,10 +264,8 @@ from!(item: RpcResult<&kaspa_rpc_core::GetSubnetworkResponse>, protowire::GetSub
     Self { gas_limit: item.gas_limit, error: None }
 });
 
-// ~~~
-
 from!(item: &kaspa_rpc_core::GetVirtualChainFromBlockRequest, protowire::GetVirtualChainFromBlockRequestMessage, {
-    Self { start_hash: item.start_hash.to_string(), include_accepted_transaction_ids: item.include_accepted_transaction_ids }
+    Self { start_hash: item.start_hash.to_string(), include_accepted_transaction_ids: item.include_accepted_transaction_ids, min_confirmation_count: item.min_confirmation_count }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockResponse>, protowire::GetVirtualChainFromBlockResponseMessage, {
     Self {
@@ -518,6 +516,23 @@ from!(item: RpcResult<&kaspa_rpc_core::GetSyncStatusResponse>, protowire::GetSyn
     }
 });
 
+from!(item: &kaspa_rpc_core::GetVirtualChainFromBlockV2Request, protowire::GetVirtualChainFromBlockV2RequestMessage, {
+    Self {
+        start_hash: item.start_hash.to_string(),
+        data_verbosity_level: item.data_verbosity_level.map(|v| v as i32),
+        min_confirmation_count: item.min_confirmation_count
+    }
+});
+
+from!(item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockV2Response>, protowire::GetVirtualChainFromBlockV2ResponseMessage, {
+    Self {
+        removed_chain_block_hashes: item.removed_chain_block_hashes.iter().map(|x| x.to_string()).collect(),
+        added_chain_block_hashes: item.added_chain_block_hashes.iter().map(|x| x.to_string()).collect(),
+        chain_block_accepted_transactions: item.chain_block_accepted_transactions.iter().map(|x| x.into()).collect(),
+        error: None,
+    }
+});
+
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
 });
@@ -757,7 +772,7 @@ try_from!(item: &protowire::GetSubnetworkResponseMessage, RpcResult<kaspa_rpc_co
 });
 
 try_from!(item: &protowire::GetVirtualChainFromBlockRequestMessage, kaspa_rpc_core::GetVirtualChainFromBlockRequest, {
-    Self { start_hash: RpcHash::from_str(&item.start_hash)?, include_accepted_transaction_ids: item.include_accepted_transaction_ids }
+    Self { start_hash: RpcHash::from_str(&item.start_hash)?, include_accepted_transaction_ids: item.include_accepted_transaction_ids, min_confirmation_count: item.min_confirmation_count }
 });
 try_from!(item: &protowire::GetVirtualChainFromBlockResponseMessage, RpcResult<kaspa_rpc_core::GetVirtualChainFromBlockResponse>, {
     Self {
@@ -768,6 +783,21 @@ try_from!(item: &protowire::GetVirtualChainFromBlockResponseMessage, RpcResult<k
             .collect::<Result<Vec<_>, _>>()?,
         added_chain_block_hashes: item.added_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
         accepted_transaction_ids: item.accepted_transaction_ids.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
+    }
+});
+
+try_from!(item: &protowire::GetVirtualChainFromBlockV2RequestMessage, kaspa_rpc_core::GetVirtualChainFromBlockV2Request, {
+    Self {
+        start_hash: RpcHash::from_str(&item.start_hash)?,
+        data_verbosity_level: item.data_verbosity_level.map(RpcDataVerbosityLevel::try_from).transpose()?,
+        min_confirmation_count: item.min_confirmation_count
+    }
+});
+try_from!(item: &protowire::GetVirtualChainFromBlockV2ResponseMessage, RpcResult<kaspa_rpc_core::GetVirtualChainFromBlockV2Response>, {
+    Self {
+        removed_chain_block_hashes: Arc::new(item.removed_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?),
+        added_chain_block_hashes: Arc::new(item.added_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?),
+        chain_block_accepted_transactions: Arc::new(item.chain_block_accepted_transactions.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?),
     }
 });
 

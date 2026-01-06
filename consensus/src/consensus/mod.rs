@@ -21,12 +21,12 @@ use crate::{
             headers_selected_tip::HeadersSelectedTipStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::PruningStoreReader,
-            pruning_samples::{PruningSamplesStore, PruningSamplesStoreReader},
-            reachability::ReachabilityStoreReader,
             relations::RelationsStoreReader,
+            selected_chain::SelectedChainStore,
             statuses::StatusesStoreReader,
-            tips::TipsStoreReader,
+            tips::{TipsStore, TipsStoreReader},
             utxo_set::{UtxoSetStore, UtxoSetStoreReader},
+            virtual_state::VirtualState,
             DB,
         },
     },
@@ -44,7 +44,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
-    acceptance_data::AcceptanceData,
+    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     api::{
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         stats::BlockCount,
@@ -70,8 +70,10 @@ use kaspa_consensus_core::{
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    utxo::utxo_inquirer::UtxoInquirerError,
+    tx::{
+        MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, TransactionQueryResult,
+        TransactionType, UtxoEntry,
+    },
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -82,22 +84,26 @@ use crossbeam_channel::{
 use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
-use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_core::info;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
+use kaspa_utils::arc::ArcExtensions;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rocksdb::WriteBatch;
 
 use std::{
+    cmp,
     cmp::Reverse,
-    collections::{BinaryHeap, VecDeque},
+    collections::{BinaryHeap, HashSet, VecDeque},
     future::Future,
     iter::once,
     ops::Deref,
-    sync::{atomic::Ordering, Arc},
-};
-use std::{
-    sync::atomic::AtomicBool,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     thread::{self, JoinHandle},
 };
 use tokio::sync::oneshot;
@@ -105,8 +111,6 @@ use tokio::sync::oneshot;
 use self::{services::ConsensusServices, storage::ConsensusStorage};
 
 use crate::model::stores::selected_chain::SelectedChainStoreReader;
-
-use std::cmp;
 
 pub struct Consensus {
     // DB
@@ -320,15 +324,12 @@ impl Consensus {
     fn run_database_upgrades(&self) {
         // Upgrade to initialize the new retention root field correctly
         self.retention_root_database_upgrade();
-
-        // TODO (post HF): remove this upgrade
-        // Database upgrade to include pruning samples
-        self.pruning_samples_database_upgrade();
+        self.consensus_transitional_flags_upgrade();
     }
 
     fn retention_root_database_upgrade(&self) {
         let mut pruning_point_store = self.pruning_point_store.write();
-        if pruning_point_store.retention_period_root().unwrap_option().is_none() {
+        if pruning_point_store.retention_period_root().optional().unwrap().is_none() {
             let mut batch = rocksdb::WriteBatch::default();
             if self.config.is_archival {
                 // The retention checkpoint is what was previously known as history root
@@ -336,60 +337,25 @@ impl Consensus {
                 pruning_point_store.set_retention_period_root(&mut batch, retention_checkpoint).unwrap();
             } else {
                 // For non-archival nodes the retention root was the pruning point
-                let pruning_point = pruning_point_store.get().unwrap().pruning_point;
+                let pruning_point = pruning_point_store.pruning_point().unwrap();
                 pruning_point_store.set_retention_period_root(&mut batch, pruning_point).unwrap();
             }
             self.db.write(batch).unwrap();
         }
     }
 
-    fn pruning_samples_database_upgrade(&self) {
-        //
-        // For the first time this version runs, make sure we populate pruning samples
-        // from pov for all qualified chain blocks in the pruning point future
-        //
-
-        let sink = self.get_sink();
-        if self.storage.pruning_samples_store.pruning_sample_from_pov(sink).unwrap_option().is_some() {
-            // Sink is populated so we assume the database is upgraded
-            return;
+    fn consensus_transitional_flags_upgrade(&self) {
+        // Write the defaults to the internal storage so they will remain in cache
+        // *For a new staging consensus these flags will be updated again explicitly*
+        let mut batch = rocksdb::WriteBatch::default();
+        let mut pruning_meta_write = self.storage.pruning_meta_stores.write();
+        if pruning_meta_write.is_anticone_fully_synced() {
+            pruning_meta_write.set_body_missing_anticone(&mut batch, vec![]).unwrap();
         }
-
-        // Populate past pruning points (including current one)
-        for (p1, p2) in (0..=self.pruning_point_store.read().get().unwrap().index)
-            .map(|index| self.past_pruning_points_store.get(index).unwrap())
-            .tuple_windows()
-        {
-            // Set p[i] to point at p[i-1]
-            self.pruning_samples_store.insert(p2, p1).unwrap_or_exists();
+        if pruning_meta_write.pruning_utxoset_stable_flag() {
+            pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, true).unwrap();
         }
-
-        let pruning_point = self.pruning_point();
-        let reachability = self.reachability_store.read();
-
-        // We walk up via reachability tree children so that we only iterate blocks B s.t. pruning point ∈ chain(B)
-        let mut queue = VecDeque::<Hash>::from_iter(reachability.get_children(pruning_point).unwrap().iter().copied());
-        let mut processed = 0;
-        kaspa_core::info!("Upgrading database to include and populate the pruning samples store");
-        while let Some(current) = queue.pop_front() {
-            if !self.get_block_status(current).is_some_and(|s| s == BlockStatus::StatusUTXOValid) {
-                // Skip branches of the tree which are not chain qualified.
-                // This is sufficient since we will only assume this field exists
-                // for such chain qualified blocks
-                continue;
-            }
-            queue.extend(reachability.get_children(current).unwrap().iter());
-
-            processed += 1;
-
-            // Populate the data
-            let ghostdag_data = self.ghostdag_store.get_compact_data(current).unwrap();
-            let pruning_sample_from_pov =
-                self.services.pruning_point_manager.expected_header_pruning_point_v2(ghostdag_data).pruning_sample;
-            self.pruning_samples_store.insert(current, pruning_sample_from_pov).unwrap_or_exists();
-        }
-
-        kaspa_core::info!("Done upgrading database (populated {} entries)", processed);
+        self.db.write(batch).unwrap();
     }
 
     pub fn run_processors(&self) -> Vec<JoinHandle<()>> {
@@ -408,7 +374,7 @@ impl Consensus {
     }
 
     /// Acquires a consensus session, blocking data-pruning from occurring until released
-    pub fn acquire_session(&self) -> SessionReadGuard {
+    pub fn acquire_session(&self) -> SessionReadGuard<'_> {
         self.pruning_lock.blocking_read()
     }
 
@@ -458,7 +424,7 @@ impl Consensus {
 
     /// Validates that a valid block *header* exists for `hash`
     fn validate_block_exists(&self, hash: Hash) -> Result<(), ConsensusError> {
-        if match self.statuses_store.read().get(hash).unwrap_option() {
+        if match self.statuses_store.read().get(hash).optional().unwrap() {
             Some(status) => status.is_valid(),
             None => false,
         } {
@@ -479,12 +445,141 @@ impl Consensus {
 
     fn pruning_point_compact_headers(&self) -> Vec<(Hash, CompactHeaderData)> {
         // PRUNE SAFETY: index is monotonic and past pruning point headers are expected permanently
-        let current_pp_info = self.pruning_point_store.read().get().unwrap();
-        (0..current_pp_info.index)
+        let (pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
+        (0..pruning_index)
             .map(|index| self.past_pruning_points_store.get(index).unwrap())
-            .chain(once(current_pp_info.pruning_point))
+            .chain(once(pruning_point))
             .map(|hash| (hash, self.headers_store.get_compact_header_data(hash).unwrap()))
             .collect_vec()
+    }
+
+    /// See: intrusive_pruning_point_update implementation below for details
+    pub fn intrusive_pruning_point_store_writes(
+        &self,
+        new_pruning_point: Hash,
+        syncer_sink: Hash,
+        pruning_points_to_add: VecDeque<Hash>,
+    ) -> ConsensusResult<()> {
+        let mut batch = WriteBatch::default();
+        let mut pruning_point_write = self.pruning_point_store.write();
+        let old_pp_index = pruning_point_write.pruning_point_index().unwrap();
+        let retention_period_root = pruning_point_write.retention_period_root().unwrap();
+
+        let new_pp_index = old_pp_index + pruning_points_to_add.len() as u64;
+        pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pp_index).unwrap();
+        for (i, &past_pp) in pruning_points_to_add.iter().rev().enumerate() {
+            self.past_pruning_points_store.insert_batch(&mut batch, old_pp_index + i as u64 + 1, past_pp).unwrap();
+        }
+
+        // For archival nodes, keep the retention root in place
+        if !self.config.is_archival {
+            let adjusted_retention_period_root =
+                self.pruning_processor.advance_retention_period_root(retention_period_root, new_pruning_point);
+            pruning_point_write.set_retention_period_root(&mut batch, adjusted_retention_period_root).unwrap();
+        }
+
+        // Update virtual state based to the new pruning point
+        // Updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
+        let virtual_parents = vec![new_pruning_point];
+        let virtual_state = Arc::new(VirtualState {
+            parents: virtual_parents.clone(),
+            ghostdag_data: self.services.ghostdag_manager.ghostdag(&virtual_parents),
+            ..VirtualState::default()
+        });
+        self.virtual_stores.write().state.set_batch(&mut batch, virtual_state).unwrap();
+        // Remove old body tips and insert pruning point as the current tip
+        self.body_tips_store.write().delete_all_tips(&mut batch).unwrap();
+        self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
+        // Update selected_chain
+        self.selected_chain_store.write().init_with_pruning_point(&mut batch, new_pruning_point).unwrap();
+        // It is important to set this flag to false together with writing the batch, in case the node crashes suddenly before syncing of new utxo starts
+        self.pruning_meta_stores.write().set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
+        // Store the currently bodyless anticone from the POV of the syncer, for trusted body validation at a later stage.
+        let mut anticone = self.services.dag_traversal_manager.anticone(new_pruning_point, [syncer_sink].into_iter(), None)?;
+        // Add the pruning point itself which is also missing a body
+        anticone.push(new_pruning_point);
+        self.pruning_meta_stores.write().set_body_missing_anticone(&mut batch, anticone).unwrap();
+        self.db.write(batch).unwrap();
+        drop(pruning_point_write);
+        Ok(())
+    }
+
+    /// Verify that the new pruning point can be safely imported
+    /// and return all new pruning point on path to it that needs to be updated in consensus
+    fn get_and_verify_path_to_new_pruning_point(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<VecDeque<Hash>> {
+        // Let B.sp denote the selected parent of a block B, let f be the finality depth, and let p be the pruning depth.
+        // The new pruning point P can be "finalized" into consensus if:
+        // 1) P satisfies P.blue_score>Nf and selected_parent(P).blue_score<=NF
+        // where N is some integer (i.e. it is a valid pruning point based on score)
+        let Ok(candidate_ghostdag_data) = self.get_ghostdag_data(new_pruning_point) else {
+            return Err(ConsensusError::General(
+                "Catchup cannot be continued since the syncer pruning point could not be confirmed to be a valid pruning point",
+            ));
+        };
+        let Ok(selected_parent_ghostdag_data) = self.get_ghostdag_data(candidate_ghostdag_data.selected_parent) else {
+            return Err(ConsensusError::General(
+                "Catchup cannot be continued since the syncer pruning point could not be confirmed to be a valid pruning point",
+            ));
+        };
+        self.services
+            .pruning_point_manager
+            .is_pruning_sample(
+                candidate_ghostdag_data.blue_score,
+                selected_parent_ghostdag_data.blue_score,
+                self.config.params.finality_depth(),
+            )
+            .then_some(())
+            .ok_or(ConsensusError::General("the alleged pruning point is not a valid pruning point, aborting catchup attempt"))?;
+
+        // 2) There are sufficient headers built on top of it, specifically,
+        // a header is validated whose blue_score is greater than P.B+p:
+        let syncer_pp_bscore = self.get_header(new_pruning_point).unwrap().blue_score;
+        let syncer_virtual_bscore = self.get_header(syncer_sink).unwrap().blue_score;
+        if syncer_virtual_bscore < syncer_pp_bscore + self.config.pruning_depth() {
+            return Err(ConsensusError::General("declared pruning point is not of sufficient depth"));
+        }
+        // 3) The syncer pruning point is on the selected chain from that header.
+        if !self.services.reachability_service.is_chain_ancestor_of(new_pruning_point, syncer_sink) {
+            return Err(ConsensusError::General("new pruning point is not in the past of syncer sink"));
+        }
+        info!("Setting {new_pruning_point} as the pruning point");
+        // 4) The pruning points declared on headers on that path must be consistent with those already known by the node:
+        let pruning_point_read = self.pruning_point_store.read();
+        let old_pruning_point = pruning_point_read.pruning_point().unwrap();
+
+        // Note that the function below also updates the pruning samples,
+        // and implicitly confirms any pruning point pointed at en route to virtual is a pruning sample.
+        // it is emphasized that updating pruning samples for individual blocks is not harmful
+        // even if the verification ultimately does not succeed.
+        let mut pruning_points_to_add =
+            self.services.pruning_point_manager.pruning_points_on_path_to_syncer_sink(old_pruning_point, syncer_sink).map_err(
+                |e: PruningImportError| {
+                    ConsensusError::GeneralOwned(format!("pruning points en route to syncer sink do not form a valid chain: {}", e))
+                },
+            )?;
+        // next we filter the returned list so it contains only the pruning point that must be introduced to consensus
+
+        // Remove the excess pruning points before the old pruning point
+        while let Some(past_pp) = pruning_points_to_add.pop_back() {
+            if past_pp == old_pruning_point {
+                break;
+            }
+        }
+        if pruning_points_to_add.is_empty() {
+            return Err(ConsensusError::General("old pruning points is inconsistent with synced headers"));
+        }
+        // Remove the excess pruning points beyond the new pruning_point
+        while let Some(&future_pp) = pruning_points_to_add.front() {
+            if future_pp == new_pruning_point {
+                break;
+            }
+            // Here we only pop_front after checking as we want the new pruning_point to stay in the list
+            pruning_points_to_add.pop_front();
+        }
+        if pruning_points_to_add.is_empty() {
+            return Err(ConsensusError::General("new pruning point is inconsistent with synced headers"));
+        }
+        Ok(pruning_points_to_add)
     }
 }
 
@@ -588,6 +683,10 @@ impl ConsensusApi for Consensus {
         self.headers_store.get_timestamp(self.get_sink()).unwrap()
     }
 
+    fn get_sink_blue_score(&self) -> u64 {
+        self.headers_store.get_blue_score(self.get_sink()).unwrap()
+    }
+
     fn get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
         let sink = self.get_sink();
         let compact = self.headers_store.get_compact_header_data(sink).unwrap();
@@ -663,19 +762,21 @@ impl ConsensusApi for Consensus {
     /// Estimates the number of blocks and headers stored in the node database.
     ///
     /// This is an estimation based on the DAA score difference between the node's `retention root` and `virtual`'s DAA score,
-    /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.  
+    /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.
     fn estimate_block_count(&self) -> BlockCount {
         // PRUNE SAFETY: retention root is always a current or past pruning point which its header is kept permanently
         let retention_period_root_score = self.headers_store.get_daa_score(self.get_retention_period_root()).unwrap();
         let virtual_score = self.get_virtual_daa_score();
+        // TODO(relaxed): change virtual's 0 daa initialization, and revert to normal subtraction
         let header_count = self
             .headers_store
             .get_daa_score(self.get_headers_selected_tip())
-            .unwrap_option()
+            .optional()
+            .unwrap()
             .unwrap_or(virtual_score)
             .max(virtual_score)
-            - retention_period_root_score;
-        let block_count = virtual_score - retention_period_root_score;
+            .saturating_sub(retention_period_root_score);
+        let block_count = virtual_score.saturating_sub(retention_period_root_score);
         BlockCount { header_count, block_count }
     }
 
@@ -752,7 +853,7 @@ impl ConsensusApi for Consensus {
         let high_index = sc_read.get_tip().unwrap().0;
         // The last pruning point is always expected in the selected chain store. However if due to some reason
         // this is not the case, we prefer not crashing but rather avoid sampling (hence set low index to high index)
-        let low_index = sc_read.get_by_hash(pp_headers.last().unwrap().0).unwrap_option().unwrap_or(high_index);
+        let low_index = sc_read.get_by_hash(pp_headers.last().unwrap().0).optional().unwrap().unwrap_or(high_index);
         let step_size = cmp::max((high_index - low_index) / (step_divisor as u64), 1);
 
         // We chain `high_index` to make sure we sample sink, and dedup to avoid sampling it twice
@@ -767,11 +868,133 @@ impl ConsensusApi for Consensus {
 
         sample_headers
     }
-
-    fn get_populated_transaction(&self, txid: Hash, accepting_block_daa_score: u64) -> Result<SignableTransaction, UtxoInquirerError> {
-        // We need consistency between the pruning_point_store, utxo_diffs_store, block_transactions_store, selected chain and headers store reads
+    fn get_transactions_by_accepting_daa_score(
+        &self,
+        accepting_daa_score: u64,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        // We need consistency between the acceptance store and the block transaction store,
         let _guard = self.pruning_lock.blocking_read();
-        self.virtual_processor.get_populated_transaction(txid, accepting_block_daa_score, self.get_retention_period_root())
+        let accepting_block = self
+            .virtual_processor
+            .find_accepting_chain_block_hash_at_daa_score(accepting_daa_score, self.get_retention_period_root())?;
+        self.get_transactions_by_accepting_block(accepting_block, tx_ids, tx_type)
+    }
+
+    fn get_transactions_by_block_acceptance_data(
+        &self,
+        accepting_block: Hash,
+        block_acceptance_data: MergesetBlockAcceptanceData,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        // Need consistency between the acceptance store and the block transaction store.
+        let _guard = self.pruning_lock.blocking_read();
+
+        match tx_type {
+            TransactionType::Transaction => {
+                if let Some(tx_ids) = tx_ids {
+                    let mut tx_ids_filter = HashSet::with_capacity(tx_ids.len());
+                    tx_ids_filter.extend(tx_ids);
+
+                    Ok(TransactionQueryResult::Transaction(Arc::new(
+                        self.get_block_transactions(
+                            block_acceptance_data.block_hash,
+                            Some(
+                                block_acceptance_data
+                                    .accepted_transactions
+                                    .into_iter()
+                                    .filter_map(|atx| {
+                                        if tx_ids_filter.contains(&atx.transaction_id) {
+                                            Some(atx.index_within_block)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect(),
+                            ),
+                        )?,
+                    )))
+                } else {
+                    Ok(TransactionQueryResult::Transaction(Arc::new(self.get_block_transactions(
+                        block_acceptance_data.block_hash,
+                        Some(block_acceptance_data.accepted_transactions.iter().map(|atx| atx.index_within_block).collect()),
+                    )?)))
+                }
+            }
+            TransactionType::SignableTransaction => Ok(TransactionQueryResult::SignableTransaction(Arc::new(
+                self.virtual_processor.get_populated_transactions_by_block_acceptance_data(
+                    tx_ids,
+                    block_acceptance_data,
+                    accepting_block,
+                )?,
+            ))),
+        }
+    }
+
+    fn get_transactions_by_accepting_block(
+        &self,
+        accepting_block: Hash,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        // need consistency between the acceptance store and the block transaction store,
+        let _guard = self.pruning_lock.blocking_read();
+
+        match tx_type {
+            TransactionType::Transaction => {
+                let accepting_block_mergeset_acceptance_data_iter = self
+                    .acceptance_data_store
+                    .get(accepting_block)
+                    .map_err(|_| ConsensusError::MissingData(accepting_block))?
+                    .unwrap_or_clone()
+                    .into_iter();
+
+                if let Some(tx_ids) = tx_ids {
+                    let mut tx_ids_filter = HashSet::with_capacity(tx_ids.len());
+                    tx_ids_filter.extend(tx_ids);
+
+                    Ok(TransactionQueryResult::Transaction(Arc::new(
+                        accepting_block_mergeset_acceptance_data_iter
+                            .flat_map(|mbad| {
+                                self.get_block_transactions(
+                                    mbad.block_hash,
+                                    Some(
+                                        mbad.accepted_transactions
+                                            .into_iter()
+                                            .filter_map(|atx| {
+                                                if tx_ids_filter.contains(&atx.transaction_id) {
+                                                    Some(atx.index_within_block)
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                            .collect(),
+                                    ),
+                                )
+                            })
+                            .flatten()
+                            .collect::<Vec<_>>(),
+                    )))
+                } else {
+                    Ok(TransactionQueryResult::Transaction(Arc::new(
+                        accepting_block_mergeset_acceptance_data_iter
+                            .flat_map(|mbad| {
+                                self.get_block_transactions(
+                                    mbad.block_hash,
+                                    Some(mbad.accepted_transactions.iter().map(|atx| atx.index_within_block).collect()),
+                                )
+                            })
+                            .flatten()
+                            .collect::<Vec<_>>(),
+                    )))
+                }
+            }
+            TransactionType::SignableTransaction => Ok(TransactionQueryResult::SignableTransaction(Arc::new(
+                self.virtual_processor.get_populated_transactions_by_accepting_block(tx_ids, accepting_block)?,
+            ))),
+        }
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
@@ -811,10 +1034,10 @@ impl ConsensusApi for Consensus {
         if self.pruning_point_store.read().pruning_point().unwrap() != expected_pruning_point {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
-        let pruning_utxoset_read = self.pruning_utxoset_stores.read();
-        let iter = pruning_utxoset_read.utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        let iter = pruning_meta_read.utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
         let utxos = iter.map(|item| item.unwrap()).collect();
-        drop(pruning_utxoset_read);
+        drop(pruning_meta_read);
 
         // We recheck the expected pruning point in case it was switched just before the utxo set read.
         // NOTE: we rely on order of operations by pruning processor. See extended comment therein.
@@ -829,9 +1052,8 @@ impl ConsensusApi for Consensus {
         self.services.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }
 
-    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], pov_daa_score: u64) -> Hash {
-        let storage_mass_activated = self.config.crescendo_activation.is_active(pov_daa_score);
-        calc_hash_merkle_root(txs.iter(), storage_mass_activated)
+    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction]) -> Hash {
+        calc_hash_merkle_root(txs.iter())
     }
 
     fn validate_pruning_proof(
@@ -851,8 +1073,8 @@ impl ConsensusApi for Consensus {
     }
 
     fn append_imported_pruning_point_utxos(&self, utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)], current_multiset: &mut MuHash) {
-        let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
-        pruning_utxoset_write.utxo_set.write_many(utxoset_chunk).unwrap();
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        pruning_meta_write.utxo_set.write_many(utxoset_chunk).unwrap();
 
         // Parallelize processing using the context of an existing thread pool.
         let inner_multiset = self.virtual_processor.install(|| {
@@ -871,16 +1093,16 @@ impl ConsensusApi for Consensus {
 
     fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         let hst = self.storage.headers_selected_tip_store.read().get().unwrap().hash;
-        let pp_info = self.pruning_point_store.read().get().unwrap();
-        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, hst) {
+        let (synced_pruning_point, synced_pp_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
+        if !self.services.pruning_point_manager.is_valid_pruning_point(synced_pruning_point, hst) {
             return Err(ConsensusError::General("pruning point does not coincide with the synced header selected tip"));
         }
-        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, syncer_virtual_selected_parent) {
+        if !self.services.pruning_point_manager.is_valid_pruning_point(synced_pruning_point, syncer_virtual_selected_parent) {
             return Err(ConsensusError::General("pruning point does not coincide with the syncer's sink (virtual selected parent)"));
         }
         self.services
             .pruning_point_manager
-            .are_pruning_points_in_valid_chain(pp_info, syncer_virtual_selected_parent)
+            .are_pruning_points_in_valid_chain(synced_pruning_point, synced_pp_index, syncer_virtual_selected_parent)
             .map_err(|e| ConsensusError::GeneralOwned(format!("past pruning points do not form a valid chain: {}", e)))
     }
 
@@ -894,7 +1116,7 @@ impl ConsensusApi for Consensus {
     // max_blocks has to be greater than the merge set size limit
     fn get_hashes_between(&self, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
         let _guard = self.pruning_lock.blocking_read();
-        assert!(max_blocks as u64 > self.config.mergeset_size_limit().upper_bound());
+        assert!(max_blocks as u64 > self.config.mergeset_size_limit());
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
 
@@ -902,7 +1124,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>> {
-        self.headers_store.get_header(hash).unwrap_option().ok_or(ConsensusError::HeaderNotFound(hash))
+        self.headers_store.get_header(hash).optional().unwrap().ok_or(ConsensusError::HeaderNotFound(hash))
     }
 
     fn get_headers_selected_tip(&self) -> Hash {
@@ -944,10 +1166,10 @@ impl ConsensusApi for Consensus {
 
     fn pruning_point_headers(&self) -> Vec<Arc<Header>> {
         // PRUNE SAFETY: index is monotonic and past pruning point headers are expected permanently
-        let current_pp_info = self.pruning_point_store.read().get().unwrap();
-        (0..current_pp_info.index)
+        let (pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
+        (0..pruning_index)
             .map(|index| self.past_pruning_points_store.get(index).unwrap())
-            .chain(once(current_pp_info.pruning_point))
+            .chain(once(pruning_point))
             .map(|hash| self.headers_store.get_header(hash).unwrap())
             .collect_vec()
     }
@@ -959,7 +1181,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_block(&self, hash: Hash) -> ConsensusResult<Block> {
-        if match self.statuses_store.read().get(hash).unwrap_option() {
+        if match self.statuses_store.read().get(hash).optional().unwrap() {
             Some(status) => !status.has_block_body(),
             None => true,
         } {
@@ -967,21 +1189,59 @@ impl ConsensusApi for Consensus {
         }
 
         Ok(Block {
-            header: self.headers_store.get_header(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))?,
-            transactions: self.block_transactions_store.get(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))?,
+            header: self.headers_store.get_header(hash).optional().unwrap().ok_or(ConsensusError::BlockNotFound(hash))?,
+            transactions: self.block_transactions_store.get(hash).optional().unwrap().ok_or(ConsensusError::BlockNotFound(hash))?,
         })
     }
 
+    fn get_block_transactions(&self, hash: Hash, indices: Option<Vec<TransactionIndexType>>) -> ConsensusResult<Vec<Transaction>> {
+        let transactions = self.block_transactions_store.get(hash).optional().unwrap().ok_or(ConsensusError::BlockNotFound(hash))?;
+        let tx_len = transactions.len();
+
+        if let Some(indices) = indices {
+            if tx_len < indices.len() {
+                return Err(ConsensusError::TransactionQueryTooLarge(indices.len(), hash, transactions.len()));
+            }
+
+            let res = transactions
+                .unwrap_or_clone()
+                .into_iter()
+                .enumerate()
+                .filter(|(index, _tx)| indices.contains(&(*index as TransactionIndexType)))
+                .map(|(_, tx)| tx)
+                .collect::<Vec<_>>();
+
+            if res.len() != indices.len() {
+                Err(ConsensusError::TransactionIndexOutOfBounds(*indices.iter().max().unwrap(), tx_len, hash))
+            } else {
+                Ok(res)
+            }
+        } else {
+            Ok(transactions.unwrap_or_clone())
+        }
+    }
+
+    fn get_block_body(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
+        if match self.statuses_store.read().get(hash).optional().unwrap() {
+            Some(status) => !status.has_block_body(),
+            None => true,
+        } {
+            return Err(ConsensusError::BlockNotFound(hash));
+        }
+
+        self.block_transactions_store.get(hash).optional().unwrap().ok_or(ConsensusError::BlockNotFound(hash))
+    }
+
     fn get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
-        let Some(status) = self.statuses_store.read().get(hash).unwrap_option().filter(|&status| status.has_block_header()) else {
+        let Some(status) = self.statuses_store.read().get(hash).optional().unwrap().filter(|&status| status.has_block_header()) else {
             return Err(ConsensusError::HeaderNotFound(hash));
         };
         Ok(Block {
-            header: self.headers_store.get_header(hash).unwrap_option().ok_or(ConsensusError::HeaderNotFound(hash))?,
+            header: self.headers_store.get_header(hash).optional().unwrap().ok_or(ConsensusError::HeaderNotFound(hash))?,
             transactions: if status.is_header_only() {
                 Default::default()
             } else {
-                self.block_transactions_store.get(hash).unwrap_option().unwrap_or_default()
+                self.block_transactions_store.get(hash).optional().unwrap().unwrap_or_default()
             },
         })
     }
@@ -992,7 +1252,7 @@ impl ConsensusApi for Consensus {
             Some(BlockStatus::StatusInvalid) => return Err(ConsensusError::InvalidBlock(hash)),
             _ => {}
         };
-        let ghostdag = self.ghostdag_store.get_data(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))?;
+        let ghostdag = self.ghostdag_store.get_data(hash).optional().unwrap().ok_or(ConsensusError::MissingData(hash))?;
         Ok((&*ghostdag).into())
     }
 
@@ -1000,20 +1260,21 @@ impl ConsensusApi for Consensus {
         self.services
             .relations_service
             .get_children(hash)
-            .unwrap_option()
+            .optional()
+            .unwrap()
             .map(|children| children.read().iter().copied().collect_vec())
     }
 
     fn get_block_parents(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
-        self.services.relations_service.get_parents(hash).unwrap_option()
+        self.services.relations_service.get_parents(hash).optional().unwrap()
     }
 
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
-        self.statuses_store.read().get(hash).unwrap_option()
+        self.statuses_store.read().get(hash).optional().unwrap()
     }
 
     fn get_block_acceptance_data(&self, hash: Hash) -> ConsensusResult<Arc<AcceptanceData>> {
-        self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))
+        self.acceptance_data_store.get(hash).optional().unwrap().ok_or(ConsensusError::MissingData(hash))
     }
 
     fn get_blocks_acceptance_data(
@@ -1027,7 +1288,7 @@ impl ConsensusApi for Consensus {
             return hashes
                 .iter()
                 .copied()
-                .map(|hash| self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash)))
+                .map(|hash| self.acceptance_data_store.get(hash).optional().unwrap().ok_or(ConsensusError::MissingData(hash)))
                 .collect::<ConsensusResult<Vec<_>>>();
         }
         let merged_blocks_limit = merged_blocks_limit.unwrap(); // we handle `is_none`, so may unwrap.
@@ -1037,7 +1298,7 @@ impl ConsensusApi for Consensus {
             .iter()
             .copied()
             .map_while(|hash| {
-                let entry = self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash));
+                let entry = self.acceptance_data_store.get(hash).optional().unwrap().ok_or(ConsensusError::MissingData(hash));
                 num_of_merged_blocks += entry.as_ref().map_or(0, |entry| entry.len());
                 if num_of_merged_blocks > merged_blocks_limit {
                     None
@@ -1057,45 +1318,22 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(high)?;
         Ok(self.services.sync_manager.get_missing_block_body_hashes(high)?)
     }
+    /// Returns the set of blocks in the anticone of the current pruning point
+    /// which (may) lack a block body due to being in a transitional state
+    /// If not in a transitional state this list is supposed to be empty
+    fn get_body_missing_anticone(&self) -> Vec<Hash> {
+        self.pruning_meta_stores.read().get_body_missing_anticone()
+    }
+
+    fn clear_body_missing_anticone_set(&self) {
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+        pruning_meta_write.set_body_missing_anticone(&mut batch, vec![]).unwrap();
+        self.db.write(batch).unwrap();
+    }
 
     fn pruning_point(&self) -> Hash {
         self.pruning_point_store.read().pruning_point().unwrap()
-    }
-
-    fn get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
-        let _guard = self.pruning_lock.blocking_read();
-        self.validate_block_exists(hash)?;
-        Ok(self
-            .services
-            .window_manager
-            .block_window(&self.ghostdag_store.get_data(hash).unwrap(), WindowType::DifficultyWindow)
-            .unwrap()
-            .deref()
-            .iter()
-            .map(|block| block.0.hash)
-            .collect())
-    }
-
-    fn get_trusted_block_associated_ghostdag_data_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
-        let _guard = self.pruning_lock.blocking_read();
-        self.validate_block_exists(hash)?;
-
-        // In order to guarantee the chain height is at least k, we check that the pruning point is not genesis.
-        let pruning_point = self.pruning_point();
-        if pruning_point == self.config.genesis.hash {
-            return Err(ConsensusError::UnexpectedPruningPoint);
-        }
-
-        // [Crescendo]: get ghostdag k based on the pruning point's DAA score. The off-by-one of not going by selected parent
-        // DAA score is not important here as we simply increase K one block earlier which is more conservative (saving/sending more data)
-        let ghostdag_k = self.config.ghostdag_k().get(self.headers_store.get_daa_score(pruning_point).unwrap());
-
-        // Note: the method `get_ghostdag_chain_k_depth` might return a partial chain if data is missing.
-        // Ideally this node when synced would validate it got all of the associated data up to k blocks
-        // back and then we would be able to assert we actually got `k + 1` blocks, however we choose to
-        // simply ignore, since if the data was truly missing we wouldn't accept the staging consensus in
-        // the first place
-        Ok(self.services.pruning_proof_manager.get_ghostdag_chain_k_depth(hash, ghostdag_k))
     }
 
     fn create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
@@ -1136,5 +1374,59 @@ impl ConsensusApi for Consensus {
 
     fn finality_point(&self) -> Hash {
         self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
+    }
+
+    /// The utxoset is an additive structure,
+    /// to make room for the gradual aggregation of a new utxoset,
+    /// first the old one must be cleared.
+    /// Likewise, clearing the old utxoset is also a gradual process.
+    /// The utxo stable flag guarantees that a full utxoset is never mistaken for
+    /// an incomplete or partially deleted one.
+    fn clear_pruning_utxo_set(&self) {
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+        // Currently under the conditions in which this function is called, this flag should already be false.
+        // We lower it down regardless as it is conceptually true to do so.
+        pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, false).unwrap();
+        self.db.write(batch).unwrap();
+        pruning_meta_write.utxo_set.clear().unwrap();
+    }
+
+    /// The usual flow consists of the pruning point naturally updating during pruning, and hence maintains consistency by default
+    /// During pruning catchup, we need to manually update the pruning point and
+    /// make sure that consensus looks "as if" it has just moved to a new pruning point.
+    fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
+        let pruning_points_to_add = self.get_and_verify_path_to_new_pruning_point(new_pruning_point, syncer_sink)?;
+
+        // If all has gone well, we can finally update pruning point and other stores.
+        self.intrusive_pruning_point_store_writes(new_pruning_point, syncer_sink, pruning_points_to_add)
+    }
+
+    fn set_pruning_utxoset_stable_flag(&self, val: bool) {
+        let mut pruning_meta_write = self.pruning_meta_stores.write();
+        let mut batch = rocksdb::WriteBatch::default();
+
+        pruning_meta_write.set_pruning_utxoset_stable_flag(&mut batch, val).unwrap();
+        self.db.write(batch).unwrap();
+    }
+
+    fn is_pruning_utxoset_stable(&self) -> bool {
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        pruning_meta_read.pruning_utxoset_stable_flag()
+    }
+
+    fn is_pruning_point_anticone_fully_synced(&self) -> bool {
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        pruning_meta_read.is_anticone_fully_synced()
+    }
+
+    fn is_consensus_in_transitional_ibd_state(&self) -> bool {
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        pruning_meta_read.is_in_transitional_ibd_state()
+    }
+
+    fn get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
+        let (_pruning_point, pruning_index) = self.pruning_point_store.read().pruning_point_and_index().unwrap();
+        (0..=pruning_index).rev().take(n).map(|ind| self.past_pruning_points_store.get(ind).unwrap()).collect_vec()
     }
 }
