@@ -112,10 +112,10 @@ use self::{services::ConsensusServices, storage::ConsensusStorage};
 
 use crate::model::stores::selected_chain::SelectedChainStoreReader;
 
-// --- IMPORTS (KORRIGIERT) ---
+// --- IMPORTS  ---
 use crate::model::stores::{
     selected_chain::DbSelectedChainStore,
-    tips::DbTipsStore, // Hier stand vorher HeadersStore
+    tips::DbTipsStore, // HeadersStore used to be here
     virtual_state::VirtualStores,
 };
 use parking_lot::RwLock;
@@ -490,7 +490,7 @@ impl Consensus {
         // Update virtual state based to the new pruning point
         // Updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
 
-        // WICHTIG: Das hier muss aktiv sein, wir brauchen das Objekt!
+        // IMPORTANT: This must be active; we need the object!
         let virtual_parents = vec![new_pruning_point];
         let virtual_state = Arc::new(VirtualState {
             parents: virtual_parents.clone(),
@@ -1459,12 +1459,12 @@ pub fn write_common_pruning_point_db_updates(
     // 1. write virtual state
     virtual_stores.write().state.set_batch(batch, virtual_state).unwrap();
 
-    // 2. body tips resetten
+    // 2. reset body tips
     let virtual_parents = vec![new_pruning_point];
     // now that we have the correct type (TipsStore), it also recognizes “init_batch” again.
     body_tips_store.write().init_batch(batch, &virtual_parents).unwrap();
 
-    // 3. Update Selected Chain
+    // 3. update Selected Chain
     selected_chain_store.write().init_with_pruning_point(batch, new_pruning_point).unwrap();
 
     Ok(())
