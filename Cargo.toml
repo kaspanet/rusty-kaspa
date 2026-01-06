@@ -183,7 +183,7 @@ fixedstr = { version = "0.5.4", features = ["serde"] }
 flate2 = "1.0.28"
 futures = { version = "0.3.29" }
 futures-util = { version = "0.3.29", default-features = false, features = ["alloc"] }
-getrandom = { version = "0.2.10", features = ["js"] }
+getrandom = { version = "0.3.4", features = ["wasm_js"] }
 h2 = "0.4.6"
 # h2 = "0.3.21"
 heapless = "0.8.0"
@@ -261,7 +261,7 @@ tonic = { version = "0.12.3", features = ["tls-webpki-roots", "gzip", "transport
 tonic-build = { version = "0.12.3", features = ["prost"] }
 triggered = "0.1.2"
 uuid = { version = "1.16.0", features = ["v4", "fast-rng", "serde", "js"] }
-wasm-bindgen = { version = "0.2.100", features = ["serde-serialize"] }
+wasm-bindgen = { version = "0.2.106", features = ["serde-serialize"] }
 wasm-bindgen-futures = "0.4.43"
 wasm-bindgen-test = "0.3.50"
 web-sys = "0.3.70"
