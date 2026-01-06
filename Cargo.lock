@@ -2553,6 +2553,7 @@ dependencies = [
  "borsh",
  "bs58",
  "faster-hex",
+ "getrandom 0.2.16",
  "getrandom 0.3.4",
  "hmac",
  "js-sys",

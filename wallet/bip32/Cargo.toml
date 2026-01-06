@@ -14,7 +14,7 @@ include = ["src/**/*.rs", "Cargo.toml", "src/**/*.txt"]
 [dependencies]
 borsh.workspace = true
 bs58.workspace = true
-getrandom = { workspace = true, features = ["wasm_js"] }
+getrandom = { workspace = true }
 hmac.workspace = true
 js-sys.workspace = true
 kaspa-utils.workspace = true
@@ -35,6 +35,10 @@ kaspa-consensus-core.workspace = true
 
 [dev-dependencies]
 faster-hex.workspace = true
+
+[target.wasm32-unknown-unknown.dependencies]
+getrandom_v2 = { version = "0.2.10", features = ["js"], package = "getrandom" }
+getrandom    = { version = "0.3.4", features = ["wasm_js"] }
 
 [lints]
 workspace = true
