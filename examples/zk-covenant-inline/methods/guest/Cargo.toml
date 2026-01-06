@@ -1,0 +1,13 @@
+[package]
+name = "zk-covenant-inline-guest"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+borsh = { version = "1.6.0" }
+risc0-zkvm = { version = "^3.0.4", default-features = false, features = ['std'] }
+
+zk-covenant-inline-core = { path = "../../core" }
+#kaspa-consensus-core = { path = "../../../../consensus/core" }

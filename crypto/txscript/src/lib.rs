@@ -11,7 +11,7 @@ pub mod script_class;
 pub mod standard;
 #[cfg(feature = "wasm32-sdk")]
 pub mod wasm;
-mod zk_precompiles;
+pub mod zk_precompiles;
 
 pub mod runtime_sig_op_counter;
 

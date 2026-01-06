@@ -1,0 +1,25 @@
+[package]
+name = "zk-covenant-inline-host"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+kaspa-addresses = { path = "../../../crypto/addresses"}
+kaspa-consensus-core = { path = "../../../consensus/core" }
+kaspa-txscript = { path = "../../../crypto/txscript" }
+kaspa-hashes = { path = "../../../crypto/hashes" }
+
+borsh = {version = "1.6.0"}
+risc0-zkvm = { version = "3.0.4", default-features = true }
+serde = "1.0"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zk-covenant-inline-methods = { path = "../methods" }
+zk-covenant-inline-core = { path = "../core" }
+
+
+#uncomment for debug
+#[patch.crates-io]
+#risc0-zkvm = { path = "../../../../../risc0/risc0/zkvm" }
+#risc0-zkp = { path = "../../../../../risc0/risc0/zkp"}

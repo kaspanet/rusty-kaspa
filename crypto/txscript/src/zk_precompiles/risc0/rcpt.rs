@@ -38,33 +38,34 @@ use crate::zk_precompiles::risc0::merkle::MerkleProof;
 /// simplify it, as we are certain to only receive digests for the claim and verifier parameters.
 #[derive(Debug, Serialize, BorshSerialize, BorshDeserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+// #[non_exhaustive] todo imposible to create the structure without constructor and with non-exhaustive
 pub struct SuccinctReceipt {
     /// The cryptographic seal of this receipt. This seal is a STARK proving an execution of the
     /// recursion circuit.
-    seal: Vec<u32>,
+    pub seal: Vec<u32>,
 
     /// The control ID of this receipt, identifying the recursion program that was run (e.g. lift,
     /// join, or resolve).
-    control_id: Digest,
+    pub control_id: Digest,
 
     /// Claim containing information about the computation that this receipt proves.
     ///
     /// The standard claim type is [ReceiptClaim][crate::ReceiptClaim], which represents a RISC-V
     /// zkVM execution.
-    claim: Digest,
+    pub claim: Digest,
 
     /// Name of the hash function used to create this receipt.
-    hashfn: String,
+    pub hashfn: String,
 
     /// A digest of the verifier parameters that can be used to verify this receipt.
     ///
     /// Acts as a fingerprint to identify differing proof system or circuit versions between a
     /// prover and a verifier. It is not intended to contain the full verifier parameters, which must
     /// be provided by a trusted source (e.g. packaged with the verifier code).
-    verifier_parameters: Digest,
+    pub verifier_parameters: Digest,
 
     /// Merkle inclusion proof for control_id against the control root for this receipt.
-    control_inclusion_proof: MerkleProof,
+    pub control_inclusion_proof: MerkleProof,
 }
 
 impl SuccinctReceipt {
