@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 const STRATUM_COINBASE_TAG_BYTES: &[u8] = b"Kaspa Stratum Bridge";
 
@@ -113,9 +113,9 @@ impl KaspaApi {
         let grpc_address = if address.starts_with("grpc://") { address.clone() } else { format!("grpc://{}", address) };
 
         // Log connection attempt (detailed logs moved to debug)
-        tracing::debug!("{} {}", LogColors::api("[API]"), LogColors::label("Establishing RPC connection to Kaspa node:"));
-        tracing::debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Address:"), &grpc_address);
-        tracing::debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Protocol:"), "gRPC (via RPC client wrapper)");
+        debug!("{} {}", LogColors::api("[API]"), LogColors::label("Establishing RPC connection to Kaspa node:"));
+        debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Address:"), &grpc_address);
+        debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Protocol:"), "gRPC (via RPC client wrapper)");
 
         // Connect to Kaspa node with grpc:// prefix, using extended request timeout and reconnection support
         let client = Arc::new(
@@ -134,14 +134,9 @@ impl KaspaApi {
         );
 
         // Log successful connection (detailed logs moved to debug)
-        tracing::debug!("{} {}", LogColors::api("[API]"), LogColors::block("✓ RPC Connection Established Successfully"));
-        tracing::debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Connected to:"), &grpc_address);
-        tracing::debug!(
-            "{} {} {}",
-            LogColors::api("[API]"),
-            LogColors::label("  - Connection Type:"),
-            "gRPC (via RPC client wrapper)"
-        );
+        debug!("{} {}", LogColors::api("[API]"), LogColors::block("✓ RPC Connection Established Successfully"));
+        debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Connected to:"), &grpc_address);
+        debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Connection Type:"), "gRPC (via RPC client wrapper)");
 
         // Start the client (no notify needed for Direct mode)
         client.start(None).await;
@@ -305,23 +300,23 @@ impl KaspaApi {
             }
         }
 
-        tracing::debug!(
+        debug!(
             "{} {}",
             LogColors::api("[API]"),
             LogColors::api(&format!("✓ ===== ATTEMPTING BLOCK SUBMISSION TO KASPA NODE ===== Hash: {}", block_hash))
         );
-        tracing::debug!("{} {}", LogColors::api("[API]"), LogColors::label("Block Details:"));
-        tracing::debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Hash:"), block_hash);
-        tracing::debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Blue Score:"), blue_score);
-        tracing::debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Timestamp:"), timestamp);
-        tracing::debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Nonce:"), format!("{:x} ({})", nonce, nonce));
-        tracing::debug!("{} {}", LogColors::api("[API]"), "Converting block to RPC format and sending to node...");
+        debug!("{} {}", LogColors::api("[API]"), LogColors::label("Block Details:"));
+        debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Hash:"), block_hash);
+        debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Blue Score:"), blue_score);
+        debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Timestamp:"), timestamp);
+        debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Nonce:"), format!("{:x} ({})", nonce, nonce));
+        debug!("{} {}", LogColors::api("[API]"), "Converting block to RPC format and sending to node...");
 
         // Convert Block to RpcRawBlock (use reference)
         let rpc_block: RpcRawBlock = (&block).into();
 
         // Submit block (don't allow non-DAA blocks)
-        tracing::debug!("{} {}", LogColors::api("[API]"), "Calling submit_block via RPC client...");
+        debug!("{} {}", LogColors::api("[API]"), "Calling submit_block via RPC client...");
         let result =
             self.client.submit_block_call(None, SubmitBlockRequest::new(rpc_block, false)).await.context("Failed to submit block");
 
@@ -344,23 +339,18 @@ impl KaspaApi {
                     LogColors::block(&format!("===== BLOCK ACCEPTED BY KASPA NODE ===== Hash: {}", block_hash))
                 );
                 // Detailed acceptance logs moved to debug
-                tracing::debug!(
+                debug!(
                     "{} {} {}",
                     LogColors::api("[API]"),
                     LogColors::label("ACCEPTANCE REASON:"),
                     "Block passed all node validation checks"
                 );
-                tracing::debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Block structure:"), "VALID");
-                tracing::debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Block header:"), "VALID");
-                tracing::debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Transactions:"), "VALID");
-                tracing::debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - DAA validation:"), "PASSED");
-                tracing::debug!(
-                    "{} {} {}",
-                    LogColors::api("[API]"),
-                    LogColors::label("  - Node Response:"),
-                    format!("{:?}", response)
-                );
-                tracing::debug!(
+                debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Block structure:"), "VALID");
+                debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Block header:"), "VALID");
+                debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Transactions:"), "VALID");
+                debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - DAA validation:"), "PASSED");
+                debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Node Response:"), format!("{:?}", response));
+                debug!(
                     "{} {} {}",
                     LogColors::api("[API]"),
                     LogColors::label("  - Blue Score:"),
@@ -465,7 +455,7 @@ impl KaspaApi {
     /// Wait for node to sync
     async fn wait_for_sync(&self, verbose: bool) -> Result<()> {
         if verbose {
-            tracing::debug!("checking kaspad sync state");
+            debug!("checking kaspad sync state");
         }
 
         loop {
@@ -473,7 +463,7 @@ impl KaspaApi {
                 Ok(is_synced) => {
                     if is_synced {
                         if verbose {
-                            tracing::debug!("kaspad synced, starting server");
+                            debug!("kaspad synced, starting server");
                         }
                         break;
                     }

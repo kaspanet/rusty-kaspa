@@ -9,7 +9,7 @@ use crate::{
 };
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::warn;
+use tracing::{debug, info, warn};
 
 pub struct BridgeConfig {
     pub instance_id: String, // Instance identifier for logging (e.g., "Instance 1", "Instance 2")
@@ -205,7 +205,7 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
             // Fall through to polling approach
         } else {
             // Successfully started notification-based listener
-            tracing::debug!("Started notification-based block template listener");
+            debug!("Started notification-based block template listener");
         }
     } else {
         // No concrete KaspaApi provided - use polling only
@@ -226,6 +226,6 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
 
     // Start listener
     let listener = StratumListener::new(listener_config);
-    tracing::info!("{} Starting stratum listener on {}", instance_id, config.stratum_port);
+    info!("{} Starting stratum listener on {}", instance_id, config.stratum_port);
     listener.listen().await
 }

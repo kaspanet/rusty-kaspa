@@ -19,7 +19,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 #[allow(dead_code)]
 const VAR_DIFF_THREAD_SLEEP: u64 = 10;
@@ -290,32 +290,32 @@ impl ShareHandler {
         kaspa_api: Arc<dyn KaspaApiTrait + Send + Sync>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let prefix = self.log_prefix();
-        tracing::debug!("{} [SUBMIT] ===== SHARE SUBMISSION FROM {} =====", prefix, ctx.remote_addr);
-        tracing::debug!("{} [SUBMIT] Event ID: {:?}", prefix, event.id);
-        tracing::debug!("{} [SUBMIT] Params count: {}", prefix, event.params.len());
-        tracing::debug!("{} [SUBMIT] Full params: {:?}", prefix, event.params);
+        debug!("{} [SUBMIT] ===== SHARE SUBMISSION FROM {} =====", prefix, ctx.remote_addr);
+        debug!("{} [SUBMIT] Event ID: {:?}", prefix, event.id);
+        debug!("{} [SUBMIT] Params count: {}", prefix, event.params.len());
+        debug!("{} [SUBMIT] Full params: {:?}", prefix, event.params);
 
         // Get per-client mining state from context
         let state = GetMiningState(&ctx);
         let _max_jobs = state.max_jobs() as u64;
         let current_counter = state.current_job_counter();
         let stored_ids = state.get_stored_job_ids();
-        tracing::debug!("{} [SUBMIT] Retrieved MiningState - counter: {}, stored IDs: {:?}", prefix, current_counter, stored_ids);
+        debug!("{} [SUBMIT] Retrieved MiningState - counter: {}, stored IDs: {:?}", prefix, current_counter, stored_ids);
 
         // Validate submit
         // According to stratum protocol: params[0] = address.name, params[1] = jobid, params[2] = nonce
         // We get the address from authorize, but we can optionally validate params[0] if present
         if event.params.len() < 3 {
-            tracing::error!("{} [SUBMIT] ERROR: Expected at least 3 params, got {}", prefix, event.params.len());
+            error!("{} [SUBMIT] ERROR: Expected at least 3 params, got {}", prefix, event.params.len());
             let wallet_addr = ctx.wallet_addr.lock().clone();
             record_worker_error(&self.instance_id, &wallet_addr, ErrorShortCode::BadDataFromMiner.as_str());
             return Err("malformed event, expected at least 3 params".into());
         }
 
         let prefix = self.log_prefix();
-        tracing::debug!("{} [SUBMIT] Params[0] (address/identity): {:?}", prefix, event.params.first());
-        tracing::debug!("{} [SUBMIT] Params[1] (job_id): {:?}", prefix, event.params.get(1));
-        tracing::debug!("{} [SUBMIT] Params[2] (nonce): {:?}", prefix, event.params.get(2));
+        debug!("{} [SUBMIT] Params[0] (address/identity): {:?}", prefix, event.params.first());
+        debug!("{} [SUBMIT] Params[1] (job_id): {:?}", prefix, event.params.get(1));
+        debug!("{} [SUBMIT] Params[2] (nonce): {:?}", prefix, event.params.get(2));
 
         // Optionally validate params[0] (address.name) if present
         // Some miners send it, others don't - we get address from authorize anyway
@@ -332,37 +332,36 @@ impl ShareHandler {
             let authorized_clean = wallet_addr.trim_start_matches("kaspa:").trim_start_matches("kaspatest:");
 
             if submitted_clean.to_lowercase() != authorized_clean.to_lowercase() {
-                tracing::debug!(
+                debug!(
                     "Submit params[0] address mismatch: submitted '{}' vs authorized '{}' (using authorized)",
-                    submitted_identity,
-                    wallet_addr
+                    submitted_identity, wallet_addr
                 );
             } else {
-                tracing::debug!("Submit params[0] matches authorized address: {}", submitted_identity);
+                debug!("Submit params[0] matches authorized address: {}", submitted_identity);
             }
         }
 
         // Parse job ID - can be either string or number
         let job_id = match &event.params[1] {
             serde_json::Value::String(s) => {
-                tracing::debug!("[SUBMIT] Job ID is string: '{}'", s);
+                debug!("[SUBMIT] Job ID is string: '{}'", s);
                 s.parse::<u64>().map_err(|e| format!("job id is not parsable as a number: {}", e))?
             }
             serde_json::Value::Number(n) => {
-                tracing::debug!("[SUBMIT] Job ID is number: {}", n);
+                debug!("[SUBMIT] Job ID is number: {}", n);
                 n.as_u64().ok_or("job id number is out of range")?
             }
             _ => {
-                tracing::error!("[SUBMIT] ERROR: Job ID must be string or number, got: {:?}", event.params[1]);
+                error!("[SUBMIT] ERROR: Job ID must be string or number, got: {:?}", event.params[1]);
                 return Err("job id must be a string or number".into());
             }
         };
 
-        tracing::debug!("[SUBMIT] Parsed job_id: {}", job_id);
+        debug!("[SUBMIT] Parsed job_id: {}", job_id);
 
         // Get current job counter for debugging
         let current_job_counter = state.current_job_counter();
-        tracing::debug!(
+        debug!(
             "[SUBMIT] Current job counter: {}, submitted job_id: {} (diff: {})",
             current_job_counter,
             job_id,
@@ -381,13 +380,13 @@ impl ShareHandler {
         let prefix = self.log_prefix();
         let job = match job {
             Some(j) => {
-                tracing::debug!("{} [SUBMIT] Found job ID {} (current counter: {})", prefix, job_id, current_counter);
+                debug!("{} [SUBMIT] Found job ID {} (current counter: {})", prefix, job_id, current_counter);
                 j
             }
             None => {
                 // Job doesn't exist at slot - log debug info
                 let stored_job_ids = state.get_stored_job_ids();
-                tracing::warn!(
+                warn!(
                     "[SUBMIT] Job ID {} not found at slot {} (current counter: {}, stored IDs: {:?})",
                     job_id,
                     job_id % 300,
@@ -402,10 +401,10 @@ impl ShareHandler {
         };
 
         let nonce_str = event.params[2].as_str().ok_or("nonce must be a string")?;
-        tracing::debug!("[SUBMIT] Raw nonce string: '{}'", nonce_str);
+        debug!("[SUBMIT] Raw nonce string: '{}'", nonce_str);
 
         let nonce_str = nonce_str.replace("0x", "");
-        tracing::debug!("[SUBMIT] Nonce after removing 0x: '{}' (length: {} hex chars)", nonce_str, nonce_str.len());
+        debug!("[SUBMIT] Nonce after removing 0x: '{}' (length: {} hex chars)", nonce_str, nonce_str.len());
 
         // Add extranonce if enabled
         let mut final_nonce_str = nonce_str.clone();
@@ -419,7 +418,7 @@ impl ShareHandler {
                 if nonce_str.len() <= extranonce2_len {
                     // Format with zero-padding on the right
                     final_nonce_str = format!("{}{:0>width$}", extranonce_val, nonce_str, width = extranonce2_len);
-                    tracing::debug!(
+                    debug!(
                         "[SUBMIT] Extranonce prepended: '{}' = '{}' + '{:0>width$}'",
                         final_nonce_str,
                         extranonce_val,
@@ -430,17 +429,17 @@ impl ShareHandler {
             }
         } // extranonce guard is dropped here
 
-        tracing::debug!("[SUBMIT] Final nonce string: '{}'", final_nonce_str);
+        debug!("[SUBMIT] Final nonce string: '{}'", final_nonce_str);
         let nonce_val = {
             let prefix = self.log_prefix();
             u64::from_str_radix(&final_nonce_str, 16).map_err(|e| {
-                tracing::error!("{} [SUBMIT] ERROR: Failed to parse nonce '{}' as hex: {}", prefix, final_nonce_str, e);
+                error!("{} [SUBMIT] ERROR: Failed to parse nonce '{}' as hex: {}", prefix, final_nonce_str, e);
                 format!("failed parsing noncestr: {}", e)
             })?
         };
 
-        tracing::debug!("[SUBMIT] Parsed nonce value (u64): {}", nonce_val);
-        tracing::debug!("[SUBMIT] Nonce hex: {:016x}", nonce_val);
+        debug!("[SUBMIT] Parsed nonce value (u64): {}", nonce_val);
+        debug!("[SUBMIT] Nonce hex: {:016x}", nonce_val);
 
         let worker_id = {
             let worker_name = ctx.worker_name.lock();
@@ -497,7 +496,7 @@ impl ShareHandler {
         let mut pow_value;
         let max_jobs = state.max_jobs() as u64;
 
-        tracing::debug!("[SUBMIT] Starting PoW validation for job_id: {} (max_jobs: {})", current_job_id, max_jobs);
+        debug!("[SUBMIT] Starting PoW validation for job_id: {} (max_jobs: {})", current_job_id, max_jobs);
 
         loop {
             // DIAGNOSTIC: Run full diagnostic on first share
@@ -506,26 +505,26 @@ impl ShareHandler {
             let mut header_clone = (**header).clone();
 
             DIAGNOSTIC_RUN.call_once(|| {
-                tracing::debug!("{}", LogColors::block("===== RUNNING POW DIAGNOSTIC ====="));
+                debug!("{}", LogColors::block("===== RUNNING POW DIAGNOSTIC ====="));
                 crate::pow_diagnostic::diagnose_pow_issue(&header_clone, nonce_val);
-                tracing::debug!("{}", LogColors::block("===== DIAGNOSTIC COMPLETE ====="));
+                debug!("{}", LogColors::block("===== DIAGNOSTIC COMPLETE ====="));
             });
 
             // DEBUG: Compare what we sent to ASIC vs what we're validating (moved to debug level)
-            tracing::debug!("{} {}", LogColors::validation("[DEBUG]"), LogColors::label("===== VALIDATION DEBUG ====="));
-            tracing::debug!(
+            debug!("{} {}", LogColors::validation("[DEBUG]"), LogColors::label("===== VALIDATION DEBUG ====="));
+            debug!(
                 "{} {} {}",
                 LogColors::validation("[DEBUG]"),
                 LogColors::label("Job we sent to ASIC:"),
                 format!("job_id={}, timestamp={}", current_job_id, current_job.block.header.timestamp)
             );
-            tracing::debug!(
+            debug!(
                 "{} {} {}",
                 LogColors::validation("[DEBUG]"),
                 LogColors::label("ASIC submitted:"),
                 format!("job_id={}, nonce=0x{:x}", current_job_id, nonce_val)
             );
-            tracing::debug!(
+            debug!(
                 "{} {} {}",
                 LogColors::validation("[DEBUG]"),
                 LogColors::label("Header we're validating:"),
@@ -535,7 +534,7 @@ impl ShareHandler {
             // Set the nonce in the header
             header_clone.nonce = nonce_val;
 
-            tracing::debug!(
+            debug!(
                 "{} {} {}",
                 LogColors::validation("[DEBUG]"),
                 LogColors::label("After setting nonce:"),
@@ -550,7 +549,7 @@ impl ShareHandler {
             // Convert Uint256 to BigUint for comparison
             pow_value = num_bigint::BigUint::from_bytes_be(&pow_value_uint256.to_be_bytes());
 
-            tracing::debug!(
+            debug!(
                 "{} {} {}",
                 LogColors::validation("[DEBUG]"),
                 LogColors::label("PowState result:"),
@@ -568,21 +567,18 @@ impl ShareHandler {
             let pow_value_bytes = pow_value.to_bytes_be();
             let network_target_bytes = network_target.to_bytes_be();
 
-            tracing::debug!("[SUBMIT] Target comparison:");
-            tracing::debug!("[SUBMIT]   - pow_value: {:x} ({} bytes)", pow_value, pow_value_bytes.len());
-            tracing::debug!("[SUBMIT]   - network_target: {:x} ({} bytes)", network_target, network_target_bytes.len());
-            tracing::debug!("[SUBMIT]   - meets_network_target: {}", meets_network_target);
+            debug!("[SUBMIT] Target comparison:");
+            debug!("[SUBMIT]   - pow_value: {:x} ({} bytes)", pow_value, pow_value_bytes.len());
+            debug!("[SUBMIT]   - network_target: {:x} ({} bytes)", network_target, network_target_bytes.len());
+            debug!("[SUBMIT]   - meets_network_target: {}", meets_network_target);
 
-            tracing::debug!(
+            debug!(
                 "[SUBMIT] PoW check result: passed={}, pow_value={:x}, network_target={:x}, header.bits={}",
-                pow_passed,
-                pow_value,
-                network_target,
-                header_clone.bits
+                pow_passed, pow_value, network_target, header_clone.bits
             );
 
             // Log detailed validation information with colors (moved to debug level)
-            tracing::debug!(
+            debug!(
                 "{} {} {}",
                 LogColors::validation("[VALIDATION]"),
                 LogColors::label("PoW Validation -"),
@@ -595,13 +591,13 @@ impl ShareHandler {
                     network_target_bytes.len()
                 )
             );
-            tracing::debug!(
+            debug!(
                 "{} {} {}",
                 LogColors::validation("[VALIDATION]"),
                 LogColors::label("Comparison:"),
                 format!("pow_value <= network_target = {} (lower hash is better)", meets_network_target)
             );
-            tracing::debug!(
+            debug!(
                 "{} {} {}",
                 LogColors::validation("[VALIDATION]"),
                 LogColors::label("PowState.check_pow() result:"),
@@ -611,7 +607,7 @@ impl ShareHandler {
             // On devnet, network difficulty is very low, so we should see blocks being found
             // Log at debug level (detailed validation logs moved to debug)
             if pow_passed {
-                tracing::debug!(
+                debug!(
                     "{} {} {}",
                     LogColors::validation("[VALIDATION]"),
                     LogColors::block("*** NETWORK TARGET PASSED ***"),
@@ -629,7 +625,7 @@ impl ShareHandler {
                 } else {
                     0.0
                 };
-                tracing::debug!(
+                debug!(
                     "{} {} {}",
                     LogColors::validation("[VALIDATION]"),
                     LogColors::label("Network target NOT met -"),
@@ -688,26 +684,26 @@ impl ShareHandler {
                 let timestamp_age_sec = timestamp_age_ms / 1000;
 
                 // Log header verification to confirm we're using real headers (moved to debug level)
-                tracing::debug!(
+                debug!(
                     "{} {} {}",
                     LogColors::block("[BLOCK]"),
                     LogColors::label("Header Verification:"),
                     "Using REAL header from Kaspa node block template"
                 );
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("  - Header Version:"), header_version);
-                tracing::debug!(
+                debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("  - Header Version:"), header_version);
+                debug!(
                     "{} {} {}",
                     LogColors::block("[BLOCK]"),
                     LogColors::label("  - Header Bits:"),
                     format!("{} (0x{:x})", header_bits, header_bits)
                 );
-                tracing::debug!(
+                debug!(
                     "{} {} {}",
                     LogColors::block("[BLOCK]"),
                     LogColors::label("  - Timestamp:"),
                     format!("{} (age: {}s, preserved from template)", original_timestamp, timestamp_age_sec)
                 );
-                tracing::debug!(
+                debug!(
                     "{} {} {}",
                     LogColors::block("[BLOCK]"),
                     LogColors::label("  - Nonce:"),
@@ -744,44 +740,34 @@ impl ShareHandler {
                 info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Nonce:"), format!("{:x}", nonce_val));
 
                 // Log block submission details before submission (moved to debug level)
-                tracing::debug!("{} {}", LogColors::block("[BLOCK]"), LogColors::block("=== SUBMITTING BLOCK TO NODE ==="));
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
-                tracing::debug!(
+                debug!("{} {}", LogColors::block("[BLOCK]"), LogColors::block("=== SUBMITTING BLOCK TO NODE ==="));
+                debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
+                debug!(
                     "{} {} {}",
                     LogColors::block("[BLOCK]"),
                     LogColors::label("Nonce:"),
                     format!("{:x} (0x{:016x})", nonce_val, nonce_val)
                 );
-                tracing::debug!(
+                debug!(
                     "{} {} {}",
                     LogColors::block("[BLOCK]"),
                     LogColors::label("Bits:"),
                     format!("{} (0x{:08x})", header_bits, header_bits)
                 );
-                tracing::debug!(
-                    "{} {} {}",
-                    LogColors::block("[BLOCK]"),
-                    LogColors::label("Timestamp:"),
-                    format!("{}", original_timestamp)
-                );
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Blue Score:"), blue_score);
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Pow Value:"), format!("{:x}", pow_value));
-                tracing::debug!(
-                    "{} {} {}",
-                    LogColors::block("[BLOCK]"),
-                    LogColors::label("Network Target:"),
-                    format!("{:x}", network_target)
-                );
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Job ID:"), current_job_id);
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Wallet:"), wallet_addr);
-                tracing::debug!(
+                debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Timestamp:"), format!("{}", original_timestamp));
+                debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Blue Score:"), blue_score);
+                debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Pow Value:"), format!("{:x}", pow_value));
+                debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Network Target:"), format!("{:x}", network_target));
+                debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Job ID:"), current_job_id);
+                debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Wallet:"), wallet_addr);
+                debug!(
                     "{} {} {}",
                     LogColors::block("[BLOCK]"),
                     LogColors::label("Client:"),
                     format!("{}:{}", ctx.remote_addr(), ctx.remote_port())
                 );
-                tracing::debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Block Hash:"), block_hash);
-                tracing::debug!("{} {}", LogColors::block("[BLOCK]"), "Calling kaspa_api.submit_block()...");
+                debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Block Hash:"), block_hash);
+                debug!("{} {}", LogColors::block("[BLOCK]"), "Calling kaspa_api.submit_block()...");
 
                 // Submit block to node
                 let block_submit_result = kaspa_api.submit_block(block.clone()).await;
@@ -963,19 +949,16 @@ impl ShareHandler {
 
             // Log difficulty check for debugging
             if pool_target.is_zero() {
-                tracing::warn!("stratum_diff target is zero! pow_value: {:x}, pool_target: {:x}", pow_value, pool_target);
+                warn!("stratum_diff target is zero! pow_value: {:x}, pool_target: {:x}", pow_value, pool_target);
             } else {
                 let pow_len = pow_bytes.len();
                 let target_len = target_bytes.len();
 
-                tracing::debug!("difficulty check: nonce: {:x} ({}), pow_value (full): {:x} ({} bytes), pool_target: {:x} ({} bytes), diff_value: {:?}, pow_value <= pool_target = {}", 
+                debug!("difficulty check: nonce: {:x} ({}), pow_value (full): {:x} ({} bytes), pool_target: {:x} ({} bytes), diff_value: {:?}, pow_value <= pool_target = {}", 
                               nonce_val, nonce_val, pow_value, pow_len, pool_target, target_len, state.stratum_diff().map(|d| d.diff_value), pow_value <= pool_target);
-                tracing::debug!(
+                debug!(
                     "Full comparison - pow_value: {:x} ({} bytes), pool_target: {:x} ({} bytes)",
-                    pow_value,
-                    pow_len,
-                    pool_target,
-                    target_len
+                    pow_value, pow_len, pool_target, target_len
                 );
             }
 
@@ -985,7 +968,7 @@ impl ShareHandler {
             if pow_value >= pool_target {
                 // Share doesn't meet pool difficulty - might be wrong job ID (moved to debug to keep terminal clean)
                 let worker_name = ctx.worker_name.lock().clone();
-                tracing::debug!(
+                debug!(
                     "{} {} {}",
                     LogColors::validation("✗ INVALID SHARE (too high)"),
                     LogColors::label("worker:"),
@@ -996,7 +979,7 @@ impl ShareHandler {
                 );
 
                 if current_job_id == job_id {
-                    tracing::debug!("low diff share... checking for bad job ID ({})", current_job_id);
+                    debug!("low diff share... checking for bad job ID ({})", current_job_id);
                     invalid_share = true;
                 }
 
@@ -1004,12 +987,7 @@ impl ShareHandler {
                 // Validate job ID: jobId == 1 || jobId%maxJobs == submitInfo.jobId%maxJobs+1
                 if current_job_id == 1 || (current_job_id % max_jobs == ((job_id % max_jobs) + 1) % max_jobs) {
                     // Exhausted all previous blocks (wrapped around or reached job 1)
-                    tracing::debug!(
-                        "Job ID loop exhausted: current_job_id={}, job_id={}, max_jobs={}",
-                        current_job_id,
-                        job_id,
-                        max_jobs
-                    );
+                    debug!("Job ID loop exhausted: current_job_id={}, job_id={}, max_jobs={}", current_job_id, job_id, max_jobs);
                     break;
                 } else {
                     // Try previous job ID
@@ -1017,19 +995,19 @@ impl ShareHandler {
                     if let Some(prev_job) = state.get_job(prev_job_id) {
                         current_job_id = prev_job_id;
                         current_job = prev_job;
-                        tracing::debug!("Trying previous job ID: {} (submitted as {})", current_job_id, job_id);
+                        debug!("Trying previous job ID: {} (submitted as {})", current_job_id, job_id);
                         // Continue loop to validate with previous job
                         continue;
                     } else {
                         // Job doesn't exist, exit loop - bad share will be recorded
-                        tracing::debug!("Previous job ID {} doesn't exist, exiting loop", prev_job_id);
+                        debug!("Previous job ID {} doesn't exist, exiting loop", prev_job_id);
                         break;
                     }
                 }
             } else {
                 // Valid share (pow_value < pool_target) - moved to debug to keep terminal clean
                 let worker_name = ctx.worker_name.lock().clone();
-                tracing::debug!(
+                debug!(
                     "{} {} {}",
                     LogColors::validation("✓ VALID SHARE"),
                     LogColors::label("worker:"),
@@ -1040,7 +1018,7 @@ impl ShareHandler {
                 );
 
                 if invalid_share {
-                    tracing::debug!("found correct job ID: {} (submitted as {})", current_job_id, job_id);
+                    debug!("found correct job ID: {} (submitted as {})", current_job_id, job_id);
                 }
                 invalid_share = false;
                 break;
@@ -1050,7 +1028,7 @@ impl ShareHandler {
         let stats = self.get_create_stats(&ctx);
 
         if invalid_share {
-            tracing::debug!("low diff share confirmed");
+            debug!("low diff share confirmed");
             *stats.invalid_shares.lock() += 1;
             *self.overall.invalid_shares.lock() += 1;
 
@@ -1459,20 +1437,14 @@ impl ShareHandler {
             let mut interval = tokio::time::interval(Duration::from_secs(VAR_DIFF_THREAD_SLEEP));
 
             if log_stats {
-                tracing::info!(
+                info!(
                     "{} VarDiff enabled (target={} shares/min, tick={}s, pow2_clamp={})",
-                    prefix,
-                    expected_spm,
-                    VAR_DIFF_THREAD_SLEEP,
-                    clamp
+                    prefix, expected_spm, VAR_DIFF_THREAD_SLEEP, clamp
                 );
             } else {
-                tracing::debug!(
+                debug!(
                     "{} VarDiff thread started (target={} shares/min, tick={}s, pow2_clamp={})",
-                    prefix,
-                    expected_spm,
-                    VAR_DIFF_THREAD_SLEEP,
-                    clamp
+                    prefix, expected_spm, VAR_DIFF_THREAD_SLEEP, clamp
                 );
             }
 
@@ -1499,15 +1471,9 @@ impl ShareHandler {
 
                     if log_stats {
                         let observed_spm = if elapsed > 0.0 { (shares / elapsed) * 60.0 } else { 0.0 };
-                        tracing::info!(
+                        info!(
                             "{} VarDiff: {:.1} spm (target {:.1}), shares={}, window={:.0}s, diff {:.0} -> {:.0}",
-                            prefix,
-                            observed_spm,
-                            expected_spm,
-                            shares as i64,
-                            elapsed,
-                            current,
-                            next
+                            prefix, observed_spm, expected_spm, shares as i64, elapsed, current, next
                         );
                     }
                 }

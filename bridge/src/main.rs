@@ -3,8 +3,8 @@ use futures_util::future::try_join_all;
 use kaspa_stratum_bridge::log_colors::LogColors;
 use kaspa_stratum_bridge::{listen_and_serve, prom, BridgeConfig as StratumBridgeConfig, KaspaApi};
 use std::ffi::OsString;
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
@@ -17,6 +17,9 @@ mod tracing_setup;
 
 use app_config::BridgeConfig;
 use inprocess_node::InProcessNode;
+
+static CONFIG_LOADED_FROM: OnceLock<Option<PathBuf>> = OnceLock::new();
+static REQUESTED_CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
 
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
@@ -32,6 +35,53 @@ struct Cli {
 
     #[arg(long, action = clap::ArgAction::Append)]
     node_arg: Vec<String>,
+}
+
+fn initialize_config() -> BridgeConfig {
+    let config_path = REQUESTED_CONFIG_PATH.get().map(PathBuf::as_path).unwrap_or_else(|| Path::new("config.yaml"));
+    // Load config first to check if file logging is enabled
+    let fallback_path = Path::new("bridge").join(config_path);
+    // Build candidate paths for config file search:
+    // 1. Direct path as specified
+    // 2. Fallback path under ./bridge/
+    // 3-5. Paths relative to executable directory (for different deployment scenarios)
+    let exe_base = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf()));
+    let exe_root = exe_base.as_ref().and_then(|p| p.parent()).and_then(|p| p.parent()).map(|p| p.to_path_buf());
+
+    let mut candidates: Vec<std::path::PathBuf> = vec![config_path.to_path_buf(), fallback_path.clone()];
+
+    if config_path.is_relative() {
+        if let Some(exe_base) = exe_base.as_ref() {
+            candidates.push(exe_base.join(config_path));
+        }
+        if let Some(exe_root) = exe_root.as_ref() {
+            candidates.push(exe_root.join(config_path));
+            candidates.push(exe_root.join("bridge").join(config_path));
+        }
+    }
+
+    let mut loaded_from: Option<std::path::PathBuf> = None;
+    let mut config: Option<BridgeConfig> = None;
+    for path in candidates.iter() {
+        if path.exists() {
+            let content = std::fs::read_to_string(path).unwrap_or_else(|e| {
+                eprintln!("Failed to read config file {}: {}", path.display(), e);
+                std::process::exit(1);
+            });
+
+            let parsed = BridgeConfig::from_yaml(&content).unwrap_or_else(|e| {
+                eprintln!("Failed to parse config file {}: {}", path.display(), e);
+                std::process::exit(1);
+            });
+
+            config = Some(parsed);
+            loaded_from = Some(path.clone());
+            break;
+        }
+    }
+
+    let _ = CONFIG_LOADED_FROM.set(loaded_from);
+    config.unwrap_or_default()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -126,6 +176,7 @@ async fn kaspa_api_with_retry(kaspad_address: String, block_wait_time: Duration)
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
+    let _ = REQUESTED_CONFIG_PATH.set(cli.config.clone());
 
     let mut node_args: Vec<String> = Vec::new();
     if let Some(node_args_str) = cli.node_args.as_deref() {
@@ -148,40 +199,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let inferred_mode = NodeMode::Inprocess;
     let node_mode = cli.node_mode.unwrap_or(inferred_mode);
 
-    // Load config first to check if file logging is enabled
-    let config_path = cli.config.as_path();
-    let fallback_path = std::path::Path::new("bridge").join(config_path);
-    // Build candidate paths for config file search:
-    // 1. Direct path as specified
-    // 2. Fallback path under ./bridge/
-    // 3-5. Paths relative to executable directory (for different deployment scenarios)
-    let exe_base = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf()));
-    let exe_root = exe_base.as_ref().and_then(|p| p.parent()).and_then(|p| p.parent()).map(|p| p.to_path_buf());
-
-    let mut candidates: Vec<std::path::PathBuf> = vec![config_path.to_path_buf(), fallback_path.clone()];
-
-    if config_path.is_relative() {
-        if let Some(exe_base) = exe_base.as_ref() {
-            candidates.push(exe_base.join(config_path));
-        }
-        if let Some(exe_root) = exe_root.as_ref() {
-            candidates.push(exe_root.join(config_path));
-            candidates.push(exe_root.join("bridge").join(config_path));
-        }
-    }
-
-    let mut loaded_from: Option<std::path::PathBuf> = None;
-    let mut config: Option<BridgeConfig> = None;
-    for path in candidates.iter() {
-        if path.exists() {
-            let content = std::fs::read_to_string(path)?;
-            config = Some(BridgeConfig::from_yaml(&content)?);
-            loaded_from = Some(path.clone());
-            break;
-        }
-    }
-
-    let config = config.unwrap_or_default();
+    let config = initialize_config();
 
     // Initialize color support detection
     LogColors::init();
@@ -214,7 +232,8 @@ async fn main() -> Result<(), anyhow::Error> {
         inprocess_node = Some(InProcessNode::start_from_args(args)?);
     }
 
-    if loaded_from.is_none() {
+    if CONFIG_LOADED_FROM.get().and_then(|p| p.as_ref()).is_none() {
+        let config_path = cli.config.as_path();
         let cwd = std::env::current_dir().ok();
         tracing::warn!("config.yaml not found, using defaults (requested: {:?}, cwd: {:?})", config_path, cwd);
     }
