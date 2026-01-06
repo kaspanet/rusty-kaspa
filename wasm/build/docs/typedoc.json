@@ -4,4 +4,5 @@
     "cleanOutputDir": true,
     "disableSources": true,
     "categoryOrder": ["*", "Other"],
+    "tsconfig": "./tsconfig.json"
 }
