@@ -183,7 +183,7 @@ fixedstr = { version = "0.5.4", features = ["serde"] }
 flate2 = "1.0.28"
 futures = { version = "0.3.29" }
 futures-util = { version = "0.3.29", default-features = false, features = ["alloc"] }
-getrandom = { version = "0.3.4" }
+getrandom = { version = "0.2.10", features = ["js"] }
 h2 = "0.4.6"
 # h2 = "0.3.21"
 heapless = "0.8.0"
