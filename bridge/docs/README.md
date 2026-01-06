@@ -43,10 +43,12 @@ cargo run -p kaspa-stratum-bridge --release --bin stratum-bridge -- --config bri
 ### Run (in-process node)
 
 ```bash
-cargo run -p kaspa-stratum-bridge --release --bin stratum-bridge -- --config bridge/config.yaml --node-mode inprocess --node-args="--utxoindex --rpclisten=127.0.0.1:16110 --rpclisten-borsh=127.0.0.1:17110"
+cargo run -p kaspa-stratum-bridge --release --bin stratum-bridge -- --config bridge/config.yaml --node-mode inprocess --utxoindex --rpclisten=127.0.0.1:16110 --rpclisten-borsh=127.0.0.1:17110
 ```
 
-**Note:** If you already have a `kaspad` running, in-process mode may fail with a DB lock error (RocksDB `meta/LOCK`). Either stop the other `kaspad` or run in-process with a separate app directory, e.g. add to `--node-args`:
+**Note:** In-process mode uses a separate app directory by default (`bridge-datadir`) to avoid RocksDB lock conflicts with an existing `kaspad`.
+
+If you want to override it, pass `--appdir`:
 
 ```text
 --appdir=E:\\rusty-kaspa\\tmp-kaspad-inprocess

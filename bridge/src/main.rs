@@ -21,6 +21,8 @@ use inprocess_node::InProcessNode;
 static CONFIG_LOADED_FROM: OnceLock<Option<PathBuf>> = OnceLock::new();
 static REQUESTED_CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
 
+static DEFAULT_INPROCESS_APPDIR: &str = "bridge-datadir";
+
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
 struct Cli {
@@ -30,11 +32,20 @@ struct Cli {
     #[arg(long, value_enum)]
     node_mode: Option<NodeMode>,
 
-    #[arg(long, default_value = "--utxoindex --rpclisten=127.0.0.1:16110 --rpclisten-borsh=127.0.0.1:17110 --disable-upnp")]
-    node_args: Option<String>,
+    #[arg(long)]
+    appdir: Option<PathBuf>,
 
-    #[arg(long, action = clap::ArgAction::Append)]
-    node_arg: Vec<String>,
+    #[arg(long)]
+    disable_upnp: bool,
+
+    #[arg(long)]
+    utxoindex: bool,
+
+    #[arg(long)]
+    rpclisten: Option<String>,
+
+    #[arg(long)]
+    rpclisten_borsh: Option<String>,
 }
 
 fn initialize_config() -> BridgeConfig {
@@ -90,46 +101,6 @@ enum NodeMode {
     Inprocess,
 }
 
-fn split_shell_words(input: &str) -> Result<Vec<String>, anyhow::Error> {
-    let mut out = Vec::new();
-    let mut cur = String::new();
-    let chars = input.chars().peekable();
-    let mut quote: Option<char> = None;
-
-    for ch in chars {
-        match quote {
-            Some(q) if ch == q => {
-                quote = None;
-            }
-            Some(_) => {
-                cur.push(ch);
-            }
-            None if ch == '"' || ch == '\'' => {
-                quote = Some(ch);
-            }
-            None if ch.is_whitespace() => {
-                if !cur.is_empty() {
-                    out.push(cur.clone());
-                    cur.clear();
-                }
-            }
-            None => {
-                cur.push(ch);
-            }
-        }
-    }
-
-    if quote.is_some() {
-        return Err(anyhow::anyhow!("unterminated quote in --node-args"));
-    }
-
-    if !cur.is_empty() {
-        out.push(cur);
-    }
-
-    Ok(out)
-}
-
 /// Log the bridge configuration at startup
 fn log_bridge_configuration(config: &app_config::BridgeConfig) {
     let instance_count = config.instances.len();
@@ -178,26 +149,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
     let _ = REQUESTED_CONFIG_PATH.set(cli.config.clone());
 
-    let mut node_args: Vec<String> = Vec::new();
-    if let Some(node_args_str) = cli.node_args.as_deref() {
-        node_args.extend(split_shell_words(node_args_str)?);
-    }
-    node_args.extend(cli.node_arg.iter().cloned());
-
-    // If no node args provided (double-click mode), add default args for inprocess mode
-    // to avoid conflicts with external kaspad instances
-    if node_args.is_empty() {
-        node_args.extend_from_slice(&[
-            "--datadir".to_string(),
-            "bridge-datadir".to_string(),
-            "--rpclisten".to_string(),
-            "127.0.0.1:16111".to_string(), // Different port to avoid conflicts
-            "--utxoindex".to_string(),
-        ]);
-    }
-
-    let inferred_mode = NodeMode::Inprocess;
-    let node_mode = cli.node_mode.unwrap_or(inferred_mode);
+    let node_mode = cli.node_mode.unwrap_or(NodeMode::Inprocess);
 
     let config = initialize_config();
 
@@ -225,6 +177,26 @@ async fn main() -> Result<(), anyhow::Error> {
     // are not filtered out by a tracing subscriber installed by kaspad.
     let mut inprocess_node: Option<InProcessNode> = None;
     if node_mode == NodeMode::Inprocess {
+        let mut node_args: Vec<String> = Vec::new();
+        if cli.utxoindex {
+            node_args.push("--utxoindex".to_string());
+        }
+        if let Some(rpclisten) = cli.rpclisten.as_ref() {
+            node_args.push("--rpclisten".to_string());
+            node_args.push(rpclisten.clone());
+        }
+        if let Some(rpclisten_borsh) = cli.rpclisten_borsh.as_ref() {
+            node_args.push("--rpclisten-borsh".to_string());
+            node_args.push(rpclisten_borsh.clone());
+        }
+        if cli.disable_upnp {
+            node_args.push("--disable-upnp".to_string());
+        }
+        node_args.push("--appdir".to_string());
+        node_args.push(
+            cli.appdir.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|| DEFAULT_INPROCESS_APPDIR.to_string()),
+        );
+
         let mut argv: Vec<OsString> = Vec::with_capacity(node_args.len() + 1);
         argv.push(OsString::from("kaspad"));
         argv.extend(node_args.iter().map(OsString::from));
