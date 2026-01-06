@@ -332,7 +332,7 @@ jobs:
       - name: Install NodeJS
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
 
       - name: Install NodeJS dependencies
         run: npm install --global typedoc typescript
