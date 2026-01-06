@@ -6,7 +6,6 @@ use kaspa_utils::networking::PrefixBucket;
 use rand::{seq::SliceRandom, thread_rng, Rng};
 
 use crate::eviction::{cmp_strats::by_lowest_rank, weight_strats::by_highest_none_latency_rank};
-use struct_as_array::AsArray;
 
 /*
 # Eviction Logic
@@ -138,7 +137,7 @@ pub mod weight_strats {
 /// _1) Ranks are organized from low to high, the lower the rank, the better the peer's perf in that metric._
 ///
 /// _2) A peer may hold a rank as a multiple of 0.5, due to tie breaks splitting the rank._
-#[derive(Default, Clone, Copy, PartialEq, Debug, AsArray)]
+#[derive(Default, Clone, Copy, PartialEq, Debug)]
 pub struct EvictionRanks {
     ip_prefix_bucket: f64, // the first byte of the IP address, used to group peers by their IP prefix, low value indicates a peer from a less populated prefix.
     time_connected: f64,   // ranked time connected, low value indicates a peer with a long consistent connection to us.
@@ -466,12 +465,6 @@ mod test {
         );
 
         vec![peer0, peer1, peer2, peer3, peer4, peer5, peer6, peer7, peer8, peer9]
-    }
-
-    #[test]
-    fn assert_all_ranks_are_all_ranks() {
-        // assert that all ranks are all ranks
-        assert_eq!(EvictionRanks { ..Default::default() }.all_ranks().len(), EvictionRanks { ..Default::default() }.as_array().len());
     }
 
     #[test]
