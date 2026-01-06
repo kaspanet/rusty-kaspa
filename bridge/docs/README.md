@@ -9,7 +9,6 @@ The bridge can run against:
 - **External** node (you run `kaspad` yourself)
 - **In-process** node (the bridge starts `kaspad` in the same process)
 
-The bridge no longer supports spawning `kaspad` as a subprocess.
 
 ### Default config / ports
 
