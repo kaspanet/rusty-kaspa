@@ -9,6 +9,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 use kaspa_stratum_bridge::log_colors::LogColors;
 
 use crate::app_config::BridgeConfig;
+use crate::app_dirs;
 
 // Global registry mapping instance_id strings to instance numbers
 // This persists across async boundaries and thread switches
@@ -327,10 +328,12 @@ pub(crate) fn init_tracing(
         use std::time::SystemTime;
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
         let log_filename = format!("rustbridge_{}.log", timestamp);
-        let log_path = std::path::Path::new(".").join(&log_filename);
+        let log_dir = app_dirs::get_bridge_logs_dir();
+        let _ = std::fs::create_dir_all(&log_dir);
+        let log_path = log_dir.join(&log_filename);
 
         // Use tracing-appender for file logging
-        let file_appender = tracing_appender::rolling::never(".", &log_filename);
+        let file_appender = tracing_appender::rolling::never(&log_dir, &log_filename);
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
         let subscriber = tracing_subscriber::registry()

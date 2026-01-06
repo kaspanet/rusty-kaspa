@@ -11,6 +11,7 @@ use tracing_subscriber::EnvFilter;
 use kaspad_lib::args as kaspad_args;
 
 mod app_config;
+mod app_dirs;
 mod health_check;
 mod inprocess_node;
 mod tracing_setup;
@@ -20,8 +21,6 @@ use inprocess_node::InProcessNode;
 
 static CONFIG_LOADED_FROM: OnceLock<Option<PathBuf>> = OnceLock::new();
 static REQUESTED_CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
-
-static DEFAULT_INPROCESS_APPDIR: &str = "bridge-datadir";
 
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
@@ -191,9 +190,13 @@ async fn main() -> Result<(), anyhow::Error> {
             node_args.push("--disable-upnp".to_string());
         }
         node_args.push("--appdir".to_string());
-        node_args.push(
-            cli.appdir.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|| DEFAULT_INPROCESS_APPDIR.to_string()),
-        );
+
+        let default_appdir = app_dirs::default_inprocess_kaspad_appdir();
+        if cli.appdir.is_none() {
+            let _ = std::fs::create_dir_all(&default_appdir);
+        }
+
+        node_args.push(cli.appdir.as_ref().cloned().unwrap_or(default_appdir).to_string_lossy().to_string());
 
         let mut argv: Vec<OsString> = Vec::with_capacity(node_args.len() + 1);
         argv.push(OsString::from("kaspad"));

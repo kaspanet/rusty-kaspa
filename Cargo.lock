@@ -3177,6 +3177,7 @@ dependencies = [
  "blake2",
  "chrono",
  "clap 4.5.51",
+ "dirs",
  "faster-hex 0.1.1",
  "futures-util",
  "hex",
