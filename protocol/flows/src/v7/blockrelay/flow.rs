@@ -218,9 +218,10 @@ impl HandleRelayInvsFlow {
 
             // We spawn post-processing as a separate task so that this loop
             // can continue processing the following relay blocks
+            let router = self.router.clone();
             let ctx = self.ctx.clone();
             tokio::spawn(async move {
-                self.router.set_last_block_transfer(last_block_transfer_instant);
+                router.set_last_block_transfer(last_block_transfer_instant);
                 ctx.on_new_block(&session, ancestor_batch, block, virtual_state_task).await;
                 ctx.log_block_event(BlockLogEvent::Relay(inv.hash));
             });
@@ -249,7 +250,7 @@ impl HandleRelayInvsFlow {
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::Block)?;
         let last_block_transfer_instant = Instant::now();
-        let block: Block = msg.try_into()?;
+        let block: Block = Versioned(self.header_format, msg).try_into()?;
         if block.hash() != requested_hash {
             Err(ProtocolError::OtherOwned(format!("requested block hash {} but got block {}", requested_hash, block.hash())))
         } else {
