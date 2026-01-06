@@ -182,12 +182,10 @@ async fn main() -> Result<(), anyhow::Error> {
             node_args.push("--utxoindex".to_string());
         }
         if let Some(rpclisten) = cli.rpclisten.as_ref() {
-            node_args.push("--rpclisten".to_string());
-            node_args.push(rpclisten.clone());
+            node_args.push(format!("--rpclisten={}", rpclisten));
         }
         if let Some(rpclisten_borsh) = cli.rpclisten_borsh.as_ref() {
-            node_args.push("--rpclisten-borsh".to_string());
-            node_args.push(rpclisten_borsh.clone());
+            node_args.push(format!("--rpclisten-borsh={}", rpclisten_borsh));
         }
         if cli.disable_upnp {
             node_args.push("--disable-upnp".to_string());
