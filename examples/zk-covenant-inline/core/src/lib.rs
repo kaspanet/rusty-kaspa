@@ -6,4 +6,13 @@ extern crate core;
 // todo set me via env
 pub const GENESIS_TX_ID: [u8; 32] = [0; 32];
 
-pub mod tx;
+// pub mod tx;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct PublicInput {
+    pub current_input: i64,
+    pub prev_state: u64, // from input.script_signature -> script -> state
+    pub new_state: u64, // output spk == hash(script(new_state)
+    pub payload_diff: u64 // by what value state increased by
+}

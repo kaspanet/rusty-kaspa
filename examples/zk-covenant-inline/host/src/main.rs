@@ -6,7 +6,7 @@ use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{
-    PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
+    PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
     UtxoEntry,
 };
 use kaspa_txscript::caches::Cache;
@@ -16,6 +16,7 @@ use kaspa_txscript::{pay_to_address_script, pay_to_script_hash_script, script_bu
 use risc0_zkvm::sha::Digestible;
 use risc0_zkvm::{default_prover, ExecutorEnv, Prover, ProverOpts};
 use zk_covenant_inline_methods::{ZK_COVENANT_INLINE_GUEST_ELF, ZK_COVENANT_INLINE_GUEST_ID};
+use zk_covenant_inline_core::PublicInput;
 
 fn main() {
     // Initialize tracing. In order to view logs, run `RUST_LOG=info cargo run`
@@ -26,12 +27,16 @@ fn main() {
     let spk = pay_to_script_hash_script(&redeem_script);
 
     let (mut tx, _, utxo_entry) = make_mock_transaction(0, spk);
-    let tx_id = tx.id();
-    let tx_bytes = borsh::to_vec(&tx).unwrap();
-    let tx_bytes_excluding_mass_and_txid = &tx_bytes[..tx_bytes.len() - 40];
+
+    let public_input = PublicInput {
+        current_input: 0,
+        prev_state: 0,
+        new_state: 15,
+        payload_diff: 15,
+    };
+
     let env = ExecutorEnv::builder()
-        .write_slice((tx_bytes_excluding_mass_and_txid.len() as u32).to_le_bytes().as_slice())
-        .write_slice(tx_bytes_excluding_mass_and_txid)
+        .write_slice(bytemuck::bytes_of(&public_input))
         .build()
         .unwrap();
 
@@ -50,8 +55,8 @@ fn main() {
 
     // The guest commits the txid of the transaction it validated.
     // We assert that it matches the txid we calculated.
-    let output = TransactionId::from_slice(receipt.journal.bytes.as_slice());
-    assert_eq!(output, tx_id);
+    let output: &PublicInput = bytemuck::from_bytes(receipt.journal.bytes.as_slice());
+    assert_eq!(output, &public_input);
 
     let script_precompile_inner = {
         use kaspa_txscript::zk_precompiles::risc0::inner::Inner;
@@ -69,7 +74,7 @@ fn main() {
         }
     };
     let journal_digest = receipt.journal.digest();
-    let expected_digest = tx_id.as_bytes().digest();
+    let expected_digest = bytemuck::bytes_of(&public_input).digest();
     assert_eq!(journal_digest, expected_digest);
     // The receipt was verified at the end of proving, but the below code is an
     // example of how someone else could verify this receipt.

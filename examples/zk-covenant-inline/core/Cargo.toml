@@ -9,9 +9,10 @@ edition.workspace = true
 include.workspace = true
 
 [dependencies]
-blake2b_simd.workspace = true
-borsh = { workspace = true, default-features = false }
-smallvec = {  workspace = true, features = ["const_generics"] }
+bytemuck = { workspace = true, features = ["derive"]}
+#blake2b_simd.workspace = true
+#borsh = { workspace = true, default-features = false }
+#smallvec = {  workspace = true, features = ["const_generics"] }
 
 [lints]
 workspace = true
