@@ -11,3 +11,11 @@ risc0-zkvm = { version = "^3.0.4", default-features = false, features = ['std'] 
 
 zk-covenant-inline-core = { path = "../../core" }
 #kaspa-consensus-core = { path = "../../../../consensus/core" }
+
+# Always optimize; building and running the guest takes much longer without optimization.
+[profile.dev]
+opt-level = 3
+
+[profile.release]
+debug = 1
+lto = true

@@ -360,16 +360,6 @@ inherits = "release"
 debug = true
 strip = false
 
-# Always optimize; building and running the guest takes much longer without optimization.
-[profile.risc0-dev]
-inherits = "dev"
-opt-level = 3
-
-[profile.risc0]
-inherits = "release"
-debug = 1
-lto = true
-
 [workspace.lints.clippy]
 empty_docs = "allow"
 uninlined_format_args = "allow"

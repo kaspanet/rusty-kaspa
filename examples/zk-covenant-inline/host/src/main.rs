@@ -12,9 +12,7 @@ use kaspa_consensus_core::tx::{
 use kaspa_txscript::caches::Cache;
 use kaspa_txscript::opcodes::codes::OpZkPrecompile;
 use kaspa_txscript::zk_precompiles::tags::ZkTag;
-use kaspa_txscript::{
-    pay_to_address_script, pay_to_script_hash_script, script_builder::ScriptBuilder, EngineFlags, TxScriptEngine,
-};
+use kaspa_txscript::{pay_to_address_script, pay_to_script_hash_script, script_builder::ScriptBuilder, EngineFlags, TxScriptEngine};
 use risc0_zkvm::sha::Digestible;
 use risc0_zkvm::{default_prover, ExecutorEnv, Prover, ProverOpts};
 use zk_covenant_inline_methods::{ZK_COVENANT_INLINE_GUEST_ELF, ZK_COVENANT_INLINE_GUEST_ID};
@@ -70,8 +68,9 @@ fn main() {
             ),
         }
     };
-    let journal_digest = receipt.claim().unwrap().value().unwrap().output.value().unwrap().unwrap().journal.digest();
-
+    let journal_digest = receipt.journal.digest();
+    let expected_digest = tx_id.as_bytes().digest();
+    assert_eq!(journal_digest, expected_digest);
     // The receipt was verified at the end of proving, but the below code is an
     // example of how someone else could verify this receipt.
     receipt.verify(ZK_COVENANT_INLINE_GUEST_ID).unwrap();
@@ -96,10 +95,7 @@ fn main() {
     println!("ZK proof verified successfully on-chain!");
 }
 
-fn make_mock_transaction(
-    lock_time: u64,
-    spk: ScriptPublicKey,
-) -> (Transaction, TransactionInput, UtxoEntry) {
+fn make_mock_transaction(lock_time: u64, spk: ScriptPublicKey) -> (Transaction, TransactionInput, UtxoEntry) {
     let dummy_prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
     let dummy_tx_input = TransactionInput::new(dummy_prev_out, vec![], 10, u8::MAX);
     let addr_hash = vec![1u8; 32];
@@ -127,7 +123,6 @@ fn verify_zk_succinct(tx: &Transaction, utxo_entry: &UtxoEntry) {
     let flags = EngineFlags { covenants_enabled: false }; // Covenants not needed for just OP_VERIFY_ZK
 
     let populated = PopulatedTransaction::new(tx, vec![utxo_entry.clone()]);
-    let mut vm =
-        TxScriptEngine::from_transaction_input(&populated, &tx.inputs[0], 0, utxo_entry, &reused_values, &sig_cache, flags);
+    let mut vm = TxScriptEngine::from_transaction_input(&populated, &tx.inputs[0], 0, utxo_entry, &reused_values, &sig_cache, flags);
     vm.execute().unwrap();
 }

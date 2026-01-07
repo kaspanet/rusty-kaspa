@@ -1,27 +1,15 @@
-// #![no_std]
-// #![no_main]
-//
-// extern crate alloc;
-//
-// use alloc::vec;
-// use alloc::vec::Vec;
-// risc0_zkvm::guest::entry!(main);
+#![no_std]
+#![no_main]
+
+extern crate alloc;
+
+use alloc::vec;
+risc0_zkvm::guest::entry!(main);
 
 use risc0_zkvm::guest::env;
 use zk_covenant_inline_core::tx::hashing::id;
 use zk_covenant_inline_core::tx::Transaction;
 // use zk_covenant_inline_core::{GENESIS_TX_ID};
-
-// use borsh::{BorshDeserialize, BorshSerialize};
-// #[derive(Debug, Clone, PartialEq, Eq, Default, BorshSerialize, BorshDeserialize)]
-// pub struct Transaction;
-// impl Transaction {
-//     pub fn id(&self) -> [u8;32] {
-//         [0;32]
-//     }
-// }
-
-
 
 pub fn main() {
     let mut curr_tx_bytes_len = [0u32];
