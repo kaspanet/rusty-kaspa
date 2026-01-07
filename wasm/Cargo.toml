@@ -70,7 +70,7 @@ folder = "setup"
 
 
 [package.metadata.wasm-pack.profile.release]
-# We require these:
+# We require these options:
 wasm-opt = ["-O","--enable-bulk-memory","--enable-nontrapping-float-to-int"]
 
 [lints]
