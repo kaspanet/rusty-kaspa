@@ -29,4 +29,3 @@ impl ZkPrecompile for R0SuccinctPrecompile {
         rcpt.verify_integrity()
     }
 }
-

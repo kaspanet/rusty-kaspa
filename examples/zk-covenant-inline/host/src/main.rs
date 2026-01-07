@@ -10,7 +10,7 @@ use kaspa_consensus_core::tx::{
     UtxoEntry,
 };
 use kaspa_txscript::caches::Cache;
-use kaspa_txscript::opcodes::codes::{OpZkPrecompile};
+use kaspa_txscript::opcodes::codes::OpZkPrecompile;
 use kaspa_txscript::zk_precompiles::tags::ZkTag;
 use kaspa_txscript::{
     pay_to_address_script, pay_to_script_hash_script, script_builder::ScriptBuilder, EngineFlags, TxScriptEngine,
@@ -23,11 +23,14 @@ fn main() {
     // Initialize tracing. In order to view logs, run `RUST_LOG=info cargo run`
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env()).init();
 
-    let (tx, _, _) = make_mock_transaction(0, vec![], ScriptPublicKey::new(0, vec![].into()));
+    // --- Build the transaction for the guest and for verification ---
+    let redeem_script = ScriptBuilder::new().add_op(OpZkPrecompile).unwrap().drain();
+    let spk = pay_to_script_hash_script(&redeem_script);
+
+    let (mut tx, _, utxo_entry) = make_mock_transaction(0, spk);
+    let tx_id = tx.id();
     let tx_bytes = borsh::to_vec(&tx).unwrap();
     let tx_bytes_excluding_mass_and_txid = &tx_bytes[..tx_bytes.len() - 40];
-    let tx_id = tx.id();
-
     let env = ExecutorEnv::builder()
         .write_slice((tx_bytes_excluding_mass_and_txid.len() as u32).to_le_bytes().as_slice())
         .write_slice(tx_bytes_excluding_mass_and_txid)
@@ -46,6 +49,9 @@ fn main() {
     // extract the receipt.
     let receipt = prove_info.receipt;
     let receipt_inner = receipt.inner.succinct().unwrap();
+
+    // The guest commits the txid of the transaction it validated.
+    // We assert that it matches the txid we calculated.
     let output = TransactionId::from_slice(receipt.journal.bytes.as_slice());
     assert_eq!(output, tx_id);
 
@@ -70,11 +76,8 @@ fn main() {
     // example of how someone else could verify this receipt.
     receipt.verify(ZK_COVENANT_INLINE_GUEST_ID).unwrap();
 
-    // --- Start of TxScriptEngine verification ---
-    let redeem_script = ScriptBuilder::new().add_op(OpZkPrecompile).unwrap().drain();
-
-    // proof_data, journal, image_id, tag
-    let sig_script = ScriptBuilder::new()
+    // --- Now, we update the sig_script with the real proof and verify on-chain ---
+    let final_sig_script = ScriptBuilder::new()
         .add_data(&borsh::to_vec(&script_precompile_inner).unwrap())
         .unwrap()
         .add_data(journal_digest.as_bytes())
@@ -87,19 +90,18 @@ fn main() {
         .unwrap()
         .drain();
 
-    let spk = pay_to_script_hash_script(&redeem_script);
-    let (tx, _, utxo_entry) = make_mock_transaction(0, sig_script, spk);
+    tx.inputs[0].signature_script = final_sig_script;
+
     verify_zk_succinct(&tx, &utxo_entry);
     println!("ZK proof verified successfully on-chain!");
 }
 
 fn make_mock_transaction(
     lock_time: u64,
-    sig_script: Vec<u8>,
     spk: ScriptPublicKey,
 ) -> (Transaction, TransactionInput, UtxoEntry) {
     let dummy_prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
-    let dummy_tx_input = TransactionInput::new(dummy_prev_out, sig_script, 10, u8::MAX);
+    let dummy_tx_input = TransactionInput::new(dummy_prev_out, vec![], 10, u8::MAX);
     let addr_hash = vec![1u8; 32];
 
     let addr = Address::new(Prefix::Testnet, Version::PubKey, &addr_hash);
