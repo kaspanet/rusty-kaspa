@@ -5252,6 +5252,7 @@ name = "zk-covenant-inline-host"
 version = "0.1.0"
 dependencies = [
  "borsh",
+ "bytemuck",
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-hashes",

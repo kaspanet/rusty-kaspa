@@ -3,14 +3,18 @@ use std::time::Instant;
 // The ELF is used for proving and the ID is used for verification.
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
+use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{
-    ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+    PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
+    UtxoEntry,
 };
-use kaspa_txscript::pay_to_address_script;
-use kaspa_txscript::zk_precompiles::risc0::inner::Inner;
-use kaspa_txscript::zk_precompiles::risc0::receipt_claim::compute_assert_claim;
-use kaspa_txscript::zk_precompiles::risc0::Digest;
+use kaspa_txscript::caches::Cache;
+use kaspa_txscript::opcodes::codes::{OpZkPrecompile};
+use kaspa_txscript::zk_precompiles::tags::ZkTag;
+use kaspa_txscript::{
+    pay_to_address_script, pay_to_script_hash_script, script_builder::ScriptBuilder, EngineFlags, TxScriptEngine,
+};
 use risc0_zkvm::sha::Digestible;
 use risc0_zkvm::{default_prover, ExecutorEnv, Prover, ProverOpts};
 use zk_covenant_inline_methods::{ZK_COVENANT_INLINE_GUEST_ELF, ZK_COVENANT_INLINE_GUEST_ID};
@@ -19,14 +23,14 @@ fn main() {
     // Initialize tracing. In order to view logs, run `RUST_LOG=info cargo run`
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env()).init();
 
-    let (tx, _, _) = make_mock_transaction(0);
+    let (tx, _, _) = make_mock_transaction(0, vec![], ScriptPublicKey::new(0, vec![].into()));
     let tx_bytes = borsh::to_vec(&tx).unwrap();
     let tx_bytes_excluding_mass_and_txid = &tx_bytes[..tx_bytes.len() - 40];
     let tx_id = tx.id();
 
     let env = ExecutorEnv::builder()
         .write_slice((tx_bytes_excluding_mass_and_txid.len() as u32).to_le_bytes().as_slice())
-        .write_slice(&tx_bytes_excluding_mass_and_txid)
+        .write_slice(tx_bytes_excluding_mass_and_txid)
         .build()
         .unwrap();
 
@@ -65,13 +69,37 @@ fn main() {
     // The receipt was verified at the end of proving, but the below code is an
     // example of how someone else could verify this receipt.
     receipt.verify(ZK_COVENANT_INLINE_GUEST_ID).unwrap();
-    verify_zk_succinct(script_precompile_inner, ZK_COVENANT_INLINE_GUEST_ID.into(), journal_digest);
+
+    // --- Start of TxScriptEngine verification ---
+    let redeem_script = ScriptBuilder::new().add_op(OpZkPrecompile).unwrap().drain();
+
+    // proof_data, journal, image_id, tag
+    let sig_script = ScriptBuilder::new()
+        .add_data(&borsh::to_vec(&script_precompile_inner).unwrap())
+        .unwrap()
+        .add_data(journal_digest.as_bytes())
+        .unwrap()
+        .add_data(bytemuck::cast_slice(ZK_COVENANT_INLINE_GUEST_ID.as_slice()))
+        .unwrap()
+        .add_data(&[ZkTag::R0Succinct as u8])
+        .unwrap()
+        .add_data(&redeem_script)
+        .unwrap()
+        .drain();
+
+    let spk = pay_to_script_hash_script(&redeem_script);
+    let (tx, _, utxo_entry) = make_mock_transaction(0, sig_script, spk);
+    verify_zk_succinct(&tx, &utxo_entry);
+    println!("ZK proof verified successfully on-chain!");
 }
 
-fn make_mock_transaction(lock_time: u64) -> (Transaction, TransactionInput, UtxoEntry) {
+fn make_mock_transaction(
+    lock_time: u64,
+    sig_script: Vec<u8>,
+    spk: ScriptPublicKey,
+) -> (Transaction, TransactionInput, UtxoEntry) {
     let dummy_prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
-    let dummy_sig_script = vec![0u8; 65];
-    let dummy_tx_input = TransactionInput::new(dummy_prev_out, dummy_sig_script, 10, 1);
+    let dummy_tx_input = TransactionInput::new(dummy_prev_out, sig_script, 10, u8::MAX);
     let addr_hash = vec![1u8; 32];
 
     let addr = Address::new(Prefix::Testnet, Version::PubKey, &addr_hash);
@@ -87,14 +115,17 @@ fn make_mock_transaction(lock_time: u64) -> (Transaction, TransactionInput, Utxo
         0,
         vec![],
     );
-    let utxo_entry = UtxoEntry::new(0, ScriptPublicKey::default(), 0, false);
+    let utxo_entry = UtxoEntry::new(0, spk, 0, false);
     (tx, dummy_tx_input, utxo_entry)
 }
 
-fn verify_zk_succinct(inner: Inner, image_id: Digest, journal_hash: Digest) {
+fn verify_zk_succinct(tx: &Transaction, utxo_entry: &UtxoEntry) {
+    let sig_cache = Cache::new(10_000);
+    let reused_values = SigHashReusedValuesUnsync::new();
+    let flags = EngineFlags { covenants_enabled: false }; // Covenants not needed for just OP_VERIFY_ZK
 
-
-    // Verify that the claim comes from the provided image id
-    compute_assert_claim(inner.claim(), image_id, journal_hash).unwrap();
-    inner.verify_integrity().unwrap();
+    let populated = PopulatedTransaction::new(tx, vec![utxo_entry.clone()]);
+    let mut vm =
+        TxScriptEngine::from_transaction_input(&populated, &tx.inputs[0], 0, utxo_entry, &reused_values, &sig_cache, flags);
+    vm.execute().unwrap();
 }
