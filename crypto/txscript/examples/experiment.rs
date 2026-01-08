@@ -92,16 +92,17 @@ fn main() {
     let placeholder_end = 17i64;
     let input_data = b"somedata";
     let output_data = b"new data";
+
+    assert_eq!(input_data.len(), output_data.len());
     // println!("data as hex: {}", hex::encode(data));
 
     let computed_len = build_redeem_script(cur_input, placeholder_end, input_data).len() as i64;
 
-    let input_end = 2 + input_data.len() as i64 + computed_len;
-    let output_end = 2 + output_data.len() as i64 + computed_len;
+    let end = 2 + input_data.len() as i64 + computed_len;
 
     // Step 2: build the actual redeem script with the correct end
-    let input_redeem_script = build_redeem_script(cur_input, input_end, input_data);
-    let output_redeem_script = build_redeem_script(cur_input, output_end, output_data);
+    let input_redeem_script = build_redeem_script(cur_input, end, input_data);
+    let output_redeem_script = build_redeem_script(cur_input, end, output_data);
     assert_eq!(input_redeem_script.len() as i64, computed_len);
     assert_eq!(output_redeem_script.len() as i64, computed_len);
 
