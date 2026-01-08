@@ -28,7 +28,7 @@ const delay = (ms) => new Promise((res) => setTimeout(res, ms));
   let lowHash = info.sink;
   console.info("Starting lowHash (sink):", lowHash);
 
-  await delay(2000);
+  await delay(1000);
 
   // Main loop - runs forever every 10 seconds
   while (true) {
@@ -37,7 +37,7 @@ const delay = (ms) => new Promise((res) => setTimeout(res, ms));
       const vspc = await rpc.getVirtualChainFromBlockV2({
         startHash: lowHash,
         minConfirmationCount: 10,
-        dataVerbosityLevel: "None",
+        dataVerbosityLevel: "High",
       });
       console.info("VSPC Info:", vspc);
 
