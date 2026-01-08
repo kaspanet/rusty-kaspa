@@ -45,18 +45,27 @@ fn build_redeem_script(cur_input: i64, end: i64, data: &[u8]) -> Vec<u8> {
         // Duplicate and hash the extracted redeem script
         .add_op(OpDup).unwrap()
         .add_op(OpBlake2b).unwrap()
+
         // Build expected SPK: version + OpBlake2b + OpData32 + hash + OpEqual
-        .add_data(&TX_VERSION.to_le_bytes()).unwrap()
-        .add_data(&[OpBlake2b]).unwrap()
-        .add_op(OpCat).unwrap()
-        .add_data(&[OpData32]).unwrap()
-        .add_op(OpCat).unwrap()
+        .add_data(&{
+            let mut data = [0u8; 4];
+            data[0..2].copy_from_slice(&TX_VERSION.to_le_bytes());
+            data[2] = OpBlake2b;
+            data[3] = OpData32;
+            data
+        }).unwrap()
+        // swap hash and prefix of spk
         .add_op(OpSwap).unwrap()
+        // version + OpBlake2b + OpData32 + hash
         .add_op(OpCat).unwrap()
         .add_data(&[OpEqual]).unwrap()
+        // spk is ready
         .add_op(OpCat).unwrap()
-        // Compare with input SPK
+
+        // duplicate spk for comparison
         .add_op(OpDup).unwrap()
+
+        // Compare with input SPK
         .add_i64(0).unwrap()
         .add_op(OpTxInputSpk).unwrap()
         .add_op(OpEqualVerify).unwrap()
