@@ -4,7 +4,7 @@ use kaspa_hashes::Hash;
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
 
-use crate::{RpcError, RpcResult};
+use crate::{RpcCompressedParents, RpcError, RpcResult};
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -14,7 +14,7 @@ pub struct RpcOptionalHeader {
     /// Level: Low
     pub version: Option<u16>,
     /// Level: High
-    pub parents_by_level: Vec<Vec<Hash>>,
+    pub parents_by_level: Option<RpcCompressedParents>,
     /// Level: High
     pub hash_merkle_root: Option<Hash>,
     /// Level: High
@@ -41,7 +41,7 @@ impl RpcOptionalHeader {
     pub fn is_empty(&self) -> bool {
         self.hash.is_none()
             && self.version.is_none()
-            && self.parents_by_level.is_empty()
+            && self.parents_by_level.is_none()
             && self.hash_merkle_root.is_none()
             && self.accepted_id_merkle_root.is_none()
             && self.utxo_commitment.is_none()
@@ -52,13 +52,6 @@ impl RpcOptionalHeader {
             && self.blue_work.is_none()
             && self.blue_score.is_none()
             && self.pruning_point.is_none()
-    }
-    pub fn direct_parents(&self) -> &[Hash] {
-        if self.parents_by_level.is_empty() {
-            &[]
-        } else {
-            &self.parents_by_level[0]
-        }
     }
 }
 
@@ -73,7 +66,7 @@ impl From<Header> for RpcOptionalHeader {
         Self {
             hash: Some(header.hash),
             version: Some(header.version),
-            parents_by_level: header.parents_by_level.into(),
+            parents_by_level: Some(header.parents_by_level),
             hash_merkle_root: Some(header.hash_merkle_root),
             accepted_id_merkle_root: Some(header.accepted_id_merkle_root),
             utxo_commitment: Some(header.utxo_commitment),
@@ -93,7 +86,7 @@ impl From<&Header> for RpcOptionalHeader {
         Self {
             hash: Some(header.hash),
             version: Some(header.version),
-            parents_by_level: header.parents_by_level.clone().into(),
+            parents_by_level: Some(header.parents_by_level.clone()),
             hash_merkle_root: Some(header.hash_merkle_root),
             accepted_id_merkle_root: Some(header.accepted_id_merkle_root),
             utxo_commitment: Some(header.utxo_commitment),
@@ -115,7 +108,9 @@ impl TryFrom<RpcOptionalHeader> for Header {
         Ok(Self {
             hash: header.hash.ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "hash".to_owned()))?,
             version: header.version.ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "version".to_owned()))?,
-            parents_by_level: header.parents_by_level.try_into()?,
+            parents_by_level: header
+                .parents_by_level
+                .ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "parents_by_level".to_owned()))?,
             hash_merkle_root: header
                 .hash_merkle_root
                 .ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "hash_merkle_root".to_owned()))?,
@@ -145,7 +140,10 @@ impl TryFrom<&RpcOptionalHeader> for Header {
         Ok(Self {
             hash: header.hash.ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "hash".to_owned()))?,
             version: header.version.ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "version".to_owned()))?,
-            parents_by_level: header.parents_by_level.clone().try_into()?,
+            parents_by_level: header
+                .parents_by_level
+                .clone()
+                .ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "parents_by_level".to_owned()))?,
             hash_merkle_root: header
                 .hash_merkle_root
                 .ok_or(RpcError::MissingRpcFieldError("RpcHeader".to_owned(), "hash_merkle_root".to_owned()))?,
@@ -174,7 +172,7 @@ impl Serializer for RpcOptionalHeader {
 
         store!(Option<Hash>, &self.hash, writer)?;
         store!(Option<u16>, &self.version, writer)?;
-        store!(Vec<Vec<Hash>>, &self.parents_by_level, writer)?;
+        store!(Option<RpcCompressedParents>, &self.parents_by_level, writer)?;
         store!(Option<Hash>, &self.hash_merkle_root, writer)?;
         store!(Option<Hash>, &self.accepted_id_merkle_root, writer)?;
         store!(Option<Hash>, &self.utxo_commitment, writer)?;
@@ -198,7 +196,7 @@ impl Deserializer for RpcOptionalHeader {
             1 => {
                 let hash = load!(Option<Hash>, reader)?;
                 let version = load!(Option<u16>, reader)?;
-                let parents_by_level = load!(Vec<Vec<Hash>>, reader)?;
+                let parents_by_level = load!(Option<RpcCompressedParents>, reader)?;
                 let hash_merkle_root = load!(Option<Hash>, reader)?;
                 let accepted_id_merkle_root = load!(Option<Hash>, reader)?;
                 let utxo_commitment = load!(Option<Hash>, reader)?;
