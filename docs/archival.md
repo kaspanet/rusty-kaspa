@@ -10,9 +10,9 @@ An **archive node** stores the complete blockchain history, including all pruned
 - **Research and analytics** - Historical data analysis
 - **Compliance and auditing** - Data retention requirements
 
-**Important**: Running archive nodes is resource-intensive and **not officially supported** by the Kaspa development team. Archive functionality is provided as-is for advanced users with specific requirements. Most users should run standard pruned nodes instead.
+**Important**: Running archive nodes is resource-intensive and usually requires specific system optimization beyond standard node setup. Archive functionality is provided as-is for advanced users with specific requirements. Most users should run standard pruned nodes instead.
 
-Normal Kaspa nodes are **pruned** and only keep recent blocks (determined by finality depth). Archive nodes keep everything.
+Normal Kaspa nodes are **pruned** and only keep recent blocks (determined by pruning depth).
 
 ## Storage Requirements
 
@@ -353,7 +353,7 @@ journalctl -u kaspad-archive -n 100 | grep -i rocksdb
 |--------|---------------|---------------|
 | Write throughput | ~200 MB/s | ~100-150 MB/s |
 | Memory usage | ~4-6 GB | ~4-8 GB (scales with cache) |
-| Disk usage | ~40 GB | ~35 GB (better compression) |
+| Storage (pruned baseline) | ~40 GB | ~35 GB (better compression) |
 | Sync time (HDD) | 2-3 days | 1-2 days |
 | Write amplification | ~20x | ~8-10x |
 | CPU usage | Low | Medium (compression) |
@@ -400,17 +400,17 @@ kaspad --archival --rocksdb-preset=hdd
 ```
 
 This enables HDD-optimized RocksDB configuration, providing:
-- ✅ 30-50% faster sync times on HDD
-- ✅ Reduced write amplification (50-60% reduction)
-- ✅ Better disk utilization (95%+ vs 60-80%)
-- ✅ Minimal swap usage despite larger working set
-- ✅ Configurable cache size (scales with --ram-scale, or set explicitly)
-- ⚠️ Requires 4GB+ RAM (8GB+ for public RPC)
-- ⚠️ Uses more CPU for compression
+- ✓ 30-50% faster sync times on HDD
+- ✓ Reduced write amplification (50-60% reduction)
+- ✓ Better disk utilization (95%+ vs 60-80%)
+- ✓ Minimal swap usage despite larger working set
+- ✓ Configurable cache size (scales with --ram-scale, or set explicitly)
+- ! Requires 4GB+ RAM (8GB+ for public RPC)
+- ! Uses more CPU for compression
 
 For **SSD/NVMe**, the default preset is optimal.
 
 ---
 
-**Last updated:** December 2025
+**Last updated:** January 2026
 **Applies to:** Kaspad v1.0.0+
