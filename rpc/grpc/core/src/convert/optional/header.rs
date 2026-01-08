@@ -3,20 +3,18 @@ use crate::{from, try_from};
 use kaspa_rpc_core::{FromRpcHex, RpcError, RpcHash, RpcResult, ToRpcHex};
 use std::{convert::TryFrom, str::FromStr};
 
-fn compressed_parents_to_protowire(parents: &kaspa_rpc_core::RpcCompressedParents) -> Vec<protowire::RpcCompressedBlockLevelParent> {
+fn compressed_parents_to_protowire(parents: &kaspa_rpc_core::RpcCompressedParents) -> Vec<protowire::RpcBlockLevelRun> {
     parents
         .raw()
         .iter()
-        .map(|(cumulative_level, hashes)| protowire::RpcCompressedBlockLevelParent {
+        .map(|(cumulative_level, hashes)| protowire::RpcBlockLevelRun {
             cumulative_level: *cumulative_level as u32,
             parent_hashes: hashes.iter().map(|h| h.to_string()).collect(),
         })
         .collect()
 }
 
-fn compressed_parents_from_protowire(
-    runs: &[protowire::RpcCompressedBlockLevelParent],
-) -> RpcResult<kaspa_rpc_core::RpcCompressedParents> {
+fn compressed_parents_from_protowire(runs: &[protowire::RpcBlockLevelRun]) -> RpcResult<kaspa_rpc_core::RpcCompressedParents> {
     let mut tuples = Vec::with_capacity(runs.len());
     for run in runs.iter() {
         let cumulative_level = u8::try_from(run.cumulative_level)?;
