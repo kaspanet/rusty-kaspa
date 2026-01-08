@@ -10,16 +10,17 @@ use kaspa_txscript::{opcodes::codes::*, pay_to_script_hash_script, script_builde
 // -------------------------
 // MOCK TRANSACTION CREATOR
 // -------------------------
-fn make_mock_transaction(script: &[u8]) -> (Transaction, UtxoEntry) {
-    let spk = pay_to_script_hash_script(&script);
+fn make_mock_transaction(input_script: &[u8], output_script: &[u8]) -> (Transaction, UtxoEntry) {
+    let input_spk = pay_to_script_hash_script(&input_script);
+    let output_spk = pay_to_script_hash_script(&output_script);
 
     let dummy_prev_out = TransactionOutpoint::new(TransactionId::from_bytes([0u8; 32]), 0);
     let dummy_input = TransactionInput::new(dummy_prev_out.clone(), vec![], 0, 0);
-    let dummy_output = TransactionOutput::new(SOMPI_PER_KASPA, spk.clone());
+    let dummy_output = TransactionOutput::new(SOMPI_PER_KASPA, output_spk);
 
     let tx = Transaction::new(TX_VERSION, vec![dummy_input.clone()], vec![dummy_output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
 
-    let utxo_entry = UtxoEntry::new(SOMPI_PER_KASPA, spk, 0, false);
+    let utxo_entry = UtxoEntry::new(SOMPI_PER_KASPA, input_spk, 0, false);
 
     (tx, utxo_entry)
 }
@@ -89,23 +90,29 @@ fn main() {
     let cur_input = 0i64;
     // Step 1: compute redeem script length with a placeholder end
     let placeholder_end = 17i64;
-    let data = b"somedata";
+    let input_data = b"somedata";
+    let output_data = b"new data";
     // println!("data as hex: {}", hex::encode(data));
 
-    let computed_len = build_redeem_script(cur_input, placeholder_end, data).len() as i64;
+    let computed_len = build_redeem_script(cur_input, placeholder_end, input_data).len() as i64;
 
-    let end = 2 + data.len() as i64 + computed_len;
+    let input_end = 2 + input_data.len() as i64 + computed_len;
+    let output_end = 2 + output_data.len() as i64 + computed_len;
 
     // Step 2: build the actual redeem script with the correct end
-    let redeem_script = build_redeem_script(cur_input, end, data);
-    assert_eq!(redeem_script.len() as i64, computed_len);
+    let input_redeem_script = build_redeem_script(cur_input, input_end, input_data);
+    let output_redeem_script = build_redeem_script(cur_input, output_end, output_data);
+    assert_eq!(input_redeem_script.len() as i64, computed_len);
+    assert_eq!(output_redeem_script.len() as i64, computed_len);
+
     // println!("Redeem script: {}", hex::encode(&redeem_script));
 
     // Step 3: make mock transaction
-    let (mut tx, utxo_entry) = make_mock_transaction(&redeem_script);
+    let (mut tx, utxo_entry) = make_mock_transaction(&input_redeem_script, &output_redeem_script);
 
     // Step 4: set redeem script into signature_script
-    tx.inputs[0].signature_script = ScriptBuilder::new().add_data(data).unwrap().add_data(&redeem_script).unwrap().drain();
+    tx.inputs[0].signature_script =
+        ScriptBuilder::new().add_data(output_data).unwrap().add_data(&input_redeem_script).unwrap().drain();
     // Step 5: execute TxScriptEngine to verify
     let sig_cache = Cache::new(10_000);
     let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
