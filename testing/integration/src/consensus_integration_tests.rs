@@ -1388,6 +1388,9 @@ async fn staging_consensus_test() {
         tx_script_cache_counters,
         200,
         Arc::new(MiningRules::default()),
+        kaspa_database::prelude::RocksDbPreset::Default,
+        None,
+        None,
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
 
