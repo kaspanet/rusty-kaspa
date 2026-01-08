@@ -464,7 +464,10 @@ Do you confirm? (y/n)";
 
                     let consensus_db = kaspa_database::prelude::ConnBuilder::default()
                         .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
-                        .with_files_limit(1)
+                        .with_files_limit(10)
+                        .with_preset(rocksdb_preset)
+                        .with_wal_dir(wal_dir.clone())
+                        .with_cache_budget(cache_budget)
                         .build()
                         .unwrap();
 
