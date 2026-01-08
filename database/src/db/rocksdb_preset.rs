@@ -172,7 +172,9 @@ impl RocksDbPreset {
     pub fn description(&self) -> &'static str {
         match self {
             Self::Default => "Default preset - balanced for SSD/NVMe (64MB write buffer, standard compression)",
-            Self::Hdd => "HDD preset - optimized for hard disk drives (256MB write buffer, BlobDB, aggressive compression, rate limiting)",
+            Self::Hdd => {
+                "HDD preset - optimized for hard disk drives (256MB write buffer, BlobDB, aggressive compression, rate limiting)"
+            }
         }
     }
 
