@@ -11,7 +11,7 @@ use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifySer
 use kaspa_core::{core::Core, debug, info};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
 use kaspa_database::{
-    prelude::{CachePolicy, DbWriter, DirectDbWriter},
+    prelude::{CachePolicy, DbWriter, DirectDbWriter, RocksDbPreset},
     registry::DatabaseStorePrefixes,
 };
 use kaspa_grpc_server::service::GrpcService;
@@ -217,6 +217,56 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
     create_core_with_runtime(&rt, &args, fd_total_budget)
 }
 
+/// Configure RocksDB parameters from CLI arguments.
+///
+/// Returns: (preset, cache_budget, wal_directory)
+fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathBuf>) {
+    // Parse preset
+    let preset = if let Some(preset_str) = &args.rocksdb_preset {
+        match preset_str.parse::<RocksDbPreset>() {
+            Ok(p) => {
+                info!("Using RocksDB preset: {} - {}", p, p.description());
+                info!("  Use case: {}", p.use_case());
+                info!("  Memory requirements: {}", p.memory_requirements());
+                p
+            }
+            Err(err) => {
+                println!("Invalid RocksDB preset: {}", err);
+                exit(1);
+            }
+        }
+    } else {
+        RocksDbPreset::Default
+    };
+
+    // Calculate cache budget for HDD preset
+    let cache_budget = if matches!(preset, RocksDbPreset::Hdd) {
+        if let Some(cache_mb) = args.rocksdb_cache_size {
+            let cache_bytes = cache_mb * 1024 * 1024;
+            info!("Custom RocksDB cache size: {} MB", cache_mb);
+            Some(cache_bytes)
+        } else {
+            let base_cache = 256 * 1024 * 1024;
+            let scaled_cache = (base_cache as f64 * args.ram_scale) as usize;
+            let min_cache = 64 * 1024 * 1024;
+            let final_cache = scaled_cache.max(min_cache);
+            info!("RocksDB cache size: {} MB (scaled by ram-scale)", final_cache / 1024 / 1024);
+            Some(final_cache)
+        }
+    } else {
+        None
+    };
+
+    // Setup WAL directory if specified
+    let wal_dir = args.rocksdb_wal_dir.as_ref().map(|custom_wal_dir| {
+        let wal_path = PathBuf::from(custom_wal_dir);
+        info!("Custom WAL directory: {}", wal_path.display());
+        wal_path
+    });
+
+    (preset, cache_budget, wal_dir)
+}
+
 /// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
 ///
 /// Usage semantics:
@@ -238,6 +288,10 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     } else {
         0
     };
+
+    // Configure RocksDB parameters
+    let (rocksdb_preset, cache_budget, wal_dir) = configure_rocksdb(args);
+
     // Make sure args forms a valid set of properties
     if let Err(err) = validate_args(args) {
         println!("{}", err);
@@ -338,6 +392,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let mut meta_db = kaspa_database::prelude::ConnBuilder::default()
         .with_db_path(meta_db_dir.clone())
         .with_files_limit(META_DB_FILE_LIMIT)
+        .with_preset(rocksdb_preset)
+        .with_wal_dir(wal_dir.clone())
+        .with_cache_budget(cache_budget)
         .build()
         .unwrap();
 
@@ -353,6 +410,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                 let consensus_db = kaspa_database::prelude::ConnBuilder::default()
                     .with_db_path(consensus_db_dir.clone().join(dir_name))
                     .with_files_limit(1)
+                    .with_preset(rocksdb_preset)
+                    .with_wal_dir(wal_dir.clone())
+                    .with_cache_budget(cache_budget)
                     .build()
                     .unwrap();
 
@@ -404,7 +464,10 @@ Do you confirm? (y/n)";
 
                     let consensus_db = kaspa_database::prelude::ConnBuilder::default()
                         .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
-                        .with_files_limit(1)
+                        .with_files_limit(10)
+                        .with_preset(rocksdb_preset)
+                        .with_wal_dir(wal_dir.clone())
+                        .with_cache_budget(cache_budget)
                         .build()
                         .unwrap();
 
@@ -466,6 +529,9 @@ Do you confirm? (y/n)";
         meta_db = kaspa_database::prelude::ConnBuilder::default()
             .with_db_path(meta_db_dir)
             .with_files_limit(META_DB_FILE_LIMIT)
+            .with_preset(rocksdb_preset)
+            .with_wal_dir(wal_dir.clone())
+            .with_cache_budget(cache_budget)
             .build()
             .unwrap();
     }
@@ -514,6 +580,9 @@ Do you confirm? (y/n)";
         tx_script_cache_counters.clone(),
         fd_remaining,
         mining_rules.clone(),
+        rocksdb_preset,
+        wal_dir.clone(),
+        cache_budget,
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
     let consensus_monitor = Arc::new(ConsensusMonitor::new(processing_counters.clone(), tick_service.clone()));
@@ -541,6 +610,9 @@ Do you confirm? (y/n)";
         let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
             .with_db_path(utxoindex_db_dir)
             .with_files_limit(utxo_files_limit)
+            .with_preset(rocksdb_preset)
+            .with_wal_dir(wal_dir.clone())
+            .with_cache_budget(cache_budget)
             .build()
             .unwrap();
         let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
