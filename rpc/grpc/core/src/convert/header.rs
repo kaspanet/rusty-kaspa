@@ -26,28 +26,6 @@ from!(item: &kaspa_rpc_core::RpcHeader, protowire::RpcBlockHeader, {
     }
 });
 
-from!(item: &kaspa_rpc_core::RpcOptionalHeader, protowire::RpcBlockHeader, {
-    Self {
-        hash: item.hash.map(|x| x.to_string()).unwrap_or_default(),
-        version: item.version.map(|x| x.into()).unwrap_or_default(),
-        parents: item
-            .parents_by_level
-            .iter()
-            .map(|level| level.as_slice().into())
-            .collect(),
-        hash_merkle_root: item.hash_merkle_root.map(|x| x.to_string()).unwrap_or_default(),
-        accepted_id_merkle_root: item.accepted_id_merkle_root.map(|x| x.to_string()).unwrap_or_default(),
-        utxo_commitment: item.utxo_commitment.map(|x| x.to_string()).unwrap_or_default(),
-        timestamp: item.timestamp.map(|x| x.try_into().expect("timestamp is always convertible to i64")).unwrap_or_default(),
-        bits: item.bits.unwrap_or_default(),
-        nonce: item.nonce.unwrap_or_default(),
-        daa_score: item.daa_score.unwrap_or_default(),
-        blue_work: item.blue_work.map(|x| x.to_rpc_hex()).unwrap_or_default(),
-        blue_score: item.blue_score.unwrap_or_default(),
-        pruning_point: item.pruning_point.map(|x| x.to_string()).unwrap_or_default(),
-    }
-});
-
 from!(item: &kaspa_rpc_core::RpcRawHeader, protowire::RpcBlockHeader, {
     Self {
         hash: Default::default(), // We don't include the hash for the raw header

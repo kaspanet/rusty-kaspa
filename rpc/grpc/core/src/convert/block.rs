@@ -7,14 +7,6 @@ use std::str::FromStr;
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
-from!(item: &kaspa_rpc_core::RpcOptionalBlock, protowire::RpcBlock, {
-    Self {
-        header: item.header.as_ref().map(protowire::RpcBlockHeader::from),
-        transactions: item.transactions.iter().map(protowire::RpcTransaction::from).collect(),
-        verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
-    }
-});
-
 from!(item: &kaspa_rpc_core::RpcBlock, protowire::RpcBlock, {
     Self {
         header: Some(protowire::RpcBlockHeader::from(&item.header)),

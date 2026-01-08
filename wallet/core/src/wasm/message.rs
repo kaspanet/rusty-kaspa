@@ -8,7 +8,7 @@ use kaspa_wasm_core::types::HexString;
 const TS_MESSAGE_TYPES: &'static str = r#"
 /**
  * Interface declaration for {@link signMessage} function arguments.
- * 
+ *
  * @category Message Signing
  */
 export interface ISignMessage {
@@ -45,10 +45,10 @@ pub fn js_sign_message(value: ISignMessage) -> Result<HexString, Error> {
 }
 
 #[wasm_bindgen(typescript_custom_section)]
-const TS_MESSAGE_TYPES: &'static str = r#"
+const TS_VERIFY_MESSAGE_TYPES: &'static str = r#"
 /**
  * Interface declaration for {@link verifyMessage} function arguments.
- * 
+ *
  * @category Message Signing
  */
 export interface IVerifyMessage {
