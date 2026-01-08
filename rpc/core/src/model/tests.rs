@@ -417,12 +417,19 @@ mod mockery {
                 accepted_id_merkle_root: mock(),
                 utxo_commitment: mock(),
                 hash: mock(),
-                parents_by_level: vec![mock()],
+                parents_by_level: mock(),
                 daa_score: mock(),
                 blue_score: mock(),
                 blue_work: mock(),
                 pruning_point: mock(),
             }
+        }
+    }
+
+    impl Mock for RpcCompressedParents {
+        fn mock() -> Self {
+            let empty: Vec<(u8, Vec<Hash>)> = vec![];
+            empty.try_into().expect("It should not fail.")
         }
     }
 
