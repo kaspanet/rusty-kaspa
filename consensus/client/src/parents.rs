@@ -72,8 +72,7 @@ impl TryCastFromJs for CompressedParents {
                     if run_array.length() != 2 {
                         return Err(Error::Custom("Invalid parent run, must be a tuple of [level, parents[]]".to_string()));
                     }
-                    let level =
-                        run_array.get(0).as_f64().ok_or_else(|| Error::Custom("Invalid level in parent runs".to_string()))? as u8;
+                    let level = run_array.get(0).try_as_u8().map_err(|_| Error::Custom("Invalid level in parent runs".to_string()))?;
 
                     let parents_js = run_array.get(1);
                     let parents_array = js_sys::Array::from(&parents_js);
