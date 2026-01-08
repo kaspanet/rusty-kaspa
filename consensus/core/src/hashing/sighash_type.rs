@@ -1,3 +1,5 @@
+use std::ops::BitOr;
+
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -50,5 +52,13 @@ impl SigHashType {
         }
 
         Ok(Self(val))
+    }
+}
+
+impl BitOr for SigHashType {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        SigHashType(self.0 | rhs.0)
     }
 }
