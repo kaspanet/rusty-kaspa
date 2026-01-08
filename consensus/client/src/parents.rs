@@ -7,7 +7,7 @@ use crate::imports::*;
 use kaspa_consensus_core::header as native;
 use kaspa_hashes::Hash;
 
-/// An efficient run-length encoding for the parent-by-level vector in the block header.
+/// An efficient cumulative-sum run-length encoding for the parents-by-level vector in the block header.
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
