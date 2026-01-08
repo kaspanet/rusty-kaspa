@@ -22,7 +22,7 @@ const TS_OPTIONAL_HEADER: &'static str = r#"
 export interface IOptionalHeader {
     hash?: HexString;
     version?: number;
-    compressedParents?: CompressedParents;
+    parentsByLevel?: CompressedParents;
     hashMerkleRoot?: HexString;
     acceptedIdMerkleRoot?: HexString;
     utxoCommitment?: HexString;
@@ -48,7 +48,7 @@ extern "C" {
 pub struct OptionalHeader {
     hash: Option<Hash>,
     version: Option<u16>,
-    compressed_parents: Option<WasmCompressedParents>,
+    parents_by_level: Option<WasmCompressedParents>,
     hash_merkle_root: Option<Hash>,
     accepted_id_merkle_root: Option<Hash>,
     utxo_commitment: Option<Hash>,
@@ -66,7 +66,7 @@ impl OptionalHeader {
     pub fn new_from_fields(
         hash: Option<Hash>,
         version: Option<u16>,
-        compressed_parents: Option<WasmCompressedParents>,
+        parents_by_level: Option<WasmCompressedParents>,
         hash_merkle_root: Option<Hash>,
         accepted_id_merkle_root: Option<Hash>,
         utxo_commitment: Option<Hash>,
@@ -81,7 +81,7 @@ impl OptionalHeader {
         Self {
             hash,
             version,
-            compressed_parents,
+            parents_by_level,
             hash_merkle_root,
             accepted_id_merkle_root,
             utxo_commitment,
@@ -115,7 +115,7 @@ impl OptionalHeader {
 
     #[wasm_bindgen(getter, js_name = parentsByLevel)]
     pub fn parents_by_level(&self) -> Option<WasmCompressedParents> {
-        self.compressed_parents.clone()
+        self.parents_by_level.clone()
     }
 
     #[wasm_bindgen(getter, js_name = hashMerkleRoot)]
@@ -187,8 +187,7 @@ impl TryCastFromJs for OptionalHeader {
     {
         Self::resolve_cast(value, || {
             if let Some(object) = Object::try_from(value.as_ref()) {
-                let compressed_parents =
-                    object.try_get_value("compressedParents")?.map(|pbl_val| pbl_val.try_into_owned()).transpose()?;
+                let parents_by_level = object.try_get_value("parentsByLevel")?.map(|pbl_val| pbl_val.try_into_owned()).transpose()?;
 
                 Ok(OptionalHeader {
                     hash: object
@@ -196,7 +195,7 @@ impl TryCastFromJs for OptionalHeader {
                         .map(|v| v.try_into_owned().map_err(|err| Error::convert("hash", err)))
                         .transpose()?,
                     version: object.try_get_value("version")?.map(|v| v.try_as_u16()).transpose()?,
-                    compressed_parents,
+                    parents_by_level,
                     hash_merkle_root: object
                         .try_get_value("hashMerkleRoot")?
                         .map(|v| v.try_into_owned().map_err(|err| Error::convert("hashMerkleRoot", err)))

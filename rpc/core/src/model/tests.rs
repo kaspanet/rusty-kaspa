@@ -417,7 +417,7 @@ mod mockery {
                 accepted_id_merkle_root: mock(),
                 utxo_commitment: mock(),
                 hash: mock(),
-                compressed_parents: mock(),
+                parents_by_level: mock(),
                 daa_score: mock(),
                 blue_score: mock(),
                 blue_work: mock(),

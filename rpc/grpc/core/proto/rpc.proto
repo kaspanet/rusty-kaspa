@@ -983,7 +983,7 @@ enum RpcDataVerbosityLevel {
 message RpcOptionalHeader {
   optional string hash = 2;
   optional uint32 version = 3;
-  repeated RpcCompressedBlockLevelParent compressedParents = 4;
+  repeated RpcCompressedBlockLevelParent parentsByLevel = 4;
   optional string hashMerkleRoot = 5;
   optional string acceptedIdMerkleRoot = 6;
   optional string utxoCommitment = 7;

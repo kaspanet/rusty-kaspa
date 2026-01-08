@@ -34,7 +34,7 @@ from!(item: &kaspa_rpc_core::RpcOptionalHeader, protowire::RpcOptionalHeader, {
     Self {
         version: item.version.map(|x| x.into()),
         hash: item.hash.map(|x| x.to_string()),
-        compressed_parents: item.compressed_parents.as_ref().map(compressed_parents_to_protowire).unwrap_or_default(),
+        parents_by_level: item.parents_by_level.as_ref().map(compressed_parents_to_protowire).unwrap_or_default(),
         hash_merkle_root: item.hash_merkle_root.map(|x| x.to_string()),
         accepted_id_merkle_root: item.accepted_id_merkle_root.map(|x| x.to_string()),
         utxo_commitment: item.utxo_commitment.map(|x| x.to_string()),
@@ -56,7 +56,7 @@ try_from!(item: &protowire::RpcOptionalHeader, kaspa_rpc_core::RpcOptionalHeader
     Self {
         version: item.version.map(|x| x as u16),
         hash: item.hash.as_ref().map(|x| RpcHash::from_str(x)).transpose()?,
-        compressed_parents: Some(compressed_parents_from_protowire(&item.compressed_parents)?),
+        parents_by_level: Some(compressed_parents_from_protowire(&item.parents_by_level)?),
         hash_merkle_root: item.hash_merkle_root.as_ref().map(|x| RpcHash::from_str(x)).transpose()?,
         accepted_id_merkle_root: item.accepted_id_merkle_root.as_ref().map(|x| RpcHash::from_str(x)).transpose()?,
         utxo_commitment: item.utxo_commitment.as_ref().map(|x| RpcHash::from_str(x)).transpose()?,

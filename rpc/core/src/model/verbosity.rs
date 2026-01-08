@@ -41,7 +41,7 @@ pub struct RpcHeaderVerbosity {
     /// Cached hash
     pub include_hash: Option<bool>,
     pub include_version: Option<bool>,
-    pub include_compressed_parents: Option<bool>,
+    pub include_parents_by_level: Option<bool>,
     pub include_hash_merkle_root: Option<bool>,
     pub include_accepted_id_merkle_root: Option<bool>,
     pub include_utxo_commitment: Option<bool>,
@@ -61,7 +61,7 @@ impl Serializer for RpcHeaderVerbosity {
 
         store!(Option<bool>, &self.include_hash, writer)?;
         store!(Option<bool>, &self.include_version, writer)?;
-        store!(Option<bool>, &self.include_compressed_parents, writer)?;
+        store!(Option<bool>, &self.include_parents_by_level, writer)?;
         store!(Option<bool>, &self.include_hash_merkle_root, writer)?;
         store!(Option<bool>, &self.include_accepted_id_merkle_root, writer)?;
         store!(Option<bool>, &self.include_utxo_commitment, writer)?;
@@ -98,7 +98,7 @@ impl Deserializer for RpcHeaderVerbosity {
         Ok(Self {
             include_hash,
             include_version,
-            include_compressed_parents: include_parents_by_level,
+            include_parents_by_level,
             include_hash_merkle_root,
             include_accepted_id_merkle_root,
             include_utxo_commitment,
