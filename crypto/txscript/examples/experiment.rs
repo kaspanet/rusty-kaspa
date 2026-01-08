@@ -27,21 +27,34 @@ fn make_mock_transaction(script: &[u8]) -> (Transaction, UtxoEntry) {
 // -------------------------
 // REDEEM SCRIPT BUILDER
 // -------------------------
-fn build_redeem_script(cur_input: i64, end: i64, data: &[u8]) -> Vec<u8> {
+fn build_redeem_script(cur_input: i64, end: i64, state: &[u8]) -> Vec<u8> {
+    let op_to_add_state = {
+        let script = ScriptBuilder::new().add_data(state).unwrap().drain();
+        script[0]
+    };
     ScriptBuilder::new()
-        // move new state to alt stack
-        .add_op(OpToAltStack).unwrap() // todo must be part of new state, currently just move to alt stack
-
         // embedded current state
         .add_op(OpFalse).unwrap()
         .add_op(OpIf).unwrap()
-        .add_data(data).unwrap()
+        .add_data(state).unwrap()
         .add_op(OpEndIf).unwrap()
 
+        // prefix of the script
+        .add_data(&[OpFalse, OpIf, op_to_add_state]).unwrap()
+        .add_op(OpSwap).unwrap()
+        // + new state
+        .add_op(OpCat).unwrap()
+        // + suffix of the script
         .add_i64(cur_input).unwrap()
-        .add_i64((data.len() + 2) as i64).unwrap()// 2x OpPushDataX + len of data
+        .add_i64({
+            2 + state.len() // new state + OpPushDataX * 2
+            + 2 // OpFalse + OpIf
+            + 1 + state.len() // OpPushDataX + data
+        } as i64).unwrap()//  + len of data
         .add_i64(end).unwrap()
         .add_op(OpTxInputScriptSigSubStr).unwrap()
+        .add_op(OpCat).unwrap()
+
         // Duplicate and hash the extracted redeem script
         .add_op(OpDup).unwrap()
         .add_op(OpBlake2b).unwrap()
@@ -59,16 +72,9 @@ fn build_redeem_script(cur_input: i64, end: i64, data: &[u8]) -> Vec<u8> {
         // version + OpBlake2b + OpData32 + hash
         .add_op(OpCat).unwrap()
         .add_data(&[OpEqual]).unwrap()
-        // spk is ready
+        // output spk is ready
         .add_op(OpCat).unwrap()
 
-        // duplicate spk for comparison
-        .add_op(OpDup).unwrap()
-
-        // Compare with input SPK
-        .add_i64(0).unwrap()
-        .add_op(OpTxInputSpk).unwrap()
-        .add_op(OpEqualVerify).unwrap()
         // Compare with output SPK
         .add_i64(0).unwrap()
         .add_op(OpTxOutputSpk).unwrap()
@@ -84,12 +90,16 @@ fn main() {
     // Step 1: compute redeem script length with a placeholder end
     let placeholder_end = 17i64;
     let data = b"somedata";
+    // println!("data as hex: {}", hex::encode(data));
+
     let computed_len = build_redeem_script(cur_input, placeholder_end, data).len() as i64;
 
     let end = 2 + data.len() as i64 + computed_len;
 
     // Step 2: build the actual redeem script with the correct end
     let redeem_script = build_redeem_script(cur_input, end, data);
+    assert_eq!(redeem_script.len() as i64, computed_len);
+    // println!("Redeem script: {}", hex::encode(&redeem_script));
 
     // Step 3: make mock transaction
     let (mut tx, utxo_entry) = make_mock_transaction(&redeem_script);
