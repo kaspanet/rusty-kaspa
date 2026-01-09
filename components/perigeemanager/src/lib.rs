@@ -270,7 +270,7 @@ impl PerigeeManager {
         // This is a greedy algorithm, and does not guarantee a globally optimal set of peers.
 
         // Sanity check
-        assert!(peer_table.len() >= self.config.leverage_target, "About to enter an endless loop");
+        assert!(peer_table.len() <= self.config.leverage_target, "Potentially entering an endless loop");
 
         // We use this Vec to maintain track and ordering of selected peers
         let mut selected_peers: Vec<Vec<PeerKey>> = Vec::new();
