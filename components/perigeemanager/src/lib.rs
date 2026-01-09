@@ -296,11 +296,6 @@ impl PerigeeManager {
             // First, we create a new empty selected peer table for this iteration
             let mut selected_table = HashMap::new();
 
-            // Remove already selected peers from the peer table
-            for already_selected in selected_peers[i].iter() {
-                peer_table.remove(already_selected);
-            }
-
             // We redefine the remaining table for this iteration as a clone of the original peer table
             // Note: If we knew that we would not be re-entering this outer loop, we could avoid this clone.
             remaining_table = peer_table.clone();
@@ -353,6 +348,12 @@ impl PerigeeManager {
                 }
                 last_score = top_ranked_score;
             }
+
+            // Remove already selected peers from the global peer table
+            for already_selected in selected_peers[i].iter() {
+                peer_table.remove(already_selected);
+            }
+
             i += 1;
         }
 
