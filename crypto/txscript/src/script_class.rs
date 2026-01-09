@@ -28,12 +28,14 @@ pub enum ScriptClass {
     PubKeyECDSA,
     /// Pay to script hash
     ScriptHash,
+    ScriptHashWithState,
 }
 
 const NON_STANDARD: &str = "nonstandard";
 const PUB_KEY: &str = "pubkey";
 const PUB_KEY_ECDSA: &str = "pubkeyecdsa";
 const SCRIPT_HASH: &str = "scripthash";
+const SCRIPT_HASH_WITH_STATE: &str = "scripthashwithstate";
 
 impl ScriptClass {
     pub fn from_script(script_public_key: &ScriptPublicKey) -> Self {
@@ -45,6 +47,8 @@ impl ScriptClass {
                 Self::PubKeyECDSA
             } else if Self::is_pay_to_script_hash(script_public_key_) {
                 Self::ScriptHash
+            } else if Self::is_pay_to_script_hash_with_state(script_public_key_) {
+                Self::ScriptHashWithState
             } else {
                 ScriptClass::NonStandard
             }
@@ -81,12 +85,24 @@ impl ScriptClass {
         (script_public_key[34] == opcodes::codes::OpEqual)
     }
 
+    #[inline(always)]
+    pub fn is_pay_to_script_hash_with_state(script_public_key: &[u8]) -> bool {
+        (script_public_key.len() == 70) && // 6 opcodes number + 2*32 data
+        (script_public_key[0] == opcodes::codes::OpBlake2b) &&
+        (script_public_key[1] == opcodes::codes::OpData32) &&
+        (script_public_key[34] == opcodes::codes::OpEqualVerify) &&
+        (script_public_key[35] == opcodes::codes::OpBlake2b) &&
+        (script_public_key[36] == opcodes::codes::OpData32) &&
+        (script_public_key[69] == opcodes::codes::OpEqual)
+    }
+
     fn as_str(&self) -> &'static str {
         match self {
             ScriptClass::NonStandard => NON_STANDARD,
             ScriptClass::PubKey => PUB_KEY,
             ScriptClass::PubKeyECDSA => PUB_KEY_ECDSA,
             ScriptClass::ScriptHash => SCRIPT_HASH,
+            ScriptClass::ScriptHashWithState => SCRIPT_HASH_WITH_STATE,
         }
     }
 
@@ -96,6 +112,7 @@ impl ScriptClass {
             ScriptClass::PubKey => MAX_SCRIPT_PUBLIC_KEY_VERSION,
             ScriptClass::PubKeyECDSA => MAX_SCRIPT_PUBLIC_KEY_VERSION,
             ScriptClass::ScriptHash => MAX_SCRIPT_PUBLIC_KEY_VERSION,
+            ScriptClass::ScriptHashWithState => MAX_SCRIPT_PUBLIC_KEY_VERSION,
         }
     }
 }

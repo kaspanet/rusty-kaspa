@@ -2490,6 +2490,34 @@
     "Very basic P2SH"
   ],
   [
+    "5 0x02 0x5587",
+    "BLAKE2B 0x20 0x6f1a93d08ab9ae0f8abbdfb82972e3b05910cb1845cc978861dc0f3d3bfd7ec3 EQUALVERIFY BLAKE2B 0x20 0xfb3d635c7cb573d1b9e9bff4a64ab4f25190d29b6fd8db94c605a218a23fa9ad EQUAL",
+    "",
+    "OK",
+    "P2SH-with-state runs redeem script with initial state preserved on stack (state=5, script=0x5587 == 'OP_5 OP_EQUAL')"
+  ],
+  [
+    "5 0x02 0x5687",
+    "BLAKE2B 0x20 0x6f1a93d08ab9ae0f8abbdfb82972e3b05910cb1845cc978861dc0f3d3bfd7ec3 EQUALVERIFY BLAKE2B 0x20 0xfb3d635c7cb573d1b9e9bff4a64ab4f25190d29b6fd8db94c605a218a23fa9ad EQUAL",
+    "",
+    "VERIFY",
+    "P2SH-with-state where the redeem script pails (state=5, script=0x5687 == 'OP_6 OP_EQUAL')"
+  ],
+  [
+    "0x02 0x5587 5",
+    "BLAKE2B 0x20 0x6f1a93d08ab9ae0f8abbdfb82972e3b05910cb1845cc978861dc0f3d3bfd7ec3 EQUALVERIFY BLAKE2B 0x20 0xfb3d635c7cb573d1b9e9bff4a64ab4f25190d29b6fd8db94c605a218a23fa9ad EQUAL",
+    "",
+    "EQUALVERIFY",
+    "P2SH-with-state expects scriptSig layout <state> <script> (state=5, script=0x5587 == 'OP_5 OP_EQUAL'; reversed order causes hash mismatch)"
+  ],
+  [
+    "1 5 0x02 0x5587",
+    "BLAKE2B 0x20 0x6f1a93d08ab9ae0f8abbdfb82972e3b05910cb1845cc978861dc0f3d3bfd7ec3 EQUALVERIFY BLAKE2B 0x20 0xfb3d635c7cb573d1b9e9bff4a64ab4f25190d29b6fd8db94c605a218a23fa9ad EQUAL",
+    "",
+    "CLEANSTACK",
+    "P2SH-with-state with too many elements on the stack"
+  ],
+  [
     "0x00",
     "SIZE 0 EQUALVERIFY DROP TRUE",
     "",
@@ -3931,10 +3959,16 @@
   ],
   [
     "1",
-    "IF 0xcb ELSE 1 ENDIF",
+    "IF 0xca ELSE 1 ENDIF",
     "",
     "BAD_OPCODE",
-    "opcodes above OpTxInputScriptSigSubstr invalid if executed"
+    "opcodes above OpTxInputScriptSigLen invalid if executed"
+  ],
+    [
+    "1",
+    "IF 0xcb ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
   ],
   [
     "1",

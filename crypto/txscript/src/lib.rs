@@ -281,7 +281,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
         // the user provides
-        let is_p2sh = ScriptClass::is_pay_to_script_hash(script_public_key);
+        let is_p2sh = ScriptClass::is_pay_to_script_hash(script_public_key)
+            || (flags.covenants_enabled && ScriptClass::is_pay_to_script_hash_with_state(script_public_key));
         assert!(input_idx < tx.tx().inputs.len());
         Self {
             dstack: Self::new_stack(flags),
