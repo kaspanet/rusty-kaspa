@@ -11,8 +11,9 @@ kaspa-consensus-core = { path = "../../../consensus/core" }
 kaspa-txscript = { path = "../../../crypto/txscript" }
 kaspa-hashes = { path = "../../../crypto/hashes" }
 
-borsh = {version = "1.6.0"}
+borsh = { version = "1.6.0"}
 bytemuck = "1.24.0"
+faster-hex = { version = "0.10.0" }
 risc0-zkvm = { version = "3.0.4", default-features = true }
 serde = "1.0"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

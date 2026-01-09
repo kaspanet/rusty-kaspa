@@ -15,6 +15,5 @@ pub fn main() {
     env::commit_slice(&public_input);
     let public_input = public_input[0];
 
-    assert_eq!(public_input.current_input, 0, "Only first input is supported");
     assert_eq!(public_input.new_state, public_input.prev_state.saturating_add(public_input.payload_diff));
 }

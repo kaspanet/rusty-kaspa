@@ -1273,6 +1273,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "faster-hex"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7223ae2d2f179b803433d9c830478527e92b8117eab39460edae7f1614d9fb73"
+dependencies = [
+ "heapless",
+ "serde",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1494,6 +1504,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hash32"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47d60b12902ba28e2730cd37e95b8c9223af2808df9e902d4df49588d1470606"
+dependencies = [
+ "byteorder",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1534,6 +1553,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "heapless"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bfb9eb618601c89945a70e254898da93b13be0388091d42117462b265bb3fad"
+dependencies = [
+ "hash32",
+ "stable_deref_trait",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1559,6 +1588,9 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "hex-literal"
@@ -1952,7 +1984,7 @@ dependencies = [
  "bitflags 2.10.0",
  "borsh",
  "cfg-if",
- "faster-hex",
+ "faster-hex 0.9.0",
  "futures-util",
  "getrandom 0.2.16",
  "itertools 0.13.0",
@@ -2005,7 +2037,7 @@ dependencies = [
  "blake2b_simd",
  "borsh",
  "cc",
- "faster-hex",
+ "faster-hex 0.9.0",
  "js-sys",
  "kaspa-utils",
  "keccak",
@@ -2021,7 +2053,7 @@ name = "kaspa-math"
 version = "1.0.1"
 dependencies = [
  "borsh",
- "faster-hex",
+ "faster-hex 0.9.0",
  "js-sys",
  "kaspa-utils",
  "malachite-base",
@@ -2065,6 +2097,7 @@ dependencies = [
  "borsh",
  "bytemuck",
  "cfg-if",
+ "hex",
  "hexplay",
  "indexmap 2.12.1",
  "itertools 0.13.0",
@@ -2112,7 +2145,7 @@ dependencies = [
  "cfg-if",
  "duct",
  "event-listener 2.5.3",
- "faster-hex",
+ "faster-hex 0.9.0",
  "ipnet",
  "itertools 0.13.0",
  "log",
@@ -2135,7 +2168,7 @@ dependencies = [
 name = "kaspa-wasm-core"
 version = "1.0.1"
 dependencies = [
- "faster-hex",
+ "faster-hex 0.9.0",
  "hexplay",
  "js-sys",
  "wasm-bindgen",
@@ -4981,7 +5014,7 @@ dependencies = [
  "cfg-if",
  "chrono",
  "dirs 5.0.1",
- "faster-hex",
+ "faster-hex 0.9.0",
  "futures",
  "getrandom 0.2.16",
  "instant",
@@ -5076,7 +5109,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "799e5fbf266e0fffb5c24d6103735eb2b94bb31f93b664b91eaaf63b4f959804"
 dependencies = [
  "cfg-if",
- "faster-hex",
+ "faster-hex 0.9.0",
  "futures",
  "js-sys",
  "serde",
@@ -5251,6 +5284,7 @@ version = "0.1.0"
 dependencies = [
  "borsh",
  "bytemuck",
+ "faster-hex 0.10.0",
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-hashes",
