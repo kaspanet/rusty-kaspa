@@ -291,16 +291,14 @@ impl PerigeeManager {
                 num_peers_selected
             );
 
+            selected_peers.push(Vec::new());
+
             // First, we create a new empty selected peer table for this iteration
             let mut selected_table = HashMap::new();
 
             // Remove already selected peers from the peer table
-            if i > 0 {
-                if let Some(selected_at_index) = selected_peers.get(i - 1) {
-                    for already_selected in selected_at_index.iter() {
-                        peer_table.remove(already_selected);
-                    }
-                }
+            for already_selected in selected_peers[i].iter() {
+                peer_table.remove(already_selected);
             }
 
             // We redefine the remaining table for this iteration as a clone of the original peer table
@@ -358,12 +356,8 @@ impl PerigeeManager {
             i += 1;
         }
 
-        i += 1; // Need to account for breaking 'outer from 'inner loop
-
-        if let Some(selected_at_index) = selected_peers.get(i - 1) {
-            for already_selected in selected_at_index.iter() {
-                peer_table.remove(already_selected);
-            }
+        for already_selected in selected_peers[i].iter() {
+            peer_table.remove(already_selected);
         }
 
         if num_peers_selected < self.config.leverage_target {
