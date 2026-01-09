@@ -12,6 +12,12 @@ repository.workspace = true
 [[example]]
 name = "kip-10"
 
+[[example]]
+name = "covenants"
+
+[[example]]
+name = "covenant-state-transition"
+
 [features]
 wasm32-core = []
 wasm32-sdk = []

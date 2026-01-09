@@ -28,7 +28,7 @@ fn make_mock_transaction(input_script: &[u8], output_script: &[u8]) -> (Transact
 // -------------------------
 // REDEEM SCRIPT BUILDER
 // -------------------------
-fn build_redeem_script(cur_input: i64, end: i64, state: &[u8]) -> Vec<u8> {
+fn build_redeem_script(end: i64, state: &[u8]) -> Vec<u8> {
     let op_to_add_state = {
         let script = ScriptBuilder::new().add_data(state).unwrap().drain();
         script[0]
@@ -40,13 +40,19 @@ fn build_redeem_script(cur_input: i64, end: i64, state: &[u8]) -> Vec<u8> {
         .add_data(state).unwrap()
         .add_op(OpEndIf).unwrap()
 
+        // verify expected len, it guarantees that script sig only contains OpPushData, state, OpPushData, redeem script
+        .add_op(OpTxInputIndex).unwrap()
+        .add_op(OpTxInputScriptSigLen).unwrap()
+        .add_i64(end).unwrap()
+        .add_op(OpEqualVerify).unwrap()
+
         // prefix of the script
         .add_data(&[OpFalse, OpIf, op_to_add_state]).unwrap()
         .add_op(OpSwap).unwrap()
         // + new state
         .add_op(OpCat).unwrap()
         // + suffix of the script
-        .add_i64(cur_input).unwrap()
+        .add_op(OpTxInputIndex).unwrap()
         .add_i64({
             2 + state.len() // new state + OpPushDataX * 2
             + 2 // OpFalse + OpIf
@@ -77,7 +83,7 @@ fn build_redeem_script(cur_input: i64, end: i64, state: &[u8]) -> Vec<u8> {
         .add_op(OpCat).unwrap()
 
         // Compare with output SPK
-        .add_i64(0).unwrap()
+        .add_op(OpTxInputIndex).unwrap()
         .add_op(OpTxOutputSpk).unwrap()
         .add_op(OpEqualVerify).unwrap()
         .drain()
@@ -87,7 +93,6 @@ fn build_redeem_script(cur_input: i64, end: i64, state: &[u8]) -> Vec<u8> {
 // MAIN
 // -------------------------
 fn main() {
-    let cur_input = 0i64;
     // Step 1: compute redeem script length with a placeholder end
     let placeholder_end = 17i64;
     let input_data = b"somedata";
@@ -96,13 +101,13 @@ fn main() {
     assert_eq!(input_data.len(), output_data.len());
     // println!("data as hex: {}", hex::encode(data));
 
-    let computed_len = build_redeem_script(cur_input, placeholder_end, input_data).len() as i64;
+    let computed_len = build_redeem_script(placeholder_end, input_data).len() as i64;
 
     let end = 2 + input_data.len() as i64 + computed_len;
 
     // Step 2: build the actual redeem script with the correct end
-    let input_redeem_script = build_redeem_script(cur_input, end, input_data);
-    let output_redeem_script = build_redeem_script(cur_input, end, output_data);
+    let input_redeem_script = build_redeem_script(end, input_data);
+    let output_redeem_script = build_redeem_script(end, output_data);
     assert_eq!(input_redeem_script.len() as i64, computed_len);
     assert_eq!(output_redeem_script.len() as i64, computed_len);
 
