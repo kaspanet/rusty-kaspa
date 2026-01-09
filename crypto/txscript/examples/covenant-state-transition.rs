@@ -11,11 +11,11 @@ use kaspa_txscript::{opcodes::codes::*, pay_to_script_hash_script, script_builde
 // MOCK TRANSACTION CREATOR
 // -------------------------
 fn make_mock_transaction(input_script: &[u8], output_script: &[u8]) -> (Transaction, UtxoEntry) {
-    let input_spk = pay_to_script_hash_script(&input_script);
-    let output_spk = pay_to_script_hash_script(&output_script);
+    let input_spk = pay_to_script_hash_script(input_script);
+    let output_spk = pay_to_script_hash_script(output_script);
 
     let dummy_prev_out = TransactionOutpoint::new(TransactionId::from_bytes([0u8; 32]), 0);
-    let dummy_input = TransactionInput::new(dummy_prev_out.clone(), vec![], 0, 0);
+    let dummy_input = TransactionInput::new(dummy_prev_out, vec![], 0, 0);
     let dummy_output = TransactionOutput::new(SOMPI_PER_KASPA, output_spk);
 
     let tx = Transaction::new(TX_VERSION, vec![dummy_input.clone()], vec![dummy_output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
