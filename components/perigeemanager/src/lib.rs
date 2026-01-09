@@ -260,8 +260,7 @@ impl PerigeeManager {
         };
 
         // i.e. the peers that we mark as "to evict" this round.
-        let deselected_peers =
-            if should_explore { self.explore(&mut peer_table, amount_of_contributing_perigee_peers) } else { HashSet::new() };
+        let deselected_peers = if should_explore { self.explore(&mut peer_table, amount_of_perigee_peers) } else { HashSet::new() };
 
         (selected_peers, deselected_peers, has_leveraged_changed)
     }
@@ -384,12 +383,12 @@ impl PerigeeManager {
         }
     }
 
-    fn explore(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, num_of_active_perigee: usize) -> HashSet<PeerKey> {
+    fn explore(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, amount_of_active_perigee: usize) -> HashSet<PeerKey> {
         // This is conceptually simple: we randomly choose peers to evict from the passed peer table.
         // It is expected that other logic, such as leveraging and excusing peers, has already been applied to the peer table.
-        let to_remove_target = min(
+        let to_remove_target = std::cmp::min(
             self.config.exploration_target,
-            num_of_active_perigee.saturating_sub(self.config.perigee_outbound_target - self.config.exploration_target),
+            amount_of_active_perigee.saturating_sub(self.config.perigee_outbound_target - self.config.exploration_target),
         );
 
         peer_table.keys().choose_multiple(&mut thread_rng(), to_remove_target).into_iter().cloned().collect()
