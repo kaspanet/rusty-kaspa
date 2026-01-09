@@ -216,7 +216,7 @@ impl PerigeeManager {
         self.excuse(&mut peer_table, &perigee_routers);
 
         // This excludes peers that have been excused, as well as those that have not provided any data this round.
-        let amount_of_contributing_perigee_peers = perigee_routers.len();
+        let amount_of_contributing_perigee_peers = peer_table.len();
         // In contrast, this is the total number of perigee peers registered in the hub.
         let amount_of_perigee_peers = perigee_routers.len();
         // For should_leverage, we are conservative and require that we have enough contributing peers for sufficient data.
@@ -270,7 +270,7 @@ impl PerigeeManager {
         // This is a greedy algorithm, and does not guarantee a globally optimal set of peers.
 
         // Sanity check
-        assert!(peer_table.len() <= self.config.leverage_target, "Potentially entering an endless loop");
+        assert!(peer_table.len() >= self.config.leverage_target, "Potentially entering an endless loop");
 
         // We use this Vec to maintain track and ordering of selected peers
         let mut selected_peers: Vec<Vec<PeerKey>> = Vec::new();
