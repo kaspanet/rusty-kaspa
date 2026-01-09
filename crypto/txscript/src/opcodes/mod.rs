@@ -1332,26 +1332,9 @@ opcode_list! {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
     }
-    opcode OpTxInputScriptSigSubstr<0xca, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx, start, end]: [i32; 3] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let start = i32_to_usize(start)?;
-                    let end = i32_to_usize(end)?;
-                    let input = tx.inputs().get(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
-                    let substr = substring(&input.signature_script, start, end)?;
-                    push_data(substr, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxInputScriptSigSubstr only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-        }
-    }
 
     // Undefined opcodes
+    opcode OpUnknown202<0xca, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown203<0xcb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown204<0xcc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown205<0xcd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1550,8 +1533,8 @@ mod test {
             opcodes::OpTxOutputSpkLen::empty().expect("Should accept empty"),
             opcodes::OpTxOutputSpkSubstr::empty().expect("Should accept empty"),
             opcodes::OpTxInputScriptSigLen::empty().expect("Should accept empty"),
-            opcodes::OpTxInputScriptSigSubstr::empty().expect("Should accept empty"),
             opcodes::OpBlake2bWithKey::empty().expect("Should accept empty"),
+            opcodes::OpUnknown203::empty().expect("Should accept empty"),
             opcodes::OpUnknown204::empty().expect("Should accept empty"),
             opcodes::OpUnknown205::empty().expect("Should accept empty"),
             opcodes::OpUnknown206::empty().expect("Should accept empty"),
@@ -4370,7 +4353,7 @@ mod test {
                     .add_i64(0)?
                     .add_i64(0)?
                     .add_op(codes::OpTxInputScriptSigLen)?
-                    .add_op(codes::OpTxInputScriptSigSubstr)?
+                    .add_op(codes::OpTxInputScriptSigSubStr)?
                     .add_data(&expected_sig_full)?
                     .add_op(codes::OpEqual)
             });
@@ -4381,7 +4364,7 @@ mod test {
                 sb.add_i64(0)?
                     .add_i64(1)?
                     .add_i64(3)?
-                    .add_op(codes::OpTxInputScriptSigSubstr)?
+                    .add_op(codes::OpTxInputScriptSigSubStr)?
                     .add_data(&expected_sig_substr)?
                     .add_op(codes::OpEqual)
             });
@@ -4437,7 +4420,7 @@ mod test {
             large_sig_script.extend_from_slice(&(600u16).to_le_bytes());
             large_sig_script.extend(std::iter::repeat_n(0u8, 600));
             tx_large_sig.inputs[0].signature_script = large_sig_script;
-            let spk_large_sig_substr = script(|sb| sb.add_i64(0)?.add_i64(0)?.add_i64(600)?.add_op(codes::OpTxInputScriptSigSubstr));
+            let spk_large_sig_substr = script(|sb| sb.add_i64(0)?.add_i64(0)?.add_i64(600)?.add_op(codes::OpTxInputScriptSigSubStr));
             let err = run_script(&tx_large_sig, entries.clone(), 0, spk_large_sig_substr).expect_err("sig substr too long");
             assert!(matches!(err, TxScriptError::ElementTooBig(_, _)));
         }

@@ -1,5 +1,5 @@
 use crate::{
-    opcodes::codes::{OpBlake2b, OpCheckSig, OpCheckSigECDSA, OpData32, OpData33, OpEqual},
+    opcodes::codes::{OpBlake2b, OpCheckSig, OpCheckSigECDSA, OpData32, OpData33, OpEqual, OpEqualVerify},
     script_builder::{ScriptBuilder, ScriptBuilderResult},
     script_class::ScriptClass,
 };
@@ -53,6 +53,26 @@ pub fn pay_to_script_hash_script(redeem_script: &[u8]) -> ScriptPublicKey {
     ScriptPublicKey::new(ScriptClass::ScriptHash.version(), script)
 }
 
+pub fn pay_to_script_hash_with_state(state: &[u8], redeem_script: &[u8]) -> ScriptVec {
+    let redeem_script_hash = Params::new().hash_length(32).to_state().update(redeem_script).finalize();
+    let state_hash = Params::new().hash_length(32).to_state().update(state).finalize();
+    ScriptBuilder::new()
+        .add_op(OpBlake2b)
+        .unwrap()
+        .add_data(redeem_script_hash.as_bytes())
+        .unwrap()
+        .add_op(OpEqualVerify)
+        .unwrap()
+        .add_op(OpBlake2b)
+        .unwrap()
+        .add_data(state_hash.as_bytes())
+        .unwrap()
+        .add_op(OpEqual)
+        .unwrap()
+        .drain()
+        .into()
+}
+
 /// Generates a signature script that fits a pay-to-script-hash script
 pub fn pay_to_script_hash_signature_script(redeem_script: Vec<u8>, signature: Vec<u8>) -> ScriptBuilderResult<Vec<u8>> {
     let redeem_script_as_data = ScriptBuilder::new().add_data(&redeem_script)?.drain();
@@ -80,6 +100,7 @@ pub fn extract_script_pub_key_address(script_public_key: &ScriptPublicKey, prefi
         ScriptClass::PubKey => Ok(Address::new(prefix, Version::PubKey, &script[1..33])),
         ScriptClass::PubKeyECDSA => Ok(Address::new(prefix, Version::PubKeyECDSA, &script[1..34])),
         ScriptClass::ScriptHash => Ok(Address::new(prefix, Version::ScriptHash, &script[2..34])),
+        ScriptClass::ScriptHashWithState => Err(TxScriptError::PubKeyFormat), // TODO
     }
 }
 
