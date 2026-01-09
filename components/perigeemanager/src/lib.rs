@@ -436,7 +436,14 @@ impl PerigeeManager {
     fn iter_excused_peers(&self, perigee_routers: &[Arc<Router>]) -> Vec<PeerKey> {
         // Define excused peers as those that joined perigee after the round started.
         // They should not be penalized for not having enough data in this round.
-        perigee_routers.iter().filter(|r| r.connection_started() > self.round_start).map(|r| r.key()).collect()
+        // We also sort them by connection time to give more trimming security to the longest connected peers first,
+        // This allows them more time to complete a full round.
+        perigee_routers
+            .iter()
+            .sorted_by_key(|r| r.connection_started())
+            .filter(|r| r.connection_started() > self.round_start)
+            .map(|r| r.key())
+            .collect()
     }
 
     fn rate_peer(&self, values: &[u64]) -> PeerScore {
