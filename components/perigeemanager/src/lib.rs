@@ -295,9 +295,11 @@ impl PerigeeManager {
             let mut selected_table = HashMap::new();
 
             // Remove already selected peers from the peer table
-            if let Some(selected_at_index) = selected_peers.get(i) {
-                for already_selected in selected_at_index.iter() {
-                    peer_table.remove(already_selected);
+            if i > 0 {
+                if let Some(selected_at_index) = selected_peers.get(i - 1) {
+                    for already_selected in selected_at_index.iter() {
+                        peer_table.remove(already_selected);
+                    }
                 }
             }
 
@@ -315,9 +317,9 @@ impl PerigeeManager {
                     selected_peers.len() < self.config.leverage_target,
                     "Missed expected exit condition. About to enter an endless loop"
                 );
-                debug!(
-                    "PerigeeManager: Starting new inner loop iteration for leveraging peers, currently selected {} peers",
-                    selected_peers[i].len()
+                trace!(
+                    "PerigeeManager: New inner loop iteration for leveraging peers, currently selected {} peers",
+                    selected_peers.get(i).map(|current_set| current_set.len()).unwrap_or(0)
                 );
 
                 // Get the top ranked peer from the remaining table
@@ -359,12 +361,28 @@ impl PerigeeManager {
             }
             i += 1;
         }
+
         i += 1; // Need to account for breaking 'outer from 'inner loop
+
         if let Some(selected_at_index) = selected_peers.get(i) {
             for already_selected in selected_at_index.iter() {
                 peer_table.remove(already_selected);
             }
         }
+
+        if num_peers_selected < self.config.leverage_target {
+            // choose randomly from remaining peers to fill the gap
+            let to_choose = self.config.leverage_target - num_peers_selected;
+            debug!("PerigeeManager: Leveraging did not reach intended target, randomly selecting {} remaining peers", to_choose);
+            let random_keys: Vec<PeerKey> =
+                peer_table.keys().choose_multiple(&mut thread_rng(), to_choose).into_iter().copied().collect();
+
+            for pk in random_keys {
+                selected_peers[i].push(pk);
+                peer_table.remove(&pk);
+            }
+        }
+
         selected_peers.into_iter().flatten().collect()
     }
 
