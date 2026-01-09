@@ -310,8 +310,8 @@ impl PerigeeManager {
             // Start with the last best score as max
             let mut last_score = PeerScore::MAX;
 
-            // Inner loop: This loop selects peers one by one until we reach the leverage target
-            // or until we reach a local optimum on the peer set.
+            // Inner loop: This loop selects peers one by one and rates them based on contributions to advancing the current set's joint score,
+            // it does this until we reach the leverage target, the available peers are exhausted, or until a local optimum is reached.
             'inner: while num_peers_selected < self.config.leverage_target {
 
                 trace!(
@@ -361,7 +361,7 @@ impl PerigeeManager {
 
         i += 1; // Need to account for breaking 'outer from 'inner loop
 
-        if let Some(selected_at_index) = selected_peers.get(i) {
+        if let Some(selected_at_index) = selected_peers.get(i - 1) {
             for already_selected in selected_at_index.iter() {
                 peer_table.remove(already_selected);
             }
