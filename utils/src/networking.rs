@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::*;
 const TS_IP_ADDRESS: &'static str = r#"
     /**
      * Generic network address representation.
-     * 
+     *
      * @category General
      */
     export interface INetworkAddress {

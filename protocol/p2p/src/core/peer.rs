@@ -1,17 +1,12 @@
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_utils::networking::{IpAddress, PeerId};
-use std::{fmt::Display, net::SocketAddr, sync::Arc, time::Instant};
+use std::{fmt::Display, hash::Hash, net::SocketAddr, sync::Arc, time::Instant};
 
 #[derive(Copy, Debug, Clone)]
 pub enum PeerOutboundType {
     Perigee,
     RandomGraph,
-    /// this is a user-specifed persistent connection, established either via command line `--connectpeer`, or the add_peer RPC (whereby is_permanent=true).
-    /// These peers do not count towards the outbound limit, if they disconnect, the node will keep trying to reconnect to them indefinitely.
-    Persistent,
-    /// this is a user-specifed temporary connection, established either via command line `--addpeer`, or the add_peer RPC (whereby is_permanent=false).
-    /// These peers do not count towards the outbound limit, if they disconnect, no effort will be made to reconnect.
-    Temporary,
+    UserSupplied,
 }
 
 impl Display for PeerOutboundType {
@@ -19,8 +14,7 @@ impl Display for PeerOutboundType {
         match self {
             PeerOutboundType::Perigee => write!(f, "perigee"),
             PeerOutboundType::RandomGraph => write!(f, "random graph"),
-            PeerOutboundType::Persistent => write!(f, "persistent"),
-            PeerOutboundType::Temporary => write!(f, "temporary"),
+            PeerOutboundType::UserSupplied => write!(f, "user supplied"),
         }
     }
 }
@@ -81,12 +75,8 @@ impl Peer {
         self.outbound_type.is_some()
     }
 
-    pub fn is_temporary(&self) -> bool {
-        matches!(self.outbound_type, Some(PeerOutboundType::Temporary))
-    }
-
-    pub fn is_persistent(&self) -> bool {
-        matches!(self.outbound_type, Some(PeerOutboundType::Persistent))
+    pub fn is_user_supplied(&self) -> bool {
+        matches!(self.outbound_type, Some(PeerOutboundType::UserSupplied))
     }
 
     pub fn is_perigee(&self) -> bool {
@@ -110,21 +100,43 @@ impl Peer {
     }
 }
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone)]
 pub struct PeerKey {
     identity: PeerId,
     ip: IpAddress,
+    /// port is ignored for equality and hashing, but useful for reconstructing the socket address from the key only.
+    port: u16,
 }
 
 impl PeerKey {
-    pub fn new(identity: PeerId, ip: IpAddress) -> Self {
-        Self { identity, ip }
+    pub fn new(identity: PeerId, ip: IpAddress, port: u16) -> Self {
+        Self { identity, ip, port }
+    }
+
+    pub fn sock_addr(&self) -> SocketAddr {
+        SocketAddr::new(self.ip.into(), self.port)
     }
 }
 
+impl Hash for PeerKey {
+    // Custom hash implementation that ignores port
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.identity.hash(state);
+        self.ip.hash(state);
+    }
+}
+
+impl PartialEq for PeerKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity == other.identity && self.ip == other.ip
+    }
+}
+
+impl Eq for PeerKey {}
+
 impl From<&Peer> for PeerKey {
     fn from(value: &Peer) -> Self {
-        Self::new(value.identity, value.net_address.ip().into())
+        Self::new(value.identity, value.net_address.ip().into(), value.net_address.port())
     }
 }
 

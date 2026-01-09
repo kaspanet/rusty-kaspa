@@ -164,7 +164,7 @@ mod tests {
 
         // Initiate the connection from `adaptor1` (outbound) to `adaptor2` (inbound)
         let peer2_id = adaptor1
-            .connect_peer_with_retries(String::from("[::1]:50054"), 16, Duration::from_secs(1), PeerOutboundType::Temporary)
+            .connect_peer_with_retries(String::from("[::1]:50054"), 16, Duration::from_secs(1), PeerOutboundType::UserSupplied)
             .await
             .expect("peer connection failed");
 

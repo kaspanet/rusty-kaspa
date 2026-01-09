@@ -60,9 +60,9 @@ pub struct Args {
     pub perigee_target: usize,
     pub perigee_exploration_rate: f64,
     pub perigee_leverage_rate: f64,
-    pub perigee_round_frequency: usize, // evaluation frequency = 30 * perigee_round_frequency secs, note: if zero perigee will not start.
+    pub perigee_round_length: usize, // round length in seconds (rounded to the nearest 30 seconds), min is 30, max is 300.
     pub perigee_statistics: bool,
-    pub perigee_persistence: bool, // whether to persist perigee data between restarts
+    pub perigee_persistence: bool, // whether to persist perigee peers between restarts
     #[serde(rename = "maxinpeers")]
     pub inbound_limit: usize,
     #[serde(rename = "rpcmaxclients")]
@@ -121,7 +121,7 @@ impl Default for Args {
             perigee_target: 0,
             perigee_leverage_rate: 0.625,
             perigee_exploration_rate: 0.125,
-            perigee_round_frequency: 1, // Round duration will be 30 secs
+            perigee_round_length: 30, // Round duration will be 30 secs
             perigee_statistics: false,
             perigee_persistence: false,
             inbound_limit: 128,
@@ -346,12 +346,12 @@ pub fn cli() -> Command {
                 .help("Proportion of Perigee peers dedicated to leverage i.e. number of top performing perigee peers to keep per round of perigee (default: 0.5)."),
         )
         .arg(
-            Arg::new("perigee-round-frequency")
-                .long("perigee-round-frequency")
-                .env("KASPAD_PERIGEE_ROUND_FREQUENCY")
+            Arg::new("perigee-round-length")
+                .long("perigee-round-length")
+                .env("KASPAD_PERIGEE_ROUND_LENGTH")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
-                .help("evaluation frequency = (30 * perigee_round_frequency) secs. Note: if zero perigee will not start."),
+                .help("Round length in seconds (rounded to the nearest 30 seconds), Note: <30 will be rounded up to 30 seconds and clamped between 30 and 300 (default: 30, min 30, max 300)."),
         )
         .arg(
             Arg::new( "perigee-statistics" )
@@ -369,7 +369,7 @@ pub fn cli() -> Command {
         )
         .arg(
             Arg::new("maxinpeers")
-                .long("maxinpeers") 
+                .long("maxinpeers")
                 .env("KASPAD_MAXINPEERS")
                 .value_name("maxinpeers")
                 .require_equals(true)
@@ -402,8 +402,8 @@ pub fn cli() -> Command {
                 .env("KASPAD_MAX_TRACKED_ADDRESSES")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
-                .help(format!("Max (preallocated) number of addresses being tracked for UTXO changed events (default: {}, maximum: {}). 
-Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0 memory footprint as long as unused but to sub-optimal footprint if used.", 
+                .help(format!("Max (preallocated) number of addresses being tracked for UTXO changed events (default: {}, maximum: {}).
+Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0 memory footprint as long as unused but to sub-optimal footprint if used.",
 0, Tracker::MAX_ADDRESS_UPPER_BOUND, Tracker::DEFAULT_MAX_ADDRESSES)),
         )
         .arg(arg!(--testnet "Use the test network").env("KASPAD_TESTNET"))
@@ -559,7 +559,7 @@ impl Args {
             perigee_target: arg_match_unwrap_or::<usize>(&m, "perigeepeers", defaults.perigee_target),
             perigee_exploration_rate: arg_match_unwrap_or::<f64>(&m, "perigee-exploration-rate", defaults.perigee_exploration_rate),
             perigee_leverage_rate: arg_match_unwrap_or::<f64>(&m, "perigee-leverage-rate", defaults.perigee_leverage_rate),
-            perigee_round_frequency: arg_match_unwrap_or::<usize>(&m, "perigee-round-frequency", defaults.perigee_round_frequency),
+            perigee_round_length: arg_match_unwrap_or::<usize>(&m, "perigee-round-length", defaults.perigee_round_length),
             perigee_statistics: arg_match_unwrap_or::<bool>(&m, "perigee-statistics", defaults.perigee_statistics),
             perigee_persistence: arg_match_unwrap_or::<bool>(&m, "perigee-persistence", defaults.perigee_persistence),
             inbound_limit: arg_match_unwrap_or::<usize>(&m, "maxinpeers", defaults.inbound_limit),

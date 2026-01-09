@@ -153,7 +153,7 @@ impl Display for Router {
 
 impl From<&Router> for PeerKey {
     fn from(value: &Router) -> Self {
-        Self::new(value.identity.read(), value.net_address.ip().into())
+        Self::new(value.identity.read(), value.net_address.ip().into(), value.net_address.port())
     }
 }
 
@@ -271,6 +271,10 @@ impl Router {
     /// Indicates whether this connection is an outbound connection
     pub fn is_outbound(&self) -> bool {
         self.outbound_type.is_some()
+    }
+
+    pub fn is_user_supplied(&self) -> bool {
+        matches!(self.outbound_type, Some(PeerOutboundType::UserSupplied))
     }
 
     pub fn is_perigee(&self) -> bool {

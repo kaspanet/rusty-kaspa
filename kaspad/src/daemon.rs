@@ -555,21 +555,22 @@ Do you confirm? (y/n)";
         outbound_target - perigee_target
     };
     let perigee_exploration_target =
-        if connect_peers.is_empty() { (perigee_target as f64 * args.perigee_exploration_rate).ceil() as usize } else { 0 };
+        if connect_peers.is_empty() { (perigee_target as f64 * args.perigee_exploration_rate).round() as usize } else { 0 };
     let perigee_leverage_target =
-        if connect_peers.is_empty() { (perigee_target as f64 * args.perigee_leverage_rate).ceil() as usize } else { 0 };
+        if connect_peers.is_empty() { (perigee_target as f64 * args.perigee_leverage_rate).round() as usize } else { 0 };
     if perigee_target < (perigee_leverage_target + perigee_exploration_target) {
         panic!(
             "Perigee target ({}) cannot be less than the sum of leverage ({}) and exploration ({}) targets.",
             perigee_target, perigee_leverage_target, perigee_exploration_target
         );
     };
-
+    // round to nearest 30
+    let perigee_round_length = ((args.perigee_round_length as f64 / 30.0).round() as usize * 30).clamp(30, 300);
     let perigee_config = PerigeeConfig::new(
         perigee_target,
         perigee_leverage_target,
         perigee_exploration_target,
-        args.perigee_round_frequency,
+        perigee_round_length,
         EVENT_LOOP_TIMER,
         args.perigee_statistics,
         args.perigee_persistence,
@@ -582,7 +583,7 @@ Do you confirm? (y/n)";
             perigee_config.perigee_outbound_target,
             perigee_config.leverage_target,
             perigee_config.exploration_target,
-            perigee_config.round_duration_seconds.as_secs(),
+            perigee_config.round_duration.as_secs(),
             perigee_config.persistence,
         );
     } else {

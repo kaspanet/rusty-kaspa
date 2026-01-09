@@ -18,6 +18,8 @@ pub struct Entry {
 
 impl MemSizeEstimator for Entry {}
 
+/// Address entry for persisted leveraged perigee addresses
+/// the rank indicates the quality of the address (lower is better)
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct PerigeeEntry {
     pub rank: u16,
@@ -135,6 +137,7 @@ impl AddressesStore for DbAddressesStore {
     /// Replaces all existing persisted perigee addresses with the given set of addresses.
     /// note: the order of the given addresses determines their perigee rank (low is better).
     /// this is important for order of retrieval of leveraged perigee addresses between restarts.
+    /// in cases where the number of required addresses decreases, only the top addresses are chosen.
     fn set_new_perigee_addresses(&mut self, entries: Vec<NetAddress>) -> StoreResult<()> {
         // First, clear existing perigee addresses
         self.perigee_access.delete_all(DirectDbWriter::new(&self.db))?;

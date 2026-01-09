@@ -15,8 +15,8 @@ use parking_lot::Mutex;
 use rand::{seq::IteratorRandom, thread_rng, Rng};
 
 // Tolerance for the amount of blocks verified in a round to trigger evaluation.
-// For example, if We expect to see 100 blocks verified in a round, but less or more than [`BLOCKS_VERIFIED_TOLERANCE`]
-// (i.e., 15 / 85 blocks) are verified, we skip the evaluation for leveraging this round.
+// For example, at 0.175, if We expect to see 200 blocks verified in a round, but less or more than [`BLOCKS_VERIFIED_TOLERANCE`]
+// 175 or 225 (respectively) are verified, we skip the evaluation for leveraging this round.
 // reasoning is that network conditions are then not considered stable enough to make a good decision.
 // and we rather skip, and wait for the next round.
 // Note that exploration can still happen even if this threshold is not met.
@@ -34,16 +34,19 @@ pub struct PeerScore {
 }
 
 impl PeerScore {
+    const MAX: PeerScore = PeerScore {
+        p90: u64::MAX,
+        p95: u64::MAX,
+        p97_5: u64::MAX,
+        p98_25: u64::MAX,
+        p99_125: u64::MAX,
+        p99_6875: u64::MAX,
+        p100: u64::MAX,
+    };
+
     #[inline(always)]
     fn new(p90: u64, p95: u64, p97_5: u64, p98_25: u64, p99_125: u64, p99_6875: u64, p100: u64) -> Self {
         PeerScore { p90, p95, p97_5, p98_25, p99_125, p99_6875, p100 }
-    }
-}
-
-impl Default for PeerScore {
-    #[inline(always)]
-    fn default() -> Self {
-        Self::new(u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX)
     }
 }
 
@@ -85,7 +88,7 @@ pub struct PerigeeConfig {
     pub leverage_target: usize,
     pub exploration_target: usize,
     pub round_frequency: usize,
-    pub round_duration_seconds: Duration,
+    pub round_duration: Duration,
     pub expected_blocks_per_round: usize,
     pub statistics: bool,
     pub persistence: bool,
@@ -96,21 +99,20 @@ impl PerigeeConfig {
         perigee_outbound_target: usize,
         leverage_target: usize,
         exploration_target: usize,
-        round_frequency: usize,
+        round_length: usize,
         connection_manager_tick_duration: Duration,
         statistics: bool,
         persistence: bool,
         bps: usize,
     ) -> Self {
-        let round_duration_seconds =
-            connection_manager_tick_duration.checked_mul(round_frequency as u32).expect("perigee round frequecy overflowed");
-        let expected_blocks_per_round = (bps as f64 * round_duration_seconds.as_secs_f64()) as usize;
+        let round_duration = Duration::from_secs(round_length as u64);
+        let expected_blocks_per_round = (bps as f64 * round_duration.as_secs_f64()) as usize;
         Self {
             perigee_outbound_target,
             leverage_target,
             exploration_target,
-            round_frequency,
-            round_duration_seconds,
+            round_frequency: round_length / connection_manager_tick_duration.as_secs() as usize,
+            round_duration,
             expected_blocks_per_round,
             statistics,
             persistence,
@@ -192,7 +194,7 @@ impl PerigeeManager {
             .collect()
     }
 
-    pub fn evaluate_round(&mut self) -> (Vec<PeerKey>, Vec<PeerKey>, bool) {
+    pub fn evaluate_round(&mut self) -> (Vec<PeerKey>, HashSet<PeerKey>, bool) {
         trace!("PerigeeManager: evaluating round");
         self.round_counter += 1;
 
@@ -206,7 +208,7 @@ impl PerigeeManager {
 
         if !should_leverage && !should_explore {
             trace!("PerigeeManager: skipping leveraging and exploration this round");
-            return (self.last_round_leveraged_peers.clone(), vec![], has_leveraged_changed);
+            return (self.last_round_leveraged_peers.clone(), HashSet::new(), has_leveraged_changed);
         }
 
         // i.e. the peers that we mark as "to leverage" this round.
@@ -230,47 +232,89 @@ impl PerigeeManager {
         };
 
         // i.e. the peers that we mark as "to evict" this round.
-        let deselected_peers = if should_explore { self.explore(&mut peer_table, perigee_routers.len()) } else { vec![] };
+        let deselected_peers = if should_explore { self.explore(&mut peer_table, perigee_routers.len()) } else { HashSet::new() };
 
         (selected_peers, deselected_peers, has_leveraged_changed)
     }
 
     fn leverage(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>) -> Vec<PeerKey> {
-        let remaining_table = peer_table;
-        let mut selected_table = HashMap::new();
-        let mut selected_peers = Vec::new(); // We use this instead of selected_table, to maintain ordering.
-        let mut last_score = PeerScore::default();
-        for _ in 0..self.config.leverage_target {
-            let (top_ranked, top_ranked_score) = match self.get_top_ranked_peer(remaining_table) {
-                (Some(peer), score) => (peer, score),
-                _ => break,
-            };
+        // This is a greedy algorithm, and does not guarantee a globally optimal set of peers.
 
-            if top_ranked_score == last_score {
-                break;
+        assert!(peer_table.len() >= self.config.leverage_target, "About to enter an endless loop");
+
+        // We use this Vec to maintain track and ordering of selected peers
+        let mut selected_peers = Vec::new();
+
+        // Outer loop: (re)starts the building of an optimal set of peers from scratch
+        // Note: This potential repetition is not defined in the original perigee paper, but even with extensive tie-breaking,
+        // and on large amounts of perigee peers (i.e. a leverage target > 16), building a single optimal set of peers quickly runs out of peers to select.
+        // As such, to ensure we gain utilize the full leveraging space, we simply build additional independent sets of leveraged peers.
+        'outer: while selected_peers.len() < self.config.leverage_target {
+            debug!(
+                "PerigeeManager: Starting new outer loop iteration for leveraging peers, currently selected {} peers",
+                selected_peers.len()
+            );
+
+            // First we create a new empty selected peer table for this iteration
+            let mut selected_table = HashMap::new();
+
+            // We redefine the remaining table for this iteration as a clone of the original peer table
+            // Note: If we knew that we would not be re-entering this outer loop, we could avoid this clone.
+            let mut remaining_table = peer_table.clone();
+
+            // remove already selected peers from the remaining table
+            for already_selected in &selected_peers {
+                remaining_table.remove(already_selected);
             }
 
-            selected_table.insert(top_ranked, remaining_table.remove(&top_ranked).unwrap());
-            selected_peers.push(top_ranked);
+            // start with the last best score as max
+            let mut last_score = PeerScore::MAX;
 
-            if selected_peers.len() == self.config.leverage_target {
-                break;
+            // Inner loop: this loop selects peers one by one until we reach the leverage target,
+            // or until we reach a local optimum on the peer-set.
+            'inner: while selected_peers.len() < self.config.leverage_target {
+                debug!(
+                    "PerigeeManager: Starting new inner loop iteration for leveraging peers, currently selected {} peers",
+                    selected_peers.len()
+                );
+
+                // Get the top ranked peer from the remaining table
+                let (top_ranked, top_ranked_score) = match self.get_top_ranked_peer(&remaining_table) {
+                    (Some(peer), score) => (peer, score),
+                    _ => break,
+                };
+
+                if top_ranked_score == last_score {
+                    // Break condition, Local optimum reached.
+                    break 'inner;
+                }
+
+                selected_table.insert(top_ranked, remaining_table.remove(&top_ranked).unwrap());
+                selected_peers.push(top_ranked);
+
+                if selected_peers.len() == self.config.leverage_target {
+                    break 'outer;
+                } else {
+                    // Transform the remaining table based on the newly selected peer
+                    self.transform_peer_table(&mut selected_table, &mut remaining_table);
+                }
+
+                last_score = top_ranked_score;
             }
-
-            self.transform_peer_table(&mut selected_table, remaining_table);
-
-            last_score = top_ranked_score;
         }
         selected_peers
     }
 
     fn excuse(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, perigee_routers: &[Arc<Router>]) {
+        // Removes excused peers from the peer table so they are not considered for exploration.
         for k in self.iter_excused_peers(perigee_routers) {
             peer_table.remove(&k);
         }
     }
 
-    fn explore(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, num_of_active_perigee: usize) -> Vec<PeerKey> {
+    fn explore(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, num_of_active_perigee: usize) -> HashSet<PeerKey> {
+        // This is conceptually simple, we randomly choose peers to evict from the passed peer table.
+        // it is expected that other logic, such as leveraging, and excusing peers has already been applied to the peer table.
         let to_remove_target = min(
             self.config.exploration_target,
             num_of_active_perigee.saturating_sub(self.config.perigee_outbound_target - self.config.exploration_target),
@@ -280,6 +324,7 @@ impl PerigeeManager {
     }
 
     pub fn start_new_round(&mut self) {
+        // clears state and starts a new round timer
         self.clear();
         self.round_start = Instant::now();
     }
@@ -289,6 +334,8 @@ impl PerigeeManager {
     }
 
     fn maybe_insert_first_seen(&mut self, hash: Hash, timestamp: Instant) {
+        // Inserts the first seen timestamp for a block if it is earlier than the existing one
+        // or if it does not exist yet.
         match self.first_seen.entry(hash) {
             Entry::Occupied(mut o) => {
                 if timestamp < *o.get() {
@@ -302,10 +349,12 @@ impl PerigeeManager {
     }
 
     fn verify_block(&mut self, hash: Hash) {
+        // Marks a block as verified this round
         self.verified_blocks.insert(hash);
     }
 
     fn clear(&mut self) {
+        // Resets state for new round
         debug!["PerigeeManager: Clearing state for new round"];
         self.verified_blocks.clear();
         self.first_seen.clear();
@@ -320,14 +369,19 @@ impl PerigeeManager {
     }
 
     fn iter_excused_peers(&self, perigee_routers: &[Arc<Router>]) -> Vec<PeerKey> {
+        // Define excused peers as those that joined perigee after the round started.
+        // They should not be penalized for not having enough data in this round.
         perigee_routers.iter().filter(|r| r.connection_started() > self.round_start).map(|r| r.key()).collect()
     }
 
     fn rate_peer(&self, values: &[u64]) -> PeerScore {
+        // rates a peer based on his transformed delay values
+
         if values.is_empty() {
-            return PeerScore::default();
+            return PeerScore::MAX;
         }
 
+        // sort values for percentile calculations
         let sorted_values = {
             let mut sv = values.to_owned();
             sv.sort_unstable();
@@ -356,8 +410,9 @@ impl PerigeeManager {
     }
 
     fn get_top_ranked_peer(&self, peer_table: &HashMap<PeerKey, Vec<u64>>) -> (Option<PeerKey>, PeerScore) {
+        // finds the peer with the best score in the given peer table
         let mut best_peer: Option<PeerKey> = None;
-        let mut best_score = PeerScore::default();
+        let mut best_score = PeerScore::MAX;
         let mut tied_count = 0;
 
         for (peer, delays) in peer_table.iter() {
@@ -389,15 +444,10 @@ impl PerigeeManager {
         (best_peer, best_score)
     }
 
+    /// This transforms the candidate peer table based on the min(selected peers delay scores, candidate delay scores)
+    /// for each delay score
     fn transform_peer_table(&self, selected_peers: &mut HashMap<PeerKey, Vec<u64>>, candidates: &mut HashMap<PeerKey, Vec<u64>>) {
         debug!("PerigeeManager: Transforming peer table");
-
-        // sanity check
-        // assert all vecs are of equal length
-        assert_eq!(
-            candidates.values().map(|v| v.len()).chain(selected_peers.values().map(|v| v.len())).all_equal_value().unwrap(),
-            self.verified_blocks.len()
-        );
 
         for j in 0..self.verified_blocks.len() {
             let selected_min_j = selected_peers.values().map(|vec| vec[j]).min().unwrap();
@@ -424,11 +474,13 @@ impl PerigeeManager {
 
         // 1. IBD is not running
         !is_ibd_running &&
-        // 2. We are within bounds to evict at least one peer - else we prefer to wait on more peers joining perigee first. 
+        // 2. We are within bounds to evict at least one peer - else we prefer to wait on more peers joining perigee first.
         amount_of_perigee_peer > (self.config.perigee_outbound_target - self.config.exploration_target)
     }
 
     fn block_threshold_reached(&self) -> bool {
+        // Checks whether the amount of verified blocks this round is within the expected bounds to consider leveraging.
+        // If this is not the case, the node is likely experiencing network issues, and we rather skip leveraging this round.
         let verified_count = self.verified_blocks.len();
         let expected_count = self.config.expected_blocks_per_round;
         let lower_bound = (expected_count as f64 * (1.0 - BLOCKS_VERIFIED_FAULT_TOLERANCE)) as usize;
@@ -441,17 +493,19 @@ impl PerigeeManager {
     }
 
     fn iterate_verified_first_seen(&self) -> impl Iterator<Item = (&Hash, &Instant)> {
+        // Iterates over first_seen entries that correspond to verified blocks only
         self.first_seen.iter().filter(move |(hash, _)| self.verified_blocks.contains(hash))
     }
 
     fn build_table(&self) -> (HashMap<PeerKey, Vec<u64>>, Vec<Arc<Router>>) {
+        // Builds the peer delay table for all perigee routers
         debug!("PerigeeManager: Building peer table");
 
         let mut peer_table: HashMap<PeerKey, Vec<u64>> = HashMap::new();
         let perigee_routers = self.hub.perigee_routers();
 
-        // below is important as we clone out the hashmap, this should only be done once per round.
-        // calling .perigee_timestamps() method in the loop would become expensive.
+        // Below is important as we clone out the hashmap, this should only be done once per round.
+        // Calling .perigee_timestamps() method in the loop would become expensive.
         let mut perigee_timestamps =
             perigee_routers.iter().map(|r| (r.key(), r.perigee_timestamps())).collect::<HashMap<PeerKey, HashMap<Hash, Instant>>>();
 
@@ -472,127 +526,57 @@ impl PerigeeManager {
     }
 
     pub fn log_statistics(&self) {
-        struct DelayStats {
-            count: usize,
-            mean: f64,
-            median: u64,
-            min: u64,
-            max: u64,
-            p90: u64,
-            p95: u64,
-            p99: u64,
-        }
+        let perigee_ts: Vec<_> = self.hub.perigee_routers().iter().map(|r| (r.key(), r.perigee_timestamps())).collect();
+        let rg_ts: Vec<_> = self.hub.random_graph_routers().iter().map(|r| (r.key(), r.perigee_timestamps())).collect();
 
-        fn calculate_delay_stats(delays: &[u64]) -> DelayStats {
-            if delays.is_empty() {
-                return DelayStats { count: 0, mean: 0.0, median: 0, min: 0, max: 0, p90: 0, p95: 0, p99: 0 };
-            }
+        let (mut p_delays, mut rg_delays, mut p_wins, mut rg_wins, mut ties) = (vec![], vec![], 0usize, 0usize, 0usize);
 
-            let sorted = {
-                let mut s = delays.to_vec();
-                s.sort_unstable();
-                s
-            };
-
-            let count = sorted.len();
-            let mean = sorted.iter().sum::<u64>() as f64 / count as f64;
-            let median = sorted[count / 2];
-            let min = sorted[0];
-            let max = sorted[count - 1];
-            let p90 = sorted[((count as f64 * 0.90) as usize).min(count - 1)];
-            let p95 = sorted[((count as f64 * 0.95) as usize).min(count - 1)];
-            let p99 = sorted[((count as f64 * 0.99) as usize).min(count - 1)];
-
-            DelayStats { count, mean, median, min, max, p90, p95, p99 }
-        }
-
-        fn percentage(part: usize, total: usize) -> f64 {
-            if total == 0 {
-                0.0
-            } else {
-                (part as f64 / total as f64) * 100.0
-            }
-        }
-
-        fn improvement_percentage(perigee: f64, random_graph: f64) -> f64 {
-            if random_graph == 0.0 {
-                0.0
-            } else {
-                ((random_graph - perigee) / random_graph) * 100.0
-            }
-        }
-
-        let mut number_of_perigee_peers = 0;
-        let perigee_timestamps = self
-            .hub
-            .perigee_routers()
-            .iter()
-            .map(|r| {
-                number_of_perigee_peers += 1;
-                (r.key(), r.perigee_timestamps())
-            })
-            .collect::<Vec<_>>();
-        let mut number_of_random_graph_peers = 0;
-        let random_graph_timestamps = self
-            .hub
-            .random_graph_routers()
-            .iter()
-            .map(|r| {
-                number_of_random_graph_peers += 1;
-                (r.key(), r.perigee_timestamps())
-            })
-            .collect::<Vec<_>>();
-
-        let mut perigee_delays = Vec::new();
-        let mut random_graph_delays = Vec::new();
-        let mut perigee_wins = 0;
-        let mut random_graph_wins = 0;
-        let mut ties = 0;
-
-        for (hash, timestamp) in self.iterate_verified_first_seen() {
-            let perigee_delay = perigee_timestamps
-                .iter()
-                .filter_map(|(_, hm)| hm.get(hash).map(|ts| ts.duration_since(*timestamp).as_millis() as u64))
-                .min();
-            let rg_delay = random_graph_timestamps
-                .iter()
-                .filter_map(|(_, hm)| hm.get(hash).map(|ts| ts.duration_since(*timestamp).as_millis() as u64))
-                .min();
-
-            match (perigee_delay, rg_delay) {
-                (Some(p_delay), Some(rg_delay)) => {
-                    perigee_delays.push(p_delay);
-                    random_graph_delays.push(rg_delay);
-
-                    if p_delay < rg_delay {
-                        perigee_wins += 1;
-                    } else if rg_delay < p_delay {
-                        random_graph_wins += 1;
-                    } else {
-                        ties += 1;
+        for (hash, ts) in self.iterate_verified_first_seen() {
+            let p_d = perigee_ts.iter().filter_map(|(_, hm)| hm.get(hash).map(|t| t.duration_since(*ts).as_millis() as u64)).min();
+            let rg_d = rg_ts.iter().filter_map(|(_, hm)| hm.get(hash).map(|t| t.duration_since(*ts).as_millis() as u64)).min();
+            match (p_d, rg_d) {
+                (Some(p), Some(rg)) => {
+                    p_delays.push(p);
+                    rg_delays.push(rg);
+                    match p.cmp(&rg) {
+                        Ordering::Less => p_wins += 1,
+                        Ordering::Greater => rg_wins += 1,
+                        Ordering::Equal => ties += 1,
                     }
                 }
-                (Some(p_delay), None) => {
-                    perigee_delays.push(p_delay);
-                    perigee_wins += 1;
+                (Some(p), None) => {
+                    p_delays.push(p);
+                    p_wins += 1;
                 }
-                (None, Some(rg_delay)) => {
-                    random_graph_delays.push(rg_delay);
-                    random_graph_wins += 1;
+                (None, Some(rg)) => {
+                    rg_delays.push(rg);
+                    rg_wins += 1;
                 }
-                (None, None) => {}
+                _ => {}
             }
         }
 
-        if perigee_delays.is_empty() && random_graph_delays.is_empty() {
+        if p_delays.is_empty() && rg_delays.is_empty() {
             info!("PerigeeManager Statistics: No data available for this round");
             return;
         }
 
-        let perigee_stats = calculate_delay_stats(&perigee_delays);
-        let rg_stats = calculate_delay_stats(&random_graph_delays);
+        let stats = |d: &mut [u64]| -> (usize, f64, u64, u64, u64, u64, u64, u64) {
+            if d.is_empty() {
+                return (0, 0.0, 0, 0, 0, 0, 0, 0);
+            }
+            d.sort_unstable();
+            let n = d.len();
+            let pct = |p: f64| d[((n as f64 * p) as usize).min(n - 1)];
+            (n, d.iter().sum::<u64>() as f64 / n as f64, d[n / 2], d[0], d[n - 1], pct(0.90), pct(0.95), pct(0.99))
+        };
 
-        // Log comprehensive statistics
+        let (pc, pm, pmed, pmin, pmax, p90, p95, p99) = stats(&mut p_delays);
+        let (rc, rm, rmed, rmin, rmax, r90, r95, r99) = stats(&mut rg_delays);
+        let total = p_wins + rg_wins + ties;
+        let pct = |p, t| if t == 0 { 0.0 } else { p as f64 / t as f64 * 100.0 };
+        let imp = |p: f64, r: f64| if r == 0.0 { 0.0 } else { (r - p) / r * 100.0 };
+
         info!(
             "\n\
      ════════════════════════════════════════════════════════════════════════════ \n\
@@ -622,41 +606,41 @@ impl PerigeeManager {
             self.config.perigee_outbound_target,
             self.config.leverage_target,
             self.config.exploration_target,
-            self.config.round_frequency * 30,
-            number_of_perigee_peers,
-            perigee_timestamps.iter().map(|(_, hm)| hm.len()).sum::<usize>(),
-            number_of_random_graph_peers,
-            random_graph_timestamps.iter().map(|(_, hm)| hm.len()).sum::<usize>(),
+            self.config.round_duration.as_secs(),
+            perigee_ts.len(),
+            perigee_ts.iter().map(|(_, hm)| hm.len()).sum::<usize>(),
+            rg_ts.len(),
+            rg_ts.iter().map(|(_, hm)| hm.len()).sum::<usize>(),
             self.verified_blocks.len(),
             self.first_seen.len(),
-            perigee_wins,
-            percentage(perigee_wins, perigee_wins + random_graph_wins + ties),
-            random_graph_wins,
-            percentage(random_graph_wins, perigee_wins + random_graph_wins + ties),
+            p_wins,
+            pct(p_wins, total),
+            rg_wins,
+            pct(rg_wins, total),
             ties,
-            percentage(ties, perigee_wins + random_graph_wins + ties),
-            perigee_stats.count,
-            rg_stats.count,
-            perigee_stats.mean,
-            rg_stats.mean,
-            rg_stats.mean - perigee_stats.mean,
-            improvement_percentage(perigee_stats.mean, rg_stats.mean),
-            perigee_stats.median,
-            rg_stats.median,
-            rg_stats.median as i64 - perigee_stats.median as i64,
-            improvement_percentage(perigee_stats.median as f64, rg_stats.median as f64),
-            perigee_stats.min,
-            rg_stats.min,
-            perigee_stats.max,
-            rg_stats.max,
-            perigee_stats.p90,
-            rg_stats.p90,
-            rg_stats.p90 as i64 - perigee_stats.p90 as i64,
-            improvement_percentage(perigee_stats.p90 as f64, rg_stats.p90 as f64),
-            perigee_stats.p95,
-            rg_stats.p95,
-            perigee_stats.p99,
-            rg_stats.p99
+            pct(ties, total),
+            pc,
+            rc,
+            pm,
+            rm,
+            rm - pm,
+            imp(pm, rm),
+            pmed,
+            rmed,
+            rmed as i64 - pmed as i64,
+            imp(pmed as f64, rmed as f64),
+            pmin,
+            rmin,
+            pmax,
+            rmax,
+            p90,
+            r90,
+            r90 as i64 - p90 as i64,
+            imp(p90 as f64, r90 as f64),
+            p95,
+            r95,
+            p99,
+            r99
         );
     }
 }
