@@ -126,7 +126,7 @@ impl ConnectionManager {
     }
 
     fn initiate_perigee(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
-        // initiate perigee manager with persisted peers.
+        // Initiate the perigee manager with persisted peers.
         let perigee_manager = self.perigee_manager.as_ref().unwrap();
         let mut perigee_manager_guard = perigee_manager.lock();
         let init = self.address_manager.lock().get_perigee_addresses();
@@ -198,7 +198,7 @@ impl ConnectionManager {
     }
 
     async fn handle_event(self: Arc<Self>, event: ConnectionManagerEvent) {
-        // populate a snapshot of the current peers by address
+        // Populate a snapshot of the current peers by address.
         let mut peer_by_address = self.get_peers_by_address();
 
         match event {
@@ -208,13 +208,13 @@ impl ConnectionManager {
                     self.perigee_config.as_ref().is_some_and(|pc| pc.round_frequency != 0 && tick_count % pc.round_frequency == 0);
 
                 if should_initiate_perigee {
-                    // first we await populating outbound connections
+                    // First, we await populating outbound connections.
                     self.handle_outbound_connections(peer_by_address.clone(), HashSet::new()).await;
 
-                    // now we can reinstate peer_by_address to include the newly connected peers
+                    // Now, we can reinstate peer_by_address to include the newly connected peers
                     peer_by_address = self.get_peers_by_address();
 
-                    // continue with the congruent connection handling
+                    // Continue with the congruent connection handling.
                     try_join!(
                         self.spawn_initiate_perigee(&peer_by_address),
                         self.spawn_handle_connection_requests(peer_by_address.clone()),
@@ -227,10 +227,10 @@ impl ConnectionManager {
                     // We await this (not spawn), so that `spawn_handle_outbound_connections` is called after the perigee round evaluation is executed,
                     let peers_evicted = self.evaluate_perigee_round(peer_by_address.clone()).await;
 
-                    // reset the perigee round state
+                    // Reset the perigee round state.
                     self.reset_perigee_round().await;
 
-                    // continue with the regular congruent connection handling
+                    // Continue with the regular congruent connection handling.
                     try_join!(
                         self.spawn_handle_outbound_connections(peer_by_address.clone(), peers_evicted),
                         self.spawn_handle_inbound_connections(peer_by_address.clone()),
@@ -340,17 +340,17 @@ impl ConnectionManager {
         let mut num_active_random_graph_outbound = 0usize;
 
         let peers_by_address = if !to_terminate.is_empty() {
-            // create a filtered view of peer_by_address without the terminated peers
+            // Create a filtered view of peer_by_address without the terminated peers.
             let filtered_peer_by_address = Arc::new(
                 peer_by_address
                     .iter()
-                    // filter out peers that were just terminated
+                    // Filter out peers that were just terminated.
                     .filter(|(_, peer)| !to_terminate.contains(&peer.key()))
                     .map(|(addr, peer)| (*addr, peer.clone()))
                     .collect::<HashMap<SocketAddr, Peer>>(),
             );
 
-            // terminate peers passed explicitly
+            // Terminate peers passed explicitly.
             self.terminate_peers(to_terminate.into_iter()).await;
 
             filtered_peer_by_address
@@ -430,13 +430,13 @@ impl ConnectionManager {
         // perigee branch builds a Vec which is necessary to prepend persisted
         // addresses.
         let mut addr_iter = if active_outbound.is_empty() && self.perigee_config.as_ref().is_some_and(|pc| pc.persistence) {
-            // On fresh start-up (or on some other full peer clearing event), and with perigee persistence,
-            // we prioritize perigee peers saved to the db from some previous round
+            // On fresh start-up (or some other full peer clearing event), and with perigee persistence,
+            // we prioritize perigee peers saved to the DB from some previous round.
             let persistent_perigee_addresses = self.address_manager.lock().get_perigee_addresses();
 
             let leverage_target = self.perigee_config.as_ref().unwrap().leverage_target;
 
-            // collect the persisted perigee addresses first
+            // Collect the persisted perigee addresses first.
             let priorities = persistent_perigee_addresses.into_iter().take(leverage_target).collect();
 
             self.address_manager.lock().iterate_prioritized_random_addresses(priorities, active_outbound)
@@ -456,7 +456,7 @@ impl ConnectionManager {
             let mut random_graph_addrs = HashSet::new();
             let mut perigee_addrs = HashSet::new();
 
-            // because we potentially prioritized perigee connections to the start of the addr_iter, we should start with perigee peers.
+            // Because we potentially prioritized perigee connections to the start of addr_iter, we should start with perigee peers.
             for _ in 0..missing_perigee_connections {
                 let Some(net_addr) = addr_iter.next() else {
                     connecting = false;

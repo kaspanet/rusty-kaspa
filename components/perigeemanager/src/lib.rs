@@ -14,13 +14,13 @@ use log::debug;
 use parking_lot::Mutex;
 use rand::{seq::IteratorRandom, thread_rng, Rng};
 
-// Tolerance for the amount of blocks verified in a round to trigger evaluation.
-// For example, at 0.175, if We expect to see 200 blocks verified in a round, but less or more than [`BLOCKS_VERIFIED_TOLERANCE`]
-// 175 or 225 (respectively) are verified, we skip the evaluation for leveraging this round.
-// reasoning is that network conditions are then not considered stable enough to make a good decision.
-// and we rather skip, and wait for the next round.
+// Tolerance for the number of blocks verified in a round to trigger evaluation.
+// For example, at 0.175, if we expect to see 200 blocks verified in a round, but fewer or more than
+// 175 or 225 (respectively) are verified, we skip the leverage evaluation for this round.
+// The reasoning is that network conditions are not considered stable enough to make a good decision,
+// and we would rather skip and wait for the next round.
 // Note that exploration can still happen even if this threshold is not met.
-// This ensures that we continue to explore in case network conditions are fault of the peers, and not oneself.
+// This ensures that we continue to explore in case network conditions are the fault of the peers, not oneself.
 const BLOCKS_VERIFIED_FAULT_TOLERANCE: f64 = 0.175;
 
 pub struct PeerScore {
@@ -152,6 +152,8 @@ impl PerigeeManager {
     }
 
     pub fn insert_perigee_timestamp(&mut self, router: &Arc<Router>, hash: Hash, timestamp: Instant, verify: bool) {
+        // Inserts and updates the perigee timestamp for the given router
+        // and into the local state.
         if router.is_perigee() || (self.config.statistics && router.is_random_graph()) {
             router.add_perigee_timestamp(hash, timestamp);
         }
@@ -171,12 +173,16 @@ impl PerigeeManager {
     }
 
     pub fn trim_peers(&mut self, peers_by_address: Arc<HashMap<SocketAddr, Peer>>) -> Vec<PeerKey> {
-        debug!("PerigeeManager: Trimming exceess peers from perigee");
+        // Contains logic to trim excess perigee peers beyond the configured target
+        // without executing a full evaluation.
 
+        debug!("PerigeeManager: Trimming excess peers from perigee");
         let perigee_routers = self
             .hub
             .perigee_routers()
             .into_iter()
+            // This filtering is important to ensure we trim based on the passed peers_by_address snapshot,
+            // not the current state of the hub, which may have changed since the snapshot was taken.
             .filter(|r| peers_by_address.contains_key(&SocketAddr::new(r.net_address().ip(), r.net_address().port())))
             .collect::<Vec<_>>();
         let to_remove_amount = perigee_routers.len().saturating_sub(self.config.perigee_outbound_target);
@@ -184,10 +190,14 @@ impl PerigeeManager {
 
         perigee_routers
             .iter()
+            // Ensure we do not remove leveraged or excused peers
             .filter(|r| !self.last_round_leveraged_peers.contains(&r.key()) && !excused_peer.contains(&r.key()))
             .map(|r| r.key())
             .choose_multiple(&mut thread_rng(), to_remove_amount)
             .iter()
+            // In cases where we do not have enough non-excused/non-leveraged peers to remove,
+            // we fill the remaining slots with excused peers.
+            // Note: We do not expect to ever need to chain with last round's leveraged peers.
             .chain(excused_peer.iter())
             .take(to_remove_amount)
             .cloned()
@@ -201,12 +211,25 @@ impl PerigeeManager {
         let (mut peer_table, perigee_routers) = self.build_table();
 
         let is_ibd_running = self.is_ibd_running();
+
+        // First, we excuse all peers with insufficient data this round
         self.excuse(&mut peer_table, &perigee_routers);
-        let should_leverage = self.should_leverage(is_ibd_running, perigee_routers.len());
-        let should_explore = self.should_explore(is_ibd_running, perigee_routers.len());
+
+        // This excludes peers that have been excused, as well as those that have not provided any data this round.
+        let amount_of_contributing_perigee_peers = perigee_routers.len();
+        // In contrast, this is the total number of perigee peers registered in the hub.
+        let amount_of_perigee_peers = perigee_routers.len();
+        // For should_leverage, we are conservative and require that we have enough contributing peers for sufficient data.
+        let should_leverage = self.should_leverage(is_ibd_running, amount_of_contributing_perigee_peers);
+        // For should_explore, we are more aggressive and only require that we have enough total perigee peers.
+        // As insufficient data may be malicious behavior by some peers, we prefer to continue churning peers.
+        let should_explore = self.should_explore(is_ibd_running, amount_of_perigee_peers);
+
         let mut has_leveraged_changed = false;
 
         if !should_leverage && !should_explore {
+            // In this case we skip leveraging and exploration this round.
+            // We maintain the last round leveraged peers as-is.
             trace!("PerigeeManager: skipping leveraging and exploration this round");
             return (self.last_round_leveraged_peers.clone(), HashSet::new(), has_leveraged_changed);
         }
@@ -219,20 +242,26 @@ impl PerigeeManager {
                 selected_peers.iter().map(|pk| pk.to_string()).collect_vec()
             );
             if self.last_round_leveraged_peers != selected_peers {
+                // Leveraged set has changed
                 trace!("PerigeeManager: Leveraged peers have changed this round");
                 has_leveraged_changed = true;
+                // Update last round's leveraged peers to the newly selected set
                 self.last_round_leveraged_peers = selected_peers.clone();
             }
+            // Return the newly selected set
             selected_peers
         } else {
+            // Remove all previously leveraged peers from the peer table to avoid eviction
             for pk in &self.last_round_leveraged_peers {
                 peer_table.remove(pk);
             }
+            // Return the previous set
             self.last_round_leveraged_peers.clone()
         };
 
         // i.e. the peers that we mark as "to evict" this round.
-        let deselected_peers = if should_explore { self.explore(&mut peer_table, perigee_routers.len()) } else { HashSet::new() };
+        let deselected_peers =
+            if should_explore { self.explore(&mut peer_table, amount_of_contributing_perigee_peers) } else { HashSet::new() };
 
         (selected_peers, deselected_peers, has_leveraged_changed)
     }
@@ -240,81 +269,115 @@ impl PerigeeManager {
     fn leverage(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>) -> Vec<PeerKey> {
         // This is a greedy algorithm, and does not guarantee a globally optimal set of peers.
 
+        // Sanity check
         assert!(peer_table.len() >= self.config.leverage_target, "About to enter an endless loop");
 
         // We use this Vec to maintain track and ordering of selected peers
-        let mut selected_peers = Vec::new();
+        let mut selected_peers: Vec<Vec<PeerKey>> = Vec::new();
+        let mut num_peers_selected = 0;
+        let mut remaining_table;
+
+        // counts the outer loop only
+        let mut i = 0;
 
         // Outer loop: (re)starts the building of an optimal set of peers from scratch
-        // Note: This potential repetition is not defined in the original perigee paper, but even with extensive tie-breaking,
-        // and on large amounts of perigee peers (i.e. a leverage target > 16), building a single optimal set of peers quickly runs out of peers to select.
-        // As such, to ensure we gain utilize the full leveraging space, we simply build additional independent sets of leveraged peers.
-        'outer: while selected_peers.len() < self.config.leverage_target {
+        // Note: This potential repetition is not defined in the original Perigee paper, but even with extensive tie-breaking,
+        // and with large numbers of perigee peers (i.e., a leverage target > 16), building a single optimal set of peers quickly runs out of peers to select.
+        // As such, to ensure we utilize the full leveraging space, we re-run this outer loop
+        // to build additional independent sets of complementary peers.
+        'outer: while num_peers_selected < self.config.leverage_target {
             debug!(
                 "PerigeeManager: Starting new outer loop iteration for leveraging peers, currently selected {} peers",
-                selected_peers.len()
+                num_peers_selected
             );
 
-            // First we create a new empty selected peer table for this iteration
+            // First, we create a new empty selected peer table for this iteration
             let mut selected_table = HashMap::new();
+
+            // Remove already selected peers from the peer table
+            if let Some(selected_at_index) = selected_peers.get(i) {
+                for already_selected in selected_at_index.iter() {
+                    peer_table.remove(already_selected);
+                }
+            }
 
             // We redefine the remaining table for this iteration as a clone of the original peer table
             // Note: If we knew that we would not be re-entering this outer loop, we could avoid this clone.
-            let mut remaining_table = peer_table.clone();
+            remaining_table = peer_table.clone();
 
-            // remove already selected peers from the remaining table
-            for already_selected in &selected_peers {
-                remaining_table.remove(already_selected);
-            }
-
-            // start with the last best score as max
+            // Start with the last best score as max
             let mut last_score = PeerScore::MAX;
 
-            // Inner loop: this loop selects peers one by one until we reach the leverage target,
-            // or until we reach a local optimum on the peer-set.
-            'inner: while selected_peers.len() < self.config.leverage_target {
+            // Inner loop: This loop selects peers one by one until we reach the leverage target
+            // or until we reach a local optimum on the peer set.
+            'inner: while num_peers_selected < self.config.leverage_target {
+                assert!(
+                    selected_peers.len() < self.config.leverage_target,
+                    "Missed expected exit condition. About to enter an endless loop"
+                );
                 debug!(
                     "PerigeeManager: Starting new inner loop iteration for leveraging peers, currently selected {} peers",
-                    selected_peers.len()
+                    selected_peers[i].len()
                 );
 
                 // Get the top ranked peer from the remaining table
                 let (top_ranked, top_ranked_score) = match self.get_top_ranked_peer(&remaining_table) {
                     (Some(peer), score) => (peer, score),
-                    _ => break,
+                    _ => {
+                        break 'outer; // no more peers to select from
+                    }
                 };
 
                 if top_ranked_score == last_score {
-                    // Break condition, Local optimum reached.
-                    break 'inner;
+                    // Break condition: local optimum reached.
+                    if top_ranked_score == PeerScore::MAX {
+                        // All remaining peers are unrankable; we cannot proceed further.
+                        break 'outer;
+                    } else {
+                        // We have reached a local optimum;
+                        if num_peers_selected < self.config.leverage_target {
+                            // Build additional sets of leveraged peers
+                            break 'inner;
+                        } else {
+                            break 'outer;
+                        }
+                    }
                 }
 
                 selected_table.insert(top_ranked, remaining_table.remove(&top_ranked).unwrap());
-                selected_peers.push(top_ranked);
+                selected_peers[i].push(top_ranked);
+                num_peers_selected += 1;
 
-                if selected_peers.len() == self.config.leverage_target {
+                if num_peers_selected == self.config.leverage_target {
+                    // Reached our target
                     break 'outer;
                 } else {
-                    // Transform the remaining table based on the newly selected peer
+                    // Transform the remaining table accounting also for the newly selected peer
                     self.transform_peer_table(&mut selected_table, &mut remaining_table);
                 }
-
                 last_score = top_ranked_score;
             }
+            i += 1;
         }
-        selected_peers
+        i += 1; // Need to account for breaking 'outer from 'inner loop
+        if let Some(selected_at_index) = selected_peers.get(i) {
+            for already_selected in selected_at_index.iter() {
+                peer_table.remove(already_selected);
+            }
+        }
+        selected_peers.into_iter().flatten().collect()
     }
 
     fn excuse(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, perigee_routers: &[Arc<Router>]) {
-        // Removes excused peers from the peer table so they are not considered for exploration.
+        // Removes excused peers from the peer table so they are not considered for eviction.
         for k in self.iter_excused_peers(perigee_routers) {
             peer_table.remove(&k);
         }
     }
 
     fn explore(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, num_of_active_perigee: usize) -> HashSet<PeerKey> {
-        // This is conceptually simple, we randomly choose peers to evict from the passed peer table.
-        // it is expected that other logic, such as leveraging, and excusing peers has already been applied to the peer table.
+        // This is conceptually simple: we randomly choose peers to evict from the passed peer table.
+        // It is expected that other logic, such as leveraging and excusing peers, has already been applied to the peer table.
         let to_remove_target = min(
             self.config.exploration_target,
             num_of_active_perigee.saturating_sub(self.config.perigee_outbound_target - self.config.exploration_target),
@@ -324,7 +387,7 @@ impl PerigeeManager {
     }
 
     pub fn start_new_round(&mut self) {
-        // clears state and starts a new round timer
+        // Clears state and starts a new round timer
         self.clear();
         self.round_start = Instant::now();
     }
@@ -334,12 +397,13 @@ impl PerigeeManager {
     }
 
     fn maybe_insert_first_seen(&mut self, hash: Hash, timestamp: Instant) {
-        // Inserts the first seen timestamp for a block if it is earlier than the existing one
+        // Inserts the first-seen timestamp for a block if it is earlier than the existing one
         // or if it does not exist yet.
         match self.first_seen.entry(hash) {
             Entry::Occupied(mut o) => {
-                if timestamp < *o.get() {
-                    *o.get_mut() = timestamp;
+                let current = o.get_mut();
+                if timestamp.lt(current) {
+                    *current = timestamp;
                 }
             }
             Entry::Vacant(v) => {
@@ -349,12 +413,13 @@ impl PerigeeManager {
     }
 
     fn verify_block(&mut self, hash: Hash) {
-        // Marks a block as verified this round
+        // Marks a block as verified for this round.
+        // I.e., this block will be considered in the current round's evaluation.
         self.verified_blocks.insert(hash);
     }
 
     fn clear(&mut self) {
-        // Resets state for new round
+        // Resets state for a new round
         debug!["PerigeeManager: Clearing state for new round"];
         self.verified_blocks.clear();
         self.first_seen.clear();
@@ -375,13 +440,13 @@ impl PerigeeManager {
     }
 
     fn rate_peer(&self, values: &[u64]) -> PeerScore {
-        // rates a peer based on his transformed delay values
+        // Rates a peer based on its transformed delay values
 
         if values.is_empty() {
             return PeerScore::MAX;
         }
 
-        // sort values for percentile calculations
+        // Sort values for percentile calculations
         let sorted_values = {
             let mut sv = values.to_owned();
             sv.sort_unstable();
@@ -391,14 +456,14 @@ impl PerigeeManager {
         let len = sorted_values.len();
 
         // This is defined as the scoring mechanism in the corresponding original perigee paper.
-        // it preferences good connectivity to the bulk of the network, while still considering the tail-end delays.
+        // It favors good connectivity to the bulk of the network while still considering tail-end delays.
         let p90 = sorted_values[((0.90 * len as f64) as usize).min(len - 1)];
 
         // This is a deviation from the paper;
         // We rate beyond the p90 to tie-break
-        // Testing has exposed that the full Coverage of the p90 range often times typically only requires ~4-6 perigee peers
+        // Testing has shown that full coverage of the p90 range often only requires ~4-6 perigee peers.
         // This leaves remaining perigee peers without contribution to latency reduction.
-        // as such we rate these even deeper into the tail-end delays to try and increase coverage of outlier blocks.
+        // As such, we rate these even deeper into the tail-end delays to try to increase coverage of outlier blocks.
         let p95 = sorted_values[((0.95 * len as f64) as usize).min(len - 1)];
         let p97_5 = sorted_values[((0.975 * len as f64) as usize).min(len - 1)];
         let p98_25 = sorted_values[((0.9825 * len as f64) as usize).min(len - 1)];
@@ -410,7 +475,7 @@ impl PerigeeManager {
     }
 
     fn get_top_ranked_peer(&self, peer_table: &HashMap<PeerKey, Vec<u64>>) -> (Option<PeerKey>, PeerScore) {
-        // finds the peer with the best score in the given peer table
+        // Finds the peer with the best score in the given peer table
         let mut best_peer: Option<PeerKey> = None;
         let mut best_score = PeerScore::MAX;
         let mut tied_count = 0;
@@ -423,7 +488,7 @@ impl PerigeeManager {
             } else if score == best_score {
                 tied_count += 1;
                 // Randomly replace with probability 1/tied_count
-                // this is so that we ensure we don't choose peers based on iteration / Hashmap order
+                // This ensures we don't choose peers based on iteration / HashMap order
                 if thread_rng().gen_ratio(1, tied_count) {
                     best_peer = Some(*peer);
                 }
@@ -444,38 +509,39 @@ impl PerigeeManager {
         (best_peer, best_score)
     }
 
-    /// This transforms the candidate peer table based on the min(selected peers delay scores, candidate delay scores)
-    /// for each delay score
     fn transform_peer_table(&self, selected_peers: &mut HashMap<PeerKey, Vec<u64>>, candidates: &mut HashMap<PeerKey, Vec<u64>>) {
+        // Transforms the candidate peer table to min(selected peers' delay scores, candidate delay scores)
+        // for each delay score. This is one of the key components of the Perigee algorithm for joint subset selection.
+
         debug!("PerigeeManager: Transforming peer table");
 
         for j in 0..self.verified_blocks.len() {
             let selected_min_j = selected_peers.values().map(|vec| vec[j]).min().unwrap();
             for candidate in candidates.values_mut() {
-                // we transform the delay of candidate at pos j to min(candidate_delay_score[j], min(selected_peers_delay_score_at_pos[j])).
+                // We transform the delay of candidate at position j to min(candidate_delay_score[j], min(selected_peers_delay_score_at_pos[j])).
                 candidate[j] = min(candidate[j], selected_min_j);
             }
         }
     }
 
-    fn should_leverage(&self, is_ibd_running: bool, amount_of_perigee_peer: usize) -> bool {
+    fn should_leverage(&self, is_ibd_running: bool, amount_of_contributing_perigee_peers: usize) -> bool {
         // Conditions that need to be met to trigger leveraging:
 
         // 1. IBD is not running
         !is_ibd_running &&
         // 2. Sufficient blocks have been verified this round
         self.block_threshold_reached() &&
-        // 3. We have enough perigee peers to choose from
-        amount_of_perigee_peer > self.config.leverage_target
+        // 3. We have enough contributing perigee peers to choose from
+        amount_of_contributing_perigee_peers >= self.config.leverage_target
     }
 
-    fn should_explore(&self, is_ibd_running: bool, amount_of_perigee_peer: usize) -> bool {
+    fn should_explore(&self, is_ibd_running: bool, amount_of_perigee_peers: usize) -> bool {
         // Conditions that should trigger exploration:
 
         // 1. IBD is not running
         !is_ibd_running &&
         // 2. We are within bounds to evict at least one peer - else we prefer to wait on more peers joining perigee first.
-        amount_of_perigee_peer > (self.config.perigee_outbound_target - self.config.exploration_target)
+        amount_of_perigee_peers > (self.config.perigee_outbound_target - self.config.exploration_target)
     }
 
     fn block_threshold_reached(&self) -> bool {
@@ -493,19 +559,19 @@ impl PerigeeManager {
     }
 
     fn iterate_verified_first_seen(&self) -> impl Iterator<Item = (&Hash, &Instant)> {
-        // Iterates over first_seen entries that correspond to verified blocks only
+        // Iterates over first_seen entries that correspond to verified blocks only.
         self.first_seen.iter().filter(move |(hash, _)| self.verified_blocks.contains(hash))
     }
 
     fn build_table(&self) -> (HashMap<PeerKey, Vec<u64>>, Vec<Arc<Router>>) {
-        // Builds the peer delay table for all perigee routers
+        // Builds the peer delay table for all perigee routers.
         debug!("PerigeeManager: Building peer table");
 
         let mut peer_table: HashMap<PeerKey, Vec<u64>> = HashMap::new();
         let perigee_routers = self.hub.perigee_routers();
 
-        // Below is important as we clone out the hashmap, this should only be done once per round.
-        // Calling .perigee_timestamps() method in the loop would become expensive.
+        // The below is important as we clone out the HashMap; this should only be done once per round.
+        // Calling the .perigee_timestamps() method in the loop would become expensive.
         let mut perigee_timestamps =
             perigee_routers.iter().map(|r| (r.key(), r.perigee_timestamps())).collect::<HashMap<PeerKey, HashMap<Hash, Instant>>>();
 
