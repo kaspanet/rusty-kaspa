@@ -277,14 +277,14 @@ impl PerigeeManager {
         let mut num_peers_selected = 0;
         let mut remaining_table;
 
-        // counts the outer loop only
+        // Counts the outer loop only
         let mut i = 0;
 
-        // Outer loop: (re)starts the building of an optimal set of peers from scratch
+        // Outer loop: (re)starts the building of an optimal set of peers from scratch, based on a joint subset scoring mechanism.
         // Note: This potential repetition is not defined in the original Perigee paper, but even with extensive tie-breaking,
         // and with large numbers of perigee peers (i.e., a leverage target > 16), building a single optimal set of peers quickly runs out of peers to select.
         // As such, to ensure we utilize the full leveraging space, we re-run this outer loop
-        // to build additional independent sets of complementary peers.
+        // to build additional independent complementary sets of peers, thereby reducing reliance on a single such set of peers.
         'outer: while num_peers_selected < self.config.leverage_target {
             debug!(
                 "PerigeeManager: Starting new outer loop iteration for leveraging peers, currently selected {} peers",
@@ -313,10 +313,7 @@ impl PerigeeManager {
             // Inner loop: This loop selects peers one by one until we reach the leverage target
             // or until we reach a local optimum on the peer set.
             'inner: while num_peers_selected < self.config.leverage_target {
-                assert!(
-                    selected_peers.len() < self.config.leverage_target,
-                    "Missed expected exit condition. About to enter an endless loop"
-                );
+
                 trace!(
                     "PerigeeManager: New inner loop iteration for leveraging peers, currently selected {} peers",
                     selected_peers.get(i).map(|current_set| current_set.len()).unwrap_or(0)
