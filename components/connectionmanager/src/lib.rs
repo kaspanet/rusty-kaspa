@@ -131,8 +131,12 @@ impl ConnectionManager {
         let mut perigee_manager_guard = perigee_manager.lock();
         let init = self.address_manager.lock().get_perigee_addresses();
         info!(
-            "Initiating perigee with db persisted peers: {:?}",
-            init.iter().map(|addr| SocketAddr::new(addr.ip.into(), addr.port).to_string()).collect::<Vec<_>>().join(",")
+            "Connection manager: Initiating perigee with db persisted peers: {:?}",
+            init.iter()
+                .map(|addr| SocketAddr::new(addr.ip.into(), addr.port).to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+                .trim_end_matches(", "),
         );
         perigee_manager_guard.set_initial_persistent_peers(
             init.iter()
@@ -174,21 +178,32 @@ impl ConnectionManager {
         }
 
         // Log the results of the perigee round
-        info!(
-            "Connection manager: Perigee Round Completed \n Leveraging: {}, \n Evicting: {}",
-            to_leverage.iter().map(|pk| pk.sock_addr().to_string()).collect::<Vec<_>>().join(", "),
-            to_evict.iter().map(|pk| pk.sock_addr().to_string()).collect::<Vec<_>>().join(", ")
-        );
+        if has_leveraged_changed {
+            info!(
+                "Connection manager: Leveraging perigee peers \n {}",
+                to_leverage.iter().map(|pk| pk.sock_addr().to_string()).collect::<Vec<_>>().join(", ").trim_end_matches(", "),
+            );
+        } else {
+            info!("Connection manager: No changes in leveraged perigee peers");
+        }
+        if !to_evict.is_empty() {
+            info!(
+                "Connection manager: Evicting perigee peers: {}",
+                to_evict.iter().map(|pk| pk.sock_addr().to_string()).collect::<Vec<_>>().join(", ").trim_end_matches(", "),
+            );
+        } else {
+            info!("Connection manager: No perigee peers to evict");
+        }
 
         to_evict
     }
 
     async fn reset_perigee_round(self: &Arc<Self>) {
-        debug!("Resetting perigee round state...");
         if let Some(perigee_manager) = &self.perigee_manager {
             let mut perigee_manager_guard = perigee_manager.lock();
             perigee_manager_guard.start_new_round();
         }
+        info!("Connection manager: Reset perigee round");
     }
 
     fn get_peers_by_address(self: &Arc<Self>) -> Arc<HashMap<SocketAddr, Peer>> {

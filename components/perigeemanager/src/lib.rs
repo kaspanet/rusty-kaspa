@@ -313,7 +313,6 @@ impl PerigeeManager {
             // Inner loop: This loop selects peers one by one and rates them based on contributions to advancing the current set's joint score,
             // it does this until we reach the leverage target, the available peers are exhausted, or until a local optimum is reached.
             'inner: while num_peers_selected < self.config.leverage_target {
-
                 trace!(
                     "PerigeeManager: New inner loop iteration for leveraging peers, currently selected {} peers",
                     selected_peers.get(i).map(|current_set| current_set.len()).unwrap_or(0)
@@ -645,7 +644,7 @@ impl PerigeeManager {
         }
 
         if p_delays.is_empty() && rg_delays.is_empty() {
-            info!("PerigeeManager Statistics: No data available for this round");
+            debug!("PerigeeManager Statistics: No data available for this round");
             return;
         }
 
