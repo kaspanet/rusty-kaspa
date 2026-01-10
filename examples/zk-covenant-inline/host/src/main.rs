@@ -12,7 +12,7 @@ use kaspa_txscript::opcodes::codes::{
 };
 use kaspa_txscript::zk_precompiles::tags::ZkTag;
 use kaspa_txscript::{
-     pay_to_script_hash_script, script_builder::ScriptBuilder, EngineFlags, SpkEncoding, TxScriptEngine,
+    pay_to_script_hash_script, script_builder::ScriptBuilder, EngineFlags, SpkEncoding, TxScriptEngine,
 };
 use risc0_zkvm::sha::Digestible;
 use risc0_zkvm::{default_prover, ExecutorEnv, Prover, ProverOpts};
@@ -140,79 +140,230 @@ fn verify_zk_succinct(tx: &Transaction, utxo_entry: &UtxoEntry) {
     vm.execute().unwrap();
 }
 
-fn build_redeem_script(state: u64, redeem_script_len: i64) -> Vec<u8> {
-    ScriptBuilder::new()
-        .add_data(&state.to_le_bytes()).unwrap()
-        .add_op(OpSwap).unwrap()
-        .add_op(OpDup).unwrap()
+fn build_redeem_script(old_state: u64, redeem_script_len: i64) -> Vec<u8> {
+    let mut builder = ScriptBuilder::new();
 
-        // verify new state is preimage of output spk
-        .add_data(&[OpData8]).unwrap()// op data for state of 8 bytes
-        .add_op(OpSwap).unwrap()
+    // Prepare old and new states on the stack
+    add_state_preparation(&mut builder, old_state).unwrap();
 
-        // pushdata8, state of 8 bytes
-        .add_op(OpCat).unwrap()
+    // Stack: [proof, program_id, old_state, new_state, new_state]
 
-        // offset
-        .add_op(OpTxInputIndex).unwrap()
-            .add_op(OpTxInputIndex).unwrap()
-            .add_op(OpTxInputScriptSigLen).unwrap()
-        .add_i64({
-            -redeem_script_len
-                + 1 + size_of::<u64>() as i64 // data + OpPushData
-        }).unwrap()
-        .add_op(OpAdd).unwrap()
+    // Build the prefix for the new redeem script (OpData8 || new_state)
+    add_new_redeem_prefix(&mut builder).unwrap();
 
-         // end
-        .add_op(OpTxInputIndex).unwrap()
-        .add_op(OpTxInputScriptSigLen).unwrap()
-        .add_op(OpTxInputScriptSigSubStr).unwrap()
-        // pushdata8, state of 8 bytes, redeem script suffix, so we have redeem script here
-        .add_op(OpCat).unwrap()
+    // Stack: [proof, program_id, old_state, new_state, (OpData8 || new_state)]
 
-        // hash redeem script
-        .add_op(OpBlake2b).unwrap()
-        // Build expected SPK: version + OpBlake2b + OpData32 + hash + OpEqual
-        .add_data(&{
-            let mut data = [0u8; 4];
-            data[0..2].copy_from_slice(&TX_VERSION.to_le_bytes());
-            data[2] = OpBlake2b;
-            data[3] = OpData32;
-            data
-        }).unwrap()
-        // swap hash and prefix of spk
-        .add_op(OpSwap).unwrap()
-        // version + OpBlake2b + OpData32 + hash
-        .add_op(OpCat).unwrap()
-        .add_data(&[OpEqual]).unwrap()
-        // output spk is ready
-        .add_op(OpCat).unwrap()
+    // Extract the suffix from sig_script and concatenate to form the new redeem script
+    add_suffix_extraction_and_cat(&mut builder, redeem_script_len).unwrap();
 
-        // verify new state + suffix of redeem script is used as preimage for output spk
-        .add_op(OpTxInputIndex).unwrap()
-        .add_op(OpTxOutputSpk).unwrap()
-        .add_op(OpEqualVerify).unwrap()
+    // Stack: [proof, program_id, old_state, new_state, new_redeem_script]
 
-        // concatenate new state and old state
-        .add_op(OpCat).unwrap()
-        .add_i64(0).unwrap() // start
-        .add_i64(size_of::<u64>() as i64).unwrap() // end of 8 byte state
-        .add_op(OpTxPayloadSubstr).unwrap()
-        // concat payload diff and states
-        .add_op(OpCat).unwrap()
-        // hash preimage
-        .add_op(OpSHA256).unwrap()
-        // swap journal with program id
-        .add_op(OpSwap).unwrap()
+    // Hash the new redeem script and build the expected SPK bytes
+    add_hash_and_build_spk(&mut builder).unwrap();
 
-        // zk verification
-        .add_data(&[ZkTag::R0Succinct as u8])
-        .unwrap()
-        .add_op(OpZkPrecompile).unwrap()
+    // Stack: [proof, program_id, old_state, new_state, constructed_spk]
 
-        // verify current input index is 0
-        .add_op(OpTxInputIndex).unwrap()
-        .add_i64(0).unwrap()
-        .add_op(OpEqualVerify).unwrap()
-        .drain()
+    // Verify the constructed SPK matches the actual output SPK
+    add_verify_output_spk(&mut builder).unwrap();
+
+    // Stack: [proof, program_id, old_state, new_state]
+
+    // Construct the preimage for the journal hash (old_state || new_state || payload_diff)
+    add_construct_journal_preimage(&mut builder).unwrap();
+
+    // Stack: [proof, program_id, preimage]
+
+    // Hash the preimage to get the journal hash
+    add_hash_to_journal(&mut builder).unwrap();
+
+    // Stack: [proof, program_id, journal_hash]
+
+    // Swap journal_hash and program_id for ZK verification order
+    add_swap_for_zk(&mut builder).unwrap();
+
+    // Stack: [proof, journal_hash, program_id]
+
+    // Perform ZK verification using the proof, journal_hash, program_id, and tag
+    add_zk_verification(&mut builder).unwrap();
+
+    // Stack: [] (assuming OpZkPrecompile consumes the items and leaves nothing or true; but since it verifies, likely leaves nothing)
+
+    // Verify that the current input index is 0 (ensuring single-input tx or specific input)
+    add_verify_input_index_zero(&mut builder).unwrap();
+
+    // Stack: [] (OpEqualVerify consumes and verifies)
+
+    builder.drain()
+}
+
+/// Prepares the old and new states on the stack by pushing the old state, swapping, and duplicating the new state.
+///
+/// Expects on stack: [proof, program_id, new_state]
+///
+/// Leaves on stack: [proof, program_id, old_state, new_state, new_state]
+fn add_state_preparation(builder: &mut ScriptBuilder, old_state: u64) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+    // Push the old state (prev_state) onto the stack
+    builder.add_data(&old_state.to_le_bytes())?;
+    // Swap the top two items: new_state and old_state
+    builder.add_op(OpSwap)?;
+    // Duplicate the new_state (now on top)
+    builder.add_op(OpDup)
+}
+
+/// Builds the prefix for the new redeem script by concatenating OpData8 with a duplicated new_state.
+///
+/// Expects on stack: [..., old_state, new_state, new_state]
+///
+/// Leaves on stack: [..., old_state, new_state, (OpData8 || new_state)]
+fn add_new_redeem_prefix(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+    // Push OpData8 (for pushing 8-byte state in the new redeem script)
+    builder.add_data(&[OpData8])?;
+    // Swap to bring one new_state to top
+    builder.add_op(OpSwap)?;
+    // Concatenate: OpData8 || new_state
+    builder.add_op(OpCat)
+}
+
+/// Extracts the redeem script suffix from the signature script and concatenates it with the prefix to form the new redeem script.
+///
+/// The suffix is extracted using a computed offset to skip the old state push in the current redeem script.
+///
+/// Expects on stack: [..., (OpData8 || new_state)] (prefix on top)
+///
+/// Leaves on stack: [..., new_redeem_script]
+fn add_suffix_extraction_and_cat(builder: &mut ScriptBuilder, redeem_script_len: i64) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+    // Compute offset: sig_script_len + (-redeem_script_len + 1 + 8) to point after old_state push
+    builder.add_op(OpTxInputIndex)?;
+    builder.add_op(OpTxInputIndex)?;
+    builder.add_op(OpTxInputScriptSigLen)?;
+    builder.add_i64(-redeem_script_len + 1 + std::mem::size_of::<u64>() as i64)?; // -redeem script + OpPushDataX + state len
+    builder.add_op(OpAdd)?;
+
+    // Push end: sig_script_len
+    builder.add_op(OpTxInputIndex)?;
+    builder.add_op(OpTxInputScriptSigLen)?;
+
+    // Extract substring: sig_script[offset..end] = suffix
+    builder.add_op(OpTxInputScriptSigSubStr)?;
+
+    // Concatenate prefix || suffix to form new_redeem_script
+    builder.add_op(OpCat)
+}
+
+/// Hashes the new redeem script and constructs the expected ScriptPublicKey (SPK) bytes for verification.
+///
+/// The SPK is built as: version (2 bytes) || OpBlake2b || OpData32 || hash || OpEqual
+///
+/// Expects on stack: [..., new_redeem_script]
+///
+/// Leaves on stack: [..., constructed_spk]
+fn add_hash_and_build_spk(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+    // Hash the new redeem script using Blake2b
+    builder.add_op(OpBlake2b)?;
+
+    // Push prefix: version (little-endian) || OpBlake2b || OpData32
+    let mut data = [0u8; 4];
+    data[0..2].copy_from_slice(&TX_VERSION.to_le_bytes());
+    data[2] = OpBlake2b;
+    data[3] = OpData32;
+    builder.add_data(&data)?;
+
+    // Swap to bring hash to top
+    builder.add_op(OpSwap)?;
+
+    // Concatenate: prefix || hash
+    builder.add_op(OpCat)?;
+
+    // Push OpEqual
+    builder.add_data(&[OpEqual])?;
+
+    // Concatenate: (prefix || hash) || OpEqual = constructed_spk
+    builder.add_op(OpCat)
+}
+
+/// Verifies that the constructed SPK matches the actual output SPK at index 0.
+///
+/// Expects on stack: [..., constructed_spk]
+///
+/// Leaves on stack: [...] (consumes constructed_spk and output_spk after verification)
+fn add_verify_output_spk(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+    // Push input index (0)
+    builder.add_op(OpTxInputIndex)?;
+
+    // Push output SPK at index 0
+    builder.add_op(OpTxOutputSpk)?;
+
+    // Verify equality and consume both items
+    builder.add_op(OpEqualVerify)
+}
+
+/// Constructs the preimage for the journal hash by concatenating old_state || new_state || payload_diff (from tx payload substr).
+///
+/// Expects on stack: [..., old_state, new_state]
+///
+/// Leaves on stack: [..., preimage] where preimage = old_state || new_state || payload_diff
+fn add_construct_journal_preimage(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+    // Concatenate old_state || new_state
+    builder.add_op(OpCat)?;
+
+    // Push start (0) and end (8) for payload substr
+    builder.add_i64(0)?;
+    builder.add_i64(std::mem::size_of::<u64>() as i64)?;
+
+    // Extract payload_diff = tx.payload[0..8]
+    builder.add_op(OpTxPayloadSubstr)?;
+
+    // Concatenate (old_state || new_state) || payload_diff
+    builder.add_op(OpCat)
+}
+
+/// Hashes the preimage to compute the journal hash using SHA256.
+///
+/// Expects on stack: [..., preimage]
+///
+/// Leaves on stack: [..., journal_hash]
+fn add_hash_to_journal(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+    // Hash the preimage with SHA256 to get the journal commitment
+    builder.add_op(OpSHA256)
+}
+
+/// Swaps the journal_hash and program_id to prepare the stack for ZK verification.
+///
+/// Expects on stack: [..., program_id, journal_hash]
+///
+/// Leaves on stack: [..., journal_hash, program_id]
+fn add_swap_for_zk(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+    // Swap the top two items
+    builder.add_op(OpSwap)
+}
+
+/// Adds the ZK tag and opcode to perform the ZK precompile verification.
+///
+/// Assumes OpZkPrecompile consumes [proof (bottom), journal_hash, program_id, tag (top)] and verifies the proof.
+///
+/// Expects on stack: [proof, journal_hash, program_id]
+///
+/// Leaves on stack: [] (after verification; assumes success leaves nothing or implicit true)
+fn add_zk_verification(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+    // Push the ZK tag for RISC0 succinct proof
+    builder.add_data(&[ZkTag::R0Succinct as u8])?;
+
+    // Execute the ZK precompile opcode to verify the proof
+    builder.add_op(OpZkPrecompile)
+}
+
+/// Verifies that the current input index is 0 (e.g., to enforce single-input or specific input constraints).
+///
+/// Expects on stack: []
+///
+/// Leaves on stack: [] (after verification)
+fn add_verify_input_index_zero(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+    // Push current input index
+    builder.add_op(OpTxInputIndex)?;
+
+    // Push 0
+    builder.add_i64(0)?;
+
+    // Verify equality
+    builder.add_op(OpEqualVerify)
 }
