@@ -39,8 +39,7 @@ use crate::zk_precompiles::risc0::merkle::MerkleProof;
 /// simplify it, as we are certain to only receive digests for the claim and verifier parameters.
 #[derive(Debug, Serialize, BorshSerialize, BorshDeserialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[non_exhaustive]
-pub struct Inner {
+pub struct SuccinctReceipt {
     /// The cryptographic seal of this receipt. This seal is a STARK proving an execution of the
     /// recursion circuit.
     seal: Vec<u32>,
@@ -69,13 +68,13 @@ pub struct Inner {
     control_inclusion_proof: MerkleProof,
 }
 
-impl Inner {
+impl SuccinctReceipt {
     pub fn claim(&self) -> &Digest {
         &self.claim
     }
 }
 
-impl Inner {
+impl SuccinctReceipt {
     /// Verify the integrity of this receipt, ensuring the claim is attested
     /// to by the seal.
     pub fn verify_integrity(&self) -> Result<(), R0Error> {
