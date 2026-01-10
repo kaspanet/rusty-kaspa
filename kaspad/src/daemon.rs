@@ -624,7 +624,7 @@ Do you confirm? (y/n)";
 
     let (address_manager, port_mapping_extender_svc) = AddressManager::new(config.clone(), meta_db, tick_service.clone());
     if args.reset_address_stores {
-        info!("AddressManger: Resetting the address stores.");
+        info!("AddressManager: Resetting the address stores.");
         address_manager.lock().reset();
     }
 
