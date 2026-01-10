@@ -325,6 +325,11 @@ impl AddressManager {
     pub fn get_all_banned_addresses(&self) -> Vec<IpAddress> {
         self.banned_address_store.iterator().map(|x| IpAddress::from(x.unwrap().0)).collect_vec()
     }
+
+    pub fn reset(&mut self) {
+        self.address_store.reset();
+        self.banned_address_store.reset().unwrap();
+    }
 }
 
 mod address_store_with_cache {
@@ -454,6 +459,11 @@ mod address_store_with_cache {
             for key in self.addresses.keys().filter(|key| key.is_ip(ip)).copied().collect_vec() {
                 self.remove_by_key(key);
             }
+        }
+
+        pub fn reset(&mut self) {
+            self.db_store.reset().unwrap();
+            self.addresses.clear();
         }
     }
 
