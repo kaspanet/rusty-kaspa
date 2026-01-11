@@ -62,8 +62,8 @@ fn main() {
     let receipt = prove_info.receipt;
     let receipt_inner = receipt.inner.succinct().unwrap();
 
-    // The guest commits the txid of the transaction it validated.
-    // We assert that it matches the txid we calculated.
+    // The guest commits the public input of the guest program args it validated.
+    // We assert that it matches the output we calculated.
     let output: &PublicInput = bytemuck::from_bytes(receipt.journal.bytes.as_slice());
     assert_eq!(output, &public_input);
 
