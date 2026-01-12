@@ -22,11 +22,13 @@ from!(item: &kaspa_rpc_core::RpcHeader, protowire::RpcBlockHeader, {
         blue_work: item.blue_work.to_rpc_hex(),
         blue_score: item.blue_score,
         pruning_point: item.pruning_point.to_string(),
+        hash: item.hash.to_string(),
     }
 });
 
 from!(item: &kaspa_rpc_core::RpcRawHeader, protowire::RpcBlockHeader, {
     Self {
+        hash: Default::default(), // We don't include the hash for the raw header
         version: item.version.into(),
         parents: item.parents_by_level.iter().map(|x| x.as_slice().into()).collect(),
         hash_merkle_root: item.hash_merkle_root.to_string(),
@@ -83,6 +85,26 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcRawHeader, {
         blue_score: item.blue_score,
         pruning_point: RpcHash::from_str(&item.pruning_point)?,
     }
+});
+
+try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcOptionalHeader, {
+    // We re-hash the block to remain as most trustless as possible
+    let header = Header::new_finalized(
+        item.version.try_into()?,
+        item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?.try_into()?,
+        RpcHash::from_str(&item.hash_merkle_root)?,
+        RpcHash::from_str(&item.accepted_id_merkle_root)?,
+        RpcHash::from_str(&item.utxo_commitment)?,
+        item.timestamp.try_into()?,
+        item.bits,
+        item.nonce,
+        item.daa_score,
+        kaspa_rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
+        item.blue_score,
+        RpcHash::from_str(&item.pruning_point)?,
+    );
+
+    kaspa_rpc_core::RpcOptionalHeader::from(header)
 });
 
 try_from!(item: &protowire::RpcBlockLevelParents, Vec<RpcHash>, {

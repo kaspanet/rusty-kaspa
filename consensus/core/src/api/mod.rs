@@ -3,7 +3,7 @@ use kaspa_muhash::MuHash;
 use std::sync::Arc;
 
 use crate::{
-    acceptance_data::AcceptanceData,
+    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     blockstatus::BlockStatus,
@@ -20,8 +20,10 @@ use crate::{
     mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    utxo::utxo_inquirer::UtxoInquirerError,
+    tx::{
+        MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, TransactionQueryResult,
+        TransactionType, UtxoEntry,
+    },
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
@@ -151,7 +153,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    /// retention period root refers to the earliest block from which the current node has full header & block data  
+    /// retention period root refers to the earliest block from which the current node has full header & block data
     fn get_retention_period_root(&self) -> Hash {
         unimplemented!()
     }
@@ -162,7 +164,7 @@ pub trait ConsensusApi: Send + Sync {
 
     /// Gets the virtual chain paths from `low` to the `sink` hash, or until `chain_path_added_limit` is reached
     ///
-    /// Note:   
+    /// Note:
     ///     1) `chain_path_added_limit` will populate removed fully, and then the added chain path, up to `chain_path_added_limit` amount of hashes.
     ///     1.1) use `None to impose no limit with optimized backward chain iteration, for better performance in cases where batching is not required.
     fn get_virtual_chain_from_block(&self, low: Hash, chain_path_added_limit: Option<usize>) -> ConsensusResult<ChainPath> {
@@ -175,7 +177,32 @@ pub trait ConsensusApi: Send + Sync {
 
     /// Returns the fully populated transaction with the given txid which was accepted at the provided accepting_block_daa_score.
     /// The argument `accepting_block_daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
-    fn get_populated_transaction(&self, txid: Hash, accepting_block_daa_score: u64) -> Result<SignableTransaction, UtxoInquirerError> {
+    /// Note: If the transaction vec is None, the function returns all accepted transactions.
+    fn get_transactions_by_accepting_daa_score(
+        &self,
+        accepting_daa_score: u64,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        unimplemented!()
+    }
+
+    fn get_transactions_by_block_acceptance_data(
+        &self,
+        accepting_block: Hash,
+        block_acceptance_data: MergesetBlockAcceptanceData,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        unimplemented!()
+    }
+
+    fn get_transactions_by_accepting_block(
+        &self,
+        accepting_block: Hash,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
         unimplemented!()
     }
 
@@ -281,6 +308,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_block(&self, hash: Hash) -> ConsensusResult<Block> {
+        unimplemented!()
+    }
+
+    fn get_block_transactions(&self, hash: Hash, indices: Option<Vec<TransactionIndexType>>) -> ConsensusResult<Vec<Transaction>> {
         unimplemented!()
     }
 
@@ -391,11 +422,12 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn verify_is_pruning_sample(&self, candidate_hash: Hash) -> ConsensusResult<()> {
+    fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
         unimplemented!()
     }
 
-    fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
+    /// Returns the n most recent pruning points (including the current pruning point)
+    fn get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
         unimplemented!()
     }
 }

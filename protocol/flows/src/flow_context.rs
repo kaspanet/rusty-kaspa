@@ -59,7 +59,7 @@ use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 use uuid::Uuid;
 
 /// The P2P protocol version.
-const PROTOCOL_VERSION: u32 = 8;
+const PROTOCOL_VERSION: u32 = 9;
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
@@ -312,13 +312,12 @@ impl FlowContext {
         hub: Hub,
         mining_rule_engine: Arc<MiningRuleEngine>,
     ) -> Self {
-        let bps = config.bps().after() as usize;
+        let bps = config.bps() as usize;
         let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps as f64).log2().ceil() as u32;
 
         // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
         // of how many orphans there can possibly be on average bounded by an upper bound.
-        let max_orphans =
-            (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k().after() as usize).min(MAX_ORPHANS_UPPER_BOUND);
+        let max_orphans = (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k() as usize).min(MAX_ORPHANS_UPPER_BOUND);
         Self {
             inner: Arc::new(FlowContextInner {
                 node_id: Uuid::new_v4().into(),
@@ -752,7 +751,8 @@ impl ConnectionInitializer for FlowContext {
 
         // Register all flows according to version
         let (flows, applied_protocol_version) = match peer_version.protocol_version {
-            v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+            v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
+            8 => (v8::register(self.clone(), router.clone(), 8), 8),
             7 => (v7::register(self.clone(), router.clone()), 7),
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };

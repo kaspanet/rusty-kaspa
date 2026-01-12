@@ -3,7 +3,7 @@
 //! We use newtypes in order to simplify changing the underlying lock in the future
 
 use kaspa_consensus_core::{
-    acceptance_data::AcceptanceData,
+    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus},
     block::Block,
     blockstatus::BlockStatus,
@@ -13,8 +13,7 @@ use kaspa_consensus_core::{
     mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    utxo::utxo_inquirer::UtxoInquirerError,
+    tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, TransactionQueryResult, TransactionType, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, Hash,
 };
 use kaspa_utils::sync::rwlock::*;
@@ -262,7 +261,7 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_current_block_color(hash)).await
     }
 
-    /// retention period root refers to the earliest block from which the current node has full header & block data  
+    /// retention period root refers to the earliest block from which the current node has full header & block data
     pub async fn async_get_retention_period_root(&self) -> Hash {
         self.clone().spawn_blocking(|c| c.get_retention_period_root()).await
     }
@@ -316,12 +315,27 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_chain_block_samples()).await
     }
 
-    pub async fn async_get_populated_transaction(
+    pub async fn async_get_transactions_by_accepting_daa_score(
         &self,
-        txid: Hash,
-        accepting_block_daa_score: u64,
-    ) -> Result<SignableTransaction, UtxoInquirerError> {
-        self.clone().spawn_blocking(move |c| c.get_populated_transaction(txid, accepting_block_daa_score)).await
+        accepting_daa_score: u64,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        self.clone().spawn_blocking(move |c| c.get_transactions_by_accepting_daa_score(accepting_daa_score, tx_ids, tx_type)).await
+    }
+
+    pub async fn async_get_transactions_by_block_acceptance_data(
+        &self,
+        accepting_block: Hash,
+        block_acceptance_data: MergesetBlockAcceptanceData,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        self.clone()
+            .spawn_blocking(move |c| {
+                c.get_transactions_by_block_acceptance_data(accepting_block, block_acceptance_data, tx_ids, tx_type)
+            })
+            .await
     }
 
     /// Returns the antipast of block `hash` from the POV of `context`, i.e. `antipast(hash) ∩ past(context)`.
@@ -481,11 +495,11 @@ impl ConsensusSessionOwned {
     pub async fn async_set_pruning_utxoset_stable(&self) {
         self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable_flag(true)).await
     }
-    pub async fn async_verify_is_pruning_sample(&self, candidate_hash: Hash) -> ConsensusResult<()> {
-        self.clone().spawn_blocking(move |c| c.verify_is_pruning_sample(candidate_hash)).await
-    }
     pub async fn async_intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
         self.clone().spawn_blocking(move |c| c.intrusive_pruning_point_update(new_pruning_point, syncer_sink)).await
+    }
+    pub async fn async_get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
+        self.clone().spawn_blocking(move |c| c.get_n_last_pruning_points(n)).await
     }
 }
 
