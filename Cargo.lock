@@ -648,7 +648,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -741,7 +741,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01c631c2cf4b95746cf065f732219ec0f2eb1497cd4c7fe07cb336ddf0d7c503"
 dependencies = [
  "js-sys",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "wasm-bindgen-futures",
 ]
@@ -1502,6 +1502,12 @@ dependencies = [
  "quote",
  "syn 2.0.110",
 ]
+
+[[package]]
+name = "faster-hex"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ea2e4ecc921ec2cbb8b10f0d400fe448554779d2ac5e0bfbb065836d9d8483a"
 
 [[package]]
 name = "faster-hex"
@@ -2301,7 +2307,7 @@ dependencies = [
  "js-sys",
  "serde",
  "smallvec",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "web-sys",
@@ -2327,7 +2333,7 @@ dependencies = [
  "rocksdb",
  "rv",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
 ]
 
@@ -2344,7 +2350,7 @@ version = "1.0.1"
 dependencies = [
  "borsh",
  "bs58",
- "faster-hex",
+ "faster-hex 0.9.0",
  "getrandom 0.3.4",
  "hmac",
  "js-sys",
@@ -2359,7 +2365,7 @@ dependencies = [
  "serde",
  "sha2",
  "subtle",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "workflow-wasm",
  "zeroize",
@@ -2375,7 +2381,7 @@ dependencies = [
  "convert_case 0.6.0",
  "dashmap",
  "downcast",
- "faster-hex",
+ "faster-hex 0.9.0",
  "futures",
  "hex",
  "js-sys",
@@ -2398,7 +2404,7 @@ dependencies = [
  "serde",
  "serde_json",
  "textwrap 0.16.1",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "wasm-bindgen",
  "web-sys",
@@ -2439,7 +2445,7 @@ dependencies = [
  "bincode",
  "criterion",
  "crossbeam-channel",
- "faster-hex",
+ "faster-hex 0.9.0",
  "flate2",
  "futures-util",
  "indexmap 2.6.0",
@@ -2470,7 +2476,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
 ]
 
@@ -2480,7 +2486,7 @@ version = "1.0.1"
 dependencies = [
  "ahash",
  "cfg-if 1.0.0",
- "faster-hex",
+ "faster-hex 0.9.0",
  "hex",
  "itertools 0.13.0",
  "js-sys",
@@ -2496,7 +2502,7 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "workflow-log",
  "workflow-wasm",
@@ -2513,7 +2519,7 @@ dependencies = [
  "borsh",
  "cfg-if 1.0.0",
  "criterion",
- "faster-hex",
+ "faster-hex 0.9.0",
  "futures-util",
  "getrandom 0.3.4",
  "itertools 0.13.0",
@@ -2532,7 +2538,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "smallvec",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "web-sys",
@@ -2557,7 +2563,7 @@ dependencies = [
  "kaspa-utils",
  "log",
  "paste",
- "thiserror",
+ "thiserror 1.0.64",
  "triggered",
 ]
 
@@ -2566,7 +2572,7 @@ name = "kaspa-consensus-wasm"
 version = "1.0.1"
 dependencies = [
  "cfg-if 1.0.0",
- "faster-hex",
+ "faster-hex 0.9.0",
  "js-sys",
  "kaspa-addresses",
  "kaspa-consensus-client",
@@ -2579,7 +2585,7 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "workflow-log",
  "workflow-wasm",
@@ -2616,7 +2622,7 @@ dependencies = [
  "log",
  "log4rs",
  "num_cpus",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "triggered",
  "wasm-bindgen",
@@ -2637,7 +2643,7 @@ dependencies = [
  "kaspa-wallet-core",
  "nw-sys",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
  "workflow-core",
  "workflow-log",
  "workflow-node",
@@ -2651,7 +2657,7 @@ version = "1.0.1"
 dependencies = [
  "bincode",
  "enum-primitive-derive",
- "faster-hex",
+ "faster-hex 0.9.0",
  "indexmap 2.6.0",
  "itertools 0.13.0",
  "kaspa-hashes",
@@ -2664,7 +2670,7 @@ dependencies = [
  "serde",
  "smallvec",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -2674,7 +2680,7 @@ dependencies = [
  "async-channel 2.3.1",
  "async-stream",
  "async-trait",
- "faster-hex",
+ "faster-hex 0.9.0",
  "futures",
  "futures-util",
  "h2 0.4.6",
@@ -2692,7 +2698,7 @@ dependencies = [
  "rand 0.8.5",
  "regex",
  "rustls",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "tokio-stream",
  "tonic",
@@ -2706,7 +2712,7 @@ dependencies = [
  "async-channel 2.3.1",
  "async-stream",
  "async-trait",
- "faster-hex",
+ "faster-hex 0.9.0",
  "futures",
  "h2 0.4.6",
  "itertools 0.13.0",
@@ -2721,7 +2727,7 @@ dependencies = [
  "prost",
  "rand 0.8.5",
  "regex",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "tokio-stream",
  "tonic",
@@ -2737,7 +2743,7 @@ dependencies = [
  "async-channel 2.3.1",
  "async-stream",
  "async-trait",
- "faster-hex",
+ "faster-hex 0.9.0",
  "futures",
  "h2 0.4.6",
  "itertools 0.13.0",
@@ -2758,7 +2764,7 @@ dependencies = [
  "prost",
  "rand 0.8.5",
  "rustls",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "tokio-stream",
  "tonic",
@@ -2784,7 +2790,7 @@ dependencies = [
  "borsh",
  "cc",
  "criterion",
- "faster-hex",
+ "faster-hex 0.9.0",
  "js-sys",
  "kaspa-utils",
  "keccak",
@@ -2812,7 +2818,7 @@ dependencies = [
  "log",
  "paste",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
  "triggered",
 ]
 
@@ -2839,7 +2845,7 @@ dependencies = [
  "parking_lot",
  "paste",
  "rand 0.8.5",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "triggered",
 ]
@@ -2850,7 +2856,7 @@ version = "1.0.1"
 dependencies = [
  "borsh",
  "criterion",
- "faster-hex",
+ "faster-hex 0.9.0",
  "js-sys",
  "kaspa-utils",
  "malachite-base",
@@ -2858,7 +2864,7 @@ dependencies = [
  "rand_chacha 0.3.1",
  "serde",
  "serde-wasm-bindgen",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "workflow-core",
  "workflow-log",
@@ -2883,7 +2889,7 @@ dependencies = [
  "kaspa-rpc-core",
  "separator",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
  "workflow-core",
  "workflow-log",
 ]
@@ -2911,7 +2917,7 @@ dependencies = [
  "serde",
  "smallvec",
  "sweep-bptree",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
 ]
 
@@ -2920,7 +2926,7 @@ name = "kaspa-mining-errors"
 version = "1.0.1"
 dependencies = [
  "kaspa-consensus-core",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -2963,7 +2969,7 @@ dependencies = [
  "paste",
  "rand 0.8.5",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "triggered",
  "workflow-core",
@@ -2999,7 +3005,7 @@ dependencies = [
  "log",
  "parking_lot",
  "rand 0.8.5",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "tokio-stream",
  "uuid 1.18.1",
@@ -3028,7 +3034,7 @@ dependencies = [
  "rand 0.8.5",
  "seqlock",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "tokio-stream",
  "tonic",
@@ -3060,7 +3066,7 @@ dependencies = [
  "kaspa-core",
  "log",
  "portable-atomic",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "workflow-perf-monitor",
 ]
@@ -3105,7 +3111,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "derive_more",
  "downcast",
- "faster-hex",
+ "faster-hex 0.9.0",
  "hex",
  "js-sys",
  "kaspa-addresses",
@@ -3130,7 +3136,7 @@ dependencies = [
  "serde_json",
  "serde_nested_with",
  "smallvec",
- "thiserror",
+ "thiserror 1.0.64",
  "uuid 1.18.1",
  "wasm-bindgen",
  "workflow-core",
@@ -3181,6 +3187,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-stratum-bridge"
+version = "1.0.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake2",
+ "chrono",
+ "clap 4.5.51",
+ "dirs",
+ "faster-hex 0.1.1",
+ "futures-util",
+ "hex",
+ "kaspa-addresses",
+ "kaspa-consensus-core",
+ "kaspa-core",
+ "kaspa-grpc-client",
+ "kaspa-hashes",
+ "kaspa-notify",
+ "kaspa-pow",
+ "kaspa-rpc-core",
+ "kaspa-rpc-service",
+ "kaspa-utils",
+ "kaspad",
+ "num-bigint",
+ "num-traits",
+ "once_cell",
+ "parking_lot",
+ "prometheus",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.64",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "tracing-appender",
+ "tracing-log",
+ "tracing-subscriber",
+ "uuid 1.18.1",
+ "windows-sys 0.52.0",
+ "yaml-rust",
+]
+
+[[package]]
 name = "kaspa-testing-integration"
 version = "1.0.1"
 dependencies = [
@@ -3192,7 +3242,7 @@ dependencies = [
  "criterion",
  "crossbeam-channel",
  "dhat",
- "faster-hex",
+ "faster-hex 0.9.0",
  "flate2",
  "futures-util",
  "indexmap 2.6.0",
@@ -3235,7 +3285,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "workflow-perf-monitor",
 ]
@@ -3267,7 +3317,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "smallvec",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "workflow-wasm",
 ]
@@ -3277,7 +3327,7 @@ name = "kaspa-txscript-errors"
 version = "1.0.1"
 dependencies = [
  "secp256k1",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -3293,7 +3343,7 @@ dependencies = [
  "criterion",
  "duct",
  "event-listener 2.5.3",
- "faster-hex",
+ "faster-hex 0.9.0",
  "futures-util",
  "ipnet",
  "itertools 0.13.0",
@@ -3309,7 +3359,7 @@ dependencies = [
  "sha2",
  "smallvec",
  "sysinfo",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "triggered",
  "uuid 1.18.1",
@@ -3350,7 +3400,7 @@ dependencies = [
  "rand 0.8.5",
  "rocksdb",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -3400,7 +3450,7 @@ dependencies = [
  "derivative",
  "downcast",
  "evpkdf",
- "faster-hex",
+ "faster-hex 0.9.0",
  "fixedstr",
  "futures",
  "heapless",
@@ -3445,7 +3495,7 @@ dependencies = [
  "sha2",
  "slugify-rs",
  "sorted-insert",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3467,7 +3517,7 @@ dependencies = [
  "async-trait",
  "borsh",
  "downcast",
- "faster-hex",
+ "faster-hex 0.9.0",
  "hmac",
  "js-sys",
  "kaspa-addresses",
@@ -3484,7 +3534,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "sha2",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3529,7 +3579,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "serde_repr",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "web-sys",
@@ -3568,7 +3618,7 @@ dependencies = [
 name = "kaspa-wasm-core"
 version = "1.0.1"
 dependencies = [
- "faster-hex",
+ "faster-hex 0.9.0",
  "hexplay",
  "js-sys",
  "wasm-bindgen",
@@ -3598,7 +3648,7 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.64",
  "toml",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3638,7 +3688,7 @@ dependencies = [
  "kaspa-rpc-macros",
  "kaspa-wrpc-server",
  "num_cpus",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "workflow-core",
  "workflow-log",
@@ -3665,7 +3715,7 @@ dependencies = [
  "paste",
  "rustls",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "workflow-core",
  "workflow-log",
@@ -3771,7 +3821,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "toml",
  "workflow-log",
@@ -3877,6 +3927,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "linked-hash-map"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
+
+[[package]]
 name = "linkme"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3910,7 +3966,7 @@ checksum = "3669cf5561f8d27e8fc84cc15e58350e70f557d4d65f70e3154e54cd2f8e1782"
 dependencies = [
  "libc",
  "neli",
- "thiserror",
+ "thiserror 1.0.64",
  "windows-sys 0.59.0",
 ]
 
@@ -3963,7 +4019,7 @@ dependencies = [
  "serde-value",
  "serde_json",
  "serde_yaml",
- "thiserror",
+ "thiserror 1.0.64",
  "thread-id",
  "typemap-ors",
  "winapi",
@@ -4084,6 +4140,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "943968aefb9b0fdf36cccc03f6cd9d6698b23574ab49eccc185ae6c5cb6ad43e"
 dependencies = [
  "futures",
+]
+
+[[package]]
+name = "matchers"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
+dependencies = [
+ "regex-automata",
 ]
 
 [[package]]
@@ -4419,7 +4484,7 @@ checksum = "8ebcbbf8ce75f465eea419ed8396efaf9ad9da87ad83fe9fce9c8789de00ca79"
 dependencies = [
  "cfg-if 1.0.0",
  "js-sys",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -4783,6 +4848,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "prometheus"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d33c28a30771f7f96db69893f78b857f7450d7e0237e9c8fc6427a81bae7ed1"
+dependencies = [
+ "cfg-if 1.0.0",
+ "fnv",
+ "lazy_static",
+ "memchr",
+ "parking_lot",
+ "protobuf",
+ "thiserror 1.0.64",
+]
+
+[[package]]
 name = "prost"
 version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4836,6 +4916,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "protobuf"
+version = "2.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
+
+[[package]]
 name = "puruspe"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4854,7 +4940,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "rustls",
  "socket2",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "tracing",
 ]
@@ -4871,7 +4957,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "rustls",
  "slab",
- "thiserror",
+ "thiserror 1.0.64",
  "tinyvec",
  "tracing",
 ]
@@ -5016,7 +5102,7 @@ checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
 dependencies = [
  "getrandom 0.2.15",
  "libredox",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -5143,7 +5229,7 @@ dependencies = [
  "async-channel 2.3.1",
  "clap 4.5.51",
  "criterion",
- "faster-hex",
+ "faster-hex 0.9.0",
  "itertools 0.13.0",
  "kaspa-addresses",
  "kaspa-consensus-core",
@@ -5511,6 +5597,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sharded-slab"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
 name = "shared_child"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5564,7 +5659,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "clap 4.5.51",
  "dhat",
- "faster-hex",
+ "faster-hex 0.9.0",
  "flate2",
  "futures",
  "futures-util",
@@ -5818,7 +5913,16 @@ version = "1.0.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d50af8abc119fb8bb6dbabcfa89656f46f84aa0ac7688088608076ad2b459a84"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 1.0.64",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f63587ca0f12b72a0600bcba1d40081f830876000bb46dd2337a3051618f4fc8"
+dependencies = [
+ "thiserror-impl 2.0.17",
 ]
 
 [[package]]
@@ -5826,6 +5930,17 @@ name = "thiserror-impl"
 version = "1.0.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08904e7672f5eb876eaaf87e0ce17857500934f4981c4a0ab2b4aa98baac7fc3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.110",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ff15c8ecd7de3849db632e14d18d2571fa09dfc5ed93479bc4485c7a517c913"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5855,6 +5970,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ffbd370cb847953a25954d9f63e14824a36113f8c72eecf6eccef5dc4b45d630"
 dependencies = [
  "crossbeam-channel",
+]
+
+[[package]]
+name = "thread_local"
+version = "1.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
+dependencies = [
+ "cfg-if 1.0.0",
 ]
 
 [[package]]
@@ -5925,6 +6049,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio 1.0.2",
+ "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",
@@ -5963,6 +6088,19 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+]
+
+[[package]]
+name = "tokio-test"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2468baabc3311435b55dd935f702f42cd1b8abb7e754fb7dfb16bd36aa88f9f7"
+dependencies = [
+ "async-stream",
+ "bytes",
+ "futures-core",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
@@ -6140,9 +6278,9 @@ checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 
 [[package]]
 name = "tracing"
-version = "0.1.40"
+version = "0.1.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3523ab5a71916ccf420eebdf5521fcef02141234bbc0b8a49f2fdc4544364ef"
+checksum = "2d15d90a0b5c19378952d479dc858407149d7bb45a14de0142f6c534b16fc647"
 dependencies = [
  "pin-project-lite",
  "tracing-attributes",
@@ -6150,10 +6288,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "tracing-attributes"
-version = "0.1.27"
+name = "tracing-appender"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34704c8d6ebcbc939824180af020566b01a7c01f80641264eba0999f6c2b6be7"
+checksum = "786d480bce6247ab75f005b14ae1624ad978d3029d9113f0a22fa1ac773faeaf"
+dependencies = [
+ "crossbeam-channel",
+ "thiserror 2.0.17",
+ "time",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "tracing-attributes"
+version = "0.1.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6162,11 +6312,41 @@ dependencies = [
 
 [[package]]
 name = "tracing-core"
-version = "0.1.32"
+version = "0.1.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c06d3da6113f116aaee68e4d601191614c9053067f9ab7f6edbcb161237daa54"
+checksum = "7a04e24fab5c89c6a36eb8558c9656f30d81de51dfa4d3b45f26b21d61fa0a6c"
 dependencies = [
  "once_cell",
+ "valuable",
+]
+
+[[package]]
+name = "tracing-log"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
+dependencies = [
+ "log",
+ "once_cell",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f30143827ddab0d256fd843b7a66d164e9f271cfa0dde49142c5ca0ca291f1e"
+dependencies = [
+ "matchers",
+ "nu-ansi-term",
+ "once_cell",
+ "regex-automata",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
 ]
 
 [[package]]
@@ -6197,7 +6377,7 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "sha1",
- "thiserror",
+ "thiserror 1.0.64",
  "utf-8",
 ]
 
@@ -6330,6 +6510,12 @@ dependencies = [
  "serde",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "valuable"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "value-bag"
@@ -6822,7 +7008,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "chrome-sys",
  "js-sys",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "workflow-core",
  "workflow-log",
@@ -6841,7 +7027,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "chrono",
  "dirs",
- "faster-hex",
+ "faster-hex 0.9.0",
  "futures",
  "getrandom 0.2.15",
  "instant",
@@ -6850,7 +7036,7 @@ dependencies = [
  "rlimit",
  "serde",
  "serde-wasm-bindgen",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "triggered",
  "vergen",
@@ -6887,7 +7073,7 @@ dependencies = [
  "futures",
  "js-sys",
  "regex",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -6906,7 +7092,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "wasm-bindgen",
  "workflow-core",
@@ -6953,7 +7139,7 @@ dependencies = [
  "lazy_static",
  "node-sys",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "workflow-core",
@@ -6977,7 +7163,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde-wasm-bindgen",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "web-sys",
  "workflow-core",
@@ -7007,7 +7193,7 @@ dependencies = [
  "cc",
  "libc",
  "mach",
- "thiserror",
+ "thiserror 1.0.64",
  "windows-sys 0.48.0",
 ]
 
@@ -7029,7 +7215,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "tungstenite",
  "wasm-bindgen",
@@ -7075,14 +7261,14 @@ dependencies = [
  "base64",
  "cfg-if 1.0.0",
  "chrome-sys",
- "faster-hex",
+ "faster-hex 0.9.0",
  "filetime",
  "home",
  "js-sys",
  "lazy_static",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -7100,7 +7286,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d1a90743bb4d3f68606cb4e9a78551a53399ebc35ddba981cbb56bf2b31940a"
 dependencies = [
  "futures",
- "thiserror",
+ "thiserror 1.0.64",
  "workflow-core",
  "workflow-task-macros",
 ]
@@ -7139,7 +7325,7 @@ dependencies = [
  "pad",
  "regex",
  "textwrap 0.16.1",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -7173,12 +7359,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "799e5fbf266e0fffb5c24d6103735eb2b94bb31f93b664b91eaaf63b4f959804"
 dependencies = [
  "cfg-if 1.0.0",
- "faster-hex",
+ "faster-hex 0.9.0",
  "futures",
  "js-sys",
  "serde",
  "serde-wasm-bindgen",
- "thiserror",
+ "thiserror 1.0.64",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "workflow-core",
@@ -7216,7 +7402,7 @@ dependencies = [
  "futures",
  "futures-util",
  "js-sys",
- "thiserror",
+ "thiserror 1.0.64",
  "tokio",
  "tokio-tungstenite",
  "triggered",
@@ -7250,6 +7436,15 @@ name = "xxhash-rust"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a5cbf750400958819fb6178eaa83bee5cd9c29a26a40cc241df8c70fdd46984"
+
+[[package]]
+name = "yaml-rust"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56c1936c4cc7a1c9ab21a1ebb602eb942ba868cbd44a99cb7cdc5892335e1c85"
+dependencies = [
+ "linked-hash-map",
+]
 
 [[package]]
 name = "zerocopy"
