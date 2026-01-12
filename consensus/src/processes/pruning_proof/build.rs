@@ -321,9 +321,6 @@ impl PruningProofManager {
         // for a level proof.
         let mut is_last_header = false;
 
-        let mut chain_candidates = BlockHashSet::new();
-        chain_candidates.insert(selected_tip);
-
         while let Some(sb) = queue.pop() {
             let current_hash = sb.hash;
             if !visited.insert(current_hash) {
@@ -343,12 +340,6 @@ impl PruningProofManager {
 
             is_last_header = is_last_header || parents.is_empty();
 
-            if !is_last_header {
-                let chain_candidate = self.find_approximate_selected_parent_header_at_level(&header, level).unwrap();
-                assert!(parents.contains(&chain_candidate.hash));
-                chain_candidates.insert(chain_candidate.hash);
-            }
-
             // Write parents to the relations store
             level_relation_store.insert(current_hash, parents.clone()).unwrap();
 
@@ -364,8 +355,7 @@ impl PruningProofManager {
             // 3. Any known block that is in the selected chain from tip, has sufficient future size and depth
             if current_hash == self.genesis_hash
                 || is_last_header
-                || (chain_candidates.contains(&current_hash)
-                    && future_size >= 2 * self.pruning_proof_m - 1 // -1 because future size does not include the current block
+                || (future_size >= 2 * self.pruning_proof_m - 1 // -1 because future size does not include the current block
                     && tip_bs.saturating_sub(header.blue_score) >= required_base_level_depth)
             {
                 let root = if self.reachability_service.is_dag_ancestor_of(current_hash, block_at_depth_m_at_next_level) {
