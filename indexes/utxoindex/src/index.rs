@@ -183,7 +183,8 @@ impl UtxoIndexApi for UtxoIndex {
 
         let elapsed = start_ts.elapsed();
         info!(
-            "Resynced {} utxos in {:.2}s ({:.0} utxos/sec)",
+            "[{0}] Resynced {} utxos in {:.2}s ({:.0} utxos/sec)",
+            self::IDENT,
             utxos_processed,
             elapsed.as_secs_f64(),
             utxos_processed as f64 / elapsed.as_secs_f64()
