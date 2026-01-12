@@ -21,7 +21,7 @@ use std::{
 };
 
 const RESYNC_CHUNK_SIZE: usize = 2048;
-const LOG_NTH_CHUNK: usize = 50;
+const LOG_NTH_CHUNK: usize = 500; // Every 500*2048 = 1_024_000 utxos
 
 /// UtxoIndex indexes `CompactUtxoEntryCollections` by [`ScriptPublicKey`](kaspa_consensus_core::tx::ScriptPublicKey),
 /// commits them to its owns store, and emits changes.
