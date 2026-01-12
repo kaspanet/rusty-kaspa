@@ -6,7 +6,7 @@ use std::{
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
+    blockhash::{BlockHashExtensions, BlockHashes},
     header::Header,
     pruning::PruningPointProof,
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
@@ -14,7 +14,6 @@ use kaspa_consensus_core::{
 use kaspa_core::debug;
 use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultExt, StoreResultUnitExt, DB};
 use kaspa_hashes::Hash;
-use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
 
 use crate::{
@@ -313,8 +312,6 @@ impl PruningProofManager {
         // Only a single try is needed for this since we will maintain this single relations store
         let mut level_relation_store = DbRelationsStore::new_temp(temp_db.clone(), level, 0, cache_policy, cache_policy);
 
-        level_relation_store.insert(ORIGIN, BlockHashes::new(vec![])).unwrap();
-
         // Maps the each known block to their future sizes (up to selected tip)
         let mut future_sizes_map = BlockHashMap::<u64>::new();
         let mut gd_tries = 0;
@@ -332,23 +329,19 @@ impl PruningProofManager {
             if !visited.insert(current_hash) {
                 continue;
             }
-            if current_hash == ORIGIN {
-                continue;
-            }
 
             let header = self.headers_store.get_header(current_hash).unwrap();
 
-            let parents = Arc::new(
-                self.parents_manager
-                    .parents_at_level(&header, level)
-                    .iter()
-                    .copied()
-                    .filter(|&p| self.reachability_service.has_reachability_data(p))
-                    .collect::<Vec<_>>()
-                    .push_if_empty(ORIGIN),
-            );
+            let parents: BlockHashes = self
+                .parents_manager
+                .parents_at_level(&header, level)
+                .iter()
+                .copied()
+                .filter(|&p| self.reachability_service.has_reachability_data(p))
+                .collect::<Vec<_>>()
+                .into();
 
-            is_last_header = is_last_header || (parents.len() == 1 && parents[0] == ORIGIN);
+            is_last_header = is_last_header || parents.is_empty();
 
             if !is_last_header {
                 let chain_candidate = self.find_approximate_selected_parent_header_at_level(&header, level).unwrap();
