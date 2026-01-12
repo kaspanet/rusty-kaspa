@@ -28,12 +28,12 @@ use crate::{
     },
     processes::{
         ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
-        pruning_proof::{GhostdagReaderExt, PruningProofManagerInternalError},
+        pruning_proof::{GhostdagReaderExt, PpmInternalError},
         relations::RelationsStoreExtensions,
     },
 };
 
-use super::{PruningProofManager, PruningProofManagerInternalResult};
+use super::{PpmInternalResult, PruningProofManager};
 type LevelProofContext = (Arc<DbGhostdagStore>, Arc<RwLock<DbRelationsStore>>, Hash, Hash);
 
 struct MultiLevelProofContext {
@@ -231,7 +231,7 @@ impl PruningProofManager {
     /// 1. Getting the largest child in terms of future size (this ensures that the rest of the iteration is minimized since most of the future is covered)
     /// 2. BFS traversal of all other children and their futures, skipping blocks that are in the future of the largest child.
     ///    This is similar to the mergeset calculation logic. Add each block seen to the count.
-    fn count_future_size(&self, relation_store: &DbRelationsStore, current: Hash, depth_map: &BlockHashMap<u64>) -> u64 {
+    fn count_future_size(&self, relation_store: &DbRelationsStore, current: Hash, future_sizes_map: &BlockHashMap<u64>) -> u64 {
         let mut queue = VecDeque::new();
         let mut visited = BlockHashSet::new();
 
@@ -243,7 +243,7 @@ impl PruningProofManager {
                 // Initialize the queue with all the children of current hash
                 queue.push_back(*c);
 
-                (c, depth_map.get(c).copied().unwrap_or(0))
+                (c, future_sizes_map.get(c).copied().unwrap_or(0))
             })
             .max_by_key(|(_, depth)| *depth);
 
@@ -288,7 +288,7 @@ impl PruningProofManager {
         level: BlockLevel,
         required_block: Option<Hash>,
         temp_db: Arc<DB>,
-    ) -> PruningProofManagerInternalResult<LevelProofContext> {
+    ) -> PpmInternalResult<LevelProofContext> {
         let selected_tip = if pp_header.block_level >= level {
             pp_header.header.hash
         } else {
@@ -316,10 +316,10 @@ impl PruningProofManager {
         level_relation_store.insert(ORIGIN, BlockHashes::new(vec![])).unwrap();
 
         // Maps the each known block to their future sizes (up to selected tip)
-        let mut depth_map = BlockHashMap::<u64>::new();
+        let mut future_sizes_map = BlockHashMap::<u64>::new();
         let mut gd_tries = 0;
 
-        // A level may not contain enough headers to satify the safety margin.
+        // A level may not contain enough headers to satisfy the safety margin.
         // This is intended to give the last header a chance, since it may still be deep enough
         // for a level proof.
         let mut is_last_header = false;
@@ -360,8 +360,8 @@ impl PruningProofManager {
             level_relation_store.insert(current_hash, parents.clone()).unwrap();
 
             debug!("Level: {} | Counting future size of {}", level, current_hash);
-            let future_size = self.count_future_size(&level_relation_store, current_hash, &depth_map);
-            depth_map.insert(current_hash, future_size);
+            let future_size = self.count_future_size(&level_relation_store, current_hash, &future_sizes_map);
+            future_sizes_map.insert(current_hash, future_size);
             debug!("Level: {} | Hash: {} | Future Size: {}", level, current_hash, future_size);
 
             // If the current hash is valid root candidate, fill the GD store and see if it passes as a level proof
@@ -386,7 +386,7 @@ impl PruningProofManager {
                         common_ancestor = match self.find_approximate_selected_parent_header_at_level(&common_ancestor, level) {
                             Ok(header) => header,
                             // Try to give this last header a chance at being root
-                            Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => break,
+                            Err(PpmInternalError::NotEnoughHeadersToBuildProof(_)) => break,
                             Err(e) => return Err(e),
                         };
                     }
@@ -508,11 +508,7 @@ impl PruningProofManager {
 
     /// selected parent at level = the parent of the header at the level
     /// with the highest blue_work
-    fn find_approximate_selected_parent_header_at_level(
-        &self,
-        header: &Header,
-        level: BlockLevel,
-    ) -> PruningProofManagerInternalResult<Arc<Header>> {
+    fn find_approximate_selected_parent_header_at_level(&self, header: &Header, level: BlockLevel) -> PpmInternalResult<Arc<Header>> {
         // Parents manager parents_at_level may return parents that aren't currently in database and those are filtered out.
         // This is ok because this function is called in the context of deriving a root deep enough for a proof at this level,
         // not to find the "best" such proof
@@ -526,7 +522,7 @@ impl PruningProofManager {
             .filter(|&p| self.reachability_service.has_reachability_data(p))
             .filter_map(|p| self.headers_store.get_header(p).optional().unwrap().map(|h| SortableBlock::new(p, h.blue_work)))
             .max()
-            .ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof("no parents with header".to_string()))?;
+            .ok_or(PpmInternalError::NotEnoughHeadersToBuildProof("no parents with header".to_string()))?;
         Ok(self.headers_store.get_header(sp.hash).expect("unwrapped above"))
     }
 
@@ -536,10 +532,10 @@ impl PruningProofManager {
         transient_ghostdag_store: &impl GhostdagStoreReader,
         high: Hash,
         depth: u64,
-    ) -> Result<Vec<Hash>, PruningProofManagerInternalError> {
+    ) -> Result<Vec<Hash>, PpmInternalError> {
         let high_gd = transient_ghostdag_store
             .get_compact_data(high)
-            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
+            .map_err(|err| PpmInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
         let mut current_gd = high_gd;
         let mut current = high;
         let mut res = vec![current];
@@ -551,7 +547,7 @@ impl PruningProofManager {
             current = current_gd.selected_parent;
             res.push(current);
             current_gd = transient_ghostdag_store.get_compact_data(current).map_err(|err| {
-                PruningProofManagerInternalError::BlockAtDepth(format!(
+                PpmInternalError::BlockAtDepth(format!(
                     "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
                     high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
                 ))
@@ -565,10 +561,10 @@ impl PruningProofManager {
         transient_ghostdag_store: &impl GhostdagStoreReader,
         a: Hash,
         b: Hash,
-    ) -> Result<Hash, PruningProofManagerInternalError> {
+    ) -> Result<Hash, PpmInternalError> {
         let a_gd = transient_ghostdag_store
             .get_compact_data(a)
-            .map_err(|err| PruningProofManagerInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
+            .map_err(|err| PpmInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
         let mut current_gd = a_gd;
         let mut current;
         let mut loop_counter = 0;
@@ -576,14 +572,14 @@ impl PruningProofManager {
             current = current_gd.selected_parent;
             loop_counter += 1;
             if current.is_origin() {
-                break Err(PruningProofManagerInternalError::NoCommonAncestor(format!("a: {a}, b: {b} ({loop_counter} loop steps)")));
+                break Err(PpmInternalError::NoCommonAncestor(format!("a: {a}, b: {b} ({loop_counter} loop steps)")));
             }
             if self.reachability_service.is_dag_ancestor_of(current, b) {
                 break Ok(current);
             }
             current_gd = transient_ghostdag_store
                 .get_compact_data(current)
-                .map_err(|err| PruningProofManagerInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
+                .map_err(|err| PpmInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
         }
     }
 }
