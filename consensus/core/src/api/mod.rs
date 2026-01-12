@@ -36,9 +36,6 @@ pub mod stats;
 
 pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStatus>>;
 
-/// Callback type for iterating over the virtual UTXO set
-pub type VirtualUtxoIteratorCallback = Box<dyn FnOnce(&mut dyn Iterator<Item = (TransactionOutpoint, UtxoEntry)>) + Send>;
-
 /// A struct returned by consensus for block validation processing calls
 pub struct BlockValidationFutures {
     /// A future triggered when block processing is completed (header and body processing)

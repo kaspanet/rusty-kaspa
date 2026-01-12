@@ -32,8 +32,6 @@ use std::{
 };
 use wasm_bindgen::prelude::*;
 
-pub type UtxoSetIterator<'a> = dyn Iterator<Item = (TransactionOutpoint, UtxoEntry)> + Send + 'a;
-
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
 pub const COINBASE_TRANSACTION_INDEX: usize = 0;
 /// A 32-byte Kaspa transaction identifier.

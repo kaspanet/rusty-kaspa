@@ -297,10 +297,6 @@ where
         writer.delete_range(from.unwrap(), to.unwrap())?;
         Ok(())
     }
-
-    pub fn prefix(&self) -> &[u8] {
-        &self.prefix
-    }
 }
 
 type DbIterator<'a> = DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>;

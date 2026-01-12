@@ -18,10 +18,11 @@ use parking_lot::RwLock;
 use std::{
     fmt::Debug,
     sync::{Arc, Weak},
+    time::Duration,
 };
 
 const RESYNC_CHUNK_SIZE: usize = 2048;
-const LOG_NTH_CHUNK: usize = 500; // Every 500*2048 = 1_024_000 utxos
+const RESYNC_LOG_INTERVAL: Duration = Duration::from_secs(5); // Every  5 seconds
 
 /// UtxoIndex indexes `CompactUtxoEntryCollections` by [`ScriptPublicKey`](kaspa_consensus_core::tx::ScriptPublicKey),
 /// commits them to its owns store, and emits changes.
@@ -142,9 +143,9 @@ impl UtxoIndexApi for UtxoIndex {
     ///
     /// **Notes:**
     /// 1) There is an implicit expectation that the consensus store must have VirtualParent tips. i.e. consensus database must be initiated.
-    /// 2) It is expect that consensus is not processing new blocks (specifically the virtual chain processing) while this function is called.
+    /// 2) It is expect that consensus is not processing new blocks (specifically that the virtual processor is not running) while this function is called.
     fn resync(&mut self) -> UtxoIndexResult<()> {
-        info!("Resyncing the utxoindex...");
+        info!("[{0}] Resyncing", IDENT);
         let start_ts = std::time::Instant::now();
 
         // Delete all existing entries
@@ -157,6 +158,7 @@ impl UtxoIndexApi for UtxoIndex {
         let mut circulating_supply = 0u64;
         let mut utxos_processed = 0u64;
         let mut chunks_processed = 0usize;
+        let mut log_instant = std::time::Instant::now();
 
         for chunk in session
             .get_virtual_utxo_iter_owned()
@@ -168,10 +170,11 @@ impl UtxoIndexApi for UtxoIndex {
             .chunks(RESYNC_CHUNK_SIZE)
             .into_iter()
         {
-            self.store.write_from_iterator(chunk)?;
+            self.store.write_utxos_from_iterator(chunk)?;
             chunks_processed += 1;
 
-            if chunks_processed % LOG_NTH_CHUNK == 0 {
+            if log_instant.elapsed() >= RESYNC_LOG_INTERVAL {
+                log_instant = std::time::Instant::now();
                 info!("[{0}] Resynced {1} utxos so far...", self::IDENT, chunks_processed as u64 * RESYNC_CHUNK_SIZE as u64);
             }
         }
@@ -183,9 +186,10 @@ impl UtxoIndexApi for UtxoIndex {
 
         let elapsed = start_ts.elapsed();
         info!(
-            "[{0}] Resynced {1} utxos in {2:.2}s ({3:.0} utxos/sec)",
+            "[{0}] Resynced {1} utxos with a circulating_supply of {2} dworks in {3:.2}s ({4:.0} utxos/sec)",
             self::IDENT,
             utxos_processed,
+            circulating_supply,
             elapsed.as_secs_f64(),
             utxos_processed as f64 / elapsed.as_secs_f64()
         );
@@ -252,7 +256,7 @@ mod tests {
 
         let resync_utxo_collection_size = 10_000;
         let update_utxo_collection_size = 1_000;
-        let script_public_key_pool_size = 500;
+        let script_public_key_pool_size = 200;
 
         // Initialize all components, and virtual change emulator proxy.
         let mut virtual_change_emulator = VirtualChangeEmulator::new();

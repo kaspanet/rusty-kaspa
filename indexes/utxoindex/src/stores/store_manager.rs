@@ -76,9 +76,7 @@ impl Store {
         }
 
         // Commit the batch atomically
-        self.utxos_by_script_public_key_store.write_batch(batch)?;
-
-        Ok(())
+        self.utxos_by_script_public_key_store.write_batch(batch)
     }
 
     pub fn get_circulating_supply(&self) -> StoreResult<u64> {
@@ -113,7 +111,7 @@ impl Store {
         res
     }
 
-    pub fn write_from_iterator(
+    pub fn write_utxos_from_iterator(
         &self,
         utxo_iterator: impl Iterator<Item = (ScriptPublicKey, TransactionOutpoint, CompactUtxoEntry)>,
     ) -> StoreResult<()> {
