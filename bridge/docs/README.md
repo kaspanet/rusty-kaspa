@@ -1,4 +1,4 @@
-## Stratum Bridge
+## Stratum Bridge Beta
 
 This repository contains a standalone Stratum bridge binary at:
 

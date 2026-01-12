@@ -168,10 +168,6 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     });
 
-    // Note: The file_guard must be kept alive for the lifetime of the program
-    // to ensure logs are flushed to the file
-    let _file_guard = tracing_setup::init_tracing(&config, filter, node_mode == NodeMode::Inprocess);
-
     // Start in-process node after tracing is initialized so bridge logs (including the stats table)
     // are not filtered out by a tracing subscriber installed by kaspad.
     let mut inprocess_node: Option<InProcessNode> = None;
@@ -204,6 +200,10 @@ async fn main() -> Result<(), anyhow::Error> {
         let args = kaspad_args::Args::parse(argv).map_err(|e| anyhow::anyhow!("{}", e))?;
         inprocess_node = Some(InProcessNode::start_from_args(args)?);
     }
+
+    // Note: The file_guard must be kept alive for the lifetime of the program
+    // to ensure logs are flushed to the file
+    let _file_guard = tracing_setup::init_tracing(&config, filter, node_mode == NodeMode::Inprocess);
 
     if CONFIG_LOADED_FROM.get().and_then(|p| p.as_ref()).is_none() {
         let config_path = cli.config.as_path();
