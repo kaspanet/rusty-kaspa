@@ -123,6 +123,8 @@ impl TryFrom<&[u8]> for UtxoEntryFullAccessKey {
     type Error = &'static str;
 
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        assert!(!slice.is_empty(), "slice cannot be empty");
+        assert!(slice.len() >= TRANSACTION_OUTPOINT_KEY_SIZE, "slice length must be at least {} bytes", TRANSACTION_OUTPOINT_KEY_SIZE);
         Ok(Self(Arc::new(slice.to_vec())))
     }
 }

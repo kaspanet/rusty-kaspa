@@ -6,8 +6,10 @@ use crate::{
 
 use super::prelude::{Cache, DbKey, DbWriter};
 use kaspa_utils::mem_size::MemSizeEstimator;
-use rocksdb::{Direction, IterateBounds, IteratorMode, ReadOptions};
+use rocksdb::{DBIteratorWithThreadMode, DBWithThreadMode, Direction, IterateBounds, IteratorMode, MultiThreaded, ReadOptions};
+use self_cell::self_cell;
 use serde::{de::DeserializeOwned, Serialize};
+use std::marker::PhantomData;
 use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
@@ -126,16 +128,13 @@ where
         read_opts.set_iterate_range(rocksdb::PrefixRange(prefix_key.as_ref()));
         self.db.iterator_opt(IteratorMode::From(prefix_key.as_ref(), Direction::Forward), read_opts).map(move |iter_result| {
             match iter_result {
-                Ok((key_bytes, data_bytes)) => {
-                    let key_slice = &key_bytes[prefix_key.prefix_len()..];
-                    match TKey::try_from(key_slice) {
-                        Ok(key) => match bincode::deserialize(&data_bytes) {
-                            Ok(data) => Ok((key, data)),
-                            Err(e) => Err(StoreError::DeserializationError(e)),
-                        },
-                        Err(_) => Err(StoreError::ConversionError(format!("Failed to deserialize key: {:?}", key_slice))),
-                    }
-                }
+                Ok((key_bytes, data_bytes)) => match TKey::try_from(&key_bytes[self.prefix.len()..]) {
+                    Ok(key) => match bincode::deserialize(&data_bytes) {
+                        Ok(data) => Ok((key, data)),
+                        Err(e) => Err(StoreError::DeserializationError(e)),
+                    },
+                    Err(_) => Err(StoreError::ConversionError(format!("Failed to deserialize key: {:?}", key_bytes))),
+                },
                 Err(e) => Err(StoreError::DbError(e)),
             }
         })
@@ -177,18 +176,50 @@ where
         }
 
         db_iterator.take(limit).map(move |item| match item {
-            Ok((key_bytes, data_bytes)) => {
-                let key_slice = &key_bytes[db_key.prefix_len()..];
-                match TKey::try_from(key_slice) {
-                    Ok(key) => match bincode::deserialize(&data_bytes) {
-                        Ok(data) => Ok((key, data)),
-                        Err(e) => Err(StoreError::DeserializationError(e)),
-                    },
-                    Err(_) => Err(StoreError::ConversionError(format!("Failed to deserialize key: {:?}", key_slice))),
+            Ok((ref key_bytes, ref data_bytes)) => match bincode::deserialize::<TData>(data_bytes.as_ref()) {
+                Ok(data) => Ok((
+                    TKey::try_from(&key_bytes[self.prefix.len()..]).map_err(|_e| {
+                        assert!(false, "Failed to deserialize key: {:?}", item);
+                        StoreError::ConversionError(format!("Failed to deserialize key: {:?}", &key_bytes))
+                    })?,
+                    data,
+                )),
+
+                Err(e) => {
+                    assert!(false, "Failed to deserialize data: {:?}", item);
+                    Err(StoreError::DeserializationError(e))
                 }
-            }
+            },
             Err(e) => Err(StoreError::DbError(e)),
         })
+    }
+
+    pub fn iterator_owned(&self) -> impl Iterator<Item = KeyDataResult<TKey, TData>> + 'static
+    where
+        TKey: Clone + AsRef<[u8]> + for<'a> TryFrom<&'a [u8]> + 'static,
+        TData: DeserializeOwned + 'static,
+    {
+        let db = self.db.clone();
+        let prefix_key = DbKey::prefix_only(&self.prefix);
+        let prefix_len = self.prefix.len();
+        OwnedIter {
+            db_iter_cell: DbIterCell::new(db, |db| {
+                // TODO: Configure read options:
+                // this iterator is used to sync the utxoindex utxo set from the consensus db.
+                // Perhaps tailor the read options for this specific use-case.
+                // Although a few have been tried and no significant difference was observed.
+                // The option combinations were:
+                // async io - true false
+                // readahead - 4mb, 256 kb, 32kb
+                // Default options.
+                // As such staying with default options for now.
+                let mut read_ops = ReadOptions::default();
+                read_ops.set_iterate_range(rocksdb::PrefixRange(prefix_key.as_ref()));
+                db.iterator_opt(IteratorMode::From(prefix_key.as_ref(), Direction::Forward), read_ops)
+            }),
+            prefix_len,
+            data: Default::default(),
+        }
     }
 
     pub fn write(&self, mut writer: impl DbWriter, key: TKey, data: TData) -> Result<(), StoreError>
@@ -274,6 +305,47 @@ where
 
     pub fn prefix(&self) -> &[u8] {
         &self.prefix
+    }
+}
+
+type DbIterator<'a> = DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>;
+
+self_cell!(
+    struct DbIterCell {
+        owner: Arc<DB>,
+
+        #[covariant]
+        dependent: DbIterator,
+    }
+);
+
+pub struct OwnedIter<TKey, TData> {
+    db_iter_cell: DbIterCell,
+    prefix_len: usize,
+    data: PhantomData<fn() -> (TKey, TData)>,
+}
+
+impl<TKey, TData> Iterator for OwnedIter<TKey, TData>
+where
+    TKey: for<'a> TryFrom<&'a [u8]>,
+    TData: DeserializeOwned,
+{
+    type Item = KeyDataResult<TKey, TData>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.db_iter_cell.with_dependent_mut(|_, db_iterator| match db_iterator.next() {
+            Some(item) => match item {
+                Ok((key_bytes, data_bytes)) => match TKey::try_from(&key_bytes[self.prefix_len..]) {
+                    Ok(key) => match bincode::deserialize::<TData>(data_bytes.as_ref()) {
+                        Ok(data) => Some(Ok((key, data))),
+                        Err(e) => Some(Err(StoreError::DeserializationError(e))),
+                    },
+                    Err(_) => Some(Err(StoreError::ConversionError(format!("Failed to deserialize key: {:?}", key_bytes)))),
+                },
+                Err(err) => Some(Err(err.into())),
+            },
+            None => None,
+        })
     }
 }
 

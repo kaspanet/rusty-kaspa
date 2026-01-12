@@ -234,6 +234,7 @@ secp256k1 = { version = "0.29.0", features = [
     "rand-std",
     "serde",
 ] } # TODO "0.28.0"
+self_cell = "1.2.2"
 separator = "0.4.1"
 seqlock = "0.2.0"
 serde = { version = "1.0.190", features = ["derive", "rc"] }

@@ -217,7 +217,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn with_virtual_utxo_iterator(&self, f: VirtualUtxoIteratorCallback) {
+    fn get_virtual_utxo_iter_owned(&self) -> Box<dyn Iterator<Item = (TransactionOutpoint, UtxoEntry)> + Send> {
         unimplemented!()
     }
 

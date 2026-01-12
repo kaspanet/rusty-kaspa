@@ -114,7 +114,7 @@ impl Store {
     }
 
     pub fn write_from_iterator(
-        &mut self,
+        &self,
         utxo_iterator: impl Iterator<Item = (ScriptPublicKey, TransactionOutpoint, CompactUtxoEntry)>,
     ) -> StoreResult<()> {
         self.utxos_by_script_public_key_store.write_from_iterator(utxo_iterator)

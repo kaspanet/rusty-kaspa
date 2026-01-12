@@ -48,7 +48,7 @@ use kaspa_consensus_core::{
     api::{
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         stats::BlockCount,
-        BlockValidationFutures, ConsensusApi, ConsensusStats, VirtualUtxoIteratorCallback,
+        BlockValidationFutures, ConsensusApi, ConsensusStats,
     },
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     blockhash::BlockHashExtensions,
@@ -1005,10 +1005,9 @@ impl ConsensusApi for Consensus {
         self.lkg_virtual_state.load().parents.len()
     }
 
-    fn with_virtual_utxo_iterator(&self, f: VirtualUtxoIteratorCallback) {
-        let guard = self.virtual_stores.read();
-        let mut iter = guard.utxo_set.iterator().map(|r| r.unwrap());
-        f(&mut iter)
+    fn get_virtual_utxo_iter_owned(&self) -> Box<dyn Iterator<Item = (TransactionOutpoint, UtxoEntry)> + Send> {
+        let virtual_stores = self.virtual_stores.read();
+        Box::new(virtual_stores.utxo_set.iterator_owned().map(|r| r.unwrap()))
     }
 
     fn get_tips(&self) -> Vec<Hash> {
