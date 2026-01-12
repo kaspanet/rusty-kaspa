@@ -278,13 +278,13 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(low, chain_path_added_limit)).await
     }
 
-    pub async fn async_get_virtual_utxos(
-        &self,
-        from_outpoint: Option<TransactionOutpoint>,
-        chunk_size: usize,
-        skip_first: bool,
-    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
-        self.clone().spawn_blocking(move |c| c.get_virtual_utxos(from_outpoint, chunk_size, skip_first)).await
+    /// Provides access to the virtual UTXO set iterator within a callback.
+    /// The callback is executed while the necessary locks are held, ensuring the iterator remains valid.
+    pub async fn async_with_virtual_utxo_iterator<F>(&self, f: F)
+    where
+        F: FnOnce(&mut dyn Iterator<Item = (TransactionOutpoint, UtxoEntry)>) + Send + 'static,
+    {
+        self.clone().spawn_blocking(move |c| c.with_virtual_utxo_iterator(Box::new(f))).await
     }
 
     pub async fn async_get_tips(&self) -> Vec<Hash> {

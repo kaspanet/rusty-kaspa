@@ -8,6 +8,11 @@
 
 mod script_public_key;
 
+use crate::mass::{ContextualMasses, NonContextualMasses};
+use crate::{
+    hashing,
+    subnets::{self, SubnetworkId},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_utils::hex::ToHex;
 use kaspa_utils::mem_size::MemSizeEstimator;
@@ -27,11 +32,7 @@ use std::{
 };
 use wasm_bindgen::prelude::*;
 
-use crate::mass::{ContextualMasses, NonContextualMasses};
-use crate::{
-    hashing,
-    subnets::{self, SubnetworkId},
-};
+pub type UtxoSetIterator<'a> = dyn Iterator<Item = (TransactionOutpoint, UtxoEntry)> + Send + 'a;
 
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
 pub const COINBASE_TRANSACTION_INDEX: usize = 0;

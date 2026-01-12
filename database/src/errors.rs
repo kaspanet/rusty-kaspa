@@ -23,6 +23,9 @@ pub enum StoreError {
 
     #[error("bincode error {0}")]
     DeserializationError(#[from] Box<bincode::ErrorKind>),
+
+    #[error("convertion error: {0}")]
+    ConversionError(String),
 }
 
 pub type StoreResult<T> = std::result::Result<T, StoreError>;

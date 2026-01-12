@@ -11,15 +11,14 @@ use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{info, trace};
 use kaspa_database::prelude::{StoreError, StoreResult, DB};
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, CompactUtxoEntry};
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
 use std::{
-    fmt::Debug,
-    sync::{Arc, Weak},
+    fmt::Debug, sync::{Arc, Weak, atomic::{AtomicU64, Ordering}}
 };
 
-const RESYNC_CHUNK_SIZE: usize = 2048; // Increased from 1k (used in go-kaspad), for quicker resets, while still having a low memory footprint.
+const RESYNC_LOG_CHUNK_SIZE: usize = 1_000_000;
 
 /// UtxoIndex indexes `CompactUtxoEntryCollections` by [`ScriptPublicKey`](kaspa_consensus_core::tx::ScriptPublicKey),
 /// commits them to its owns store, and emits changes.
@@ -143,49 +142,66 @@ impl UtxoIndexApi for UtxoIndex {
     /// 2) resyncing while consensus notifies of utxo differences, may result in a corrupted db.
     fn resync(&mut self) -> UtxoIndexResult<()> {
         info!("Resyncing the utxoindex...");
+        let start_ts = std::time::Instant::now();
 
         self.store.delete_all()?;
         let consensus = self.consensus_manager.consensus();
         let session = futures::executor::block_on(consensus.session_blocking());
-
         let consensus_tips = session.get_virtual_parents();
-        let mut circulating_supply: CirculatingSupply = 0;
 
-        //Initial batch is without specified seek and none-skipping.
-        let mut virtual_utxo_batch = session.get_virtual_utxos(None, RESYNC_CHUNK_SIZE, false);
-        let mut current_chunk_size = virtual_utxo_batch.len();
-        trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
-        // While loop stops resync attempts from an empty utxo db, and unneeded processing when the utxo state size happens to be a multiple of [`RESYNC_CHUNK_SIZE`]
-        while current_chunk_size > 0 {
-            // Potential optimization TODO: iterating virtual utxos into an [UtxoIndexChanges] struct is a bit of overhead (i.e. a potentially unneeded loop),
-            // but some form of pre-iteration is done to extract and commit circulating supply separately.
+        //
+        // Use Arc<Atomic> to capture results from inside the callback (must be 'static)
+        let circulating_supply = Arc::new(AtomicU64::new(0));
+        let counter = Arc::new(AtomicU64::new(0));
 
-            let mut utxoindex_changes = UtxoIndexChanges::new(); //reset changes.
+        // Capture error from inside the callback
+        let resync_error: Arc<std::sync::Mutex<Option<StoreError>>> = Arc::new(std::sync::Mutex::new(None));
 
-            let next_outpoint_from = Some(virtual_utxo_batch.last().expect("expected a last outpoint").0);
-            utxoindex_changes.add_utxos_from_vector(virtual_utxo_batch);
+        // Clone the store's DB handle so we can write inside the callback
+        let mut store_clone = self.store.clone();
 
-            circulating_supply += utxoindex_changes.supply_change as CirculatingSupply;
 
-            self.store.update_utxo_state(&utxoindex_changes.utxo_changes.added, &utxoindex_changes.utxo_changes.removed, true)?;
 
-            if current_chunk_size < RESYNC_CHUNK_SIZE {
-                break;
-            };
+        // Clone Arcs for move into closure
+        let circulating_supply_clone = Arc::clone(&circulating_supply);
+        let counter_clone = Arc::clone(&counter);
+        let resync_error_clone = Arc::clone(&resync_error);
 
-            virtual_utxo_batch = session.get_virtual_utxos(next_outpoint_from, RESYNC_CHUNK_SIZE, true);
-            current_chunk_size = virtual_utxo_batch.len();
-            trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
+        // Note this holds a lock on the consensus virtual utxo set store, while within the callback.
+        session.with_virtual_utxo_iterator(Box::new(move |virtual_utxo_set_iter| {
+            // Do ALL the work inside here
+            let resync_iter = virtual_utxo_set_iter.map(|(outpoint, entry)| {
+                let last_count = counter_clone.fetch_add(1, Ordering::Relaxed);
+                circulating_supply_clone.fetch_add(entry.amount, Ordering::Relaxed);
+                if last_count % RESYNC_LOG_CHUNK_SIZE as u64 == 0 && last_count > 0 {
+                    info!("[{0}] resynced {1} utxos so far...", IDENT, last_count);
+                }
+                (
+                    entry.script_public_key,
+                    outpoint,
+                    CompactUtxoEntry { amount: entry.amount, block_daa_score: entry.block_daa_score, is_coinbase: entry.is_coinbase },
+                )
+            });
+
+            if let Err(e) = store_clone.resync_from_iterator(resync_iter, true) {
+                *resync_error_clone.lock().unwrap() = Some(e);
+            }
+        }));
+
+        // Check if an error occurred inside the callback
+        if let Some(e) = Arc::try_unwrap(resync_error).ok().and_then(|m| m.into_inner().ok()).flatten() {
+            return Err(UtxoIndexError::StoreAccessError(e));
         }
 
-        // Commit to the remaining stores.
+        let final_supply = circulating_supply.load(Ordering::Relaxed);
+        let final_count = counter.load(Ordering::Relaxed);
 
-        trace!("[{0}] committing circulating supply {1} from consensus db", IDENT, circulating_supply);
-        self.store.insert_circulating_supply(circulating_supply, true)?;
-        self.monotonic_circulating_supply = circulating_supply;
-
-        trace!("[{0}] committing consensus tips {consensus_tips:?} from consensus db", IDENT);
+        self.store.insert_circulating_supply(final_supply, true)?;
+        self.monotonic_circulating_supply = final_supply;
         self.store.set_tips(consensus_tips, true)?;
+        let elapsed = start_ts.elapsed().as_secs_f64();
+
+        info!("[{0}] resynced a total of {1} utxos with a circulating supply of {2} in {3:.6} seconds", IDENT, final_count, final_supply, elapsed);
 
         Ok(())
     }
@@ -222,7 +238,7 @@ impl ConsensusResetHandler for UtxoIndexConsensusResetHandler {
 
 #[cfg(test)]
 mod tests {
-    use crate::{api::UtxoIndexApi, model::CirculatingSupply, testutils::virtual_change_emulator::VirtualChangeEmulator, UtxoIndex};
+    use crate::{api::UtxoIndexApi, testutils::virtual_change_emulator::VirtualChangeEmulator, UtxoIndex};
     use kaspa_consensus::{
         config::Config,
         consensus::test_consensus::TestConsensus,
@@ -247,9 +263,9 @@ mod tests {
     fn test_utxoindex() {
         kaspa_core::log::try_init_logger("INFO");
 
-        let resync_utxo_collection_size = 10_000;
+        let resync_utxo_collection_size = 100_000;
         let update_utxo_collection_size = 1_000;
-        let script_public_key_pool_size = 200;
+        let script_public_key_pool_size = 100_000;
 
         // Initialize all components, and virtual change emulator proxy.
         let mut virtual_change_emulator = VirtualChangeEmulator::new();
@@ -285,28 +301,40 @@ mod tests {
         assert!(utxoindex.read().is_synced().expect("expected bool"));
 
         // Test the sync from scratch via consensus db.
-        let consensus_utxos = tc.get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
-        let mut i = 0;
-        let mut consensus_supply: CirculatingSupply = 0;
-        let consensus_utxo_set_size = consensus_utxos.len();
-        for (tx_outpoint, utxo_entry) in consensus_utxos.into_iter() {
-            consensus_supply += utxo_entry.amount;
-            let indexed_utxos = utxoindex
-                .read()
-                .get_utxos_by_script_public_keys(HashSet::from_iter(vec![utxo_entry.script_public_key.clone()]))
-                .expect("expected script public key to be in database");
-            for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
-                let compact_utxo = indexed_compact_utxo_collection.get(&tx_outpoint).expect("expected outpoint as key");
-                assert_eq!(indexed_script_public_key, utxo_entry.script_public_key);
-                assert_eq!(utxo_entry.amount, compact_utxo.amount);
-                assert_eq!(utxo_entry.block_daa_score, compact_utxo.block_daa_score);
-                assert_eq!(utxo_entry.is_coinbase, compact_utxo.is_coinbase);
-                i += 1;
-            }
-        }
+        use std::sync::atomic::{AtomicU64, Ordering};
+        let verified_count = Arc::new(AtomicU64::new(0));
+        let consensus_supply = Arc::new(AtomicU64::new(0));
+        let consensus_utxo_set_size = Arc::new(AtomicU64::new(0));
 
-        assert_eq!(i, consensus_utxo_set_size);
-        assert_eq!(utxoindex.read().get_circulating_supply().expect("expected circulating supply"), consensus_supply);
+        let verified_count_clone = Arc::clone(&verified_count);
+        let consensus_supply_clone = Arc::clone(&consensus_supply);
+        let consensus_utxo_set_size_clone = Arc::clone(&consensus_utxo_set_size);
+        let utxoindex_clone = Arc::clone(&utxoindex);
+
+        tc.with_virtual_utxo_iterator(Box::new(move |iter| {
+            for (tx_outpoint, utxo_entry) in iter {
+                consensus_utxo_set_size_clone.fetch_add(1, Ordering::Relaxed);
+                consensus_supply_clone.fetch_add(utxo_entry.amount, Ordering::Relaxed);
+                let indexed_utxos = utxoindex_clone
+                    .read()
+                    .get_utxos_by_script_public_keys(HashSet::from_iter(vec![utxo_entry.script_public_key.clone()]))
+                    .expect("expected script public key to be in database");
+                for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
+                    let compact_utxo = indexed_compact_utxo_collection.get(&tx_outpoint).expect("expected outpoint as key");
+                    assert_eq!(indexed_script_public_key, utxo_entry.script_public_key);
+                    assert_eq!(utxo_entry.amount, compact_utxo.amount);
+                    assert_eq!(utxo_entry.block_daa_score, compact_utxo.block_daa_score);
+                    assert_eq!(utxo_entry.is_coinbase, compact_utxo.is_coinbase);
+                    verified_count_clone.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        }));
+
+        assert_eq!(verified_count.load(Ordering::Relaxed), consensus_utxo_set_size.load(Ordering::Relaxed));
+        assert_eq!(
+            utxoindex.read().get_circulating_supply().expect("expected circulating supply"),
+            consensus_supply.load(Ordering::Relaxed)
+        );
         assert_eq!(*utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"), tc.get_virtual_parents());
 
         // Test update: Change and signal new virtual state.
@@ -366,24 +394,31 @@ mod tests {
         // Since we changed virtual state in the emulator, but not in test-consensus db,
         // we expect the resync to get the utxo-set from the test-consensus,
         // these utxos correspond the initial sync test.
-        let consensus_utxos = tc.get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
-        let mut i = 0;
-        let consensus_utxo_set_size = consensus_utxos.len();
-        for (tx_outpoint, utxo_entry) in consensus_utxos.into_iter() {
-            let indexed_utxos = utxoindex
-                .read()
-                .get_utxos_by_script_public_keys(HashSet::from_iter(vec![utxo_entry.script_public_key.clone()]))
-                .expect("expected script public key to be in database");
-            for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
-                let compact_utxo = indexed_compact_utxo_collection.get(&tx_outpoint).expect("expected outpoint as key");
-                assert_eq!(indexed_script_public_key, utxo_entry.script_public_key);
-                assert_eq!(utxo_entry.amount, compact_utxo.amount);
-                assert_eq!(utxo_entry.block_daa_score, compact_utxo.block_daa_score);
-                assert_eq!(utxo_entry.is_coinbase, compact_utxo.is_coinbase);
-                i += 1;
+        let verified_count = Arc::new(AtomicU64::new(0));
+        let consensus_utxo_set_size = Arc::new(AtomicU64::new(0));
+
+        let verified_count_clone = Arc::clone(&verified_count);
+        let consensus_utxo_set_size_clone = Arc::clone(&consensus_utxo_set_size);
+        let utxoindex_clone = Arc::clone(&utxoindex);
+
+        tc.with_virtual_utxo_iterator(Box::new(move |iter| {
+            for (tx_outpoint, utxo_entry) in iter {
+                consensus_utxo_set_size_clone.fetch_add(1, Ordering::Relaxed);
+                let indexed_utxos = utxoindex_clone
+                    .read()
+                    .get_utxos_by_script_public_keys(HashSet::from_iter(vec![utxo_entry.script_public_key.clone()]))
+                    .expect("expected script public key to be in database");
+                for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
+                    let compact_utxo = indexed_compact_utxo_collection.get(&tx_outpoint).expect("expected outpoint as key");
+                    assert_eq!(indexed_script_public_key, utxo_entry.script_public_key);
+                    assert_eq!(utxo_entry.amount, compact_utxo.amount);
+                    assert_eq!(utxo_entry.block_daa_score, compact_utxo.block_daa_score);
+                    assert_eq!(utxo_entry.is_coinbase, compact_utxo.is_coinbase);
+                    verified_count_clone.fetch_add(1, Ordering::Relaxed);
+                }
             }
-        }
-        assert_eq!(i, consensus_utxo_set_size);
+        }));
+        assert_eq!(verified_count.load(Ordering::Relaxed), consensus_utxo_set_size.load(Ordering::Relaxed));
         assert_eq!(*utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"), tc.get_virtual_parents());
 
         // Deconstruct

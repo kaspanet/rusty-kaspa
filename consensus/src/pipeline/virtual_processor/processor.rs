@@ -32,6 +32,7 @@ use crate::{
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
+            utxo_set::UtxoSetStoreReader,
             virtual_state::{LkgVirtualState, VirtualState, VirtualStateStoreReader, VirtualStores},
             DB,
         },
@@ -691,7 +692,7 @@ impl VirtualStateProcessor {
     /// Assumes:
     ///     1. `selected_parent` is a UTXO-valid block
     ///     2. `candidates` are an antichain ordered in descending blue work order
-    ///     3. `candidates` do not contain `selected_parent` and `selected_parent.blue work > max(candidates.blue_work)`  
+    ///     3. `candidates` do not contain `selected_parent` and `selected_parent.blue work > max(candidates.blue_work)`
     pub(super) fn pick_virtual_parents(
         &self,
         selected_parent: Hash,
@@ -1167,7 +1168,13 @@ impl VirtualStateProcessor {
             let mut virtual_write = self.virtual_stores.write();
 
             virtual_write.utxo_set.clear().unwrap();
-            for chunk in &pruning_meta_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(1000) {
+            for chunk in &pruning_meta_read
+                .utxo_set
+                .iterator()
+                .map(|iter_result| iter_result.unwrap())
+                .map(|(outpoint, entry)| (outpoint, Arc::new(entry)))
+                .chunks(1000)
+            {
                 virtual_write.utxo_set.write_from_iterator_without_cache(chunk).unwrap();
             }
         }

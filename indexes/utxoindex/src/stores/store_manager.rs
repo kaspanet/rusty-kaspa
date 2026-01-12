@@ -1,12 +1,12 @@
 use std::{collections::HashSet, sync::Arc};
 
 use kaspa_consensus_core::{
-    tx::{ScriptPublicKeys, TransactionOutpoint},
+    tx::{ScriptPublicKey, ScriptPublicKeys, TransactionOutpoint},
     BlockHashSet,
 };
 use kaspa_core::trace;
 use kaspa_database::prelude::{CachePolicy, StoreResult, DB};
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, CompactUtxoEntry};
 
 use crate::{
     model::UtxoSetByScriptPublicKey,
@@ -100,6 +100,18 @@ impl Store {
 
     pub fn set_tips(&mut self, tips: BlockHashSet, try_reset_on_err: bool) -> StoreResult<()> {
         let res = self.utxoindex_tips_store.set_tips(tips);
+        if try_reset_on_err && res.is_err() {
+            self.delete_all()?;
+        }
+        res
+    }
+
+    pub fn resync_from_iterator(
+        &mut self,
+        utxo_iterator: impl Iterator<Item = (ScriptPublicKey, TransactionOutpoint, CompactUtxoEntry)>,
+        try_reset_on_err: bool,
+    ) -> StoreResult<()> {
+        let res = self.utxos_by_script_public_key_store.resync_from_iterator(utxo_iterator);
         if try_reset_on_err && res.is_err() {
             self.delete_all()?;
         }

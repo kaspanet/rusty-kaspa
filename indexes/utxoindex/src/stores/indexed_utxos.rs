@@ -118,6 +118,14 @@ impl AsRef<[u8]> for UtxoEntryFullAccessKey {
     }
 }
 
+impl TryFrom<&[u8]> for UtxoEntryFullAccessKey {
+    type Error = &'static str;
+
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(Arc::new(slice.to_vec())))
+    }
+}
+
 // Traits:
 
 pub trait UtxoSetByScriptPublicKeyStoreReader {
@@ -134,8 +142,14 @@ pub trait UtxoSetByScriptPublicKeyStore: UtxoSetByScriptPublicKeyStoreReader {
     /// add [UtxoSetByScriptPublicKey] into the [UtxoSetByScriptPublicKeyStore].
     fn add_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()>;
 
+    /// Resyncs the store from an iterator of (ScriptPublicKey, TransactionOutpoint, CompactUtxoEntry) triplets.
+    fn resync_from_iterator(
+        &self,
+        utxo_iterator: impl Iterator<Item = (ScriptPublicKey, TransactionOutpoint, CompactUtxoEntry)>,
+    ) -> StoreResult<()>;
+
     /// removes all entries in the cache and db, besides prefixes themselves.
-    fn delete_all(&mut self) -> StoreResult<()>;
+    fn delete_all(&self) -> StoreResult<()>;
 }
 
 // Implementations:
@@ -165,7 +179,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
             let utxos_by_script_public_keys_inner = CompactUtxoCollection::from_iter(
                 self.access.seek_iterator(Some(script_public_key_bucket.as_ref()), None, usize::MAX, false).map(|res| {
                     let (key, entry) = res.unwrap();
-                    (TransactionOutpointKey(<[u8; TRANSACTION_OUTPOINT_KEY_SIZE]>::try_from(&key[..]).unwrap()).into(), entry)
+                    (key.extract_outpoint(), entry)
                 }),
             );
             entries_count += utxos_by_script_public_keys_inner.len();
@@ -198,9 +212,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
 
     // This can have a big memory footprint, so it should be used only for tests.
     fn get_all_outpoints(&self) -> StoreResult<HashSet<TransactionOutpoint>> {
-        Ok(HashSet::from_iter(
-            self.access.iterator().map(|res| UtxoEntryFullAccessKey(Arc::new(res.unwrap().0.to_vec())).extract_outpoint()),
-        ))
+        Ok(HashSet::from_iter(self.access.iterator().map(|res| res.unwrap().0.extract_outpoint())))
     }
 }
 
@@ -250,8 +262,30 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         Ok(())
     }
 
+    fn resync_from_iterator(
+        &self,
+        utxo_iterator: impl Iterator<Item = (ScriptPublicKey, TransactionOutpoint, CompactUtxoEntry)>,
+    ) -> StoreResult<()> {
+        // else it wouldn't be a resync
+        self.delete_all()?;
+
+        let mut writer = DirectDbWriter::new(&self.db);
+
+        let mut to_add = utxo_iterator.map(|(script_public_key, transaction_outpoint, compact_utxo)| {
+            let key = UtxoEntryFullAccessKey::new(
+                ScriptPublicKeyBucket::from(&script_public_key),
+                TransactionOutpointKey::from(&transaction_outpoint),
+            );
+            (key, compact_utxo)
+        });
+
+        self.access.write_many_without_cache(&mut writer, &mut to_add)?;
+
+        Ok(())
+    }
+
     /// Removes all entries in the cache and db, besides prefixes themselves.
-    fn delete_all(&mut self) -> StoreResult<()> {
+    fn delete_all(&self) -> StoreResult<()> {
         self.access.delete_all(DirectDbWriter::new(&self.db))
     }
 }

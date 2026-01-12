@@ -863,8 +863,15 @@ async fn json_test(file_path: &str, concurrency: bool) {
     // Assert that the indexed selected chain store matches the virtual chain obtained
     // through the reachability iterator
     assert_selected_chain_store_matches_virtual_chain(&tc);
-    let virtual_utxos: HashSet<TransactionOutpoint> =
-        HashSet::from_iter(tc.get_virtual_utxos(None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
+    let virtual_utxos: Arc<std::sync::Mutex<HashSet<TransactionOutpoint>>> = Arc::new(std::sync::Mutex::new(HashSet::new()));
+    let virtual_utxos_clone = Arc::clone(&virtual_utxos);
+    tc.with_virtual_utxo_iterator(Box::new(move |iter| {
+        let mut set = virtual_utxos_clone.lock().unwrap();
+        for (outpoint, _) in iter {
+            set.insert(outpoint);
+        }
+    }));
+    let virtual_utxos = Arc::try_unwrap(virtual_utxos).unwrap().into_inner().unwrap();
     let utxoindex_utxos = utxoindex.read().get_all_outpoints().unwrap();
     assert_eq!(virtual_utxos.len(), utxoindex_utxos.len());
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));

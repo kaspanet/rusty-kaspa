@@ -36,6 +36,9 @@ pub mod stats;
 
 pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStatus>>;
 
+/// Callback type for iterating over the virtual UTXO set
+pub type VirtualUtxoIteratorCallback = Box<dyn FnOnce(&mut dyn Iterator<Item = (TransactionOutpoint, UtxoEntry)>) + Send>;
+
 /// A struct returned by consensus for block validation processing calls
 pub struct BlockValidationFutures {
     /// A future triggered when block processing is completed (header and body processing)
@@ -214,12 +217,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_virtual_utxos(
-        &self,
-        from_outpoint: Option<TransactionOutpoint>,
-        chunk_size: usize,
-        skip_first: bool,
-    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+    fn with_virtual_utxo_iterator(&self, f: VirtualUtxoIteratorCallback) {
         unimplemented!()
     }
 
