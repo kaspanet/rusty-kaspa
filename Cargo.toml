@@ -51,6 +51,7 @@ members = [
     "components/addressmanager",
     "components/connectionmanager",
     "components/consensusmanager",
+    "bridge",
     "database",
     "crypto/txscript",
     "crypto/txscript/errors",
