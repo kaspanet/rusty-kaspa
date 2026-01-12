@@ -22,7 +22,8 @@ impl TransactionValidator {
         check_duplicate_transaction_inputs(tx)?;
         check_gas(tx)?;
         check_transaction_subnetwork(tx)?;
-        check_transaction_version(tx)
+        check_transaction_version(tx)?;
+        check_tx_version_specific_fields(tx)
     }
 
     fn check_transaction_inputs_in_isolation(&self, tx: &Transaction) -> TxResult<()> {
@@ -122,7 +123,7 @@ fn check_gas(tx: &Transaction) -> TxResult<()> {
 }
 
 fn check_transaction_version(tx: &Transaction) -> TxResult<()> {
-    if tx.version != TX_VERSION {
+    if tx.version > TX_VERSION_POST_COV_HF {
         return Err(TxRuleError::UnknownTxVersion(tx.version));
     }
     Ok(())
@@ -159,6 +160,16 @@ fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
     } else {
         Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id))
     }
+}
+
+fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
+    for (i, output) in tx.outputs.iter().enumerate() {
+        if tx.version < 1 && output.cov_out_info.is_some() {
+            return Err(TxRuleError::CovOutInfoInPreCovTxVersion(i));
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -203,6 +214,7 @@ mod tests {
                         0x30, 0xcd, 0x5a, 0x4b, 0x87
                     ),
                 ),
+                cov_out_info: None,
             }],
             0,
             SUBNETWORK_ID_COINBASE,
@@ -252,6 +264,7 @@ mod tests {
                             0xac  // OP_CHECKSIG
                         ),
                     ),
+                    cov_out_info: None,
                 },
                 TransactionOutput {
                     value: 0x108e20f00,
@@ -266,6 +279,7 @@ mod tests {
                             0xac  // OP_CHECKSIG
                         ),
                     ),
+                    cov_out_info: None,
                 },
             ],
             0,

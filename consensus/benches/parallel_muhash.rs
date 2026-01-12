@@ -18,7 +18,7 @@ fn generate_transaction(ins: usize, outs: usize, randomness: u64) -> SignableTra
         hasher.write(i.to_le_bytes());
         hasher.write(randomness.to_le_bytes());
         let input = TransactionInput::new(TransactionOutpoint::new(hasher.finalize(), 0), vec![10; 66], 0, 1);
-        let entry = UtxoEntry::new(22222222, ScriptPublicKey::from_vec(0, vec![99; 34]), 23456, false);
+        let entry = UtxoEntry::new(22222222, ScriptPublicKey::from_vec(0, vec![99; 34]), 23456, false, None);
         tx.inputs.push(input);
         entries.push(entry);
     }

@@ -104,7 +104,13 @@ impl TryFrom<protowire::UtxoEntry> for UtxoEntry {
     type Error = ConversionError;
 
     fn try_from(value: protowire::UtxoEntry) -> Result<Self, Self::Error> {
-        Ok(Self::new(value.amount, value.script_public_key.try_into_ex()?, value.block_daa_score, value.is_coinbase))
+        Ok(Self::new(
+            value.amount,
+            value.script_public_key.try_into_ex()?,
+            value.block_daa_score,
+            value.is_coinbase,
+            value.covenant_id.map(|x| x.try_into()).transpose()?,
+        ))
     }
 }
 

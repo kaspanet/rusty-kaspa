@@ -30,6 +30,7 @@ blake2b_hasher! {
     struct MuHashElementHash => b"MuHashElement",
     struct MuHashFinalizeHash => b"MuHashFinalize",
     struct PersonalMessageSigningHash => b"PersonalMessageSigningHash",
+    struct CovenantID => b"CovenantID",
 }
 
 sha256_hasher! {

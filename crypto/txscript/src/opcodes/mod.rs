@@ -3175,7 +3175,7 @@ mod test {
             0,
             vec![],
         ));
-        let utxo_entry = UtxoEntry::new(0, ScriptPublicKey::default(), 0, false);
+        let utxo_entry = UtxoEntry::new(0, ScriptPublicKey::default(), 0, false, None);
         (tx, dummy_tx_input, utxo_entry)
     }
 
@@ -3373,7 +3373,10 @@ mod test {
             let (utxos, tx_inputs) = inputs
                 .into_iter()
                 .map(|Kip10Mock { spk, amount }| {
-                    (UtxoEntry::new(amount, spk, 0, false), TransactionInput::new(dummy_prev_out, dummy_sig_script.clone(), 10, 0))
+                    (
+                        UtxoEntry::new(amount, spk, 0, false, None),
+                        TransactionInput::new(dummy_prev_out, dummy_sig_script.clone(), 10, 0),
+                    )
                 })
                 .unzip();
 
@@ -3629,7 +3632,10 @@ mod test {
             let (utxos, tx_inputs): (Vec<_>, Vec<_>) = inputs
                 .into_iter()
                 .map(|Kip10Mock { spk, amount }| {
-                    (UtxoEntry::new(amount, spk, 0, false), TransactionInput::new(dummy_prev_out, dummy_sig_script.clone(), 10, 0))
+                    (
+                        UtxoEntry::new(amount, spk, 0, false, None),
+                        TransactionInput::new(dummy_prev_out, dummy_sig_script.clone(), 10, 0),
+                    )
                 })
                 .unzip();
 
@@ -4208,8 +4214,8 @@ mod test {
             let utxo_spk_1 = ScriptBuilder::new().add_ops(&[codes::Op2, codes::Op3]).expect("spk build").drain();
 
             let entries = vec![
-                UtxoEntry::new(1000, ScriptPublicKey::new(0, utxo_spk_0.into()), 0, true),
-                UtxoEntry::new(2000, ScriptPublicKey::new(0, utxo_spk_1.into()), 0, false),
+                UtxoEntry::new(1000, ScriptPublicKey::new(0, utxo_spk_0.into()), 0, true, None),
+                UtxoEntry::new(2000, ScriptPublicKey::new(0, utxo_spk_1.into()), 0, false, None),
             ];
 
             (tx, entries)

@@ -176,6 +176,7 @@ message UtxoEntry {
   ScriptPublicKey scriptPublicKey = 2;
   uint64 blockDaaScore = 3;
   bool isCoinbase = 4;
+  Hash covenantId = 5;
 }
 
 message RequestNextPruningPointUtxoSetChunkMessage {

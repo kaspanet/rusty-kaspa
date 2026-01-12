@@ -51,6 +51,7 @@ impl TransactionValidator {
         // The following call is not a consensus check (it could not be one in the first place since it uses a floating number)
         // but rather a mempool Replace by Fee validation rule. It is placed here purposely for avoiding unneeded script checks.
         Self::check_feerate_threshold(fee, mass_and_feerate_threshold)?;
+        self.check_covenant_info(tx, block_daa_score)?;
 
         match flags {
             TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
@@ -168,6 +169,34 @@ impl TransactionValidator {
 
     pub fn check_scripts(&self, tx: &(impl VerifiableTransaction + Sync), block_daa_score: u64) -> TxResult<()> {
         check_scripts(&self.sig_cache, tx, EngineFlags { covenants_enabled: self.covenants_activation.is_active(block_daa_score) })
+    }
+
+    fn check_covenant_info(&self, tx: &impl VerifiableTransaction, block_daa_score: u64) -> TxResult<()> {
+        if !self.covenants_activation.is_active(block_daa_score) {
+            return Ok(());
+        }
+
+        for (i, output) in tx.outputs().iter().enumerate() {
+            if let Some(cov_out_info) = &output.cov_out_info {
+                let Some(utxo_entry) = tx.utxo(cov_out_info.authorizing_input as usize) else {
+                    // TODO: Change to another error
+                    return Err(TxRuleError::MissingTxOutpoints);
+                };
+                if let Some(covenant_id) = utxo_entry.covenant_id {
+                    if covenant_id != cov_out_info.covenant_id {
+                        return Err(TxRuleError::WrongCovenantId(i));
+                    }
+                } else {
+                    let authorizing_input = tx.inputs()[cov_out_info.authorizing_input as usize]; // It's guaranteed to exist from the earlier check on the UTXO entry.
+                    if kaspa_consensus_core::hashing::covenant_id::covenant_id(authorizing_input.previous_outpoint)
+                        != cov_out_info.covenant_id
+                    {
+                        return Err(TxRuleError::WrongCovenantId(i));
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -293,8 +322,16 @@ mod tests {
                 sig_op_count: 1,
             }],
             vec![
-                TransactionOutput { value: 10360487799, script_public_key: ScriptPublicKey::new(0, script_pub_key_2) },
-                TransactionOutput { value: 10518958752, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) },
+                TransactionOutput {
+                    value: 10360487799,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_2),
+                    cov_out_info: None,
+                },
+                TransactionOutput {
+                    value: 10518958752,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()),
+                    cov_out_info: None,
+                },
             ],
             0,
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
@@ -309,6 +346,7 @@ mod tests {
                 script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
                 block_daa_score: 32022768,
                 is_coinbase: false,
+                covenant_id: None,
             }],
         );
 
@@ -364,8 +402,16 @@ mod tests {
                 sig_op_count: 1,
             }],
             vec![
-                TransactionOutput { value: 10360487799, script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()) },
-                TransactionOutput { value: 10518958752, script_public_key: ScriptPublicKey::new(0, script_pub_key_1) },
+                TransactionOutput {
+                    value: 10360487799,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()),
+                    cov_out_info: None,
+                },
+                TransactionOutput {
+                    value: 10518958752,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
+                    cov_out_info: None,
+                },
             ],
             0,
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
@@ -380,6 +426,7 @@ mod tests {
                 script_public_key: ScriptPublicKey::new(0, script_pub_key_2),
                 block_daa_score: 32022768,
                 is_coinbase: false,
+                covenant_id: None,
             }],
         );
 
@@ -439,8 +486,16 @@ mod tests {
                 sig_op_count: 4,
             }],
             vec![
-                TransactionOutput { value: 10000000000000, script_public_key: ScriptPublicKey::new(0, script_pub_key_2) },
-                TransactionOutput { value: 2792999990000, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) },
+                TransactionOutput {
+                    value: 10000000000000,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_2),
+                    cov_out_info: None,
+                },
+                TransactionOutput {
+                    value: 2792999990000,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()),
+                    cov_out_info: None,
+                },
             ],
             0,
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
@@ -455,6 +510,7 @@ mod tests {
                 script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
                 block_daa_score: 36151168,
                 is_coinbase: false,
+                covenant_id: None,
             }],
         );
 
@@ -511,8 +567,16 @@ mod tests {
                 sig_op_count: 4,
             }],
             vec![
-                TransactionOutput { value: 10000000000000, script_public_key: ScriptPublicKey::new(0, script_pub_key_2) },
-                TransactionOutput { value: 2792999990000, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) },
+                TransactionOutput {
+                    value: 10000000000000,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_2),
+                    cov_out_info: None,
+                },
+                TransactionOutput {
+                    value: 2792999990000,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()),
+                    cov_out_info: None,
+                },
             ],
             0,
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
@@ -527,6 +591,7 @@ mod tests {
                 script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
                 block_daa_score: 36151168,
                 is_coinbase: false,
+                covenant_id: None,
             }],
         );
 
@@ -582,8 +647,16 @@ mod tests {
                 sig_op_count: 4,
             }],
             vec![
-                TransactionOutput { value: 10000000000000, script_public_key: ScriptPublicKey::new(0, script_pub_key_2) },
-                TransactionOutput { value: 2792999990000, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) },
+                TransactionOutput {
+                    value: 10000000000000,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_2),
+                    cov_out_info: None,
+                },
+                TransactionOutput {
+                    value: 2792999990000,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()),
+                    cov_out_info: None,
+                },
             ],
             0,
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
@@ -598,6 +671,7 @@ mod tests {
                 script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
                 block_daa_score: 36151168,
                 is_coinbase: false,
+                covenant_id: None,
             }],
         );
 
@@ -653,8 +727,16 @@ mod tests {
                 sig_op_count: 4,
             }],
             vec![
-                TransactionOutput { value: 10000000000000, script_public_key: ScriptPublicKey::new(0, script_pub_key_2) },
-                TransactionOutput { value: 2792999990000, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) },
+                TransactionOutput {
+                    value: 10000000000000,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_2),
+                    cov_out_info: None,
+                },
+                TransactionOutput {
+                    value: 2792999990000,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()),
+                    cov_out_info: None,
+                },
             ],
             0,
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
@@ -669,6 +751,7 @@ mod tests {
                 script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
                 block_daa_score: 36151168,
                 is_coinbase: false,
+                covenant_id: None,
             }],
         );
 
@@ -717,7 +800,11 @@ mod tests {
                 sequence: 0,
                 sig_op_count: 4,
             }],
-            vec![TransactionOutput { value: 2792999990000, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) }],
+            vec![TransactionOutput {
+                value: 2792999990000,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()),
+                cov_out_info: None,
+            }],
             0,
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             0,
@@ -731,6 +818,7 @@ mod tests {
                 script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
                 block_daa_score: 36151168,
                 is_coinbase: false,
+                covenant_id: None,
             }],
         );
 
@@ -792,8 +880,16 @@ mod tests {
                 },
             ],
             vec![
-                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
-                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
+                TransactionOutput {
+                    value: 300,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                    cov_out_info: None,
+                },
+                TransactionOutput {
+                    value: 300,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                    cov_out_info: None,
+                },
             ],
             1615462089000,
             SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
@@ -807,18 +903,21 @@ mod tests {
                 script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
                 block_daa_score: 0,
                 is_coinbase: false,
+                covenant_id: None,
             },
             UtxoEntry {
                 amount: 200,
                 script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
                 block_daa_score: 0,
                 is_coinbase: false,
+                covenant_id: None,
             },
             UtxoEntry {
                 amount: 300,
                 script_public_key: ScriptPublicKey::new(0, script_pub_key),
                 block_daa_score: 0,
                 is_coinbase: false,
+                covenant_id: None,
             },
         ];
         let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
