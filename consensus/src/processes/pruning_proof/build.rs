@@ -321,13 +321,12 @@ impl PruningProofManager {
         // for a level proof.
         let mut is_last_header = false;
 
-        while let Some(sb) = queue.pop() {
-            let current_hash = sb.hash;
-            if !visited.insert(current_hash) {
+        while let Some(SortableBlock { hash: current, .. }) = queue.pop() {
+            if !visited.insert(current) {
                 continue;
             }
 
-            let header = self.headers_store.get_header(current_hash).unwrap();
+            let header = self.headers_store.get_header(current).unwrap();
 
             let parents: BlockHashes = self
                 .parents_manager
@@ -341,31 +340,31 @@ impl PruningProofManager {
             is_last_header = is_last_header || parents.is_empty();
 
             // Write parents to the relations store
-            level_relation_store.insert(current_hash, parents.clone()).unwrap();
+            level_relation_store.insert(current, parents.clone()).unwrap();
 
-            debug!("Level: {} | Counting future size of {}", level, current_hash);
-            let future_size = self.count_future_size(&level_relation_store, current_hash, &future_sizes_map);
-            future_sizes_map.insert(current_hash, future_size);
-            debug!("Level: {} | Hash: {} | Future Size: {}", level, current_hash, future_size);
+            debug!("Level: {} | Counting future size of {}", level, current);
+            let future_size = self.count_future_size(&level_relation_store, current, &future_sizes_map);
+            future_sizes_map.insert(current, future_size);
+            debug!("Level: {} | Hash: {} | Future Size: {}", level, current, future_size);
 
             // If the current hash is valid root candidate, fill the GD store and see if it passes as a level proof
             // Valid root candidates are:
             // 1. The genesis block
             // 2. The last header in the headers store
             // 3. Any known block that is in the selected chain from tip, has sufficient future size and depth
-            if current_hash == self.genesis_hash
+            if current == self.genesis_hash
                 || is_last_header
                 || (future_size >= 2 * self.pruning_proof_m - 1 // -1 because future size does not include the current block
                     && tip_bs.saturating_sub(header.blue_score) >= required_base_level_depth)
             {
-                let root = if self.reachability_service.is_dag_ancestor_of(current_hash, block_at_depth_m_at_next_level) {
-                    current_hash
-                } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, current_hash) {
+                let root = if self.reachability_service.is_dag_ancestor_of(current, block_at_depth_m_at_next_level) {
+                    current
+                } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, current) {
                     block_at_depth_m_at_next_level
                 } else {
                     // find common ancestor of block_at_depth_m_at_next_level and block_at_depth_2m in chain of block_at_depth_m_at_next_level
                     let mut common_ancestor = self.headers_store.get_header(block_at_depth_m_at_next_level).unwrap();
-                    while !self.reachability_service.is_dag_ancestor_of(common_ancestor.hash, current_hash) {
+                    while !self.reachability_service.is_dag_ancestor_of(common_ancestor.hash, current) {
                         common_ancestor = match self.find_approximate_selected_parent_header_at_level(&common_ancestor, level) {
                             Ok(header) => header,
                             // Try to give this last header a chance at being root
