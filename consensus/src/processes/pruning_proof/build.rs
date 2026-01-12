@@ -316,11 +316,6 @@ impl PruningProofManager {
         let mut future_sizes_map = BlockHashMap::<u64>::new();
         let mut gd_tries = 0;
 
-        // A level may not contain enough headers to satisfy the safety margin.
-        // This is intended to give the last header a chance, since it may still be deep enough
-        // for a level proof.
-        let mut is_last_header = false;
-
         while let Some(SortableBlock { hash: current, .. }) = queue.pop() {
             if !visited.insert(current) {
                 continue;
@@ -337,7 +332,10 @@ impl PruningProofManager {
                 .collect::<Vec<_>>()
                 .into();
 
-            is_last_header = is_last_header || parents.is_empty();
+            // A level may not contain enough headers to satisfy the safety margin.
+            // This is intended to give the last header a chance, since it may still be deep enough
+            // for a level proof.
+            let is_last_header = parents.is_empty() && queue.is_empty();
 
             // Write parents to the relations store
             level_relation_store.insert(current, parents.clone()).unwrap();
