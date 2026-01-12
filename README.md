@@ -383,7 +383,7 @@ wRPC
 
 </details>
 
-## Stratum Bridge
+## Stratum Bridge Beta
 
 Check out the [README.md](bridge/docs/README.md) for instructions on how to run the stratum bridge.
 
