@@ -179,14 +179,12 @@ where
             Ok((ref key_bytes, ref data_bytes)) => match bincode::deserialize::<TData>(data_bytes.as_ref()) {
                 Ok(data) => Ok((
                     TKey::try_from(&key_bytes[self.prefix.len()..]).map_err(|_e| {
-                        assert!(false, "Failed to deserialize key: {:?}", item);
                         StoreError::ConversionError(format!("Failed to deserialize key: {:?}", &key_bytes))
                     })?,
                     data,
                 )),
 
                 Err(e) => {
-                    assert!(false, "Failed to deserialize data: {:?}", item);
                     Err(StoreError::DeserializationError(e))
                 }
             },
