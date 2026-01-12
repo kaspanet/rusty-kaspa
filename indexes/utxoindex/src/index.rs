@@ -24,7 +24,7 @@ use std::{
 };
 
 const RESYNC_CHUNK_SIZE: usize = 2048;
-const RESYNC_LOG_CHUNK_SIZE: usize = RESYNC_CHUNK_SIZE * 25;
+const RESYNC_LOG_CHUNK_SIZE: usize = 100_000;
 
 /// UtxoIndex indexes `CompactUtxoEntryCollections` by [`ScriptPublicKey`](kaspa_consensus_core::tx::ScriptPublicKey),
 /// commits them to its owns store, and emits changes.
