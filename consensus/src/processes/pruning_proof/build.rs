@@ -218,7 +218,7 @@ impl PruningProofManager {
                 None
             };
             level_proof_stores_vec[level_usize] = Some(
-                self.find_sufficiently_deep_level_root(pp_header, level, required_block, temp_db.clone())
+                self.calc_level_proof_context(pp_header, level, required_block, temp_db.clone())
                     .unwrap_or_else(|_| panic!("find_sufficient_root failed for level {level}")),
             );
         }
@@ -296,6 +296,215 @@ impl PruningProofManager {
         assert!(origin_children.contains(&root));
 
         level_relation_store
+    }
+
+    /// Given a current hash, count the blocks in its future
+    /// Do this by:
+    /// 1. Getting the largest child in terms of future size (this ensures that the rest of the iteration is minimized since most of the future is covered)
+    /// 2. BFS traversal of all other children and their futures, skipping blocks that are in the future of the largest child.
+    ///    This is similar to the mergeset calculation logic. Add each block seen to the count.
+    fn count_future_size(&self, relation_store: &DbRelationsStore, current: Hash, depth_map: &BlockHashMap<u64>) -> u64 {
+        let mut queue = VecDeque::new();
+        let mut visited = BlockHashSet::new();
+
+        let children_lock = relation_store.get_children(current).unwrap();
+        let children_read = children_lock.read();
+        let largest_child = children_read
+            .iter()
+            .map(|c| {
+                // Initialize the queue with all the children of current hash
+                queue.push_back(*c);
+
+                (c, depth_map.get(c).copied().unwrap_or(0))
+            })
+            .max_by_key(|(_, depth)| *depth);
+
+        let mut count = 0;
+
+        if let Some(largest_child) = largest_child {
+            // Add all the count of future of the largest child
+            let largest_child_hash = *largest_child.0;
+            count += largest_child.1 + 1; // +1 to include the largest child itself
+
+            while let Some(hash) = queue.pop_front() {
+                if !visited.insert(hash) {
+                    continue;
+                }
+
+                // Skip blocks in the future of the largest child
+                if self.reachability_service.is_dag_ancestor_of(largest_child_hash, hash) {
+                    continue;
+                }
+
+                count += 1;
+                let children_read = relation_store.get_children(hash).unwrap();
+                for &child in children_read.read().iter() {
+                    queue.push_back(child);
+                }
+            }
+        }
+
+        debug!("Counted future size of {} as {}", current, count);
+
+        count
+    }
+
+    /// Calculate the level proof context by:
+    /// 1. Traversing backwards from the selected tip, filling the relations store along the way
+    /// 2. If a candidate root is found (sufficient future size and depth), fill GD data for this root to the tip:
+    ///    - If the GD data satisfies the requirements of a level proof, return it
+    ///    - Otherwise, keep continue traversing backwards
+    fn calc_level_proof_context(
+        &self,
+        pp_header: &HeaderWithBlockLevel,
+        level: BlockLevel,
+        required_block: Option<Hash>,
+        temp_db: Arc<DB>,
+    ) -> PruningProofManagerInternalResult<LevelProofContext> {
+        let selected_tip = if pp_header.block_level >= level {
+            pp_header.header.hash
+        } else {
+            self.find_approximate_selected_parent_header_at_level(&pp_header.header, level)?.hash
+        };
+
+        let tip_bs = self.headers_store.get_blue_score(selected_tip).unwrap();
+
+        let required_level_depth = 2 * self.pruning_proof_m;
+        // Add a "safety margin"
+        let required_base_level_depth = required_level_depth + 100;
+        let block_at_depth_m_at_next_level = required_block.unwrap_or(selected_tip);
+
+        // BFS backward from the tip for relations.
+        // We need to traverse in backward topological order to ensure that the GD attempts have all needed relations
+        let mut queue = BinaryHeap::<SortableBlock>::new();
+        let mut visited = BlockHashSet::new();
+        queue.push(SortableBlock { hash: selected_tip, blue_work: self.headers_store.get_header(selected_tip).unwrap().blue_work });
+
+        let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
+
+        // Only a single try is needed for this since we will maintain this single relations store
+        let mut level_relation_store = DbRelationsStore::new_temp(temp_db.clone(), level, 0, cache_policy, cache_policy);
+
+        level_relation_store.insert(ORIGIN, BlockHashes::new(vec![])).unwrap();
+
+        // Maps the each known block to their future sizes (up to selected tip)
+        let mut depth_map = BlockHashMap::<u64>::new();
+        let mut gd_tries = 0;
+
+        // A level may not contain enough headers to satify the safety margin.
+        // This is intended to give the last header a chance, since it may still be deep enough
+        // for a level proof.
+        let mut is_last_header = false;
+
+        let mut chain_candidates = BlockHashSet::new();
+        chain_candidates.insert(selected_tip);
+
+        while let Some(sb) = queue.pop() {
+            let current_hash = sb.hash;
+            if !visited.insert(current_hash) {
+                continue;
+            }
+            if current_hash == ORIGIN {
+                continue;
+            }
+
+            let header = self.headers_store.get_header(current_hash).unwrap();
+
+            let parents = Arc::new(
+                self.parents_manager
+                    .parents_at_level(&header, level)
+                    .iter()
+                    .copied()
+                    .filter(|&p| self.reachability_service.has_reachability_data(p))
+                    .collect::<Vec<_>>()
+                    .push_if_empty(ORIGIN),
+            );
+
+            is_last_header = is_last_header || (parents.len() == 1 && parents[0] == ORIGIN);
+
+            if !is_last_header {
+                let chain_candidate = self.find_approximate_selected_parent_header_at_level(&header, level).unwrap();
+                assert!(parents.contains(&chain_candidate.hash));
+                chain_candidates.insert(chain_candidate.hash);
+            }
+
+            // Write parents to the relations store
+            level_relation_store.insert(current_hash, parents.clone()).unwrap();
+
+            debug!("Level: {} | Counting future size of {}", level, current_hash);
+            let future_size = self.count_future_size(&level_relation_store, current_hash, &depth_map);
+            depth_map.insert(current_hash, future_size);
+            debug!("Level: {} | Hash: {} | Future Size: {}", level, current_hash, future_size);
+
+            // If the current hash is valid root candidate, fill the GD store and see if it passes as a level proof
+            // Valid root candidates are:
+            // 1. The genesis block
+            // 2. The last header in the headers store
+            // 3. Any known block that is in the selected chain from tip, has sufficient future size and depth
+            if current_hash == self.genesis_hash
+                || is_last_header
+                || (chain_candidates.contains(&current_hash)
+                    && future_size >= 2 * self.pruning_proof_m - 1 // -1 because future size does not include the current block
+                    && tip_bs.saturating_sub(header.blue_score) >= required_base_level_depth)
+            {
+                let root = if self.reachability_service.is_dag_ancestor_of(current_hash, block_at_depth_m_at_next_level) {
+                    current_hash
+                } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, current_hash) {
+                    block_at_depth_m_at_next_level
+                } else {
+                    // find common ancestor of block_at_depth_m_at_next_level and block_at_depth_2m in chain of block_at_depth_m_at_next_level
+                    let mut common_ancestor = self.headers_store.get_header(block_at_depth_m_at_next_level).unwrap();
+                    while !self.reachability_service.is_dag_ancestor_of(common_ancestor.hash, current_hash) {
+                        common_ancestor = match self.find_approximate_selected_parent_header_at_level(&common_ancestor, level) {
+                            Ok(header) => header,
+                            // Try to give this last header a chance at being root
+                            Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => break,
+                            Err(e) => return Err(e),
+                        };
+                    }
+
+                    common_ancestor.hash
+                };
+
+                // If level relation store does not have the needed root, it means we need to continue the outer BFS and fill the
+                // relation store
+                if level_relation_store.has(root).unwrap() {
+                    let transient_relation_store = Arc::new(RwLock::new(level_relation_store.clone()));
+
+                    let transient_ghostdag_store =
+                        Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, gd_tries));
+                    let has_required_block = self.fill_level_proof_ghostdag_data(
+                        root,
+                        selected_tip,
+                        &transient_ghostdag_store,
+                        Some(required_block.unwrap_or(selected_tip)),
+                        level,
+                        &transient_relation_store,
+                        self.ghostdag_k,
+                    );
+
+                    // Step 4 - Check if we actually have enough depth.
+                    // Need to ensure this does the same 2M+1 depth that block_at_depth does
+                    let curr_tip_bs = transient_ghostdag_store.get_blue_score(selected_tip).unwrap();
+                    if has_required_block
+                        && (root == self.genesis_hash
+                            || curr_tip_bs >= required_level_depth
+                            || (is_last_header && curr_tip_bs > 2 * self.pruning_proof_m))
+                    {
+                        return Ok((transient_ghostdag_store, transient_relation_store, selected_tip, root));
+                    }
+
+                    gd_tries += 1;
+                }
+            }
+
+            // Enqueue parents to fill full upper chain
+            for &p in parents.iter() {
+                queue.push(SortableBlock { hash: p, blue_work: self.headers_store.get_header(p).unwrap().blue_work });
+            }
+        }
+
+        panic!("Failed to find sufficient root for level {level} after exhausting all known headers.");
     }
 
     /// Find a sufficient root at a given level by going through the headers store and looking
