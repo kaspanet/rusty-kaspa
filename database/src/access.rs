@@ -178,15 +178,12 @@ where
         db_iterator.take(limit).map(move |item| match item {
             Ok((ref key_bytes, ref data_bytes)) => match bincode::deserialize::<TData>(data_bytes.as_ref()) {
                 Ok(data) => Ok((
-                    TKey::try_from(&key_bytes[self.prefix.len()..]).map_err(|_e| {
-                        StoreError::ConversionError(format!("Failed to deserialize key: {:?}", &key_bytes))
-                    })?,
+                    TKey::try_from(&key_bytes[self.prefix.len()..])
+                        .map_err(|_e| StoreError::ConversionError(format!("Failed to deserialize key: {:?}", &key_bytes)))?,
                     data,
                 )),
 
-                Err(e) => {
-                    Err(StoreError::DeserializationError(e))
-                }
+                Err(e) => Err(StoreError::DeserializationError(e)),
             },
             Err(e) => Err(StoreError::DbError(e)),
         })
