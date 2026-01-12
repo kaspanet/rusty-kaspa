@@ -122,7 +122,8 @@ impl DbUtxoSetStore {
         &mut self,
         utxos: impl IntoIterator<Item = (TransactionOutpoint, Arc<UtxoEntry>)>,
     ) -> Result<(), StoreError> {
-        let mut writer = DirectDbWriter::new(&self.db);
+        let mut batch = WriteBatch::default();
+        let mut writer = BatchDbWriter::new(&mut batch);
         self.access.write_many_without_cache(&mut writer, &mut utxos.into_iter().map(|(o, e)| (o.into(), e)))?;
         Ok(())
     }

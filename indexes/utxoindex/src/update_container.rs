@@ -1,7 +1,4 @@
-use kaspa_consensus_core::{
-    utxo::utxo_diff::UtxoDiff,
-    BlockHashSet, HashMapCustomHasher,
-};
+use kaspa_consensus_core::{utxo::utxo_diff::UtxoDiff, BlockHashSet, HashMapCustomHasher};
 use kaspa_hashes::Hash;
 use kaspa_utils::hashmap::NestedHashMapExtensions;
 

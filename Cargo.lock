@@ -3321,6 +3321,7 @@ name = "kaspa-utxoindex"
 version = "1.0.1"
 dependencies = [
  "futures",
+ "itertools 0.13.0",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensusmanager",

@@ -4,10 +4,11 @@ use kaspa_consensus_core::tx::{
     ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint,
 };
 use kaspa_core::debug;
-use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DirectDbWriter, StoreResult, DB};
+use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DirectDbWriter, StoreResult, DB};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -137,13 +138,14 @@ pub trait UtxoSetByScriptPublicKeyStoreReader {
 
 pub trait UtxoSetByScriptPublicKeyStore: UtxoSetByScriptPublicKeyStoreReader {
     /// remove [UtxoSetByScriptPublicKey] from the [UtxoSetByScriptPublicKeyStore].
-    fn remove_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()>;
+    fn remove_utxo_entries(&self, batch: &mut WriteBatch, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()>;
 
     /// add [UtxoSetByScriptPublicKey] into the [UtxoSetByScriptPublicKeyStore].
-    fn add_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()>;
+    fn add_utxo_entries(&self, batch: &mut WriteBatch, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()>;
 
-    /// Resyncs the store from an iterator of (ScriptPublicKey, TransactionOutpoint, CompactUtxoEntry) triplets.
-    fn resync_from_iterator(
+    /// Writes UTXOs from an iterator without deleting existing data first.
+    /// Used for chunked writes during resync.
+    fn write_from_iterator(
         &self,
         utxo_iterator: impl Iterator<Item = (ScriptPublicKey, TransactionOutpoint, CompactUtxoEntry)>,
     ) -> StoreResult<()>;
@@ -163,6 +165,12 @@ pub struct DbUtxoSetByScriptPublicKeyStore {
 impl DbUtxoSetByScriptPublicKeyStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::UtxoIndex.into()) }
+    }
+
+    /// Commits a WriteBatch to the database
+    pub fn write_batch(&self, batch: WriteBatch) -> StoreResult<()> {
+        self.db.write(batch)?;
+        Ok(())
     }
 }
 
@@ -217,12 +225,12 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
 }
 
 impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
-    fn remove_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()> {
+    fn remove_utxo_entries(&self, batch: &mut WriteBatch, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()> {
         if utxo_entries.is_empty() {
             return Ok(());
         }
 
-        let mut writer = DirectDbWriter::new(&self.db);
+        let mut writer = BatchDbWriter::new(batch);
 
         let mut to_remove = utxo_entries.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
             compact_utxo_collection.keys().map(move |transaction_outpoint| {
@@ -238,12 +246,12 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         Ok(())
     }
 
-    fn add_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()> {
+    fn add_utxo_entries(&self, batch: &mut WriteBatch, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()> {
         if utxo_entries.is_empty() {
             return Ok(());
         }
 
-        let mut writer = DirectDbWriter::new(&self.db);
+        let mut writer = BatchDbWriter::new(batch);
 
         let mut to_add = utxo_entries.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
             compact_utxo_collection.iter().map(move |(transaction_outpoint, compact_utxo)| {
@@ -262,24 +270,26 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         Ok(())
     }
 
-    fn resync_from_iterator(
+    fn write_from_iterator(
         &self,
         utxo_iterator: impl Iterator<Item = (ScriptPublicKey, TransactionOutpoint, CompactUtxoEntry)>,
     ) -> StoreResult<()> {
-        // else it wouldn't be a resync
-        self.delete_all()?;
+        let mut batch = WriteBatch::default();
 
-        let mut writer = DirectDbWriter::new(&self.db);
+        {
+            let mut writer = BatchDbWriter::new(&mut batch);
+            let mut to_add = utxo_iterator.map(|(script_public_key, transaction_outpoint, compact_utxo)| {
+                let key = UtxoEntryFullAccessKey::new(
+                    ScriptPublicKeyBucket::from(&script_public_key),
+                    TransactionOutpointKey::from(&transaction_outpoint),
+                );
+                (key, compact_utxo)
+            });
 
-        let mut to_add = utxo_iterator.map(|(script_public_key, transaction_outpoint, compact_utxo)| {
-            let key = UtxoEntryFullAccessKey::new(
-                ScriptPublicKeyBucket::from(&script_public_key),
-                TransactionOutpointKey::from(&transaction_outpoint),
-            );
-            (key, compact_utxo)
-        });
+            self.access.write_many_without_cache(&mut writer, &mut to_add)?;
+        }
 
-        self.access.write_many_without_cache(&mut writer, &mut to_add)?;
+        self.db.write(batch)?;
 
         Ok(())
     }

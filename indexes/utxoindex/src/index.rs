@@ -6,6 +6,7 @@ use crate::{
     update_container::UtxoIndexChanges,
     IDENT,
 };
+use itertools::Itertools;
 use kaspa_consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{info, trace};
@@ -15,10 +16,15 @@ use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, CompactUtxoEntry
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
 use std::{
-    fmt::Debug, sync::{Arc, Weak, atomic::{AtomicU64, Ordering}}
+    fmt::Debug,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Weak,
+    },
 };
 
-const RESYNC_LOG_CHUNK_SIZE: usize = 1_000_000;
+const RESYNC_CHUNK_SIZE: usize = 2048;
+const RESYNC_LOG_CHUNK_SIZE: usize = RESYNC_CHUNK_SIZE * 25;
 
 /// UtxoIndex indexes `CompactUtxoEntryCollections` by [`ScriptPublicKey`](kaspa_consensus_core::tx::ScriptPublicKey),
 /// commits them to its owns store, and emits changes.
@@ -144,6 +150,7 @@ impl UtxoIndexApi for UtxoIndex {
         info!("Resyncing the utxoindex...");
         let start_ts = std::time::Instant::now();
 
+        // Delete all existing entries
         self.store.delete_all()?;
         let consensus = self.consensus_manager.consensus();
         let session = futures::executor::block_on(consensus.session_blocking());
@@ -159,8 +166,6 @@ impl UtxoIndexApi for UtxoIndex {
 
         // Clone the store's DB handle so we can write inside the callback
         let mut store_clone = self.store.clone();
-
-
 
         // Clone Arcs for move into closure
         let circulating_supply_clone = Arc::clone(&circulating_supply);
@@ -183,8 +188,11 @@ impl UtxoIndexApi for UtxoIndex {
                 )
             });
 
-            if let Err(e) = store_clone.resync_from_iterator(resync_iter, true) {
-                *resync_error_clone.lock().unwrap() = Some(e);
+            for chunk in &resync_iter.into_iter().chunks(RESYNC_CHUNK_SIZE) {
+                if let Err(e) = store_clone.write_from_iterator(chunk) {
+                    *resync_error_clone.lock().unwrap() = Some(e);
+                    break;
+                }
             }
         }));
 
@@ -201,7 +209,10 @@ impl UtxoIndexApi for UtxoIndex {
         self.store.set_tips(consensus_tips, true)?;
         let elapsed = start_ts.elapsed().as_secs_f64();
 
-        info!("[{0}] resynced a total of {1} utxos with a circulating supply of {2} in {3:.6} seconds", IDENT, final_count, final_supply, elapsed);
+        info!(
+            "[{0}] resynced a total of {1} utxos with a circulating supply of {2} in {3:.6} seconds",
+            IDENT, final_count, final_supply, elapsed
+        );
 
         Ok(())
     }
