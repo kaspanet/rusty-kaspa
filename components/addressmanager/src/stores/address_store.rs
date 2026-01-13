@@ -95,7 +95,7 @@ impl From<PerigeeEntry> for DbPerigeeRankedAddressKey {
     fn from(perigee_entry: PerigeeEntry) -> Self {
         let mut bytes = [0; mem::size_of::<DbPerigeeRankedAddressKey>()];
         bytes[..ADDRESS_KEY_SIZE].copy_from_slice(&perigee_entry.rank.to_le_bytes());
-        bytes[ADDRESS_KEY_SIZE..].copy_from_slice(DbAddressKey::from(perigee_entry.address).as_ref());
+        bytes[mem::size_of::<u16>()..].copy_from_slice(DbAddressKey::from(perigee_entry.address).as_ref());
         Self(bytes)
     }
 }
