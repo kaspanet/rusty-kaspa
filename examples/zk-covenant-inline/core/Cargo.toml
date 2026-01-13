@@ -10,9 +10,7 @@ include.workspace = true
 
 [dependencies]
 bytemuck = { workspace = true, features = ["derive"]}
-#blake2b_simd.workspace = true
-#borsh = { workspace = true, default-features = false }
-#smallvec = {  workspace = true, features = ["const_generics"] }
+sha2 = { version = "=0.10.9", default-features = false }
 
 [lints]
 workspace = true

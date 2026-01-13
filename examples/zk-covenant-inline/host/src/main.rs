@@ -1,22 +1,23 @@
 use std::time::Instant;
-use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
-use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
-use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-use kaspa_consensus_core::tx::{
-    PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+use kaspa_consensus_core::{
+    constants::{SOMPI_PER_KASPA, TX_VERSION},
+    hashing::sighash::SigHashReusedValuesUnsync,
+    subnets::SUBNETWORK_ID_NATIVE,
+    tx::{PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
-use kaspa_txscript::caches::Cache;
-use kaspa_txscript::opcodes::codes::{
-    OpAdd, OpBlake2b, OpCat, OpData32, OpData8, OpDup, OpEqual, OpEqualVerify, OpSHA256, OpSwap,
-    OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubStr, OpTxOutputSpk, OpTxPayloadSubstr, OpZkPrecompile,
-};
-use kaspa_txscript::zk_precompiles::tags::ZkTag;
 use kaspa_txscript::{
-    pay_to_script_hash_script, script_builder::ScriptBuilder, EngineFlags, SpkEncoding, TxScriptEngine,
+    caches::Cache,
+    opcodes::codes::{
+        OpAdd, OpBlake2b, OpCat, OpData32,  OpDup, OpEqual, OpEqualVerify, OpSHA256, OpSwap,
+    OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubStr, OpTxOutputSpk, OpTxPayloadSubstr, OpZkPrecompile,},
+    pay_to_script_hash_script,
+    script_builder::ScriptBuilder,
+    zk_precompiles::{risc0::merkle::MerkleProof, risc0::rcpt::SuccinctReceipt, tags::ZkTag},
+    EngineFlags, TxScriptEngine,
 };
-use risc0_zkvm::sha::Digestible;
-use risc0_zkvm::{default_prover, ExecutorEnv, Prover, ProverOpts};
-use zk_covenant_inline_core::PublicInput;
+use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts};
+use std::time::Instant;
+use zk_covenant_inline_core::{Action, PublicInput, State, VersionedActionRaw};
 use zk_covenant_inline_methods::{ZK_COVENANT_INLINE_GUEST_ELF, ZK_COVENANT_INLINE_GUEST_ID};
 
 fn main() {
@@ -24,77 +25,96 @@ fn main() {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env()).init();
 
     // --- Build the transaction for the guest and for verification ---
-    let public_input = PublicInput { payload_diff: 256, prev_state: 128, new_state: 384 };
-    let journal = bytemuck::bytes_of(&public_input);
-    println!("Journal: {}", faster_hex::hex_string(journal));
-    println!("new state: {}", faster_hex::hex_string(&public_input.new_state.to_le_bytes()));
-    println!("payload_diff: {}", faster_hex::hex_string(&public_input.payload_diff.to_le_bytes()));
-    println!("prev_state: {}", faster_hex::hex_string(&public_input.prev_state.to_le_bytes()));
+    let state = State::default();
+    let prev_state_hash = state.hash();
+    let action = Action::Fib(5); // Example action
+    let new_state = {
+        let mut state = State::default();
+        state.add_new_result(action, 5);
+        state
+    };
 
-    let new_state_bytes = &public_input.new_state.to_le_bytes();
-    let expected_digest = journal.digest();
-    let computed_len = build_redeem_script(public_input.prev_state, 20).len() as i64;
+    let (action_disc, action_value) = action.split();
+    let action_bytes = [action_disc, action_value];
+    let public_input =
+        PublicInput { prev_state_hash, versioned_action_raw: VersionedActionRaw { action_version: 0, action_raw: action_bytes } };
 
-    let input_redeem_script = build_redeem_script(public_input.prev_state, computed_len);
-    let input_spk = pay_to_script_hash_script(&input_redeem_script);
-    let output_redeem_script = build_redeem_script(public_input.new_state, computed_len);
-    let output_spk = pay_to_script_hash_script(&output_redeem_script);
-    assert_eq!(computed_len, output_redeem_script.len() as i64);
-    assert_eq!(computed_len, input_redeem_script.len() as i64);
-
-    println!("Output redeem script: {}", faster_hex::hex_string(&output_redeem_script));
-    println!("output spk: {}", faster_hex::hex_string(&output_spk.to_bytes()));
-
-    let (mut tx, _, utxo_entry) = make_mock_transaction(0, input_spk, output_spk, public_input.payload_diff);
-
-    let env = ExecutorEnv::builder().write_slice(bytemuck::bytes_of(&public_input)).build().unwrap();
+    let env = ExecutorEnv::builder()
+        .write_slice(core::slice::from_ref(&public_input))
+        .write_slice(core::slice::from_ref(&state))
+        .build()
+        .unwrap();
 
     // Obtain the default prover.
     let prover = default_prover();
 
     let now = Instant::now();
-    // Proof information by proving the specified ELF binary.
-    // This struct contains the receipt along with statistics about execution of the guest
     let prove_info = prover.prove_with_opts(env, ZK_COVENANT_INLINE_GUEST_ELF, &ProverOpts::succinct()).unwrap();
     println!("Proving took {} ms", now.elapsed().as_millis());
 
     // extract the receipt.
     let receipt = prove_info.receipt;
+    let journal_digest = receipt.journal.digest();
     let receipt_inner = receipt.inner.succinct().unwrap();
 
-    // The guest commits the public input of the guest program args it validated.
-    // We assert that it matches the output we calculated.
-    let output: &PublicInput = bytemuck::from_bytes(receipt.journal.bytes.as_slice());
-    assert_eq!(output, &public_input);
+    // Extract committed data from journal
+    let journal_bytes = &receipt.journal.bytes;
+    println!("Journal bytes: {}", faster_hex::hex_string(journal_bytes));
 
-    let script_precompile_inner = {
-        use kaspa_txscript::zk_precompiles::risc0::inner::Inner;
-        use kaspa_txscript::zk_precompiles::risc0::merkle::MerkleProof;
-        Inner {
-            seal: receipt_inner.seal.clone(),
-            control_id: receipt_inner.control_id,
-            claim: receipt_inner.claim.digest(),
-            hashfn: receipt_inner.hashfn.clone(),
-            verifier_parameters: receipt_inner.verifier_parameters,
-            control_inclusion_proof: MerkleProof::new(
-                receipt_inner.control_inclusion_proof.index,
-                receipt_inner.control_inclusion_proof.digests.clone(),
-            ),
-        }
+    let committed_public_input: zk_covenant_inline_core::PublicInput =
+        *bytemuck::from_bytes(&journal_bytes[..size_of::<PublicInput>()]);
+    assert_eq!(public_input, committed_public_input);
+    let new_state_hash_from_journal: &[u8] = &journal_bytes[size_of::<PublicInput>()..size_of::<PublicInput>() + 32];
+    let new_state_hash = new_state.hash();
+    assert_eq!(new_state_hash_from_journal, bytemuck::bytes_of(&new_state_hash));
+    // println!("New state hash: {}", faster_hex::hex_string(new_state_hash_from_journal));
+    // println!("Old state hash: {}", faster_hex::hex_string(bytemuck::bytes_of(&prev_state_hash)));
+
+    let expected_digest = {
+        let mut pre_image = [0u8; 68];
+        pre_image[..size_of::<PublicInput>()].copy_from_slice(bytemuck::bytes_of(&public_input));
+        pre_image[size_of::<PublicInput>()..size_of::<PublicInput>() + 32].copy_from_slice(new_state_hash_from_journal);
+        pre_image.digest()
     };
-    let journal_digest = receipt.journal.digest();
     assert_eq!(journal_digest, expected_digest);
-    // The receipt was verified at the end of proving, but the below code is an
-    // example of how someone else could verify this receipt.
+
+    let script_precompile_inner = SuccinctReceipt {
+        seal: receipt_inner.seal.clone(),
+        control_id: receipt_inner.control_id,
+        claim: receipt_inner.claim.digest(),
+        hashfn: receipt_inner.hashfn.clone(),
+        verifier_parameters: receipt_inner.verifier_parameters,
+        control_inclusion_proof: MerkleProof::new(
+            receipt_inner.control_inclusion_proof.index,
+            receipt_inner.control_inclusion_proof.digests.clone(),
+        ),
+    };
+
     receipt.verify(ZK_COVENANT_INLINE_GUEST_ID).unwrap();
 
-    // --- Now, we update the sig_script with the real proof and verify on-chain ---
+    // Build redeem scripts using 32-byte hashes
+    let computed_len = build_redeem_script(public_input.prev_state_hash, 76).len() as i64;
+
+    let input_redeem_script = build_redeem_script(public_input.prev_state_hash, computed_len);
+    let input_spk = pay_to_script_hash_script(&input_redeem_script);
+    let output_redeem_script = build_redeem_script(new_state_hash, computed_len);
+    let output_spk = pay_to_script_hash_script(&output_redeem_script);
+    assert_eq!(computed_len as usize, output_redeem_script.len());
+    assert_eq!(computed_len as usize, input_redeem_script.len());
+
+    // println!("Output redeem script: {}", faster_hex::hex_string(&output_redeem_script));
+    // println!("output spk: {}", faster_hex::hex_string(&output_spk.to_bytes()));
+
+    let payload = bytemuck::bytes_of(&public_input)[..size_of::<VersionedActionRaw>()].to_vec();
+    let (mut tx, _, utxo_entry) = make_mock_transaction(0, input_spk, output_spk, payload);
+
+    // --- Update the sig_script with the real proof and verify on-chain ---
     let final_sig_script = ScriptBuilder::new()
         .add_data(&borsh::to_vec(&script_precompile_inner).unwrap())
         .unwrap()
         .add_data(bytemuck::cast_slice(ZK_COVENANT_INLINE_GUEST_ID.as_slice()))
         .unwrap()
-        .add_data(new_state_bytes)
+        .add_data(new_state_hash_from_journal)
         .unwrap()
         .add_data(&input_redeem_script)
         .unwrap()
@@ -110,7 +130,7 @@ fn make_mock_transaction(
     lock_time: u64,
     input_spk: ScriptPublicKey,
     output_spk: ScriptPublicKey,
-    payload_diff: u64,
+    payload: Vec<u8>,
 ) -> (Transaction, TransactionInput, UtxoEntry) {
     let dummy_prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
     let dummy_tx_input = TransactionInput::new(dummy_prev_out, vec![], 10, u8::MAX);
@@ -124,7 +144,7 @@ fn make_mock_transaction(
         lock_time,
         SUBNETWORK_ID_NATIVE,
         0,
-        payload_diff.to_le_bytes().to_vec(),
+        payload,
     );
     let utxo_entry = UtxoEntry::new(0, input_spk, 0, false);
     (tx, dummy_tx_input, utxo_entry)
@@ -140,35 +160,35 @@ fn verify_zk_succinct(tx: &Transaction, utxo_entry: &UtxoEntry) {
     vm.execute().unwrap();
 }
 
-fn build_redeem_script(old_state: u64, redeem_script_len: i64) -> Vec<u8> {
+fn build_redeem_script(old_state_hash: [u32; 8], redeem_script_len: i64) -> Vec<u8> {
     let mut builder = ScriptBuilder::new();
 
     // Prepare old and new states on the stack
-    add_state_preparation(&mut builder, old_state).unwrap();
+    add_state_preparation(&mut builder, old_state_hash).unwrap();
 
-    // Stack: [proof, program_id, old_state, new_state, new_state]
+    // Stack: [proof, program_id, old_state_hash, new_state_hash, new_state_hash]
 
-    // Build the prefix for the new redeem script (OpData8 || new_state)
+    // Build the prefix for the new redeem script (OpData32 || new_state_hash)
     add_new_redeem_prefix(&mut builder).unwrap();
 
-    // Stack: [proof, program_id, old_state, new_state, (OpData8 || new_state)]
+    // Stack: [proof, program_id, old_state_hash, new_state_hash, (OpData32 || new_state_hash)]
 
     // Extract the suffix from sig_script and concatenate to form the new redeem script
     add_suffix_extraction_and_cat(&mut builder, redeem_script_len).unwrap();
 
-    // Stack: [proof, program_id, old_state, new_state, new_redeem_script]
+    // Stack: [proof, program_id, old_state_hash, new_state_hash, new_redeem_script]
 
     // Hash the new redeem script and build the expected SPK bytes
     add_hash_and_build_spk(&mut builder).unwrap();
 
-    // Stack: [proof, program_id, old_state, new_state, constructed_spk]
+    // Stack: [proof, program_id, old_state_hash, new_state_hash, constructed_spk]
 
     // Verify the constructed SPK matches the actual output SPK
     add_verify_output_spk(&mut builder).unwrap();
 
-    // Stack: [proof, program_id, old_state, new_state]
+    // Stack: [proof, program_id, old_state_hash, new_state_hash]
 
-    // Construct the preimage for the journal hash (old_state || new_state || payload_diff)
+    // Construct the preimage for the journal hash (versioned_action_raw || old_state_hash || new_state_hash)
     add_construct_journal_preimage(&mut builder).unwrap();
 
     // Stack: [proof, program_id, preimage]
@@ -196,47 +216,50 @@ fn build_redeem_script(old_state: u64, redeem_script_len: i64) -> Vec<u8> {
     builder.drain()
 }
 
-/// Prepares the old and new states on the stack by pushing the old state, swapping, and duplicating the new state.
+/// Prepares the old and new state hashes on the stack by pushing the old state hash, swapping, and duplicating the new state hash.
 ///
-/// Expects on stack: [proof, program_id, new_state]
+/// Expects on stack: [proof, program_id, new_state_hash]
 ///
-/// Leaves on stack: [proof, program_id, old_state, new_state, new_state]
-fn add_state_preparation(builder: &mut ScriptBuilder, old_state: u64) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Push the old state (prev_state) onto the stack
-    builder.add_data(&old_state.to_le_bytes())?;
-    // Swap the top two items: new_state and old_state
+/// Leaves on stack: [proof, program_id, old_state_hash, new_state_hash, new_state_hash]
+fn add_state_preparation(
+    builder: &mut ScriptBuilder,
+    old_state_hash: [u32; 8],
+) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+    // Push the old state hash (prev_state_hash) onto the stack
+    builder.add_data(bytemuck::bytes_of(&old_state_hash))?;
+    // Swap the top two items: new_state_hash and old_state_hash
     builder.add_op(OpSwap)?;
-    // Duplicate the new_state (now on top)
+    // Duplicate the new_state_hash (now on top)
     builder.add_op(OpDup)
 }
 
-/// Builds the prefix for the new redeem script by concatenating OpData8 with a duplicated new_state.
+/// Builds the prefix for the new redeem script by concatenating OpData32 with a duplicated new_state_hash.
 ///
-/// Expects on stack: [..., old_state, new_state, new_state]
+/// Expects on stack: [..., old_state_hash, new_state_hash, new_state_hash]
 ///
-/// Leaves on stack: [..., old_state, new_state, (OpData8 || new_state)]
+/// Leaves on stack: [..., old_state_hash, new_state_hash, (OpData32 || new_state_hash)]
 fn add_new_redeem_prefix(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Push OpData8 (for pushing 8-byte state in the new redeem script)
-    builder.add_data(&[OpData8])?;
-    // Swap to bring one new_state to top
+    // Push OpData32 (for pushing 32-byte state hash in the new redeem script)
+    builder.add_data(&[OpData32])?;
+    // Swap to bring one new_state_hash to top
     builder.add_op(OpSwap)?;
-    // Concatenate: OpData8 || new_state
+    // Concatenate: OpData32 || new_state_hash
     builder.add_op(OpCat)
 }
 
 /// Extracts the redeem script suffix from the signature script and concatenates it with the prefix to form the new redeem script.
 ///
-/// The suffix is extracted using a computed offset to skip the old state push in the current redeem script.
+/// The suffix is extracted using a computed offset to skip the old state hash push in the current redeem script.
 ///
-/// Expects on stack: [..., (OpData8 || new_state)] (prefix on top)
+/// Expects on stack: [..., (OpData32 || new_state_hash)] (prefix on top)
 ///
 /// Leaves on stack: [..., new_redeem_script]
 fn add_suffix_extraction_and_cat(builder: &mut ScriptBuilder, redeem_script_len: i64) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Compute offset: sig_script_len + (-redeem_script_len + 1 + 8) to point after old_state push
+    // Compute offset: sig_script_len + (-redeem_script_len + 33) to point after old_state_hash push
     builder.add_op(OpTxInputIndex)?;
     builder.add_op(OpTxInputIndex)?;
     builder.add_op(OpTxInputScriptSigLen)?;
-    builder.add_i64(-redeem_script_len + 1 + std::mem::size_of::<u64>() as i64)?; // -redeem script + OpPushDataX + state len
+    builder.add_i64(-redeem_script_len + 33)?; // -redeem script + OpData32 + 32 bytes
     builder.add_op(OpAdd)?;
 
     // Push end: sig_script_len
@@ -297,23 +320,24 @@ fn add_verify_output_spk(builder: &mut ScriptBuilder) -> kaspa_txscript::script_
     builder.add_op(OpEqualVerify)
 }
 
-/// Constructs the preimage for the journal hash by concatenating old_state || new_state || payload_diff (from tx payload substr).
+/// Constructs the preimage for the journal hash by concatenating versioned_action_raw || old_state_hash || new_state_hash.
 ///
-/// Expects on stack: [..., old_state, new_state]
+/// Expects on stack: [..., old_state_hash, new_state_hash]
 ///
-/// Leaves on stack: [..., preimage] where preimage = old_state || new_state || payload_diff
+/// Leaves on stack: [..., preimage] where preimage = versioned_action_raw || old_state_hash || new_state_hash
 fn add_construct_journal_preimage(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Concatenate old_state || new_state
+    // Concatenate old_state_hash || new_state_hash
     builder.add_op(OpCat)?;
 
-    // Push start (0) and end (8) for payload substr
+    // Push start (0) and end (4) for payload substr
     builder.add_i64(0)?;
-    builder.add_i64(std::mem::size_of::<u64>() as i64)?;
+    builder.add_i64(size_of::<VersionedActionRaw>() as i64)?;
 
-    // Extract payload_diff = tx.payload[0..8]
+    // Extract versioned_action_raw = tx.payload[0..4]
     builder.add_op(OpTxPayloadSubstr)?;
 
-    // Concatenate (old_state || new_state) || payload_diff
+    // Concatenate versioned_action_raw || (old_state_hash || new_state_hash)
+    builder.add_op(OpSwap)?;
     builder.add_op(OpCat)
 }
 

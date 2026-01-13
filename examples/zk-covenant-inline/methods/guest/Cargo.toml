@@ -19,3 +19,6 @@ opt-level = 3
 [profile.release]
 debug = 1
 lto = true
+
+[patch.crates-io]
+sha2 = { git = "https://github.com/risc0/RustCrypto-hashes.git", package = "sha2", branch = "risczero"}
