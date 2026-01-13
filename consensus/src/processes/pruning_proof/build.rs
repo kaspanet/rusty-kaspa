@@ -295,7 +295,7 @@ impl PruningProofManager {
         };
 
         let tip_header_bs = self.headers_store.get_blue_score(selected_tip).unwrap();
-        let mut required_future_size = 2 * self.pruning_proof_m - 1;
+        let mut required_future_size = 2 * self.pruning_proof_m;
         let required_base_level_depth = (self.pruning_proof_m as f64 * 2.1) as u64; // =2100 for M=1000
         let block_at_depth_m_at_next_level = required_block.unwrap_or(selected_tip);
 
