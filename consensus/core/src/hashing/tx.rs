@@ -154,25 +154,25 @@ mod tests {
 
         // Test #2
         tests.push(Test {
-            tx: Transaction::new(1, inputs.clone(), Vec::new(), 0, SubnetworkId::from_byte(0), 0, Vec::new()),
-            expected_id: "dafa415216d26130a899422203559c809d3efe72e20d48505fb2f08787bc4f49",
-            expected_hash: "e4045023768d98839c976918f80c9419c6a93003724eda97f7c61a5b68de851b",
+            tx: Transaction::new(0, inputs.clone(), Vec::new(), 0, SubnetworkId::from_byte(0), 0, Vec::new()),
+            expected_id: "b2d65ae36e123eb73f253176d7234a57656b84d0d60b9fc746ab0d0f085c9cc7",
+            expected_hash: "7d9f7cfdd77f236a41895ac5cdda2fa42f7122964ba995fdfacebce54efad7e8",
         });
 
         let outputs = vec![TransactionOutput::new(1564, ScriptPublicKey::new(7, scriptvec![1, 2, 3, 4, 5]))];
 
         // Test #3
         tests.push(Test {
-            tx: Transaction::new(1, inputs.clone(), outputs.clone(), 0, SubnetworkId::from_byte(0), 0, Vec::new()),
-            expected_id: "d1cd9dc1f26955832ccd12c27afaef4b71443aa7e7487804baf340952ca927e5",
-            expected_hash: "e5523c70f6b986cad9f6959e63f080e6ac5f93bc2a9e0e01a89ca9bf6908f51c",
+            tx: Transaction::new(0, inputs.clone(), outputs.clone(), 0, SubnetworkId::from_byte(0), 0, Vec::new()),
+            expected_id: "67289b12146d1b5ef384332137399791a5cfe89506ff31688b0d95ae821d0a0c",
+            expected_hash: "492279c0ed5018aa00b0b2d42c1c42350285f2e689236a81829edaf818e30fdb",
         });
 
         // Test #4
         tests.push(Test {
-            tx: Transaction::new(2, inputs, outputs.clone(), 54, SubnetworkId::from_byte(0), 3, Vec::new()),
-            expected_id: "59b3d6dc6cdc660c389c3fdb5704c48c598d279cdf1bab54182db586a4c95dd5",
-            expected_hash: "b70f2f14c2f161a29b77b9a78997887a8e727bb57effca38cd246cb270b19cd5",
+            tx: Transaction::new(0, inputs, outputs.clone(), 54, SubnetworkId::from_byte(0), 3, Vec::new()),
+            expected_id: "7cd34b788d7d230970d4bfd955c34c5abc49e3bcdd5adb03a77bb71d05554401",
+            expected_hash: "de319664ee9f4197e89be0d0e08b2b6cac110efc2cf107de1fbc6bd2ce29d545",
         });
 
         let inputs = vec![TransactionInput::new(
@@ -184,31 +184,54 @@ mod tests {
 
         // Test #5
         tests.push(Test {
-            tx: Transaction::new(2, inputs.clone(), outputs.clone(), 54, SubnetworkId::from_byte(0), 3, Vec::new()),
-            expected_id: "9d106623860567915b19cea33af486286a31b4bfc68627c6d4d377287afb40ad",
-            expected_hash: "cd575e69fbf5f97fbfd4afb414feb56f8463b3948d6ac30f0ecdd9622672fab9",
+            tx: Transaction::new(0, inputs.clone(), outputs.clone(), 54, SubnetworkId::from_byte(0), 3, Vec::new()),
+            expected_id: "c9dd78e818445f617a28348d6db752142e2fab440effa58140ad2773e638b628",
+            expected_hash: "1be9978bcab9424f15adac6fca0a64c3f56344a7cd0ec92a225496e19a0d122c",
         });
 
         // Test #6
         tests.push(Test {
             // Valid coinbase transactions have no inputs.
-            tx: Transaction::new(2, vec![], outputs.clone(), 54, subnets::SUBNETWORK_ID_COINBASE, 3, Vec::new()),
-            expected_id: "f16306e20f6a28576e526092979b2bf3fc53b933fa6482c71b7a06c489495910",
-            expected_hash: "968b9effa67001baa5a3016449211bf59a8db3721314bd8a64723eac2cff4552",
+            tx: Transaction::new(0, vec![], outputs.clone(), 54, subnets::SUBNETWORK_ID_COINBASE, 3, Vec::new()),
+            expected_id: "2578783ec93c3a02414a228e10b1b5af298623254775f972f97df08d4ec28c8f",
+            expected_hash: "dffa96c75ef9d17520991fc6d88813531e230488e75b65f65ce958f2d54d2451",
         });
 
         // Test #7
         tests.push(Test {
-            tx: Transaction::new(2, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, Vec::new()),
-            expected_id: "c542a204ab9416df910b01540b0c51b85e6d4e1724e081e224ea199a9e54e1b3",
-            expected_hash: "31da267d5c34f0740c77b8c9ebde0845a01179ec68074578227b804bac306361",
+            tx: Transaction::new(0, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, Vec::new()),
+            expected_id: "3f6cea6d7ac8f6b2f86209fa748ea0ef5a1d5d380d43b79e77d52e770bb9a7b9",
+            expected_hash: "9abf01c6c312dd984ff19c23bec85e8678e6ea34041fe3c5de52fd9344adac63",
         });
 
         // Test #8, same as 7 but with a non-zero payload. The test checks id and hash are affected by payload change
         tests.push(Test {
-            tx: Transaction::new(2, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
-            expected_id: "1f18b18ab004ff1b44dd915554b486d64d7ebc02c054e867cc44e3d746e80b3b",
-            expected_hash: "a2029ebd66d29d41aa7b0c40230c1bfa7fe8e026fb44b7815dda4e991b9a5fad",
+            tx: Transaction::new(0, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
+            expected_id: "4acda997dfb31c6518224c9ac00d0777fc7cbecdab461be3c0816b1cba19a056",
+            expected_hash: "f0bb137ed71a91445ddf9224c76f755153a296eeb4fdc29b8393ddd81bf34ce6",
+        });
+
+        // Test #9, same as 7 but with a non-zero payload. The test checks only hash is affected by mass commitment
+        tests.push(Test {
+            tx: Transaction::new_with_mass(
+                0,
+                inputs.clone(),
+                outputs.clone(),
+                54,
+                subnets::SUBNETWORK_ID_REGISTRY,
+                3,
+                vec![1, 2, 3],
+                5,
+            ),
+            expected_id: "4acda997dfb31c6518224c9ac00d0777fc7cbecdab461be3c0816b1cba19a056",
+            expected_hash: "ced89bbf642cda42d29d9518d16e35cbbf85d10e1ab106b7dc2e0a821308ac91",
+        });
+
+        // Test #10, same as 9 with different version and checks it affects id and hash
+        tests.push(Test {
+            tx: Transaction::new(1, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
+            expected_id: "205fd04d30ec18079fefbe6319489b6c3a3f13299570ab687a93354a38d4eb18",
+            expected_hash: "186f2c81e54c5dd578697fefbed07d3eb909cf19a6288cf1bcf3a7c6b3262eb5",
         });
 
         for (i, test) in tests.iter().enumerate() {
