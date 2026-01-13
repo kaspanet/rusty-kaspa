@@ -14,7 +14,7 @@ include = ["src/**/*.rs", "Cargo.toml", "src/**/*.txt"]
 [dependencies]
 borsh.workspace = true
 bs58.workspace = true
-getrandom = { workspace = true, features = ["js"] }
+getrandom.workspace = true
 hmac.workspace = true
 js-sys.workspace = true
 kaspa-utils.workspace = true

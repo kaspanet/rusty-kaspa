@@ -12,7 +12,7 @@ package protowire;
 // RPCError represents a generic non-internal error.
 //
 // Receivers of any ResponseMessage are expected to check whether its error field is not null.
-message RPCError{
+message RPCError {
   string message = 1;
 }
 
@@ -42,7 +42,13 @@ message RpcBlockLevelParents {
   repeated string parentHashes = 1;
 }
 
-message RpcBlockVerboseData{
+message RpcBlockLevelRun {
+  repeated string parentHashes = 1;
+  // must be <= 255 (u8)
+  uint32 cumulativeLevel = 2;
+}
+
+message RpcBlockVerboseData {
   string hash = 1;
   double difficulty = 11;
   string selectedParentHash = 13;
@@ -67,7 +73,7 @@ message RpcTransaction {
   uint64 mass = 10;
 }
 
-message RpcTransactionVerboseData{
+message RpcTransactionVerboseData {
   string transactionId = 1;
   string hash = 2;
   uint64 computeMass = 4;
@@ -116,7 +122,7 @@ message RpcOutpoint {
   uint32 index = 2;
 }
 
-message RpcTransactionOutputVerboseData{
+message RpcTransactionOutputVerboseData {
   string scriptPublicKeyType = 5;
   string scriptPublicKeyAddress = 6;
 }
@@ -129,10 +135,9 @@ enum RpcNotifyCommand {
 // GetCurrentNetworkRequestMessage requests the network kaspad is currently running against.
 //
 // Possible networks are: Mainnet, Testnet, Simnet, Devnet
-message GetCurrentNetworkRequestMessage{
-}
+message GetCurrentNetworkRequestMessage {}
 
-message GetCurrentNetworkResponseMessage{
+message GetCurrentNetworkResponseMessage {
   string currentNetwork = 1;
   RPCError error = 1000;
 }
@@ -141,12 +146,12 @@ message GetCurrentNetworkResponseMessage{
 // Blocks are generally expected to have been generated using the getBlockTemplate call.
 //
 // See: GetBlockTemplateRequestMessage
-message SubmitBlockRequestMessage{
+message SubmitBlockRequestMessage {
   RpcBlock block = 2;
   bool allowNonDAABlocks = 3;
 }
 
-message SubmitBlockResponseMessage{
+message SubmitBlockResponseMessage {
   enum RejectReason {
     NONE = 0;
     BLOCK_INVALID = 1;
@@ -160,13 +165,13 @@ message SubmitBlockResponseMessage{
 // Callers are expected to solve the block template and submit it using the submitBlock call
 //
 // See: SubmitBlockRequestMessage
-message GetBlockTemplateRequestMessage{
+message GetBlockTemplateRequestMessage {
   // Which kaspa address should the coinbase block reward transaction pay into
   string payAddress = 1;
   string extraData = 2;
 }
 
-message GetBlockTemplateResponseMessage{
+message GetBlockTemplateResponseMessage {
   RpcBlock block = 3;
 
   // Whether kaspad thinks that it's synced.
@@ -181,11 +186,11 @@ message GetBlockTemplateResponseMessage{
 // NotifyBlockAddedRequestMessage registers this connection for blockAdded notifications.
 //
 // See: BlockAddedNotificationMessage
-message NotifyBlockAddedRequestMessage{
+message NotifyBlockAddedRequestMessage {
   RpcNotifyCommand command = 101;
 }
 
-message NotifyBlockAddedResponseMessage{
+message NotifyBlockAddedResponseMessage {
   RPCError error = 1000;
 }
 
@@ -193,16 +198,15 @@ message NotifyBlockAddedResponseMessage{
 // into the DAG.
 //
 // See: NotifyBlockAddedRequestMessage
-message BlockAddedNotificationMessage{
+message BlockAddedNotificationMessage {
   RpcBlock block = 3;
 }
 
 // GetPeerAddressesRequestMessage requests the list of known kaspad addresses in the
 // current network. (mainnet, testnet, etc.)
-message GetPeerAddressesRequestMessage{
-}
+message GetPeerAddressesRequestMessage {}
 
-message GetPeerAddressesResponseMessage{
+message GetPeerAddressesResponseMessage {
   repeated GetPeerAddressesKnownAddressMessage addresses = 1;
   repeated GetPeerAddressesKnownAddressMessage bannedAddresses = 2;
   RPCError error = 1000;
@@ -214,24 +218,23 @@ message GetPeerAddressesKnownAddressMessage {
 
 // GetSinkRequestMessage requests the hash of the current virtual's
 // selected parent.
-message GetSinkRequestMessage{
-}
+message GetSinkRequestMessage {}
 
-message GetSinkResponseMessage{
+message GetSinkResponseMessage {
   string sink = 1;
   RPCError error = 1000;
 }
 
 // GetMempoolEntryRequestMessage requests information about a specific transaction
 // in the mempool.
-message GetMempoolEntryRequestMessage{
+message GetMempoolEntryRequestMessage {
   // The transaction's TransactionID.
   string txId = 1;
   bool includeOrphanPool = 2;
   bool filterTransactionPool = 3;
 }
 
-message GetMempoolEntryResponseMessage{
+message GetMempoolEntryResponseMessage {
   RpcMempoolEntry entry = 1;
 
   RPCError error = 1000;
@@ -239,18 +242,18 @@ message GetMempoolEntryResponseMessage{
 
 // GetMempoolEntriesRequestMessage requests information about all the transactions
 // currently in the mempool.
-message GetMempoolEntriesRequestMessage{
+message GetMempoolEntriesRequestMessage {
   bool includeOrphanPool = 1;
   bool filterTransactionPool = 2;
 }
 
-message GetMempoolEntriesResponseMessage{
+message GetMempoolEntriesResponseMessage {
   repeated RpcMempoolEntry entries = 1;
 
   RPCError error = 1000;
 }
 
-message RpcMempoolEntry{
+message RpcMempoolEntry {
   uint64 fee = 1;
   RpcTransaction transaction = 3;
   bool isOrphan = 4;
@@ -258,15 +261,14 @@ message RpcMempoolEntry{
 
 // GetConnectedPeerInfoRequestMessage requests information about all the p2p peers
 // currently connected to this kaspad.
-message GetConnectedPeerInfoRequestMessage{
-}
+message GetConnectedPeerInfoRequestMessage {}
 
-message GetConnectedPeerInfoResponseMessage{
+message GetConnectedPeerInfoResponseMessage {
   repeated GetConnectedPeerInfoMessage infos = 1;
   RPCError error = 1000;
 }
 
-message GetConnectedPeerInfoMessage{
+message GetConnectedPeerInfoMessage {
   string id = 1;
   string address = 2;
 
@@ -290,24 +292,24 @@ message GetConnectedPeerInfoMessage{
 
 // AddPeerRequestMessage adds a peer to kaspad's outgoing connection list.
 // This will, in most cases, result in kaspad connecting to said peer.
-message AddPeerRequestMessage{
+message AddPeerRequestMessage {
   string address = 1;
 
   // Whether to keep attempting to connect to this peer after disconnection
   bool isPermanent = 2;
 }
 
-message AddPeerResponseMessage{
+message AddPeerResponseMessage {
   RPCError error = 1000;
 }
 
 // SubmitTransactionRequestMessage submits a transaction to the mempool
-message SubmitTransactionRequestMessage{
+message SubmitTransactionRequestMessage {
   RpcTransaction transaction = 1;
   bool allowOrphan = 2;
 }
 
-message SubmitTransactionResponseMessage{
+message SubmitTransactionResponseMessage {
   // The transaction ID of the submitted transaction
   string transactionId = 1;
 
@@ -315,11 +317,11 @@ message SubmitTransactionResponseMessage{
 }
 
 // SubmitTransactionReplacementRequestMessage submits a transaction to the mempool, applying a mandatory Replace by Fee policy
-message SubmitTransactionReplacementRequestMessage{
+message SubmitTransactionReplacementRequestMessage {
   RpcTransaction transaction = 1;
 }
 
-message SubmitTransactionReplacementResponseMessage{
+message SubmitTransactionReplacementResponseMessage {
   // The transaction ID of the submitted transaction
   string transactionId = 1;
 
@@ -332,12 +334,12 @@ message SubmitTransactionReplacementResponseMessage{
 // NotifyVirtualChainChangedRequestMessage registers this connection for virtualChainChanged notifications.
 //
 // See: VirtualChainChangedNotificationMessage
-message NotifyVirtualChainChangedRequestMessage{
+message NotifyVirtualChainChangedRequestMessage {
   bool includeAcceptedTransactionIds = 1;
   RpcNotifyCommand command = 101;
 }
 
-message NotifyVirtualChainChangedResponseMessage{
+message NotifyVirtualChainChangedResponseMessage {
   RPCError error = 1000;
 }
 
@@ -345,7 +347,7 @@ message NotifyVirtualChainChangedResponseMessage{
 // chain had changed.
 //
 // See: NotifyVirtualChainChangedRequestMessage
-message VirtualChainChangedNotificationMessage{
+message VirtualChainChangedNotificationMessage {
   // The chain blocks that were removed, in high-to-low order
   repeated string removedChainBlockHashes = 1;
 
@@ -357,7 +359,7 @@ message VirtualChainChangedNotificationMessage{
 }
 
 // GetBlockRequestMessage requests information about a specific block
-message GetBlockRequestMessage{
+message GetBlockRequestMessage {
   // The hash of the requested block
   string hash = 1;
 
@@ -365,7 +367,7 @@ message GetBlockRequestMessage{
   bool includeTransactions = 3;
 }
 
-message GetBlockResponseMessage{
+message GetBlockResponseMessage {
   RpcBlock block = 3;
   RPCError error = 1000;
 }
@@ -373,11 +375,11 @@ message GetBlockResponseMessage{
 // GetSubnetworkRequestMessage requests information about a specific subnetwork
 //
 // Currently unimplemented
-message GetSubnetworkRequestMessage{
+message GetSubnetworkRequestMessage {
   string subnetworkId = 1;
 }
 
-message GetSubnetworkResponseMessage{
+message GetSubnetworkResponseMessage {
   uint64 gasLimit = 1;
   RPCError error = 1000;
 }
@@ -389,18 +391,18 @@ message GetSubnetworkResponseMessage{
 ///         a. the network's `mergeset size limit * 10` amount of added chain blocks, if `includeAcceptedTransactionIds = false`
 ///         b. or `mergeset size limit * 10` amount of merged blocks, if `includeAcceptedTransactionIds = true`
 ///         c. it does not batch the removed chain blocks, only the added ones.
-message GetVirtualChainFromBlockRequestMessage{
+message GetVirtualChainFromBlockRequestMessage {
   string startHash = 1;
   bool includeAcceptedTransactionIds = 2;
   optional uint64 minConfirmationCount = 3;
 }
 
-message RpcAcceptedTransactionIds{
+message RpcAcceptedTransactionIds {
   string acceptingBlockHash = 1;
   repeated string acceptedTransactionIds = 2;
 }
 
-message GetVirtualChainFromBlockResponseMessage{
+message GetVirtualChainFromBlockResponseMessage {
   // The chain blocks that were removed, in high-to-low order
   repeated string removedChainBlockHashes = 1;
 
@@ -416,13 +418,13 @@ message GetVirtualChainFromBlockResponseMessage{
 
 // GetBlocksRequestMessage requests blocks between a certain block lowHash up to this
 // kaspad's current virtual.
-message GetBlocksRequestMessage{
+message GetBlocksRequestMessage {
   string lowHash = 1;
   bool includeBlocks = 2;
   bool includeTransactions = 3;
 }
 
-message GetBlocksResponseMessage{
+message GetBlocksResponseMessage {
   repeated string blockHashes = 4;
   repeated RpcBlock blocks = 3;
   RPCError error = 1000;
@@ -430,10 +432,9 @@ message GetBlocksResponseMessage{
 
 // GetBlockCountRequestMessage requests the current number of blocks in this kaspad.
 // Note that this number may decrease as pruning occurs.
-message GetBlockCountRequestMessage{
-}
+message GetBlockCountRequestMessage {}
 
-message GetBlockCountResponseMessage{
+message GetBlockCountResponseMessage {
   uint64 blockCount = 1;
   uint64 headerCount = 2;
   RPCError error = 1000;
@@ -441,10 +442,9 @@ message GetBlockCountResponseMessage{
 
 // GetBlockDagInfoRequestMessage requests general information about the current state
 // of this kaspad's DAG.
-message GetBlockDagInfoRequestMessage{
-}
+message GetBlockDagInfoRequestMessage {}
 
-message GetBlockDagInfoResponseMessage{
+message GetBlockDagInfoResponseMessage {
   string networkName = 1;
   uint64 blockCount = 2;
   uint64 headerCount = 3;
@@ -458,47 +458,46 @@ message GetBlockDagInfoResponseMessage{
   RPCError error = 1000;
 }
 
-message ResolveFinalityConflictRequestMessage{
+message ResolveFinalityConflictRequestMessage {
   string finalityBlockHash = 1;
 }
 
-message ResolveFinalityConflictResponseMessage{
+message ResolveFinalityConflictResponseMessage {
   RPCError error = 1000;
 }
 
-message NotifyFinalityConflictRequestMessage{
+message NotifyFinalityConflictRequestMessage {
   RpcNotifyCommand command = 101;
 }
 
-message NotifyFinalityConflictResponseMessage{
+message NotifyFinalityConflictResponseMessage {
   RPCError error = 1000;
 }
 
-message FinalityConflictNotificationMessage{
+message FinalityConflictNotificationMessage {
   string violatingBlockHash = 1;
 }
 
-message FinalityConflictResolvedNotificationMessage{
+message FinalityConflictResolvedNotificationMessage {
   string finalityBlockHash = 1;
 }
 
 // ShutdownRequestMessage shuts down this kaspad.
-message ShutdownRequestMessage{
-}
+message ShutdownRequestMessage {}
 
-message ShutdownResponseMessage{
+message ShutdownResponseMessage {
   RPCError error = 1000;
 }
 
 // GetHeadersRequestMessage requests headers between the given startHash and the
 // current virtual, up to the given limit.
-message GetHeadersRequestMessage{
+message GetHeadersRequestMessage {
   string startHash = 1;
   uint64 limit = 2;
   bool isAscending = 3;
 }
 
-message GetHeadersResponseMessage{
+message GetHeadersResponseMessage {
   repeated string headers = 1;
   RPCError error = 1000;
 }
@@ -581,7 +580,7 @@ message GetBalancesByAddressesRequestMessage {
   repeated string addresses = 1;
 }
 
-message RpcBalancesByAddressesEntry{
+message RpcBalancesByAddressesEntry {
   string address = 1;
   uint64 balance = 2;
 
@@ -596,8 +595,7 @@ message GetBalancesByAddressesResponseMessage {
 
 // GetSinkBlueScoreRequestMessage requests the blue score of the current selected parent
 // of the virtual block.
-message GetSinkBlueScoreRequestMessage {
-}
+message GetSinkBlueScoreRequestMessage {}
 
 message GetSinkBlueScoreResponseMessage {
   uint64 blueScore = 1;
@@ -655,7 +653,6 @@ message NotifyPruningPointUtxoSetOverrideRequestMessage {
   RpcNotifyCommand command = 101;
 }
 
-
 message NotifyPruningPointUtxoSetOverrideResponseMessage {
   RPCError error = 1000;
 }
@@ -664,8 +661,7 @@ message NotifyPruningPointUtxoSetOverrideResponseMessage {
 // resets due to pruning point change via IBD.
 //
 // See NotifyPruningPointUtxoSetOverrideRequestMessage
-message PruningPointUtxoSetOverrideNotificationMessage {
-}
+message PruningPointUtxoSetOverrideNotificationMessage {}
 
 // StopNotifyingPruningPointUtxoSetOverrideRequestMessage unregisters this connection for
 // pruning point UTXO set override notifications.
@@ -676,36 +672,34 @@ message PruningPointUtxoSetOverrideNotificationMessage {
 //
 // This message only exists for backward compatibility reason with kaspad and is deprecated.
 // Use instead NotifyPruningPointUtxoSetOverrideRequestMessage with command = NOTIFY_STOP.
-message StopNotifyingPruningPointUtxoSetOverrideRequestMessage {
-}
+message StopNotifyingPruningPointUtxoSetOverrideRequestMessage {}
 
 message StopNotifyingPruningPointUtxoSetOverrideResponseMessage {
   RPCError error = 1000;
 }
 
 // BanRequestMessage bans the given ip.
-message BanRequestMessage{
+message BanRequestMessage {
   string ip = 1;
 }
 
-message BanResponseMessage{
+message BanResponseMessage {
   RPCError error = 1000;
 }
 
 // UnbanRequestMessage unbans the given ip.
-message UnbanRequestMessage{
+message UnbanRequestMessage {
   string ip = 1;
 }
 
-message UnbanResponseMessage{
+message UnbanResponseMessage {
   RPCError error = 1000;
 }
 
 // GetInfoRequestMessage returns info about the node.
-message GetInfoRequestMessage{
-}
+message GetInfoRequestMessage {}
 
-message GetInfoResponseMessage{
+message GetInfoResponseMessage {
   string p2pId = 1;
   uint64 mempoolSize = 2;
   string serverVersion = 3;
@@ -716,12 +710,12 @@ message GetInfoResponseMessage{
   RPCError error = 1000;
 }
 
-message EstimateNetworkHashesPerSecondRequestMessage{
+message EstimateNetworkHashesPerSecondRequestMessage {
   uint32 windowSize = 1;
   string startHash = 2;
 }
 
-message EstimateNetworkHashesPerSecondResponseMessage{
+message EstimateNetworkHashesPerSecondResponseMessage {
   uint64 networkHashesPerSecond = 1;
   RPCError error = 1000;
 }
@@ -742,45 +736,42 @@ message NotifyNewBlockTemplateResponseMessage {
 // available for miners.
 //
 // See NotifyNewBlockTemplateRequestMessage
-message NewBlockTemplateNotificationMessage {
-}
+message NewBlockTemplateNotificationMessage {}
 
-message RpcMempoolEntryByAddress{
+message RpcMempoolEntryByAddress {
   string address = 1;
   repeated RpcMempoolEntry sending = 2;
   repeated RpcMempoolEntry receiving = 3;
 }
 
-message GetMempoolEntriesByAddressesRequestMessage{
+message GetMempoolEntriesByAddressesRequestMessage {
   repeated string addresses = 1;
   bool includeOrphanPool = 2;
   bool filterTransactionPool = 3;
 }
 
-message  GetMempoolEntriesByAddressesResponseMessage{
+message GetMempoolEntriesByAddressesResponseMessage {
   repeated RpcMempoolEntryByAddress entries = 1;
 
   RPCError error = 1000;
 }
 
-message GetCoinSupplyRequestMessage{
-}
+message GetCoinSupplyRequestMessage {}
 
-message GetCoinSupplyResponseMessage{
+message GetCoinSupplyResponseMessage {
   uint64 maxSompi = 1; // note: this is a hard coded maxSupply, actual maxSupply is expected to deviate by upto -5%, but cannot be measured exactly.
   uint64 circulatingSompi = 2;
 
   RPCError error = 1000;
 }
 
-message PingRequestMessage{
-}
+message PingRequestMessage {}
 
-message PingResponseMessage{
+message PingResponseMessage {
   RPCError error = 1000;
 }
 
-message ProcessMetrics{
+message ProcessMetrics {
   uint64 residentSetSize = 1;
   uint64 virtualMemorySize = 2;
   uint32 coreNum = 3;
@@ -815,7 +806,7 @@ message BandwidthMetrics {
   uint64 grpcUserBytesRx = 68;
 }
 
-message ConsensusMetrics{
+message ConsensusMetrics {
   uint64 blocksSubmitted = 1;
   uint64 headerCounts = 2;
   uint64 depCounts = 3;
@@ -834,11 +825,11 @@ message ConsensusMetrics{
   uint64 virtualDaaScore = 18;
 }
 
-message StorageMetrics{
+message StorageMetrics {
   uint64 storageSizeBytes = 1;
 }
 
-message GetConnectionsRequestMessage{
+message GetConnectionsRequestMessage {
   bool includeProfileData = 1;
 }
 
@@ -847,17 +838,16 @@ message ConnectionsProfileData {
   uint64 memoryUsage = 2;
 }
 
-message GetConnectionsResponseMessage{
+message GetConnectionsResponseMessage {
   uint32 clients = 1;
   uint32 peers = 2;
   ConnectionsProfileData profileData = 3;
   RPCError error = 1000;
 }
 
-message GetSystemInfoRequestMessage{
-}
+message GetSystemInfoRequestMessage {}
 
-message GetSystemInfoResponseMessage{
+message GetSystemInfoResponseMessage {
   string version = 1;
   string systemId = 2;
   string gitHash = 3;
@@ -868,7 +858,7 @@ message GetSystemInfoResponseMessage{
   RPCError error = 1000;
 }
 
-message GetMetricsRequestMessage{
+message GetMetricsRequestMessage {
   bool processMetrics = 1;
   bool connectionMetrics = 2;
   bool bandwidthMetrics = 3;
@@ -877,7 +867,7 @@ message GetMetricsRequestMessage{
   bool customMetrics = 6;
 }
 
-message GetMetricsResponseMessage{
+message GetMetricsResponseMessage {
   uint64 serverTime = 1;
   ProcessMetrics processMetrics = 11;
   ConnectionMetrics connectionMetrics = 12;
@@ -887,10 +877,9 @@ message GetMetricsResponseMessage{
   RPCError error = 1000;
 }
 
-message GetServerInfoRequestMessage{
-}
+message GetServerInfoRequestMessage {}
 
-message GetServerInfoResponseMessage{
+message GetServerInfoResponseMessage {
   uint32 rpcApiVersion = 1;
   uint32 rpcApiRevision = 2;
   string serverVersion = 3;
@@ -901,10 +890,9 @@ message GetServerInfoResponseMessage{
   RPCError error = 1000;
 }
 
-message GetSyncStatusRequestMessage{
-}
+message GetSyncStatusRequestMessage {}
 
-message GetSyncStatusResponseMessage{
+message GetSyncStatusResponseMessage {
   bool isSynced = 1;
   RPCError error = 1000;
 }
@@ -955,8 +943,7 @@ message RpcFeeEstimateVerboseExperimentalData {
   double nextBlockTemplateFeerateMax = 13;
 }
 
-message GetFeeEstimateRequestMessage {
-}
+message GetFeeEstimateRequestMessage {}
 
 message GetFeeEstimateResponseMessage {
   RpcFeeEstimate estimate = 1;
@@ -996,7 +983,7 @@ enum RpcDataVerbosityLevel {
 message RpcOptionalHeader {
   optional string hash = 2;
   optional uint32 version = 3;
-  repeated RpcBlockLevelParents parentsByLevel = 4;
+  repeated RpcBlockLevelRun parentsByLevel = 4;
   optional string hashMerkleRoot = 5;
   optional string acceptedIdMerkleRoot = 6;
   optional string utxoCommitment = 7;

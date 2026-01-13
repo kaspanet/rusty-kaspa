@@ -3,5 +3,6 @@
     "treatWarningsAsErrors": false,
     "cleanOutputDir": true,
     "disableSources": true,
-    "categoryOrder": ["*", "Other"]
+    "categoryOrder": ["*", "Other"],
+    "tsconfig": "./tsconfig.json"
 }

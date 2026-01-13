@@ -1,0 +1,70 @@
+# ============================================
+# RustBridge .gitignore
+# Only tracks: src/, Cargo.toml, config.yaml
+# ============================================
+
+# Rust build artifacts
+target/
+Cargo.lock
+
+# Log files (runtime artifacts)
+*.log
+rustbridge_*.log
+
+# Backup files
+*.backup
+config.yaml.backup
+
+# Project-specific documentation (not part of crate)
+COMMIT_MESSAGE.md
+MULTI_INSTANCE_GUIDE.md
+INTEGRATION_GUIDE.md
+PACKAGE_CHECKLIST.md
+INTEGRATION_PLAN.md
+SETUP_RUSTY_KASPA.md
+README.md
+
+!docs/
+!docs/README.md
+
+# Configuration files (will use rusty-kaspa's instead)
+rustfmt.toml
+clippy.toml
+
+# Verification scripts (not part of crate)
+verify.ps1
+verify.sh
+
+# Configuration examples (optional - uncomment if you want to exclude)
+# config.example.multi-instance.yaml
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.orig
+
+# ============================================
+# Files that WILL be tracked:
+# - src/ (all source code)
+# - Cargo.toml (package definition)
+# - config.yaml (example configuration)
+# ============================================
+
