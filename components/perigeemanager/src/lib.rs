@@ -101,19 +101,19 @@ impl PerigeeConfig {
         perigee_outbound_target: usize,
         leverage_target: usize,
         exploration_target: usize,
-        round_length: usize,
+        round_duration: usize,
         connection_manager_tick_duration: Duration,
         statistics: bool,
         persistence: bool,
-        bps: usize,
+        bps: u64,
     ) -> Self {
-        let round_duration = Duration::from_secs(round_length as u64);
-        let expected_blocks_per_round = (bps as f64 * round_duration.as_secs_f64()) as u64;
+        let expected_blocks_per_round = bps * round_duration as u64 ;
+        let round_duration = Duration::from_secs(round_duration as u64);
         Self {
             perigee_outbound_target,
             leverage_target,
             exploration_target,
-            round_frequency: round_length / connection_manager_tick_duration.as_secs() as usize,
+            round_frequency: round_duration.as_secs() as usize / connection_manager_tick_duration.as_secs() as usize,
             round_duration,
             expected_blocks_per_round,
             statistics,
@@ -219,7 +219,7 @@ impl PerigeeManager {
 
     pub fn evaluate_round(&mut self) -> (Vec<PeerKey>, HashSet<PeerKey>, bool) {
         self.round_counter += 1;
-        trace!("[{}]: evaluating round: {}", IDENT, self.round_counter);
+        debug!("[{}]: evaluating round: {}", IDENT, self.round_counter);
 
         let (mut peer_table, perigee_routers) = self.build_table();
 
@@ -232,6 +232,10 @@ impl PerigeeManager {
         let amount_of_contributing_perigee_peers = peer_table.len();
         // In contrast, this is the total number of perigee peers registered in the hub.
         let amount_of_perigee_peers = perigee_routers.len();
+        debug!(
+            "[{}]: amount_of_perigee_peers: {}, amount_of_contributing_perigee_peers: {}",
+            IDENT, amount_of_perigee_peers, amount_of_contributing_perigee_peers
+        );
         // For should_leverage, we are conservative and require that we have enough contributing peers for sufficient data.
         let should_leverage = self.should_leverage(is_ibd_running, amount_of_contributing_perigee_peers);
         // For should_explore, we are more aggressive and only require that we have enough total perigee peers.
@@ -243,7 +247,7 @@ impl PerigeeManager {
         if !should_leverage && !should_explore {
             // In this case we skip leveraging and exploration this round.
             // We maintain the last round leveraged peers as-is.
-            trace!("[{}]: skipping leveraging and exploration this round", IDENT);
+            debug!("[{}]: skipping leveraging and exploration this round", IDENT);
             return (self.last_round_leveraged_peers.clone(), HashSet::new(), has_leveraged_changed);
         }
 
@@ -255,18 +259,20 @@ impl PerigeeManager {
                 IDENT,
                 selected_peers.iter().map(|pk| pk.to_string()).collect_vec()
             );
+            // We consider rank changes as well as peer changes here,
             if self.last_round_leveraged_peers != selected_peers {
-                // Leveraged set has changed
-                trace!("[{}]: Leveraged peers have changed this round", IDENT);
+                // Leveraged peers has changed
+                debug!("[{}]: Leveraged peers have changed this round", IDENT);
                 has_leveraged_changed = true;
-                // Update last round's leveraged peers to the newly selected set
+                // Update last round's leveraged peers to the newly selected peers
                 self.last_round_leveraged_peers = selected_peers.clone();
             }
-            // Return the newly selected set
+            // Return the newly selected peers
             selected_peers
         } else {
+            debug!("[{}]: skipping leveraging this round", IDENT);
             // Remove all previously leveraged peers from the peer table to avoid eviction
-            for pk in &self.last_round_leveraged_peers {
+            for pk in self.last_round_leveraged_peers.iter() {
                 peer_table.remove(pk);
             }
             // Return the previous set
@@ -274,7 +280,13 @@ impl PerigeeManager {
         };
 
         // i.e. the peers that we mark as "to evict" this round.
-        let deselected_peers = if should_explore { self.explore(&mut peer_table, amount_of_perigee_peers) } else { HashSet::new() };
+        let deselected_peers = if should_explore {
+            debug!("[{}]: exploring peers this round", IDENT);
+            self.explore(&mut peer_table, amount_of_perigee_peers)
+        } else {
+            debug!("[{}]: skipping exploration this round", IDENT);
+            HashSet::new()
+        };
 
         (selected_peers, deselected_peers, has_leveraged_changed)
     }

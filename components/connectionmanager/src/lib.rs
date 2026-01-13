@@ -147,7 +147,7 @@ impl ConnectionManager {
         );
     }
 
-    async fn evaluate_perigee_round(self: &Arc<Self>, peer_by_address: Arc<HashMap<SocketAddr, Peer>>) -> HashSet<PeerKey> {
+    async fn evaluate_perigee_round(self: &Arc<Self>) -> HashSet<PeerKey> {
         debug!("Evaluating perigee round...");
         let (to_leverage, to_evict, has_leveraged_changed) = {
             let mut perigee_manager_guard = self.perigee_manager.as_ref().unwrap().lock();
@@ -162,19 +162,8 @@ impl ConnectionManager {
         if has_leveraged_changed && self.perigee_config.as_ref().unwrap().persistence {
             let am = &mut self.address_manager.lock();
 
-            // Build reverse lookup for performance while preserving to_leverage order
-            let peer_key_to_addr: HashMap<PeerKey, SocketAddr> =
-                peer_by_address.iter().filter(|(_, peer)| peer.is_perigee()).map(|(addr, peer)| (peer.key(), *addr)).collect();
-
             // Update persisted perigee addresses
-            am.set_new_perigee_addresses(
-                to_leverage
-                    .iter()
-                    .filter_map(|peer_key| {
-                        peer_key_to_addr.get(peer_key).map(|sock_addr| NetAddress::new(sock_addr.ip().into(), sock_addr.port()))
-                    })
-                    .collect(),
-            );
+            am.set_new_perigee_addresses(to_leverage.iter().map(|pk| pk.sock_addr().into()).collect());
         }
 
         // Log the results of the perigee round
@@ -240,7 +229,7 @@ impl ConnectionManager {
                     // This is a round where perigee should be evaluated and processed.
 
                     // We await this (not spawn), so that `spawn_handle_outbound_connections` is called after the perigee round evaluation is executed,
-                    let peers_evicted = self.evaluate_perigee_round(peer_by_address.clone()).await;
+                    let peers_evicted = self.evaluate_perigee_round().await;
 
                     // Reset the perigee round state.
                     self.reset_perigee_round().await;

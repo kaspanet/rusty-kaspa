@@ -288,10 +288,21 @@ fn create_perigee_config(
         outbound_target
     );
 
+    // We only perform within at [`EVENT_LOOP_TIMER`] granularity,
+    let round_granularity = EVENT_LOOP_TIMER.as_secs() as usize;
+    let min_duration = round_granularity;
+    let max_duration = 300;
+
+    assert!(min_duration - round_granularity == 0, "Min perigee round duration be at least the event loop timer granularity");
+    assert!(
+        max_duration % round_granularity == 0,
+        "Max perigee round duration must be a multiple of the event loop timer granularity"
+    );
+
     // clamp to valid ranges (>300 seconds is not allowed, as to limit excessive data accumulation), (<30 seconds is under the bounds set by the [`EVENT_LOOP_TIMER`] interval)
-    let round_duration = round_duration.clamp(30, 300);
-    // We only perform within at [`EVENT_LOOP_TIMER`] granularity, so we round the duration to a multiple of it
-    let round_duration = (round_duration + EVENT_LOOP_TIMER.as_secs() as usize) & !(EVENT_LOOP_TIMER.as_secs() as usize);
+    let round_duration = round_duration.clamp(min_duration, max_duration);
+    // We only perform within at [`EVENT_LOOP_TIMER`] granularity, so we round the duration to the nearest multiple of it
+    let round_duration = (round_duration as f64 / round_granularity as f64) as usize * round_granularity;
 
     let leverage_target = if leverage_target == 0 {
         // Apply default to 50% of total target
@@ -308,24 +319,24 @@ fn create_perigee_config(
 
     // assert valid targets
     assert!(
-        leverage_target + exploration_target <= (perigee_target - exploration_target),
+        (leverage_target + exploration_target) <= perigee_target,
         "{}",
         format!(
-            "Leverage target {0} + Exploration target {1} cannot exceed Total perigee target of {2}",
+            "Leverage target of {0} Plus the Exploration target of {1} cannot exceed the Total perigee target of {2}",
             leverage_target, exploration_target, perigee_target
         )
     );
 
-    PerigeeConfig {
-        perigee_outbound_target: perigee_target,
+    PerigeeConfig::new(
+        perigee_target,
         leverage_target,
         exploration_target,
-        round_frequency: round_duration / EVENT_LOOP_TIMER.as_secs() as usize, // we rounded to a multiple of EVENT_LOOP_TIMER above
-        round_duration: Duration::from_secs(round_duration as u64),
-        expected_blocks_per_round: network_bps,
+        round_duration,
+        EVENT_LOOP_TIMER,
         statistics,
         persistence,
-    }
+        network_bps,
+    )
 }
 
 /// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
