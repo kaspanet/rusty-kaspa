@@ -79,6 +79,30 @@ impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for F
     }
 }
 
+/// Utility for creating retry-indexed temporary GHOSTDAG stores.
+///
+/// Each call to `new_store` returns a fresh temporary `DbGhostdagStore` for the
+/// given level, using an incrementing retry index to avoid namespace collisions.
+/// This is used when multiple ghostdag attempts may be required for the same level.
+struct GhostdagStoreFactory {
+    db: Arc<DB>,
+    cache_policy: CachePolicy,
+    level: BlockLevel,
+    retries: u8,
+}
+
+impl GhostdagStoreFactory {
+    fn new(db: Arc<DB>, cache_policy: CachePolicy, level: BlockLevel) -> Self {
+        Self { db, cache_policy, level, retries: 0 }
+    }
+
+    /// Creates a fresh temporary ghostdag store for the next retry attempt
+    fn new_store(&mut self) -> Arc<DbGhostdagStore> {
+        self.retries += 1;
+        Arc::new(DbGhostdagStore::new_temp(self.db.clone(), self.level, self.cache_policy, self.cache_policy, self.retries - 1))
+    }
+}
+
 impl PruningProofManager {
     /// Builds a pruning-point proof for `pp` by computing per-level MLS proof contexts and
     /// collecting the headers in `future(root) ∩ past(tip)` for each level.
@@ -176,7 +200,7 @@ impl PruningProofManager {
     ///    for the region `future(root) ∩ past(selected_tip)` and test whether it satisfies the
     ///    proof-level requirements.
     /// 4. If a candidate fails due to insufficient realized blue depth (due to reds),
-    ///    tighten the future-size threshold and continue searching further into the past.
+    ///    increase the future-size threshold and continue searching further into the past.
     ///
     /// If `required_block` is provided, the chosen root must lie in its past.
     /// Typically, this block is the one at depth `M` from the *next* level, as mandated by the
@@ -226,13 +250,13 @@ impl PruningProofManager {
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
 
         // A single shared relations store is maintained for the entire search.
-        let mut level_relation_store = DbRelationsStore::new_temp(temp_db.clone(), level, 0, cache_policy, cache_policy);
+        let mut level_relations_store = DbRelationsStore::new_temp(temp_db.clone(), level, 0, cache_policy, cache_policy);
 
         // For each visited block, store the size of its (known) future up to `selected_tip`.
         let mut future_sizes_map = BlockHashMap::<u64>::new();
 
-        // Each ghostdag attempt uses a fresh temp store namespace (indexed by `gd_tries`).
-        let mut gd_tries = 0;
+        // Each ghostdag attempt uses a fresh temp store namespace (indexed internally by `retries`).
+        let mut ghostdag_factory = GhostdagStoreFactory::new(temp_db.clone(), cache_policy, level);
 
         while let Some(SortableBlock { hash: current, .. }) = queue.pop() {
             if !visited.insert(current) {
@@ -249,10 +273,10 @@ impl PruningProofManager {
             let is_terminal_candidate = parents.is_empty() && queue.is_empty();
 
             // Persist relations for `current`
-            level_relation_store.insert(current, parents.clone()).unwrap();
+            level_relations_store.insert(current, parents.clone()).unwrap();
 
             trace!("Level: {} | Counting future size of {}", level, current);
-            let future_size = self.count_future_size(&level_relation_store, current, &future_sizes_map);
+            let future_size = self.count_future_size(&level_relations_store, current, &future_sizes_map);
             future_sizes_map.insert(current, future_size);
             trace!("Level: {} | Hash: {} | Future Size: {}", level, current, future_size);
 
@@ -273,9 +297,9 @@ impl PruningProofManager {
                 let root = current;
 
                 // Populate ghostdag for `future(root) ∩ past(selected_tip)` and test depth requirements.
-                let ghostdag_store = Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, gd_tries));
+                let ghostdag_store = ghostdag_factory.new_store();
                 let has_required_block = self.populate_level_proof_ghostdag_data(
-                    &level_relation_store,
+                    &level_relations_store,
                     &ghostdag_store,
                     root,
                     selected_tip,
@@ -290,20 +314,22 @@ impl PruningProofManager {
 
                 // Log all non-trivial cases
                 if selected_tip != self.genesis_hash {
-                    debug!("level: {}, future: {}, blue score: {}, retries: {}", level, future_size, current_level_score, gd_tries);
+                    debug!(
+                        "level: {}, future: {}, blue score: {}, retries: {}",
+                        level, future_size, current_level_score, ghostdag_factory.retries
+                    );
                 }
 
                 // Success:
                 // - Genesis is always acceptable
                 // - Otherwise require at least `2M` blue depth at this level
                 if root == self.genesis_hash || current_level_score >= 2 * self.pruning_proof_m {
-                    return Ok((ghostdag_store, level_relation_store.into(), selected_tip, root));
+                    return Ok((ghostdag_store, level_relations_store.into(), selected_tip, root));
                 }
 
                 // Large enough future with insufficient blue depth implies reds;
-                // tighten the future-size threshold and retry further in the past.
+                // increase the future-size threshold and retry further in the past.
                 required_future_size = (required_future_size as f64 * 1.1) as u64;
-                gd_tries += 1;
             }
 
             // Continue expanding the backward traversal.
