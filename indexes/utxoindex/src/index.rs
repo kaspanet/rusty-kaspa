@@ -187,7 +187,7 @@ impl UtxoIndexApi for UtxoIndex {
 
         let elapsed = start_ts.elapsed();
         info!(
-            "[{0}] Resynced {1} utxos with a circulating_supply of {2} dworks in {3:.2}s ({4:.0} utxos/sec)",
+            "[{0}] Resynced {1} utxos with a circulating supply of {2} dworks in {3:.2}s ({4:.0} utxos/sec)",
             self::IDENT,
             utxos_processed,
             circulating_supply,
