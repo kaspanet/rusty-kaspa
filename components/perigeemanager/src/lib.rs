@@ -1,6 +1,7 @@
 use std::{
     cmp::{min, Ordering},
     collections::{hash_map::Entry, HashMap, HashSet},
+    fmt::Display,
     net::SocketAddr,
     sync::{atomic::AtomicBool, Arc},
     time::{Duration, Instant},
@@ -22,6 +23,7 @@ use rand::{seq::IteratorRandom, thread_rng, Rng};
 // Note that exploration can still happen even if this threshold is not met.
 // This ensures that we continue to explore in case network conditions are the fault of the peers, not oneself.
 const BLOCKS_VERIFIED_FAULT_TOLERANCE: f64 = 0.175;
+const IDENT: &str = "PerigeeManager";
 
 pub struct PeerScore {
     p90: u64,
@@ -89,7 +91,7 @@ pub struct PerigeeConfig {
     pub exploration_target: usize,
     pub round_frequency: usize,
     pub round_duration: Duration,
-    pub expected_blocks_per_round: usize,
+    pub expected_blocks_per_round: u64,
     pub statistics: bool,
     pub persistence: bool,
 }
@@ -106,7 +108,7 @@ impl PerigeeConfig {
         bps: usize,
     ) -> Self {
         let round_duration = Duration::from_secs(round_length as u64);
-        let expected_blocks_per_round = (bps as f64 * round_duration.as_secs_f64()) as usize;
+        let expected_blocks_per_round = (bps as f64 * round_duration.as_secs_f64()) as u64;
         Self {
             perigee_outbound_target,
             leverage_target,
@@ -118,10 +120,21 @@ impl PerigeeConfig {
             persistence,
         }
     }
+}
 
-    pub fn should_initiate_perigee(&self) -> bool {
-        (self.perigee_outbound_target > 0 && self.exploration_target > 0 && self.leverage_target < self.perigee_outbound_target)
-            && self.round_frequency > 0
+impl Display for PerigeeConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "perigee_outbound_target: {}, leverage_target: {}, exploration_target: {}, round_duration: {:2} secs, expected_blocks_per_round: {}, statistics: {}, persistence: {}",
+            self.perigee_outbound_target,
+            self.leverage_target,
+            self.exploration_target,
+            self.round_duration.as_secs(),
+            self.expected_blocks_per_round,
+            self.statistics,
+            self.persistence
+        )
     }
 }
 
@@ -205,8 +218,8 @@ impl PerigeeManager {
     }
 
     pub fn evaluate_round(&mut self) -> (Vec<PeerKey>, HashSet<PeerKey>, bool) {
-        trace!("PerigeeManager: evaluating round");
         self.round_counter += 1;
+        trace!("[{}]: evaluating round: {}", IDENT, self.round_counter);
 
         let (mut peer_table, perigee_routers) = self.build_table();
 
@@ -230,7 +243,7 @@ impl PerigeeManager {
         if !should_leverage && !should_explore {
             // In this case we skip leveraging and exploration this round.
             // We maintain the last round leveraged peers as-is.
-            trace!("PerigeeManager: skipping leveraging and exploration this round");
+            trace!("[{}]: skipping leveraging and exploration this round", IDENT);
             return (self.last_round_leveraged_peers.clone(), HashSet::new(), has_leveraged_changed);
         }
 
@@ -238,12 +251,13 @@ impl PerigeeManager {
         let selected_peers = if should_leverage {
             let selected_peers = self.leverage(&mut peer_table);
             debug!(
-                "PerigeeManager: Selected peers for leveraging this round: {:?}",
+                "[{}]: Selected peers for leveraging this round: {:?}",
+                IDENT,
                 selected_peers.iter().map(|pk| pk.to_string()).collect_vec()
             );
             if self.last_round_leveraged_peers != selected_peers {
                 // Leveraged set has changed
-                trace!("PerigeeManager: Leveraged peers have changed this round");
+                trace!("[{}]: Leveraged peers have changed this round", IDENT);
                 has_leveraged_changed = true;
                 // Update last round's leveraged peers to the newly selected set
                 self.last_round_leveraged_peers = selected_peers.clone();
@@ -286,8 +300,8 @@ impl PerigeeManager {
         // to build additional independent complementary sets of peers, thereby reducing reliance on a single such set of peers.
         'outer: while num_peers_selected < self.config.leverage_target {
             debug!(
-                "PerigeeManager: Starting new outer loop iteration for leveraging peers, currently selected {} peers",
-                num_peers_selected
+                "[{}]: Starting new outer loop iteration for leveraging peers, currently selected {} peers",
+                IDENT, num_peers_selected
             );
 
             selected_peers.push(Vec::new());
@@ -306,7 +320,8 @@ impl PerigeeManager {
             // it does this until we reach the leverage target, the available peers are exhausted, or until a local optimum is reached.
             'inner: while num_peers_selected < self.config.leverage_target {
                 trace!(
-                    "PerigeeManager: New inner loop iteration for leveraging peers, currently selected {} peers",
+                    "[{}]: New inner loop iteration for leveraging peers, currently selected {} peers",
+                    IDENT,
                     selected_peers.get(i).map(|current_set| current_set.len()).unwrap_or(0)
                 );
 
@@ -363,7 +378,7 @@ impl PerigeeManager {
         if num_peers_selected < self.config.leverage_target {
             // choose randomly from remaining peers to fill the gap
             let to_choose = self.config.leverage_target - num_peers_selected;
-            debug!("PerigeeManager: Leveraging did not reach intended target, randomly selecting {} remaining peers", to_choose);
+            debug!("[{}]: Leveraging did not reach intended target, randomly selecting {} remaining peers", IDENT, to_choose);
             let random_keys: Vec<PeerKey> =
                 peer_table.keys().choose_multiple(&mut thread_rng(), to_choose).into_iter().copied().collect();
 
@@ -428,7 +443,7 @@ impl PerigeeManager {
 
     fn clear(&mut self) {
         // Resets state for a new round
-        debug!["PerigeeManager: Clearing state for new round"];
+        debug!("[{}]: Clearing state for new round", IDENT);
         self.verified_blocks.clear();
         self.first_seen.clear();
         if self.config.statistics {
@@ -511,7 +526,8 @@ impl PerigeeManager {
         }
 
         debug!(
-            "PerigeeManager: Top ranked peer from current peer table is {:?} with score p90: {}, p95: {}, p97.5: {}, p98.25: {}, p99.125: {}, p99.6875: {}, p.100: {}",
+            "[{}]: Top ranked peer from current peer table is {:?} with score p90: {}, p95: {}, p97.5: {}, p98.25: {}, p99.125: {}, p99.6875: {}, p.100: {}",
+            IDENT,
             best_peer,
             best_score.p90,
             best_score.p95,
@@ -528,7 +544,7 @@ impl PerigeeManager {
         // Transforms the candidate peer table to min(selected peers' delay scores, candidate delay scores)
         // for each delay score. This is one of the key components of the Perigee algorithm for joint subset selection.
 
-        debug!("PerigeeManager: Transforming peer table");
+        debug!("[{}]: Transforming peer table", IDENT);
 
         for j in 0..self.verified_blocks.len() {
             let selected_min_j = selected_peers.values().map(|vec| vec[j]).min().unwrap();
@@ -580,7 +596,7 @@ impl PerigeeManager {
 
     fn build_table(&self) -> (HashMap<PeerKey, Vec<u64>>, Vec<Arc<Router>>) {
         // Builds the peer delay table for all perigee routers.
-        debug!("PerigeeManager: Building peer table");
+        debug!("[{}]: Building peer table", IDENT);
 
         let mut peer_table: HashMap<PeerKey, Vec<u64>> = HashMap::new();
         let perigee_routers = self.hub.perigee_routers();
@@ -607,6 +623,7 @@ impl PerigeeManager {
     }
 
     pub fn log_statistics(&self) {
+        // Note: this function has been artificially compressed for code-sparsity, as it is not mission critical, but is rather verbose.
         let perigee_ts: Vec<_> = self.hub.perigee_routers().iter().map(|r| (r.key(), r.perigee_timestamps())).collect();
         let rg_ts: Vec<_> = self.hub.random_graph_routers().iter().map(|r| (r.key(), r.perigee_timestamps())).collect();
 
@@ -659,7 +676,7 @@ impl PerigeeManager {
         let imp = |p: f64, r: f64| if r == 0.0 { 0.0 } else { (r - p) / r * 100.0 };
 
         info!(
-            "\n\
+            "[{}]\n\
      ════════════════════════════════════════════════════════════════════════════ \n\
                            PERIGEE STATISTICS - Round {:4}                     \n\
      ════════════════════════════════════════════════════════════════════════════ \n\
@@ -683,6 +700,7 @@ impl PerigeeManager {
       P95                          │ {:9} │ {:12} │                 \n\
       P99                          │ {:9} │ {:12} │                 \n\
      ════════════════════════════════════════════════════════════════════════════ ",
+            IDENT,
             self.round_counter,
             self.config.perigee_outbound_target,
             self.config.leverage_target,
