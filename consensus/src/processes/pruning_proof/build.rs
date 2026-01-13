@@ -6,10 +6,8 @@ use std::{
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    blockhash::{BlockHashExtensions, BlockHashes},
-    header::Header,
-    pruning::PruningPointProof,
-    BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
+    blockhash::BlockHashes, header::Header, pruning::PruningPointProof, BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher,
+    KType,
 };
 use kaspa_core::{debug, trace};
 use kaspa_database::prelude::*;
@@ -37,7 +35,7 @@ type LevelProofContext = (Arc<DbGhostdagStore>, Arc<DbRelationsStore>, Hash, Has
 struct MultiLevelProofContext {
     transient_ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
     transient_relations_stores: Vec<Arc<DbRelationsStore>>,
-    selected_tip_by_level: Vec<Hash>,
+    tips_by_level: Vec<Hash>,
     roots_by_level: Vec<Hash>,
 }
 
@@ -82,6 +80,10 @@ impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for F
 }
 
 impl PruningProofManager {
+    /// Builds a pruning-point proof for `pp` by computing per-level MLS proof contexts and
+    /// collecting the headers in `future(root) ∩ past(tip)` for each level.
+    /// Temporary stores are used during construction, and headers are shared (via arcs)
+    /// across levels in the final proof.
     pub(crate) fn build_pruning_point_proof(&self, pp: Hash) -> PruningPointProof {
         if pp == self.genesis_hash {
             return vec![];
@@ -89,8 +91,8 @@ impl PruningProofManager {
 
         let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
-        let MultiLevelProofContext { transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level } =
-            self.calc_all_level_proof_stores(&pp_header, temp_db);
+        let MultiLevelProofContext { transient_relations_stores, tips_by_level, roots_by_level, .. } =
+            self.calc_all_level_proof_context(&pp_header, temp_db);
 
         // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
         // to make sure we hold a single Arc per header
@@ -100,59 +102,22 @@ impl PruningProofManager {
         (0..=self.max_block_level)
             .map(|level| {
                 let level = level as usize;
-                let selected_tip = selected_tip_by_level[level];
-                let block_at_depth_2m = transient_ghostdag_stores[level]
-                    .block_at_depth(selected_tip, 2 * self.pruning_proof_m)
-                    .map_err(|err| format!("level: {}, err: {}", level, err))
-                    .unwrap();
-
-                // TODO (relaxed): remove the assertion below
-                // (New Logic) This is the root we calculated by going through block relations
+                let tip = tips_by_level[level];
                 let root = roots_by_level[level];
-                // (Old Logic) This is the root we can calculate given that the GD records are already filled
-                // The root calc logic below is the original logic before the on-demand higher level GD calculation
-                // We only need old_root to sanity check the new logic
-                let old_root = if level != self.max_block_level as usize {
-                    let block_at_depth_m_at_next_level = transient_ghostdag_stores[level + 1]
-                        .block_at_depth(selected_tip_by_level[level + 1], self.pruning_proof_m)
-                        .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
-                        .unwrap();
-                    if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m) {
-                        block_at_depth_m_at_next_level
-                    } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_2m, block_at_depth_m_at_next_level) {
-                        block_at_depth_2m
-                    } else {
-                        self.find_common_ancestor_in_chain_of_a(
-                            &*transient_ghostdag_stores[level],
-                            block_at_depth_m_at_next_level,
-                            block_at_depth_2m,
-                        )
-                        .map_err(|err| format!("level: {}, err: {}", level, err))
-                        .unwrap()
-                    }
-                } else {
-                    block_at_depth_2m
-                };
-
-                // new root is expected to be always an ancestor of old_root because new root takes a safety margin
-                assert!(self.reachability_service.is_dag_ancestor_of(root, old_root));
 
                 let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
                 let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
                 let mut visited = BlockHashSet::new();
                 queue.push(Reverse(SortableBlock::new(root, get_header(root).blue_work)));
+
                 while let Some(current) = queue.pop() {
                     let current = current.0.hash;
                     if !visited.insert(current) {
                         continue;
                     }
 
-                    // The second condition is always expected to be true (ghostdag store will have the entry)
-                    // because we are traversing the exact diamond (future(root) ⋂ past(tip)) for which we calculated
-                    // GD for (see fill_level_proof_ghostdag_data). TODO (relaxed): remove the condition or turn into assertion
-                    if !self.reachability_service.is_dag_ancestor_of(current, selected_tip)
-                        || !transient_ghostdag_stores[level].has(current).is_ok_and(|found| found)
-                    {
+                    // We are only interested in the exact diamond future(root) ⋂ past(tip)
+                    if !self.reachability_service.is_dag_ancestor_of(current, tip) {
                         continue;
                     }
 
@@ -162,40 +127,14 @@ impl PruningProofManager {
                     }
                 }
 
-                // TODO (relaxed): remove the assertion below
-                // Temp assertion for verifying a bug fix: assert that the full 2M chain is actually contained in the composed level proof
-                let set = BlockHashSet::from_iter(headers.iter().map(|h| h.hash));
-                let chain_2m = self
-                    .chain_up_to_depth(&*transient_ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m)
-                    .map_err(|err| {
-                        dbg!(level, selected_tip, block_at_depth_2m, root);
-                        format!("Assert 2M chain -- level: {}, err: {}", level, err)
-                    })
-                    .unwrap();
-                let chain_2m_len = chain_2m.len();
-                for (i, chain_hash) in chain_2m.into_iter().enumerate() {
-                    if !set.contains(&chain_hash) {
-                        let next_level_tip = selected_tip_by_level[level + 1];
-                        let next_level_chain_m = self
-                            .chain_up_to_depth(&*transient_ghostdag_stores[level + 1], next_level_tip, self.pruning_proof_m)
-                            .unwrap();
-                        let next_level_block_m = next_level_chain_m.last().copied().unwrap();
-                        dbg!(next_level_chain_m.len());
-                        dbg!(transient_ghostdag_stores[level + 1].get_compact_data(next_level_tip).unwrap().blue_score);
-                        dbg!(transient_ghostdag_stores[level + 1].get_compact_data(next_level_block_m).unwrap().blue_score);
-                        dbg!(transient_ghostdag_stores[level].get_compact_data(selected_tip).unwrap().blue_score);
-                        dbg!(transient_ghostdag_stores[level].get_compact_data(block_at_depth_2m).unwrap().blue_score);
-                        dbg!(level, selected_tip, block_at_depth_2m, root);
-                        panic!("Assert 2M chain -- missing block {} at index {} out of {} chain blocks", chain_hash, i, chain_2m_len);
-                    }
-                }
-
                 headers
             })
             .collect_vec()
     }
 
-    fn calc_all_level_proof_stores(&self, pp_header: &HeaderWithBlockLevel, temp_db: Arc<DB>) -> MultiLevelProofContext {
+    /// Computes level-proof contexts for all levels, processing levels from high to low to satisfy
+    /// MLS inter-level constraints, and aggregates the results into a multi-level proof context.
+    fn calc_all_level_proof_context(&self, pp_header: &HeaderWithBlockLevel, temp_db: Arc<DB>) -> MultiLevelProofContext {
         let mut level_proof_stores_vec: Vec<Option<LevelProofContext>> = vec![None; (self.max_block_level + 1).into()];
         for level in (0..=self.max_block_level).rev() {
             let level_usize = level as usize;
@@ -217,10 +156,10 @@ impl PruningProofManager {
             );
         }
 
-        let (transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level) =
+        let (transient_ghostdag_stores, transient_relations_stores, tips_by_level, roots_by_level) =
             level_proof_stores_vec.into_iter().map(Option::unwrap).multiunzip();
 
-        MultiLevelProofContext { transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level }
+        MultiLevelProofContext { transient_ghostdag_stores, transient_relations_stores, tips_by_level, roots_by_level }
     }
 
     /// Given a current hash, count the blocks in its future.
@@ -525,62 +464,5 @@ impl PruningProofManager {
             .map(|p| self.headers_store.get_header(p).expect("reachable"))
             .max_by_key(|h| SortableBlock::new(h.hash, h.blue_work))
             .ok_or_else(|| PpmInternalError::NotEnoughHeadersToBuildProof("no reachable parents".to_string()))
-    }
-
-    /// Copy of `block_at_depth` which returns the full chain up to depth. Temporarily used for assertion purposes.
-    fn chain_up_to_depth(
-        &self,
-        transient_ghostdag_store: &impl GhostdagStoreReader,
-        high: Hash,
-        depth: u64,
-    ) -> Result<Vec<Hash>, PpmInternalError> {
-        let high_gd = transient_ghostdag_store
-            .get_compact_data(high)
-            .map_err(|err| PpmInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
-        let mut current_gd = high_gd;
-        let mut current = high;
-        let mut res = vec![current];
-        while current_gd.blue_score + depth >= high_gd.blue_score {
-            if current_gd.selected_parent.is_origin() {
-                break;
-            }
-            let prev = current;
-            current = current_gd.selected_parent;
-            res.push(current);
-            current_gd = transient_ghostdag_store.get_compact_data(current).map_err(|err| {
-                PpmInternalError::BlockAtDepth(format!(
-                    "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
-                    high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
-                ))
-            })?;
-        }
-        Ok(res)
-    }
-
-    fn find_common_ancestor_in_chain_of_a(
-        &self,
-        transient_ghostdag_store: &impl GhostdagStoreReader,
-        a: Hash,
-        b: Hash,
-    ) -> Result<Hash, PpmInternalError> {
-        let a_gd = transient_ghostdag_store
-            .get_compact_data(a)
-            .map_err(|err| PpmInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
-        let mut current_gd = a_gd;
-        let mut current;
-        let mut loop_counter = 0;
-        loop {
-            current = current_gd.selected_parent;
-            loop_counter += 1;
-            if current.is_origin() {
-                break Err(PpmInternalError::NoCommonAncestor(format!("a: {a}, b: {b} ({loop_counter} loop steps)")));
-            }
-            if self.reachability_service.is_dag_ancestor_of(current, b) {
-                break Ok(current);
-            }
-            current_gd = transient_ghostdag_store
-                .get_compact_data(current)
-                .map_err(|err| PpmInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
-        }
     }
 }
