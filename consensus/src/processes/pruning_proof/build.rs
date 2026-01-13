@@ -365,7 +365,7 @@ impl PruningProofManager {
                     root,
                     selected_tip,
                     &transient_ghostdag_store,
-                    Some(block_at_depth_m_at_next_level),
+                    block_at_depth_m_at_next_level,
                     level,
                     &transient_relation_store,
                     self.ghostdag_k,
@@ -379,6 +379,7 @@ impl PruningProofManager {
                     return Ok((transient_ghostdag_store, transient_relation_store, selected_tip, root));
                 }
 
+                // Large enough future with less than 2M blues means we have reds and thus need a gradual future size increase
                 required_future_size = (required_future_size as f64 * 1.1) as u64;
                 gd_tries += 1;
             }
@@ -400,7 +401,7 @@ impl PruningProofManager {
         root: Hash,
         selected_tip: Hash,
         transient_ghostdag_store: &Arc<DbGhostdagStore>,
-        required_block: Option<Hash>,
+        required_block: Hash,
         level: BlockLevel,
         transient_relations_store: &Arc<RwLock<DbRelationsStore>>,
         ghostdag_k: KType,
@@ -431,7 +432,7 @@ impl PruningProofManager {
                 .push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
         }
 
-        let mut has_required_block = required_block.is_some_and(|required_block| root == required_block);
+        let mut has_required_block = root == required_block;
         loop {
             let Some(current) = topological_heap.pop() else {
                 break;
@@ -446,7 +447,7 @@ impl PruningProofManager {
                 continue;
             }
 
-            if !has_required_block && required_block.is_some_and(|required_block| current_hash == required_block) {
+            if !has_required_block && current_hash == required_block {
                 has_required_block = true;
             }
 
