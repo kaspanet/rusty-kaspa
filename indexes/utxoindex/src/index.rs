@@ -176,7 +176,7 @@ impl UtxoIndexApi for UtxoIndex {
 
             if log_instant.elapsed() >= RESYNC_LOG_INTERVAL {
                 log_instant = std::time::Instant::now();
-                info!("[{0}] Resynced {1} utxos so far...", self::IDENT, chunks_processed as u64 * RESYNC_CHUNK_SIZE as u64);
+                info!("[{0}] Resynced {1} utxos so far.", self::IDENT, chunks_processed as u64 * RESYNC_CHUNK_SIZE as u64);
             }
         }
 
