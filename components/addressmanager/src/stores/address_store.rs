@@ -82,6 +82,12 @@ impl From<DbAddressKey> for AddressKey {
     }
 }
 
+impl From<NetAddress> for DbAddressKey {
+    fn from(address: NetAddress) -> Self {
+        AddressKey::from(address).into()
+    }
+}
+
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct DbPerigeeRankedAddressKey([u8; mem::size_of::<u16>() + ADDRESS_KEY_SIZE]);
 
@@ -89,7 +95,7 @@ impl From<PerigeeEntry> for DbPerigeeRankedAddressKey {
     fn from(perigee_entry: PerigeeEntry) -> Self {
         let mut bytes = [0; mem::size_of::<DbPerigeeRankedAddressKey>()];
         bytes[..ADDRESS_KEY_SIZE].copy_from_slice(&perigee_entry.rank.to_le_bytes());
-        bytes[ADDRESS_KEY_SIZE..].copy_from_slice(&DbAddressKey::from(AddressKey::from(perigee_entry.address)).0);
+        bytes[ADDRESS_KEY_SIZE..].copy_from_slice(DbAddressKey::from(perigee_entry.address).as_ref());
         Self(bytes)
     }
 }
