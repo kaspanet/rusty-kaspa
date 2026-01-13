@@ -12,7 +12,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::{debug, trace};
-use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultExt, StoreResultUnitExt, DB};
+use kaspa_database::prelude::*;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 
@@ -42,44 +42,37 @@ struct MultiLevelProofContext {
     roots_by_level: Vec<Hash>,
 }
 
+/// A relations-store reader restricted to the future cone of a fixed root block (including the root).
+///
+/// Only parents and children that lie within the root’s future cone are exposed.
+/// This provides a consistent, root-relative view of relations when operating on
+/// proofs or subgraphs confined to that region of the DAG.
 #[derive(Clone)]
-struct RelationsStoreInFutureOfRoot<T: RelationsStoreReader, U: ReachabilityService> {
+struct FutureConeRelations<T: RelationsStoreReader, U: ReachabilityService> {
     relations_store: T,
     reachability_service: U,
     root: Hash,
 }
 
-impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for RelationsStoreInFutureOfRoot<T, U> {
-    fn get_parents(&self, hash: Hash) -> Result<BlockHashes, kaspa_database::prelude::StoreError> {
+impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for FutureConeRelations<T, U> {
+    fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         self.relations_store.get_parents(hash).map(|hashes| {
-            Arc::new(
-                hashes
-                    .iter()
-                    .copied()
-                    .filter(|h| {
-                        self.reachability_service.is_dag_ancestor_of_result(self.root, *h).optional().unwrap().unwrap_or(false)
-                    })
-                    .collect_vec(),
-            )
+            // Reachability queries are safe here, since in this context all blocks are reached via `reachable_parents_at_level`
+            hashes.iter().copied().filter(|&h| self.reachability_service.is_dag_ancestor_of(self.root, h)).collect_vec().into()
         })
     }
 
-    fn get_children(&self, hash: Hash) -> StoreResult<kaspa_database::prelude::ReadLock<BlockHashSet>> {
-        // We assume hash is in future of root
-        assert!(self.reachability_service.is_dag_ancestor_of(self.root, hash));
+    fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
+        assert!(self.reachability_service.is_dag_ancestor_of(self.root, hash), "future(root) invariant violated");
         self.relations_store.get_children(hash)
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        if self.reachability_service.is_dag_ancestor_of(self.root, hash) {
-            Ok(false)
-        } else {
-            self.relations_store.has(hash)
-        }
+        Ok(self.relations_store.has(hash)? && self.reachability_service.is_dag_ancestor_of(self.root, hash))
     }
 
-    fn counts(&self) -> Result<(usize, usize), kaspa_database::prelude::StoreError> {
-        unimplemented!()
+    fn counts(&self) -> Result<(usize, usize), StoreError> {
+        unreachable!("not expected to be called in this context")
     }
 }
 
@@ -410,7 +403,7 @@ impl PruningProofManager {
         transient_relations_store: &Arc<RwLock<DbRelationsStore>>,
         ghostdag_k: KType,
     ) -> bool {
-        let transient_relations_service = RelationsStoreInFutureOfRoot {
+        let transient_relations_service = FutureConeRelations {
             relations_store: MTRelationsService::new(transient_relations_store.clone()),
             reachability_service: self.reachability_service.clone(),
             root,
