@@ -1167,22 +1167,9 @@ impl VirtualStateProcessor {
             let mut virtual_write = self.virtual_stores.write();
 
             virtual_write.utxo_set.clear().unwrap();
-            let mut chunk_count = 0u64;
-            let mut last_log_time = std::time::Instant::now();
-
             for chunk in &pruning_meta_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(1000) {
                 virtual_write.utxo_set.write_from_iterator_without_cache(chunk).unwrap();
-                chunk_count += 1;
-
-                // Log progress every 10,000 chunks or every 5 seconds, whichever comes first
-                let now = std::time::Instant::now();
-                if chunk_count % 10000 == 0 || now.duration_since(last_log_time).as_secs() >= 5 {
-                    info!("UTXO import progress: {} chunks processed", chunk_count);
-                    last_log_time = now;
-                }
             }
-
-            info!("UTXO import completed: {} chunks", chunk_count);
         }
 
         let virtual_read = self.virtual_stores.upgradable_read();
