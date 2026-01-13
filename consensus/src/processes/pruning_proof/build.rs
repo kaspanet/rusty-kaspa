@@ -294,7 +294,9 @@ impl PruningProofManager {
             self.find_approximate_selected_parent_header_at_level(&pp_header.header, level)?.hash
         };
 
-        let required_level_depth = 2 * self.pruning_proof_m;
+        let tip_header_bs = self.headers_store.get_blue_score(selected_tip).unwrap();
+        let mut required_future_size = 2 * self.pruning_proof_m - 1;
+        let required_base_level_depth = (self.pruning_proof_m as f64 * 2.1) as u64; // =2100 for M=1000
         let block_at_depth_m_at_next_level = required_block.unwrap_or(selected_tip);
 
         // BFS backward from the tip for relations.
@@ -341,13 +343,17 @@ impl PruningProofManager {
             future_sizes_map.insert(current, future_size);
             debug!("Level: {} | Hash: {} | Future Size: {}", level, current, future_size);
 
+            let base_level_depth = tip_header_bs.saturating_sub(header.blue_score);
+
             // If the current hash is valid root candidate, fill the GD store and see if it passes as a level proof
             // Valid root candidates are:
             // 1. The genesis block
             // 2. The last header in the headers store
             // 3. Any known block that is in the selected chain from tip, has sufficient future size and depth
             if self.reachability_service.is_dag_ancestor_of(current, block_at_depth_m_at_next_level)
-                && (current == self.genesis_hash || is_last_header || future_size >= 2 * self.pruning_proof_m - 1)
+                && (current == self.genesis_hash
+                    || is_last_header
+                    || (future_size >= required_future_size && base_level_depth >= required_base_level_depth))
             {
                 let root = current;
 
@@ -364,18 +370,16 @@ impl PruningProofManager {
                     &transient_relation_store,
                     self.ghostdag_k,
                 );
-                assert!(has_required_block, "we verified that current in past(required)");
+                assert!(has_required_block, "we verified that current is in past(required)");
 
                 // Step 4 - Check if we actually have enough depth.
                 // Need to ensure this does the same 2M+1 depth that block_at_depth does
                 let curr_tip_bs = transient_ghostdag_store.get_blue_score(selected_tip).unwrap();
-                if (root == self.genesis_hash
-                    || curr_tip_bs >= required_level_depth
-                    || (is_last_header && curr_tip_bs > 2 * self.pruning_proof_m))
-                {
+                if root == self.genesis_hash || curr_tip_bs >= 2 * self.pruning_proof_m {
                     return Ok((transient_ghostdag_store, transient_relation_store, selected_tip, root));
                 }
 
+                required_future_size = (required_future_size as f64 * 1.1) as u64;
                 gd_tries += 1;
             }
 
