@@ -162,63 +162,6 @@ impl PruningProofManager {
         MultiLevelProofContext { transient_ghostdag_stores, transient_relations_stores, tips_by_level, roots_by_level }
     }
 
-    /// Given a current hash, count the blocks in its future.
-    ///
-    /// The algorithm works as follows:
-    /// 1. Identify the dominant child (the one with the largest future) to minimize traversal,
-    ///    since most of the future is expected to be covered by it.
-    /// 2. Perform a BFS over all other children and their futures, skipping blocks that are
-    ///    already in the future of the dominant child.
-    ///
-    /// This is conceptually similar to mergeset calculation logic
-    /// (effectively a traversal over the reversed mergeset).
-    ///
-    /// Assumes `future_sizes` is populated for all children of `current` (caller is expected to be doing a topological BFS).
-    fn count_future_size(&self, relations: &DbRelationsStore, current: Hash, future_sizes: &BlockHashMap<u64>) -> u64 {
-        // Seed the BFS queue with all children of the current hash
-        let mut queue: VecDeque<_> = relations.get_children(current).unwrap().read().iter().copied().collect();
-        let mut visited = BlockHashSet::new();
-
-        struct Entry {
-            child: Hash,
-            fut_size: u64,
-        }
-
-        // Future sizes are guaranteed to exist due to the topological BFS invariant
-        let dominant_entry = queue
-            .iter()
-            .copied()
-            .map(|child| Entry { child, fut_size: *future_sizes.get(&child).expect("topological bfs") })
-            .max_by_key(|e| e.fut_size);
-
-        let mut count = 0;
-
-        if let Some(Entry { child: dominant_child, fut_size }) = dominant_entry {
-            // Fully account for the dominant child future (+1 for itself) and exclude it from the traversal
-            count += fut_size + 1;
-            visited.insert(dominant_child);
-
-            while let Some(hash) = queue.pop_front() {
-                if !visited.insert(hash) {
-                    continue;
-                }
-
-                // Skip blocks that are already in the future of the dominant child
-                if self.reachability_service.is_dag_ancestor_of(dominant_child, hash) {
-                    continue;
-                }
-
-                count += 1;
-                for &child in relations.get_children(hash).unwrap().read().iter() {
-                    queue.push_back(child);
-                }
-            }
-        }
-
-        trace!("Counted future size of {} as {}", current, count);
-        count
-    }
-
     /// Computes a level-proof context by incrementally expanding the level relations subgraph and
     /// periodically attempting to anchor a proof between a candidate `root` and the `selected_tip`.
     ///
@@ -370,6 +313,63 @@ impl PruningProofManager {
         }
 
         panic!("Failed to find sufficient root for level {level} after exhausting all known headers.");
+    }
+
+    /// Given a current hash, count the blocks in its future.
+    ///
+    /// The algorithm works as follows:
+    /// 1. Identify the dominant child (the one with the largest future) to minimize traversal,
+    ///    since most of the future is expected to be covered by it.
+    /// 2. Perform a BFS over all other children and their futures, skipping blocks that are
+    ///    already in the future of the dominant child.
+    ///
+    /// This is conceptually similar to mergeset calculation logic
+    /// (effectively a traversal over the reversed mergeset).
+    ///
+    /// Assumes `future_sizes` is populated for all children of `current` (caller is expected to be doing a topological BFS).
+    fn count_future_size(&self, relations: &DbRelationsStore, current: Hash, future_sizes: &BlockHashMap<u64>) -> u64 {
+        // Seed the BFS queue with all children of the current hash
+        let mut queue: VecDeque<_> = relations.get_children(current).unwrap().read().iter().copied().collect();
+        let mut visited = BlockHashSet::new();
+
+        struct Entry {
+            child: Hash,
+            fut_size: u64,
+        }
+
+        // Future sizes are guaranteed to exist due to the topological BFS invariant
+        let dominant_entry = queue
+            .iter()
+            .copied()
+            .map(|child| Entry { child, fut_size: *future_sizes.get(&child).expect("topological bfs") })
+            .max_by_key(|e| e.fut_size);
+
+        let mut count = 0;
+
+        if let Some(Entry { child: dominant_child, fut_size }) = dominant_entry {
+            // Fully account for the dominant child future (+1 for itself) and exclude it from the traversal
+            count += fut_size + 1;
+            visited.insert(dominant_child);
+
+            while let Some(hash) = queue.pop_front() {
+                if !visited.insert(hash) {
+                    continue;
+                }
+
+                // Skip blocks that are already in the future of the dominant child
+                if self.reachability_service.is_dag_ancestor_of(dominant_child, hash) {
+                    continue;
+                }
+
+                count += 1;
+                for &child in relations.get_children(hash).unwrap().read().iter() {
+                    queue.push_back(child);
+                }
+            }
+        }
+
+        trace!("Counted future size of {} as {}", current, count);
+        count
     }
 
     /// Forward-traverses from `root` toward `tip`, and inserts ghostdag data for each visited block.
