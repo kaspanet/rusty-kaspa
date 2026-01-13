@@ -37,7 +37,6 @@ pub trait AddressesStoreReader {
 pub trait AddressesStore: AddressesStoreReader {
     fn set(&mut self, key: AddressKey, entry: Entry) -> StoreResult<()>;
     fn set_new_perigee_addresses(&mut self, entries: Vec<NetAddress>) -> StoreResult<()>;
-    fn clear_perigee_addresses(&mut self) -> StoreResult<()>;
     #[allow(dead_code)]
     fn set_failed_count(&mut self, key: AddressKey, connection_failed_count: u64) -> StoreResult<()>;
     fn remove(&mut self, key: AddressKey) -> StoreResult<()>;
@@ -179,10 +178,6 @@ impl AddressesStore for DbAddressesStore {
         });
 
         self.perigee_access.write_many(DirectDbWriter::new(&self.db), &mut key_iter)
-    }
-
-    fn clear_perigee_addresses(&mut self) -> StoreResult<()> {
-        self.perigee_access.delete_all(DirectDbWriter::new(&self.db))
     }
 
     fn remove(&mut self, key: AddressKey) -> StoreResult<()> {
