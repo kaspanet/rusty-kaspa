@@ -1,0 +1,14 @@
+# Ensure consistent line endings
+* text=auto eol=lf
+
+# Rust source files
+*.rs text eol=lf
+
+# Configuration files
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+
+# Documentation
+*.md text eol=lf
+

@@ -29,6 +29,46 @@ impl From<&RpcUtxosByAddressesEntry> for UtxoEntryReference {
 cfg_if::cfg_if! {
     if #[cfg(feature = "wasm32-sdk")] {
 
+        impl From<RpcOptionalHeader> for OptionalHeader {
+            fn from(header: RpcOptionalHeader) -> Self {
+                OptionalHeader::new_from_fields(
+                    header.hash,
+                    header.version,
+                    header.parents_by_level.map(CompressedParents::from),
+                    header.hash_merkle_root,
+                    header.accepted_id_merkle_root,
+                    header.utxo_commitment,
+                    header.timestamp,
+                    header.bits,
+                    header.nonce,
+                    header.daa_score,
+                    header.blue_work,
+                    header.blue_score,
+                    header.pruning_point,
+                )
+            }
+        }
+
+        impl From<&RpcOptionalHeader> for OptionalHeader {
+            fn from(header: &RpcOptionalHeader) -> Self {
+                OptionalHeader::new_from_fields(
+                    header.hash,
+                    header.version,
+                    header.parents_by_level.clone().map(CompressedParents::from),
+                    header.hash_merkle_root,
+                    header.accepted_id_merkle_root,
+                    header.utxo_commitment,
+                    header.timestamp,
+                    header.bits,
+                    header.nonce,
+                    header.daa_score,
+                    header.blue_work,
+                    header.blue_score,
+                    header.pruning_point,
+                )
+            }
+        }
+
         impl From<TransactionInput> for RpcTransactionInput {
             fn from(tx_input: TransactionInput) -> Self {
                 let inner = tx_input.inner();
