@@ -6,10 +6,12 @@
 use crate::error::RpcError as Error;
 use crate::error::RpcResult as Result;
 use crate::model::*;
+use js_sys::Array;
+use js_sys::Object;
 use kaspa_addresses::Address;
 use kaspa_addresses::AddressOrStringArrayT;
-use kaspa_consensus_client::Transaction;
 use kaspa_consensus_client::UtxoEntryReference;
+use kaspa_consensus_client::{OptionalHeader, Transaction};
 use kaspa_consensus_core::tx as cctx;
 use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
 pub use serde_wasm_bindgen::from_value;
@@ -35,7 +37,7 @@ macro_rules! try_from {
 const TS_ACCEPTED_TRANSACTION_IDS: &'static str = r#"
     /**
      * Accepted transaction IDs.
-     * 
+     *
      * @category Node RPC
      */
     export interface IAcceptedTransactionIds {
@@ -48,12 +50,13 @@ const TS_ACCEPTED_TRANSACTION_IDS: &'static str = r#"
 const TS_ADDED_ACCEPTANCE_DATA: &'static str = r#"
     /**
      * Accepted Acceptance Data
-     * 
+     *
      * @category Node RPC
      */
     export interface IChainBlockAddedTransactions {
-        chainBlockHeader: Header;
-        acceptedTransactions: Transaction[];
+        chainBlockHeader: IOptionalHeader;
+        // small hack because wasm doesn't define OptionalTransaction utility
+        acceptedTransactions: Partial<ITransaction>[];
     }
 "#;
 
@@ -62,7 +65,7 @@ const TS_ADDED_ACCEPTANCE_DATA: &'static str = r#"
 const TS_DATA_VERBOSITY_LEVEL: &'static str = r#"
     /**
      * Data Verbosity level
-     * 
+     *
      * @category Node RPC
      */
     export type DataVerbosityLevel = "None" | "Low" | "High" | "Full";
@@ -546,8 +549,8 @@ declare! {
     IAddPeerRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IAddPeerRequest {
@@ -565,8 +568,8 @@ declare! {
     IAddPeerResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IAddPeerResponse { }
@@ -582,8 +585,8 @@ declare! {
     IBanRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IBanRequest {
@@ -603,8 +606,8 @@ declare! {
     IBanResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IBanResponse { }
@@ -679,8 +682,8 @@ declare! {
     IGetBalanceByAddressResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBalanceByAddressResponse {
@@ -700,8 +703,8 @@ declare! {
     "IGetBalancesByAddressesRequest | Address[] | string[]",
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBalancesByAddressesRequest {
@@ -724,8 +727,8 @@ declare! {
     IGetBalancesByAddressesResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IBalancesByAddressesEntry {
@@ -733,8 +736,8 @@ declare! {
         balance : bigint;
     }
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBalancesByAddressesResponse {
@@ -753,8 +756,8 @@ declare! {
     IGetBlockRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBlockRequest {
@@ -772,8 +775,8 @@ declare! {
     IGetBlockResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBlockResponse {
@@ -792,8 +795,8 @@ declare! {
     IGetBlocksRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBlocksRequest {
@@ -812,8 +815,8 @@ declare! {
     IGetBlocksResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBlocksResponse {
@@ -833,8 +836,8 @@ declare! {
     IGetBlockTemplateRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBlockTemplateRequest {
@@ -868,8 +871,8 @@ declare! {
     IGetBlockTemplateResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBlockTemplateResponse {
@@ -888,8 +891,8 @@ declare! {
     IGetCurrentBlockColorRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetCurrentBlockColorRequest {
@@ -906,8 +909,8 @@ declare! {
     IGetCurrentBlockColorResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetCurrentBlockColorResponse {
@@ -926,8 +929,8 @@ declare! {
     IGetDaaScoreTimestampEstimateRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetDaaScoreTimestampEstimateRequest {
@@ -944,8 +947,8 @@ declare! {
     IGetDaaScoreTimestampEstimateResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetDaaScoreTimestampEstimateResponse {
@@ -964,8 +967,8 @@ declare! {
     IGetCurrentNetworkRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetCurrentNetworkRequest { }
@@ -980,8 +983,8 @@ declare! {
     IGetCurrentNetworkResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetCurrentNetworkResponse {
@@ -1000,8 +1003,8 @@ declare! {
     IGetHeadersRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetHeadersRequest {
@@ -1020,8 +1023,8 @@ declare! {
     IGetHeadersResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetHeadersResponse {
@@ -1040,8 +1043,8 @@ declare! {
     IGetMempoolEntriesRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetMempoolEntriesRequest {
@@ -1059,8 +1062,8 @@ declare! {
     IGetMempoolEntriesResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetMempoolEntriesResponse {
@@ -1079,8 +1082,8 @@ declare! {
     IGetMempoolEntriesByAddressesRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetMempoolEntriesByAddressesRequest {
@@ -1099,8 +1102,8 @@ declare! {
     IGetMempoolEntriesByAddressesResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetMempoolEntriesByAddressesResponse {
@@ -1119,8 +1122,8 @@ declare! {
     IGetMempoolEntryRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetMempoolEntryRequest {
@@ -1139,8 +1142,8 @@ declare! {
     IGetMempoolEntryResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetMempoolEntryResponse {
@@ -1159,8 +1162,8 @@ declare! {
     IGetSubnetworkRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetSubnetworkRequest {
@@ -1177,8 +1180,8 @@ declare! {
     IGetSubnetworkResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetSubnetworkResponse {
@@ -1198,11 +1201,11 @@ declare! {
     "IGetUtxosByAddressesRequest | Address[] | string[]",
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
-    export interface IGetUtxosByAddressesRequest { 
+    export interface IGetUtxosByAddressesRequest {
         addresses : Address[] | string[]
     }
     "#,
@@ -1222,8 +1225,8 @@ declare! {
     IGetUtxosByAddressesResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetUtxosByAddressesResponse {
@@ -1247,8 +1250,8 @@ declare! {
     IGetVirtualChainFromBlockRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetVirtualChainFromBlockRequest {
@@ -1271,8 +1274,8 @@ declare! {
     IGetVirtualChainFromBlockResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetVirtualChainFromBlockResponse {
@@ -1291,8 +1294,8 @@ declare! {
     IGetVirtualChainFromBlockV2Request,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetVirtualChainFromBlockV2Request {
@@ -1315,8 +1318,8 @@ declare! {
     IGetVirtualChainFromBlockV2Response,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetVirtualChainFromBlockV2Response {
@@ -1328,7 +1331,23 @@ declare! {
 }
 
 try_from! ( args: GetVirtualChainFromBlockV2Response, IGetVirtualChainFromBlockV2Response, {
-    Ok(to_value(&args)?.into())
+    let value = Object::new();
+    value.set("addedChainBlockHashes", &to_value(&args.added_chain_block_hashes)?)?;
+    value.set("removedChainBlockHashes", &to_value(&args.removed_chain_block_hashes)?)?;
+
+    let chain_block_accepted_transactions = Array::new();
+    for entry in args.chain_block_accepted_transactions.iter() {
+        let element = Object::new();
+
+        element.set("chainBlockHeader", &OptionalHeader::from(&entry.chain_block_header).into())?;
+        element.set("acceptedTransactions", &to_value(&entry.accepted_transactions)?)?;
+
+        chain_block_accepted_transactions.push(&element);
+    }
+
+    value.set("chainBlockAcceptedTransactions", chain_block_accepted_transactions.as_ref())?;
+
+    Ok(IGetVirtualChainFromBlockV2Response { obj: value })
 });
 // ---
 
@@ -1336,8 +1355,8 @@ declare! {
     IResolveFinalityConflictRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IResolveFinalityConflictRequest {
@@ -1354,8 +1373,8 @@ declare! {
     IResolveFinalityConflictResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IResolveFinalityConflictResponse { }
@@ -1372,8 +1391,8 @@ declare! {
     ISubmitBlockRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface ISubmitBlockRequest {
@@ -1390,7 +1409,7 @@ try_from! ( args: ISubmitBlockRequest, SubmitBlockRequest, {
 #[wasm_bindgen(typescript_custom_section)]
 const TS_SUBMIT_BLOCK_REPORT: &'static str = r#"
     /**
-     * 
+     *
      * @category Node RPC
      */
     export enum SubmitBlockRejectReason {
@@ -1409,7 +1428,7 @@ const TS_SUBMIT_BLOCK_REPORT: &'static str = r#"
     }
 
     /**
-     * 
+     *
      * @category Node RPC
      */
     export interface ISubmitBlockReport {
@@ -1422,8 +1441,8 @@ declare! {
     ISubmitBlockResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface ISubmitBlockResponse {
@@ -1444,7 +1463,7 @@ declare! {
     r#"
     /**
      * Submit transaction replacement to the node.
-     * 
+     *
      * @category Node RPC
      */
     export interface ISubmitTransactionReplacementRequest {
@@ -1474,8 +1493,8 @@ declare! {
     ISubmitTransactionReplacementResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface ISubmitTransactionReplacementResponse {
@@ -1504,7 +1523,7 @@ declare! {
     r#"
     /**
      * Submit transaction to the node.
-     * 
+     *
      * @category Node RPC
      */
     export interface ISubmitTransactionRequest {
@@ -1541,8 +1560,8 @@ declare! {
     ISubmitTransactionResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface ISubmitTransactionResponse {
@@ -1561,8 +1580,8 @@ declare! {
     IUnbanRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IUnbanRequest {
@@ -1582,8 +1601,8 @@ declare! {
     IUnbanResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IUnbanResponse { }
@@ -1600,8 +1619,8 @@ declare! {
     IFeerateBucket,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IFeerateBucket {
@@ -1621,8 +1640,8 @@ declare! {
     IFeeEstimate,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IFeeEstimate {
@@ -1688,7 +1707,7 @@ declare! {
     r#"
     /**
      * Get fee estimate from the node.
-     * 
+     *
      * @category Node RPC
      */
     export interface IGetFeeEstimateRequest { }
@@ -1703,8 +1722,8 @@ declare! {
     IGetFeeEstimateResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetFeeEstimateResponse {
@@ -1726,8 +1745,8 @@ declare! {
     IFeeEstimateVerboseExperimentalData,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IFeeEstimateVerboseExperimentalData {
@@ -1760,7 +1779,7 @@ declare! {
     r#"
     /**
      * Get fee estimate from the node.
-     * 
+     *
      * @category Node RPC
      */
     export interface IGetFeeEstimateExperimentalRequest { }
@@ -1775,8 +1794,8 @@ declare! {
     IGetFeeEstimateExperimentalResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetFeeEstimateExperimentalResponse {
