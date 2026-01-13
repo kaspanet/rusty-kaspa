@@ -150,11 +150,10 @@ impl UtxoIndexApi for UtxoIndex {
 
         // Delete all existing entries
         self.store.delete_all()?;
+
         let consensus = self.consensus_manager.consensus();
         let session = futures::executor::block_on(consensus.session_blocking());
-        let consensus_tips = session.get_virtual_parents();
 
-        // Phase 1: Set up variables for parallel processing
         let mut circulating_supply = 0u64;
         let mut utxos_processed = 0u64;
         let mut chunks_processed = 0usize;
@@ -182,7 +181,7 @@ impl UtxoIndexApi for UtxoIndex {
 
         // Commit circulating supply and tips
         self.store.insert_circulating_supply(circulating_supply, false)?;
-        self.store.set_tips(consensus_tips.iter().copied().collect(), false)?;
+        self.store.set_tips(session.get_virtual_parents(), false)?;
         self.monotonic_circulating_supply = circulating_supply;
 
         let elapsed = start_ts.elapsed();
