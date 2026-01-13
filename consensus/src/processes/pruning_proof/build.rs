@@ -11,7 +11,7 @@ use kaspa_consensus_core::{
     pruning::PruningPointProof,
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
-use kaspa_core::debug;
+use kaspa_core::{debug, trace};
 use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultExt, StoreResultUnitExt, DB};
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
@@ -278,7 +278,7 @@ impl PruningProofManager {
             }
         }
 
-        debug!("Counted future size of {} as {}", current, count);
+        trace!("Counted future size of {} as {}", current, count);
         count
     }
 
@@ -344,10 +344,10 @@ impl PruningProofManager {
             // Write parents to the relations store
             level_relation_store.insert(current, parents.clone()).unwrap();
 
-            debug!("Level: {} | Counting future size of {}", level, current);
+            trace!("Level: {} | Counting future size of {}", level, current);
             let future_size = self.count_future_size(&level_relation_store, current, &future_sizes_map);
             future_sizes_map.insert(current, future_size);
-            debug!("Level: {} | Hash: {} | Future Size: {}", level, current, future_size);
+            trace!("Level: {} | Hash: {} | Future Size: {}", level, current, future_size);
 
             let base_level_depth = tip_header_bs.saturating_sub(header.blue_score);
 
