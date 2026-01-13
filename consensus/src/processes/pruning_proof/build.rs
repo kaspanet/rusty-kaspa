@@ -225,54 +225,60 @@ impl PruningProofManager {
         MultiLevelProofContext { transient_ghostdag_stores, transient_relations_stores, selected_tip_by_level, roots_by_level }
     }
 
-    /// Given a current hash, count the blocks in its future
-    /// Do this by:
-    /// 1. Getting the largest child in terms of future size (this ensures that the rest of the iteration is minimized since most of the future is covered)
-    /// 2. BFS traversal of all other children and their futures, skipping blocks that are in the future of the largest child.
-    ///    This is similar to the mergeset calculation logic. Add each block seen to the count.
-    fn count_future_size(&self, relation_store: &DbRelationsStore, current: Hash, future_sizes_map: &BlockHashMap<u64>) -> u64 {
-        let mut queue = VecDeque::new();
+    /// Given a current hash, count the blocks in its future.
+    ///
+    /// The algorithm works as follows:
+    /// 1. Identify the dominant child (the one with the largest future) to minimize traversal,
+    ///    since most of the future is expected to be covered by it.
+    /// 2. Perform a BFS over all other children and their futures, skipping blocks that are
+    ///    already in the future of the dominant child.
+    ///
+    /// This is conceptually similar to mergeset calculation logic
+    /// (effectively a traversal over the reversed mergeset).
+    ///
+    /// Assumes `future_sizes` is populated for all children of `current` (caller is expected to be doing a topological BFS).
+    fn count_future_size(&self, relations: &DbRelationsStore, current: Hash, future_sizes: &BlockHashMap<u64>) -> u64 {
+        // Seed the BFS queue with all children of the current hash
+        let mut queue: VecDeque<_> = relations.get_children(current).unwrap().read().iter().copied().collect();
         let mut visited = BlockHashSet::new();
 
-        let children_lock = relation_store.get_children(current).unwrap();
-        let children_read = children_lock.read();
-        let largest_child = children_read
-            .iter()
-            .map(|c| {
-                // Initialize the queue with all the children of current hash
-                queue.push_back(*c);
+        struct Entry {
+            child: Hash,
+            fut_size: u64,
+        }
 
-                (c, future_sizes_map.get(c).copied().unwrap_or(0))
-            })
-            .max_by_key(|(_, depth)| *depth);
+        // Future sizes are guaranteed to exist due to the topological BFS invariant
+        let dominant_entry = queue
+            .iter()
+            .copied()
+            .map(|child| Entry { child, fut_size: *future_sizes.get(&child).expect("topological bfs") })
+            .max_by_key(|e| e.fut_size);
 
         let mut count = 0;
 
-        if let Some(largest_child) = largest_child {
-            // Add all the count of future of the largest child
-            let largest_child_hash = *largest_child.0;
-            count += largest_child.1 + 1; // +1 to include the largest child itself
+        if let Some(Entry { child: dominant_child, fut_size }) = dominant_entry {
+            // Fully account for the dominant child and exclude it from BFS
+            count += fut_size + 1;
+            visited.insert(dominant_child);
 
             while let Some(hash) = queue.pop_front() {
                 if !visited.insert(hash) {
                     continue;
                 }
 
-                // Skip blocks in the future of the largest child
-                if self.reachability_service.is_dag_ancestor_of(largest_child_hash, hash) {
+                // Skip blocks that are already in the future of the dominant child
+                if self.reachability_service.is_dag_ancestor_of(dominant_child, hash) {
                     continue;
                 }
 
                 count += 1;
-                let children_read = relation_store.get_children(hash).unwrap();
-                for &child in children_read.read().iter() {
+                for &child in relations.get_children(hash).unwrap().read().iter() {
                     queue.push_back(child);
                 }
             }
         }
 
         debug!("Counted future size of {} as {}", current, count);
-
         count
     }
 
@@ -375,6 +381,12 @@ impl PruningProofManager {
                 // Step 4 - Check if we actually have enough depth.
                 // Need to ensure this does the same 2M+1 depth that block_at_depth does
                 let curr_tip_bs = transient_ghostdag_store.get_blue_score(selected_tip).unwrap();
+
+                // Log all non-trivial cases
+                if selected_tip != self.genesis_hash {
+                    debug!("level: {}, future size: {}, blue_score: {}, retries: {}", level, future_size, curr_tip_bs, gd_tries);
+                }
+
                 if root == self.genesis_hash || curr_tip_bs >= 2 * self.pruning_proof_m {
                     return Ok((transient_ghostdag_store, transient_relation_store, selected_tip, root));
                 }
