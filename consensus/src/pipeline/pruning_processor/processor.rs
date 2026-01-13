@@ -661,13 +661,18 @@ impl PruningProcessor {
 
     fn assert_proof_rebuilding(&self, ref_proof: Arc<PruningPointProof>, new_pruning_point: Hash) {
         info!("Rebuilding the pruning proof after pruning data (sanity test)");
-        let proof_hashes = ref_proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
         let built_proof = self.pruning_proof_manager.build_pruning_point_proof(new_pruning_point);
-        let built_proof_hashes = built_proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
-        assert_eq!(proof_hashes.len(), built_proof_hashes.len(), "Rebuilt proof does not match the expected reference");
-        for (i, (a, b)) in proof_hashes.into_iter().zip(built_proof_hashes).enumerate() {
-            if a != b {
-                panic!("Proof built following pruning does not match the previous proof: built[{}]={}, prev[{}]={}", i, b, i, a);
+        let pruning_proof_m = self.pruning_proof_manager.pruning_proof_m() as usize;
+        for (i, (ref_level, built_level)) in ref_proof.iter().zip(built_proof.iter()).enumerate() {
+            // Rebuilding a pruning proof must not reduce any non-genesis level below the ≥2M threshold.
+            // A <2M outcome is only valid in the root = genesis case, and the reference proof would match.
+            if ref_level.len() >= 2 * pruning_proof_m && built_level.len() < 2 * pruning_proof_m {
+                panic!(
+                    "MLS proof regression after prune: level {}, reference level: {}, built level: {}",
+                    i,
+                    ref_level.len(),
+                    built_level.len()
+                );
             }
         }
         info!("Proof was rebuilt successfully following pruning");

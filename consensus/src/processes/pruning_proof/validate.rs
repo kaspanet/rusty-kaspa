@@ -348,7 +348,7 @@ impl PruningProofManager {
             let defender_level_ctx = defender.level(level);
 
             // Next check is to see if the challenger's proof is "better" than the defender's
-            // Step 1 - look at only levels that have a full proof (least 2m blocks in the proof)
+            // Step 1 - look only at levels that have a full proof (at least 2M blocks)
             if challenger_level_ctx.blue_score() < 2 * self.pruning_proof_m {
                 continue;
             }
@@ -378,7 +378,7 @@ impl PruningProofManager {
         // If we got here it means there's no level with shared blocks
         // between the challenger and the defender. In this case we
         // consider the challenger to be better if it has at least one level
-        // with 2*self.pruning_proof_m blue blocks where the defender doesn't.
+        // with 2M blue blocks where the defender doesn't.
         for level in (0..=self.max_block_level).rev() {
             if challenger.level(level).blue_score() < 2 * self.pruning_proof_m {
                 continue;
