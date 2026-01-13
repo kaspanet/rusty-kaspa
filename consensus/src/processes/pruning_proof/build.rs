@@ -257,7 +257,7 @@ impl PruningProofManager {
         let mut count = 0;
 
         if let Some(Entry { child: dominant_child, fut_size }) = dominant_entry {
-            // Fully account for the dominant child and exclude it from BFS
+            // Fully account for the dominant child future (+1 for itself) and exclude it from the traversal
             count += fut_size + 1;
             visited.insert(dominant_child);
 
@@ -297,7 +297,7 @@ impl PruningProofManager {
         let selected_tip = if pp_header.block_level >= level {
             pp_header.header.hash
         } else {
-            self.find_approximate_selected_parent_header_at_level(&pp_header.header, level)?.hash
+            self.approx_selected_parent_header_at_level(&pp_header.header, level)?.hash
         };
 
         let tip_header_bs = self.headers_store.get_blue_score(selected_tip).unwrap();
@@ -326,15 +326,7 @@ impl PruningProofManager {
             }
 
             let header = self.headers_store.get_header(current).unwrap();
-
-            let parents: BlockHashes = self
-                .parents_manager
-                .parents_at_level(&header, level)
-                .iter()
-                .copied()
-                .filter(|&p| self.reachability_service.has_reachability_data(p))
-                .collect::<Vec<_>>()
-                .into();
+            let parents: BlockHashes = self.reachable_parents_at_level(level, &header).collect::<Vec<_>>().into();
 
             // A level may not contain enough headers to satisfy the safety margin.
             // This is intended to give the last header a chance, since it may still be deep enough
@@ -476,24 +468,32 @@ impl PruningProofManager {
         has_required_block
     }
 
-    /// selected parent at level = the parent of the header at the level
-    /// with the highest blue_work
-    fn find_approximate_selected_parent_header_at_level(&self, header: &Header, level: BlockLevel) -> PpmInternalResult<Arc<Header>> {
-        // Parents manager parents_at_level may return parents that aren't currently in database and those are filtered out.
-        // This is ok because this function is called in the context of deriving a root deep enough for a proof at this level,
-        // not to find the "best" such proof
-        let sp = self
-            .parents_manager
+    /// Returns the header's parents at `level` that are reachable according to the reachability service,
+    /// i.e., parents for which reachability data exists in the database.
+    ///
+    /// This function enforces the reachability / storage invariants described in the
+    /// [crate-level documentation](crate): only parents with reachability data are returned.
+    /// By convention, the returned hashes are therefore also guaranteed to have a header
+    /// entry in the database.
+    fn reachable_parents_at_level<'a>(&'a self, level: u8, header: &'a Header) -> impl Iterator<Item = Hash> + 'a {
+        // `parents_at_level` may include candidates that are not currently in the database.
+        // This is fine here: we only need *some* sufficiently-deep reachable root for a proof at this level,
+        // not necessarily the "best" / most complete set of candidates.
+        self.parents_manager
             .parents_at_level(header, level)
             .iter()
             .copied()
-            // filtering by the existence of headers alone does not suffice because we store the headers of all past pruning points, but these are not conceptually a part of the DAG
-            // or the pruning proof and are not reachable under normal means. 
+            // Filtering by header existence alone is not enough: we may store headers of past pruning points,
+            // but those are not part of the reachable DAG for proof purposes.
             .filter(|&p| self.reachability_service.has_reachability_data(p))
-            .filter_map(|p| self.headers_store.get_header(p).optional().unwrap().map(|h| SortableBlock::new(p, h.blue_work)))
-            .max()
-            .ok_or(PpmInternalError::NotEnoughHeadersToBuildProof("no parents with header".to_string()))?;
-        Ok(self.headers_store.get_header(sp.hash).expect("unwrapped above"))
+    }
+
+    /// Approximates the selected parent at `level` as the reachable parent whose header has the highest `blue_work`.
+    fn approx_selected_parent_header_at_level(&self, header: &Header, level: BlockLevel) -> PpmInternalResult<Arc<Header>> {
+        self.reachable_parents_at_level(level, header)
+            .map(|p| self.headers_store.get_header(p).expect("reachable"))
+            .max_by_key(|h| SortableBlock::new(h.hash, h.blue_work))
+            .ok_or_else(|| PpmInternalError::NotEnoughHeadersToBuildProof("no reachable parents".to_string()))
     }
 
     /// Copy of `block_at_depth` which returns the full chain up to depth. Temporarily used for assertion purposes.
