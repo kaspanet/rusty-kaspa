@@ -33,11 +33,11 @@ use crate::{
 };
 
 use super::{PpmInternalResult, PruningProofManager};
-type LevelProofContext = (Arc<DbGhostdagStore>, Arc<RwLock<DbRelationsStore>>, Hash, Hash);
+type LevelProofContext = (Arc<DbGhostdagStore>, Arc<DbRelationsStore>, Hash, Hash);
 
 struct MultiLevelProofContext {
     transient_ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
-    transient_relations_stores: Vec<Arc<RwLock<DbRelationsStore>>>,
+    transient_relations_stores: Vec<Arc<DbRelationsStore>>,
     selected_tip_by_level: Vec<Hash>,
     roots_by_level: Vec<Hash>,
 }
@@ -152,7 +152,7 @@ impl PruningProofManager {
                     }
 
                     headers.push(get_header(current));
-                    for child in transient_relations_stores[level].read().get_children(current).unwrap().read().iter().copied() {
+                    for child in transient_relations_stores[level].get_children(current).unwrap().read().iter().copied() {
                         queue.push(Reverse(SortableBlock::new(child, get_header(child).blue_work)));
                     }
                 }
@@ -348,8 +348,6 @@ impl PruningProofManager {
             {
                 let root = current;
 
-                let transient_relation_store = Arc::new(RwLock::new(level_relation_store.clone()));
-
                 let transient_ghostdag_store =
                     Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, gd_tries));
                 let has_required_block = self.fill_level_proof_ghostdag_data(
@@ -358,7 +356,7 @@ impl PruningProofManager {
                     &transient_ghostdag_store,
                     block_at_depth_m_at_next_level,
                     level,
-                    &transient_relation_store,
+                    &level_relation_store,
                     self.ghostdag_k,
                 );
                 assert!(has_required_block, "we verified that current is in past(required)");
@@ -373,7 +371,7 @@ impl PruningProofManager {
                 }
 
                 if root == self.genesis_hash || curr_tip_bs >= 2 * self.pruning_proof_m {
-                    return Ok((transient_ghostdag_store, transient_relation_store, selected_tip, root));
+                    return Ok((transient_ghostdag_store, level_relation_store.into(), selected_tip, root));
                 }
 
                 // Large enough future with less than 2M blues means we have reds and thus need a gradual future size increase
@@ -400,11 +398,11 @@ impl PruningProofManager {
         transient_ghostdag_store: &Arc<DbGhostdagStore>,
         required_block: Hash,
         level: BlockLevel,
-        transient_relations_store: &Arc<RwLock<DbRelationsStore>>,
+        transient_relations_store: &DbRelationsStore,
         ghostdag_k: KType,
     ) -> bool {
         let transient_relations_service = FutureConeRelations {
-            relations_store: MTRelationsService::new(transient_relations_store.clone()),
+            relations_store: transient_relations_store,
             reachability_service: self.reachability_service.clone(),
             root,
         };
@@ -412,7 +410,7 @@ impl PruningProofManager {
             root,
             ghostdag_k,
             transient_ghostdag_store.clone(),
-            transient_relations_service.clone(),
+            &transient_relations_service,
             self.headers_store.clone(),
             self.reachability_service.clone(),
             level,
