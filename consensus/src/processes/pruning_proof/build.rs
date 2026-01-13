@@ -294,11 +294,7 @@ impl PruningProofManager {
             self.find_approximate_selected_parent_header_at_level(&pp_header.header, level)?.hash
         };
 
-        let tip_bs = self.headers_store.get_blue_score(selected_tip).unwrap();
-
         let required_level_depth = 2 * self.pruning_proof_m;
-        // Add a "safety margin"
-        let required_base_level_depth = required_level_depth + 100;
         let block_at_depth_m_at_next_level = required_block.unwrap_or(selected_tip);
 
         // BFS backward from the tip for relations.
@@ -350,60 +346,37 @@ impl PruningProofManager {
             // 1. The genesis block
             // 2. The last header in the headers store
             // 3. Any known block that is in the selected chain from tip, has sufficient future size and depth
-            if current == self.genesis_hash
-                || is_last_header
-                || (future_size >= 2 * self.pruning_proof_m - 1 // -1 because future size does not include the current block
-                    && tip_bs.saturating_sub(header.blue_score) >= required_base_level_depth)
+            if self.reachability_service.is_dag_ancestor_of(current, block_at_depth_m_at_next_level)
+                && (current == self.genesis_hash || is_last_header || future_size >= 2 * self.pruning_proof_m - 1)
             {
-                let root = if self.reachability_service.is_dag_ancestor_of(current, block_at_depth_m_at_next_level) {
-                    current
-                } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, current) {
-                    block_at_depth_m_at_next_level
-                } else {
-                    // find common ancestor of block_at_depth_m_at_next_level and block_at_depth_2m in chain of block_at_depth_m_at_next_level
-                    let mut common_ancestor = self.headers_store.get_header(block_at_depth_m_at_next_level).unwrap();
-                    while !self.reachability_service.is_dag_ancestor_of(common_ancestor.hash, current) {
-                        common_ancestor = match self.find_approximate_selected_parent_header_at_level(&common_ancestor, level) {
-                            Ok(header) => header,
-                            // Try to give this last header a chance at being root
-                            Err(PpmInternalError::NotEnoughHeadersToBuildProof(_)) => break,
-                            Err(e) => return Err(e),
-                        };
-                    }
+                let root = current;
 
-                    common_ancestor.hash
-                };
+                let transient_relation_store = Arc::new(RwLock::new(level_relation_store.clone()));
 
-                // If level relation store does not have the needed root, it means we need to continue the outer BFS and fill the
-                // relation store
-                if level_relation_store.has(root).unwrap() {
-                    let transient_relation_store = Arc::new(RwLock::new(level_relation_store.clone()));
+                let transient_ghostdag_store =
+                    Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, gd_tries));
+                let has_required_block = self.fill_level_proof_ghostdag_data(
+                    root,
+                    selected_tip,
+                    &transient_ghostdag_store,
+                    Some(block_at_depth_m_at_next_level),
+                    level,
+                    &transient_relation_store,
+                    self.ghostdag_k,
+                );
+                assert!(has_required_block, "we verified that current in past(required)");
 
-                    let transient_ghostdag_store =
-                        Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, gd_tries));
-                    let has_required_block = self.fill_level_proof_ghostdag_data(
-                        root,
-                        selected_tip,
-                        &transient_ghostdag_store,
-                        Some(required_block.unwrap_or(selected_tip)),
-                        level,
-                        &transient_relation_store,
-                        self.ghostdag_k,
-                    );
-
-                    // Step 4 - Check if we actually have enough depth.
-                    // Need to ensure this does the same 2M+1 depth that block_at_depth does
-                    let curr_tip_bs = transient_ghostdag_store.get_blue_score(selected_tip).unwrap();
-                    if has_required_block
-                        && (root == self.genesis_hash
-                            || curr_tip_bs >= required_level_depth
-                            || (is_last_header && curr_tip_bs > 2 * self.pruning_proof_m))
-                    {
-                        return Ok((transient_ghostdag_store, transient_relation_store, selected_tip, root));
-                    }
-
-                    gd_tries += 1;
+                // Step 4 - Check if we actually have enough depth.
+                // Need to ensure this does the same 2M+1 depth that block_at_depth does
+                let curr_tip_bs = transient_ghostdag_store.get_blue_score(selected_tip).unwrap();
+                if (root == self.genesis_hash
+                    || curr_tip_bs >= required_level_depth
+                    || (is_last_header && curr_tip_bs > 2 * self.pruning_proof_m))
+                {
+                    return Ok((transient_ghostdag_store, transient_relation_store, selected_tip, root));
                 }
+
+                gd_tries += 1;
             }
 
             // Enqueue parents to fill full upper chain
