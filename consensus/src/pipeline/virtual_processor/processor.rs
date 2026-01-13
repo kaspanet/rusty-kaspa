@@ -1168,13 +1168,7 @@ impl VirtualStateProcessor {
             let mut virtual_write = self.virtual_stores.write();
 
             virtual_write.utxo_set.clear().unwrap();
-            for chunk in &pruning_meta_read
-                .utxo_set
-                .iterator()
-                .map(|iter_result| iter_result.unwrap())
-                .map(|(outpoint, entry)| (outpoint, Arc::new(entry)))
-                .chunks(1000)
-            {
+            for chunk in &pruning_meta_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(1000) {
                 virtual_write.utxo_set.write_from_iterator_without_cache(chunk).unwrap();
             }
         }

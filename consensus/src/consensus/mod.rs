@@ -1005,7 +1005,7 @@ impl ConsensusApi for Consensus {
         self.lkg_virtual_state.load().parents.len()
     }
 
-    fn get_virtual_utxo_iter_owned(&self) -> Box<dyn Iterator<Item = (TransactionOutpoint, UtxoEntry)> + Send> {
+    fn get_virtual_utxo_iter_owned(&self) -> Box<dyn Iterator<Item = (TransactionOutpoint, Arc<UtxoEntry>)> + Send> {
         let virtual_stores = self.virtual_stores.read();
         Box::new(virtual_stores.utxo_set.iterator_owned().map(|r| r.unwrap()))
     }
@@ -1024,7 +1024,7 @@ impl ConsensusApi for Consensus {
         from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
         skip_first: bool,
-    ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
+    ) -> ConsensusResult<Vec<(TransactionOutpoint, Arc<UtxoEntry>)>> {
         if self.pruning_point_store.read().pruning_point().unwrap() != expected_pruning_point {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }

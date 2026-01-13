@@ -423,7 +423,7 @@ impl ConsensusSessionOwned {
         from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
         skip_first: bool,
-    ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
+    ) -> ConsensusResult<Vec<(TransactionOutpoint, Arc<UtxoEntry>)>> {
         self.clone()
             .spawn_blocking(move |c| c.get_pruning_point_utxos(expected_pruning_point, from_outpoint, chunk_size, skip_first))
             .await

@@ -13,8 +13,8 @@ use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use std::{fmt::Display, sync::Arc};
 
-type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), StoreError>> + 'a>;
-type OwnedUtxoCollectionIterator = Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), StoreError>> + Send>;
+type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOutpoint, Arc<UtxoEntry>), StoreError>> + 'a>;
+type OwnedUtxoCollectionIterator = Box<dyn Iterator<Item = Result<(TransactionOutpoint, Arc<UtxoEntry>), StoreError>> + Send>;
 
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
@@ -145,7 +145,7 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
         Box::new(self.access.iterator().map(|res| {
             let (k, v) = res?;
             let outpoint: TransactionOutpoint = k.into();
-            Ok((outpoint, v.as_ref().clone()))
+            Ok((outpoint, v))
         }))
     }
 
@@ -153,7 +153,7 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
         Box::new(self.access.seek_iterator(None, seek_from.map(UtxoKey::from), limit, skip_first).map(|res| {
             let (k, v) = res?;
             let outpoint: TransactionOutpoint = k.into();
-            Ok((outpoint, v.as_ref().clone()))
+            Ok((outpoint, v))
         }))
     }
 
@@ -161,7 +161,7 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
         Box::new(self.access.iterator_owned().map(|res| {
             let (k, v) = res?;
             let outpoint: TransactionOutpoint = k.into();
-            Ok((outpoint, v.as_ref().clone()))
+            Ok((outpoint, v))
         }))
     }
 }

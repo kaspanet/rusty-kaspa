@@ -165,6 +165,7 @@ impl UtxoIndexApi for UtxoIndex {
             .map(|(outpoint, entry)| {
                 utxos_processed += 1;
                 circulating_supply += entry.amount;
+                let entry = entry.unwrap_or_clone();
                 (entry.script_public_key, outpoint, CompactUtxoEntry::new(entry.amount, entry.block_daa_score, entry.is_coinbase))
             })
             .chunks(RESYNC_CHUNK_SIZE)
