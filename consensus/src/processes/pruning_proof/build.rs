@@ -12,6 +12,7 @@ use kaspa_consensus_core::{
 use kaspa_core::{debug, trace};
 use kaspa_database::prelude::*;
 use kaspa_hashes::Hash;
+use kaspa_utils::binary_heap::TopK;
 
 use crate::{
     model::{
@@ -236,9 +237,7 @@ impl PruningProofManager {
         let required_base_level_depth = (self.pruning_proof_m as f64 * 2.1) as u64; // ~= 2100 for M=1000
 
         // If no explicit required block is provided, default to `selected_tip`.
-        // Typically, `required_block` is the block at depth `M` from the *next* level,
-        // per the MLS protocol; because levels are computed from high to low, the caller
-        // already has this block and supplies it here to constrain root selection.
+        // Typically, `required_block` is the block at depth `M` from the *next* level, per the MLS protocol
         let required = required_block.unwrap_or(selected_tip);
 
         // Backward traversal from `selected_tip` in reverse-topological order
@@ -258,6 +257,45 @@ impl PruningProofManager {
         // Each ghostdag attempt uses a fresh temp store namespace (indexed internally by `retries`).
         let mut ghostdag_factory = GhostdagStoreFactory::new(temp_db.clone(), cache_policy, level);
 
+        // Track a few high-future-size candidates for a final fallback pass
+        let mut best_future_roots = TopK::<(u64, Hash), 8>::new();
+
+        // Try to realize a level-proof from a candidate root
+        let mut try_root = |level_relations_store: &DbRelationsStore, root: Hash, future_size: u64| -> Option<Arc<DbGhostdagStore>> {
+            // Populate ghostdag for `future(root) ∩ past(selected_tip)` and test depth requirements.
+            let ghostdag_store = ghostdag_factory.new_store();
+            let has_required_block = self.populate_level_proof_ghostdag_data(
+                level_relations_store,
+                &ghostdag_store,
+                root,
+                selected_tip,
+                required,
+                level,
+                self.ghostdag_k,
+            );
+            assert!(has_required_block, "expected root ∈ past(required)");
+
+            // Realized blue depth for this root, computed from the level-specific ghostdag
+            let current_level_score = ghostdag_store.get_blue_score(selected_tip).unwrap();
+
+            // Log all non-trivial cases
+            if selected_tip != self.genesis_hash {
+                debug!(
+                    "level: {}, future: {}, blue score: {}, retries: {}",
+                    level, future_size, current_level_score, ghostdag_factory.retries
+                );
+            }
+
+            // Success:
+            // - Genesis is always acceptable
+            // - Otherwise require at least `2M` blue depth at this level
+            if root == self.genesis_hash || current_level_score >= 2 * self.pruning_proof_m {
+                Some(ghostdag_store)
+            } else {
+                None
+            }
+        };
+
         while let Some(SortableBlock { hash: current, .. }) = queue.pop() {
             if !visited.insert(current) {
                 continue;
@@ -267,10 +305,6 @@ impl PruningProofManager {
 
             // Collect reachable parents at this level
             let parents: BlockHashes = self.reachable_parents_at_level(level, &header).collect::<Vec<_>>().into();
-
-            // A level may not contain enough headers to satisfy the safety margin.
-            // Treat the final visited header as a candidate as well, since it may still be deep enough.
-            let is_terminal_candidate = parents.is_empty() && queue.is_empty();
 
             // Persist relations for `current`
             level_relations_store.insert(current, parents.clone()).unwrap();
@@ -287,54 +321,38 @@ impl PruningProofManager {
             // - Must be in the past of `required`
             // - And one of:
             //   (a) genesis
-            //   (b) last header (to give shallow levels a chance)
-            //   (c) sufficiently large future and sufficiently deep base-level distance
-            if self.reachability_service.is_dag_ancestor_of(current, required)
-                && (current == self.genesis_hash
-                    || is_terminal_candidate
-                    || (future_size >= required_future_size && base_level_depth >= required_base_level_depth))
-            {
-                let root = current;
+            //   (b) sufficiently large future and sufficiently deep base-level distance
+            if self.reachability_service.is_dag_ancestor_of(current, required) {
+                // If the root appears immediately viable, attempt ghostdag now.
+                // A successful attempt requires ≥ 2M realized blues at this level.
+                if current == self.genesis_hash
+                    || (future_size >= required_future_size && base_level_depth >= required_base_level_depth)
+                {
+                    let root = current;
+                    if let Some(ghostdag_store) = try_root(&level_relations_store, root, future_size) {
+                        return Ok((ghostdag_store, level_relations_store.into(), selected_tip, root));
+                    }
 
-                // Populate ghostdag for `future(root) ∩ past(selected_tip)` and test depth requirements.
-                let ghostdag_store = ghostdag_factory.new_store();
-                let has_required_block = self.populate_level_proof_ghostdag_data(
-                    &level_relations_store,
-                    &ghostdag_store,
-                    root,
-                    selected_tip,
-                    required,
-                    level,
-                    self.ghostdag_k,
-                );
-                assert!(has_required_block, "expected root ∈ past(required)");
-
-                // Realized blue depth for this root, computed from the level-specific ghostdag
-                let current_level_score = ghostdag_store.get_blue_score(selected_tip).unwrap();
-
-                // Log all non-trivial cases
-                if selected_tip != self.genesis_hash {
-                    debug!(
-                        "level: {}, future: {}, blue score: {}, retries: {}",
-                        level, future_size, current_level_score, ghostdag_factory.retries
-                    );
+                    // Large enough future with insufficient blue depth implies reds; increase the
+                    // future-size threshold and retry further in the past.
+                    required_future_size = (required_future_size as f64 * 1.1) as u64;
+                } else if future_size >= 2 * self.pruning_proof_m {
+                    // Minimum precondition for reaching ≥ 2M blues is future_size ≥ 2M.
+                    // Defer ghostdag and keep as a fallback candidate.
+                    best_future_roots.push((future_size, current));
                 }
-
-                // Success:
-                // - Genesis is always acceptable
-                // - Otherwise require at least `2M` blue depth at this level
-                if root == self.genesis_hash || current_level_score >= 2 * self.pruning_proof_m {
-                    return Ok((ghostdag_store, level_relations_store.into(), selected_tip, root));
-                }
-
-                // Large enough future with insufficient blue depth implies reds;
-                // increase the future-size threshold and retry further in the past.
-                required_future_size = (required_future_size as f64 * 1.1) as u64;
             }
 
             // Continue expanding the backward traversal.
             for &p in parents.iter() {
                 queue.push(SortableBlock { hash: p, blue_work: self.headers_store.get_header(p).unwrap().blue_work });
+            }
+        }
+
+        // Final fallback: give a last chance to a few high-future-size roots
+        for (future_size, root) in best_future_roots.into_sorted_iter_ascending().collect_vec().into_iter().rev() {
+            if let Some(ghostdag_store) = try_root(&level_relations_store, root, future_size) {
+                return Ok((ghostdag_store, level_relations_store.into(), selected_tip, root));
             }
         }
 
