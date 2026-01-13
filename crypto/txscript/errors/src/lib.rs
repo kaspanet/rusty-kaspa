@@ -79,6 +79,9 @@ pub enum TxScriptError {
     OutOfBoundsSubstring(usize, usize, usize),
     #[error("{0} cannot be used as an array index")]
     InvalidIndex(i32),
+
+    #[error("{0} is not a valid covenant output index for input {1} with {2} covenant outputs")]
+    InvalidCovOutIndex(usize, usize, usize),
 }
 
 #[derive(Error, PartialEq, Eq, Debug, Clone, Copy)]

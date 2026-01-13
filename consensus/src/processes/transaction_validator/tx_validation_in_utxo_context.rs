@@ -187,7 +187,7 @@ impl TransactionValidator {
                         return Err(TxRuleError::WrongCovenantId(i));
                     }
                 } else {
-                    let authorizing_input = tx.inputs()[cov_out_info.authorizing_input as usize]; // It's guaranteed to exist from the earlier check on the UTXO entry.
+                    let authorizing_input = &tx.inputs()[cov_out_info.authorizing_input as usize]; // It's guaranteed to exist from the earlier check on the UTXO entry.
                     if kaspa_consensus_core::hashing::covenant_id::covenant_id(authorizing_input.previous_outpoint)
                         != cov_out_info.covenant_id
                     {

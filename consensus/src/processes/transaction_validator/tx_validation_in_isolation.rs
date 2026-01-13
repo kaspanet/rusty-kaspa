@@ -1,4 +1,4 @@
-use crate::constants::{MAX_SOMPI, TX_VERSION};
+use crate::constants::{MAX_SOMPI, TX_VERSION, TX_VERSION_POST_COV_HF};
 use kaspa_consensus_core::tx::Transaction;
 use std::collections::HashSet;
 

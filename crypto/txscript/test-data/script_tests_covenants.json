@@ -3931,22 +3931,24 @@
   ],
   [
     "1",
-    "IF 0xcb ELSE 1 ENDIF",
+    "0 0 COV_OUTPUT_COUNT EQUALVERIFY",
     "",
-    "BAD_OPCODE",
-    "opcodes above OpTxInputScriptSigSubstr invalid if executed"
+    "OK",
+    "OpCovOutputCount should return 0 for transactions with no covenant id"
   ],
   [
     "1",
-    "IF 0xcc ELSE 1 ENDIF",
+    "0 0 COV_OUTPUT_IDX DROP",
     "",
-    "BAD_OPCODE"
+    "UNKNOWN_ERROR",
+    "OpCovOutputIdx errors for transactions with no covenant id"
   ],
   [
     "1",
     "IF 0xcd ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "opcodes above OpCovOutputIdx invalid if executed"
   ],
   [
     "1",
