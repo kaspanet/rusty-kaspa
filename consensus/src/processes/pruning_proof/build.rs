@@ -14,11 +14,10 @@ use kaspa_consensus_core::{
 use kaspa_core::{debug, trace};
 use kaspa_database::prelude::*;
 use kaspa_hashes::Hash;
-use parking_lot::RwLock;
 
 use crate::{
     model::{
-        services::{reachability::ReachabilityService, relations::MTRelationsService},
+        services::reachability::ReachabilityService,
         stores::{
             ghostdag::{DbGhostdagStore, GhostdagStore, GhostdagStoreReader},
             headers::{HeaderStoreReader, HeaderWithBlockLevel},
@@ -52,6 +51,12 @@ struct FutureConeRelations<T: RelationsStoreReader, U: ReachabilityService> {
     relations_store: T,
     reachability_service: U,
     root: Hash,
+}
+
+impl<T: RelationsStoreReader, U: ReachabilityService> FutureConeRelations<T, U> {
+    fn new(relations_store: T, reachability_service: U, root: Hash) -> Self {
+        Self { relations_store, reachability_service, root }
+    }
 }
 
 impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for FutureConeRelations<T, U> {
@@ -347,23 +352,21 @@ impl PruningProofManager {
                     || (future_size >= required_future_size && base_level_depth >= required_base_level_depth))
             {
                 let root = current;
-
-                let transient_ghostdag_store =
-                    Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, gd_tries));
-                let has_required_block = self.fill_level_proof_ghostdag_data(
+                let ghostdag_store = Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, gd_tries));
+                let has_required_block = self.populate_level_proof_ghostdag_data(
+                    &level_relation_store,
+                    &ghostdag_store,
                     root,
                     selected_tip,
-                    &transient_ghostdag_store,
                     block_at_depth_m_at_next_level,
                     level,
-                    &level_relation_store,
                     self.ghostdag_k,
                 );
-                assert!(has_required_block, "we verified that current is in past(required)");
+                assert!(has_required_block, "we verified that current ∈ past(required)");
 
                 // Step 4 - Check if we actually have enough depth.
                 // Need to ensure this does the same 2M+1 depth that block_at_depth does
-                let curr_tip_bs = transient_ghostdag_store.get_blue_score(selected_tip).unwrap();
+                let curr_tip_bs = ghostdag_store.get_blue_score(selected_tip).unwrap();
 
                 // Log all non-trivial cases
                 if selected_tip != self.genesis_hash {
@@ -371,7 +374,7 @@ impl PruningProofManager {
                 }
 
                 if root == self.genesis_hash || curr_tip_bs >= 2 * self.pruning_proof_m {
-                    return Ok((transient_ghostdag_store, level_relation_store.into(), selected_tip, root));
+                    return Ok((ghostdag_store, level_relation_store.into(), selected_tip, root));
                 }
 
                 // Large enough future with less than 2M blues means we have reds and thus need a gradual future size increase
@@ -388,74 +391,69 @@ impl PruningProofManager {
         panic!("Failed to find sufficient root for level {level} after exhausting all known headers.");
     }
 
-    /// BFS forward iterates from root until selected tip, ignoring blocks in the antipast of selected_tip.
-    /// For each block along the way, insert that hash into the ghostdag_store
-    /// If we have a required_block to find, this will return true if that block was found along the way
-    fn fill_level_proof_ghostdag_data(
+    /// Forward-traverses from `root` toward `tip`, and inserts Ghostdag data for each visited block.
+    ///
+    /// Traversal is restricted to `future(root) ∩ past(tip)` (i.e., blocks in the antipast of `tip` are ignored).
+    /// Returns `true` iff `required_block` was encountered during traversal.
+    fn populate_level_proof_ghostdag_data(
         &self,
+        level_relations_store: &DbRelationsStore,
+        ghostdag_store: &Arc<DbGhostdagStore>,
         root: Hash,
-        selected_tip: Hash,
-        transient_ghostdag_store: &Arc<DbGhostdagStore>,
+        tip: Hash,
         required_block: Hash,
         level: BlockLevel,
-        transient_relations_store: &DbRelationsStore,
         ghostdag_k: KType,
     ) -> bool {
-        let transient_relations_service = FutureConeRelations {
-            relations_store: transient_relations_store,
-            reachability_service: self.reachability_service.clone(),
-            root,
-        };
-        let transient_gd_manager = GhostdagManager::with_level(
+        // Restrict relations to `future(root)`
+        let relations_view = FutureConeRelations::new(level_relations_store, self.reachability_service.clone(), root);
+
+        // Create a Ghostdag manager over the restricted relations view
+        let ghostdag_manager = GhostdagManager::with_level(
             root,
             ghostdag_k,
-            transient_ghostdag_store.clone(),
-            &transient_relations_service,
+            ghostdag_store.clone(),
+            &relations_view,
             self.headers_store.clone(),
             self.reachability_service.clone(),
             level,
             self.max_block_level,
         );
 
-        // Note there is no need to initialize origin since we have a single root
-        transient_ghostdag_store.insert(root, Arc::new(transient_gd_manager.genesis_ghostdag_data())).unwrap();
+        // No need to initialize origin since we have a single root
+        ghostdag_store.insert(root, Arc::new(ghostdag_manager.genesis_ghostdag_data())).unwrap();
 
-        let mut topological_heap: BinaryHeap<_> = Default::default();
+        // Bottom-up topological traversal from `root` toward `tip`
+        let mut queue: BinaryHeap<_> = Default::default();
         let mut visited = BlockHashSet::new();
-        for child in transient_relations_service.get_children(root).unwrap().read().iter().copied() {
-            topological_heap
-                .push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
+        for child in relations_view.get_children(root).unwrap().read().iter().copied() {
+            queue.push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
         }
 
         let mut has_required_block = root == required_block;
-        loop {
-            let Some(current) = topological_heap.pop() else {
-                break;
-            };
-            let current_hash = current.0.hash;
-            if !visited.insert(current_hash) {
+
+        while let Some(Reverse(SortableBlock { hash: current, .. })) = queue.pop() {
+            if !visited.insert(current) {
                 continue;
             }
 
-            if !self.reachability_service.is_dag_ancestor_of(current_hash, selected_tip) {
-                // We don't care about blocks in the antipast of the selected tip
+            // We only care about `future(root) ∩ past(tip)`
+            if !self.reachability_service.is_dag_ancestor_of(current, tip) {
                 continue;
             }
 
-            if !has_required_block && current_hash == required_block {
-                has_required_block = true;
-            }
+            has_required_block |= current == required_block;
 
-            let current_gd = transient_gd_manager.ghostdag(&transient_relations_service.get_parents(current_hash).unwrap());
+            ghostdag_store
+                .insert(current, Arc::new(ghostdag_manager.ghostdag(&relations_view.get_parents(current).unwrap())))
+                .unwrap();
 
-            transient_ghostdag_store.insert(current_hash, Arc::new(current_gd)).idempotent().unwrap();
-
-            for child in transient_relations_service.get_children(current_hash).unwrap().read().iter().copied() {
-                topological_heap
-                    .push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
+            for child in relations_view.get_children(current).unwrap().read().iter().copied() {
+                queue.push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
             }
         }
 
+        // Returned for sanity testing by the caller
         has_required_block
     }
 
