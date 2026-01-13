@@ -25,12 +25,12 @@ use crate::{
     },
     processes::{
         ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
-        pruning_proof::{GhostdagReaderExt, PpmInternalError},
+        pruning_proof::{GhostdagReaderExt, ProofInternalError},
         relations::RelationsStoreExtensions,
     },
 };
 
-use super::{PpmInternalResult, PruningProofManager};
+use super::{ProofInternalResult, PruningProofManager};
 type LevelProofContext = (Arc<DbGhostdagStore>, Arc<DbRelationsStore>, Hash, Hash);
 
 struct MultiLevelProofContext {
@@ -214,7 +214,7 @@ impl PruningProofManager {
         level: BlockLevel,
         required_block: Option<Hash>,
         temp_db: Arc<DB>,
-    ) -> PpmInternalResult<LevelProofContext> {
+    ) -> ProofInternalResult<LevelProofContext> {
         // Select the tip at this level:
         // - If the pruning point level >= level, use it.
         // - Otherwise, use the approximate selected parent at level.
@@ -503,10 +503,10 @@ impl PruningProofManager {
     }
 
     /// Approximates the selected parent at `level` as the reachable parent whose header has the highest `blue_work`.
-    fn approx_selected_parent_header_at_level(&self, header: &Header, level: BlockLevel) -> PpmInternalResult<Arc<Header>> {
+    fn approx_selected_parent_header_at_level(&self, header: &Header, level: BlockLevel) -> ProofInternalResult<Arc<Header>> {
         self.reachable_parents_at_level(level, header)
             .map(|p| self.headers_store.get_header(p).expect("reachable"))
             .max_by_key(|h| SortableBlock::new(h.hash, h.blue_work))
-            .ok_or_else(|| PpmInternalError::NotEnoughHeadersToBuildProof("no reachable parents".to_string()))
+            .ok_or_else(|| ProofInternalError::NotEnoughHeadersToBuildProof("no reachable parents".to_string()))
     }
 }

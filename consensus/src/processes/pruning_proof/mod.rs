@@ -62,7 +62,7 @@ use super::window::WindowManager;
 
 /// Pruning proof manager internal errors
 #[derive(Error, Debug)]
-enum PpmInternalError {
+enum ProofInternalError {
     #[error("block at depth error: {0}")]
     BlockAtDepth(String),
 
@@ -77,7 +77,7 @@ enum PpmInternalError {
 }
 
 /// Pruning proof manager internal result
-type PpmInternalResult<T> = std::result::Result<T, PpmInternalError>;
+type ProofInternalResult<T> = std::result::Result<T, ProofInternalError>;
 
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
@@ -388,10 +388,10 @@ where
     Self: GhostdagStoreReader,
 {
     /// Extension method to get the block at blue depth `depth` from `high` via this store reader. Used by build and validate.
-    fn block_at_depth(&self, high: Hash, depth: u64) -> Result<Hash, PpmInternalError> {
+    fn block_at_depth(&self, high: Hash, depth: u64) -> Result<Hash, ProofInternalError> {
         let high_gd = self
             .get_compact_data(high)
-            .map_err(|err| PpmInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
+            .map_err(|err| ProofInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
         let mut current_gd = high_gd;
         let mut current = high;
         while current_gd.blue_score + depth >= high_gd.blue_score {
@@ -401,7 +401,7 @@ where
             let prev = current;
             current = current_gd.selected_parent;
             current_gd = self.get_compact_data(current).map_err(|err| {
-                PpmInternalError::BlockAtDepth(format!(
+                ProofInternalError::BlockAtDepth(format!(
                     "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
                     high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
                 ))
