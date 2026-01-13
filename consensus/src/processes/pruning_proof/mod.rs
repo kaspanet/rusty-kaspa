@@ -179,10 +179,6 @@ impl PruningProofManager {
         }
     }
 
-    pub(crate) fn pruning_proof_m(&self) -> u64 {
-        self.pruning_proof_m
-    }
-
     pub fn import_pruning_points(&self, pruning_points: &[Arc<Header>]) -> PruningImportResult<()> {
         let unique_count = pruning_points.iter().map(|h| h.hash).unique().count();
         if unique_count < pruning_points.len() {

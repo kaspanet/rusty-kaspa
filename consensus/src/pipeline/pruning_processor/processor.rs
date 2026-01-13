@@ -662,20 +662,30 @@ impl PruningProcessor {
     fn assert_proof_rebuilding(&self, ref_proof: Arc<PruningPointProof>, new_pruning_point: Hash) {
         info!("Rebuilding the pruning proof after pruning data (sanity test)");
         let built_proof = self.pruning_proof_manager.build_pruning_point_proof(new_pruning_point);
-        let pruning_proof_m = self.pruning_proof_manager.pruning_proof_m() as usize;
+        let mut mismatch_detected = false;
+        if ref_proof.len() != built_proof.len() {
+            mismatch_detected = true;
+            info!("Rebuilt proof does not match the original one ({} ref vs. {} rebuilt levels)", ref_proof.len(), built_proof.len());
+        }
         for (i, (ref_level, built_level)) in ref_proof.iter().zip(built_proof.iter()).enumerate() {
-            // Rebuilding a pruning proof must not reduce any non-genesis level below the ≥2M threshold.
-            // A <2M outcome is only valid in the root = genesis case, and the reference proof would match.
-            if ref_level.len() >= 2 * pruning_proof_m && built_level.len() < 2 * pruning_proof_m {
-                panic!(
-                    "MLS proof regression after prune: level {}, reference level: {}, built level: {}",
-                    i,
-                    ref_level.len(),
-                    built_level.len()
-                );
+            if ref_level.iter().map(|h| h.hash).collect::<BlockHashSet>()
+                != built_level.iter().map(|h| h.hash).collect::<BlockHashSet>()
+            {
+                mismatch_detected = true;
+                info!("Rebuilt proof for level {} does not match the original one", i);
             }
         }
-        info!("Proof was rebuilt successfully following pruning");
+        if mismatch_detected {
+            info!("Fallback: comparing the PoW strength of the rebuilt proof vs. the original one..");
+            // Note we pass the built proof as the defender since the comparison prefers the defender in case of equality
+            self.pruning_proof_manager
+                .compare_proofs(&built_proof, &ref_proof, 0.into(), 0.into())
+                .expect_err("rebuilt proof is weaker than the original pre-pruning reference proof");
+
+            info!("Rebuilt proof is slightly different than original pre-pruning reference proof, but it maintains its PoW strength");
+        } else {
+            info!("Proof was rebuilt successfully following pruning");
+        }
     }
 
     fn assert_data_rebuilding(&self, ref_data: Arc<PruningPointTrustedData>, new_pruning_point: Hash) {
