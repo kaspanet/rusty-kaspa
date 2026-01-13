@@ -1,0 +1,25 @@
+[package]
+name = "kaspa-wallet-grpc-core"
+rust-version.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+include.workspace = true
+
+[dependencies]
+kaspa-rpc-core.workspace = true
+kaspa-wallet-core.workspace = true
+kaspa-txscript.workspace = true
+kaspa-bip32.workspace = true
+thiserror.workspace = true
+
+tonic.workspace = true
+prost.workspace = true
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tonic-build = { workspace = true, features = ["prost"] }

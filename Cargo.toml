@@ -6,7 +6,9 @@ members = [
     "core",
     "wallet/macros",
     "wallet/core",
-    "wallet/native",
+    "wallet/grpc/core",
+    "wallet/grpc/server",
+    "wallet/daemon",
     "wallet/wasm",
     "wallet/bip32",
     "wallet/keys",
@@ -124,11 +126,13 @@ kaspa-txscript-errors = { version = "1.0.1", path = "crypto/txscript/errors" }
 kaspa-utils = { version = "1.0.1", path = "utils" }
 kaspa-utils-tower = { version = "1.0.1", path = "utils/tower" }
 kaspa-utxoindex = { version = "1.0.1", path = "indexes/utxoindex" }
-kaspa-wallet = { version = "1.0.1", path = "wallet/native" }
+kaspa-wallet-daemon = { version = "1.0.1", path = "wallet/daemon" }
 kaspa-wallet-cli-wasm = { version = "1.0.1", path = "wallet/wasm" }
 kaspa-wallet-keys = { version = "1.0.1", path = "wallet/keys" }
 kaspa-wallet-pskt = { version = "1.0.1", path = "wallet/pskt" }
 kaspa-wallet-core = { version = "1.0.1", path = "wallet/core" }
+kaspa-wallet-grpc-core = { version = "1.0.0", path = "wallet/grpc/core" }
+kaspa-wallet-grpc-server = { version = "1.0.0", path = "wallet/grpc/server" }
 kaspa-wallet-macros = { version = "1.0.1", path = "wallet/macros" }
 kaspa-wasm = { version = "1.0.1", path = "wasm" }
 kaspa-wasm-core = { version = "1.0.1", path = "wasm/core" }
@@ -139,6 +143,7 @@ kaspa-wrpc-wasm = { version = "1.0.1", path = "rpc/wrpc/wasm" }
 kaspa-wrpc-example-subscriber = { version = "1.0.1", path = "rpc/wrpc/examples/subscriber" }
 kaspad = { version = "1.0.1", path = "kaspad" }
 kaspa-alloc = { version = "1.0.1", path = "utils/alloc" }
+kaspa-wallet = { version = "1.0.1", path = "wallet/native" }
 
 # external
 aes = "0.8.3"

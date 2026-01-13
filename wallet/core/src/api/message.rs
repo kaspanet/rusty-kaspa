@@ -577,7 +577,7 @@ pub struct UtxoEntryWrapper {
     pub address: Option<Address>,
     pub outpoint: TransactionOutpointWrapper,
     pub amount: u64,
-    pub script_public_key: ScriptPublicKey,
+    pub script_public_key: ScriptPublicKeyWrapper,
     pub block_daa_score: u64,
     pub is_coinbase: bool,
 }
@@ -621,13 +621,32 @@ impl From<TransactionOutpointWrapper> for TransactionOutpoint {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptPublicKeyWrapper {
+    pub script_public_key: String,
+    pub version: u16,
+}
+
+impl From<ScriptPublicKey> for ScriptPublicKeyWrapper {
+    fn from(script_pub_key: ScriptPublicKey) -> Self {
+        Self { script_public_key: script_pub_key.script().to_hex(), version: script_pub_key.version }
+    }
+}
+
+impl From<ScriptPublicKeyWrapper> for ScriptPublicKey {
+    fn from(script_pub_key: ScriptPublicKeyWrapper) -> Self {
+        Self::from_vec(script_pub_key.version, Vec::from_hex(&script_pub_key.script_public_key).unwrap())
+    }
+}
+
 impl From<UtxoEntryWrapper> for UtxoEntry {
     fn from(entry: UtxoEntryWrapper) -> Self {
         Self {
             address: entry.address,
             outpoint: entry.outpoint.into(),
             amount: entry.amount,
-            script_public_key: entry.script_public_key,
+            script_public_key: entry.script_public_key.into(),
             block_daa_score: entry.block_daa_score,
             is_coinbase: entry.is_coinbase,
         }
@@ -640,7 +659,7 @@ impl From<UtxoEntry> for UtxoEntryWrapper {
             address: entry.address,
             outpoint: entry.outpoint.into(),
             amount: entry.amount,
-            script_public_key: entry.script_public_key,
+            script_public_key: entry.script_public_key.into(),
             block_daa_score: entry.block_daa_score,
             is_coinbase: entry.is_coinbase,
         }
@@ -688,8 +707,8 @@ pub struct AccountsEstimateResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FeeRateEstimateBucket {
-    feerate: f64,
-    seconds: f64,
+    pub feerate: f64,
+    pub seconds: f64,
 }
 
 impl From<RpcFeerateBucket> for FeeRateEstimateBucket {

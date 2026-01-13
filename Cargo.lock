@@ -3388,18 +3388,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wallet"
-version = "1.0.1"
-dependencies = [
- "async-std",
- "async-trait",
- "kaspa-cli",
- "tokio",
- "workflow-log",
- "workflow-terminal",
-]
-
-[[package]]
 name = "kaspa-wallet-cli-wasm"
 version = "1.0.1"
 dependencies = [
@@ -3492,6 +3480,56 @@ dependencies = [
  "workflow-wasm",
  "xxhash-rust",
  "zeroize",
+]
+
+[[package]]
+name = "kaspa-wallet-daemon"
+version = "1.0.1"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "clap 4.5.51",
+ "futures-util",
+ "kaspa-consensus-core",
+ "kaspa-core",
+ "kaspa-wallet-core",
+ "kaspa-wallet-grpc-core",
+ "kaspa-wallet-grpc-server",
+ "log",
+ "tokio",
+ "tonic",
+ "workflow-core",
+ "workflow-log",
+ "workflow-terminal",
+]
+
+[[package]]
+name = "kaspa-wallet-grpc-core"
+version = "1.0.1"
+dependencies = [
+ "kaspa-bip32",
+ "kaspa-rpc-core",
+ "kaspa-txscript",
+ "kaspa-wallet-core",
+ "prost",
+ "thiserror",
+ "tonic",
+ "tonic-build",
+]
+
+[[package]]
+name = "kaspa-wallet-grpc-server"
+version = "1.0.1"
+dependencies = [
+ "futures-util",
+ "kaspa-addresses",
+ "kaspa-consensus-core",
+ "kaspa-rpc-core",
+ "kaspa-wallet-core",
+ "kaspa-wallet-grpc-core",
+ "log",
+ "tokio",
+ "tonic",
 ]
 
 [[package]]
