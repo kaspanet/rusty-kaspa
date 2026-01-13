@@ -1,5 +1,9 @@
 ## Stratum Bridge Beta
 
+This Stratum Bridge is currently in BETA. Support is available in the Kaspa Discord’s [#mining-and-hardware](https://discord.com/channels/599153230659846165/910178666099646584) channel.
+
+For bug reports or feature request, please open an issue at https://github.com/kaspanet/rusty-kaspa/issues and prefix your issue title with [Bridge].
+
 This repository contains a standalone Stratum bridge binary at:
 
 `bridge`
