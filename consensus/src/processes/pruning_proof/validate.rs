@@ -1,12 +1,12 @@
 use std::{
-    ops::DerefMut,
+    ops::{ControlFlow, DerefMut},
     sync::{atomic::Ordering, Arc},
 };
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
-    errors::pruning::{PruningImportError, PruningImportResult},
+    errors::pruning::{ProofWeakness, PruningImportError, PruningImportResult},
     header::Header,
     pruning::{PruningPointProof, PruningProofMetadata},
     BlockLevel, BlueWorkType,
@@ -96,7 +96,15 @@ impl ProofLevelContext<'_> {
 
 impl ProofContext {
     /// Build the full context from the proof
-    fn from_proof(ppm: &PruningProofManager, proof: &PruningPointProof, log_validating: bool) -> PruningImportResult<ProofContext> {
+    fn from_proof(
+        ppm: &PruningProofManager,
+        proof: &PruningPointProof,
+        log_validating: bool,
+    ) -> Result<ControlFlow<(), ProofContext>, PruningImportError> {
+        if proof.len() != ppm.max_block_level as usize + 1 {
+            return Err(PruningImportError::ProofNotEnoughLevels(ppm.max_block_level as usize + 1));
+        }
+
         if proof[0].is_empty() {
             return Err(PruningImportError::PruningProofNotEnoughHeaders);
         }
@@ -168,7 +176,7 @@ impl ProofContext {
         for level in (0..=ppm.max_block_level).rev() {
             // Before processing this level, check if the process is exiting so we can end early
             if ppm.is_consensus_exiting.load(Ordering::Relaxed) {
-                return Err(PruningImportError::PruningValidationInterrupted);
+                return Ok(ControlFlow::Break(()));
             }
 
             if log_validating {
@@ -182,7 +190,7 @@ impl ProofContext {
                 if header_level < level {
                     return Err(PruningImportError::PruningProofWrongBlockLevel(header.hash, header_level, level));
                 }
-                if !pow_passes {
+                if !ppm.skip_proof_of_work && !pow_passes {
                     return Err(PruningImportError::ProofOfWorkFailed(header.hash, level));
                 }
 
@@ -202,6 +210,12 @@ impl ProofContext {
                     return Err(PruningImportError::PruningProofHeaderWithNoKnownParents(header.hash, level));
                 }
 
+                for &parent in parents.iter() {
+                    if headers_store.get_header(parent).unwrap().blue_work >= header.blue_work {
+                        return Err(PruningImportError::PruningProofInconsistentBlueWork(header.hash, level));
+                    }
+                }
+
                 let parents: BlockHashes = parents.push_if_empty(ORIGIN).into();
 
                 if relations_stores[level_idx].has(header.hash).unwrap() {
@@ -215,17 +229,15 @@ impl ProofContext {
                 // Update the selected tip
                 selected_tip = ghostdag_managers[level_idx].find_selected_parent([selected_tip, header.hash]);
 
-                let mut reachability_mergeset = {
-                    let reachability_read = reachability_stores[level_idx].read();
-                    ghostdag_data
-                        .unordered_mergeset_without_selected_parent()
-                        .filter(|hash| reachability_read.has(*hash).unwrap())
-                        .collect_vec() // We collect to vector so reachability_read can be released and let `reachability::add_block` use a write lock.
-                        .into_iter()
-                };
+                let mut level_reachability = reachability_stores[level_idx].write();
+                let mut reachability_mergeset = ghostdag_data
+                    .unordered_mergeset_without_selected_parent()
+                    .filter(|hash| level_reachability.has(*hash).unwrap())
+                    .collect_vec()
+                    .into_iter();
 
                 reachability::add_block(
-                    reachability_stores[level_idx].write().deref_mut(),
+                    level_reachability.deref_mut(),
                     header.hash,
                     ghostdag_data.selected_parent,
                     &mut reachability_mergeset,
@@ -233,9 +245,9 @@ impl ProofContext {
                 .unwrap();
 
                 if selected_tip == header.hash {
-                    reachability::hint_virtual_selected_parent(reachability_stores[level_idx].write().deref_mut(), header.hash)
-                        .unwrap();
+                    reachability::hint_virtual_selected_parent(level_reachability.deref_mut(), header.hash).unwrap();
                 }
+                drop(level_reachability);
             }
 
             if level < ppm.max_block_level {
@@ -247,8 +259,15 @@ impl ProofContext {
                 }
             }
 
-            if selected_tip != proof_pp && !ppm.parents_manager.parents_at_level(&proof_pp_header, level).contains(&selected_tip) {
-                return Err(PruningImportError::PruningProofMissesBlocksBelowPruningPoint(selected_tip, level));
+            // The selected tip at a given level must be anchored to the pruning point:
+            // - At levels ≤ the pruning-point level, the selected tip must be the pruning point itself.
+            // - At higher levels, it must be a parent of the pruning point at that level.
+            if level <= proof_pp_level {
+                if selected_tip != proof_pp {
+                    return Err(PruningImportError::PruningProofSelectedTipIsNotThePruningPoint(selected_tip, level));
+                }
+            } else if !ppm.parents_manager.parents_at_level(&proof_pp_header, level).contains(&selected_tip) {
+                return Err(PruningImportError::PruningProofSelectedTipNotParentOfPruningPoint(selected_tip, level));
             }
 
             selected_tip_by_level[level_idx] = Some(selected_tip);
@@ -268,7 +287,7 @@ impl ProofContext {
             pp_level: proof_pp_level,
         };
 
-        Ok(ctx)
+        Ok(ControlFlow::Continue(ctx))
     }
 
     /// Returns a per-level context
@@ -277,24 +296,6 @@ impl ProofContext {
             ghostdag_store: &self.ghostdag_stores[level as usize],
             selected_tip: self.selected_tip_by_level[level as usize],
         }
-    }
-
-    /// Validate the level selected tip is either the proof pruning point (if level <= pp level), or a level parent of the pruning point (otherwise)
-    fn validate_level_selected_tip_conditions(&self, ppm: &PruningProofManager, level: BlockLevel) -> PruningImportResult<()> {
-        // A proof selected tip of some level has to be the proof suggested pruning point itself if its level
-        // is lower or equal to the pruning point level, or a parent of the pruning point on the relevant level
-        // otherwise.
-        let proof_selected_tip_at_level = self.selected_tip_by_level[level as usize];
-
-        if level <= self.pp_level {
-            if proof_selected_tip_at_level != self.pp_header.hash {
-                return Err(PruningImportError::PruningProofSelectedTipIsNotThePruningPoint(proof_selected_tip_at_level, level));
-            }
-        } else if !ppm.parents_manager.parents_at_level(&self.pp_header, level).contains(&proof_selected_tip_at_level) {
-            return Err(PruningImportError::PruningProofSelectedTipNotParentOfPruningPoint(proof_selected_tip_at_level, level));
-        }
-
-        Ok(())
     }
 }
 
@@ -312,12 +313,9 @@ impl PruningProofManager {
         proof: &PruningPointProof,
         proof_metadata: &PruningProofMetadata,
     ) -> PruningImportResult<()> {
-        if proof.len() != self.max_block_level as usize + 1 {
-            return Err(PruningImportError::ProofNotEnoughLevels(self.max_block_level as usize + 1));
-        }
-
         // Initialize the stores for the incoming pruning proof (the challenger)
-        let challenger = ProofContext::from_proof(self, proof, true)?;
+        let challenger =
+            ProofContext::from_proof(self, proof, true)?.continue_value().ok_or(PruningImportError::PruningValidationInterrupted)?;
 
         // Get the proof for the current consensus (the defender) and recreate the stores for it
         // This is expected to be fast because if a proof exists, it will be cached.
@@ -328,14 +326,17 @@ impl PruningProofManager {
             let genesis_header = self.headers_store.get_header(self.genesis_hash).unwrap();
             defender_proof = Arc::new((0..=self.max_block_level).map(|_| vec![genesis_header.clone()]).collect_vec());
         }
-        let defender = ProofContext::from_proof(self, &defender_proof, false)?;
+        let defender = ProofContext::from_proof(self, &defender_proof, false)
+            .expect("local")
+            .continue_value()
+            .ok_or(PruningImportError::PruningValidationInterrupted)?;
 
-        self.compare_proofs_inner(
+        Ok(self.compare_proofs_inner(
             defender,
             challenger,
             self.headers_selected_tip_store.read().get().unwrap().blue_work,
             proof_metadata.relay_block_blue_work,
-        )
+        )?)
     }
 
     /// Compares two MLS pruning proofs and determines whether the challenger supersedes the defender.
@@ -343,7 +344,9 @@ impl PruningProofManager {
     /// The comparison is performed level-by-level, considering only levels that satisfy the
     /// ≥2M threshold. When a common ancestor exists at a given level, the proofs are
     /// compared by their accumulated blue work from that ancestor onward, including the
-    /// respective pruning-period work.
+    /// respective pruning-period work; otherwise, if no common ancestor is found, the
+    /// challenger is considered better only if it possesses a qualifying level where the
+    /// defender does not.
     ///
     /// The challenger is considered better only if it is *strictly* superior according to
     /// these criteria. In case of equality, or when no strict advantage can be established,
@@ -354,7 +357,7 @@ impl PruningProofManager {
         challenger: ProofContext,
         defender_relay_blue_work: BlueWorkType,
         challenger_relay_blue_work: BlueWorkType,
-    ) -> PruningImportResult<()> {
+    ) -> Result<(), ProofWeakness> {
         // The accumulated blue work of the defender's proof from the pruning point onward
         let defender_pruning_period_work = defender_relay_blue_work.saturating_sub(defender.pp_header.blue_work);
 
@@ -363,9 +366,6 @@ impl PruningProofManager {
         let challenger_claimed_pruning_period_work = challenger_relay_blue_work.saturating_sub(challenger.pp_header.blue_work);
 
         for level in 0..=self.max_block_level {
-            // Selected tip sanity validations
-            challenger.validate_level_selected_tip_conditions(self, level)?;
-
             // Init level ctxs
             let challenger_level_ctx = challenger.level(level);
             let defender_level_ctx = defender.level(level);
@@ -385,7 +385,7 @@ impl PruningProofManager {
                 if defender_level_ctx.blue_work_diff(common_ancestor).saturating_add(defender_pruning_period_work)
                     >= challenger_level_ctx.blue_work_diff(common_ancestor).saturating_add(challenger_claimed_pruning_period_work)
                 {
-                    return Err(PruningImportError::PruningProofInsufficientBlueWork);
+                    return Err(ProofWeakness::InsufficientBlueWork);
                 }
 
                 return Ok(());
@@ -414,7 +414,7 @@ impl PruningProofManager {
         drop(challenger);
         drop(defender);
 
-        Err(PruningImportError::PruningProofNotEnoughHeaders)
+        Err(ProofWeakness::NotEnoughHeaders)
     }
 
     /// Compares two MLS pruning proofs and determines whether the challenger supersedes the defender.
@@ -428,12 +428,12 @@ impl PruningProofManager {
         challenger: &PruningPointProof,
         defender_relay_blue_work: BlueWorkType,
         challenger_relay_blue_work: BlueWorkType,
-    ) -> PruningImportResult<()> {
-        self.compare_proofs_inner(
-            ProofContext::from_proof(self, defender, false)?,
-            ProofContext::from_proof(self, challenger, false)?,
+    ) -> ControlFlow<(), Result<(), ProofWeakness>> {
+        ControlFlow::Continue(self.compare_proofs_inner(
+            ProofContext::from_proof(self, defender, false).expect("internal")?,
+            ProofContext::from_proof(self, challenger, false).expect("internal")?,
             defender_relay_blue_work,
             challenger_relay_blue_work,
-        )
+        ))
     }
 }
