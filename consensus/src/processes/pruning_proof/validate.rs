@@ -219,17 +219,15 @@ impl ProofContext {
                 // Update the selected tip
                 selected_tip = ghostdag_managers[level_idx].find_selected_parent([selected_tip, header.hash]);
 
-                let mut reachability_mergeset = {
-                    let reachability_read = reachability_stores[level_idx].read();
-                    ghostdag_data
-                        .unordered_mergeset_without_selected_parent()
-                        .filter(|hash| reachability_read.has(*hash).unwrap())
-                        .collect_vec() // We collect to vector so reachability_read can be released and let `reachability::add_block` use a write lock.
-                        .into_iter()
-                };
+                let mut level_reachability = reachability_stores[level_idx].write();
+                let mut reachability_mergeset = ghostdag_data
+                    .unordered_mergeset_without_selected_parent()
+                    .filter(|hash| level_reachability.has(*hash).unwrap())
+                    .collect_vec()
+                    .into_iter();
 
                 reachability::add_block(
-                    reachability_stores[level_idx].write().deref_mut(),
+                    level_reachability.deref_mut(),
                     header.hash,
                     ghostdag_data.selected_parent,
                     &mut reachability_mergeset,
@@ -237,9 +235,9 @@ impl ProofContext {
                 .unwrap();
 
                 if selected_tip == header.hash {
-                    reachability::hint_virtual_selected_parent(reachability_stores[level_idx].write().deref_mut(), header.hash)
-                        .unwrap();
+                    reachability::hint_virtual_selected_parent(level_reachability.deref_mut(), header.hash).unwrap();
                 }
+                drop(level_reachability);
             }
 
             if level < ppm.max_block_level {
