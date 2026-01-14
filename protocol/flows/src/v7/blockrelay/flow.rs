@@ -207,11 +207,16 @@ impl HandleRelayInvsFlow {
                     .iter()
                     .map(|b| make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(b.hash().into()) }))
                     .collect();
-                self.ctx.hub().broadcast_many(msgs).await;
+                // we filter out the current peer to avoid sending it back invs we know it already has
+                self.ctx.hub().broadcast_many(msgs, Some(self.router.key())).await;
 
+                // we filter out the current peer to avoid sending it back the same invs
                 self.ctx
                     .hub()
-                    .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(inv.hash.into()) }))
+                    .broadcast(
+                        make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(inv.hash.into()) }),
+                        Some(self.router.key()),
+                    )
                     .await;
             }
 
