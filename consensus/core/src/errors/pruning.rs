@@ -15,6 +15,9 @@ pub enum PruningImportError {
     #[error("the proof header {0} is missing known parents at level {1}")]
     PruningProofHeaderWithNoKnownParents(Hash, BlockLevel),
 
+    #[error("the proof header {0} at level {1} has blue work inconsistent with its parents")]
+    PruningProofInconsistentBlueWork(Hash, BlockLevel),
+
     #[error("proof level {0} is missing the block at depth m in level {1}")]
     PruningProofMissingBlockAtDepthMFromNextLevel(BlockLevel, BlockLevel),
 

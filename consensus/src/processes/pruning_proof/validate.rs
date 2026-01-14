@@ -210,6 +210,12 @@ impl ProofContext {
                     return Err(PruningImportError::PruningProofHeaderWithNoKnownParents(header.hash, level));
                 }
 
+                for &parent in parents.iter() {
+                    if headers_store.get_header(parent).unwrap().blue_work >= header.blue_work {
+                        return Err(PruningImportError::PruningProofInconsistentBlueWork(header.hash, level));
+                    }
+                }
+
                 let parents: BlockHashes = parents.push_if_empty(ORIGIN).into();
 
                 if relations_stores[level_idx].has(header.hash).unwrap() {
