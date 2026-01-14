@@ -247,8 +247,15 @@ impl ProofContext {
                 }
             }
 
-            if selected_tip != proof_pp && !ppm.parents_manager.parents_at_level(&proof_pp_header, level).contains(&selected_tip) {
-                return Err(PruningImportError::PruningProofMissesBlocksBelowPruningPoint(selected_tip, level));
+            // The selected tip at a given level must be anchored to the pruning point:
+            // - At levels ≤ the pruning-point level, the selected tip must be the pruning point itself.
+            // - At higher levels, it must be a parent of the pruning point at that level.
+            if level <= proof_pp_level {
+                if selected_tip != proof_pp {
+                    return Err(PruningImportError::PruningProofSelectedTipIsNotThePruningPoint(selected_tip, level));
+                }
+            } else if !ppm.parents_manager.parents_at_level(&proof_pp_header, level).contains(&selected_tip) {
+                return Err(PruningImportError::PruningProofSelectedTipNotParentOfPruningPoint(selected_tip, level));
             }
 
             selected_tip_by_level[level_idx] = Some(selected_tip);
@@ -277,24 +284,6 @@ impl ProofContext {
             ghostdag_store: &self.ghostdag_stores[level as usize],
             selected_tip: self.selected_tip_by_level[level as usize],
         }
-    }
-
-    /// Validate the level selected tip is either the proof pruning point (if level <= pp level), or a level parent of the pruning point (otherwise)
-    fn validate_level_selected_tip_conditions(&self, ppm: &PruningProofManager, level: BlockLevel) -> PruningImportResult<()> {
-        // A proof selected tip of some level has to be the proof suggested pruning point itself if its level
-        // is lower or equal to the pruning point level, or a parent of the pruning point on the relevant level
-        // otherwise.
-        let proof_selected_tip_at_level = self.selected_tip_by_level[level as usize];
-
-        if level <= self.pp_level {
-            if proof_selected_tip_at_level != self.pp_header.hash {
-                return Err(PruningImportError::PruningProofSelectedTipIsNotThePruningPoint(proof_selected_tip_at_level, level));
-            }
-        } else if !ppm.parents_manager.parents_at_level(&self.pp_header, level).contains(&proof_selected_tip_at_level) {
-            return Err(PruningImportError::PruningProofSelectedTipNotParentOfPruningPoint(proof_selected_tip_at_level, level));
-        }
-
-        Ok(())
     }
 }
 
@@ -363,9 +352,6 @@ impl PruningProofManager {
         let challenger_claimed_pruning_period_work = challenger_relay_blue_work.saturating_sub(challenger.pp_header.blue_work);
 
         for level in 0..=self.max_block_level {
-            // Selected tip sanity validations
-            challenger.validate_level_selected_tip_conditions(self, level)?;
-
             // Init level ctxs
             let challenger_level_ctx = challenger.level(level);
             let defender_level_ctx = defender.level(level);
