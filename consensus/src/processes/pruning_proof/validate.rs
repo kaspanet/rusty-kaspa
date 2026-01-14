@@ -97,6 +97,10 @@ impl ProofLevelContext<'_> {
 impl ProofContext {
     /// Build the full context from the proof
     fn from_proof(ppm: &PruningProofManager, proof: &PruningPointProof, log_validating: bool) -> PruningImportResult<ProofContext> {
+        if proof.len() != ppm.max_block_level as usize + 1 {
+            return Err(PruningImportError::ProofNotEnoughLevels(ppm.max_block_level as usize + 1));
+        }
+
         if proof[0].is_empty() {
             return Err(PruningImportError::PruningProofNotEnoughHeaders);
         }
@@ -301,10 +305,6 @@ impl PruningProofManager {
         proof: &PruningPointProof,
         proof_metadata: &PruningProofMetadata,
     ) -> PruningImportResult<()> {
-        if proof.len() != self.max_block_level as usize + 1 {
-            return Err(PruningImportError::ProofNotEnoughLevels(self.max_block_level as usize + 1));
-        }
-
         // Initialize the stores for the incoming pruning proof (the challenger)
         let challenger = ProofContext::from_proof(self, proof, true)?;
 
@@ -332,7 +332,9 @@ impl PruningProofManager {
     /// The comparison is performed level-by-level, considering only levels that satisfy the
     /// ≥2M threshold. When a common ancestor exists at a given level, the proofs are
     /// compared by their accumulated blue work from that ancestor onward, including the
-    /// respective pruning-period work.
+    /// respective pruning-period work; otherwise, if no common ancestor is found, the
+    /// challenger is considered better only if it possesses a qualifying level where the
+    /// defender does not.
     ///
     /// The challenger is considered better only if it is *strictly* superior according to
     /// these criteria. In case of equality, or when no strict advantage can be established,
