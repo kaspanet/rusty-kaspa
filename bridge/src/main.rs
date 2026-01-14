@@ -5,7 +5,6 @@ use kaspa_stratum_bridge::{listen_and_serve, prom, BridgeConfig as StratumBridge
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
-use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
 use kaspad_lib::args as kaspad_args;
@@ -129,20 +128,6 @@ fn log_bridge_configuration(config: &app_config::BridgeConfig) {
     tracing::info!("----------------------------------");
 }
 
-async fn kaspa_api_with_retry(kaspad_address: String, block_wait_time: Duration) -> Result<Arc<KaspaApi>, anyhow::Error> {
-    let mut last_err: Option<anyhow::Error> = None;
-    for _ in 0..60 {
-        match KaspaApi::new(kaspad_address.clone(), block_wait_time).await {
-            Ok(api) => return Ok(api),
-            Err(e) => {
-                last_err = Some(anyhow::anyhow!("{}", e));
-                tokio::time::sleep(Duration::from_millis(500)).await;
-            }
-        }
-    }
-    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("failed to connect to kaspad")))
-}
-
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
@@ -221,11 +206,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create shared kaspa API client (all instances use the same node)
     let kaspa_api = if inprocess_node.is_some() {
-        kaspa_api_with_retry(config.global.kaspad_address.clone(), config.global.block_wait_time)
+        KaspaApi::new(config.global.kaspad_address.clone(), config.global.block_wait_time, config.global.coinbase_tag_suffix.clone())
             .await
             .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?
     } else {
-        KaspaApi::new(config.global.kaspad_address.clone(), config.global.block_wait_time)
+        KaspaApi::new(config.global.kaspad_address.clone(), config.global.block_wait_time, config.global.coinbase_tag_suffix.clone())
             .await
             .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?
     };
@@ -273,6 +258,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 var_diff_stats: instance.var_diff_stats.unwrap_or(global.var_diff_stats),
                 extranonce_size: global.extranonce_size,
                 pow2_clamp: instance.pow2_clamp.unwrap_or(global.pow2_clamp),
+                coinbase_tag_suffix: global.coinbase_tag_suffix.clone(),
             };
 
             listen_and_serve(bridge_config, Arc::clone(&kaspa_api_clone), if is_first_instance { Some(kaspa_api_clone) } else { None })
