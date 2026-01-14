@@ -44,6 +44,30 @@ struct Cli {
 
     #[arg(long)]
     rpclisten_borsh: Option<String>,
+
+    #[arg(long)]
+    rpclisten_json: Option<String>,
+
+    #[arg(long)]
+    listen: Option<String>,
+
+    #[arg(long)]
+    ram_scale: Option<f64>,
+
+    #[arg(long)]
+    outpeers: Option<usize>,
+
+    #[arg(long)]
+    maxinpeers: Option<usize>,
+
+    #[arg(long)]
+    rpcmaxclients: Option<usize>,
+
+    #[arg(long)]
+    perf_metrics: bool,
+
+    #[arg(long)]
+    perf_metrics_interval_sec: Option<u64>,
 }
 
 fn initialize_config() -> BridgeConfig {
@@ -161,11 +185,35 @@ async fn main() -> Result<(), anyhow::Error> {
         if cli.utxoindex {
             node_args.push("--utxoindex".to_string());
         }
+        if let Some(listen) = cli.listen.as_ref() {
+            node_args.push(format!("--listen={}", listen));
+        }
         if let Some(rpclisten) = cli.rpclisten.as_ref() {
             node_args.push(format!("--rpclisten={}", rpclisten));
         }
         if let Some(rpclisten_borsh) = cli.rpclisten_borsh.as_ref() {
             node_args.push(format!("--rpclisten-borsh={}", rpclisten_borsh));
+        }
+        if let Some(rpclisten_json) = cli.rpclisten_json.as_ref() {
+            node_args.push(format!("--rpclisten-json={}", rpclisten_json));
+        }
+        if let Some(outpeers) = cli.outpeers {
+            node_args.push(format!("--outpeers={}", outpeers));
+        }
+        if let Some(maxinpeers) = cli.maxinpeers {
+            node_args.push(format!("--maxinpeers={}", maxinpeers));
+        }
+        if let Some(rpcmaxclients) = cli.rpcmaxclients {
+            node_args.push(format!("--rpcmaxclients={}", rpcmaxclients));
+        }
+        if cli.perf_metrics {
+            node_args.push("--perf-metrics".to_string());
+        }
+        if let Some(perf_metrics_interval_sec) = cli.perf_metrics_interval_sec {
+            node_args.push(format!("--perf-metrics-interval-sec={}", perf_metrics_interval_sec));
+        }
+        if let Some(ram_scale) = cli.ram_scale {
+            node_args.push(format!("--ram-scale={}", ram_scale));
         }
         if cli.disable_upnp {
             node_args.push("--disable-upnp".to_string());
@@ -205,15 +253,15 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Create shared kaspa API client (all instances use the same node)
-    let kaspa_api = if inprocess_node.is_some() {
-        KaspaApi::new(config.global.kaspad_address.clone(), config.global.block_wait_time, config.global.coinbase_tag_suffix.clone())
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?
-    } else {
-        KaspaApi::new(config.global.kaspad_address.clone(), config.global.block_wait_time, config.global.coinbase_tag_suffix.clone())
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?
-    };
+    let external_mode = node_mode == NodeMode::External;
+    let kaspa_api = KaspaApi::new(
+        config.global.kaspad_address.clone(),
+        config.global.block_wait_time,
+        config.global.coinbase_tag_suffix.clone(),
+        external_mode,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?;
 
     let mut instance_handles = Vec::new();
     for (idx, instance_config) in config.instances.iter().enumerate() {
