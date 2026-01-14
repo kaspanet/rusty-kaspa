@@ -330,14 +330,37 @@ impl PruningProofManager {
         }
         let defender = ProofContext::from_proof(self, &defender_proof, false)?;
 
+        self.compare_proofs_inner(
+            defender,
+            challenger,
+            self.headers_selected_tip_store.read().get().unwrap().blue_work,
+            proof_metadata.relay_block_blue_work,
+        )
+    }
+
+    /// Compares two MLS pruning proofs and determines whether the challenger supersedes the defender.
+    ///
+    /// The comparison is performed level-by-level, considering only levels that satisfy the
+    /// ≥2M threshold. When a common ancestor exists at a given level, the proofs are
+    /// compared by their accumulated blue work from that ancestor onward, including the
+    /// respective pruning-period work.
+    ///
+    /// The challenger is considered better only if it is *strictly* superior according to
+    /// these criteria. In case of equality, or when no strict advantage can be established,
+    /// the defender is favored to preserve stability.
+    fn compare_proofs_inner(
+        &self,
+        defender: ProofContext,
+        challenger: ProofContext,
+        defender_relay_blue_work: BlueWorkType,
+        challenger_relay_blue_work: BlueWorkType,
+    ) -> PruningImportResult<()> {
         // The accumulated blue work of the defender's proof from the pruning point onward
-        let defender_pruning_period_work =
-            self.headers_selected_tip_store.read().get().unwrap().blue_work.saturating_sub(defender.pp_header.blue_work);
+        let defender_pruning_period_work = defender_relay_blue_work.saturating_sub(defender.pp_header.blue_work);
 
         // The claimed blue work of the challenger's proof from their pruning point and up to the triggering relay block. This work
         // will eventually be verified if the proof is accepted so we can treat it as trusted
-        let challenger_claimed_pruning_period_work =
-            proof_metadata.relay_block_blue_work.saturating_sub(challenger.pp_header.blue_work);
+        let challenger_claimed_pruning_period_work = challenger_relay_blue_work.saturating_sub(challenger.pp_header.blue_work);
 
         for level in 0..=self.max_block_level {
             // Selected tip sanity validations
@@ -348,7 +371,7 @@ impl PruningProofManager {
             let defender_level_ctx = defender.level(level);
 
             // Next check is to see if the challenger's proof is "better" than the defender's
-            // Step 1 - look at only levels that have a full proof (least 2m blocks in the proof)
+            // Step 1 - look only at levels that have a full proof (at least 2M blocks)
             if challenger_level_ctx.blue_score() < 2 * self.pruning_proof_m {
                 continue;
             }
@@ -378,7 +401,7 @@ impl PruningProofManager {
         // If we got here it means there's no level with shared blocks
         // between the challenger and the defender. In this case we
         // consider the challenger to be better if it has at least one level
-        // with 2*self.pruning_proof_m blue blocks where the defender doesn't.
+        // with 2M blue blocks where the defender doesn't.
         for level in (0..=self.max_block_level).rev() {
             if challenger.level(level).blue_score() < 2 * self.pruning_proof_m {
                 continue;
@@ -392,5 +415,25 @@ impl PruningProofManager {
         drop(defender);
 
         Err(PruningImportError::PruningProofNotEnoughHeaders)
+    }
+
+    /// Compares two MLS pruning proofs and determines whether the challenger supersedes the defender.
+    ///
+    /// See [`PruningProofManager::compare_proofs_inner`] for more details.
+    ///
+    /// Exposed here for internal revalidation needs.
+    pub(crate) fn compare_proofs(
+        &self,
+        defender: &PruningPointProof,
+        challenger: &PruningPointProof,
+        defender_relay_blue_work: BlueWorkType,
+        challenger_relay_blue_work: BlueWorkType,
+    ) -> PruningImportResult<()> {
+        self.compare_proofs_inner(
+            ProofContext::from_proof(self, defender, false)?,
+            ProofContext::from_proof(self, challenger, false)?,
+            defender_relay_blue_work,
+            challenger_relay_blue_work,
+        )
     }
 }

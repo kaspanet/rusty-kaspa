@@ -416,6 +416,18 @@ impl IbdFlow {
             return Err(ProtocolError::Other("pruning points are violating finality"));
         }
 
+        {
+            // Sanity check for consistency between past pruning points and the headers proof
+            let pruning_points_set: BlockHashSet = pruning_points.iter().map(|h| h.hash).collect();
+            for level in proof.iter() {
+                if let Some(root) = level.first() {
+                    if root.hash != self.ctx.config.genesis.hash && !pruning_points_set.contains(&root.pruning_point) {
+                        return Err(ProtocolError::Other("proof and past pruning points are inconsistent with each other"));
+                    }
+                }
+            }
+        }
+
         // Trusted data is sent in two stages:
         // The first, TrustedDataPackage, contains meta data about daa_window
         // blocks headers, and ghostdag data, which are required to verify the pruning
