@@ -122,6 +122,7 @@ pub struct PruningProofManager {
     pruning_proof_m: u64,
     anticone_finalization_depth: u64,
     ghostdag_k: KType,
+    skip_proof_of_work: bool,
 
     is_consensus_exiting: Arc<AtomicBool>,
 }
@@ -141,6 +142,7 @@ impl PruningProofManager {
         pruning_proof_m: u64,
         anticone_finalization_depth: u64,
         ghostdag_k: KType,
+        skip_proof_of_work: bool,
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -161,6 +163,7 @@ impl PruningProofManager {
             depth_store: storage.depth_store.clone(),
             pruning_samples_store: storage.pruning_samples_store.clone(),
 
+            ghostdag_manager,
             traversal_manager,
             window_manager,
             parents_manager,
@@ -173,7 +176,7 @@ impl PruningProofManager {
             pruning_proof_m,
             anticone_finalization_depth,
             ghostdag_k,
-            ghostdag_manager,
+            skip_proof_of_work,
 
             is_consensus_exiting,
         }
