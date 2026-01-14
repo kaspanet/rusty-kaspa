@@ -107,7 +107,7 @@ impl PerigeeConfig {
         persistence: bool,
         bps: u64,
     ) -> Self {
-        let expected_blocks_per_round = bps * round_duration as u64 ;
+        let expected_blocks_per_round = bps * round_duration as u64;
         let round_duration = Duration::from_secs(round_duration as u64);
         Self {
             perigee_outbound_target,
@@ -126,7 +126,7 @@ impl Display for PerigeeConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "perigee_outbound_target: {}, leverage_target: {}, exploration_target: {}, round_duration: {:2} secs, expected_blocks_per_round: {}, statistics: {}, persistence: {}",
+            "Perigee outbound target: {}, Leverage target: {}, Exploration target: {}, Round duration: {:2} secs, Expected blocks per round: {}, Statistics: {}, Persistence: {}",
             self.perigee_outbound_target,
             self.leverage_target,
             self.exploration_target,
