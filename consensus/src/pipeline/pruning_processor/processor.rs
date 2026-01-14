@@ -448,153 +448,164 @@ impl PruningProcessor {
         let (mut counter, mut traversed) = (0, 0);
         info!("Header and Block pruning: starting traversal from: {} (genesis: {})", queue.iter().reusable_format(", "), genesis);
 
-        'prune_batch: loop {
-            let reachability_read = self.reachability_store.upgradable_read();
-            // Create staging stores once per batch to maintain consistency across multiple block deletions
-            let mut relations_write = self.relations_store.write();
-            let mut reachability_relations_write = self.reachability_relations_store.write();
-            let mut staging_relations = StagingRelationsStore::new(&mut relations_write);
-            let mut staging_reachability_relations = StagingRelationsStore::new(&mut reachability_relations_write);
-            let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
-            let mut statuses_write = self.statuses_store.write();
+        // Create staging stores once per batch to maintain consistency across multiple block deletions
+        let mut relations_write = self.relations_store.write();
+        let mut reachability_relations_write = self.reachability_relations_store.write();
+        let mut staging_relations = StagingRelationsStore::new(&mut relations_write);
+        let mut staging_reachability_relations = StagingRelationsStore::new(&mut reachability_relations_write);
+        let mut staging_reachability = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
+        let mut statuses_write = self.statuses_store.write();
 
-            while let Some(current) = queue.pop_front() {
-                if lock_acquire_time.elapsed() > Duration::from_millis(PRUNE_LOCK_MAX_DURATION_MS) {
-                    // Commit staging stores and flush the batch so we can yield
-                    let reachability_write = staging_reachability.commit(&mut prune_batch.batch).unwrap();
-                    staging_reachability_relations.commit(&mut prune_batch.batch).unwrap();
-                    staging_relations.commit(&mut prune_batch.batch).unwrap();
-                    drop(reachability_write);
-                    drop(statuses_write);
-                    drop(reachability_relations_write);
-                    drop(relations_write);
-
-                    prune_batch.flush(&self.db, &mut metrics);
-                    // An exit signal was received. Exit from this long running process.
-                    if self.is_consensus_exiting.load(Ordering::Relaxed) {
-                        drop(prune_guard);
-                        info!("Header and Block pruning interrupted: Process is exiting");
-                        return;
-                    }
-                    prune_guard.blocking_yield();
-                    lock_acquire_time = Instant::now();
-                    queue.push_front(current);
-                    continue 'prune_batch;
-                }
-
-                let is_block_in_retention_root_future = {
-                    let reachability_read_only = self.reachability_store.read();
-                    reachability_read_only.is_dag_ancestor_of_result(retention_period_root, current).unwrap()
-                };
-                if is_block_in_retention_root_future {
-                    continue;
-                }
-                traversed += 1;
-                // Obtain the tree children of `current` and push them to the queue before possibly being deleted below
-                queue.extend(staging_reachability.get_children(current).unwrap().iter());
-
-                if traversed % 1000 == 0 {
-                    info!("Header and Block pruning: traversed: {}, pruned {}...", traversed, counter);
-                }
-
-                // Remove window cache entries
-                self.block_window_cache_for_difficulty.remove(&current);
-                self.block_window_cache_for_past_median_time.remove(&current);
-
-                if !keep_blocks.contains(&current) {
-                    let batch = &mut prune_batch.batch;
-
-                    // Prune data related to block bodies and UTXO state
-                    self.utxo_multisets_store.delete_batch(batch, current).unwrap();
-                    self.utxo_diffs_store.delete_batch(batch, current).unwrap();
-                    self.acceptance_data_store.delete_batch(batch, current).unwrap();
-                    self.block_transactions_store.delete_batch(batch, current).unwrap();
-
-                    if let Some(&affiliated_proof_level) = keep_relations.get(&current) {
-                        if statuses_write.get(current).optional().unwrap().is_some_and(|s| s.is_valid()) {
-                            // We set the status to header-only only if it was previously set to a valid
-                            // status. This is important since some proof headers might not have their status set
-                            // and we would like to preserve this semantic (having a valid status implies that
-                            // other parts of the code assume the existence of GD data etc.)
-                            statuses_write.set_batch(batch, current, StatusHeaderOnly).unwrap();
-                        }
-
-                        // delete relations and ghostdag unless current is in level 0 of the pruning proof
-                        if affiliated_proof_level > 0 {
-                            relations::delete_level_relations(MemoryWriter, &mut staging_relations, current).optional().unwrap();
-                            self.ghostdag_store.delete_batch(batch, current).optional().unwrap();
-                        }
-                        // while we keep headers for keep relation blocks regardless,
-                        // some of those relations blocks may accidentally have a pruning sample stored,
-                        // delete those samples unless the block is a pruning block itself
-                        if !keep_headers.contains(&current) {
-                            self.pruning_samples_store.delete_batch(batch, current).unwrap();
-                        }
-                    } else {
-                        // Count only blocks which get fully pruned including DAG relations
-                        counter += 1;
-                        // Prune data related to headers: relations, reachability, ghostdag
-                        let mergeset = relations::delete_reachability_relations(
-                            MemoryWriter, // Both stores are staging so we just pass a dummy writer
-                            &mut staging_reachability_relations,
-                            &staging_reachability,
-                            current,
-                        );
-                        reachability::delete_block(&mut staging_reachability, current, &mut mergeset.iter().copied()).unwrap();
-                        relations::delete_level_relations(MemoryWriter, &mut staging_relations, current).optional().unwrap();
-
-                        self.ghostdag_store.delete_batch(batch, current).optional().unwrap();
-
-                        // Remove additional header related data
-                        self.daa_excluded_store.delete_batch(batch, current).unwrap();
-                        self.depth_store.delete_batch(batch, current).unwrap();
-                        // Remove status completely
-                        statuses_write.delete_batch(batch, current).unwrap();
-
-                        if !keep_headers.contains(&current) {
-                            // Prune the actual headers
-                            self.headers_store.delete_batch(batch, current).unwrap();
-
-                            // We want to keep the pruning sample from POV for past pruning points
-                            // so that pruning point queries keep working for blocks right after the current
-                            // pruning point (keep_headers contains the past pruning points)
-                            self.pruning_samples_store.delete_batch(batch, current).unwrap();
-                        }
-                    }
-                    prune_batch.on_block_staged();
-                }
-
-                let lock_elapsed = lock_acquire_time.elapsed();
-                if prune_batch.should_flush(lock_elapsed) {
-                    let reachability_write = staging_reachability.commit(&mut prune_batch.batch).unwrap();
-                    staging_reachability_relations.commit(&mut prune_batch.batch).unwrap();
-                    staging_relations.commit(&mut prune_batch.batch).unwrap();
-                    drop(reachability_write);
-                    drop(statuses_write);
-                    drop(reachability_relations_write);
-                    drop(relations_write);
-
-                    prune_batch.flush(&self.db, &mut metrics);
-                    if self.is_consensus_exiting.load(Ordering::Relaxed) {
-                        drop(prune_guard);
-                        info!("Header and Block pruning interrupted: Process is exiting");
-                        return;
-                    }
-                    prune_guard.blocking_yield();
-                    lock_acquire_time = Instant::now();
-                    continue 'prune_batch;
-                }
+        loop {
+            if queue.is_empty() {
+                break;
             }
 
-            let reachability_write = staging_reachability.commit(&mut prune_batch.batch).unwrap();
-            staging_reachability_relations.commit(&mut prune_batch.batch).unwrap();
-            staging_relations.commit(&mut prune_batch.batch).unwrap();
-            drop(reachability_write);
-            drop(statuses_write);
-            drop(reachability_relations_write);
-            drop(relations_write);
-            break;
+            if lock_acquire_time.elapsed() > Duration::from_millis(PRUNE_LOCK_MAX_DURATION_MS) {
+                // Commit staging stores and flush the batch so we can yield
+                let reachability_write = staging_reachability.commit(&mut prune_batch.batch).unwrap();
+                staging_reachability_relations.commit(&mut prune_batch.batch).unwrap();
+                staging_relations.commit(&mut prune_batch.batch).unwrap();
+                drop(reachability_write);
+                drop(statuses_write);
+                drop(reachability_relations_write);
+                drop(relations_write);
+
+                prune_batch.flush(&self.db, &mut metrics);
+                // An exit signal was received. Exit from this long running process.
+                if self.is_consensus_exiting.load(Ordering::Relaxed) {
+                    drop(prune_guard);
+                    info!("Header and Block pruning interrupted: Process is exiting");
+                    return;
+                }
+                prune_guard.blocking_yield();
+                lock_acquire_time = Instant::now();
+
+                relations_write = self.relations_store.write();
+                reachability_relations_write = self.reachability_relations_store.write();
+                staging_relations = StagingRelationsStore::new(&mut relations_write);
+                staging_reachability_relations = StagingRelationsStore::new(&mut reachability_relations_write);
+                staging_reachability = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
+                statuses_write = self.statuses_store.write();
+                continue;
+            }
+
+            let current = queue.pop_front().expect("queue front checked");
+            let is_block_in_retention_root_future =
+                staging_reachability.is_dag_ancestor_of_result(retention_period_root, current).unwrap();
+            if is_block_in_retention_root_future {
+                continue;
+            }
+            traversed += 1;
+            // Obtain the tree children of `current` and push them to the queue before possibly being deleted below
+            queue.extend(staging_reachability.get_children(current).unwrap().iter());
+
+            if traversed % 1000 == 0 {
+                info!("Header and Block pruning: traversed: {}, pruned {}...", traversed, counter);
+            }
+
+            // Remove window cache entries
+            self.block_window_cache_for_difficulty.remove(&current);
+            self.block_window_cache_for_past_median_time.remove(&current);
+
+            if !keep_blocks.contains(&current) {
+                let batch = &mut prune_batch.batch;
+
+                // Prune data related to block bodies and UTXO state
+                self.utxo_multisets_store.delete_batch(batch, current).unwrap();
+                self.utxo_diffs_store.delete_batch(batch, current).unwrap();
+                self.acceptance_data_store.delete_batch(batch, current).unwrap();
+                self.block_transactions_store.delete_batch(batch, current).unwrap();
+
+                if let Some(&affiliated_proof_level) = keep_relations.get(&current) {
+                    if statuses_write.get(current).optional().unwrap().is_some_and(|s| s.is_valid()) {
+                        // We set the status to header-only only if it was previously set to a valid
+                        // status. This is important since some proof headers might not have their status set
+                        // and we would like to preserve this semantic (having a valid status implies that
+                        // other parts of the code assume the existence of GD data etc.)
+                        statuses_write.set_batch(batch, current, StatusHeaderOnly).unwrap();
+                    }
+
+                    // delete relations and ghostdag unless current is in level 0 of the pruning proof
+                    if affiliated_proof_level > 0 {
+                        relations::delete_level_relations(MemoryWriter, &mut staging_relations, current).optional().unwrap();
+                        self.ghostdag_store.delete_batch(batch, current).optional().unwrap();
+                    }
+                    // while we keep headers for keep relation blocks regardless,
+                    // some of those relations blocks may accidentally have a pruning sample stored,
+                    // delete those samples unless the block is a pruning block itself
+                    if !keep_headers.contains(&current) {
+                        self.pruning_samples_store.delete_batch(batch, current).unwrap();
+                    }
+                } else {
+                    // Count only blocks which get fully pruned including DAG relations
+                    counter += 1;
+                    // Prune data related to headers: relations, reachability, ghostdag
+                    let mergeset = relations::delete_reachability_relations(
+                        MemoryWriter, // Both stores are staging so we just pass a dummy writer
+                        &mut staging_reachability_relations,
+                        &staging_reachability,
+                        current,
+                    );
+                    reachability::delete_block(&mut staging_reachability, current, &mut mergeset.iter().copied()).unwrap();
+                    relations::delete_level_relations(MemoryWriter, &mut staging_relations, current).optional().unwrap();
+
+                    self.ghostdag_store.delete_batch(batch, current).optional().unwrap();
+
+                    // Remove additional header related data
+                    self.daa_excluded_store.delete_batch(batch, current).unwrap();
+                    self.depth_store.delete_batch(batch, current).unwrap();
+                    // Remove status completely
+                    statuses_write.delete_batch(batch, current).unwrap();
+
+                    if !keep_headers.contains(&current) {
+                        // Prune the actual headers
+                        self.headers_store.delete_batch(batch, current).unwrap();
+
+                        // We want to keep the pruning sample from POV for past pruning points
+                        // so that pruning point queries keep working for blocks right after the current
+                        // pruning point (keep_headers contains the past pruning points)
+                        self.pruning_samples_store.delete_batch(batch, current).unwrap();
+                    }
+                }
+                prune_batch.on_block_staged();
+            }
+
+            let lock_elapsed = lock_acquire_time.elapsed();
+            if prune_batch.should_flush(lock_elapsed) {
+                let reachability_write = staging_reachability.commit(&mut prune_batch.batch).unwrap();
+                staging_reachability_relations.commit(&mut prune_batch.batch).unwrap();
+                staging_relations.commit(&mut prune_batch.batch).unwrap();
+                drop(reachability_write);
+                drop(statuses_write);
+                drop(reachability_relations_write);
+                drop(relations_write);
+
+                prune_batch.flush(&self.db, &mut metrics);
+                if self.is_consensus_exiting.load(Ordering::Relaxed) {
+                    drop(prune_guard);
+                    info!("Header and Block pruning interrupted: Process is exiting");
+                    return;
+                }
+                prune_guard.blocking_yield();
+                lock_acquire_time = Instant::now();
+
+                relations_write = self.relations_store.write();
+                reachability_relations_write = self.reachability_relations_store.write();
+                staging_relations = StagingRelationsStore::new(&mut relations_write);
+                staging_reachability_relations = StagingRelationsStore::new(&mut reachability_relations_write);
+                staging_reachability = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
+                statuses_write = self.statuses_store.write();
+            }
         }
+
+        let reachability_write = staging_reachability.commit(&mut prune_batch.batch).unwrap();
+        staging_reachability_relations.commit(&mut prune_batch.batch).unwrap();
+        staging_relations.commit(&mut prune_batch.batch).unwrap();
+        drop(reachability_write);
+        drop(statuses_write);
+        drop(reachability_relations_write);
+        drop(relations_write);
 
         {
             // Set the retention checkpoint to the new retention root only after we successfully pruned its past
