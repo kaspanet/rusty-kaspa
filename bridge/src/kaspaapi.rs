@@ -20,7 +20,45 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
-const STRATUM_COINBASE_TAG_BYTES: &[u8] = b"Kaspa Stratum Bridge";
+const STRATUM_COINBASE_TAG_BYTES_INPROCESS: &[u8] = b"Kaspa Stratum Bridge";
+const STRATUM_COINBASE_TAG_BYTES_EXTERNAL: &[u8] = b"KSB-External";
+const MAX_COINBASE_TAG_SUFFIX_LEN: usize = 64;
+
+fn sanitize_coinbase_tag_suffix(suffix: &str) -> Option<String> {
+    let suffix = suffix.trim().trim_start_matches('/');
+    if suffix.is_empty() {
+        return None;
+    }
+
+    let mut out = String::with_capacity(suffix.len().min(MAX_COINBASE_TAG_SUFFIX_LEN));
+    for ch in suffix.chars() {
+        if out.len() >= MAX_COINBASE_TAG_SUFFIX_LEN {
+            break;
+        }
+
+        if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+            out.push(ch);
+        } else if ch.is_ascii_whitespace() {
+            out.push('_');
+        }
+    }
+
+    let out = out.trim_matches('_').to_string();
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+fn build_coinbase_tag_bytes(external_mode: bool, suffix: Option<&str>) -> Vec<u8> {
+    let mut tag = if external_mode { STRATUM_COINBASE_TAG_BYTES_EXTERNAL } else { STRATUM_COINBASE_TAG_BYTES_INPROCESS }.to_vec();
+    if let Some(suffix) = suffix.and_then(sanitize_coinbase_tag_suffix) {
+        tag.push(b'/');
+        tag.extend_from_slice(suffix.as_bytes());
+    }
+    tag
+}
 
 struct BlockSubmitGuard {
     ttl: Duration,
@@ -101,11 +139,17 @@ pub struct KaspaApi {
     client: Arc<GrpcClient>,
     notification_rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<Notification>>>>,
     connected: Arc<Mutex<bool>>,
+    coinbase_tag: Vec<u8>,
 }
 
 impl KaspaApi {
     /// Create a new Kaspa API client
-    pub async fn new(address: String, _block_wait_time: Duration) -> Result<Arc<Self>> {
+    pub async fn new(
+        address: String,
+        _block_wait_time: Duration,
+        coinbase_tag_suffix: Option<String>,
+        external_mode: bool,
+    ) -> Result<Arc<Self>> {
         info!("Connecting to Kaspa node at {}", address);
 
         // GrpcClient requires explicit "grpc://" prefix for connection
@@ -161,7 +205,8 @@ impl KaspaApi {
             Arc::new(Mutex::new(Some(rx)))
         };
 
-        let api = Arc::new(Self { client, notification_rx, connected: Arc::new(Mutex::new(true)) });
+        let coinbase_tag = build_coinbase_tag_bytes(external_mode, coinbase_tag_suffix.as_deref());
+        let api = Arc::new(Self { client, notification_rx, connected: Arc::new(Mutex::new(true)), coinbase_tag });
 
         // Wait for node to sync
         api.wait_for_sync(true).await?;
@@ -502,7 +547,7 @@ impl KaspaApi {
             // Request block template using RPC client wrapper
             let response = match self
                 .client
-                .get_block_template_call(None, GetBlockTemplateRequest::new(address, STRATUM_COINBASE_TAG_BYTES.to_vec()))
+                .get_block_template_call(None, GetBlockTemplateRequest::new(address, self.coinbase_tag.clone()))
                 .await
             {
                 Ok(r) => r,
