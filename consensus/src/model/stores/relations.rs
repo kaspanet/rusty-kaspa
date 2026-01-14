@@ -123,6 +123,21 @@ impl RelationsStoreReader for DbRelationsStore {
     }
 }
 
+impl<T: RelationsStoreReader + ?Sized> RelationsStoreReader for &T {
+    fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
+        (*self).get_parents(hash)
+    }
+    fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
+        (*self).get_children(hash)
+    }
+    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
+        (*self).has(hash)
+    }
+    fn counts(&self) -> Result<(usize, usize), StoreError> {
+        (*self).counts()
+    }
+}
+
 impl ChildrenStore for DbRelationsStore {
     fn insert_child(&mut self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
         self.children_store.insert_child(writer, parent, child)
