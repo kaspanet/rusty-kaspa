@@ -1,12 +1,12 @@
 use std::{
-    ops::DerefMut,
+    ops::{ControlFlow, DerefMut},
     sync::{atomic::Ordering, Arc},
 };
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
-    errors::pruning::{PruningImportError, PruningImportResult},
+    errors::pruning::{ProofWeakness, PruningImportError, PruningImportResult},
     header::Header,
     pruning::{PruningPointProof, PruningProofMetadata},
     BlockLevel, BlueWorkType,
@@ -96,7 +96,11 @@ impl ProofLevelContext<'_> {
 
 impl ProofContext {
     /// Build the full context from the proof
-    fn from_proof(ppm: &PruningProofManager, proof: &PruningPointProof, log_validating: bool) -> PruningImportResult<ProofContext> {
+    fn from_proof(
+        ppm: &PruningProofManager,
+        proof: &PruningPointProof,
+        log_validating: bool,
+    ) -> Result<ControlFlow<(), ProofContext>, PruningImportError> {
         if proof.len() != ppm.max_block_level as usize + 1 {
             return Err(PruningImportError::ProofNotEnoughLevels(ppm.max_block_level as usize + 1));
         }
@@ -172,7 +176,7 @@ impl ProofContext {
         for level in (0..=ppm.max_block_level).rev() {
             // Before processing this level, check if the process is exiting so we can end early
             if ppm.is_consensus_exiting.load(Ordering::Relaxed) {
-                return Err(PruningImportError::PruningValidationInterrupted);
+                return Ok(ControlFlow::Break(()));
             }
 
             if log_validating {
@@ -277,7 +281,7 @@ impl ProofContext {
             pp_level: proof_pp_level,
         };
 
-        Ok(ctx)
+        Ok(ControlFlow::Continue(ctx))
     }
 
     /// Returns a per-level context
@@ -304,7 +308,8 @@ impl PruningProofManager {
         proof_metadata: &PruningProofMetadata,
     ) -> PruningImportResult<()> {
         // Initialize the stores for the incoming pruning proof (the challenger)
-        let challenger = ProofContext::from_proof(self, proof, true)?;
+        let challenger =
+            ProofContext::from_proof(self, proof, true)?.continue_value().ok_or(PruningImportError::PruningValidationInterrupted)?;
 
         // Get the proof for the current consensus (the defender) and recreate the stores for it
         // This is expected to be fast because if a proof exists, it will be cached.
@@ -315,14 +320,17 @@ impl PruningProofManager {
             let genesis_header = self.headers_store.get_header(self.genesis_hash).unwrap();
             defender_proof = Arc::new((0..=self.max_block_level).map(|_| vec![genesis_header.clone()]).collect_vec());
         }
-        let defender = ProofContext::from_proof(self, &defender_proof, false)?;
+        let defender = ProofContext::from_proof(self, &defender_proof, false)
+            .expect("local")
+            .continue_value()
+            .ok_or(PruningImportError::PruningValidationInterrupted)?;
 
-        self.compare_proofs_inner(
+        Ok(self.compare_proofs_inner(
             defender,
             challenger,
             self.headers_selected_tip_store.read().get().unwrap().blue_work,
             proof_metadata.relay_block_blue_work,
-        )
+        )?)
     }
 
     /// Compares two MLS pruning proofs and determines whether the challenger supersedes the defender.
@@ -343,7 +351,7 @@ impl PruningProofManager {
         challenger: ProofContext,
         defender_relay_blue_work: BlueWorkType,
         challenger_relay_blue_work: BlueWorkType,
-    ) -> PruningImportResult<()> {
+    ) -> Result<(), ProofWeakness> {
         // The accumulated blue work of the defender's proof from the pruning point onward
         let defender_pruning_period_work = defender_relay_blue_work.saturating_sub(defender.pp_header.blue_work);
 
@@ -371,7 +379,7 @@ impl PruningProofManager {
                 if defender_level_ctx.blue_work_diff(common_ancestor).saturating_add(defender_pruning_period_work)
                     >= challenger_level_ctx.blue_work_diff(common_ancestor).saturating_add(challenger_claimed_pruning_period_work)
                 {
-                    return Err(PruningImportError::PruningProofInsufficientBlueWork);
+                    return Err(ProofWeakness::InsufficientBlueWork);
                 }
 
                 return Ok(());
@@ -400,7 +408,7 @@ impl PruningProofManager {
         drop(challenger);
         drop(defender);
 
-        Err(PruningImportError::PruningProofNotEnoughHeaders)
+        Err(ProofWeakness::NotEnoughHeaders)
     }
 
     /// Compares two MLS pruning proofs and determines whether the challenger supersedes the defender.
@@ -414,12 +422,12 @@ impl PruningProofManager {
         challenger: &PruningPointProof,
         defender_relay_blue_work: BlueWorkType,
         challenger_relay_blue_work: BlueWorkType,
-    ) -> PruningImportResult<()> {
-        self.compare_proofs_inner(
-            ProofContext::from_proof(self, defender, false)?,
-            ProofContext::from_proof(self, challenger, false)?,
+    ) -> ControlFlow<(), Result<(), ProofWeakness>> {
+        ControlFlow::Continue(self.compare_proofs_inner(
+            ProofContext::from_proof(self, defender, false).expect("internal")?,
+            ProofContext::from_proof(self, challenger, false).expect("internal")?,
             defender_relay_blue_work,
             challenger_relay_blue_work,
-        )
+        ))
     }
 }
