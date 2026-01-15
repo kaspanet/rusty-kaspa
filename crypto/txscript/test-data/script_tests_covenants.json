@@ -5126,7 +5126,7 @@
     "Minimal encoding is 0xffff7f"
   ],
   [
-    "Test every numeric-accepting opcode for correct handling of the numeric minimal encoding rule"
+    "Test every numeric-accepting opcode for correct handling of different sized encodings"
   ],
   [
     "1 0x02 0x0000",
@@ -5136,7 +5136,19 @@
   ],
   [
     "1 0x02 0x0000",
+    "PICK EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "1 0x02 0x0000",
     "ROLL DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "1 0x02 0x0000",
+    "ROLL 1 EQUAL",
     "",
     "OK"
   ],
@@ -5148,7 +5160,19 @@
   ],
   [
     "0x02 0x0000",
+    "1ADD 1 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0000",
     "1SUB DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0000",
+    "1SUB -1 NUMEQUAL",
     "",
     "OK"
   ],
@@ -5160,7 +5184,19 @@
   ],
   [
     "0x02 0x0000",
+    "NEGATE 0 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0000",
     "ABS DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0000",
+    "ABS 0 NUMEQUAL",
     "",
     "OK"
   ],
@@ -5172,19 +5208,43 @@
   ],
   [
     "0x02 0x0000",
+    "NOT 1 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0000",
     "0NOTEQUAL DROP 1",
     "",
     "OK"
   ],
   [
+    "0x02 0x0000",
+    "0NOTEQUAL NOT",
+    "",
+    "OK"
+  ],
+  [
     "0 0x02 0x0000",
     "ADD DROP 1",
     "",
     "OK"
   ],
   [
+    "0 0x02 0x0000",
+    "ADD 0 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
     "0x02 0x0000 0",
     "ADD DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "ADD 0 NUMEQUAL",
     "",
     "OK"
   ],
@@ -5195,14 +5255,32 @@
     "OK"
   ],
   [
+    "0 0x02 0x0000",
+    "SUB 0 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
     "0x02 0x0000 0",
     "SUB DROP 1",
     "",
     "OK"
   ],
   [
+    "0x02 0x0000 0",
+    "SUB 0 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
     "0 0x02 0x0000",
     "BOOLAND DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "BOOLAND 0 NUMEQUAL",
     "",
     "OK"
   ],
@@ -5213,20 +5291,44 @@
     "OK"
   ],
   [
+    "0x02 0x0000 0",
+    "BOOLAND 0 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
     "0 0x02 0x0000",
     "BOOLOR DROP 1",
     "",
     "OK"
   ],
   [
+    "0 0x02 0x0000",
+    "BOOLOR 0 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
     "0x02 0x0000 0",
     "BOOLOR DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "BOOLOR 0 NUMEQUAL",
     "",
     "OK"
   ],
   [
     "0 0x02 0x0000",
     "NUMEQUAL DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "NUMEQUAL",
     "",
     "OK"
   ],
@@ -5237,6 +5339,12 @@
     "OK"
   ],
   [
+    "0x02 0x0000 1",
+    "NUMEQUAL NOT",
+    "",
+    "OK"
+  ],
+  [
     "0 0x02 0x0000",
     "NUMEQUALVERIFY 1",
     "",
@@ -5255,20 +5363,44 @@
     "OK"
   ],
   [
+    "0 0x02 0x0000",
+    "NUMNOTEQUAL NOT",
+    "",
+    "OK"
+  ],
+  [
     "0x02 0x0000 0",
     "NUMNOTEQUAL DROP 1",
     "",
     "OK"
   ],
   [
+    "0x02 0x0000 0",
+    "NUMNOTEQUAL NOT",
+    "",
+    "OK"
+  ],
+  [
     "0 0x02 0x0000",
     "LESSTHAN DROP 1",
     "",
     "OK"
   ],
   [
+    "0 0x02 0x0000",
+    "LESSTHAN NOT",
+    "",
+    "OK"
+  ],
+  [
     "0x02 0x0000 0",
     "LESSTHAN DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "LESSTHAN NOT",
     "",
     "OK"
   ],
@@ -5279,20 +5411,44 @@
     "OK"
   ],
   [
+    "0 0x02 0x0000",
+    "GREATERTHAN NOT",
+    "",
+    "OK"
+  ],
+  [
     "0x02 0x0000 0",
     "GREATERTHAN DROP 1",
     "",
     "OK"
   ],
   [
+    "0x02 0x0000 0",
+    "GREATERTHAN NOT",
+    "",
+    "OK"
+  ],
+  [
     "0 0x02 0x0000",
     "LESSTHANOREQUAL DROP 1",
     "",
     "OK"
   ],
   [
+    "0 0x02 0x0000",
+    "LESSTHANOREQUAL",
+    "",
+    "OK"
+  ],
+  [
     "0x02 0x0000 0",
     "LESSTHANOREQUAL DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "LESSTHANOREQUAL",
     "",
     "OK"
   ],
@@ -5303,14 +5459,32 @@
     "OK"
   ],
   [
+    "0 0x02 0x0000",
+    "GREATERTHANOREQUAL",
+    "",
+    "OK"
+  ],
+  [
     "0x02 0x0000 0",
     "GREATERTHANOREQUAL DROP 1",
     "",
     "OK"
   ],
   [
+    "0x02 0x0000 0",
+    "GREATERTHANOREQUAL",
+    "",
+    "OK"
+  ],
+  [
     "0 0x02 0x0000",
     "MIN DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "MIN 0 NUMEQUAL",
     "",
     "OK"
   ],
@@ -5321,14 +5495,32 @@
     "OK"
   ],
   [
+    "0x02 0x0000 0",
+    "MIN 0 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
     "0 0x02 0x0000",
     "MAX DROP 1",
     "",
     "OK"
   ],
   [
+    "0 0x02 0x0000",
+    "MAX 0 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
     "0x02 0x0000 0",
     "MAX DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "MAX 0 NUMEQUAL",
     "",
     "OK"
   ],
@@ -5339,8 +5531,20 @@
     "OK"
   ],
   [
+    "0x02 0x0000 0 0",
+    "WITHIN NOT",
+    "",
+    "OK"
+  ],
+  [
     "0 0x02 0x0000 0",
     "WITHIN DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000 0",
+    "WITHIN NOT",
     "",
     "OK"
   ],
@@ -5351,8 +5555,20 @@
     "OK"
   ],
   [
+    "0 0 0x02 0x0000",
+    "WITHIN NOT",
+    "",
+    "OK"
+  ],
+  [
     "0 0x02 0x0000",
     "CHECKMULTISIG DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "CHECKMULTISIG",
     "",
     "OK"
   ],
@@ -5363,8 +5579,20 @@
     "OK"
   ],
   [
+    "0x02 0x0000 0",
+    "CHECKMULTISIG",
+    "",
+    "OK"
+  ],
+  [
     "0x02 0x0000 0 1",
     "CHECKMULTISIG DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0 1",
+    "CHECKMULTISIG",
     "",
     "OK"
   ],
