@@ -194,15 +194,10 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Create shared kaspa API client (all instances use the same node)
-    let external_mode = node_mode == NodeMode::External;
-    let kaspa_api = KaspaApi::new(
-        config.global.kaspad_address.clone(),
-        config.global.block_wait_time,
-        config.global.coinbase_tag_suffix.clone(),
-        external_mode,
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?;
+    let kaspa_api =
+        KaspaApi::new(config.global.kaspad_address.clone(), config.global.block_wait_time, config.global.coinbase_tag_suffix.clone())
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?;
 
     let mut instance_handles = Vec::new();
     for (idx, instance_config) in config.instances.iter().enumerate() {
