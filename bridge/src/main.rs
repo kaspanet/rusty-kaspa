@@ -34,7 +34,7 @@ struct Cli {
     appdir: Option<PathBuf>,
 
     #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
-    kaspad_args: Vec<OsString>,
+    kaspad_args: Vec<String>,
 }
 
 fn initialize_config() -> BridgeConfig {
@@ -152,20 +152,20 @@ async fn main() -> Result<(), anyhow::Error> {
     // are not filtered out by a tracing subscriber installed by kaspad.
     let mut inprocess_node: Option<InProcessNode> = None;
     if node_mode == NodeMode::Inprocess {
-        // Convert OsString to String for processing
+        // Filter out bridge arguments from kaspad_args
         let mut node_args: Vec<String> = cli.kaspad_args
             .into_iter()
-            .map(|s| s.to_string_lossy().to_string())
+            .filter(|arg| !arg.starts_with("--config") && !arg.starts_with("--node-mode") && !arg.starts_with("--appdir"))
             .collect();
         
         // Add appdir if not provided in kaspad_args
         if !node_args.iter().any(|arg| arg.starts_with("--appdir")) {
             let default_appdir = app_dirs::default_inprocess_kaspad_appdir();
             let appdir_to_use = cli.appdir.as_ref().cloned().unwrap_or(default_appdir);
-
+            
             // Create the directory if it doesn't exist
             let _ = std::fs::create_dir_all(&appdir_to_use);
-
+            
             node_args.push("--appdir".to_string());
             node_args.push(appdir_to_use.to_string_lossy().to_string());
         } else {
