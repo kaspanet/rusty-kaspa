@@ -247,8 +247,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 
     fn new_stack(flags: EngineFlags) -> Stack {
-        let max_elem_size = if flags.covenants_enabled { MAX_SCRIPT_ELEMENT_SIZE } else { usize::MAX };
-        Stack::new(vec![], max_elem_size)
+        Stack::new(vec![], flags.covenants_enabled)
     }
 
     /// Returns the number of signature operations used in script execution.

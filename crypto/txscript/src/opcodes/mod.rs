@@ -1,8 +1,9 @@
 #[macro_use]
 mod macros;
 use crate::{
-    data_stack::OpcodeData, EngineFlags, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD,
-    MAX_SCRIPT_ELEMENT_SIZE, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
+    data_stack::{serialize_i64, OpcodeData},
+    EngineFlags, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_SCRIPT_ELEMENT_SIZE,
+    MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
 };
 use blake2b_simd::Params;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
@@ -454,7 +455,7 @@ opcode_list! {
 
     opcode OpIfDup<0x73, 1>(self, vm) {
         let [result] = vm.dstack.peek_raw()?;
-        if <Vec<u8> as OpcodeData<bool>>::deserialize(&result)? {
+        if <Vec<u8> as OpcodeData<bool>>::deserialize(&result, !vm.flags.covenants_enabled)? {
             vm.dstack.push(result)?;
         }
         Ok(())
@@ -1395,9 +1396,29 @@ opcode_list! {
         }
     }
 
+    opcode OpNum2Bin<0xcd, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            let [size]: [i32; 1] = vm.dstack.pop_items()?;
+            let size = i32_to_usize(size)?;
+            let [num]: [i64; 1] = vm.dstack.pop_items()?;
+            let r = serialize_i64(num, Some(size))?;
+            vm.dstack.push(r)
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
+    opcode OpBin2Num<0xce, 1>(self, vm){
+        if vm.flags.covenants_enabled {
+            // pop_items deserializes the stack item to `i64`, while `push_number` pushes it back as minimally encoded bytes.
+            let [num]: [i64; 1] = vm.dstack.pop_items()?;
+            push_number(num, vm)
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
     // Undefined opcodes
-    opcode OpUnknown205<0xcd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown206<0xce, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown207<0xcf, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown208<0xd0, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown209<0xd1, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1596,8 +1617,8 @@ mod test {
             opcodes::OpBlake2bWithKey::empty().expect("Should accept empty"),
             opcodes::OpCovOutputCount::empty().expect("Should accept empty"),
             opcodes::OpCovOutputIdx::empty().expect("Should accept empty"),
-            opcodes::OpUnknown205::empty().expect("Should accept empty"),
-            opcodes::OpUnknown206::empty().expect("Should accept empty"),
+            opcodes::OpNum2Bin::empty().expect("Should accept empty"),
+            opcodes::OpBin2Num::empty().expect("Should accept empty"),
             opcodes::OpUnknown207::empty().expect("Should accept empty"),
             opcodes::OpUnknown208::empty().expect("Should accept empty"),
             opcodes::OpUnknown209::empty().expect("Should accept empty"),

@@ -86,6 +86,6 @@ pub enum TxScriptError {
 
 #[derive(Error, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum SerializationError {
-    #[error("Number exceeds 8 bytes: {0}")]
-    NumberTooLong(i64),
+    #[error("Number exceeds {1} bytes: {0}")]
+    NumberTooLong(i64, usize),
 }
