@@ -33,7 +33,7 @@ struct Cli {
     #[arg(long)]
     appdir: Option<PathBuf>,
 
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+    #[arg(last = true, help = "Kaspad arguments (use '--' separator if kaspad args start with hyphens)")]
     kaspad_args: Vec<String>,
 }
 
@@ -152,20 +152,16 @@ async fn main() -> Result<(), anyhow::Error> {
     // are not filtered out by a tracing subscriber installed by kaspad.
     let mut inprocess_node: Option<InProcessNode> = None;
     if node_mode == NodeMode::Inprocess {
-        // Filter out bridge arguments from kaspad_args
-        let mut node_args: Vec<String> = cli.kaspad_args
-            .into_iter()
-            .filter(|arg| !arg.starts_with("--config") && !arg.starts_with("--node-mode") && !arg.starts_with("--appdir"))
-            .collect();
-        
+        let mut node_args: Vec<String> = cli.kaspad_args;
+
         // Add appdir if not provided in kaspad_args
         if !node_args.iter().any(|arg| arg.starts_with("--appdir")) {
             let default_appdir = app_dirs::default_inprocess_kaspad_appdir();
             let appdir_to_use = cli.appdir.as_ref().cloned().unwrap_or(default_appdir);
-            
+
             // Create the directory if it doesn't exist
             let _ = std::fs::create_dir_all(&appdir_to_use);
-            
+
             node_args.push("--appdir".to_string());
             node_args.push(appdir_to_use.to_string_lossy().to_string());
         } else {
