@@ -270,6 +270,12 @@ impl ProofContext {
                 return Err(PruningImportError::PruningProofSelectedTipNotParentOfPruningPoint(selected_tip, level));
             }
 
+            let tip_blue_score = ghostdag_stores[level_idx].get_blue_score(selected_tip).expect("tip expected");
+            let level_root = proof[level_idx].first().expect("checked earlier").hash;
+            if level_root != ppm.genesis_hash && tip_blue_score < 2 * ppm.pruning_proof_m {
+                return Err(PruningImportError::PruningProofSelectedTipNotEnoughBlueScore(selected_tip, level, tip_blue_score));
+            }
+
             selected_tip_by_level[level_idx] = Some(selected_tip);
         }
 

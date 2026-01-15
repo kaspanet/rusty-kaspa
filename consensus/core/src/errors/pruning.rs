@@ -30,6 +30,9 @@ pub enum PruningImportError {
     #[error("the pruning proof selected tip {0} at level {1} is not a parent of the pruning point on the same level")]
     PruningProofSelectedTipNotParentOfPruningPoint(Hash, BlockLevel),
 
+    #[error("the pruning proof selected tip {0} at level {1} blue score {2} < 2M and root is not genesis")]
+    PruningProofSelectedTipNotEnoughBlueScore(Hash, BlockLevel, u64),
+
     #[error("provided pruning proof is weaker than local: {0}")]
     ProofWeaknessError(#[from] ProofWeakness),
 
