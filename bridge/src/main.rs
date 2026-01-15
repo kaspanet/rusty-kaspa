@@ -33,9 +33,6 @@ struct Cli {
     #[arg(long)]
     appdir: Option<PathBuf>,
 
-    #[arg(long)]
-    disable_upnp: bool,
-
     #[arg(last = true)]
     kaspad_args: Vec<String>,
 }
@@ -83,7 +80,9 @@ fn initialize_config() -> BridgeConfig {
         }
     }
 
-    let _ = CONFIG_LOADED_FROM.set(loaded_from);
+    if CONFIG_LOADED_FROM.set(loaded_from).is_err() {
+        tracing::warn!("Failed to set config loaded from path - may already be initialized");
+    }
     config.unwrap_or_default()
 }
 
@@ -125,7 +124,9 @@ fn log_bridge_configuration(config: &app_config::BridgeConfig) {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
-    let _ = REQUESTED_CONFIG_PATH.set(cli.config.clone());
+    if REQUESTED_CONFIG_PATH.set(cli.config.clone()).is_err() {
+        tracing::warn!("Failed to set requested config path - may already be initialized");
+    }
 
     let node_mode = cli.node_mode.unwrap_or(NodeMode::Inprocess);
 
@@ -152,15 +153,19 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut inprocess_node: Option<InProcessNode> = None;
     if node_mode == NodeMode::Inprocess {
         let mut node_args: Vec<String> = cli.kaspad_args;
-        
+
         // Add appdir if not provided in kaspad_args
         if !node_args.iter().any(|arg| arg.starts_with("--appdir")) {
             let default_appdir = app_dirs::default_inprocess_kaspad_appdir();
-            if cli.appdir.is_none() {
-                let _ = std::fs::create_dir_all(&default_appdir);
-            }
+            let appdir_to_use = cli.appdir.as_ref().cloned().unwrap_or(default_appdir);
+
+            // Create the directory if it doesn't exist
+            let _ = std::fs::create_dir_all(&appdir_to_use);
+
             node_args.push("--appdir".to_string());
-            node_args.push(cli.appdir.as_ref().cloned().unwrap_or(default_appdir).to_string_lossy().to_string());
+            node_args.push(appdir_to_use.to_string_lossy().to_string());
+        } else {
+            assert!(cli.appdir.is_none(), "appdir should not be specified both in bridge args and kaspad args");
         }
 
         let mut argv: Vec<OsString> = Vec::with_capacity(node_args.len() + 1);
