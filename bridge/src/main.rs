@@ -36,38 +36,8 @@ struct Cli {
     #[arg(long)]
     disable_upnp: bool,
 
-    #[arg(long)]
-    utxoindex: bool,
-
-    #[arg(long)]
-    rpclisten: Option<String>,
-
-    #[arg(long)]
-    rpclisten_borsh: Option<String>,
-
-    #[arg(long)]
-    rpclisten_json: Option<String>,
-
-    #[arg(long)]
-    listen: Option<String>,
-
-    #[arg(long)]
-    ram_scale: Option<f64>,
-
-    #[arg(long)]
-    outpeers: Option<usize>,
-
-    #[arg(long)]
-    maxinpeers: Option<usize>,
-
-    #[arg(long)]
-    rpcmaxclients: Option<usize>,
-
-    #[arg(long)]
-    perf_metrics: bool,
-
-    #[arg(long)]
-    perf_metrics_interval_sec: Option<u64>,
+    #[arg(last = true)]
+    kaspad_args: Vec<String>,
 }
 
 fn initialize_config() -> BridgeConfig {
@@ -181,51 +151,17 @@ async fn main() -> Result<(), anyhow::Error> {
     // are not filtered out by a tracing subscriber installed by kaspad.
     let mut inprocess_node: Option<InProcessNode> = None;
     if node_mode == NodeMode::Inprocess {
-        let mut node_args: Vec<String> = Vec::new();
-        if cli.utxoindex {
-            node_args.push("--utxoindex".to_string());
+        let mut node_args: Vec<String> = cli.kaspad_args;
+        
+        // Add appdir if not provided in kaspad_args
+        if !node_args.iter().any(|arg| arg.starts_with("--appdir")) {
+            let default_appdir = app_dirs::default_inprocess_kaspad_appdir();
+            if cli.appdir.is_none() {
+                let _ = std::fs::create_dir_all(&default_appdir);
+            }
+            node_args.push("--appdir".to_string());
+            node_args.push(cli.appdir.as_ref().cloned().unwrap_or(default_appdir).to_string_lossy().to_string());
         }
-        if let Some(listen) = cli.listen.as_ref() {
-            node_args.push(format!("--listen={}", listen));
-        }
-        if let Some(rpclisten) = cli.rpclisten.as_ref() {
-            node_args.push(format!("--rpclisten={}", rpclisten));
-        }
-        if let Some(rpclisten_borsh) = cli.rpclisten_borsh.as_ref() {
-            node_args.push(format!("--rpclisten-borsh={}", rpclisten_borsh));
-        }
-        if let Some(rpclisten_json) = cli.rpclisten_json.as_ref() {
-            node_args.push(format!("--rpclisten-json={}", rpclisten_json));
-        }
-        if let Some(outpeers) = cli.outpeers {
-            node_args.push(format!("--outpeers={}", outpeers));
-        }
-        if let Some(maxinpeers) = cli.maxinpeers {
-            node_args.push(format!("--maxinpeers={}", maxinpeers));
-        }
-        if let Some(rpcmaxclients) = cli.rpcmaxclients {
-            node_args.push(format!("--rpcmaxclients={}", rpcmaxclients));
-        }
-        if cli.perf_metrics {
-            node_args.push("--perf-metrics".to_string());
-        }
-        if let Some(perf_metrics_interval_sec) = cli.perf_metrics_interval_sec {
-            node_args.push(format!("--perf-metrics-interval-sec={}", perf_metrics_interval_sec));
-        }
-        if let Some(ram_scale) = cli.ram_scale {
-            node_args.push(format!("--ram-scale={}", ram_scale));
-        }
-        if cli.disable_upnp {
-            node_args.push("--disable-upnp".to_string());
-        }
-        node_args.push("--appdir".to_string());
-
-        let default_appdir = app_dirs::default_inprocess_kaspad_appdir();
-        if cli.appdir.is_none() {
-            let _ = std::fs::create_dir_all(&default_appdir);
-        }
-
-        node_args.push(cli.appdir.as_ref().cloned().unwrap_or(default_appdir).to_string_lossy().to_string());
 
         let mut argv: Vec<OsString> = Vec::with_capacity(node_args.len() + 1);
         argv.push(OsString::from("kaspad"));
