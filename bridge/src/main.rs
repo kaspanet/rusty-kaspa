@@ -5,7 +5,6 @@ use kaspa_stratum_bridge::{listen_and_serve, prom, BridgeConfig as StratumBridge
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
-use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
 use kaspad_lib::args as kaspad_args;
@@ -34,17 +33,8 @@ struct Cli {
     #[arg(long)]
     appdir: Option<PathBuf>,
 
-    #[arg(long)]
-    disable_upnp: bool,
-
-    #[arg(long)]
-    utxoindex: bool,
-
-    #[arg(long)]
-    rpclisten: Option<String>,
-
-    #[arg(long)]
-    rpclisten_borsh: Option<String>,
+    #[arg(last = true, help = "Kaspad arguments (use '--' separator if kaspad args start with hyphens)")]
+    kaspad_args: Vec<String>,
 }
 
 fn initialize_config() -> BridgeConfig {
@@ -90,7 +80,9 @@ fn initialize_config() -> BridgeConfig {
         }
     }
 
-    let _ = CONFIG_LOADED_FROM.set(loaded_from);
+    if CONFIG_LOADED_FROM.set(loaded_from).is_err() {
+        tracing::warn!("Failed to set config loaded from path - may already be initialized");
+    }
     config.unwrap_or_default()
 }
 
@@ -129,24 +121,12 @@ fn log_bridge_configuration(config: &app_config::BridgeConfig) {
     tracing::info!("----------------------------------");
 }
 
-async fn kaspa_api_with_retry(kaspad_address: String, block_wait_time: Duration) -> Result<Arc<KaspaApi>, anyhow::Error> {
-    let mut last_err: Option<anyhow::Error> = None;
-    for _ in 0..60 {
-        match KaspaApi::new(kaspad_address.clone(), block_wait_time).await {
-            Ok(api) => return Ok(api),
-            Err(e) => {
-                last_err = Some(anyhow::anyhow!("{}", e));
-                tokio::time::sleep(Duration::from_millis(500)).await;
-            }
-        }
-    }
-    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("failed to connect to kaspad")))
-}
-
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
-    let _ = REQUESTED_CONFIG_PATH.set(cli.config.clone());
+    if REQUESTED_CONFIG_PATH.set(cli.config.clone()).is_err() {
+        tracing::warn!("Failed to set requested config path - may already be initialized");
+    }
 
     let node_mode = cli.node_mode.unwrap_or(NodeMode::Inprocess);
 
@@ -172,27 +152,21 @@ async fn main() -> Result<(), anyhow::Error> {
     // are not filtered out by a tracing subscriber installed by kaspad.
     let mut inprocess_node: Option<InProcessNode> = None;
     if node_mode == NodeMode::Inprocess {
-        let mut node_args: Vec<String> = Vec::new();
-        if cli.utxoindex {
-            node_args.push("--utxoindex".to_string());
-        }
-        if let Some(rpclisten) = cli.rpclisten.as_ref() {
-            node_args.push(format!("--rpclisten={}", rpclisten));
-        }
-        if let Some(rpclisten_borsh) = cli.rpclisten_borsh.as_ref() {
-            node_args.push(format!("--rpclisten-borsh={}", rpclisten_borsh));
-        }
-        if cli.disable_upnp {
-            node_args.push("--disable-upnp".to_string());
-        }
-        node_args.push("--appdir".to_string());
+        let mut node_args: Vec<String> = cli.kaspad_args;
 
-        let default_appdir = app_dirs::default_inprocess_kaspad_appdir();
-        if cli.appdir.is_none() {
-            let _ = std::fs::create_dir_all(&default_appdir);
-        }
+        // Add appdir if not provided in kaspad_args
+        if !node_args.iter().any(|arg| arg.starts_with("--appdir")) {
+            let default_appdir = app_dirs::default_inprocess_kaspad_appdir();
+            let appdir_to_use = cli.appdir.as_ref().cloned().unwrap_or(default_appdir);
 
-        node_args.push(cli.appdir.as_ref().cloned().unwrap_or(default_appdir).to_string_lossy().to_string());
+            // Create the directory if it doesn't exist
+            let _ = std::fs::create_dir_all(&appdir_to_use);
+
+            node_args.push("--appdir".to_string());
+            node_args.push(appdir_to_use.to_string_lossy().to_string());
+        } else {
+            assert!(cli.appdir.is_none(), "appdir should not be specified both in bridge args and kaspad args");
+        }
 
         let mut argv: Vec<OsString> = Vec::with_capacity(node_args.len() + 1);
         argv.push(OsString::from("kaspad"));
@@ -220,15 +194,10 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Create shared kaspa API client (all instances use the same node)
-    let kaspa_api = if inprocess_node.is_some() {
-        kaspa_api_with_retry(config.global.kaspad_address.clone(), config.global.block_wait_time)
+    let kaspa_api =
+        KaspaApi::new(config.global.kaspad_address.clone(), config.global.block_wait_time, config.global.coinbase_tag_suffix.clone())
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?
-    } else {
-        KaspaApi::new(config.global.kaspad_address.clone(), config.global.block_wait_time)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?
-    };
+            .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?;
 
     let mut instance_handles = Vec::new();
     for (idx, instance_config) in config.instances.iter().enumerate() {
@@ -273,6 +242,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 var_diff_stats: instance.var_diff_stats.unwrap_or(global.var_diff_stats),
                 extranonce_size: global.extranonce_size,
                 pow2_clamp: instance.pow2_clamp.unwrap_or(global.pow2_clamp),
+                coinbase_tag_suffix: global.coinbase_tag_suffix.clone(),
             };
 
             listen_and_serve(bridge_config, Arc::clone(&kaspa_api_clone), if is_first_instance { Some(kaspa_api_clone) } else { None })
