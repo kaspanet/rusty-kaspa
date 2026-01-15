@@ -1400,6 +1400,9 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             let [size]: [i32; 1] = vm.dstack.pop_items()?;
             let size = i32_to_usize(size)?;
+            if size > 8 {
+                return Err(TxScriptError::NotMinimalData(format!("NUM2BIN target size {size} exceeds 8 bytes")));
+            }
             let [num]: [i64; 1] = vm.dstack.pop_items()?;
             let r = serialize_i64(num, Some(size))?;
             vm.dstack.push(r)

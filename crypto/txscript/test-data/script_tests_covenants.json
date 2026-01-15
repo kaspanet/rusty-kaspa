@@ -3950,10 +3950,94 @@
     "OK"
   ],
   [
+    "3",
+    "2 NUM2BIN 3 NUMEQUAL",
+    "",
+    "OK",
+    "NUM2BIN output compares equal to original value"
+  ],
+  [
+    "2",
+    "3 NUM2BIN 2 4 NUM2BIN NUMEQUAL",
+    "",
+    "OK",
+    "NUM2BIN padded forms remain numerically equal"
+  ],
+  [
+    "-1",
+    "3 NUM2BIN -1 NUMEQUAL",
+    "",
+    "OK",
+    "NUM2BIN preserves negative values for NUMEQUAL"
+  ],
+  [
+    "-2",
+    "4 NUM2BIN -2 4 NUM2BIN NUMEQUAL",
+    "",
+    "OK",
+    "Negative padded encodings remain equal"
+  ],
+  [
+    "0x02 0x0100",
+    "3 NUM2BIN 0x03 0x010000 EQUAL",
+    "",
+    "OK",
+    "NUM2BIN accepts non-minimal encoded inputs"
+  ],
+  [
+    "0",
+    "2 NUM2BIN 0x02 0x0000 EQUAL",
+    "",
+    "OK",
+    "NUM2BIN zero pads to requested length"
+  ],
+  [
+    "-1",
+    "2 NUM2BIN 0x02 0x0180 EQUAL",
+    "",
+    "OK",
+    "NUM2BIN preserves sign when padding"
+  ],
+  [
+    "0x02 0x0001",
+    "1 NUM2BIN",
+    "",
+    "UNKNOWN_ERROR",
+    "NUM2BIN errors if requested length is too small"
+  ],
+  [
+    "1",
+    "9 NUM2BIN",
+    "",
+    "UNKNOWN_ERROR",
+    "NUM2BIN rejects lengths above 8 bytes"
+  ],
+  [
     "1",
     "BIN2NUM 1 EQUAL",
     "",
     "OK"
+  ],
+  [
+    "0x02 0x0500",
+    "BIN2NUM 5 NUMEQUAL",
+    "",
+    "OK",
+    "BIN2NUM minimizes positive numbers"
+  ],
+  [
+    "0x02 0x0580",
+    "BIN2NUM -5 NUMEQUAL",
+    "",
+    "OK",
+    "BIN2NUM minimizes negative numbers"
+  ],
+  [
+    "0x09 0x000000000000000001",
+    "BIN2NUM",
+    "",
+    "UNKNOWN_ERROR",
+    "BIN2NUM rejects inputs longer than 8 bytes"
   ],
   [
     "1",
