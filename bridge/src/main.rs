@@ -33,8 +33,8 @@ struct Cli {
     #[arg(long)]
     appdir: Option<PathBuf>,
 
-    #[arg(last = true)]
-    kaspad_args: Vec<String>,
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+    kaspad_args: Vec<OsString>,
 }
 
 fn initialize_config() -> BridgeConfig {
@@ -152,8 +152,12 @@ async fn main() -> Result<(), anyhow::Error> {
     // are not filtered out by a tracing subscriber installed by kaspad.
     let mut inprocess_node: Option<InProcessNode> = None;
     if node_mode == NodeMode::Inprocess {
-        let mut node_args: Vec<String> = cli.kaspad_args;
-
+        // Convert OsString to String for processing
+        let mut node_args: Vec<String> = cli.kaspad_args
+            .into_iter()
+            .map(|s| s.to_string_lossy().to_string())
+            .collect();
+        
         // Add appdir if not provided in kaspad_args
         if !node_args.iter().any(|arg| arg.starts_with("--appdir")) {
             let default_appdir = app_dirs::default_inprocess_kaspad_appdir();
