@@ -63,10 +63,10 @@ cargo run -p kaspa-stratum-bridge --release --bin stratum-bridge -- --config bri
 
 **Examples:**
 ```bash
-# ✅ Correct - bridge args first, then --, then kaspad args
+# ✓ Correct - bridge args first, then --, then kaspad args
 cargo run --release --bin stratum-bridge -- --config config.yaml --node-mode inprocess -- --utxoindex --rpclisten=127.0.0.1:16110
 
-# ❌ Incorrect - will show error message
+# ✗ Incorrect - will show error message
 cargo run --release --bin stratum-bridge -- --rpclisten=127.0.0.1:16110 --config config.yaml --node-mode inprocess
 # Error: tip: to pass '--rpclisten' as a value, use '-- --rpclisten'
 ```
