@@ -56,25 +56,43 @@ coinbase_tag_suffix: ""
 # - Log to file (OPTIONAL, per-instance, defaults to global setting)
 
 instances:
-  # Instance 1: Low difficulty pool (for smaller miners or testing)
+  # Instance 1: Very low difficulty pool
+  - stratum_port: ":5559"
+    min_share_diff: 4
+    prom_port: ":2118"
+    log_to_file: true
+
+  # Instance 2: Low difficulty pool
+  - stratum_port: ":5560"
+    min_share_diff: 512
+    prom_port: ":2119"
+    log_to_file: true
+
+  # Instance 3: Low difficulty pool
+  - stratum_port: ":5561"
+    min_share_diff: 1024
+    prom_port: ":2120"
+    log_to_file: true
+
+  # Instance 4: Low difficulty pool (for smaller miners or testing)
   - stratum_port: ":5555"
     min_share_diff: 2048
     prom_port: ":2114"
     log_to_file: true
 
-  # Instance 2: Medium difficulty pool
+  # Instance 5: Medium difficulty pool
   - stratum_port: ":5556"
     min_share_diff: 4096
     prom_port: ":2115"
     log_to_file: true
 
-  # Instance 3: High difficulty pool (for powerful miners)
+  # Instance 6: High difficulty pool (for powerful miners)
   - stratum_port: ":5557"
     min_share_diff: 8192
     prom_port: ":2116"
     log_to_file: true
 
-  # Instance 4: Very high difficulty pool (for very powerful miners)
+  # Instance 7: Very high difficulty pool (for very powerful miners)
   - stratum_port: ":5558"
     min_share_diff: 16384
     prom_port: ":2117"
