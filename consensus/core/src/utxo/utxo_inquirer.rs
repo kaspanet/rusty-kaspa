@@ -7,8 +7,8 @@ use crate::tx::{TransactionId, TransactionOutpoint};
 pub enum UtxoInquirerError {
     #[error("Transaction return address is coinbase")]
     TxFromCoinbase,
-    #[error("Transaction not found at given accepting daa score")]
-    NoTxAtScore,
+    #[error("No chain block found at given daa score: {0}")]
+    NoChainBlockAtDaaScore(u64),
     #[error("Transaction was found but not standard")]
     NonStandard,
     #[error("No transaction specified")]

@@ -148,40 +148,11 @@ impl HandleRelayInvsFlow {
             // We do not apply the skip heuristic below if inv was queued indirectly (as an orphan root), since
             // that means the process started by a proper and relevant relay block
             if !inv.is_orphan_root && !broadcast {
-                // We apply a pow heuristic check here to try and identify peers that might be maliciously sending unchecked low pow blocks into this condition.
-                let supplied_daa_score = block.header.daa_score;
-                let supplied_blue_work = block.header.blue_work;
-
-                // First we calc the pow in isolation, ensuring block passes its self-supplied pow requirement.
-                let (passed, submitted_pov) = session.async_calc_header_pow_in_isolation(block.header).await?;
-                if !passed {
-                    return Err(ProtocolError::OtherOwned(format!(
-                        "sent relay block {} which fails proof of work check (calculated pow: {})",
-                        inv.hash, submitted_pov
-                    )));
-                }
-
-                // Next we get the expected target difficulty at the supplied daa score.
-                let target_difficulty_at_daa_score =
-                    session.async_get_accepted_target_difficulty_at_daa_score(supplied_daa_score).await?;
-                // Since this is a heuristic, we allow some generous slack above the original target difficulty.
-                // currently we set it to 1.5x of the target difficulty.
-                let adjusted_target_difficulty = target_difficulty_at_daa_score.saturating_add(target_difficulty_at_daa_score / 2);
-
-                // Check that the submitted pov meets the adjusted target difficulty at the supplied daa score.
-                if submitted_pov <= adjusted_target_difficulty {
-                    return Err(ProtocolError::OtherOwned(format!(
-                        "sent relay block {} which has insufficient proof of work (calculated pow: {}, expected target difficulty at indicated daa score: {})",
-                        inv.hash,
-                        submitted_pov,
-                        target_difficulty_at_daa_score
-                    )));
-                }
-
+                self.check_pow_of_relay_block(&session, &block).await?;
                 // If these checks pass, we simply skip processing this block, and assume honest intent.
                 debug!(
                     "Relay block {} has lower blue work than virtual's merge depth root ({} <= {}), hence we are skipping it",
-                    inv.hash, supplied_blue_work, blue_work_threshold
+                    inv.hash, block.header.blue_work, blue_work_threshold
                 );
                 continue;
             }
@@ -289,6 +260,39 @@ impl HandleRelayInvsFlow {
         } else {
             Ok(Some((block, request_scope)))
         }
+    }
+
+    async fn check_pow_of_relay_block(&self, consensus: &ConsensusProxy, block: &Block) -> Result<(), ProtocolError> {
+        // We apply a pow heuristic check here to try and identify peers that might be maliciously sending unchecked low pow blocks into this condition.
+        let supplied_header = block.header.clone();
+
+        // First we calc the pow in isolation, ensuring block passes its self-supplied pow requirement.
+        let (passed, submitted_pov) = consensus.async_calc_header_pow_in_isolation(supplied_header).await?;
+        if !passed {
+            return Err(ProtocolError::OtherOwned(format!(
+                "sent relay block {} which fails proof of work check (calculated pow: {})",
+                block.hash(),
+                submitted_pov
+            )));
+        }
+
+        // Next we get the expected target difficulty at the supplied daa score.
+        let target_difficulty_at_daa_score =
+            consensus.async_get_accepted_target_difficulty_at_daa_score(block.header.daa_score).await?;
+        // Since this is a heuristic, we allow some generous slack above the original target difficulty.
+        // currently we set it to 1.5x of the target difficulty.
+        let adjusted_target_difficulty = target_difficulty_at_daa_score.saturating_add(target_difficulty_at_daa_score / 2);
+
+        // Check that the submitted pov meets the adjusted target difficulty at the supplied daa score.
+        if submitted_pov <= adjusted_target_difficulty {
+            return Err(ProtocolError::OtherOwned(format!(
+                        "sent relay block {} which has insufficient proof of work (calculated pow: {}, expected target difficulty at indicated daa score: {})",
+                        block.hash(),
+                        submitted_pov,
+                        target_difficulty_at_daa_score
+                    )));
+        }
+        Ok(())
     }
 
     /// Process the orphan block. Returns `Some(BlockProcessingBatch)` if the block has no missing roots, where

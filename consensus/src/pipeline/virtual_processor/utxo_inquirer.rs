@@ -328,7 +328,7 @@ impl VirtualStateProcessor {
             }
 
             if low_index > high_index {
-                return Err(UtxoInquirerError::NoTxAtScore);
+                return Err(UtxoInquirerError::NoChainBlockAtDaaScore(daa_score));
             }
         };
 

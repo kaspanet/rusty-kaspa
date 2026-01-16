@@ -253,8 +253,8 @@ impl HeaderProcessor {
 
     /// This only calcs that the header's proof of work in isolation.
     /// It does not check against any context, or expected target difficulty, via the daa window etc..
-    pub fn calc_header_pow_in_isolation(&self, header: &Header) -> BlockProcessResult<(bool, Uint256)> {
-        let state = kaspa_pow::State::new(header);
+    pub fn calc_header_pow_in_isolation(&self, header: Arc<Header>) -> BlockProcessResult<(bool, Uint256)> {
+        let state = kaspa_pow::State::new(&header);
         let (passed, pow) = state.check_pow(header.nonce);
         Ok((passed, pow))
     }

@@ -784,7 +784,7 @@ impl ConsensusApi for Consensus {
     /// This only calcs that the header's proof of work in isolation.
     /// It does not check against any context, or expected target difficulty, via the daa window etc..
     fn calc_header_pow_in_isolation(&self, header: Arc<Header>) -> ConsensusResult<(bool, Uint256)> {
-        Ok(self.header_processor.calc_header_pow_in_isolation(&header)?)
+        Ok(self.header_processor.calc_header_pow_in_isolation(header)?)
     }
 
     /// Returns the accepted target difficulty at the given daa_score on the accepting chain
