@@ -721,7 +721,7 @@ async fn update_config_from_json(json_body: &str) -> Result<(), Box<dyn std::err
 
     // Build YAML content directly from JSON values
     let mut out_str = String::new();
-    out_str.push_str("# RustBridge Configuration\n");
+    out_str.push_str("# RKStratum Configuration\n");
     out_str.push_str("# This file configures the stratum bridge that connects miners to the Kaspa node\n\n");
 
     if let Some(port) = config.get("stratum_port").and_then(|v| v.as_str()) {

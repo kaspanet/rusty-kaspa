@@ -1,40 +1,96 @@
 use clap::Parser;
 use futures_util::future::try_join_all;
+use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_stratum_bridge::log_colors::LogColors;
-use kaspa_stratum_bridge::{listen_and_serve, prom, BridgeConfig as StratumBridgeConfig, KaspaApi};
+use kaspa_stratum_bridge::{listen_and_serve_with_shutdown, prom, BridgeConfig as StratumBridgeConfig, KaspaApi};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
+use tokio::sync::watch;
 use tracing_subscriber::EnvFilter;
+
+#[cfg(windows)]
+use windows_sys::Win32::System::Console::{SetConsoleCtrlHandler, CTRL_C_EVENT};
 
 use kaspad_lib::args as kaspad_args;
 
 mod app_config;
 mod app_dirs;
+mod cli;
 mod health_check;
 mod inprocess_node;
 mod tracing_setup;
 
 use app_config::BridgeConfig;
+use cli::{apply_cli_overrides, Cli, NodeMode};
 use inprocess_node::InProcessNode;
 
 static CONFIG_LOADED_FROM: OnceLock<Option<PathBuf>> = OnceLock::new();
 static REQUESTED_CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
 
-#[derive(Debug, Parser)]
-#[command(author, version, about)]
-struct Cli {
-    #[arg(long, default_value = "config.yaml")]
-    config: PathBuf,
+#[cfg(windows)]
+struct CtrlHandlerState {
+    presses: AtomicUsize,
+    last_event_ms: AtomicU64,
+    shutdown_tx: watch::Sender<bool>,
+}
 
-    #[arg(long, value_enum)]
-    node_mode: Option<NodeMode>,
+#[cfg(windows)]
+static CTRL_HANDLER_STATE: OnceLock<CtrlHandlerState> = OnceLock::new();
 
-    #[arg(long)]
-    appdir: Option<PathBuf>,
+#[cfg(windows)]
+unsafe extern "system" fn console_ctrl_handler(ctrl_type: u32) -> i32 {
+    if ctrl_type != CTRL_C_EVENT {
+        return 0;
+    }
 
-    #[arg(last = true, help = "Kaspad arguments (use '--' separator if kaspad args start with hyphens)")]
-    kaspad_args: Vec<String>,
+    let Some(state) = CTRL_HANDLER_STATE.get() else {
+        return 0;
+    };
+
+    let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+
+    // Debounce: Windows can invoke the handler multiple times for a single keypress.
+    // Treat multiple invocations within a short window as the same press.
+    const DEBOUNCE_MS: u64 = 500;
+
+    let last_ms = state.last_event_ms.load(Ordering::SeqCst);
+    if last_ms != 0 && now_ms.saturating_sub(last_ms) < DEBOUNCE_MS {
+        return 1;
+    }
+    state.last_event_ms.store(now_ms, Ordering::SeqCst);
+
+    let prev = state.presses.fetch_add(1, Ordering::SeqCst);
+    if prev == 0 {
+        let _ = state.shutdown_tx.send(true);
+        1
+    } else {
+        std::process::exit(130);
+    }
+}
+
+#[cfg(windows)]
+fn install_windows_ctrl_handler(shutdown_tx: watch::Sender<bool>) -> Result<(), anyhow::Error> {
+    let _ = CTRL_HANDLER_STATE.set(CtrlHandlerState { presses: AtomicUsize::new(0), last_event_ms: AtomicU64::new(0), shutdown_tx });
+
+    let ok = unsafe { SetConsoleCtrlHandler(Some(console_ctrl_handler), 1) };
+    if ok == 0 {
+        return Err(anyhow::anyhow!("failed to install Windows console control handler"));
+    }
+    Ok(())
+}
+
+async fn shutdown_inprocess_with_timeout(node: InProcessNode) {
+    let timeout = std::time::Duration::from_secs(10);
+    match tokio::time::timeout(timeout, inprocess_node::shutdown_inprocess(node)).await {
+        Ok(()) => {}
+        Err(_) => {
+            tracing::warn!("Timed out waiting for embedded node shutdown; exiting");
+            std::process::exit(0);
+        }
+    }
 }
 
 fn initialize_config() -> BridgeConfig {
@@ -86,12 +142,6 @@ fn initialize_config() -> BridgeConfig {
     config.unwrap_or_default()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-enum NodeMode {
-    External,
-    Inprocess,
-}
-
 /// Log the bridge configuration at startup
 fn log_bridge_configuration(config: &app_config::BridgeConfig) {
     let instance_count = config.instances.len();
@@ -123,14 +173,26 @@ fn log_bridge_configuration(config: &app_config::BridgeConfig) {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    init_allocator_with_default_settings();
+
     let cli = Cli::parse();
-    if REQUESTED_CONFIG_PATH.set(cli.config.clone()).is_err() {
+
+    let requested_config = cli.config.clone().unwrap_or_else(|| {
+        if cli.testnet {
+            PathBuf::from("config.testnet.yaml")
+        } else {
+            PathBuf::from("config.yaml")
+        }
+    });
+
+    if REQUESTED_CONFIG_PATH.set(requested_config.clone()).is_err() {
         tracing::warn!("Failed to set requested config path - may already be initialized");
     }
 
     let node_mode = cli.node_mode.unwrap_or(NodeMode::Inprocess);
 
-    let config = initialize_config();
+    let mut config = initialize_config();
+    apply_cli_overrides(&mut config, &cli)?;
 
     // Initialize color support detection
     LogColors::init();
@@ -147,6 +209,16 @@ async fn main() -> Result<(), anyhow::Error> {
             EnvFilter::new("warn,kaspa_stratum_bridge=info")
         }
     });
+
+    // Note: The file_guard must be kept alive for the lifetime of the program
+    // to ensure logs are flushed to the file
+    // Store it in a OnceLock to prevent it from being dropped
+    static FILE_GUARD: std::sync::OnceLock<tracing_appender::non_blocking::WorkerGuard> = std::sync::OnceLock::new();
+    if let Some(guard) = tracing_setup::init_tracing(&config, filter, false) {
+        let _ = FILE_GUARD.set(guard);
+    }
+
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     // Start in-process node after tracing is initialized so bridge logs (including the stats table)
     // are not filtered out by a tracing subscriber installed by kaspad.
@@ -173,14 +245,20 @@ async fn main() -> Result<(), anyhow::Error> {
         argv.extend(node_args.iter().map(OsString::from));
         let args = kaspad_args::Args::parse(argv).map_err(|e| anyhow::anyhow!("{}", e))?;
         inprocess_node = Some(InProcessNode::start_from_args(args)?);
+
+        // Install our handler after the embedded node starts so we run first (Windows calls handlers LIFO).
+        // This prevents the embedded node's ctrl handler from consuming Ctrl+C and bypassing our graceful shutdown.
+        #[cfg(windows)]
+        install_windows_ctrl_handler(shutdown_tx.clone())?;
+    } else {
+        // In external mode on Windows, tokio's Ctrl+C handling is usually fine, but we install our handler
+        // anyway to keep behavior consistent across modes.
+        #[cfg(windows)]
+        install_windows_ctrl_handler(shutdown_tx.clone())?;
     }
 
-    // Note: The file_guard must be kept alive for the lifetime of the program
-    // to ensure logs are flushed to the file
-    let _file_guard = tracing_setup::init_tracing(&config, filter, node_mode == NodeMode::Inprocess);
-
     if CONFIG_LOADED_FROM.get().and_then(|p| p.as_ref()).is_none() {
-        let config_path = cli.config.as_path();
+        let config_path = requested_config.as_path();
         let cwd = std::env::current_dir().ok();
         tracing::warn!("config.yaml not found, using defaults (requested: {:?}, cwd: {:?})", config_path, cwd);
     }
@@ -194,10 +272,23 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Create shared kaspa API client (all instances use the same node)
-    let kaspa_api =
-        KaspaApi::new(config.global.kaspad_address.clone(), config.global.block_wait_time, config.global.coinbase_tag_suffix.clone())
+    let kaspa_api = KaspaApi::new_with_shutdown(
+        config.global.kaspad_address.clone(),
+        config.global.block_wait_time,
+        config.global.coinbase_tag_suffix.clone(),
+        Some(shutdown_rx.clone()),
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?;
+
+    if node_mode == NodeMode::Inprocess {
+        tracing::info!("Waiting for embedded node to fully sync before starting stratum listeners");
+        kaspa_api
+            .wait_for_sync_with_shutdown(true, shutdown_rx.clone())
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed while waiting for node sync: {}", e))?;
+        tracing::info!("Node is synced, starting stratum listeners");
+    }
 
     let mut instance_handles = Vec::new();
     for (idx, instance_config) in config.instances.iter().enumerate() {
@@ -205,6 +296,7 @@ async fn main() -> Result<(), anyhow::Error> {
         let instance = instance_config.clone();
         let global = config.global.clone();
         let kaspa_api_clone = Arc::clone(&kaspa_api);
+        let instance_shutdown_rx = shutdown_rx.clone();
 
         let is_first_instance = idx == 0;
 
@@ -245,9 +337,14 @@ async fn main() -> Result<(), anyhow::Error> {
                 coinbase_tag_suffix: global.coinbase_tag_suffix.clone(),
             };
 
-            listen_and_serve(bridge_config, Arc::clone(&kaspa_api_clone), if is_first_instance { Some(kaspa_api_clone) } else { None })
-                .await
-                .map_err(|e| format!("[Instance {}] Bridge server error: {}", instance_num, e))
+            listen_and_serve_with_shutdown(
+                bridge_config,
+                Arc::clone(&kaspa_api_clone),
+                if is_first_instance { Some(kaspa_api_clone) } else { None },
+                instance_shutdown_rx,
+            )
+            .await
+            .map_err(|e| format!("[Instance {}] Bridge server error: {}", instance_num, e))
         });
         instance_handles.push(handle);
     }
@@ -268,18 +365,76 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     };
 
+    tokio::pin!(bridge_fut);
+
+    let mut shutdown_wait_rx = shutdown_rx.clone();
+    let ctrl_c_fut = async move {
+        #[cfg(windows)]
+        {
+            let _ = shutdown_wait_rx.wait_for(|v| *v).await;
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = tokio::signal::ctrl_c().await;
+        }
+    };
+
+    tokio::pin!(ctrl_c_fut);
+
     tokio::select! {
-        res = bridge_fut => {
+        res = &mut bridge_fut => {
             if let Some(node) = inprocess_node {
-                inprocess_node::shutdown_inprocess(node).await;
+                shutdown_inprocess_with_timeout(node).await;
             }
             res
         }
-        _ = tokio::signal::ctrl_c() => {
-            if let Some(node) = inprocess_node {
-                inprocess_node::shutdown_inprocess(node).await;
+        _ = &mut ctrl_c_fut => {
+            tracing::info!("Ctrl+C received, starting shutdown");
+
+            #[cfg(not(windows))]
+            {
+                let _ = shutdown_tx.send(true);
+                let res = tokio::select! {
+                    res = &mut bridge_fut => res,
+                    _ = tokio::signal::ctrl_c() => {
+                        tracing::warn!("Second Ctrl+C received, forcing exit");
+                        std::process::exit(130);
+                    }
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
+                        tracing::warn!("Shutdown drain window elapsed, exiting");
+                        Ok(())
+                    }
+                };
+
+                if let Some(node) = inprocess_node {
+                    shutdown_inprocess_with_timeout(node).await;
+                }
+
+                if let Err(e) = res {
+                    tracing::warn!("Shutdown completed with error: {e}");
+                }
+                return Ok(());
             }
-            Ok(())
+
+            #[cfg(windows)]
+            {
+                let res = tokio::select! {
+                    res = &mut bridge_fut => res,
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
+                        tracing::warn!("Shutdown drain window elapsed, exiting");
+                        Ok(())
+                    }
+                };
+
+                if let Some(node) = inprocess_node {
+                    shutdown_inprocess_with_timeout(node).await;
+                }
+
+                if let Err(e) = res {
+                    tracing::warn!("Shutdown completed with error: {e}");
+                }
+                return Ok(());
+            }
         }
     }
 }

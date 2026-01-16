@@ -9,6 +9,7 @@ use crate::{
 };
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
 pub struct BridgeConfig {
@@ -59,6 +60,24 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
     // Optional: if concrete KaspaApi is provided, use notification-based listener
     concrete_kaspa_api: Option<Arc<KaspaApi>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    listen_and_serve_impl(config, kaspa_api, concrete_kaspa_api, None).await
+}
+
+pub async fn listen_and_serve_with_shutdown<T: KaspaApiTrait + Send + Sync + 'static>(
+    config: BridgeConfig,
+    kaspa_api: Arc<T>,
+    concrete_kaspa_api: Option<Arc<KaspaApi>>,
+    shutdown_rx: watch::Receiver<bool>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    listen_and_serve_impl(config, kaspa_api, concrete_kaspa_api, Some(shutdown_rx)).await
+}
+
+async fn listen_and_serve_impl<T: KaspaApiTrait + Send + Sync + 'static>(
+    config: BridgeConfig,
+    kaspa_api: Arc<T>,
+    concrete_kaspa_api: Option<Arc<KaspaApi>>,
+    shutdown_rx: Option<watch::Receiver<bool>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Calculate min diff with pow2 clamp if needed
     let mut min_diff = config.min_share_diff as f64;
     if config.pow2_clamp && min_diff > 0.0 {
@@ -86,6 +105,8 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
     // Note: extranonce_size parameter is now only used for backward compatibility
     // Actual extranonce assignment happens per-client in handle_subscribe based on detected miner type
     let client_handler = Arc::new(ClientHandler::new(Arc::clone(&share_handler), min_diff, extranonce_size, instance_id.clone()));
+
+    let shutdown_rx_for_bg = shutdown_rx.clone();
 
     // Setup default handlers
     let mut handlers = default_handlers();
@@ -168,17 +189,29 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
     // Start vardiff thread if enabled
     if config.var_diff {
         let shares_per_min = if config.shares_per_min > 0 { config.shares_per_min } else { 20 };
-        share_handler.start_vardiff_thread(shares_per_min, config.var_diff_stats, config.pow2_clamp);
+        if let Some(rx) = shutdown_rx_for_bg.as_ref().cloned() {
+            share_handler.start_vardiff_thread_with_shutdown(shares_per_min, config.var_diff_stats, config.pow2_clamp, rx);
+        } else {
+            share_handler.start_vardiff_thread(shares_per_min, config.var_diff_stats, config.pow2_clamp);
+        }
     }
 
     // Start stats printing thread if enabled
     if config.print_stats {
         let shares_per_min = if config.shares_per_min > 0 { config.shares_per_min } else { 20 };
-        share_handler.start_print_stats_thread(shares_per_min);
+        if let Some(rx) = shutdown_rx_for_bg.as_ref().cloned() {
+            share_handler.start_print_stats_thread_with_shutdown(shares_per_min, rx);
+        } else {
+            share_handler.start_print_stats_thread(shares_per_min);
+        }
     }
 
     // Start stats pruning thread
-    share_handler.start_prune_stats_thread();
+    if let Some(rx) = shutdown_rx_for_bg.as_ref().cloned() {
+        share_handler.start_prune_stats_thread_with_shutdown(rx);
+    } else {
+        share_handler.start_prune_stats_thread();
+    }
 
     // Start block template listener with notifications + ticker fallback
     // This provides immediate notifications when new blocks are available, with polling as fallback
@@ -201,7 +234,13 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
         // Start notification-based listener with ticker fallback
         // Method signature: start_block_template_listener(self: Arc<Self>, ...)
         // Call the method directly on Arc<KaspaApi> (it's an instance method taking Arc<Self>)
-        if let Err(e) = concrete_api.start_block_template_listener(config.block_wait_time, block_cb).await {
+        let listener_result = if let Some(rx) = shutdown_rx_for_bg.as_ref().cloned() {
+            concrete_api.start_block_template_listener_with_shutdown(config.block_wait_time, rx, block_cb).await
+        } else {
+            concrete_api.start_block_template_listener(config.block_wait_time, block_cb).await
+        };
+
+        if let Err(e) = listener_result {
             warn!("Failed to start notification-based block template listener: {}, falling back to polling", e);
             // Fall through to polling approach
         } else {
@@ -214,13 +253,26 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
 
         let client_handler_poll = Arc::clone(&client_handler);
         let kaspa_api_poll = Arc::clone(&kaspa_api);
+        let mut shutdown_rx_poll = shutdown_rx_for_bg;
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(config.block_wait_time);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
-                interval.tick().await;
-                // Poll for new blocks
-                client_handler_poll.new_block_available(Arc::clone(&kaspa_api_poll)).await;
+                if let Some(ref mut rx) = shutdown_rx_poll {
+                    tokio::select! {
+                        _ = rx.changed() => {
+                            if *rx.borrow() {
+                                break;
+                            }
+                        }
+                        _ = interval.tick() => {
+                            client_handler_poll.new_block_available(Arc::clone(&kaspa_api_poll)).await;
+                        }
+                    }
+                } else {
+                    interval.tick().await;
+                    client_handler_poll.new_block_available(Arc::clone(&kaspa_api_poll)).await;
+                }
             }
         });
     }
@@ -228,5 +280,12 @@ pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
     // Start listener
     let listener = StratumListener::new(listener_config);
     info!("{} Starting stratum listener on {}", instance_id, config.stratum_port);
-    listener.listen().await
+
+    let listen_result =
+        if let Some(shutdown_rx) = shutdown_rx { listener.listen_with_shutdown(shutdown_rx).await } else { listener.listen().await };
+
+    // Ensure all clients are disconnected when listener stops (shutdown or error)
+    client_handler.disconnect_all();
+
+    listen_result
 }

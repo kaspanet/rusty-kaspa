@@ -22,6 +22,7 @@ kaspa-notify = { workspace = true }
 kaspa-core = { workspace = true }
 kaspa-utils = { workspace = true }
 kaspad = { workspace = true }
+kaspa-alloc = { workspace = true }
 dirs = { workspace = true }
 
 # External dependencies - using workspace versions where available

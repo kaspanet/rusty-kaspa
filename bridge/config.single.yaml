@@ -1,0 +1,19 @@
+# RKStratum Single-Instance Test Configuration
+# Intended for testing CLI instance override flags
+
+kaspad_address: "127.0.0.1:16110"
+block_wait_time: 1000
+print_stats: true
+log_to_file: true
+health_check_port: ""
+var_diff: false
+shares_per_min: 20
+var_diff_stats: false
+pow2_clamp: true
+extranonce_size: 2
+coinbase_tag_suffix: ""
+
+# Single-instance mode (no instances array)
+stratum_port: ":5557"
+min_share_diff: 8192
+prom_port: ":2116"
