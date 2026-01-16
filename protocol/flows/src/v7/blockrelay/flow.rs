@@ -148,8 +148,9 @@ impl HandleRelayInvsFlow {
             // We do not apply the skip heuristic below if inv was queued indirectly (as an orphan root), since
             // that means the process started by a proper and relevant relay block
             if !inv.is_orphan_root && !broadcast {
+                // We apply a pow heuristic check here to try and identify peers that might be maliciously sending low pow blocks into this condition.
                 self.check_pow_of_relay_block(&session, &block).await?;
-                // If these checks pass, we simply skip processing this block, and assume honest intent.
+                // If the check passes, we skip processing this block, and assume honest intent.
                 debug!(
                     "Relay block {} has lower blue work than virtual's merge depth root ({} <= {}), hence we are skipping it",
                     inv.hash, block.header.blue_work, blue_work_threshold
@@ -262,8 +263,13 @@ impl HandleRelayInvsFlow {
         }
     }
 
+    /// Checks the proof of work of a relay block according to a heuristic:
+    /// 1. Calculate the pow of the supplied header in isolation
+    /// 2. Get the expected target difficulty at the supplied daa score
+    /// 3. Check that the calculated pow meets an adjusted target difficulty (1.5x the expected target difficulty)
+    ///
+    /// Note: implicitly the check also fails if the daa score is out of scope.
     async fn check_pow_of_relay_block(&self, consensus: &ConsensusProxy, block: &Block) -> Result<(), ProtocolError> {
-        // We apply a pow heuristic check here to try and identify peers that might be maliciously sending unchecked low pow blocks into this condition.
         let supplied_header = block.header.clone();
 
         // First we calc the pow in isolation, ensuring block passes its self-supplied pow requirement.
@@ -286,10 +292,10 @@ impl HandleRelayInvsFlow {
         // Check that the submitted pov meets the adjusted target difficulty at the supplied daa score.
         if submitted_pov <= adjusted_target_difficulty {
             return Err(ProtocolError::OtherOwned(format!(
-                        "sent relay block {} which has insufficient proof of work (calculated pow: {}, expected target difficulty at indicated daa score: {})",
+                        "sent relay block {} which has insufficient proof of work (calculated pow: {}, expected adjusted target difficulty at daa score: {})",
                         block.hash(),
                         submitted_pov,
-                        target_difficulty_at_daa_score
+                        adjusted_target_difficulty
                     )));
         }
         Ok(())
