@@ -10,6 +10,8 @@ pub(crate) struct InstanceConfig {
     pub(crate) min_share_diff: u32,
     pub(crate) prom_port: Option<String>, // Optional per-instance prom port
     pub(crate) log_to_file: Option<bool>, // Optional per-instance logging
+    pub(crate) block_wait_time: Option<Duration>,
+    pub(crate) extranonce_size: Option<u8>,
     // Instance-specific settings that can override global defaults
     pub(crate) var_diff: Option<bool>,
     pub(crate) shares_per_min: Option<u32>,
@@ -65,6 +67,8 @@ impl Default for InstanceConfig {
             min_share_diff: 8192,
             prom_port: None,
             log_to_file: None,
+            block_wait_time: None,
+            extranonce_size: None,
             var_diff: None,
             shares_per_min: None,
             var_diff_stats: None,
@@ -177,6 +181,16 @@ impl BridgeConfig {
                 // Optional: log_to_file (per-instance)
                 if let Some(log) = instance_yaml["log_to_file"].as_bool() {
                     instance.log_to_file = Some(log);
+                }
+
+                if let Some(bwt) = instance_yaml["block_wait_time"].as_i64() {
+                    instance.block_wait_time = Some(Duration::from_millis(bwt as u64));
+                } else if let Some(bwt) = instance_yaml["block_wait_time"].as_f64() {
+                    instance.block_wait_time = Some(Duration::from_millis(bwt as u64));
+                }
+
+                if let Some(ens) = instance_yaml["extranonce_size"].as_i64() {
+                    instance.extranonce_size = Some(ens as u8);
                 }
 
                 // Optional: instance-specific overrides
