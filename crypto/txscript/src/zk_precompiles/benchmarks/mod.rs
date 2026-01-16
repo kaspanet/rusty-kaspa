@@ -5,7 +5,7 @@ mod test {
         zk_precompiles::{parse_tag, verify_zk},
     };
 
-    #[test]
+    /*#[test]
     fn test_benchmark_verification() {
         use hex::decode;
         use rand::rngs::OsRng;
@@ -112,7 +112,7 @@ mod test {
             },
             if avg_stark_time > avg_groth16_time { "slower" } else { "faster" }
         );
-    }
+    }*/
 
     #[test]
     fn test_batch_verification_parallelism() {

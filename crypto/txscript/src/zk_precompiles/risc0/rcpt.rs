@@ -24,9 +24,8 @@ use risc0_zkp::core::hash::{blake2b::Blake2bCpuHashSuite, poseidon2::Poseidon2Ha
 use risc0_zkp::{adapter::CircuitInfo, core::digest::Digest, verify::VerificationError};
 use serde::Serialize;
 
-use crate::zk_precompiles::error::ZkIntegrityError;
-use crate::zk_precompiles::risc0::R0Error;
 use crate::zk_precompiles::risc0::merkle::MerkleProof;
+use crate::zk_precompiles::risc0::R0Error;
 /// A succinct receipt, produced via recursion, proving the execution of the zkVM with a [STARK].
 ///
 /// Using recursion, a [CompositeReceipt][crate::CompositeReceipt] can be compressed to form a

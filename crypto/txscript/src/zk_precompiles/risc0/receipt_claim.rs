@@ -18,7 +18,7 @@ use risc0_binfmt::{tagged_struct, Digestible, ExitCode, SystemState};
 use risc0_zkp::core::{digest::Digest, hash::sha::Sha256};
 use serde::{Deserialize, Serialize};
 
-use crate::zk_precompiles::{error::ZkIntegrityError, risc0::R0Error};
+use crate::zk_precompiles::risc0::R0Error;
 
 /// Public claims about a zkVM guest execution, such as the journal committed to by the guest.
 ///

@@ -23,7 +23,7 @@ use risc0_core::field::baby_bear::BabyBear;
 use risc0_zkp::core::{digest::Digest, hash::HashFn};
 use serde::{Deserialize, Serialize};
 
-use crate::zk_precompiles::{error::ZkIntegrityError, risc0::R0Error};
+use crate::zk_precompiles::risc0::R0Error;
 
 /// An inclusion proof for the [MerkleGroup]. Used to verify inclusion of a
 /// given recursion program in the committed set.
