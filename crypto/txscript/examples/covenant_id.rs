@@ -7,12 +7,13 @@ use kaspa_consensus_core::tx::{
 use kaspa_hashes::Hash;
 use kaspa_txscript::caches::Cache;
 use kaspa_txscript::opcodes::codes::{
-    Op1, Op1Add, OpBin2Num, OpBlake2b, OpCat, OpCovOutputCount, OpCovOutputIdx, OpData8, OpDrop, OpDup, OpEqual, OpEqualVerify, OpNum2Bin, OpSub, OpSwap, OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpkLen, OpTxOutputSpkSubstr, OpVerify, OpWithin
+    Op1, Op1Add, OpBin2Num, OpBlake2b, OpCat, OpCovOutputCount, OpCovOutputIdx, OpData8, OpDrop, OpDup, OpEqual, OpEqualVerify, OpNum2Bin, OpSub, OpSwap, OpTrue, OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpkLen, OpTxOutputSpkSubstr, OpVerify, OpWithin
 };
 use kaspa_txscript::pay_to_script_hash_script;
 use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
 use kaspa_txscript::{EngineFlags, TxScriptEngine};
 use kaspa_txscript_errors::TxScriptError;
+use rand::{RngCore, Rng,seq::SliceRandom, SeedableRng};
 
 fn main() -> ScriptBuilderResult<()> {
     counter_state_in_spk()
@@ -22,6 +23,7 @@ fn main() -> ScriptBuilderResult<()> {
 /// Each spend must increment the counter and rebind the funds to the same covenant script
 /// with the updated state hash embedded in the script public key.
 fn counter_state_in_spk() -> ScriptBuilderResult<()> {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0);
     println!("[COVENANT P2SH-WS] Counter stored in script public key");
     let covenant_script = build_covenant_script()?;
 
@@ -36,7 +38,7 @@ fn counter_state_in_spk() -> ScriptBuilderResult<()> {
     // Two valid increments
     for next in [1u8, 2u8] {
         println!("[COVENANT P2SH-WS] Spending to counter {next}");
-        let tx = build_spend_tx(&state, next, &covenant_script);
+        let tx = build_spend_tx(&state, next, &covenant_script, &mut rng);
         run_vm(&tx, &state.utxo_entry, &sig_cache, &reused_values, flags).unwrap();
         state = CovenantState::from_tx(tx, &covenant_script, next);
     }
@@ -44,24 +46,24 @@ fn counter_state_in_spk() -> ScriptBuilderResult<()> {
     let counter_2_state = state.clone();
     let next = 3u8;
     println!("[COVENANT P2SH-WS] Spending to counter {next}");
-    let tx = build_spend_tx(&state, next, &covenant_script);
+    let tx = build_spend_tx(&state, next, &covenant_script, &mut rng);
     run_vm(&tx, &state.utxo_entry, &sig_cache, &reused_values, flags).unwrap();
     state = CovenantState::from_tx(tx, &covenant_script, next);
 
     println!("[COVENANT P2SH-WS] Attempting invalid spend (no increment)");
-    let bad_tx = build_spend_tx(&state, state.counter, &covenant_script);
+    let bad_tx = build_spend_tx(&state, state.counter, &covenant_script, &mut rng);
     let err = run_vm(&bad_tx, &state.utxo_entry, &sig_cache, &reused_values, flags).expect_err("non-incrementing spend must fail");
     println!("[COVENANT P2SH-WS] Expected failure: {err:?}");
 
     println!("[COVENANT P2SH-WS] Attempting invalid spend (reuse previous state)");
     // We try to spend the last UTXO but provide the previous state with counter=2
     let bad_tx =
-        build_spend_tx(&CovenantState { utxo_outpoint: state.utxo_outpoint, ..counter_2_state }, state.counter, &covenant_script);
+        build_spend_tx(&CovenantState { utxo_outpoint: state.utxo_outpoint, ..counter_2_state }, state.counter, &covenant_script, &mut rng);
     let err = run_vm(&bad_tx, &state.utxo_entry, &sig_cache, &reused_values, flags).expect_err("non-incrementing spend must fail");
     println!("[COVENANT P2SH-WS] Expected failure: {err:?}");
 
     println!("[COVENANT P2SH-WS] Attempting invalid spend (increase by 2)");
-    let bad_tx = build_spend_tx(&state, state.counter + 2, &covenant_script);
+    let bad_tx = build_spend_tx(&state, state.counter + 2, &covenant_script, &mut rng);
     let err = run_vm(&bad_tx, &state.utxo_entry, &sig_cache, &reused_values, flags).expect_err("non-incrementing spend must fail");
     println!("[COVENANT P2SH-WS] Expected failure: {err:?}");
 
@@ -94,8 +96,8 @@ impl CovenantState {
 
 /// Build the covenant script that enforces:
 /// 1) The counter is incremented (state -> state+1).
-/// 2) The spend has exactly one output.
-/// 3) The output script public key matches the same redeem script and embeds the hash of (state+1) in the state slot.
+/// 2) The spend has exactly one authorized output.
+/// 3) The output script public key matches the same redeem script suffix and embeds the hash of (state+1) in the state slot.
 fn build_covenant_script() -> ScriptBuilderResult<Vec<u8>> {
     let p2sh_prefix = [0,0, // Script version 0
      kaspa_txscript::opcodes::codes::OpBlake2b,
@@ -125,12 +127,14 @@ fn build_covenant_script() -> ScriptBuilderResult<Vec<u8>> {
         .add_data(&[OpData8])?
         .add_op(OpEqualVerify)?
 
+        // ------ State transition start ------
         // Increment the counter
         .add_op(Op1Add)?
 
         // Expand to 8 bytes
         .add_i64(8)?
         .add_op(OpNum2Bin)?
+        // ------ State transition end ------
 
         // Add OpData8 prefix
         .add_data(&[OpData8])?
@@ -174,17 +178,29 @@ fn build_covenant_script() -> ScriptBuilderResult<Vec<u8>> {
 }
 
 /// Build the spend transaction for the next counter value.
-fn build_spend_tx(state: &CovenantState, next_counter: u8, covenant_script: &[u8]) -> Transaction {
+fn build_spend_tx(state: &CovenantState, next_counter: u8, covenant_script: &[u8], rng: &mut impl RngCore) -> Transaction {
     let sig_script = ScriptBuilder::new().add_data(&build_redeem_script(state.counter, covenant_script)).unwrap().drain();
 
     let input = TransactionInput::new(state.utxo_outpoint, sig_script, 0, 0);
-    let mut output = TransactionOutput::new(state.utxo_entry.amount, build_spk(next_counter, covenant_script));
+    let mut output = TransactionOutput::new(state.utxo_entry.amount-10, build_spk(next_counter, covenant_script));
     output.cov_out_info = Some(CovOutInfo{
         covenant_id: state.covenant_id,
         authorizing_input: 0,
     });
 
-    let mut tx = Transaction::new(0, vec![input], vec![output], 0, SubnetworkId::default(), 0, vec![]);
+    let mut outputs = vec![output];
+
+    let num_additional_outputs = rng.gen_range(0..4);
+    for _ in 0..num_additional_outputs {
+        let dummy_spk = pay_to_script_hash_script(&[OpTrue]); // P2SH of OP_TRUE
+        let dummy_output = TransactionOutput::new(1, dummy_spk);
+        outputs.push(dummy_output);
+    }
+
+    // We check that the covenant script correctly identifies its authorized output, no matter the order or the amount.
+    outputs.shuffle(&mut *rng);
+
+    let mut tx = Transaction::new(0, vec![input], outputs, 0, SubnetworkId::default(), 0, vec![]);
     tx.finalize();
     tx
 }
