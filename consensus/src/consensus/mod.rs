@@ -790,8 +790,9 @@ impl ConsensusApi for Consensus {
     /// Returns the accepted target difficulty at the given daa_score on the accepting chain
     fn get_accepted_target_difficulty_at_daa_score(&self, daa_score: u64) -> ConsensusResult<Uint256> {
         let _guard = self.pruning_lock.blocking_read();
-        let accepting_hash_at_daa_score =
-            self.virtual_processor.find_accepting_chain_block_hash_at_daa_score(daa_score, self.get_retention_period_root(), true)?;
+        // we keep within pruning point bounds when searching for the block at the given daa_score.
+        let pp = *self.get_n_last_pruning_points(1).last().expect("expected a pp");
+        let accepting_hash_at_daa_score = self.virtual_processor.find_accepting_chain_block_hash_at_daa_score(daa_score, pp, true)?;
         let ghostdag_data = self.ghostdag_store.get_data(accepting_hash_at_daa_score).unwrap();
         let daa_window = self.services.window_manager.block_daa_window(&ghostdag_data)?;
         let expected_bits = self.services.window_manager.calculate_difficulty_bits(&ghostdag_data, &daa_window);
