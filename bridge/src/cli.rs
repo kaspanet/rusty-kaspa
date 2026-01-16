@@ -21,11 +21,7 @@ fn parse_bool(s: &str) -> Result<bool, anyhow::Error> {
 }
 
 fn parse_instance_spec(spec: &str, default_min_share_diff: Option<u32>) -> Result<InstanceConfig, anyhow::Error> {
-    let mut instance = InstanceConfig {
-        stratum_port: String::new(),
-        min_share_diff: 0,
-        ..InstanceConfig::default()
-    };
+    let mut instance = InstanceConfig { stratum_port: String::new(), min_share_diff: 0, ..InstanceConfig::default() };
 
     let mut has_port = false;
     let mut has_diff = false;
