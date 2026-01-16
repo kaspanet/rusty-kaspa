@@ -16,6 +16,7 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, TransactionQueryResult, TransactionType, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, Hash,
 };
+use kaspa_math::Uint256;
 use kaspa_utils::sync::rwlock::*;
 use std::{ops::Deref, sync::Arc};
 
@@ -268,6 +269,14 @@ impl ConsensusSessionOwned {
 
     pub async fn async_estimate_block_count(&self) -> BlockCount {
         self.clone().spawn_blocking(|c| c.estimate_block_count()).await
+    }
+
+    pub async fn async_calc_header_pow_in_isolation(&self, header: Arc<Header>) -> ConsensusResult<(bool, Uint256)> {
+        self.clone().spawn_blocking(move |c| c.calc_header_pow_in_isolation(header)).await
+    }
+
+    pub async fn async_get_accepted_target_difficulty_at_daa_score(&self, daa_score: u64) -> ConsensusResult<Uint256> {
+        self.clone().spawn_blocking(move |c| c.get_accepted_target_difficulty_at_daa_score(daa_score)).await
     }
 
     pub async fn async_get_virtual_chain_from_block(

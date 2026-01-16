@@ -1,4 +1,5 @@
 use futures_util::future::BoxFuture;
+use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
 use std::sync::Arc;
 
@@ -159,6 +160,14 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn estimate_block_count(&self) -> BlockCount {
+        unimplemented!()
+    }
+
+    fn calc_header_pow_in_isolation(&self, header: Arc<Header>) -> ConsensusResult<(bool, Uint256)> {
+        unimplemented!()
+    }
+
+    fn get_accepted_target_difficulty_at_daa_score(&self, daa_score: u64) -> ConsensusResult<Uint256> {
         unimplemented!()
     }
 

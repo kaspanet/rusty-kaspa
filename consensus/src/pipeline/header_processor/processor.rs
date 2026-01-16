@@ -39,6 +39,7 @@ use kaspa_consensus_core::{
 use kaspa_consensusmanager::SessionLock;
 use kaspa_database::prelude::{StoreResultExt, StoreResultUnitExt};
 use kaspa_hashes::Hash;
+use kaspa_math::Uint256;
 use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
@@ -250,6 +251,14 @@ impl HeaderProcessor {
         }
     }
 
+    /// This only calcs that the header's proof of work in isolation.
+    /// It does not check against any context, or expected target difficulty, via the daa window etc..
+    pub fn calc_header_pow_in_isolation(&self, header: &Header) -> BlockProcessResult<(bool, Uint256)> {
+        let state = kaspa_pow::State::new(header);
+        let (passed, pow) = state.check_pow(header.nonce);
+        Ok((passed, pow))
+    }
+
     fn process_header(&self, task: &BlockTask) -> BlockProcessResult<BlockStatus> {
         let _prune_guard = self.pruning_lock.blocking_read();
         let header = &task.block().header;
@@ -319,10 +328,10 @@ impl HeaderProcessor {
                 .direct_parents()
                 .iter()
                 .copied()
-                // filter out parents not part of the kept contiguous Dag - which is representd by the stored relations 
+                // filter out parents not part of the kept contiguous Dag - which is representd by the stored relations
                 .filter(|&parent| relations_read.has(parent).unwrap())
                 .collect_vec()
-                // This kicks-in only for trusted blocks. If an ordinary block is 
+                // This kicks-in only for trusted blocks. If an ordinary block is
                 // missing direct parents it will fail validation.
                 .push_if_empty(ORIGIN),
         )

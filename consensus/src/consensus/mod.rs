@@ -87,6 +87,7 @@ use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 use kaspa_core::info;
 use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
+use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::arc::ArcExtensions;
@@ -778,6 +779,23 @@ impl ConsensusApi for Consensus {
             .saturating_sub(retention_period_root_score);
         let block_count = virtual_score.saturating_sub(retention_period_root_score);
         BlockCount { header_count, block_count }
+    }
+
+    /// This only calcs that the header's proof of work in isolation.
+    /// It does not check against any context, or expected target difficulty, via the daa window etc..
+    fn calc_header_pow_in_isolation(&self, header: Arc<Header>) -> ConsensusResult<(bool, Uint256)> {
+        Ok(self.header_processor.calc_header_pow_in_isolation(&header)?)
+    }
+
+    /// Returns the accepted target difficulty at the given daa_score on the accepting chain
+    fn get_accepted_target_difficulty_at_daa_score(&self, daa_score: u64) -> ConsensusResult<Uint256> {
+        let _guard = self.pruning_lock.blocking_read();
+        let accepting_hash_at_daa_score =
+            self.virtual_processor.find_accepting_chain_block_hash_at_daa_score(daa_score, self.get_retention_period_root())?;
+        let ghostdag_data = self.ghostdag_store.get_data(accepting_hash_at_daa_score).unwrap();
+        let daa_window = self.services.window_manager.block_daa_window(&ghostdag_data)?;
+        let expected_bits = self.services.window_manager.calculate_difficulty_bits(&ghostdag_data, &daa_window);
+        Ok(Uint256::from_compact_target_bits(expected_bits))
     }
 
     fn get_virtual_chain_from_block(&self, low: Hash, chain_path_added_limit: Option<usize>) -> ConsensusResult<ChainPath> {

@@ -2602,6 +2602,7 @@ dependencies = [
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
  "kaspa-core",
+ "kaspa-math",
  "kaspa-utils",
  "log",
  "parking_lot",

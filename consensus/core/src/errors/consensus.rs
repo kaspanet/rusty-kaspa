@@ -1,7 +1,7 @@
 use kaspa_hashes::Hash;
 use thiserror::Error;
 
-use crate::{tx::TransactionIndexType, utxo::utxo_inquirer::UtxoInquirerError};
+use crate::{errors::block::RuleError, tx::TransactionIndexType, utxo::utxo_inquirer::UtxoInquirerError};
 
 use super::{difficulty::DifficultyError, sync::SyncManagerError, traversal::TraversalError};
 
@@ -45,6 +45,9 @@ pub enum ConsensusError {
 
     #[error("utxo inquirer error: {0}")]
     UtxoInquirerError(#[from] UtxoInquirerError),
+
+    #[error("rule error: {0}")]
+    RuleError(#[from] RuleError),
 
     #[error("{0}")]
     GeneralOwned(String),
