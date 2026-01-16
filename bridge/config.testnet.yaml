@@ -1,0 +1,25 @@
+kaspad_address: "127.0.0.1:16210"
+
+block_wait_time: 1000
+
+print_stats: true
+
+log_to_file: true
+
+health_check_port: ""
+
+var_diff: false
+shares_per_min: 20
+var_diff_stats: false
+
+pow2_clamp: true
+
+extranonce_size: 0
+
+coinbase_tag_suffix: ""
+
+instances:
+  - stratum_port: ":55555"
+    min_share_diff: 1
+    prom_port: ":5114"
+    log_to_file: true

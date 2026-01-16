@@ -1,4 +1,4 @@
-# RustBridge Multi-Instance Test Configuration
+# RKStratum Multi-Instance Test Configuration
 # This configuration runs 4 instances for testing the multi-instance feature
 # All instances share the same Kaspa node (kaspad_address)
 

@@ -19,6 +19,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::watch;
 use tracing::{debug, error, info, warn};
 
 #[allow(dead_code)]
@@ -716,7 +717,7 @@ impl ShareHandler {
                     warn!(
                         "{} {} {}",
                         LogColors::block("[BLOCK]"),
-                        LogColors::error("⚠ Timestamp is old:"),
+                        LogColors::error("Timestamp is old:"),
                         format!("{} seconds old - block template may be stale", timestamp_age_sec)
                     );
                 }
@@ -733,7 +734,7 @@ impl ShareHandler {
                 let block_hash = header::hash(&block.header).to_string();
 
                 // Log prominent "Block Found" message with hash
-                info!("{} {}", prefix, LogColors::block(&format!("🎉 BLOCK FOUND! Hash: {}", block_hash)));
+                info!("{} {}", prefix, LogColors::block(&format!("BLOCK FOUND! Hash: {}", block_hash)));
                 info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Hash:"), block_hash);
                 info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
                 info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Wallet:"), wallet_addr);
@@ -780,13 +781,13 @@ impl ShareHandler {
                             "{} {} {}",
                             prefix,
                             LogColors::block("[BLOCK]"),
-                            LogColors::block(&format!("✓ Block submitted successfully! Hash: {}", block_hash))
+                            LogColors::block(&format!("Block submitted successfully! Hash: {}", block_hash))
                         );
                         info!(
                             "{} {} {}",
                             prefix,
                             LogColors::block("[BLOCK]"),
-                            LogColors::block(&format!("🎉🎉🎉 BLOCK ACCEPTED BY NODE! 🎉🎉🎉 Hash: {}", block_hash))
+                            LogColors::block(&format!("BLOCK ACCEPTED BY NODE! Hash: {}", block_hash))
                         );
                         info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("  - Worker:"), worker_name);
                         info!(
@@ -825,7 +826,7 @@ impl ShareHandler {
                                             instance_id,
                                             LogColors::block("[BLOCK]"),
                                             LogColors::block(&format!(
-                                                "✓ Block confirmed BLUE in DAG! Hash: {}",
+                                                "Block confirmed BLUE in DAG! Hash: {}",
                                                 block_hash_for_confirm
                                             ))
                                         );
@@ -846,7 +847,7 @@ impl ShareHandler {
                                 instance_id,
                                 LogColors::block("[BLOCK]"),
                                 LogColors::label(&format!(
-                                    "ℹ Block not confirmed blue after {} attempts (not counted as Blocks). Hash: {}",
+                                    "Block not confirmed blue after {} attempts (not counted as Blocks). Hash: {}",
                                     BLOCK_CONFIRM_MAX_ATTEMPTS, block_hash_for_confirm
                                 ))
                             );
@@ -863,7 +864,7 @@ impl ShareHandler {
                         // Only check for "ErrDuplicateBlock" (not "duplicate" or "stale")
                         // Block submission failed
                         let error_str = e.to_string();
-                        error!("{} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("✗ Block submission FAILED"));
+                        error!("{} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("Block submission FAILED"));
                         error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
                         error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Blockhash:"), block_hash);
                         error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("Error:"), error_str);
@@ -970,7 +971,7 @@ impl ShareHandler {
                 let worker_name = ctx.worker_name.lock().clone();
                 debug!(
                     "{} {} {}",
-                    LogColors::validation("✗ INVALID SHARE (too high)"),
+                    LogColors::validation("INVALID SHARE (too high)"),
                     LogColors::label("worker:"),
                     format!(
                         "{}, nonce: {:x}, pow_value: {:x}, pool_target: {:x}, pow_ge_pool_target: true",
@@ -1009,7 +1010,7 @@ impl ShareHandler {
                 let worker_name = ctx.worker_name.lock().clone();
                 debug!(
                     "{} {} {}",
-                    LogColors::validation("✓ VALID SHARE"),
+                    LogColors::validation("VALID SHARE"),
                     LogColors::label("worker:"),
                     format!(
                         "{}, nonce: {:x}, pow_value: {:x}, pool_target: {:x}, pow_lt_pool_target: true",
@@ -1137,25 +1138,60 @@ impl ShareHandler {
     }
 
     pub fn start_prune_stats_thread(&self) {
+        self.start_prune_stats_thread_impl(None);
+    }
+
+    pub fn start_prune_stats_thread_with_shutdown(&self, shutdown_rx: watch::Receiver<bool>) {
+        self.start_prune_stats_thread_impl(Some(shutdown_rx));
+    }
+
+    fn start_prune_stats_thread_impl(&self, mut shutdown_rx: Option<watch::Receiver<bool>>) {
         let stats = Arc::clone(&self.stats);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(STATS_PRUNE_INTERVAL);
             loop {
-                interval.tick().await;
-                let mut stats_map = stats.lock();
-                let now = Instant::now();
-                stats_map.retain(|_, v| {
-                    let last_share = *v.last_share.lock();
-                    let shares = *v.shares_found.lock();
-                    (shares > 0 || now.duration_since(v.start_time) < Duration::from_secs(180))
-                        && now.duration_since(last_share) < Duration::from_secs(600)
-                });
-                // Note: Pruning is silent, no logs needed
+                if let Some(ref mut rx) = shutdown_rx {
+                    tokio::select! {
+                        _ = rx.changed() => {
+                            if *rx.borrow() {
+                                break;
+                            }
+                        }
+                        _ = interval.tick() => {
+                            let mut stats_map = stats.lock();
+                            let now = Instant::now();
+                            stats_map.retain(|_, v| {
+                                let last_share = *v.last_share.lock();
+                                let shares = *v.shares_found.lock();
+                                (shares > 0 || now.duration_since(v.start_time) < Duration::from_secs(180))
+                                    && now.duration_since(last_share) < Duration::from_secs(600)
+                            });
+                        }
+                    }
+                } else {
+                    interval.tick().await;
+                    let mut stats_map = stats.lock();
+                    let now = Instant::now();
+                    stats_map.retain(|_, v| {
+                        let last_share = *v.last_share.lock();
+                        let shares = *v.shares_found.lock();
+                        (shares > 0 || now.duration_since(v.start_time) < Duration::from_secs(180))
+                            && now.duration_since(last_share) < Duration::from_secs(600)
+                    });
+                }
             }
         });
     }
 
     pub fn start_print_stats_thread(&self, target_spm: u32) {
+        self.start_print_stats_thread_impl(target_spm, None);
+    }
+
+    pub fn start_print_stats_thread_with_shutdown(&self, target_spm: u32, shutdown_rx: watch::Receiver<bool>) {
+        self.start_print_stats_thread_impl(target_spm, Some(shutdown_rx));
+    }
+
+    fn start_print_stats_thread_impl(&self, target_spm: u32, shutdown_rx: Option<watch::Receiver<bool>>) {
         let target_spm = if target_spm == 0 { 20.0 } else { target_spm as f64 };
         let instance_id = self.instance_id.clone();
         let inst_short = {
@@ -1185,6 +1221,7 @@ impl ShareHandler {
             return;
         }
 
+        let mut shutdown_rx = shutdown_rx;
         tokio::spawn(async move {
             fn trunc<'a>(s: &'a str, max: usize) -> Cow<'a, str> {
                 if s.len() <= max {
@@ -1245,7 +1282,18 @@ impl ShareHandler {
 
             let mut interval = tokio::time::interval(STATS_PRINT_INTERVAL);
             loop {
-                interval.tick().await;
+                if let Some(ref mut rx) = shutdown_rx {
+                    tokio::select! {
+                        _ = rx.changed() => {
+                            if *rx.borrow() {
+                                break;
+                            }
+                        }
+                        _ = interval.tick() => {}
+                    }
+                } else {
+                    interval.tick().await;
+                }
 
                 let node_status = {
                     let s = NODE_STATUS.lock();
@@ -1426,11 +1474,28 @@ impl ShareHandler {
     }
 
     pub fn start_vardiff_thread(&self, _expected_share_rate: u32, _log_stats: bool, _clamp: bool) {
+        self.start_vardiff_thread_impl(_expected_share_rate, _log_stats, _clamp, None);
+    }
+
+    pub fn start_vardiff_thread_with_shutdown(
+        &self,
+        expected_share_rate: u32,
+        log_stats: bool,
+        clamp: bool,
+        shutdown_rx: watch::Receiver<bool>,
+    ) {
+        self.start_vardiff_thread_impl(expected_share_rate, log_stats, clamp, Some(shutdown_rx));
+    }
+
+    fn start_vardiff_thread_impl(
+        &self,
+        expected_share_rate: u32,
+        log_stats: bool,
+        clamp: bool,
+        mut shutdown_rx: Option<watch::Receiver<bool>>,
+    ) {
         let stats = Arc::clone(&self.stats);
         let prefix = self.log_prefix();
-        let expected_share_rate = _expected_share_rate;
-        let log_stats = _log_stats;
-        let clamp = _clamp;
 
         tokio::spawn(async move {
             let expected_spm = expected_share_rate.max(1) as f64;
@@ -1449,7 +1514,18 @@ impl ShareHandler {
             }
 
             loop {
-                interval.tick().await;
+                if let Some(ref mut rx) = shutdown_rx {
+                    tokio::select! {
+                        _ = rx.changed() => {
+                            if *rx.borrow() {
+                                break;
+                            }
+                        }
+                        _ = interval.tick() => {}
+                    }
+                } else {
+                    interval.tick().await;
+                }
 
                 let mut stats_map = stats.lock();
                 let now = Instant::now();
