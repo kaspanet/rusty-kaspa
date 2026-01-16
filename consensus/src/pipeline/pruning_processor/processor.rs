@@ -456,11 +456,7 @@ impl PruningProcessor {
         let mut staging_reachability = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
         let mut statuses_write = self.statuses_store.write();
 
-        loop {
-            if queue.is_empty() {
-                break;
-            }
-
+        while !queue.is_empty() {
             if lock_acquire_time.elapsed() > Duration::from_millis(PRUNE_LOCK_MAX_DURATION_MS) {
                 // Commit staging stores and flush the batch so we can yield
                 let reachability_write = staging_reachability.commit(&mut prune_batch.batch).unwrap();

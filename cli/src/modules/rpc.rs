@@ -82,7 +82,6 @@ impl Rpc {
             //     self.println(&ctx, result);
             // }
             RpcApiOps::GetMempoolEntries => {
-                // TODO
                 let result = rpc
                     .get_mempool_entries_call(
                         None,
@@ -326,7 +325,6 @@ impl Rpc {
     }
 
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
-        // RpcApiOps that do not contain docs are not displayed
         let help = RpcApiOps::into_iter()
             .filter_map(|op| op.rustdoc().is_not_empty().then_some((op.as_str().to_case(Case::Kebab).to_string(), op.rustdoc())))
             .collect::<Vec<(_, _)>>();
