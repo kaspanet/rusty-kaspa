@@ -5,7 +5,7 @@ use crate::{
 };
 use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
-use kaspa_core::debug;
+use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
@@ -301,6 +301,15 @@ impl HandleRelayInvsFlow {
                         adjusted_target_difficulty
                     )));
         }
+
+        debug!(
+            "Relay block {} with pow {} has passed adjusted target difficulty {} (actual: {}) at daa score {}",
+            block.hash(),
+            submitted_pow,
+            adjusted_target_difficulty,
+            target_difficulty_at_daa_score,
+            block.header.daa_score
+        );
         Ok(())
     }
 
