@@ -367,6 +367,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     tokio::pin!(bridge_fut);
 
+    #[cfg(windows)]
     let mut shutdown_wait_rx = shutdown_rx.clone();
     let ctrl_c_fut = async move {
         #[cfg(windows)]
