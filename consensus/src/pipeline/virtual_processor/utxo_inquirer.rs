@@ -333,7 +333,7 @@ impl VirtualStateProcessor {
                             closest_accepting_hash = Some((hash, cur_diff));
                         }
                     }
-                    high_index = mid.saturating_sub(1);
+                    high_index = mid - 1;
                 }
                 cmp::Ordering::Less => {
                     if round_to_closest {
