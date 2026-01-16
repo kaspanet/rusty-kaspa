@@ -1,3 +1,5 @@
+use core::panic;
+
 use kaspa_consensus_core::hashing;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::subnets::SubnetworkId;
@@ -7,7 +9,7 @@ use kaspa_consensus_core::tx::{
 use kaspa_hashes::Hash;
 use kaspa_txscript::caches::Cache;
 use kaspa_txscript::opcodes::codes::{
-    Op1, Op1Add, OpBin2Num, OpBlake2b, OpCat, OpCovOutputCount, OpCovOutputIdx, OpData8, OpDrop, OpDup, OpEqual, OpEqualVerify, OpNum2Bin, OpSub, OpSwap, OpTrue, OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpkLen, OpTxOutputSpkSubstr, OpVerify, OpWithin
+    Op1, Op1Add, OpBin2Num, OpBlake2b, OpCat, OpCovOutputCount, OpCovOutputIdx, OpData8, OpData60, OpData61, OpData62, OpDrop, OpDup, OpEqual, OpEqualVerify, OpNum2Bin, OpSub, OpSwap, OpTrue, OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpkLen, OpTxOutputSpkSubstr, OpVerify, OpWithin
 };
 use kaspa_txscript::pay_to_script_hash_script;
 use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
@@ -19,7 +21,7 @@ fn main() -> ScriptBuilderResult<()> {
     counter_state_in_spk()
 }
 
-/// Covenant that keeps the counter in the script public key using P2SH-with-state.
+/// Covenant that keeps the counter in the script public key using state inside P2SH.
 /// Each spend must increment the counter and rebind the funds to the same covenant script
 /// with the updated state hash embedded in the script public key.
 fn counter_state_in_spk() -> ScriptBuilderResult<()> {
@@ -106,8 +108,6 @@ fn build_covenant_script() -> ScriptBuilderResult<Vec<u8>> {
     let p2sh_suffix = [kaspa_txscript::opcodes::codes::OpEqual];
 
     Ok(ScriptBuilder::new()
-        // TODO: Check that the sigScript pushes a redeem script with the expected length
-
         // Check that this is the first input.
         .add_op(OpTxInputIndex)?
         .add_i64(0)?
@@ -117,6 +117,14 @@ fn build_covenant_script() -> ScriptBuilderResult<Vec<u8>> {
         .add_i64(0)?
         .add_op(OpCovOutputCount)?
         .add_i64(1)?
+        .add_op(OpEqualVerify)?
+
+        // Check that the sigScript pushes a redeem script with the expected length
+        .add_i64(0)? // Input index
+        .add_i64(0)? // Start
+        .add_i64(1)? // End
+        .add_op(OpTxInputScriptSigSubstr)?
+        .add_data(&[OpData62])?
         .add_op(OpEqualVerify)?
 
         // Check that the redeem script starts by pushing 8 bytes (the counter)
@@ -234,7 +242,6 @@ fn build_spk(counter: u8, covenant_script: &[u8]) -> ScriptPublicKey {
 fn build_redeem_script(counter: u8, covenant_script: &[u8]) -> Vec<u8> {
     let mut redeem_script = ScriptBuilder::new().add_data(&encode_counter(counter)).unwrap().drain();
     redeem_script.extend(covenant_script.iter().cloned());
-    println!("[COVENANT P2SH-WS] Redeem script for counter {}: {:?}", counter, redeem_script);
     redeem_script
 }
 
