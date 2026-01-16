@@ -3,12 +3,7 @@ use crate::{
     flow_trait::Flow,
     flowcontext::orphans::OrphanOutput,
 };
-use kaspa_consensus_core::{
-    api::BlockValidationFutures,
-    block::Block,
-    blockstatus::BlockStatus,
-    errors::block::RuleError,
-};
+use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
@@ -153,7 +148,6 @@ impl HandleRelayInvsFlow {
             // We do not apply the skip heuristic below if inv was queued indirectly (as an orphan root), since
             // that means the process started by a proper and relevant relay block
             if !inv.is_orphan_root && !broadcast {
-
                 // We apply a pow heuristic check here to try and identify peers that might be maliciously sending unchecked low pow blocks into this condition.
                 let supplied_daa_score = block.header.daa_score;
                 let supplied_blue_work = block.header.blue_work;
@@ -163,8 +157,7 @@ impl HandleRelayInvsFlow {
                 if !passed {
                     return Err(ProtocolError::OtherOwned(format!(
                         "sent relay block {} which fails proof of work check (calculated pow: {})",
-                        inv.hash,
-                        submitted_pov
+                        inv.hash, submitted_pov
                     )));
                 }
 
