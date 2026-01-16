@@ -145,9 +145,6 @@ impl HandleRelayInvsFlow {
             // other valid blocks Kosherize it (in which case it will be obtained once the merger is relayed)
             let broadcast = block.header.blue_work > blue_work_threshold;
 
-            if session.async_get_sink_blue_score().await > block.header.blue_score {
-                self.check_pow_of_relay_block(&session, &block).await?;
-            }
             // We do not apply the skip heuristic below if inv was queued indirectly (as an orphan root), since
             // that means the process started by a proper and relevant relay block
             if !inv.is_orphan_root && !broadcast {
@@ -303,13 +300,14 @@ impl HandleRelayInvsFlow {
         }
 
         debug!(
-            "Relay block {} with pow {} has passed adjusted target difficulty {} (actual: {}) at daa score {}",
+            "Relay block pow check: {} with pow {} has passed adjusted target difficulty {} (actual: {}) at daa score {}",
             block.hash(),
             submitted_pow,
             adjusted_target_difficulty,
             target_difficulty_at_daa_score,
             block.header.daa_score
         );
+
         Ok(())
     }
 
