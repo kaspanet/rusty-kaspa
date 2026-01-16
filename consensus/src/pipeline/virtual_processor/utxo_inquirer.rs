@@ -45,6 +45,7 @@ impl VirtualStateProcessor {
                     .get_daa_score(block_hash)
                     .map_err(|_| UtxoInquirerError::MissingCompactHeaderForBlockHash(block_hash))?,
                 retention_period_root_hash,
+                false,
             )?;
             // iterate forward from the ancestor to the sink block, looking for the accepting block
             for candidate in self.reachability_service.forward_chain_iterator(ancestor, sink_hash, true) {
@@ -265,7 +266,7 @@ impl VirtualStateProcessor {
         retention_period_root_hash: Hash,
     ) -> UtxoInquirerResult<Vec<SignableTransaction>> {
         let matching_chain_block_hash =
-            self.find_accepting_chain_block_hash_at_daa_score(accepting_block_daa_score, retention_period_root_hash)?;
+            self.find_accepting_chain_block_hash_at_daa_score(accepting_block_daa_score, retention_period_root_hash, false)?;
 
         self.get_populated_transactions_by_accepting_block(tx_ids, matching_chain_block_hash)
     }
@@ -280,7 +281,9 @@ impl VirtualStateProcessor {
         &self,
         target_daa_score: u64,
         retention_period_root_hash: Hash,
+        round_to_closest: bool,
     ) -> UtxoInquirerResult<Hash> {
+        let mut closest_accepting_hash = None;
         let sc_read = self.selected_chain_store.read();
 
         let retention_period_root_index = sc_read
@@ -320,15 +323,40 @@ impl VirtualStateProcessor {
                     break hash;
                 }
                 cmp::Ordering::Greater => {
-                    high_index = mid - 1;
+                    if round_to_closest {
+                        let cur_diff = target_daa_score.abs_diff(daa_score);
+                        let should_replace = match &closest_accepting_hash {
+                            None => true,
+                            Some((_, prev_diff)) => prev_diff > &cur_diff,
+                        };
+                        if should_replace {
+                            closest_accepting_hash = Some((hash, cur_diff));
+                        }
+                    }
+                    high_index = mid.saturating_sub(1);
                 }
                 cmp::Ordering::Less => {
+                    if round_to_closest {
+                        let cur_diff = target_daa_score.abs_diff(daa_score);
+                        let should_replace = match &closest_accepting_hash {
+                            None => true,
+                            Some((_, prev_diff)) => prev_diff > &cur_diff,
+                        };
+                        if should_replace {
+                            closest_accepting_hash = Some((hash, cur_diff));
+                        }
+                    }
                     low_index = mid + 1;
                 }
             }
 
             if low_index > high_index {
-                return Err(UtxoInquirerError::NoChainBlockAtDaaScore(daa_score));
+                if round_to_closest {
+                    if let Some((h, _)) = &closest_accepting_hash {
+                        return Ok(*h);
+                    }
+                }
+                return Err(UtxoInquirerError::NoChainBlockAtDaaScore(target_daa_score));
             }
         };
 

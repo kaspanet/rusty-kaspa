@@ -791,7 +791,7 @@ impl ConsensusApi for Consensus {
     fn get_accepted_target_difficulty_at_daa_score(&self, daa_score: u64) -> ConsensusResult<Uint256> {
         let _guard = self.pruning_lock.blocking_read();
         let accepting_hash_at_daa_score =
-            self.virtual_processor.find_accepting_chain_block_hash_at_daa_score(daa_score, self.get_retention_period_root())?;
+            self.virtual_processor.find_accepting_chain_block_hash_at_daa_score(daa_score, self.get_retention_period_root(), true)?;
         let ghostdag_data = self.ghostdag_store.get_data(accepting_hash_at_daa_score).unwrap();
         let daa_window = self.services.window_manager.block_daa_window(&ghostdag_data)?;
         let expected_bits = self.services.window_manager.calculate_difficulty_bits(&ghostdag_data, &daa_window);
@@ -894,9 +894,11 @@ impl ConsensusApi for Consensus {
     ) -> ConsensusResult<TransactionQueryResult> {
         // We need consistency between the acceptance store and the block transaction store,
         let _guard = self.pruning_lock.blocking_read();
-        let accepting_block = self
-            .virtual_processor
-            .find_accepting_chain_block_hash_at_daa_score(accepting_daa_score, self.get_retention_period_root())?;
+        let accepting_block = self.virtual_processor.find_accepting_chain_block_hash_at_daa_score(
+            accepting_daa_score,
+            self.get_retention_period_root(),
+            false,
+        )?;
         self.get_transactions_by_accepting_block(accepting_block, tx_ids, tx_type)
     }
 
