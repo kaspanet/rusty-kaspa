@@ -273,12 +273,12 @@ impl HandleRelayInvsFlow {
         let supplied_header = block.header.clone();
 
         // First we calc the pow in isolation, ensuring block passes its self-supplied pow requirement.
-        let (passed, submitted_pov) = consensus.async_calc_header_pow_in_isolation(supplied_header).await?;
+        let (passed, submitted_pow) = consensus.async_calc_header_pow_in_isolation(supplied_header).await?;
         if !passed {
             return Err(ProtocolError::OtherOwned(format!(
                 "sent relay block {} which fails proof of work check (calculated pow: {})",
                 block.hash(),
-                submitted_pov
+                submitted_pow
             )));
         }
 
@@ -289,12 +289,12 @@ impl HandleRelayInvsFlow {
         // currently we set it to 1.5x of the target difficulty.
         let adjusted_target_difficulty = target_difficulty_at_daa_score.saturating_add(target_difficulty_at_daa_score / 2);
 
-        // Check that the submitted pov meets the adjusted target difficulty at the supplied daa score.
-        if submitted_pov <= adjusted_target_difficulty {
+        // Check that the submitted pow meets the adjusted target difficulty at the supplied daa score.
+        if submitted_pow <= adjusted_target_difficulty {
             return Err(ProtocolError::OtherOwned(format!(
                         "sent relay block {} which has insufficient proof of work (calculated pow: {}, expected adjusted target difficulty at daa score: {})",
                         block.hash(),
-                        submitted_pov,
+                        submitted_pow,
                         adjusted_target_difficulty
                     )));
         }
