@@ -5,7 +5,7 @@ use crate::{
 };
 use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
-use kaspa_core::{debug, info};
+use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
