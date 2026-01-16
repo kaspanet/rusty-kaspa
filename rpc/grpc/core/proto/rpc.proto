@@ -99,6 +99,7 @@ message RpcUtxoEntry {
   uint64 blockDaaScore = 3;
   bool isCoinbase = 4;
   RpcUtxoEntryVerboseData verboseData = 5;
+  string covenant_id = 6;
 }
 
 message RpcUtxoEntryVerboseData {
@@ -1012,6 +1013,7 @@ message RpcOptionalUtxoEntry {
   optional uint64 blockDaaScore = 4;
   optional bool isCoinbase = 5;
   optional RpcOptionalUtxoEntryVerboseData verboseData = 6;
+  optional string CovenantId = 7;
 }
 
 message RpcOptionalTransactionInputVerboseData {

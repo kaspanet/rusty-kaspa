@@ -22,7 +22,7 @@ impl MuHashExtensions for MuHash {
         }
         for (i, output) in tx.outputs().iter().enumerate() {
             let outpoint = TransactionOutpoint::new(tx_id, i as u32);
-            let entry = UtxoEntry::new(output.value, output.script_public_key.clone(), block_daa_score, tx.is_coinbase());
+            let entry = UtxoEntry::new(output.value, output.script_public_key.clone(), block_daa_score, tx.is_coinbase(), output.cov_out_info.map(|info| info.covenant_id));
             self.add_utxo(&outpoint, &entry);
         }
     }
@@ -57,4 +57,7 @@ fn write_utxo(writer: &mut impl HasherBase, entry: &UtxoEntry, outpoint: &Transa
         .write_bool(entry.is_coinbase)
         .update(entry.script_public_key.version().to_le_bytes())
         .write_var_bytes(entry.script_public_key.script());
+    if let Some(covenant_id) = entry.covenant_id {
+        writer.update(covenant_id);
+    }
 }

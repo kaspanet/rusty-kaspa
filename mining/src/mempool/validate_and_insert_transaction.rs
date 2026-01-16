@@ -174,7 +174,13 @@ impl Mempool {
                 for (i, input) in orphan.mtx.tx.inputs.iter().enumerate() {
                     if input.previous_outpoint == outpoint {
                         if orphan.mtx.entries[i].is_none() {
-                            let entry = UtxoEntry::new(output.value, output.script_public_key.clone(), UNACCEPTED_DAA_SCORE, false);
+                            let entry = UtxoEntry::new(
+                                output.value,
+                                output.script_public_key.clone(),
+                                UNACCEPTED_DAA_SCORE,
+                                false,
+                                output.cov_out_info.map(|x| x.covenant_id),
+                            );
                             orphan.mtx.entries[i] = Some(entry);
                             if orphan.mtx.is_verifiable() {
                                 orphan_id = Some(orphan.id());

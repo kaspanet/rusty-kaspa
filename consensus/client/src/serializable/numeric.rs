@@ -17,6 +17,8 @@ use ahash::AHashMap;
 use cctx::VerifiableTransaction;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::subnets::SubnetworkId;
+use kaspa_consensus_core::tx::CovOutInfo;
+use kaspa_hashes::Hash;
 use workflow_wasm::serde::{from_value, to_value};
 
 pub type SignedTransactionIndexType = u32;
@@ -33,6 +35,7 @@ pub struct SerializableUtxoEntry {
     pub script_public_key: ScriptPublicKey,
     pub block_daa_score: u64,
     pub is_coinbase: bool,
+    pub covenant_id: Option<Hash>,
 }
 
 impl AsRef<SerializableUtxoEntry> for SerializableUtxoEntry {
@@ -50,6 +53,7 @@ impl From<&UtxoEntryReference> for SerializableUtxoEntry {
             script_public_key: utxo.script_public_key.clone(),
             block_daa_score: utxo.block_daa_score,
             is_coinbase: utxo.is_coinbase,
+            covenant_id: utxo.covenant_id,
         }
     }
 }
@@ -62,6 +66,7 @@ impl From<&cctx::UtxoEntry> for SerializableUtxoEntry {
             script_public_key: utxo.script_public_key.clone(),
             block_daa_score: utxo.block_daa_score,
             is_coinbase: utxo.is_coinbase,
+            covenant_id: utxo.covenant_id,
         }
     }
 }
@@ -74,6 +79,7 @@ impl TryFrom<&SerializableUtxoEntry> for cctx::UtxoEntry {
             script_public_key: utxo.script_public_key.clone(),
             block_daa_score: utxo.block_daa_score,
             is_coinbase: utxo.is_coinbase,
+            covenant_id: utxo.covenant_id,
         })
     }
 }
@@ -120,6 +126,7 @@ impl TryFrom<&SerializableTransactionInput> for UtxoEntryReference {
             script_public_key: input.utxo.script_public_key.clone(),
             block_daa_score: input.utxo.block_daa_score,
             is_coinbase: input.utxo.is_coinbase,
+            covenant_id: input.utxo.covenant_id,
         };
 
         Ok(Self { utxo: Arc::new(utxo) })
@@ -183,31 +190,32 @@ impl TryFrom<&TransactionInput> for SerializableTransactionInput {
 pub struct SerializableTransactionOutput {
     pub value: u64,
     pub script_public_key: ScriptPublicKey,
+    pub cov_out_info: Option<CovOutInfo>,
 }
 
 impl From<cctx::TransactionOutput> for SerializableTransactionOutput {
     fn from(output: cctx::TransactionOutput) -> Self {
-        Self { value: output.value, script_public_key: output.script_public_key }
+        Self { value: output.value, script_public_key: output.script_public_key, cov_out_info: output.cov_out_info }
     }
 }
 
 impl From<&cctx::TransactionOutput> for SerializableTransactionOutput {
     fn from(output: &cctx::TransactionOutput) -> Self {
-        Self { value: output.value, script_public_key: output.script_public_key.clone() }
+        Self { value: output.value, script_public_key: output.script_public_key.clone(), cov_out_info: output.cov_out_info }
     }
 }
 
 impl TryFrom<SerializableTransactionOutput> for cctx::TransactionOutput {
     type Error = Error;
     fn try_from(output: SerializableTransactionOutput) -> Result<Self> {
-        Ok(Self { value: output.value, script_public_key: output.script_public_key })
+        Ok(Self { value: output.value, script_public_key: output.script_public_key, cov_out_info: output.cov_out_info })
     }
 }
 
 impl TryFrom<&SerializableTransactionOutput> for TransactionOutput {
     type Error = Error;
     fn try_from(output: &SerializableTransactionOutput) -> Result<Self> {
-        Ok(TransactionOutput::new(output.value, output.script_public_key.clone()))
+        Ok(TransactionOutput::new(output.value, output.script_public_key.clone(), output.cov_out_info))
     }
 }
 
@@ -215,7 +223,7 @@ impl TryFrom<&TransactionOutput> for SerializableTransactionOutput {
     type Error = Error;
     fn try_from(output: &TransactionOutput) -> Result<Self> {
         let inner = output.inner();
-        Ok(Self { value: inner.value, script_public_key: inner.script_public_key.clone() })
+        Ok(Self { value: inner.value, script_public_key: inner.script_public_key.clone(), cov_out_info: inner.cov_out_info.clone() })
     }
 }
 

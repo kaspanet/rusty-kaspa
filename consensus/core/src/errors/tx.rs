@@ -100,6 +100,12 @@ pub enum TxRuleError {
     /// fee/mass RBF validation rule
     #[error("fee rate per contextual mass gram is not greater than the fee rate of the replaced transaction")]
     FeerateTooLow,
+
+    #[error("transaction output #{0} has cov_out_info field but transaction version is below 1")]
+    CovOutInfoInPreCovTxVersion(usize),
+
+    #[error("output #{0} has covenant id doesn't correspond to the referenced input covenant id")]
+    WrongCovenantId(usize),
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;

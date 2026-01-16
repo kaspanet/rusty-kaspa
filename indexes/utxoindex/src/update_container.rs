@@ -35,7 +35,7 @@ impl UtxoIndexChanges {
             self.utxo_changes.added.insert_into_nested(
                 utxo_entry.script_public_key,
                 transaction_outpoint,
-                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
+                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase, utxo_entry.covenant_id),
             );
         }
 
@@ -45,7 +45,7 @@ impl UtxoIndexChanges {
             self.utxo_changes.removed.insert_into_nested(
                 utxo_entry.script_public_key,
                 transaction_outpoint,
-                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
+                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase, utxo_entry.covenant_id),
             );
         }
     }
@@ -60,7 +60,7 @@ impl UtxoIndexChanges {
             self.utxo_changes.added.insert_into_nested(
                 utxo_entry.script_public_key,
                 transaction_outpoint,
-                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
+                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase, utxo_entry.covenant_id),
             );
         }
     }

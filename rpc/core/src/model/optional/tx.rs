@@ -25,6 +25,7 @@ pub struct RpcOptionalUtxoEntry {
     /// Level: High
     pub is_coinbase: Option<bool>,
     pub verbose_data: Option<RpcOptionalUtxoEntryVerboseData>,
+    pub covenant_id: Option<RpcHash>,
 }
 
 impl RpcOptionalUtxoEntry {
@@ -42,8 +43,9 @@ impl RpcOptionalUtxoEntry {
         block_daa_score: Option<u64>,
         is_coinbase: Option<bool>,
         verbose_data: Option<RpcOptionalUtxoEntryVerboseData>,
+        covenant_id: Option<RpcHash>,
     ) -> Self {
-        Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data }
+        Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data, covenant_id }
     }
 }
 
@@ -55,6 +57,7 @@ impl From<UtxoEntry> for RpcOptionalUtxoEntry {
             block_daa_score: Some(entry.block_daa_score),
             is_coinbase: Some(entry.is_coinbase),
             verbose_data: None,
+            covenant_id: entry.covenant_id.into(),
         }
     }
 }
@@ -74,6 +77,7 @@ impl TryFrom<RpcOptionalUtxoEntry> for UtxoEntry {
             is_coinbase: entry
                 .is_coinbase
                 .ok_or(RpcError::MissingRpcFieldError("RpcUtxoEntry".to_string(), "is_coinbase".to_string()))?,
+            covenant_id: entry.covenant_id,
         })
     }
 }
@@ -102,8 +106,9 @@ impl Deserializer for RpcOptionalUtxoEntry {
                 let block_daa_score = load!(Option<u64>, reader)?;
                 let is_coinbase = load!(Option<bool>, reader)?;
                 let verbose_data = deserialize!(Option<RpcOptionalUtxoEntryVerboseData>, reader)?;
+                let covenant_id = load!(Option<RpcHash>, reader)?;
 
-                Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data })
+                Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data, covenant_id })
             }
             _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
         }

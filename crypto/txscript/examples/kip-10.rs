@@ -83,10 +83,10 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
     let input_value = 1000000000;
 
     // Create a transaction output
-    let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: spk.clone() };
+    let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: spk.clone(), cov_out_info: None };
 
     // Create a UTXO entry for the input
-    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false);
+    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false, None);
 
     // Create a transaction input
     let input = TransactionInput {
@@ -276,10 +276,10 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
     let input_value = 1000000000;
 
     // Create a transaction output
-    let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: p2pk.clone() };
+    let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: p2pk.clone(), cov_out_info: None };
 
     // Create a UTXO entry for the input
-    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false);
+    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false, None);
 
     // Create a transaction input
     let input = TransactionInput {
@@ -460,10 +460,10 @@ fn threshold_scenario_limited_2_times() -> ScriptBuilderResult<()> {
     let input_value = 1000000000;
 
     // Create a transaction output
-    let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: p2sh_one_time };
+    let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: p2sh_one_time, cov_out_info: None };
 
     // Create a UTXO entry for the input
-    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false);
+    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false, None);
 
     // Create a transaction input
     let input = TransactionInput {
@@ -640,10 +640,10 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
     let input_value = 1000000000;
 
     // Create a transaction output
-    let output = TransactionOutput { value: input_value, script_public_key: spk.clone() };
+    let output = TransactionOutput { value: input_value, script_public_key: spk.clone(), cov_out_info: None };
 
     // Create a UTXO entry for the input
-    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false);
+    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false, None);
 
     // Create a transaction input
     let input = TransactionInput {

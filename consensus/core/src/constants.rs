@@ -4,6 +4,8 @@ pub const BLOCK_VERSION: u16 = 1;
 /// TX_VERSION is the current latest supported transaction version.
 pub const TX_VERSION: u16 = 0;
 
+pub const TX_VERSION_POST_COV_HF: u16 = 1;
+
 pub const LOCK_TIME_THRESHOLD: u64 = 500_000_000_000;
 
 /// MAX_SCRIPT_PUBLIC_KEY_VERSION is the current latest supported public key script version.

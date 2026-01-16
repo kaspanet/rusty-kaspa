@@ -25,6 +25,7 @@ use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_txscript_errors::TxScriptError;
 use log::trace;
+use once_cell::unsync::Lazy;
 use opcodes::codes::OpReturn;
 use opcodes::{codes, to_small_int, OpCond};
 use script_class::ScriptClass;
@@ -97,6 +98,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
     num_ops: i32,
     runtime_sig_op_counter: RuntimeSigOpCounter,
     flags: EngineFlags,
+    cov_out_indices: Option<Lazy<Vec<Vec<usize>>, Box<dyn FnOnce() -> Vec<Vec<usize>> + 'a>>>,
 }
 
 fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
@@ -240,12 +242,12 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             num_ops: 0,
             runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
             flags,
+            cov_out_indices: None,
         }
     }
 
     fn new_stack(flags: EngineFlags) -> Stack {
-        let max_elem_size = if flags.covenants_enabled { MAX_SCRIPT_ELEMENT_SIZE } else { usize::MAX };
-        Stack::new(vec![], max_elem_size)
+        Stack::new(vec![], flags.covenants_enabled)
     }
 
     /// Returns the number of signature operations used in script execution.
@@ -293,7 +295,29 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             num_ops: 0,
             runtime_sig_op_counter: RuntimeSigOpCounter::new(input.sig_op_count),
             flags,
+            cov_out_indices: Some(Lazy::new(Box::new(move || Self::calc_cov_out_indices(tx)))),
         }
+    }
+
+    pub(crate) fn cov_out_idx(&self, input_idx: usize, authorized_idx: usize) -> Result<usize, TxScriptError> {
+        let map = self.cov_out_indices.as_ref().expect("shouldn't be called for standalone scripts");
+        let index_vec = map.get(input_idx).ok_or(TxScriptError::InvalidInputIndex(input_idx as i32, map.len()))?;
+        index_vec.get(authorized_idx).copied().ok_or(TxScriptError::InvalidCovOutIndex(authorized_idx, input_idx, index_vec.len()))
+    }
+
+    pub(crate) fn cov_out_count(&self, input_idx: usize) -> Result<usize, TxScriptError> {
+        let map = self.cov_out_indices.as_ref().expect("shouldn't be called for standalone scripts");
+        map.get(input_idx).ok_or(TxScriptError::InvalidInputIndex(input_idx as i32, map.len())).map(|v| v.len())
+    }
+
+    fn calc_cov_out_indices(tx: &'a T) -> Vec<Vec<usize>> {
+        let mut map = vec![Vec::with_capacity(tx.outputs().len()); tx.tx().inputs.len()];
+        for (out_idx, output) in tx.tx().outputs.iter().enumerate() {
+            if let Some(cov_out_info) = output.cov_out_info {
+                map[cov_out_info.authorizing_input as usize].push(out_idx);
+            }
+        }
+        map
     }
 
     pub fn from_script(
@@ -313,6 +337,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             // Runtime sig op counting is not needed for standalone scripts, only inputs have sig op count value
             runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
             flags,
+            cov_out_indices: None,
         }
     }
 
@@ -699,10 +724,14 @@ mod tests {
                 sequence: 4294967295,
                 sig_op_count: 0,
             };
-            let output = TransactionOutput { value: 1000000000, script_public_key: ScriptPublicKey::new(0, test.script.into()) };
+            let output = TransactionOutput {
+                value: 1000000000,
+                script_public_key: ScriptPublicKey::new(0, test.script.into()),
+                cov_out_info: None,
+            };
 
             let tx = Transaction::new(1, vec![input.clone()], vec![output.clone()], 0, Default::default(), 0, vec![]);
-            let utxo_entry = UtxoEntry::new(output.value, output.script_public_key.clone(), 0, tx.is_coinbase());
+            let utxo_entry = UtxoEntry::new(output.value, output.script_public_key.clone(), 0, tx.is_coinbase(), None);
 
             let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
 
@@ -1246,7 +1275,7 @@ mod tests {
             let script = script_builder.drain();
 
             let script_pub_key = pay_to_script_hash_script(&script);
-            let utxo_entry = UtxoEntry::new(1000, script_pub_key.clone(), 0, false);
+            let utxo_entry = UtxoEntry::new(1000, script_pub_key.clone(), 0, false, None);
 
             // Create transaction
             let tx = Transaction::new(
@@ -1412,7 +1441,7 @@ mod bitcoind_tests {
 
             // Create transaction
             let tx = create_spending_transaction(script_sig, script_pub_key.clone());
-            let entry = UtxoEntry::new(0, script_pub_key.clone(), 0, true);
+            let entry = UtxoEntry::new(0, script_pub_key.clone(), 0, true, None);
             let populated_tx = PopulatedTransaction::new(&tx, vec![entry]);
 
             // Run transaction
@@ -1496,6 +1525,7 @@ mod bitcoind_tests {
                         TxScriptError::InvalidState(s) if s == "expected boolean" => vec!["MINIMALIF"],
                         TxScriptError::InvalidState(_) => vec!["UNKNOWN_ERROR"],
                         TxScriptError::ScriptSize(_, _) => vec!["SCRIPT_SIZE"],
+                        TxScriptError::InvalidCovOutIndex(_, _, _) => vec!["UNKNOWN_ERROR"],
                         _ => vec![],
                     },
                     UnifiedError::ScriptBuilderError(e) => match e {

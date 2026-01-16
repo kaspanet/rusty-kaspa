@@ -12,6 +12,7 @@ impl From<&UtxoEntry> for protowire::UtxoEntry {
             script_public_key: Some((&entry.script_public_key).into()),
             block_daa_score: entry.block_daa_score,
             is_coinbase: entry.is_coinbase,
+            covenant_id: entry.covenant_id.map(|x| x.into()),
         }
     }
 }

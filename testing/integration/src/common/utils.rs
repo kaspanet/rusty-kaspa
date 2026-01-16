@@ -79,7 +79,7 @@ pub fn generate_tx_dag(
                 let total_in = entries.iter().map(|e| e.amount).sum::<u64>();
                 let total_out = total_in - required_fee(num_inputs, num_outputs);
                 let outputs = (0..num_outputs)
-                    .map(|_| TransactionOutput { value: total_out / num_outputs, script_public_key: spk.clone() })
+                    .map(|_| TransactionOutput { value: total_out / num_outputs, script_public_key: spk.clone(), cov_out_info: None })
                     .collect_vec();
                 let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
                 sign(SignableTransaction::with_entries(unsigned_tx, entries), schnorr_key)
@@ -150,7 +150,7 @@ pub fn generate_tx(
         .collect_vec();
 
     let outputs = (0..num_outputs)
-        .map(|_| TransactionOutput { value: amount / num_outputs, script_public_key: script_public_key.clone() })
+        .map(|_| TransactionOutput { value: amount / num_outputs, script_public_key: script_public_key.clone(), cov_out_info: None })
         .collect_vec();
     let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
     let signed_tx =

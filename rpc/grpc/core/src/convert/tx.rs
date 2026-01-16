@@ -86,6 +86,8 @@ from!(item: &kaspa_rpc_core::RpcUtxoEntry, protowire::RpcUtxoEntry, {
         block_daa_score: item.block_daa_score,
         is_coinbase: item.is_coinbase,
         verbose_data: None,
+        covenant_id: item.covenant_id.map(|x| x.to_string()).unwrap_or_default(),
+
     }
 });
 
@@ -96,6 +98,7 @@ from!(item: &kaspa_rpc_core::RpcOptionalUtxoEntry, protowire::RpcUtxoEntry, {
         block_daa_score: item.block_daa_score.unwrap_or_default(),
         is_coinbase: item.is_coinbase.unwrap_or_default(),
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
+        covenant_id: item.covenant_id.map(|x| x.to_string()).unwrap_or_default(),
     }
 });
 
@@ -301,6 +304,11 @@ try_from!(item: &protowire::RpcUtxoEntry, kaspa_rpc_core::RpcUtxoEntry, {
             .try_into()?,
         block_daa_score: item.block_daa_score,
         is_coinbase: item.is_coinbase,
+        covenant_id: if item.covenant_id.is_empty() {
+            None
+        } else {
+            Some(RpcHash::from_str(&item.covenant_id)?)
+        }
     }
 });
 
@@ -315,6 +323,11 @@ try_from!(item: &protowire::RpcUtxoEntry, kaspa_rpc_core::RpcOptionalUtxoEntry, 
         block_daa_score: Some(item.block_daa_score),
         is_coinbase: Some(item.is_coinbase),
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcOptionalUtxoEntryVerboseData::try_from).transpose()?,
+        covenant_id: if item.covenant_id.is_empty() {
+            None
+        } else {
+            Some(RpcHash::from_str(&item.covenant_id)?)
+        }
     }
 });
 

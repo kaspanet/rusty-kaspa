@@ -1,9 +1,9 @@
 #[macro_use]
 mod macros;
-
 use crate::{
-    data_stack::OpcodeData, EngineFlags, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD,
-    MAX_SCRIPT_ELEMENT_SIZE, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
+    data_stack::{serialize_i64, OpcodeData},
+    EngineFlags, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_SCRIPT_ELEMENT_SIZE,
+    MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
 };
 use blake2b_simd::Params;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
@@ -455,7 +455,7 @@ opcode_list! {
 
     opcode OpIfDup<0x73, 1>(self, vm) {
         let [result] = vm.dstack.peek_raw()?;
-        if <Vec<u8> as OpcodeData<bool>>::deserialize(&result)? {
+        if <Vec<u8> as OpcodeData<bool>>::deserialize(&result, !vm.flags.covenants_enabled)? {
             vm.dstack.push(result)?;
         }
         Ok(())
@@ -1351,11 +1351,77 @@ opcode_list! {
         }
     }
 
+    opcode OpCovOutputCount<0xcb, 1>(self, vm){
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    // // TODO: Add optimization
+                    // let count = tx.outputs().iter()
+                    //     .filter(|output| output.cov_out_info.is_some_and(|x| x.authorizing_input as usize == idx))
+                    //     .count();
+                    let [input_idx]: [i32; 1] = vm.dstack.pop_items()?;
+                    let input_idx = i32_to_usize(input_idx)?;
+                    let count = vm.cov_out_count(input_idx)?;
+                    push_number(count as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpCovOutCount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
+    opcode OpCovOutputIdx<0xcc, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [input_idx, authorized_idx]: [i32; 2] = vm.dstack.pop_items()?;
+                    let input_idx = i32_to_usize(input_idx)?;
+                    let authorized_idx = i32_to_usize(authorized_idx)?;
+
+                    // // TODO: Add optimization
+                    // let output_idx = tx.outputs().iter().enumerate()
+                    //     .filter(|(i,output)| output.cov_out_info.is_some_and(|x| x.authorizing_input as usize == idx))
+                    //     .map(|(i, _)| i)
+                    //     .nth(cov_out_idx)
+                    //     .ok_or(TxScriptError::InvalidIndex(cov_out_idx as i32))?;
+
+                    let output_idx = vm.cov_out_idx(input_idx, authorized_idx)?;
+                    push_number(output_idx as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpCovOutIdx only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
+    opcode OpNum2Bin<0xcd, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            let [size]: [i32; 1] = vm.dstack.pop_items()?;
+            let size = i32_to_usize(size)?;
+            if size > 8 {
+                return Err(TxScriptError::NotMinimalData(format!("NUM2BIN target size {size} exceeds 8 bytes")));
+            }
+            let [num]: [i64; 1] = vm.dstack.pop_items()?;
+            let r = serialize_i64(num, Some(size))?;
+            vm.dstack.push(r)
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
+    opcode OpBin2Num<0xce, 1>(self, vm){
+        if vm.flags.covenants_enabled {
+            // pop_items deserializes the stack item to `i64`, while `push_number` pushes it back as minimally encoded bytes.
+            let [num]: [i64; 1] = vm.dstack.pop_items()?;
+            push_number(num, vm)
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
     // Undefined opcodes
-    opcode OpUnknown203<0xcb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown204<0xcc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown205<0xcd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown206<0xce, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown207<0xcf, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown208<0xd0, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown209<0xd1, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1552,9 +1618,10 @@ mod test {
             opcodes::OpTxInputScriptSigLen::empty().expect("Should accept empty"),
             opcodes::OpTxInputScriptSigSubstr::empty().expect("Should accept empty"),
             opcodes::OpBlake2bWithKey::empty().expect("Should accept empty"),
-            opcodes::OpUnknown204::empty().expect("Should accept empty"),
-            opcodes::OpUnknown205::empty().expect("Should accept empty"),
-            opcodes::OpUnknown206::empty().expect("Should accept empty"),
+            opcodes::OpCovOutputCount::empty().expect("Should accept empty"),
+            opcodes::OpCovOutputIdx::empty().expect("Should accept empty"),
+            opcodes::OpNum2Bin::empty().expect("Should accept empty"),
+            opcodes::OpBin2Num::empty().expect("Should accept empty"),
             opcodes::OpUnknown207::empty().expect("Should accept empty"),
             opcodes::OpUnknown208::empty().expect("Should accept empty"),
             opcodes::OpUnknown209::empty().expect("Should accept empty"),
@@ -3175,7 +3242,7 @@ mod test {
             0,
             vec![],
         ));
-        let utxo_entry = UtxoEntry::new(0, ScriptPublicKey::default(), 0, false);
+        let utxo_entry = UtxoEntry::new(0, ScriptPublicKey::default(), 0, false, None);
         (tx, dummy_tx_input, utxo_entry)
     }
 
@@ -3373,7 +3440,10 @@ mod test {
             let (utxos, tx_inputs) = inputs
                 .into_iter()
                 .map(|Kip10Mock { spk, amount }| {
-                    (UtxoEntry::new(amount, spk, 0, false), TransactionInput::new(dummy_prev_out, dummy_sig_script.clone(), 10, 0))
+                    (
+                        UtxoEntry::new(amount, spk, 0, false, None),
+                        TransactionInput::new(dummy_prev_out, dummy_sig_script.clone(), 10, 0),
+                    )
                 })
                 .unzip();
 
@@ -3629,7 +3699,10 @@ mod test {
             let (utxos, tx_inputs): (Vec<_>, Vec<_>) = inputs
                 .into_iter()
                 .map(|Kip10Mock { spk, amount }| {
-                    (UtxoEntry::new(amount, spk, 0, false), TransactionInput::new(dummy_prev_out, dummy_sig_script.clone(), 10, 0))
+                    (
+                        UtxoEntry::new(amount, spk, 0, false, None),
+                        TransactionInput::new(dummy_prev_out, dummy_sig_script.clone(), 10, 0),
+                    )
                 })
                 .unzip();
 
@@ -4170,7 +4243,8 @@ mod test {
         use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
         use kaspa_consensus_core::subnets::SubnetworkId;
         use kaspa_consensus_core::tx::{
-            PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+            CovOutInfo, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
+            UtxoEntry,
         };
         use kaspa_hashes::Hash;
 
@@ -4208,8 +4282,53 @@ mod test {
             let utxo_spk_1 = ScriptBuilder::new().add_ops(&[codes::Op2, codes::Op3]).expect("spk build").drain();
 
             let entries = vec![
-                UtxoEntry::new(1000, ScriptPublicKey::new(0, utxo_spk_0.into()), 0, true),
-                UtxoEntry::new(2000, ScriptPublicKey::new(0, utxo_spk_1.into()), 0, false),
+                UtxoEntry::new(1000, ScriptPublicKey::new(0, utxo_spk_0.into()), 0, true, None),
+                UtxoEntry::new(2000, ScriptPublicKey::new(0, utxo_spk_1.into()), 0, false, None),
+            ];
+
+            (tx, entries)
+        }
+
+        fn create_transaction_with_cov_out_info() -> (Transaction, Vec<UtxoEntry>) {
+            let version: u16 = 5;
+            let lock_time: u64 = 0;
+            let subnetwork_id = SubnetworkId::from_bytes([9u8; 20]);
+            let gas: u64 = 0;
+            let payload = payload_bytes(0);
+
+            let sig_script = ScriptBuilder::new().add_op(codes::OpTrue).expect("sig script build").drain();
+            let inputs = vec![
+                TransactionInput::new(TransactionOutpoint::new(Hash::default(), 0), sig_script.clone(), 0, 0),
+                TransactionInput::new(TransactionOutpoint::new(Hash::default(), 1), sig_script, 0, 0),
+            ];
+
+            let spk = ScriptBuilder::new().add_op(codes::OpTrue).expect("spk build").drain();
+            let outputs = vec![
+                TransactionOutput {
+                    value: 11,
+                    script_public_key: ScriptPublicKey::new(0, spk.clone().into()),
+                    cov_out_info: Some(CovOutInfo { authorizing_input: 0, covenant_id: Hash::from_u64_word(1) }),
+                },
+                TransactionOutput {
+                    value: 22,
+                    script_public_key: ScriptPublicKey::new(0, spk.clone().into()),
+                    cov_out_info: Some(CovOutInfo { authorizing_input: 1, covenant_id: Hash::from_u64_word(2) }),
+                },
+                TransactionOutput {
+                    value: 33,
+                    script_public_key: ScriptPublicKey::new(0, spk.clone().into()),
+                    cov_out_info: Some(CovOutInfo { authorizing_input: 0, covenant_id: Hash::from_u64_word(3) }),
+                },
+                TransactionOutput::new(44, ScriptPublicKey::new(0, spk.into())),
+            ];
+
+            let mut tx = Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload);
+            tx.finalize();
+
+            let utxo_spk = ScriptBuilder::new().add_op(codes::OpTrue).expect("spk build").drain();
+            let entries = vec![
+                UtxoEntry::new(1000, ScriptPublicKey::new(0, utxo_spk.clone().into()), 0, false, None),
+                UtxoEntry::new(1000, ScriptPublicKey::new(0, utxo_spk.into()), 0, false, None),
             ];
 
             (tx, entries)
@@ -4409,6 +4528,42 @@ mod test {
             let spk_is_coinbase_false =
                 script(|sb| sb.add_i64(1)?.add_op(codes::OpTxInputIsCoinbase)?.add_i64(0)?.add_op(codes::OpEqual));
             run_script(&tx, entries, 0, spk_is_coinbase_false).expect("is coinbase false");
+        }
+
+        #[test]
+        fn cov_output_count() {
+            let (tx, entries) = create_transaction_with_cov_out_info();
+
+            for (input_idx, expected_count) in [(0, 2), (1, 1)] {
+                let spk = script(|sb| {
+                    sb.add_i64(input_idx)?.add_op(codes::OpCovOutputCount)?.add_i64(expected_count)?.add_op(codes::OpEqual)
+                });
+                run_script(&tx, entries.clone(), 0, spk).expect("cov output count");
+            }
+
+            let spk_invalid = script(|sb| sb.add_i64(3)?.add_op(codes::OpCovOutputCount));
+            let err = run_script(&tx, entries, 0, spk_invalid).expect_err("cov output count invalid input");
+            assert!(matches!(err, TxScriptError::InvalidInputIndex(3, 2)));
+        }
+
+        #[test]
+        fn cov_output_idx() {
+            let (tx, entries) = create_transaction_with_cov_out_info();
+
+            for (input_idx, authorized_idx, expected_output_idx) in [(0, 0, 0), (0, 1, 2), (1, 0, 1)] {
+                let spk = script(|sb| {
+                    sb.add_i64(input_idx)?
+                        .add_i64(authorized_idx)?
+                        .add_op(codes::OpCovOutputIdx)?
+                        .add_i64(expected_output_idx)?
+                        .add_op(codes::OpEqual)
+                });
+                run_script(&tx, entries.clone(), 0, spk).expect("cov output idx");
+            }
+
+            let spk_missing = script(|sb| sb.add_i64(0)?.add_i64(2)?.add_op(codes::OpCovOutputIdx));
+            let err = run_script(&tx, entries, 0, spk_missing).expect_err("cov output idx missing");
+            assert!(matches!(err, TxScriptError::InvalidCovOutIndex(2, 0, 2)));
         }
 
         #[test]

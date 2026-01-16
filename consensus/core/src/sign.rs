@@ -223,8 +223,16 @@ mod tests {
                 },
             ],
             vec![
-                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
-                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
+                TransactionOutput {
+                    value: 300,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                    cov_out_info: None,
+                },
+                TransactionOutput {
+                    value: 300,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                    cov_out_info: None,
+                },
             ],
             1615462089000,
             SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
@@ -238,18 +246,21 @@ mod tests {
                 script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
                 block_daa_score: 0,
                 is_coinbase: false,
+                covenant_id: None,
             },
             UtxoEntry {
                 amount: 200,
                 script_public_key: ScriptPublicKey::new(0, script_pub_key),
                 block_daa_score: 0,
                 is_coinbase: false,
+                covenant_id: None,
             },
             UtxoEntry {
                 amount: 300,
                 script_public_key: ScriptPublicKey::new(0, script_pub_key2),
                 block_daa_score: 0,
                 is_coinbase: false,
+                covenant_id: None,
             },
         ];
         let signed_tx = sign_with_multiple(

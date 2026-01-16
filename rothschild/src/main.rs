@@ -537,7 +537,7 @@ fn generate_tx(
         .collect_vec();
 
     let outputs = (0..num_outs)
-        .map(|_| TransactionOutput { value: send_amount / num_outs, script_public_key: script_public_key.clone() })
+        .map(|_| TransactionOutput { value: send_amount / num_outs, script_public_key: script_public_key.clone(), cov_out_info: None })
         .collect_vec();
     let mut data = vec![0u8; payload_size];
     rand::thread_rng().fill_bytes(&mut data);
