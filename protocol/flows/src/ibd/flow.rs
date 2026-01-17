@@ -592,6 +592,7 @@ impl IbdFlow {
         consensus.async_clear_pruning_utxo_set().await; // this deletes the old pruning utxoset and also sets the pruning utxo as invalidated
         self.sync_pruning_point_utxoset(consensus, pruning_point).await?;
         consensus.async_set_pruning_utxoset_stable().await; //  only if the function has reached here, will the utxo be considered "final"
+        self.ctx.consensus_manager.reset_handlers();
         self.ctx.on_pruning_point_utxoset_override();
         Ok(())
     }
