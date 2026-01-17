@@ -209,11 +209,7 @@ pub async fn start_web_server_all(port: &str) -> Result<(), Box<dyn std::error::
         if let Ok(n) = stream.read(&mut buffer).await {
             let request = String::from_utf8_lossy(&buffer[..n]);
 
-            let path = request
-                .lines()
-                .next()
-                .and_then(|line| line.split_whitespace().nth(1))
-                .unwrap_or("/");
+            let path = request.lines().next().and_then(|line| line.split_whitespace().nth(1)).unwrap_or("/");
 
             if request.starts_with("GET /metrics") {
                 use prometheus::Encoder;
@@ -229,11 +225,7 @@ pub async fn start_web_server_all(port: &str) -> Result<(), Box<dyn std::error::
                 );
                 stream.write_all(response.as_bytes()).await?;
             } else if request.starts_with("GET /api/status") {
-                let kaspad_version = crate::kaspaapi::NODE_STATUS
-                    .lock()
-                    .server_version
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string());
+                let kaspad_version = crate::kaspaapi::NODE_STATUS.lock().server_version.clone().unwrap_or_else(|| "-".to_string());
                 let status = WebStatusResponse {
                     kaspad_address: kaspad_address_for_status.clone(),
                     kaspad_version,
@@ -259,11 +251,7 @@ pub async fn start_web_server_all(port: &str) -> Result<(), Box<dyn std::error::
             } else if request.starts_with("GET /") {
                 if let Some((rel, bytes)) = try_read_static_file(path) {
                     let ct = content_type_for_path(&rel);
-                    let response = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n",
-                        ct,
-                        bytes.len()
-                    );
+                    let response = format!("HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n", ct, bytes.len());
                     stream.write_all(response.as_bytes()).await?;
                     stream.write_all(&bytes).await?;
                 } else {
@@ -641,18 +629,16 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
                     let count = metric.get_counter().get_value() as u64;
-                    let entry = worker_stats
-                        .entry(key.clone())
-                        .or_insert_with(|| WorkerInfo {
-                            instance,
-                            worker: worker_key,
-                            wallet,
-                            hashrate: 0.0,
-                            shares: 0,
-                            stale: 0,
-                            invalid: 0,
-                            blocks: 0,
-                        });
+                    let entry = worker_stats.entry(key.clone()).or_insert_with(|| WorkerInfo {
+                        instance,
+                        worker: worker_key,
+                        wallet,
+                        hashrate: 0.0,
+                        shares: 0,
+                        stale: 0,
+                        invalid: 0,
+                        blocks: 0,
+                    });
                     // Aggregate across multiple time series for the same (instance,worker,wallet)
                     entry.blocks = entry.blocks.saturating_add(count);
                 }
@@ -716,18 +702,16 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
                     let count = metric.get_counter().get_value() as u64;
-                    let entry = worker_stats
-                        .entry(key.clone())
-                        .or_insert_with(|| WorkerInfo {
-                            instance,
-                            worker: worker_key,
-                            wallet,
-                            hashrate: 0.0,
-                            shares: 0,
-                            stale: 0,
-                            invalid: 0,
-                            blocks: 0,
-                        });
+                    let entry = worker_stats.entry(key.clone()).or_insert_with(|| WorkerInfo {
+                        instance,
+                        worker: worker_key,
+                        wallet,
+                        hashrate: 0.0,
+                        shares: 0,
+                        stale: 0,
+                        invalid: 0,
+                        blocks: 0,
+                    });
                     entry.shares = entry.shares.saturating_add(count);
                     stats.totalShares = stats.totalShares.saturating_add(count);
                 }
@@ -1087,11 +1071,7 @@ pub async fn start_prom_server(port: &str, instance_id: &str) -> Result<(), Box<
         if let Ok(n) = stream.read(&mut buffer).await {
             let request = String::from_utf8_lossy(&buffer[..n]);
 
-            let path = request
-                .lines()
-                .next()
-                .and_then(|line| line.split_whitespace().nth(1))
-                .unwrap_or("/");
+            let path = request.lines().next().and_then(|line| line.split_whitespace().nth(1)).unwrap_or("/");
 
             if request.starts_with("GET /metrics") {
                 use prometheus::Encoder;
@@ -1108,11 +1088,7 @@ pub async fn start_prom_server(port: &str, instance_id: &str) -> Result<(), Box<
 
                 stream.write_all(response.as_bytes()).await?;
             } else if request.starts_with("GET /api/status") {
-                let kaspad_version = crate::kaspaapi::NODE_STATUS
-                    .lock()
-                    .server_version
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string());
+                let kaspad_version = crate::kaspaapi::NODE_STATUS.lock().server_version.clone().unwrap_or_else(|| "-".to_string());
                 let status = WebStatusResponse {
                     kaspad_address: kaspad_address_for_status.clone(),
                     kaspad_version,
@@ -1164,11 +1140,7 @@ pub async fn start_prom_server(port: &str, instance_id: &str) -> Result<(), Box<
             } else if request.starts_with("GET /") {
                 if let Some((rel, bytes)) = try_read_static_file(path) {
                     let ct = content_type_for_path(&rel);
-                    let response = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n",
-                        ct,
-                        bytes.len()
-                    );
+                    let response = format!("HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n", ct, bytes.len());
                     stream.write_all(response.as_bytes()).await?;
                     stream.write_all(&bytes).await?;
                 } else {

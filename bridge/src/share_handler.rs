@@ -669,18 +669,9 @@ impl ShareHandler {
                     prefix,
                     LogColors::block("[BLOCK]"),
                     LogColors::label("ACCEPTANCE REASON:"),
-                    format!(
-                        "pow_value ({:x}) <= network_target ({:x})",
-                        pow_value, network_target
-                    )
+                    format!("pow_value ({:x}) <= network_target ({:x})", pow_value, network_target)
                 );
-                debug!(
-                    "{} {} {} {}",
-                    prefix,
-                    LogColors::block("[BLOCK]"),
-                    LogColors::label("Pow Value:"),
-                    format!("{:x}", pow_value)
-                );
+                debug!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Pow Value:"), format!("{:x}", pow_value));
 
                 // Log block details before creating the block (to avoid borrow issues)
                 let header_bits = header_clone.bits;
@@ -751,12 +742,7 @@ impl ShareHandler {
                 let block_hash = header::hash(&block.header).to_string();
 
                 // Log prominent "Block Found" message with hash
-                info!(
-                    "{} {} {}",
-                    prefix,
-                    LogColors::block("BLOCK FOUND!"),
-                    format!("Hash: {}", block_hash)
-                );
+                info!("{} {} {}", prefix, LogColors::block("BLOCK FOUND!"), format!("Hash: {}", block_hash));
                 debug!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
                 debug!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Wallet:"), wallet_addr);
                 debug!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Nonce:"), format!("{:x}", nonce_val));
