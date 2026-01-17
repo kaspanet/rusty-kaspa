@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kaspa Stratum Bridge - Raw</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="static/css/site.css">
+</head>
+<body>
+  <nav class="bg-surface-1 border-b border-card relative">
+    <div class="container mx-auto px-4 py-4">
+      <div class="flex items-center justify-between">
+        <a href="./" class="text-2xl font-bold kaspa-primary flex items-center gap-3">
+          <img src="static/assets/kaspa.svg" alt="Kaspa" class="rk-logo h-9 w-auto" />
+          <span>Kaspa Stratum Bridge</span>
+        </a>
+        <div class="flex items-center gap-4">
+          <div class="hidden md:flex items-center gap-2">
+            <a class="bg-surface-2 border border-card px-4 py-2 rounded-full text-sm font-medium text-white hover:border-kaspa-primary flex items-center gap-2" href="./">Dashboard</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mx-auto px-4 py-8">
+    <div class="bg-surface-2 rounded-lg p-6 border border-card">
+      <div class="flex items-center justify-between gap-4 mb-4">
+        <div>
+          <h2 class="text-lg font-semibold kaspa-primary">Raw</h2>
+          <div class="text-sm text-gray-300 mt-1">GET <code class="text-white">/api/status</code> + <code class="text-white">/api/stats</code></div>
+        </div>
+        <div class="flex items-center gap-3">
+          <label class="text-xs text-gray-300 flex items-center gap-2 select-none">
+            <input id="autoRefresh" type="checkbox" class="accent-[var(--kaspa-primary)]" checked />
+            Auto-refresh
+          </label>
+          <button id="refreshRawBtn" type="button" class="bg-kaspa-primary hover-bg-kaspa-primary px-4 py-2 rounded-lg text-sm font-medium text-white">Refresh</button>
+          <button id="copyRawBtn" type="button" class="bg-surface-1 border border-card px-4 py-2 rounded-lg text-sm font-medium text-white hover:border-kaspa-primary">Copy JSON</button>
+        </div>
+      </div>
+      <pre id="raw" class="mt-4 text-xs overflow-auto p-4 rounded-lg border border-card"></pre>
+    </div>
+  </div>
+
+  <script src="static/js/raw.js"></script>
+</body>
+</html>

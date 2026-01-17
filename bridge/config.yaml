@@ -26,6 +26,11 @@ log_to_file: true
 # This is a GLOBAL health check endpoint
 health_check_port: ""
 
+# Global Web UI / aggregated metrics server port (optional).
+# If set, the bridge will host a single dashboard that aggregates ALL instances.
+# Example: web_port: ":3030" then open http://127.0.0.1:3030/
+web_port: ":3030"
+
 # Variable difficulty settings (defaults, can be overridden per-instance)
 var_diff: false
 shares_per_min: 20
