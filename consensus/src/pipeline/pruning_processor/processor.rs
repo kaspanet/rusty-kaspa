@@ -135,7 +135,7 @@ impl PruningProcessor {
                 }
                 recovered = true;
             }
-            self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+            self.advance_pruning_point_if_possible(sink_ghostdag_data);
         }
     }
 
@@ -198,7 +198,7 @@ impl PruningProcessor {
         true
     }
 
-    fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
+    fn advance_pruning_point_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
         let pruning_point_read = self.pruning_point_store.upgradable_read();
         let (current_pruning_point, current_index) = pruning_point_read.pruning_point_and_index().unwrap();
         let new_pruning_points = self.pruning_point_manager.next_pruning_points(sink_ghostdag_data, current_pruning_point);
@@ -673,6 +673,7 @@ impl PruningProcessor {
                 info!("Rebuilt proof for level {} does not match the original one", i);
             }
         }
+        // todo
         if mismatch_detected {
             info!("Fallback: comparing the PoW strength of the rebuilt proof vs. the original one..");
             // Note we pass the built proof as the defender since the comparison prefers the defender in case of equality
