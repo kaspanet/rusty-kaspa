@@ -1,6 +1,6 @@
 //! TODO: module comment about locking safety and consistency of various pruning stores
 
-use super::batching::{PruneBatch, PruningPhaseMetrics, PRUNE_LOCK_MAX_DURATION_MS};
+use super::batching::{PruneBatch, PruningPhaseMetrics, PRUNE_LOCK_TARGET_MAX_DURATION_MS};
 use crate::{
     consensus::{
         services::{ConsensusServices, DbParentsManager, DbPruningPointManager},
@@ -457,7 +457,8 @@ impl PruningProcessor {
         let mut statuses_write = self.statuses_store.write();
 
         while !queue.is_empty() {
-            if lock_acquire_time.elapsed() > Duration::from_millis(PRUNE_LOCK_MAX_DURATION_MS) {
+            // Lock budget is best-effort because batch flush happens under the prune lock.
+            if lock_acquire_time.elapsed() > Duration::from_millis(PRUNE_LOCK_TARGET_MAX_DURATION_MS) {
                 // Commit staging stores and flush the batch so we can yield
                 let reachability_write = staging_reachability.commit(&mut prune_batch.batch).unwrap();
                 staging_reachability_relations.commit(&mut prune_batch.batch).unwrap();
@@ -568,7 +569,7 @@ impl PruningProcessor {
             }
 
             let lock_elapsed = lock_acquire_time.elapsed();
-            if prune_batch.should_flush(lock_elapsed) {
+            if prune_batch.should_flush() || lock_elapsed > Duration::from_millis(PRUNE_LOCK_TARGET_MAX_DURATION_MS) {
                 let reachability_write = staging_reachability.commit(&mut prune_batch.batch).unwrap();
                 staging_reachability_relations.commit(&mut prune_batch.batch).unwrap();
                 staging_relations.commit(&mut prune_batch.batch).unwrap();

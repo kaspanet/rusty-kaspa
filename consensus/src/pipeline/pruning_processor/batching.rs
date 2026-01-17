@@ -86,7 +86,7 @@ pub(super) const PRUNE_BATCH_MAX_BLOCKS: usize = 256;
 pub(super) const PRUNE_BATCH_MAX_OPS: usize = 50_000;
 pub(super) const PRUNE_BATCH_MAX_BYTES: usize = 4 * 1024 * 1024;
 pub(super) const PRUNE_BATCH_MAX_DURATION_MS: u64 = 50;
-pub(super) const PRUNE_LOCK_MAX_DURATION_MS: u64 = 25;
+pub(super) const PRUNE_LOCK_TARGET_MAX_DURATION_MS: u64 = 25;
 
 pub(super) struct PruneBatch {
     pub(super) batch: WriteBatch,
@@ -132,7 +132,7 @@ impl PruneBatch {
         mem::take(&mut self.batch)
     }
 
-    pub(super) fn should_flush(&self, lock_elapsed: Duration) -> bool {
+    pub(super) fn should_flush(&self) -> bool {
         if self.is_empty() {
             return false;
         }
@@ -141,7 +141,6 @@ impl PruneBatch {
             || self.len() >= PRUNE_BATCH_MAX_OPS
             || self.size_in_bytes() >= PRUNE_BATCH_MAX_BYTES
             || self.elapsed() >= Duration::from_millis(PRUNE_BATCH_MAX_DURATION_MS)
-            || lock_elapsed >= Duration::from_millis(PRUNE_LOCK_MAX_DURATION_MS)
     }
 
     pub(super) fn flush(&mut self, db: &DB, metrics: &mut PruningPhaseMetrics) {
