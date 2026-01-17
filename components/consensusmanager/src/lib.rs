@@ -171,7 +171,9 @@ impl ConsensusManager {
     pub fn delete_staging_entry(&self) {
         self.factory.delete_staging_entry();
     }
-    pub fn reset_handlers(&self) {
+
+    /// Explicit resetting of  service handlers
+    pub fn invoke_consensus_reset_handlers(&self) {
         let handlers = self.inner.read().consensus_reset_handlers.iter().cloned().collect_vec();
         for handler in handlers {
             handler.handle_consensus_reset();
@@ -212,7 +214,7 @@ impl StagingConsensus {
         prev.ctl.stop();
         g.current.ctl.make_active();
         drop(g);
-        self.manager.reset_handlers();
+        self.manager.invoke_consensus_reset_handlers();
         // Drop `prev` so that deletion below succeeds
         drop(prev);
         // Staging was committed and is now the active consensus so we can delete
