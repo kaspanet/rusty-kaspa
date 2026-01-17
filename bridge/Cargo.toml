@@ -63,5 +63,8 @@ tokio-test = "0.4"
 name = "stratum-bridge"
 path = "src/main.rs"
 
+[features]
+internal-cpu-miner = []
+
 [lints]
 workspace = true

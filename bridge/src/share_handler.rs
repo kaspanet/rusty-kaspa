@@ -7,6 +7,9 @@ use crate::{
     prom::*,
     stratum_context::StratumContext,
 };
+
+#[cfg(feature = "internal-cpu-miner")]
+use crate::rkstratum_cpu_miner::InternalMinerMetrics;
 use kaspa_consensus_core::block::Block;
 // kaspa_pow used inline for PoW validation
 use num_bigint::BigUint;
@@ -116,7 +119,16 @@ struct StatsPrinterEntry {
 }
 
 static STATS_PRINTER_REGISTRY: Lazy<Mutex<Vec<StatsPrinterEntry>>> = Lazy::new(|| Mutex::new(Vec::new()));
-static STATS_PRINTER_STARTED: AtomicBool = AtomicBool::new(false);
+pub static STATS_PRINTER_STARTED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(feature = "internal-cpu-miner")]
+pub static RKSTRATUM_CPU_MINER_METRICS: Lazy<parking_lot::Mutex<Option<Arc<InternalMinerMetrics>>>> =
+    Lazy::new(|| parking_lot::Mutex::new(None));
+
+#[cfg(feature = "internal-cpu-miner")]
+pub fn set_rkstratum_cpu_miner_metrics(metrics: Arc<InternalMinerMetrics>) {
+    *RKSTRATUM_CPU_MINER_METRICS.lock() = Some(metrics);
+}
 
 #[derive(Clone)]
 pub struct WorkStats {
@@ -1447,6 +1459,32 @@ impl ShareHandler {
                 }
 
                 out.push(sep.clone());
+
+                // Feature-gated internal miner row
+                #[cfg(feature = "internal-cpu-miner")]
+                {
+                    if let Some(metrics) = RKSTRATUM_CPU_MINER_METRICS.lock().as_ref() {
+                        let hashes = metrics.hashes_tried.load(Ordering::Relaxed);
+                        let submitted = metrics.blocks_submitted.load(Ordering::Relaxed);
+                        let accepted = metrics.blocks_accepted.load(Ordering::Relaxed);
+                        let elapsed = now.duration_since(start).as_secs_f64();
+                        let rate = if elapsed > 0.0 { hashes as f64 / elapsed } else { 0.0 };
+                        let internal_line = format!(
+                            "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
+                            "InternalCPU",
+                            "-",
+                            format_hashrate(rate),
+                            "-",
+                            "-",
+                            "-",
+                            format!("{}/{}/{}", accepted, submitted - accepted, 0),
+                            accepted,
+                            format_uptime(now.duration_since(start))
+                        );
+                        out.push(internal_line);
+                        out.push(sep.clone());
+                    }
+                }
 
                 let overall_spm = if total_uptime_mins > 0.0 { (total_shares as f64) / total_uptime_mins } else { 0.0 };
                 let total_spm_tgt = match total_target {
