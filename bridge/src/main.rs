@@ -281,14 +281,12 @@ async fn main() -> Result<(), anyhow::Error> {
     .await
     .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?;
 
-    if node_mode == NodeMode::Inprocess {
-        tracing::info!("Waiting for embedded node to fully sync before starting stratum listeners");
-        kaspa_api
-            .wait_for_sync_with_shutdown(true, shutdown_rx.clone())
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed while waiting for node sync: {}", e))?;
-        tracing::info!("Node is synced, starting stratum listeners");
-    }
+    tracing::info!("Waiting for node to fully sync before starting stratum listeners");
+    kaspa_api
+        .wait_for_sync_with_shutdown(true, shutdown_rx.clone())
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed while waiting for node sync: {}", e))?;
+    tracing::info!("Node is synced, starting stratum listeners");
 
     let mut instance_handles = Vec::new();
     for (idx, instance_config) in config.instances.iter().enumerate() {

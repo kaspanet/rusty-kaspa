@@ -39,6 +39,12 @@ cargo run --release --bin stratum-bridge -- --help
 
 This will show all available bridge options and guidance for kaspad arguments.
 
+### Build (internal CPU miner)
+
+```bash
+cargo build -p kaspa-stratum-bridge --release --features internal-cpu-miner
+```
+
 ### Run (external node)
 
 Terminal A (node):
