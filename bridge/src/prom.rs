@@ -136,6 +136,148 @@ pub fn init_metrics() {
     });
 }
 
+pub async fn start_web_server_all(port: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use std::net::SocketAddr;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    init_metrics();
+
+    let addr_str = if port.starts_with(':') { format!("0.0.0.0{}", port) } else { port.to_string() };
+    let addr: SocketAddr = addr_str.parse()?;
+    let listener = TcpListener::bind(addr).await?;
+
+    let kaspad_address_for_status = {
+        let config_path = "config.yaml";
+        std::fs::read_to_string(config_path)
+            .ok()
+            .and_then(|content| yaml_rust::YamlLoader::load_from_str(&content).ok())
+            .and_then(|docs| docs.first().cloned())
+            .and_then(|doc| doc["kaspad_address"].as_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "-".to_string())
+    };
+    let instances_for_status = {
+        let config_path = "config.yaml";
+        std::fs::read_to_string(config_path)
+            .ok()
+            .and_then(|content| yaml_rust::YamlLoader::load_from_str(&content).ok())
+            .and_then(|docs| docs.first().cloned())
+            .and_then(|doc| doc["instances"].as_vec().map(|v| v.len()))
+            .unwrap_or(1)
+    };
+    let web_bind_for_status = addr_str.clone();
+
+    tracing::debug!("Hosting aggregated web stats on {}/", addr);
+
+    fn content_type_for_path(path: &str) -> &'static str {
+        let p = path.to_ascii_lowercase();
+        if p.ends_with(".html") {
+            "text/html; charset=utf-8"
+        } else if p.ends_with(".css") {
+            "text/css; charset=utf-8"
+        } else if p.ends_with(".js") {
+            "application/javascript; charset=utf-8"
+        } else if p.ends_with(".svg") {
+            "image/svg+xml"
+        } else {
+            "application/octet-stream"
+        }
+    }
+
+    fn try_read_static_file(url_path: &str) -> Option<(String, Vec<u8>)> {
+        let rel = match url_path {
+            "/" => "index.html".to_string(),
+            "/index.html" => "index.html".to_string(),
+            "/raw.html" => "raw.html".to_string(),
+            p if p.starts_with("/static/") => p.trim_start_matches("/static/").to_string(),
+            _ => return None,
+        };
+
+        if rel.contains("..") || rel.contains('\\') {
+            return None;
+        }
+
+        let file_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static").join(&rel);
+        let bytes = std::fs::read(&file_path).ok()?;
+        Some((rel, bytes))
+    }
+
+    loop {
+        let (mut stream, _) = listener.accept().await?;
+        let mut buffer = [0; 8192];
+
+        if let Ok(n) = stream.read(&mut buffer).await {
+            let request = String::from_utf8_lossy(&buffer[..n]);
+
+            let path = request
+                .lines()
+                .next()
+                .and_then(|line| line.split_whitespace().nth(1))
+                .unwrap_or("/");
+
+            if request.starts_with("GET /metrics") {
+                use prometheus::Encoder;
+                let encoder = prometheus::TextEncoder::new();
+                let metric_families = prometheus::gather();
+                let mut buffer = Vec::new();
+                encoder.encode(&metric_families, &mut buffer)?;
+
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {}\r\n\r\n{}",
+                    buffer.len(),
+                    String::from_utf8_lossy(&buffer)
+                );
+                stream.write_all(response.as_bytes()).await?;
+            } else if request.starts_with("GET /api/status") {
+                let kaspad_version = crate::kaspaapi::NODE_STATUS
+                    .lock()
+                    .server_version
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string());
+                let status = WebStatusResponse {
+                    kaspad_address: kaspad_address_for_status.clone(),
+                    kaspad_version,
+                    instances: instances_for_status,
+                    web_bind: web_bind_for_status.clone(),
+                };
+                let json = serde_json::to_string(&status).unwrap_or_else(|_| "{}".to_string());
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+                    json.len(),
+                    json
+                );
+                stream.write_all(response.as_bytes()).await?;
+            } else if request.starts_with("GET /api/stats") {
+                let stats = get_stats_json_all().await;
+                let json = serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string());
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+                    json.len(),
+                    json
+                );
+                stream.write_all(response.as_bytes()).await?;
+            } else if request.starts_with("GET /") {
+                if let Some((rel, bytes)) = try_read_static_file(path) {
+                    let ct = content_type_for_path(&rel);
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n",
+                        ct,
+                        bytes.len()
+                    );
+                    stream.write_all(response.as_bytes()).await?;
+                    stream.write_all(&bytes).await?;
+                } else {
+                    let response = "HTTP/1.1 404 Not Found\r\n\r\n";
+                    stream.write_all(response.as_bytes()).await?;
+                }
+            } else {
+                let response = "HTTP/1.1 404 Not Found\r\n\r\n";
+                stream.write_all(response.as_bytes()).await?;
+            }
+        }
+    }
+}
+
 /// Worker context for metrics
 pub struct WorkerContext {
     pub instance_id: String,
@@ -247,12 +389,20 @@ pub fn record_network_stats(hashrate: u64, block_count: u64, difficulty: f64) {
     if let Some(gauge) = ESTIMATED_NETWORK_HASHRATE.get() {
         gauge.set(hashrate as f64);
     }
-    if let Some(gauge) = NETWORK_DIFFICULTY.get() {
-        gauge.set(difficulty);
-    }
     if let Some(gauge) = NETWORK_BLOCK_COUNT.get() {
         gauge.set(block_count as f64);
     }
+    if let Some(gauge) = NETWORK_DIFFICULTY.get() {
+        gauge.set(difficulty);
+    }
+}
+
+#[derive(Serialize)]
+struct WebStatusResponse {
+    kaspad_address: String,
+    kaspad_version: String,
+    instances: usize,
+    web_bind: String,
 }
 
 /// Record a worker error
@@ -342,6 +492,8 @@ struct StatsResponse {
     totalBlocks: u64,
     totalShares: u64,
     networkHashrate: u64,
+    networkDifficulty: f64,
+    networkBlockCount: u64,
     activeWorkers: usize,
     blocks: Vec<BlockInfo>,
     workers: Vec<WorkerInfo>,
@@ -349,6 +501,7 @@ struct StatsResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct BlockInfo {
+    instance: String,
     worker: String,
     wallet: String,
     timestamp: String,
@@ -359,6 +512,7 @@ struct BlockInfo {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct WorkerInfo {
+    instance: String,
     worker: String,
     wallet: String,
     hashrate: f64,
@@ -368,15 +522,24 @@ struct WorkerInfo {
     blocks: u64,
 }
 
-/// Get stats as JSON
-async fn get_stats_json(instance_id: &str) -> StatsResponse {
+/// Get stats as JSON (optionally filtered to a single instance id)
+async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     use prometheus::gather;
 
-    let metric_families = filter_metric_families_for_instance(gather(), instance_id);
+    // NOTE: Instance filtering removes metrics that don't carry an `instance` label.
+    // The dashboard expects global network gauges too, so we always gather unfiltered
+    // for those, and then optionally filter for per-worker/per-block metrics.
+    let all_families = gather();
+    let families_for_workers_and_blocks = match instance_id {
+        Some(id) => filter_metric_families_for_instance(all_families.clone(), id),
+        None => all_families.clone(),
+    };
     let mut stats = StatsResponse {
         totalBlocks: 0,
         totalShares: 0,
         networkHashrate: 0,
+        networkDifficulty: 0.0,
+        networkBlockCount: 0,
         activeWorkers: 0,
         blocks: Vec::new(),
         workers: Vec::new(),
@@ -387,7 +550,32 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
     let mut worker_start_times: HashMap<String, f64> = HashMap::new(); // Store start times for hashrate calculation
     let mut block_set: HashSet<String> = HashSet::new();
 
-    for family in metric_families {
+    // Parse global network gauges from the unfiltered set.
+    for family in all_families.iter() {
+        let name = family.get_name();
+
+        if name == "ks_estimated_network_hashrate_gauge" {
+            if let Some(metric) = family.get_metric().first() {
+                stats.networkHashrate = metric.get_gauge().get_value() as u64;
+            }
+        }
+
+        if name == "ks_network_difficulty_gauge" {
+            if let Some(metric) = family.get_metric().first() {
+                stats.networkDifficulty = metric.get_gauge().get_value();
+            }
+        }
+
+        // Network height / block count gauge. Historical name is "ks_network_block_count".
+        // Accept both just in case we rename later.
+        if name == "ks_network_block_count" || name == "ks_network_block_count_gauge" {
+            if let Some(metric) = family.get_metric().first() {
+                stats.networkBlockCount = metric.get_gauge().get_value() as u64;
+            }
+        }
+    }
+
+    for family in families_for_workers_and_blocks {
         let name = family.get_name();
 
         // Parse block gauge
@@ -395,6 +583,7 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
             for metric in family.get_metric() {
                 if metric.get_gauge().get_value() > 0.0 {
                     let labels = metric.get_label();
+                    let mut instance = String::new();
                     let mut worker = String::new();
                     let mut wallet = String::new();
                     let mut timestamp = String::new();
@@ -404,6 +593,7 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
 
                     for label in labels {
                         match label.get_name() {
+                            "instance" => instance = label.get_value().to_string(),
                             "worker" => worker = label.get_value().to_string(),
                             "wallet" => wallet = label.get_value().to_string(),
                             "timestamp" => timestamp = label.get_value().to_string(),
@@ -417,6 +607,7 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
                     if !hash.is_empty() && !block_set.contains(&hash) {
                         block_set.insert(hash.clone());
                         stats.blocks.push(BlockInfo {
+                            instance,
                             worker: worker.clone(),
                             wallet: wallet.clone(),
                             timestamp,
@@ -434,11 +625,13 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
         if name == "ks_blocks_mined" {
             for metric in family.get_metric() {
                 let labels = metric.get_label();
+                let mut instance = String::new();
                 let mut worker_key = String::new();
                 let mut wallet = String::new();
 
                 for label in labels {
                     match label.get_name() {
+                        "instance" => instance = label.get_value().to_string(),
                         "worker" => worker_key = label.get_value().to_string(),
                         "wallet" => wallet = label.get_value().to_string(),
                         _ => {}
@@ -446,11 +639,12 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
                 }
 
                 if !worker_key.is_empty() {
-                    let key = format!("{}:{}", worker_key, wallet);
+                    let key = format!("{}:{}:{}", instance, worker_key, wallet);
                     let count = metric.get_counter().get_value() as u64;
-                    worker_stats
+                    let entry = worker_stats
                         .entry(key.clone())
                         .or_insert_with(|| WorkerInfo {
+                            instance,
                             worker: worker_key,
                             wallet,
                             hashrate: 0.0,
@@ -458,8 +652,9 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
                             stale: 0,
                             invalid: 0,
                             blocks: 0,
-                        })
-                        .blocks = count;
+                        });
+                    // Aggregate across multiple time series for the same (instance,worker,wallet)
+                    entry.blocks = entry.blocks.saturating_add(count);
                 }
             }
         }
@@ -468,11 +663,13 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
         if name == "ks_valid_share_diff_counter" {
             for metric in family.get_metric() {
                 let labels = metric.get_label();
+                let mut instance = String::new();
                 let mut worker_key = String::new();
                 let mut wallet = String::new();
 
                 for label in labels {
                     match label.get_name() {
+                        "instance" => instance = label.get_value().to_string(),
                         "worker" => worker_key = label.get_value().to_string(),
                         "wallet" => wallet = label.get_value().to_string(),
                         _ => {}
@@ -480,12 +677,13 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
                 }
 
                 if !worker_key.is_empty() {
-                    let key = format!("{}:{}", worker_key, wallet);
+                    let key = format!("{}:{}:{}", instance, worker_key, wallet);
                     let total_hash_value = metric.get_counter().get_value();
-                    // Store hash value for hashrate calculation
-                    worker_hash_values.insert(key.clone(), total_hash_value);
+                    // Store hash value for hashrate calculation (aggregate across label variants)
+                    *worker_hash_values.entry(key.clone()).or_insert(0.0) += total_hash_value;
                     // Ensure worker exists in stats
                     worker_stats.entry(key.clone()).or_insert_with(|| WorkerInfo {
+                        instance,
                         worker: worker_key,
                         wallet,
                         hashrate: 0.0,
@@ -502,11 +700,13 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
         if name == "ks_valid_share_counter" {
             for metric in family.get_metric() {
                 let labels = metric.get_label();
+                let mut instance = String::new();
                 let mut worker_key = String::new();
                 let mut wallet = String::new();
 
                 for label in labels {
                     match label.get_name() {
+                        "instance" => instance = label.get_value().to_string(),
                         "worker" => worker_key = label.get_value().to_string(),
                         "wallet" => wallet = label.get_value().to_string(),
                         _ => {}
@@ -514,11 +714,12 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
                 }
 
                 if !worker_key.is_empty() {
-                    let key = format!("{}:{}", worker_key, wallet);
+                    let key = format!("{}:{}:{}", instance, worker_key, wallet);
                     let count = metric.get_counter().get_value() as u64;
-                    worker_stats
+                    let entry = worker_stats
                         .entry(key.clone())
                         .or_insert_with(|| WorkerInfo {
+                            instance,
                             worker: worker_key,
                             wallet,
                             hashrate: 0.0,
@@ -526,9 +727,9 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
                             stale: 0,
                             invalid: 0,
                             blocks: 0,
-                        })
-                        .shares = count;
-                    stats.totalShares += count;
+                        });
+                    entry.shares = entry.shares.saturating_add(count);
+                    stats.totalShares = stats.totalShares.saturating_add(count);
                 }
             }
         }
@@ -537,12 +738,14 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
         if name == "ks_invalid_share_counter" {
             for metric in family.get_metric() {
                 let labels = metric.get_label();
+                let mut instance = String::new();
                 let mut worker_key = String::new();
                 let mut wallet = String::new();
                 let mut share_type = String::new();
 
                 for label in labels {
                     match label.get_name() {
+                        "instance" => instance = label.get_value().to_string(),
                         "worker" => worker_key = label.get_value().to_string(),
                         "wallet" => wallet = label.get_value().to_string(),
                         "type" => share_type = label.get_value().to_string(),
@@ -551,9 +754,10 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
                 }
 
                 if !worker_key.is_empty() {
-                    let key = format!("{}:{}", worker_key, wallet);
+                    let key = format!("{}:{}:{}", instance, worker_key, wallet);
                     let count = metric.get_counter().get_value() as u64;
                     let worker = worker_stats.entry(key.clone()).or_insert_with(|| WorkerInfo {
+                        instance,
                         worker: worker_key,
                         wallet,
                         hashrate: 0.0,
@@ -564,18 +768,11 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
                     });
 
                     if share_type == "stale" {
-                        worker.stale = count;
+                        worker.stale = worker.stale.saturating_add(count);
                     } else if share_type == "invalid" {
-                        worker.invalid = count;
+                        worker.invalid = worker.invalid.saturating_add(count);
                     }
                 }
-            }
-        }
-
-        // Parse network hashrate
-        if name == "ks_estimated_network_hashrate" {
-            if let Some(metric) = family.get_metric().first() {
-                stats.networkHashrate = metric.get_gauge().get_value() as u64;
             }
         }
 
@@ -583,11 +780,13 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
         if name == "ks_worker_start_time" {
             for metric in family.get_metric() {
                 let labels = metric.get_label();
+                let mut instance = String::new();
                 let mut worker_key = String::new();
                 let mut wallet = String::new();
 
                 for label in labels {
                     match label.get_name() {
+                        "instance" => instance = label.get_value().to_string(),
                         "worker" => worker_key = label.get_value().to_string(),
                         "wallet" => wallet = label.get_value().to_string(),
                         _ => {}
@@ -595,11 +794,20 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
                 }
 
                 if !worker_key.is_empty() {
-                    let key = format!("{}:{}", worker_key, wallet);
+                    let key = format!("{}:{}:{}", instance, worker_key, wallet);
                     let start_time_secs = metric.get_gauge().get_value();
-                    worker_start_times.insert(key.clone(), start_time_secs);
+                    // Use earliest start time across multiple label variants
+                    worker_start_times
+                        .entry(key.clone())
+                        .and_modify(|v| {
+                            if start_time_secs > 0.0 && (*v <= 0.0 || start_time_secs < *v) {
+                                *v = start_time_secs;
+                            }
+                        })
+                        .or_insert(start_time_secs);
                     // Ensure worker exists in stats
                     worker_stats.entry(key.clone()).or_insert_with(|| WorkerInfo {
+                        instance,
                         worker: worker_key,
                         wallet,
                         hashrate: 0.0,
@@ -652,6 +860,14 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
     stats.workers.sort_by(|a, b| b.blocks.cmp(&a.blocks));
 
     stats
+}
+
+async fn get_stats_json(instance_id: &str) -> StatsResponse {
+    get_stats_json_filtered(Some(instance_id)).await
+}
+
+async fn get_stats_json_all() -> StatsResponse {
+    get_stats_json_filtered(None).await
 }
 
 /// Get current config as JSON
@@ -797,10 +1013,72 @@ pub async fn start_prom_server(port: &str, instance_id: &str) -> Result<(), Box<
     // Handle ":PORT" format by prepending "0.0.0.0"
     let addr_str = if port.starts_with(':') { format!("0.0.0.0{}", port) } else { port.to_string() };
 
+    // Best-effort status payload for the dashboard. Keep this local to the web server so we
+    // don't affect any mining/stratum logic.
+    let kaspad_address_for_status = {
+        // Try to read from config.yaml (same behavior as /api/config uses).
+        // If unavailable, default to "-".
+        let config_path = "config.yaml";
+        std::fs::read_to_string(config_path)
+            .ok()
+            .and_then(|content| yaml_rust::YamlLoader::load_from_str(&content).ok())
+            .and_then(|docs| docs.first().cloned())
+            .and_then(|doc| doc["kaspad_address"].as_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "-".to_string())
+    };
+    let instances_for_status = {
+        let config_path = "config.yaml";
+        std::fs::read_to_string(config_path)
+            .ok()
+            .and_then(|content| yaml_rust::YamlLoader::load_from_str(&content).ok())
+            .and_then(|docs| docs.first().cloned())
+            .and_then(|doc| doc["instances"].as_vec().map(|v| v.len()))
+            .unwrap_or(1)
+    };
+
     let addr: SocketAddr = addr_str.parse()?;
     let listener = TcpListener::bind(addr).await?;
 
     tracing::debug!("Hosting prom stats on {}/metrics", addr);
+
+    fn content_type_for_path(path: &str) -> &'static str {
+        let p = path.to_ascii_lowercase();
+        if p.ends_with(".html") {
+            "text/html; charset=utf-8"
+        } else if p.ends_with(".css") {
+            "text/css; charset=utf-8"
+        } else if p.ends_with(".js") {
+            "application/javascript; charset=utf-8"
+        } else if p.ends_with(".svg") {
+            "image/svg+xml"
+        } else {
+            "application/octet-stream"
+        }
+    }
+
+    fn try_read_static_file(url_path: &str) -> Option<(String, Vec<u8>)> {
+        // Files are vendored under bridge/static.
+        // URL layout expected by the dashboard:
+        // - / -> index.html
+        // - /raw.html
+        // - /static/... -> maps to bridge/static/... (strip leading /static/)
+        let rel = match url_path {
+            "/" => "index.html".to_string(),
+            "/index.html" => "index.html".to_string(),
+            "/raw.html" => "raw.html".to_string(),
+            p if p.starts_with("/static/") => p.trim_start_matches("/static/").to_string(),
+            _ => return None,
+        };
+
+        // Prevent path traversal
+        if rel.contains("..") || rel.contains('\\') {
+            return None;
+        }
+
+        let file_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static").join(&rel);
+        let bytes = std::fs::read(&file_path).ok()?;
+        Some((rel, bytes))
+    }
 
     loop {
         let (mut stream, _) = listener.accept().await?;
@@ -808,6 +1086,12 @@ pub async fn start_prom_server(port: &str, instance_id: &str) -> Result<(), Box<
 
         if let Ok(n) = stream.read(&mut buffer).await {
             let request = String::from_utf8_lossy(&buffer[..n]);
+
+            let path = request
+                .lines()
+                .next()
+                .and_then(|line| line.split_whitespace().nth(1))
+                .unwrap_or("/");
 
             if request.starts_with("GET /metrics") {
                 use prometheus::Encoder;
@@ -822,6 +1106,25 @@ pub async fn start_prom_server(port: &str, instance_id: &str) -> Result<(), Box<
                     String::from_utf8_lossy(&buffer)
                 );
 
+                stream.write_all(response.as_bytes()).await?;
+            } else if request.starts_with("GET /api/status") {
+                let kaspad_version = crate::kaspaapi::NODE_STATUS
+                    .lock()
+                    .server_version
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string());
+                let status = WebStatusResponse {
+                    kaspad_address: kaspad_address_for_status.clone(),
+                    kaspad_version,
+                    instances: instances_for_status,
+                    web_bind: addr_str.clone(),
+                };
+                let json = serde_json::to_string(&status).unwrap_or_else(|_| "{}".to_string());
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+                    json.len(),
+                    json
+                );
                 stream.write_all(response.as_bytes()).await?;
             } else if request.starts_with("GET /api/stats") {
                 // Return JSON stats
@@ -858,6 +1161,20 @@ pub async fn start_prom_server(port: &str, instance_id: &str) -> Result<(), Box<
                     json_response
                 );
                 stream.write_all(response.as_bytes()).await?;
+            } else if request.starts_with("GET /") {
+                if let Some((rel, bytes)) = try_read_static_file(path) {
+                    let ct = content_type_for_path(&rel);
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n",
+                        ct,
+                        bytes.len()
+                    );
+                    stream.write_all(response.as_bytes()).await?;
+                    stream.write_all(&bytes).await?;
+                } else {
+                    let response = "HTTP/1.1 404 Not Found\r\n\r\n";
+                    stream.write_all(response.as_bytes()).await?;
+                }
             } else {
                 let response = "HTTP/1.1 404 Not Found\r\n\r\n";
                 stream.write_all(response.as_bytes()).await?;

@@ -281,6 +281,15 @@ async fn main() -> Result<(), anyhow::Error> {
     .await
     .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?;
 
+    if !config.global.web_port.is_empty() {
+        let web_port = config.global.web_port.clone();
+        tokio::spawn(async move {
+            if let Err(e) = prom::start_web_server_all(&web_port).await {
+                tracing::error!("Aggregated web server error: {}", e);
+            }
+        });
+    }
+
     tracing::info!("Waiting for node to fully sync before starting stratum listeners");
     kaspa_api
         .wait_for_sync_with_shutdown(true, shutdown_rx.clone())

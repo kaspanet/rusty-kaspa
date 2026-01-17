@@ -27,6 +27,7 @@ pub(crate) struct GlobalConfig {
     pub(crate) print_stats: bool,
     pub(crate) log_to_file: bool, // Default for instances that don't specify
     pub(crate) health_check_port: String,
+    pub(crate) web_port: String,
     pub(crate) var_diff: bool,
     pub(crate) shares_per_min: u32,
     pub(crate) var_diff_stats: bool,
@@ -50,6 +51,7 @@ impl Default for GlobalConfig {
             print_stats: true,
             log_to_file: true,
             health_check_port: String::new(),
+            web_port: String::new(),
             var_diff: true,
             shares_per_min: 20,
             var_diff_stats: false,
@@ -105,6 +107,16 @@ impl BridgeConfig {
 
         if let Some(port) = doc["health_check_port"].as_str() {
             global.health_check_port = port.to_string();
+        }
+
+        if let Some(port) = doc["web_port"].as_str() {
+            global.web_port = if port.starts_with(':') {
+                port.to_string()
+            } else if port.chars().all(|c| c.is_ascii_digit()) {
+                format!(":{}", port)
+            } else {
+                port.to_string()
+            };
         }
 
         if let Some(vd) = doc["var_diff"].as_bool() {

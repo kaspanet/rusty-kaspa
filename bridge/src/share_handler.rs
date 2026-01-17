@@ -658,23 +658,28 @@ impl ShareHandler {
                 let worker_name = ctx.worker_name.lock().clone();
                 let prefix = self.log_prefix();
 
-                info!("{} {}", prefix, LogColors::block("===== BLOCK FOUND! ===== PoW passed network target"));
                 info!(
+                    "{} {} {}",
+                    prefix,
+                    LogColors::block("===== BLOCK FOUND! ====="),
+                    format!("Worker: {}, Wallet: {}, Nonce: {:x}", worker_name, wallet_addr, nonce_val)
+                );
+                debug!(
                     "{} {} {} {}",
                     prefix,
                     LogColors::block("[BLOCK]"),
                     LogColors::label("ACCEPTANCE REASON:"),
                     format!(
-                        "pow_value ({:x}) <= network_target ({:x}) - Block meets network difficulty requirement",
+                        "pow_value ({:x}) <= network_target ({:x})",
                         pow_value, network_target
                     )
                 );
-                info!(
+                debug!(
                     "{} {} {} {}",
                     prefix,
                     LogColors::block("[BLOCK]"),
-                    LogColors::label("Worker:"),
-                    format!("{}, Wallet: {}, Nonce: {:x}, Pow Value: {:x}", worker_name, wallet_addr, nonce_val, pow_value)
+                    LogColors::label("Pow Value:"),
+                    format!("{:x}", pow_value)
                 );
 
                 // Log block details before creating the block (to avoid borrow issues)
@@ -746,11 +751,15 @@ impl ShareHandler {
                 let block_hash = header::hash(&block.header).to_string();
 
                 // Log prominent "Block Found" message with hash
-                info!("{} {}", prefix, LogColors::block(&format!("BLOCK FOUND! Hash: {}", block_hash)));
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Hash:"), block_hash);
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Wallet:"), wallet_addr);
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Nonce:"), format!("{:x}", nonce_val));
+                info!(
+                    "{} {} {}",
+                    prefix,
+                    LogColors::block("BLOCK FOUND!"),
+                    format!("Hash: {}", block_hash)
+                );
+                debug!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
+                debug!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Wallet:"), wallet_addr);
+                debug!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Nonce:"), format!("{:x}", nonce_val));
 
                 // Log block submission details before submission (moved to debug level)
                 debug!("{} {}", LogColors::block("[BLOCK]"), LogColors::block("=== SUBMITTING BLOCK TO NODE ==="));
