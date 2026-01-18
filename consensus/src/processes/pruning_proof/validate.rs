@@ -325,13 +325,7 @@ impl PruningProofManager {
 
         // Get the proof for the current consensus (the defender) and recreate the stores for it
         // This is expected to be fast because if a proof exists, it will be cached.
-        // If no proof exists, this is empty
-        let mut defender_proof = self.get_pruning_point_proof();
-        if defender_proof.is_empty() {
-            // An empty proof can only happen if we're at genesis. We're going to create a proof for this case that contains the genesis header only
-            let genesis_header = self.headers_store.get_header(self.genesis_hash).unwrap();
-            defender_proof = Arc::new((0..=self.max_block_level).map(|_| vec![genesis_header.clone()]).collect_vec());
-        }
+        let defender_proof = self.get_pruning_point_proof();
         let defender = ProofContext::from_proof(self, &defender_proof, false)
             .expect("local")
             .continue_value()

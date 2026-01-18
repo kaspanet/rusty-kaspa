@@ -164,47 +164,52 @@ impl PruningProofManager {
             }
         }
 
-        if pp == self.genesis_hash {
-            // todo
-            return vec![];
-        }
+        let proof = match pp == self.genesis_hash {
+            true => {
+                // Genesis case - create a proof where all levels hold only genesis
+                let genesis_header = self.headers_store.get_header(self.genesis_hash).unwrap();
+                (0..=self.max_block_level).map(|_| vec![genesis_header.clone()]).collect()
+            }
+            false => {
+                // General case
+                let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+                let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
+                let MultiLevelProofContext { transient_relations_stores, tips_by_level, roots_by_level, .. } =
+                    self.calc_all_level_proof_context(&pp_header, temp_db, descriptor);
 
-        let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
-        let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
-        let MultiLevelProofContext { transient_relations_stores, tips_by_level, roots_by_level, .. } =
-            self.calc_all_level_proof_context(&pp_header, temp_db, descriptor);
+                (0..=self.max_block_level)
+                    .map(|level| {
+                        let level = level as usize;
+                        let tip = tips_by_level[level];
+                        let root = roots_by_level[level];
 
-        let proof = (0..=self.max_block_level)
-            .map(|level| {
-                let level = level as usize;
-                let tip = tips_by_level[level];
-                let root = roots_by_level[level];
+                        let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
+                        let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
+                        let mut visited = BlockHashSet::new();
+                        queue.push(Reverse(SortableBlock::new(root, get_header(root).blue_work)));
 
-                let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
-                let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
-                let mut visited = BlockHashSet::new();
-                queue.push(Reverse(SortableBlock::new(root, get_header(root).blue_work)));
+                        while let Some(current) = queue.pop() {
+                            let current = current.0.hash;
+                            if !visited.insert(current) {
+                                continue;
+                            }
 
-                while let Some(current) = queue.pop() {
-                    let current = current.0.hash;
-                    if !visited.insert(current) {
-                        continue;
-                    }
+                            // We are only interested in the exact diamond future(root) ⋂ past(tip)
+                            if !self.reachability_service.is_dag_ancestor_of(current, tip) {
+                                continue;
+                            }
 
-                    // We are only interested in the exact diamond future(root) ⋂ past(tip)
-                    if !self.reachability_service.is_dag_ancestor_of(current, tip) {
-                        continue;
-                    }
+                            headers.push(get_header(current));
+                            for child in transient_relations_stores[level].get_children(current).unwrap().read().iter().copied() {
+                                queue.push(Reverse(SortableBlock::new(child, get_header(child).blue_work)));
+                            }
+                        }
 
-                    headers.push(get_header(current));
-                    for child in transient_relations_stores[level].get_children(current).unwrap().read().iter().copied() {
-                        queue.push(Reverse(SortableBlock::new(child, get_header(child).blue_work)));
-                    }
-                }
-
-                headers
-            })
-            .collect_vec();
+                        headers
+                    })
+                    .collect()
+            }
+        };
 
         // Update the descriptor based on the new proof
         let new_descriptor = PruningProofDescriptor::from_proof(&proof, pp, false);
