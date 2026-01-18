@@ -25,7 +25,7 @@ use crate::{
             selected_chain::SelectedChainStore,
             statuses::StatusesStoreReader,
             tips::{TipsStore, TipsStoreReader},
-            utxo_set::{UtxoSetStore, UtxoSetStoreReader},
+            utxo_set::UtxoSetStoreReader,
             virtual_state::VirtualState,
             DB,
         },
@@ -1074,7 +1074,10 @@ impl ConsensusApi for Consensus {
 
     fn append_imported_pruning_point_utxos(&self, utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)], current_multiset: &mut MuHash) {
         let mut pruning_meta_write = self.pruning_meta_stores.write();
-        pruning_meta_write.utxo_set.write_many(utxoset_chunk).unwrap();
+        let mut batch = WriteBatch::default();
+        pruning_meta_write.utxo_set.write_many_batch(&mut batch, utxoset_chunk).unwrap();
+        self.db.write(batch).unwrap();
+        drop(pruning_meta_write);
 
         // Parallelize processing using the context of an existing thread pool.
         let inner_multiset = self.virtual_processor.install(|| {
