@@ -460,8 +460,8 @@ from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetric
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.into()),
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.into()),
         storage_metrics: item.storage_metrics.as_ref().map(|x| x.into()),
-        // TODO
-        // custom_metrics : None,
+        // TODO: map custom_metrics once protowire exposes the field.
+        // custom_metrics: None,
         error: None,
     }
 });
@@ -848,7 +848,7 @@ try_from!(item: &protowire::GetHeadersRequestMessage, kaspa_rpc_core::GetHeaders
     Self { start_hash: RpcHash::from_str(&item.start_hash)?, limit: item.limit, is_ascending: item.is_ascending }
 });
 try_from!(item: &protowire::GetHeadersResponseMessage, RpcResult<kaspa_rpc_core::GetHeadersResponse>, {
-    // TODO
+    // TODO: map headers once protowire provides full header payloads.
     Self { headers: vec![] }
 });
 
@@ -988,7 +988,7 @@ try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core:
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         storage_metrics: item.storage_metrics.as_ref().map(|x| x.try_into()).transpose()?,
-        // TODO
+        // TODO: map custom_metrics once protowire exposes the field.
         custom_metrics: None,
     }
 });
@@ -1095,7 +1095,7 @@ try_from!(&protowire::NotifySinkBlueScoreChangedResponseMessage, RpcResult<kaspa
 // Unit tests
 // ----------------------------------------------------------------------------
 
-// TODO: tests
+// TODO: add conversion tests for error mapping and optional fields.
 
 #[cfg(test)]
 mod tests {
