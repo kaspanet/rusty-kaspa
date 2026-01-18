@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use itertools::Itertools;
+use kaspa_consensus_core::pruning::PruningPointProof;
 use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
@@ -29,15 +31,27 @@ impl PruningPointInfo {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PruningProofDescriptor {
     /// The pruning point associated with this proof descriptor
-    pruning_point: Hash,
+    pub(crate) pruning_point: Hash,
     /// Indicates whether this descriptor was received from an external source (IBD) or was built locally
-    external: bool,
+    pub(crate) external: bool,
     /// The per-level tips
-    tips: Vec<Hash>,
+    pub(crate) tips: Vec<Hash>,
     /// The per-level roots
-    roots: Vec<Hash>,
+    pub(crate) roots: Vec<Hash>,
     /// The per-level header counts (used to sanity check loading logic)
-    counts: Vec<u64>,
+    pub(crate) counts: Vec<u64>,
+}
+
+impl PruningProofDescriptor {
+    pub(crate) fn from_proof(proof: &PruningPointProof, pruning_point: Hash, external: bool) -> Self {
+        let (tips, roots, counts) = proof
+            .iter()
+            .map(|level| (level.last().expect("validated").hash, level.first().expect("validated").hash, level.len() as u64))
+            .multiunzip();
+        let desc = Self { pruning_point, external, tips, roots, counts };
+        assert_eq!(desc.tips[0], pruning_point);
+        desc
+    }
 }
 
 /// Reader API for `PruningStore`.
@@ -110,8 +124,8 @@ impl DbPruningStore {
         self.retention_period_root_access.write(BatchDbWriter::new(batch), &retention_period_root)
     }
 
-    pub fn set_pruning_proof_descriptor(&mut self, batch: &mut WriteBatch, descriptor: PruningProofDescriptor) -> StoreResult<()> {
-        self.pruning_proof_descriptor_access.write(BatchDbWriter::new(batch), &Arc::new(descriptor))
+    pub fn set_pruning_proof_descriptor(&mut self, descriptor: PruningProofDescriptor) -> StoreResult<()> {
+        self.pruning_proof_descriptor_access.write(DirectDbWriter::new(&self.db), &Arc::new(descriptor))
     }
 }
 

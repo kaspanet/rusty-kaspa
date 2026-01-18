@@ -20,6 +20,7 @@ use crate::{
         stores::{
             ghostdag::{DbGhostdagStore, GhostdagStore, GhostdagStoreReader},
             headers::{HeaderStoreReader, HeaderWithBlockLevel},
+            pruning::{PruningProofDescriptor, PruningStoreReader},
             relations::{DbRelationsStore, RelationsStoreReader},
         },
     },
@@ -110,21 +111,70 @@ impl PruningProofManager {
     /// Temporary stores are used during construction, and headers are shared (via arcs)
     /// across levels in the final proof.
     pub(crate) fn build_pruning_point_proof(&self, pp: Hash) -> PruningPointProof {
+        // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
+        // to make sure we hold a single Arc per header
+        let mut cache: BlockHashMap<Arc<Header>> = BlockHashMap::with_capacity(4 * self.pruning_proof_m as usize);
+        let mut get_header = |hash| cache.entry(hash).or_insert_with_key(|&hash| self.headers_store.get_header(hash).unwrap()).clone();
+
+        let descriptor = self.pruning_point_store.read().pruning_proof_descriptor().optional().unwrap();
+        if let Some(descriptor) = descriptor.as_ref() {
+            // If the descriptor matches the pruning point and it was not obtained from an external source, use it to rebuild the proof
+            if descriptor.pruning_point == pp && !descriptor.external {
+                return (0..=self.max_block_level)
+                    .map(|level| {
+                        let level_idx = level as usize;
+                        let tip = descriptor.tips[level_idx];
+                        let root = descriptor.roots[level_idx];
+                        let expected_count = descriptor.counts[level_idx];
+
+                        let mut headers = VecDeque::with_capacity(2 * self.pruning_proof_m as usize);
+                        let mut queue = BinaryHeap::<SortableBlock>::new();
+                        let mut visited = BlockHashSet::new();
+                        queue.push(SortableBlock::new(tip, get_header(tip).blue_work));
+
+                        while let Some(SortableBlock { hash: current, .. }) = queue.pop() {
+                            if !visited.insert(current) {
+                                continue;
+                            }
+
+                            // We are only interested in the exact diamond future(root) ⋂ past(tip)
+                            if !self.reachability_service.is_dag_ancestor_of(root, current) {
+                                continue;
+                            }
+
+                            let header = get_header(current);
+                            for parent in self.reachable_parents_at_level(level, &header) {
+                                queue.push(SortableBlock::new(parent, get_header(parent).blue_work));
+                            }
+
+                            headers.push_front(header);
+                        }
+
+                        assert_eq!(
+                            expected_count,
+                            headers.len() as u64,
+                            "rebuilt proof level {} count {} does not match the expected descriptor count {}",
+                            level,
+                            headers.len(),
+                            expected_count
+                        );
+                        headers.into()
+                    })
+                    .collect_vec();
+            }
+        }
+
         if pp == self.genesis_hash {
+            // todo
             return vec![];
         }
 
         let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
         let MultiLevelProofContext { transient_relations_stores, tips_by_level, roots_by_level, .. } =
-            self.calc_all_level_proof_context(&pp_header, temp_db);
+            self.calc_all_level_proof_context(&pp_header, temp_db, descriptor);
 
-        // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
-        // to make sure we hold a single Arc per header
-        let mut cache: BlockHashMap<Arc<Header>> = BlockHashMap::with_capacity(4 * self.pruning_proof_m as usize);
-        let mut get_header = |hash| cache.entry(hash).or_insert_with_key(|&hash| self.headers_store.get_header(hash).unwrap()).clone();
-
-        (0..=self.max_block_level)
+        let proof = (0..=self.max_block_level)
             .map(|level| {
                 let level = level as usize;
                 let tip = tips_by_level[level];
@@ -154,30 +204,48 @@ impl PruningProofManager {
 
                 headers
             })
-            .collect_vec()
+            .collect_vec();
+
+        // Update the descriptor based on the new proof
+        let new_descriptor = PruningProofDescriptor::from_proof(&proof, pp, false);
+        self.pruning_point_store.write().set_pruning_proof_descriptor(new_descriptor).unwrap();
+
+        proof
     }
 
     /// Computes level-proof contexts for all levels, processing levels from high to low to satisfy
     /// MLS inter-level constraints, and aggregates the results into a multi-level proof context.
-    fn calc_all_level_proof_context(&self, pp_header: &HeaderWithBlockLevel, temp_db: Arc<DB>) -> MultiLevelProofContext {
+    fn calc_all_level_proof_context(
+        &self,
+        pp_header: &HeaderWithBlockLevel,
+        temp_db: Arc<DB>,
+        previous_descriptor: Option<Arc<PruningProofDescriptor>>,
+    ) -> MultiLevelProofContext {
         let mut level_proof_stores_vec: Vec<Option<LevelProofContext>> = vec![None; (self.max_block_level + 1).into()];
         for level in (0..=self.max_block_level).rev() {
-            let level_usize = level as usize;
+            let level_idx = level as usize;
             let required_block = if level != self.max_block_level {
                 let (next_level_gd_store, _relation_store_at_next_level, selected_tip_at_next_level, _root_at_next_level) =
-                    level_proof_stores_vec[level_usize + 1].as_ref().unwrap();
+                    level_proof_stores_vec[level_idx + 1].as_ref().unwrap();
 
                 let block_at_depth_m_at_next_level = next_level_gd_store
                     .block_at_depth(*selected_tip_at_next_level, self.pruning_proof_m)
-                    .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
+                    .map_err(|err| format!("next level: {}, err: {}", level + 1, err))
                     .unwrap();
                 Some(block_at_depth_m_at_next_level)
             } else {
                 None
             };
-            level_proof_stores_vec[level_usize] = Some(
-                self.calc_level_proof_context(pp_header, level, required_block, temp_db.clone())
-                    .unwrap_or_else(|_| panic!("find_sufficient_root failed for level {level}")),
+            level_proof_stores_vec[level_idx] = Some(
+                self.calc_level_proof_context(
+                    pp_header,
+                    level,
+                    required_block,
+                    previous_descriptor.as_ref().map(|d| d.tips[level_idx]),
+                    previous_descriptor.as_ref().map(|d| d.roots[level_idx]),
+                    temp_db.clone(),
+                )
+                .unwrap_or_else(|e| panic!("calc_level_proof_context failed for level {level}: {e}")),
             );
         }
 
@@ -213,6 +281,8 @@ impl PruningProofManager {
         pp_header: &HeaderWithBlockLevel,
         level: BlockLevel,
         required_block: Option<Hash>,
+        previous_tip: Option<Hash>,
+        previous_root: Option<Hash>,
         temp_db: Arc<DB>,
     ) -> ProofInternalResult<LevelProofContext> {
         // Select the tip at this level:
@@ -221,7 +291,13 @@ impl PruningProofManager {
         let selected_tip = if pp_header.block_level >= level {
             pp_header.header.hash
         } else {
-            self.approx_selected_parent_header_at_level(&pp_header.header, level)?.hash
+            // todo: explain
+            self.reachable_parents_at_level(level, &pp_header.header)
+                .filter(|&p| previous_tip.is_none_or(|previous_tip| self.reachability_service.is_dag_ancestor_of(previous_tip, p)))
+                .map(|p| self.headers_store.get_header(p).expect("reachable"))
+                .max_by_key(|h| SortableBlock::new(h.hash, h.blue_work))
+                .ok_or_else(|| ProofInternalError::NotEnoughHeadersToBuildProof("no reachable parents".to_string()))?
+                .hash
         };
 
         // Base-level blue score of the selected tip, taken directly from the header.
@@ -346,6 +422,15 @@ impl PruningProofManager {
             // Continue expanding the backward traversal.
             for &p in parents.iter() {
                 queue.push(SortableBlock { hash: p, blue_work: self.headers_store.get_header(p).unwrap().blue_work });
+            }
+        }
+
+        // todo: explain
+        if let Some(previous_root) = previous_root {
+            if let Some(ghostdag_store) =
+                try_root(&level_relations_store, previous_root, *future_sizes_map.get(&previous_root).expect("exhausted traversal"))
+            {
+                return Ok((ghostdag_store, level_relations_store.into(), selected_tip, previous_root));
             }
         }
 
@@ -500,13 +585,5 @@ impl PruningProofManager {
             // Filtering by header existence alone is not enough: we may store headers of past pruning points,
             // but those are not part of the reachable DAG for proof purposes.
             .filter(|&p| self.reachability_service.has_reachability_data(p))
-    }
-
-    /// Approximates the selected parent at `level` as the reachable parent whose header has the highest `blue_work`.
-    fn approx_selected_parent_header_at_level(&self, header: &Header, level: BlockLevel) -> ProofInternalResult<Arc<Header>> {
-        self.reachable_parents_at_level(level, header)
-            .map(|p| self.headers_store.get_header(p).expect("reachable"))
-            .max_by_key(|h| SortableBlock::new(h.hash, h.blue_work))
-            .ok_or_else(|| ProofInternalError::NotEnoughHeadersToBuildProof("no reachable parents".to_string()))
     }
 }

@@ -427,7 +427,7 @@ impl PruningProofManager {
     ///
     /// See [`PruningProofManager::compare_proofs_inner`] for more details.
     ///
-    /// Exposed here for internal revalidation needs.
+    /// Exposed here for local revalidation needs.
     pub(crate) fn compare_proofs(
         &self,
         defender: &PruningPointProof,
@@ -436,8 +436,8 @@ impl PruningProofManager {
         challenger_relay_blue_work: BlueWorkType,
     ) -> ControlFlow<(), Result<(), ProofWeakness>> {
         ControlFlow::Continue(self.compare_proofs_inner(
-            ProofContext::from_proof(self, defender, false).expect("internal")?,
-            ProofContext::from_proof(self, challenger, false).expect("internal")?,
+            ProofContext::from_proof(self, defender, false).expect("local")?,
+            ProofContext::from_proof(self, challenger, false).expect("local")?,
             defender_relay_blue_work,
             challenger_relay_blue_work,
         ))
