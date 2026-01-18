@@ -26,6 +26,20 @@ impl PruningPointInfo {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PruningProofDescriptor {
+    /// The pruning point associated with this proof descriptor
+    pruning_point: Hash,
+    /// Indicates whether this descriptor was received from an external source (IBD) or was built locally
+    external: bool,
+    /// The per-level tips
+    tips: Vec<Hash>,
+    /// The per-level roots
+    roots: Vec<Hash>,
+    /// The per-level header counts (used to sanity check loading logic)
+    counts: Vec<u64>,
+}
+
 /// Reader API for `PruningStore`.
 pub trait PruningStoreReader {
     fn pruning_point(&self) -> StoreResult<Hash>;
@@ -45,6 +59,14 @@ pub trait PruningStoreReader {
     // After pruning, this is updated to point to the retention period root.
     // This checkpoint is used to determine if pruning has successfully completed.
     fn retention_checkpoint(&self) -> StoreResult<Hash>;
+
+    /// Returns a compact descriptor of the pruning proof.
+    ///
+    /// The descriptor contains succinct, per-level metadata sufficient to guide
+    /// reconstruction of the full proof from other consensus stores.
+    ///
+    /// The returned descriptor may lag behind the current pruning point.
+    fn pruning_proof_descriptor(&self) -> StoreResult<Arc<PruningProofDescriptor>>;
 }
 
 pub trait PruningStore: PruningStoreReader {
@@ -58,6 +80,7 @@ pub struct DbPruningStore {
     access: CachedDbItem<PruningPointInfo>,
     retention_checkpoint_access: CachedDbItem<Hash>,
     retention_period_root_access: CachedDbItem<Hash>,
+    pruning_proof_descriptor_access: CachedDbItem<Arc<PruningProofDescriptor>>,
 }
 
 impl DbPruningStore {
@@ -66,7 +89,8 @@ impl DbPruningStore {
             db: Arc::clone(&db),
             access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::PruningPoint.into()),
             retention_checkpoint_access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::RetentionCheckpoint.into()),
-            retention_period_root_access: CachedDbItem::new(db, DatabaseStorePrefixes::RetentionPeriodRoot.into()),
+            retention_period_root_access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::RetentionPeriodRoot.into()),
+            pruning_proof_descriptor_access: CachedDbItem::new(db, DatabaseStorePrefixes::PruningProofDescriptor.into()),
         }
     }
 
@@ -84,6 +108,10 @@ impl DbPruningStore {
 
     pub fn set_retention_period_root(&mut self, batch: &mut WriteBatch, retention_period_root: Hash) -> StoreResult<()> {
         self.retention_period_root_access.write(BatchDbWriter::new(batch), &retention_period_root)
+    }
+
+    pub fn set_pruning_proof_descriptor(&mut self, batch: &mut WriteBatch, descriptor: PruningProofDescriptor) -> StoreResult<()> {
+        self.pruning_proof_descriptor_access.write(BatchDbWriter::new(batch), &Arc::new(descriptor))
     }
 }
 
@@ -106,6 +134,10 @@ impl PruningStoreReader for DbPruningStore {
 
     fn retention_period_root(&self) -> StoreResult<Hash> {
         self.retention_period_root_access.read()
+    }
+
+    fn pruning_proof_descriptor(&self) -> StoreResult<Arc<PruningProofDescriptor>> {
+        self.pruning_proof_descriptor_access.read()
     }
 }
 
