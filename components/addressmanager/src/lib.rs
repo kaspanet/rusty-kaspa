@@ -24,6 +24,10 @@ use thiserror::Error;
 
 pub use stores::NetAddress;
 
+pub trait ExternalIpChangeSink: Send + Sync {
+	fn on_external_ip_changed(&self, new_ip: std::net::IpAddr, old_ip: Option<std::net::IpAddr>);
+}
+
 const MAX_ADDRESSES: usize = 4096;
 const MAX_CONNECTION_FAILED_COUNT: u64 = 3;
 
@@ -56,27 +60,39 @@ pub struct AddressManager {
     address_store: address_store_with_cache::Store,
     config: Arc<Config>,
     local_net_addresses: Vec<NetAddress>,
+    external_ip_change_sinks: Vec<Arc<dyn ExternalIpChangeSink>>,
 }
 
 impl AddressManager {
     pub fn new(config: Arc<Config>, db: Arc<DB>, tick_service: Arc<TickService>) -> (Arc<Mutex<Self>>, Option<Extender>) {
-        let mut instance = Self {
+        let instance = Self {
             banned_address_store: DbBannedAddressesStore::new(db.clone(), CachePolicy::Count(MAX_ADDRESSES)),
             address_store: address_store_with_cache::new(db),
             local_net_addresses: Vec::new(),
+            external_ip_change_sinks: Vec::new(),
             config,
         };
 
-        let extender = instance.init_local_addresses(tick_service);
+        let am = Arc::new(Mutex::new(instance));
+        let extender = Self::init_local_addresses(&am, tick_service);
 
-        (Arc::new(Mutex::new(instance)), extender)
+        (am, extender)
     }
 
-    fn init_local_addresses(&mut self, tick_service: Arc<TickService>) -> Option<Extender> {
-        self.local_net_addresses = self.local_addresses().collect();
+    pub fn register_external_ip_change_sink(&mut self, sink: Arc<dyn ExternalIpChangeSink>) {
+        self.external_ip_change_sinks.push(sink);
+    }
 
-        let extender = if self.local_net_addresses.is_empty() && !self.config.disable_upnp {
-            let (net_address, ExtendHelper { gateway, local_addr, external_port }) = match self.upnp() {
+    pub fn clone_external_ip_change_sinks(&self) -> Vec<Arc<dyn ExternalIpChangeSink>> {
+        self.external_ip_change_sinks.clone()
+    }
+
+    fn init_local_addresses(this: &Arc<Mutex<Self>>, tick_service: Arc<TickService>) -> Option<Extender> {
+        let mut me = this.lock();
+        me.local_net_addresses = me.local_addresses().collect();
+
+        let extender = if me.local_net_addresses.is_empty() && !me.config.disable_upnp {
+            let (net_address, ExtendHelper { gateway, local_addr, external_port }) = match me.upnp() {
                 Err(err) => {
                     warn!("[UPnP] Error adding port mapping: {err}");
                     return None;
@@ -84,7 +100,7 @@ impl AddressManager {
                 Ok(None) => return None,
                 Ok(Some((net_address, extend_helper))) => (net_address, extend_helper),
             };
-            self.local_net_addresses.push(net_address);
+            me.local_net_addresses.push(net_address);
 
             let gateway: igd_next::aio::Gateway<Tokio> = igd_next::aio::Gateway {
                 addr: gateway.addr,
@@ -101,12 +117,14 @@ impl AddressManager {
                 gateway,
                 external_port,
                 local_addr,
+                Arc::clone(this),
+                Some(net_address.ip.into()),
             ))
         } else {
             None
         };
 
-        self.local_net_addresses.iter().for_each(|net_addr| {
+        me.local_net_addresses.iter().for_each(|net_addr| {
             info!("Publicly routable local address {} added to store", net_addr);
         });
         extender
@@ -142,7 +160,19 @@ impl AddressManager {
                 return Left(Right(iter::empty()));
             };
             // TODO: Add Check IPv4 or IPv6 match from Go code
-            Right(network_interfaces.into_iter().map(|(_, ip)| IpAddress::from(ip)).filter(|&ip| ip.is_publicly_routable()).map(
+            Right(network_interfaces
+                .into_iter()
+                .map(|(_, ip)| IpAddress::from(ip))
+                .filter(|ip| {
+                    if self.config.disable_ipv6_interface_discovery {
+                        // Skip IPv6 during automatic discovery if the flag is set
+                        !matches!(**ip, std::net::IpAddr::V6(_))
+                    } else {
+                        true
+                    }
+                })
+                .filter(|&ip| ip.is_publicly_routable())
+                .map(
                 |ip| {
                     info!("Publicly routable local address found: {}", ip);
                     NetAddress::new(ip, self.config.default_p2p_port())
@@ -248,6 +278,14 @@ impl AddressManager {
             // TODO: Add logic for finding the best as a function of a peer remote address.
             // for now, returning the first one
             Some(self.local_net_addresses[0])
+        }
+    }
+
+    pub fn set_best_local_address(&mut self, address: NetAddress) {
+        if self.local_net_addresses.is_empty() {
+            self.local_net_addresses.push(address);
+        } else {
+            self.local_net_addresses[0] = address;
         }
     }
 
