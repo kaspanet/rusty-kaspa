@@ -1,0 +1,24 @@
+[package]
+name = "kaspa-perigeemanager"
+description = "Kaspa perigee manager"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+kaspa-consensus-core.workspace = true
+kaspa-p2p-lib.workspace = true
+kaspa-hashes.workspace = true
+kaspa-core.workspace = true
+
+log.workspace = true
+itertools.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+
+[lints]
+workspace = true

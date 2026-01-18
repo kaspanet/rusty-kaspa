@@ -56,6 +56,13 @@ pub struct Args {
     pub reset_db: bool,
     #[serde(rename = "outpeers")]
     pub outbound_target: usize,
+    #[serde(rename = "perigeepeers")]
+    pub perigee_target: usize,
+    pub perigee_exploration_rate: f64,
+    pub perigee_leverage_rate: f64,
+    pub perigee_round_frequency: usize, // evaluation frequency = 30 * perigee_round_frequency secs, note: if zero perigee will not start.
+    pub perigee_statistics: bool,
+    pub perigee_persistence: bool, // whether to persist perigee data between restarts
     #[serde(rename = "maxinpeers")]
     pub inbound_limit: usize,
     #[serde(rename = "rpcmaxclients")]
@@ -111,6 +118,12 @@ impl Default for Args {
             utxoindex: false,
             reset_db: false,
             outbound_target: 8,
+            perigee_target: 0,
+            perigee_leverage_rate: 0.625,
+            perigee_exploration_rate: 0.125,
+            perigee_round_frequency: 1, // Round duration will be 30 secs
+            perigee_statistics: false,
+            perigee_persistence: false,
             inbound_limit: 128,
             rpc_max_clients: 128,
             max_tracked_addresses: 0,
@@ -308,6 +321,53 @@ pub fn cli() -> Command {
                 .help("Target number of outbound peers (default: 8)."),
         )
         .arg(
+            Arg::new("perigeepeers")
+                .long("perigeepeers")
+                .env("KASPAD_PERIGEEPEERS")
+                .value_name("perigeepeers")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(usize))
+                .help("Target number of Perigee peers (default: 4)."),
+        )
+        .arg(
+            Arg::new("perigee-exploration-rate")
+                .long("perigee-exploration-rate")
+                .env("KASPAD_PERIGEE_EXPLORATION_RATE")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(f64))
+                .help("Proportion of Perigee peers dedicated to exploration i.e. number of perigee peers to drop per round of perigee (default: 0.25)."),
+        )
+        .arg(
+            Arg::new("perigee-leverage-rate")
+                .long("perigee-leverage-rate")
+                .env("KASPAD_PERIGEE_LEVERAGE_RATE")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(f64))
+                .help("Proportion of Perigee peers dedicated to leverage i.e. number of top performing perigee peers to keep per round of perigee (default: 0.5)."),
+        )
+        .arg(
+            Arg::new("perigee-round-frequency")
+                .long("perigee-round-frequency")
+                .env("KASPAD_PERIGEE_ROUND_FREQUENCY")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(usize))
+                .help("evaluation frequency = (30 * perigee_round_frequency) secs. Note: if zero perigee will not start."),
+        )
+        .arg(
+            Arg::new( "perigee-statistics" )
+                .long("perigee-statistics")
+                .env("KASPAD_PERIGEE_STATISTICS")
+                .action(ArgAction::SetTrue)
+                .help("log perigee statistics after each round. Note: this evaluates and compares against other outbound peers, as such, this requires significantly more resources. For optimal comparison `perigeepeers` should equal `outboundpeers / 2`"
+            )
+        )
+        .arg(Arg::new("perigee-persistence")
+            .long("perigee-persistence")
+            .env("KASPAD_PERIGEE_PERSISTENCE")
+            .action(ArgAction::SetTrue)
+            .help("Persist perigee data between restarts"),
+        )
+        .arg(
             Arg::new("maxinpeers")
                 .long("maxinpeers") 
                 .env("KASPAD_MAXINPEERS")
@@ -496,6 +556,12 @@ impl Args {
             add_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "add-peers", defaults.add_peers),
             listen: m.get_one::<ContextualNetAddress>("listen").cloned().or(defaults.listen),
             outbound_target: arg_match_unwrap_or::<usize>(&m, "outpeers", defaults.outbound_target),
+            perigee_target: arg_match_unwrap_or::<usize>(&m, "perigeepeers", defaults.perigee_target),
+            perigee_exploration_rate: arg_match_unwrap_or::<f64>(&m, "perigee-exploration-rate", defaults.perigee_exploration_rate),
+            perigee_leverage_rate: arg_match_unwrap_or::<f64>(&m, "perigee-leverage-rate", defaults.perigee_leverage_rate),
+            perigee_round_frequency: arg_match_unwrap_or::<usize>(&m, "perigee-round-frequency", defaults.perigee_round_frequency),
+            perigee_statistics: arg_match_unwrap_or::<bool>(&m, "perigee-statistics", defaults.perigee_statistics),
+            perigee_persistence: arg_match_unwrap_or::<bool>(&m, "perigee-persistence", defaults.perigee_persistence),
             inbound_limit: arg_match_unwrap_or::<usize>(&m, "maxinpeers", defaults.inbound_limit),
             rpc_max_clients: arg_match_unwrap_or::<usize>(&m, "rpcmaxclients", defaults.rpc_max_clients),
             max_tracked_addresses: arg_match_unwrap_or::<usize>(&m, "max-tracked-addresses", defaults.max_tracked_addresses),
