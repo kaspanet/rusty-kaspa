@@ -22,6 +22,12 @@ function formatHashrateHs(hs) {
   return `${v.toFixed(2)} ${units[i]}`;
 }
 
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = value == null || value === '' ? '-' : String(value);
+}
+
 function formatDifficulty(d) {
   const n = Number(d);
   if (!Number.isFinite(n) || n <= 0) return '-';
@@ -515,6 +521,17 @@ async function refresh() {
     document.getElementById('networkDifficulty').textContent = formatDifficulty(mergedStats.networkDifficulty);
     document.getElementById('networkBlockCount').textContent = mergedStats.networkBlockCount ?? '-';
 
+    const icpu = mergedStats.internalCpu;
+    if (icpu && typeof icpu === 'object') {
+      setText('internalCpuHashrate', formatHashrateHs((Number(icpu.hashrateGhs) || 0) * 1e9));
+      const accepted = Number(icpu.blocksAccepted) || 0;
+      const submitted = Number(icpu.blocksSubmitted) || 0;
+      setText('internalCpuBlocks', `${accepted} (${submitted} submitted)`);
+    } else {
+      setText('internalCpuHashrate', '-');
+      setText('internalCpuBlocks', '-');
+    }
+
     const filter = getWalletFilter();
 
     renderWalletSummary(mergedStats, filter);
@@ -555,6 +572,25 @@ async function refresh() {
     lastFilteredWorkers = workers;
     const workersBody = document.getElementById('workersBody');
     workersBody.innerHTML = '';
+
+    // Render internal CPU miner row as a pseudo-worker (not affected by wallet filter).
+    if (!filter && icpu && typeof icpu === 'object') {
+      const tr = document.createElement('tr');
+      tr.className = 'border-b border-card/50';
+      const hashrateHs = (Number(icpu.hashrateGhs) || 0) * 1e9;
+      tr.innerHTML = `
+        <td class="py-1.5 pr-3">-</td>
+        <td class="py-1.5 pr-3">InternalCPU</td>
+        <td class="py-1.5 pr-3">-</td>
+        <td class="py-1.5 pr-3">${formatHashrateHs(hashrateHs)}</td>
+        <td class="py-1.5 pr-3">-</td>
+        <td class="py-1.5 pr-3">-</td>
+        <td class="py-1.5 pr-3">-</td>
+        <td class="py-1.5 pr-3">${Number(icpu.blocksAccepted) || 0}</td>
+      `;
+      workersBody.appendChild(tr);
+    }
+
     for (const w of workers) {
       const tr = document.createElement('tr');
       tr.className = 'border-b border-card/50';
@@ -597,6 +633,17 @@ async function refresh() {
       document.getElementById('networkDifficulty').textContent = formatDifficulty(cached.stats.networkDifficulty);
       document.getElementById('networkBlockCount').textContent = cached.stats.networkBlockCount ?? '-';
 
+      const icpu = cached.stats.internalCpu;
+      if (icpu && typeof icpu === 'object') {
+        setText('internalCpuHashrate', formatHashrateHs((Number(icpu.hashrateGhs) || 0) * 1e9));
+        const accepted = Number(icpu.blocksAccepted) || 0;
+        const submitted = Number(icpu.blocksSubmitted) || 0;
+        setText('internalCpuBlocks', `${accepted} (${submitted} submitted)`);
+      } else {
+        setText('internalCpuHashrate', '-');
+        setText('internalCpuBlocks', '-');
+      }
+
       const filter = getWalletFilter();
 
       renderWalletSummary(cached.stats, filter);
@@ -637,6 +684,25 @@ async function refresh() {
       lastFilteredWorkers = workers;
       const workersBody = document.getElementById('workersBody');
       workersBody.innerHTML = '';
+
+      // Render internal CPU miner row as a pseudo-worker (not affected by wallet filter).
+      if (!filter && icpu && typeof icpu === 'object') {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-card/50';
+        const hashrateHs = (Number(icpu.hashrateGhs) || 0) * 1e9;
+        tr.innerHTML = `
+          <td class="py-1.5 pr-3">-</td>
+          <td class="py-1.5 pr-3">InternalCPU</td>
+          <td class="py-1.5 pr-3">-</td>
+          <td class="py-1.5 pr-3">${formatHashrateHs(hashrateHs)}</td>
+          <td class="py-1.5 pr-3">-</td>
+          <td class="py-1.5 pr-3">-</td>
+          <td class="py-1.5 pr-3">-</td>
+          <td class="py-1.5 pr-3">${Number(icpu.blocksAccepted) || 0}</td>
+        `;
+        workersBody.appendChild(tr);
+      }
+
       for (const w of workers) {
         const tr = document.createElement('tr');
         tr.className = 'border-b border-card/50';

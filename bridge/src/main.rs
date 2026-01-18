@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
+#[cfg(feature = "internal-cpu-miner")]
+use std::time::Duration;
 use tokio::sync::watch;
 use tracing_subscriber::EnvFilter;
 
@@ -296,6 +298,85 @@ async fn main() -> Result<(), anyhow::Error> {
         .await
         .map_err(|e| anyhow::anyhow!("Failed while waiting for node sync: {}", e))?;
     tracing::info!("Node is synced, starting stratum listeners");
+
+    // Optional: internal CPU miner (feature-gated)
+    #[cfg(feature = "internal-cpu-miner")]
+    {
+        if cli.internal_cpu_miner {
+            let mining_address = cli
+                .internal_cpu_miner_address
+                .clone()
+                .ok_or_else(|| anyhow::anyhow!("--internal-cpu-miner requires --internal-cpu-miner-address <kaspa:...>"))?;
+
+            let threads = cli.internal_cpu_miner_threads.unwrap_or(1);
+            let throttle = cli.internal_cpu_miner_throttle_ms.map(Duration::from_millis);
+            let template_poll_interval = Duration::from_millis(cli.internal_cpu_miner_template_poll_ms.unwrap_or(250));
+
+            let cfg = kaspa_stratum_bridge::InternalCpuMinerConfig {
+                enabled: true,
+                mining_address,
+                threads,
+                throttle,
+                template_poll_interval,
+            };
+
+            tracing::info!(
+                "[InternalMiner] enabled: threads={}, throttle_ms={:?}, template_poll_ms={}",
+                cfg.threads,
+                cli.internal_cpu_miner_throttle_ms,
+                cfg.template_poll_interval.as_millis()
+            );
+
+            let metrics = kaspa_stratum_bridge::spawn_internal_cpu_miner(Arc::clone(&kaspa_api), cfg, shutdown_rx.clone())?;
+            kaspa_stratum_bridge::set_rkstratum_cpu_miner_metrics(metrics);
+
+            // Periodically export internal miner stats to Prometheus (if a /metrics server is running).
+            // This is best-effort and does not affect mining.
+            {
+                let mut prom_shutdown_rx = shutdown_rx.clone();
+                let internal_metrics = kaspa_stratum_bridge::RKSTRATUM_CPU_MINER_METRICS.lock().as_ref().cloned();
+
+                tokio::spawn(async move {
+                    let Some(internal_metrics) = internal_metrics else { return };
+
+                    let mut last_hashes: u64 = 0;
+                    let mut last_ts = tokio::time::Instant::now();
+                    let mut interval = tokio::time::interval(Duration::from_secs(5));
+                    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+                    loop {
+                        tokio::select! {
+                            _ = prom_shutdown_rx.changed() => {
+                                if *prom_shutdown_rx.borrow() { break; }
+                            }
+                            _ = interval.tick() => {}
+                        }
+
+                        let now = tokio::time::Instant::now();
+                        let dt = (now - last_ts).as_secs_f64().max(0.001);
+                        last_ts = now;
+
+                        let hashes_tried = internal_metrics.hashes_tried.load(std::sync::atomic::Ordering::Relaxed);
+                        let blocks_submitted = internal_metrics.blocks_submitted.load(std::sync::atomic::Ordering::Relaxed);
+                        let blocks_accepted = internal_metrics.blocks_accepted.load(std::sync::atomic::Ordering::Relaxed);
+
+                        let dh = hashes_tried.saturating_sub(last_hashes);
+                        last_hashes = hashes_tried;
+
+                        // Hashrate as GH/s
+                        let hashrate_ghs = (dh as f64 / dt) / 1e9;
+
+                        kaspa_stratum_bridge::prom::record_internal_cpu_miner_snapshot(
+                            hashes_tried,
+                            blocks_submitted,
+                            blocks_accepted,
+                            hashrate_ghs,
+                        );
+                    }
+                });
+            }
+        }
+    }
 
     let mut instance_handles = Vec::new();
     for (idx, instance_config) in config.instances.iter().enumerate() {

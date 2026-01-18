@@ -171,6 +171,34 @@ pub struct Cli {
 
     #[arg(long, value_parser = BoolishValueParser::new())]
     pub instance_pow2_clamp: Option<bool>,
+
+    // ---------------------------
+    // Internal CPU miner (feature-gated)
+    // ---------------------------
+    /// Enable the built-in CPU miner (solo mining). Requires `--internal-cpu-miner-address`.
+    #[cfg(feature = "internal-cpu-miner")]
+    #[arg(long, default_value_t = false)]
+    pub internal_cpu_miner: bool,
+
+    /// Mining address (reward address) used by the internal CPU miner.
+    #[cfg(feature = "internal-cpu-miner")]
+    #[arg(long)]
+    pub internal_cpu_miner_address: Option<String>,
+
+    /// Number of CPU mining threads.
+    #[cfg(feature = "internal-cpu-miner")]
+    #[arg(long)]
+    pub internal_cpu_miner_threads: Option<usize>,
+
+    /// Optional per-hash sleep (throttle) in milliseconds.
+    #[cfg(feature = "internal-cpu-miner")]
+    #[arg(long)]
+    pub internal_cpu_miner_throttle_ms: Option<u64>,
+
+    /// Block template poll interval in milliseconds (how often to refresh work).
+    #[cfg(feature = "internal-cpu-miner")]
+    #[arg(long)]
+    pub internal_cpu_miner_template_poll_ms: Option<u64>,
 }
 
 impl Cli {

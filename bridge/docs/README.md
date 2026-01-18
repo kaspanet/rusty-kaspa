@@ -45,6 +45,16 @@ This will show all available bridge options and guidance for kaspad arguments.
 cargo build -p kaspa-stratum-bridge --release --features internal-cpu-miner
 ```
 
+### Run (internal CPU miner)
+
+Build/run with the feature enabled, and pass an address to mine to:
+
+```bash
+cargo run -p kaspa-stratum-bridge --release --features internal-cpu-miner --bin stratum-bridge -- \
+  --config bridge/config.yaml --node-mode external \
+  --internal-cpu-miner --internal-cpu-miner-address kaspa:YOUR_WALLET_ADDRESS --internal-cpu-miner-threads 1
+```
+
 ### Run (external node)
 
 Terminal A (node):

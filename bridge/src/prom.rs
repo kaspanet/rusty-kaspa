@@ -1,4 +1,6 @@
 use prometheus::proto::MetricFamily;
+#[cfg(feature = "internal-cpu-miner")]
+use prometheus::{register_counter, Counter};
 use prometheus::{register_counter_vec, register_gauge, register_gauge_vec, CounterVec, Gauge, GaugeVec};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -61,6 +63,18 @@ static NETWORK_BLOCK_COUNT: OnceLock<Gauge> = OnceLock::new();
 
 /// Worker start time gauge (Unix timestamp in seconds)
 static WORKER_START_TIME: OnceLock<GaugeVec> = OnceLock::new();
+
+// ---------------------------
+// Internal CPU miner metrics (feature-gated)
+// ---------------------------
+#[cfg(feature = "internal-cpu-miner")]
+static INTERNAL_CPU_HASHES_TRIED_TOTAL: OnceLock<Counter> = OnceLock::new();
+#[cfg(feature = "internal-cpu-miner")]
+static INTERNAL_CPU_BLOCKS_SUBMITTED_TOTAL: OnceLock<Counter> = OnceLock::new();
+#[cfg(feature = "internal-cpu-miner")]
+static INTERNAL_CPU_BLOCKS_ACCEPTED_TOTAL: OnceLock<Counter> = OnceLock::new();
+#[cfg(feature = "internal-cpu-miner")]
+static INTERNAL_CPU_HASHRATE_GHS: OnceLock<Gauge> = OnceLock::new();
 
 /// Initialize Prometheus metrics
 pub fn init_metrics() {
@@ -134,6 +148,62 @@ pub fn init_metrics() {
     WORKER_START_TIME.get_or_init(|| {
         register_gauge_vec!("ks_worker_start_time", "Unix timestamp (seconds) when worker first connected", WORKER_LABELS).unwrap()
     });
+
+    // Internal CPU miner metrics (no labels; there is only one internal miner per process)
+    #[cfg(feature = "internal-cpu-miner")]
+    {
+        INTERNAL_CPU_HASHES_TRIED_TOTAL.get_or_init(|| {
+            register_counter!("ks_internal_cpu_hashes_tried_total", "Total hashes tried by the internal CPU miner since process start")
+                .unwrap()
+        });
+        INTERNAL_CPU_BLOCKS_SUBMITTED_TOTAL.get_or_init(|| {
+            register_counter!(
+                "ks_internal_cpu_blocks_submitted_total",
+                "Total blocks submitted by the internal CPU miner since process start"
+            )
+            .unwrap()
+        });
+        INTERNAL_CPU_BLOCKS_ACCEPTED_TOTAL.get_or_init(|| {
+            register_counter!(
+                "ks_internal_cpu_blocks_accepted_total",
+                "Total blocks accepted by the connected Kaspa node from the internal CPU miner since process start"
+            )
+            .unwrap()
+        });
+        INTERNAL_CPU_HASHRATE_GHS
+            .get_or_init(|| register_gauge!("ks_internal_cpu_hashrate_ghs", "Internal CPU miner hashrate (GH/s)").unwrap());
+    }
+}
+
+/// Update internal CPU miner metrics from a snapshot.
+/// Values should be monotonically increasing counts; this function converts them to Prometheus counters.
+#[cfg(feature = "internal-cpu-miner")]
+pub fn record_internal_cpu_miner_snapshot(hashes_tried: u64, blocks_submitted: u64, blocks_accepted: u64, hashrate_ghs: f64) {
+    // Ensure metrics are registered even if the prom server hasn't started yet.
+    init_metrics();
+
+    if let Some(c) = INTERNAL_CPU_HASHES_TRIED_TOTAL.get() {
+        let current = c.get() as u64;
+        if hashes_tried > current {
+            c.inc_by((hashes_tried - current) as f64);
+        }
+    }
+    if let Some(c) = INTERNAL_CPU_BLOCKS_SUBMITTED_TOTAL.get() {
+        let current = c.get() as u64;
+        if blocks_submitted > current {
+            c.inc_by((blocks_submitted - current) as f64);
+        }
+    }
+    if let Some(c) = INTERNAL_CPU_BLOCKS_ACCEPTED_TOTAL.get() {
+        let current = c.get() as u64;
+        if blocks_accepted > current {
+            c.inc_by((blocks_accepted - current) as f64);
+        }
+    }
+    if let Some(g) = INTERNAL_CPU_HASHRATE_GHS.get() {
+        let v = if hashrate_ghs.is_finite() && hashrate_ghs >= 0.0 { hashrate_ghs } else { 0.0 };
+        g.set(v);
+    }
 }
 
 pub async fn start_web_server_all(port: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -476,6 +546,15 @@ pub fn init_worker_counters(worker: &WorkerContext) {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(non_snake_case)]
+struct InternalCpuStats {
+    hashrateGhs: f64,
+    hashesTried: u64,
+    blocksSubmitted: u64,
+    blocksAccepted: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[allow(non_snake_case)]
 struct StatsResponse {
     totalBlocks: u64,
     totalShares: u64,
@@ -483,6 +562,7 @@ struct StatsResponse {
     networkDifficulty: f64,
     networkBlockCount: u64,
     activeWorkers: usize,
+    internalCpu: Option<InternalCpuStats>,
     blocks: Vec<BlockInfo>,
     workers: Vec<WorkerInfo>,
 }
@@ -529,6 +609,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         networkDifficulty: 0.0,
         networkBlockCount: 0,
         activeWorkers: 0,
+        internalCpu: None,
         blocks: Vec::new(),
         workers: Vec::new(),
     };
@@ -539,6 +620,12 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     let mut block_set: HashSet<String> = HashSet::new();
 
     // Parse global network gauges from the unfiltered set.
+    // Also pick up internal CPU miner metrics (if present).
+    let mut internal_cpu_hashrate_ghs: Option<f64> = None;
+    let mut internal_cpu_hashes_tried: Option<u64> = None;
+    let mut internal_cpu_blocks_submitted: Option<u64> = None;
+    let mut internal_cpu_blocks_accepted: Option<u64> = None;
+
     for family in all_families.iter() {
         let name = family.get_name();
 
@@ -561,6 +648,42 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                 stats.networkBlockCount = metric.get_gauge().get_value() as u64;
             }
         }
+
+        // Internal CPU miner metrics (exported when the bridge is built with `internal-cpu-miner`
+        // and the internal miner is enabled at runtime).
+        if name == "ks_internal_cpu_hashrate_ghs" {
+            if let Some(metric) = family.get_metric().first() {
+                internal_cpu_hashrate_ghs = Some(metric.get_gauge().get_value());
+            }
+        }
+        if name == "ks_internal_cpu_hashes_tried_total" {
+            if let Some(metric) = family.get_metric().first() {
+                internal_cpu_hashes_tried = Some(metric.get_counter().get_value().max(0.0) as u64);
+            }
+        }
+        if name == "ks_internal_cpu_blocks_submitted_total" {
+            if let Some(metric) = family.get_metric().first() {
+                internal_cpu_blocks_submitted = Some(metric.get_counter().get_value().max(0.0) as u64);
+            }
+        }
+        if name == "ks_internal_cpu_blocks_accepted_total" {
+            if let Some(metric) = family.get_metric().first() {
+                internal_cpu_blocks_accepted = Some(metric.get_counter().get_value().max(0.0) as u64);
+            }
+        }
+    }
+
+    if internal_cpu_hashrate_ghs.is_some()
+        || internal_cpu_hashes_tried.is_some()
+        || internal_cpu_blocks_submitted.is_some()
+        || internal_cpu_blocks_accepted.is_some()
+    {
+        stats.internalCpu = Some(InternalCpuStats {
+            hashrateGhs: internal_cpu_hashrate_ghs.unwrap_or(0.0),
+            hashesTried: internal_cpu_hashes_tried.unwrap_or(0),
+            blocksSubmitted: internal_cpu_blocks_submitted.unwrap_or(0),
+            blocksAccepted: internal_cpu_blocks_accepted.unwrap_or(0),
+        });
     }
 
     for family in families_for_workers_and_blocks {
