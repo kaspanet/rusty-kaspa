@@ -1,4 +1,6 @@
 #!/bin/bash
 set -e
 
+export RUSTFLAGS=-Ctarget-cpu=mvp
+
 wasm-pack build --weak-refs --target nodejs --out-name kaspa --out-dir nodejs/kaspa --features wasm32-sdk

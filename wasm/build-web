@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+export RUSTFLAGS=-Ctarget-cpu=mvp
+
 if [ "$1" == "--keygen" ]; then
     echo "building wasm32-keygen"
     wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-keygen --features wasm32-keygen

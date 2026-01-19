@@ -4,6 +4,8 @@
 # make the script fail for any failed command
 set -e
 
+export RUSTFLAGS=-Ctarget-cpu=mvp
+
 rm -rf release/*
 rm -rf web/*
 rm -rf nodejs/*
