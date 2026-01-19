@@ -192,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn assert_default_is_zero() {
+    fn test_default_is_zero() {
         let default_192: crate::Uint192 = Default::default();
         assert_eq!(default_192, crate::Uint192::ZERO);
         let default_256: Uint256 = Default::default();
