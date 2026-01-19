@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 use std::time::Duration;
 use tokio::sync::watch;
 use tracing_subscriber::EnvFilter;
@@ -303,7 +303,8 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing::info!("Node is synced, starting stratum listeners");
 
     // Optional: internal CPU miner (feature-gated)
-    #[cfg(feature = "internal-cpu-miner")]
+    #[cfg(feature = "rkstratum_cpu_miner")]
+    #[cfg(feature = "rkstratum_cpu_miner")]
     {
         if cli.internal_cpu_miner {
             let mining_address = cli

@@ -46,13 +46,13 @@ The internal CPU miner is a **compile-time feature**.
 Build:
 
 ```bash
-cargo build -p kaspa-stratum-bridge --release --features internal-cpu-miner
+cargo build -p kaspa-stratum-bridge --release --features rkstratum_cpu_miner
 ```
 
 Run (external node mode + internal CPU miner enabled):
 
 ```bash
-cargo run -p kaspa-stratum-bridge --release --features internal-cpu-miner --bin stratum-bridge -- --config bridge/config.yaml --node-mode external --internal-cpu-miner --internal-cpu-miner-address kaspa:YOUR_WALLET_ADDRESS --internal-cpu-miner-threads 1
+cargo run -p kaspa-stratum-bridge --release --features rkstratum_cpu_miner --bin stratum-bridge -- --config bridge/config.yaml --node-mode external --internal-cpu-miner --internal-cpu-miner-address kaspa:YOUR_WALLET_ADDRESS --internal-cpu-miner-threads 1
 ```
 
 ### Running two bridges at once (two dashboards)
@@ -70,7 +70,7 @@ Recommended setup:
 Example (external bridge on `:3031` + Stratum `:16120`):
 
 ```bash
-cargo run -p kaspa-stratum-bridge --release --features internal-cpu-miner --bin stratum-bridge -- --config config.yaml --web-port :3031 --node-mode external --kaspad-address 127.0.0.1:16210 --instance "port=:16120,diff=1" --internal-cpu-miner --internal-cpu-miner-address "kaspatest:address" --internal-cpu-miner-threads 1
+cargo run -p kaspa-stratum-bridge --release --features rkstratum_cpu_miner --bin stratum-bridge -- --config config.yaml --web-port :3031 --node-mode external --kaspad-address 127.0.0.1:16210 --instance "port=:16120,diff=1" --internal-cpu-miner --internal-cpu-miner-address "kaspatest:address" --internal-cpu-miner-threads 1
 ```
 
 Open:
