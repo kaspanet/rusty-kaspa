@@ -6,6 +6,7 @@ pub mod jsonrpc_event;
 pub mod kaspaapi;
 pub mod log_colors;
 pub mod mining_state;
+pub mod net_utils;
 pub mod pow_diagnostic;
 pub mod prom;
 #[cfg(feature = "internal-cpu-miner")]

@@ -28,6 +28,15 @@ function setText(id, value) {
   el.textContent = value == null || value === '' ? '-' : String(value);
 }
 
+function setInternalCpuCardsVisible(visible) {
+  const hashrateEl = document.getElementById('internalCpuHashrate');
+  const blocksEl = document.getElementById('internalCpuBlocks');
+  const cards = [hashrateEl?.parentElement, blocksEl?.parentElement].filter(Boolean);
+  for (const card of cards) {
+    card.classList.toggle('hidden', !visible);
+  }
+}
+
 function formatDifficulty(d) {
   const n = Number(d);
   if (!Number.isFinite(n) || n <= 0) return '-';
@@ -200,7 +209,7 @@ function mergeBlockHistory(incomingBlocks, existingBlocks) {
   }
   const merged = Array.from(byHash.values());
   merged.sort((a, b) => (Number(b.bluescore) || 0) - (Number(a.bluescore) || 0));
-  return merged.slice(0, 500);
+  return merged;
 }
 
 function cacheUpdate(status, stats) {
@@ -218,11 +227,14 @@ function cacheUpdate(status, stats) {
     ? Math.max(...totalBlocksCandidates)
     : (incomingTotalBlocks ?? existing?.totalBlocks ?? mergedCount);
 
-  const statsToStore = { ...(stats || {}), totalBlocks, blocks: mergedBlocks };
+  // Render with full block history, but keep localStorage bounded to avoid quota issues.
+  const CACHE_BLOCKS_MAX = 500;
+  const statsToRender = { ...(stats || {}), totalBlocks, blocks: mergedBlocks };
+  const statsToStore = { ...(stats || {}), totalBlocks, blocks: mergedBlocks.slice(0, CACHE_BLOCKS_MAX) };
   cacheWriteJson(CACHE_KEYS.status, status);
   cacheWriteJson(CACHE_KEYS.stats, statsToStore);
   try { localStorage.setItem(CACHE_KEYS.updatedMs, String(Date.now())); } catch {}
-  return statsToStore;
+  return statsToRender;
 }
 
 function cacheClear() {
@@ -523,11 +535,13 @@ async function refresh() {
 
     const icpu = mergedStats.internalCpu;
     if (icpu && typeof icpu === 'object') {
+      setInternalCpuCardsVisible(true);
       setText('internalCpuHashrate', formatHashrateHs((Number(icpu.hashrateGhs) || 0) * 1e9));
       const accepted = Number(icpu.blocksAccepted) || 0;
       const submitted = Number(icpu.blocksSubmitted) || 0;
       setText('internalCpuBlocks', `${accepted} (${submitted} submitted)`);
     } else {
+      setInternalCpuCardsVisible(false);
       setText('internalCpuHashrate', '-');
       setText('internalCpuBlocks', '-');
     }
@@ -540,7 +554,7 @@ async function refresh() {
     lastFilteredBlocks = blocks;
     const blocksBody = document.getElementById('blocksBody');
     blocksBody.innerHTML = '';
-    for (const b of blocks.slice(0, 50)) {
+    for (const b of blocks) {
       const nonceInfo = formatNonceInfo(b.nonce);
       const hashFull = b.hash || '';
       const hashShort = shortHash(hashFull);
@@ -578,14 +592,23 @@ async function refresh() {
       const tr = document.createElement('tr');
       tr.className = 'border-b border-card/50';
       const hashrateHs = (Number(icpu.hashrateGhs) || 0) * 1e9;
+      const wallet = String(icpu.wallet ?? '').trim();
+      const shares = Number(icpu.shares ?? icpu.blocksAccepted) || 0;
+      const stale = Number(icpu.stale ?? ((Number(icpu.blocksSubmitted) || 0) - (Number(icpu.blocksAccepted) || 0))) || 0;
+      const invalid = Number(icpu.invalid ?? 0) || 0;
       tr.innerHTML = `
         <td class="py-1.5 pr-3">-</td>
         <td class="py-1.5 pr-3">InternalCPU</td>
-        <td class="py-1.5 pr-3">-</td>
+        <td class="py-1.5 pr-3">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="min-w-0 truncate" title="${escapeHtmlAttr(wallet)}">${wallet || '-'}</span>
+            ${wallet ? `<button type="button" class="bg-surface-1 border border-card px-2 py-0.5 rounded text-xs hover:border-kaspa-primary shrink-0" data-copy-text="${escapeHtmlAttr(wallet)}">Copy</button>` : ''}
+          </div>
+        </td>
         <td class="py-1.5 pr-3">${formatHashrateHs(hashrateHs)}</td>
-        <td class="py-1.5 pr-3">-</td>
-        <td class="py-1.5 pr-3">-</td>
-        <td class="py-1.5 pr-3">-</td>
+        <td class="py-1.5 pr-3">${shares}</td>
+        <td class="py-1.5 pr-3">${stale}</td>
+        <td class="py-1.5 pr-3">${invalid}</td>
         <td class="py-1.5 pr-3">${Number(icpu.blocksAccepted) || 0}</td>
       `;
       workersBody.appendChild(tr);
@@ -635,11 +658,13 @@ async function refresh() {
 
       const icpu = cached.stats.internalCpu;
       if (icpu && typeof icpu === 'object') {
+        setInternalCpuCardsVisible(true);
         setText('internalCpuHashrate', formatHashrateHs((Number(icpu.hashrateGhs) || 0) * 1e9));
         const accepted = Number(icpu.blocksAccepted) || 0;
         const submitted = Number(icpu.blocksSubmitted) || 0;
         setText('internalCpuBlocks', `${accepted} (${submitted} submitted)`);
       } else {
+        setInternalCpuCardsVisible(false);
         setText('internalCpuHashrate', '-');
         setText('internalCpuBlocks', '-');
       }
@@ -652,7 +677,7 @@ async function refresh() {
       lastFilteredBlocks = blocks;
       const blocksBody = document.getElementById('blocksBody');
       blocksBody.innerHTML = '';
-      for (const b of blocks.slice(0, 50)) {
+      for (const b of blocks) {
         const nonceInfo = formatNonceInfo(b.nonce);
         const hashFull = b.hash || '';
         const hashShort = shortHash(hashFull);
@@ -690,14 +715,23 @@ async function refresh() {
         const tr = document.createElement('tr');
         tr.className = 'border-b border-card/50';
         const hashrateHs = (Number(icpu.hashrateGhs) || 0) * 1e9;
+        const wallet = String(icpu.wallet ?? '').trim();
+        const shares = Number(icpu.shares ?? icpu.blocksAccepted) || 0;
+        const stale = Number(icpu.stale ?? ((Number(icpu.blocksSubmitted) || 0) - (Number(icpu.blocksAccepted) || 0))) || 0;
+        const invalid = Number(icpu.invalid ?? 0) || 0;
         tr.innerHTML = `
           <td class="py-1.5 pr-3">-</td>
           <td class="py-1.5 pr-3">InternalCPU</td>
-          <td class="py-1.5 pr-3">-</td>
+          <td class="py-1.5 pr-3">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="min-w-0 truncate" title="${escapeHtmlAttr(wallet)}">${wallet || '-'}</span>
+              ${wallet ? `<button type="button" class="bg-surface-1 border border-card px-2 py-0.5 rounded text-xs hover:border-kaspa-primary shrink-0" data-copy-text="${escapeHtmlAttr(wallet)}">Copy</button>` : ''}
+            </div>
+          </td>
           <td class="py-1.5 pr-3">${formatHashrateHs(hashrateHs)}</td>
-          <td class="py-1.5 pr-3">-</td>
-          <td class="py-1.5 pr-3">-</td>
-          <td class="py-1.5 pr-3">-</td>
+          <td class="py-1.5 pr-3">${shares}</td>
+          <td class="py-1.5 pr-3">${stale}</td>
+          <td class="py-1.5 pr-3">${invalid}</td>
           <td class="py-1.5 pr-3">${Number(icpu.blocksAccepted) || 0}</td>
         `;
         workersBody.appendChild(tr);
@@ -867,7 +901,7 @@ setInterval(() => {
   lastFilteredBlocks = blocks;
   const blocksBody = document.getElementById('blocksBody');
   blocksBody.innerHTML = '';
-  for (const b of blocks.slice(0, 50)) {
+  for (const b of blocks) {
     const nonceInfo = formatNonceInfo(b.nonce);
     const hashFull = b.hash || '';
     const hashShort = shortHash(hashFull);

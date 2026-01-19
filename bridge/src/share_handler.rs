@@ -316,8 +316,10 @@ impl ShareHandler {
         debug!("{} [SUBMIT] Retrieved MiningState - counter: {}, stored IDs: {:?}", prefix, current_counter, stored_ids);
 
         // Validate submit
-        // According to stratum protocol: params[0] = address.name, params[1] = jobid, params[2] = nonce
-        // We get the address from authorize, but we can optionally validate params[0] if present
+        // Different miners use different parameter layouts:
+        // - ASIC-style (3 params): [address.name, job_id, nonce]
+        // - EthereumStratum-style (5 params, e.g. lolMiner): [address.name, job_id, extranonce2, ntime, nonce]
+        // We get the address from authorize, but we can optionally validate params[0] if present.
         if event.params.len() < 3 {
             error!("{} [SUBMIT] ERROR: Expected at least 3 params, got {}", prefix, event.params.len());
             let wallet_addr = ctx.wallet_addr.lock().clone();
@@ -328,7 +330,7 @@ impl ShareHandler {
         let prefix = self.log_prefix();
         debug!("{} [SUBMIT] Params[0] (address/identity): {:?}", prefix, event.params.first());
         debug!("{} [SUBMIT] Params[1] (job_id): {:?}", prefix, event.params.get(1));
-        debug!("{} [SUBMIT] Params[2] (nonce): {:?}", prefix, event.params.get(2));
+        debug!("{} [SUBMIT] Params[2] (nonce-ish): {:?}", prefix, event.params.get(2));
 
         // Optionally validate params[0] (address.name) if present
         // Some miners send it, others don't - we get address from authorize anyway
@@ -413,7 +415,11 @@ impl ShareHandler {
             }
         };
 
-        let nonce_str = event.params[2].as_str().ok_or("nonce must be a string")?;
+        // Choose nonce param index based on miner param layout.
+        // - 3 params: nonce is params[2]
+        // - 5+ params: nonce is params[4] for EthereumStratum-style miners (and generally last param)
+        let nonce_param_idx = if event.params.len() >= 5 { 4 } else { 2 };
+        let nonce_str = event.params[nonce_param_idx].as_str().ok_or("nonce must be a string")?;
         debug!("[SUBMIT] Raw nonce string: '{}'", nonce_str);
 
         let nonce_str = nonce_str.replace("0x", "");
@@ -554,7 +560,7 @@ impl ShareHandler {
                 format!("timestamp={}, nonce=0x{:x}, bits=0x{:08x}", header_clone.timestamp, header_clone.nonce, header_clone.bits)
             );
 
-            // Use kaspa_pow::State for proper PoW validation
+            // Use kaspa_pow::State for PoW validation against the header's compact bits target.
             use kaspa_pow::State as PowState;
             let pow_state = PowState::new(&header_clone);
             let (check_passed, pow_value_uint256) = pow_state.check_pow(nonce_val);
@@ -569,13 +575,15 @@ impl ShareHandler {
                 format!("check_passed={}, pow_value={:x}", check_passed, pow_value)
             );
 
-            // Calculate network target from header.bits
+            // Calculate network target from header.bits (debug/diagnostic only).
             use crate::hasher::calculate_target;
             let network_target = calculate_target(header_clone.bits as u64);
 
             // Check if pow_value meets network target (lower hash is better)
             let meets_network_target = pow_value <= network_target;
-            pow_passed = meets_network_target;
+            // IMPORTANT: Use kaspa_pow's own compact-target handling as the source of truth.
+            // This avoids any potential mismatch in our BigUint conversion/comparison path.
+            pow_passed = check_passed;
 
             let pow_value_bytes = pow_value.to_bytes_be();
             let network_target_bytes = network_target.to_bytes_be();
@@ -583,7 +591,8 @@ impl ShareHandler {
             debug!("[SUBMIT] Target comparison:");
             debug!("[SUBMIT]   - pow_value: {:x} ({} bytes)", pow_value, pow_value_bytes.len());
             debug!("[SUBMIT]   - network_target: {:x} ({} bytes)", network_target, network_target_bytes.len());
-            debug!("[SUBMIT]   - meets_network_target: {}", meets_network_target);
+            debug!("[SUBMIT]   - meets_network_target(BigUint): {}", meets_network_target);
+            debug!("[SUBMIT]   - check_passed(kaspa_pow): {}", check_passed);
 
             debug!(
                 "[SUBMIT] PoW check result: passed={}, pow_value={:x}, network_target={:x}, header.bits={}",
@@ -781,7 +790,21 @@ impl ShareHandler {
                 let block_submit_result = kaspa_api.submit_block(block.clone()).await;
 
                 match block_submit_result {
-                    Ok(_response) => {
+                    Ok(response) => {
+                        if !response.report.is_success() {
+                            let prefix = self.log_prefix();
+                            warn!("{} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("Block rejected by node"));
+                            warn!(
+                                "{} {} {} {}",
+                                prefix,
+                                LogColors::block("[BLOCK]"),
+                                LogColors::label("REJECTION REASON:"),
+                                format!("{:?}", response.report)
+                            );
+                            invalid_share = true;
+                            break;
+                        }
+
                         let prefix = self.log_prefix();
                         // Block accepted - log after submit to get it submitted faster
                         info!(
@@ -1288,6 +1311,12 @@ impl ShareHandler {
             }
 
             let mut interval = tokio::time::interval(STATS_PRINT_INTERVAL);
+            // Internal miner hashrate is based on hashes/sec (not Stratum shares), so we keep a
+            // last-sample snapshot to compute a stable, accurate rate (matching the dashboard).
+            #[cfg(feature = "internal-cpu-miner")]
+            let mut last_internal_hashes: Option<u64> = None;
+            #[cfg(feature = "internal-cpu-miner")]
+            let mut last_internal_sample = Instant::now();
             loop {
                 if let Some(ref mut rx) = shutdown_rx {
                     tokio::select! {
@@ -1462,17 +1491,22 @@ impl ShareHandler {
                         let hashes = metrics.hashes_tried.load(Ordering::Relaxed);
                         let submitted = metrics.blocks_submitted.load(Ordering::Relaxed);
                         let accepted = metrics.blocks_accepted.load(Ordering::Relaxed);
-                        let elapsed = now.duration_since(start).as_secs_f64();
-                        let rate = if elapsed > 0.0 { hashes as f64 / elapsed } else { 0.0 };
+                        let dt = now.duration_since(last_internal_sample).as_secs_f64().max(0.000_001);
+                        let dh = last_internal_hashes.map(|h| hashes.saturating_sub(h)).unwrap_or(0);
+                        last_internal_hashes = Some(hashes);
+                        last_internal_sample = now;
+
+                        // Hashrate as GH/s (format_hashrate expects GH/s)
+                        let hashrate_ghs = (dh as f64 / dt) / 1e9;
                         let internal_line = format!(
                             "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
                             "InternalCPU",
                             "-",
-                            format_hashrate(rate),
+                            format_hashrate(hashrate_ghs),
                             "-",
                             "-",
                             "-",
-                            format!("{}/{}/{}", accepted, submitted - accepted, 0),
+                            format!("{}/{}/{}", accepted, submitted.saturating_sub(accepted), 0),
                             accepted,
                             format_uptime(now.duration_since(start))
                         );

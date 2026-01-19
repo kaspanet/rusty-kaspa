@@ -1,5 +1,6 @@
 use crate::jsonrpc_event::JsonRpcEvent;
 use crate::log_colors::LogColors;
+use crate::net_utils::bind_addr_from_port;
 use crate::stratum_context::StratumContext;
 use hex;
 use std::collections::HashMap;
@@ -79,15 +80,8 @@ impl StratumListener {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.shutting_down.store(false, std::sync::atomic::Ordering::Release);
 
-        // Parse port - ensure we bind to IPv4 (0.0.0.0) to accept IPv4 connections
-        // If it starts with ':', prepend "0.0.0.0", otherwise format as "0.0.0.0:PORT"
-        let addr_str = if self.config.port.starts_with(':') {
-            format!("0.0.0.0{}", self.config.port)
-        } else if self.config.port.chars().all(|c| c.is_ascii_digit()) {
-            format!("0.0.0.0:{}", self.config.port)
-        } else {
-            self.config.port.clone()
-        };
+        // Ensure we bind to IPv4 (0.0.0.0) when given a bare port like ":5555" / "5555".
+        let addr_str = bind_addr_from_port(&self.config.port);
 
         let listener =
             TcpListener::bind(&addr_str).await.map_err(|e| format!("failed listening to socket {}: {}", self.config.port, e))?;

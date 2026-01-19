@@ -456,6 +456,33 @@ impl KaspaApi {
 
         match &result {
             Ok(response) => {
+                // IMPORTANT: The RPC call can succeed while the node still rejects the block.
+                // Only treat SubmitBlockReport::Success as accepted.
+                if !response.report.is_success() {
+                    let now = Instant::now();
+                    let mut guard = BLOCK_SUBMIT_GUARD.lock();
+                    guard.remove(&block_hash, now);
+
+                    warn!(
+                        "{} {}",
+                        LogColors::api("[API]"),
+                        LogColors::validation(&format!("===== BLOCK REJECTED BY KASPA NODE ===== Hash: {}", block_hash))
+                    );
+                    warn!(
+                        "{} {} {}",
+                        LogColors::api("[API]"),
+                        LogColors::label("REJECTION REASON:"),
+                        format!("{:?}", response.report)
+                    );
+                    warn!(
+                        "{} {} {}",
+                        LogColors::api("[API]"),
+                        LogColors::label("  - Blue Score:"),
+                        format!("{}, Timestamp: {}, Nonce: {:x}", blue_score, timestamp, nonce)
+                    );
+                    return Err(anyhow::anyhow!("Block rejected by node: {:?}", response.report));
+                }
+
                 // Keep block accepted message at info (important operational event)
                 info!(
                     "{} {}",

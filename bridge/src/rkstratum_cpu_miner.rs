@@ -1,10 +1,15 @@
 use crate::kaspaapi::KaspaApi;
+use crate::prom;
 use kaspa_consensus_core::block::Block;
 use parking_lot::{Condvar, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
+
+// Mirror share_handler's block confirmation behavior so "Blocks" means confirmed BLUE.
+const INTERNAL_BLOCK_CONFIRM_RETRY_DELAY: Duration = Duration::from_secs(2);
+const INTERNAL_BLOCK_CONFIRM_MAX_ATTEMPTS: usize = 30;
 
 #[cfg(feature = "internal-cpu-miner")]
 pub struct InternalMinerMetrics {
@@ -99,12 +104,52 @@ pub fn spawn_internal_cpu_miner(
                 break;
             }
             metrics_submit.blocks_submitted.fetch_add(1, Ordering::Relaxed);
+
+            // Capture details for dashboard before moving the block into submit_block.
+            let (hash_str, nonce, bluescore) = {
+                use kaspa_consensus_core::hashing::header;
+                let hash = header::hash(&block.header).to_string();
+                (hash, block.header.nonce, block.header.blue_score)
+            };
+
             let res = kaspa_api_submit.submit_block(block).await;
-            if let Err(e) = res {
-                tracing::warn!("[InternalMiner] submit_block failed: {e}");
-            } else {
-                tracing::info!("[InternalMiner] block submitted");
-                metrics_submit.blocks_accepted.fetch_add(1, Ordering::Relaxed);
+            match res {
+                Ok(response) => {
+                    if response.report.is_success() {
+                        tracing::info!("[InternalMiner] block accepted by node");
+
+                        // Confirm BLUE in DAG (same semantics as Stratum workers "Blocks").
+                        let kaspa_api_confirm = Arc::clone(&kaspa_api_submit);
+                        let metrics_confirm = Arc::clone(&metrics_submit);
+                        tokio::spawn(async move {
+                            for _ in 0..INTERNAL_BLOCK_CONFIRM_MAX_ATTEMPTS {
+                                match kaspa_api_confirm.get_current_block_color(&hash_str).await {
+                                    Ok(true) => {
+                                        metrics_confirm.blocks_accepted.fetch_add(1, Ordering::Relaxed);
+                                        prom::record_internal_cpu_recent_block(hash_str, nonce, bluescore);
+                                        tracing::info!("[InternalMiner] block confirmed BLUE in DAG");
+                                        return;
+                                    }
+                                    Ok(false) => {
+                                        tokio::time::sleep(INTERNAL_BLOCK_CONFIRM_RETRY_DELAY).await;
+                                    }
+                                    Err(_) => {
+                                        tokio::time::sleep(INTERNAL_BLOCK_CONFIRM_RETRY_DELAY).await;
+                                    }
+                                }
+                            }
+                            tracing::info!(
+                                "[InternalMiner] block not confirmed blue after {} attempts (not counted as Blocks)",
+                                INTERNAL_BLOCK_CONFIRM_MAX_ATTEMPTS
+                            );
+                        });
+                    } else {
+                        tracing::warn!("[InternalMiner] block rejected by node: {:?}", response.report);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("[InternalMiner] submit_block failed: {e}");
+                }
             }
         }
     });

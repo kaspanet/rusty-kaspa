@@ -3,8 +3,13 @@ use prometheus::proto::MetricFamily;
 use prometheus::{register_counter, Counter};
 use prometheus::{register_counter_vec, register_gauge, register_gauge_vec, CounterVec, Gauge, GaugeVec};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "internal-cpu-miner")]
+use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
+
+use crate::net_utils::bind_addr_from_port;
+use std::path::PathBuf;
 
 /// Worker labels for Prometheus metrics
 const WORKER_LABELS: &[&str] = &["instance", "worker", "miner", "wallet", "ip"];
@@ -75,6 +80,10 @@ static INTERNAL_CPU_BLOCKS_SUBMITTED_TOTAL: OnceLock<Counter> = OnceLock::new();
 static INTERNAL_CPU_BLOCKS_ACCEPTED_TOTAL: OnceLock<Counter> = OnceLock::new();
 #[cfg(feature = "internal-cpu-miner")]
 static INTERNAL_CPU_HASHRATE_GHS: OnceLock<Gauge> = OnceLock::new();
+#[cfg(feature = "internal-cpu-miner")]
+static INTERNAL_CPU_MINING_ADDRESS: OnceLock<String> = OnceLock::new();
+#[cfg(feature = "internal-cpu-miner")]
+static INTERNAL_CPU_RECENT_BLOCKS: OnceLock<parking_lot::Mutex<VecDeque<InternalCpuBlock>>> = OnceLock::new();
 
 /// Initialize Prometheus metrics
 pub fn init_metrics() {
@@ -206,71 +215,227 @@ pub fn record_internal_cpu_miner_snapshot(hashes_tried: u64, blocks_submitted: u
     }
 }
 
-pub async fn start_web_server_all(port: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use std::net::SocketAddr;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::TcpListener;
+/// Store the internal CPU miner reward address for display in `/api/stats`.
+/// Best-effort: if called multiple times, only the first value is kept.
+#[cfg(feature = "internal-cpu-miner")]
+pub fn set_internal_cpu_mining_address(addr: String) {
+    let addr = addr.trim().to_string();
+    if addr.is_empty() {
+        return;
+    }
+    let _ = INTERNAL_CPU_MINING_ADDRESS.set(addr);
+}
 
-    init_metrics();
+#[cfg(feature = "internal-cpu-miner")]
+#[derive(Clone, Debug)]
+struct InternalCpuBlock {
+    timestamp_unix: u64,
+    bluescore: u64,
+    nonce: u64,
+    hash: String,
+}
 
-    let addr_str = if port.starts_with(':') { format!("0.0.0.0{}", port) } else { port.to_string() };
-    let addr: SocketAddr = addr_str.parse()?;
-    let listener = TcpListener::bind(addr).await?;
+/// Record a recently submitted internal CPU miner block so the dashboard can display it
+/// without relying on high-cardinality Prometheus labels.
+#[cfg(feature = "internal-cpu-miner")]
+pub fn record_internal_cpu_recent_block(hash: String, nonce: u64, bluescore: u64) {
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-    let kaspad_address_for_status = {
-        let config_path = "config.yaml";
-        std::fs::read_to_string(config_path)
-            .ok()
-            .and_then(|content| yaml_rust::YamlLoader::load_from_str(&content).ok())
-            .and_then(|docs| docs.first().cloned())
-            .and_then(|doc| doc["kaspad_address"].as_str().map(|s| s.to_string()))
-            .unwrap_or_else(|| "-".to_string())
-    };
-    let instances_for_status = {
-        let config_path = "config.yaml";
-        std::fs::read_to_string(config_path)
-            .ok()
-            .and_then(|content| yaml_rust::YamlLoader::load_from_str(&content).ok())
-            .and_then(|docs| docs.first().cloned())
-            .and_then(|doc| doc["instances"].as_vec().map(|v| v.len()))
-            .unwrap_or(1)
-    };
-    let web_bind_for_status = addr_str.clone();
-
-    tracing::debug!("Hosting aggregated web stats on {}/", addr);
-
-    fn content_type_for_path(path: &str) -> &'static str {
-        let p = path.to_ascii_lowercase();
-        if p.ends_with(".html") {
-            "text/html; charset=utf-8"
-        } else if p.ends_with(".css") {
-            "text/css; charset=utf-8"
-        } else if p.ends_with(".js") {
-            "application/javascript; charset=utf-8"
-        } else if p.ends_with(".svg") {
-            "image/svg+xml"
-        } else {
-            "application/octet-stream"
-        }
+    if hash.trim().is_empty() {
+        return;
     }
 
-    fn try_read_static_file(url_path: &str) -> Option<(String, Vec<u8>)> {
-        let rel = match url_path {
-            "/" => "index.html".to_string(),
-            "/index.html" => "index.html".to_string(),
-            "/raw.html" => "raw.html".to_string(),
-            p if p.starts_with("/static/") => p.trim_start_matches("/static/").to_string(),
-            _ => return None,
+    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+
+    let mut q = INTERNAL_CPU_RECENT_BLOCKS.get_or_init(|| parking_lot::Mutex::new(VecDeque::with_capacity(256))).lock();
+
+    // De-dupe by hash
+    if q.iter().any(|b| b.hash == hash) {
+        return;
+    }
+
+    q.push_front(InternalCpuBlock { timestamp_unix: ts, bluescore, nonce, hash });
+}
+
+#[derive(Clone, Debug)]
+enum HttpMode {
+    Aggregated { web_bind: String },
+    Instance { instance_id: String, web_bind: String },
+}
+
+fn content_type_for_path(path: &str) -> &'static str {
+    let p = path.to_ascii_lowercase();
+    if p.ends_with(".html") {
+        "text/html; charset=utf-8"
+    } else if p.ends_with(".css") {
+        "text/css; charset=utf-8"
+    } else if p.ends_with(".js") {
+        "application/javascript; charset=utf-8"
+    } else if p.ends_with(".svg") {
+        "image/svg+xml"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+fn try_read_static_file(url_path: &str) -> Option<(String, Vec<u8>)> {
+    // Files are vendored under bridge/static.
+    // URL layout expected by the dashboard:
+    // - / -> index.html
+    // - /raw.html
+    // - /static/... -> maps to bridge/static/... (strip leading /static/)
+    let rel = match url_path {
+        "/" => "index.html".to_string(),
+        "/index.html" => "index.html".to_string(),
+        "/raw.html" => "raw.html".to_string(),
+        p if p.starts_with("/static/") => p.trim_start_matches("/static/").to_string(),
+        _ => return None,
+    };
+
+    // Prevent path traversal
+    if rel.contains("..") || rel.contains('\\') {
+        return None;
+    }
+
+    let file_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static").join(&rel);
+    let bytes = std::fs::read(&file_path).ok()?;
+    Some((rel, bytes))
+}
+
+async fn write_response(
+    mut stream: tokio::net::TcpStream,
+    response: String,
+    body_bytes: Option<Vec<u8>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use tokio::io::AsyncWriteExt;
+    stream.write_all(response.as_bytes()).await?;
+    if let Some(body) = body_bytes {
+        stream.write_all(&body).await?;
+    }
+    Ok(())
+}
+
+async fn handle_http_request(
+    mut stream: tokio::net::TcpStream,
+    request: &str,
+    mode: &HttpMode,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use tokio::io::AsyncWriteExt;
+
+    let path = request.lines().next().and_then(|line| line.split_whitespace().nth(1)).unwrap_or("/");
+
+    if request.starts_with("GET /metrics") {
+        use prometheus::Encoder;
+        let encoder = prometheus::TextEncoder::new();
+        let metric_families = match mode {
+            HttpMode::Aggregated { .. } => prometheus::gather(),
+            HttpMode::Instance { instance_id, .. } => filter_metric_families_for_instance(prometheus::gather(), instance_id),
+        };
+        let mut buf = Vec::new();
+        encoder.encode(&metric_families, &mut buf)?;
+
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {}\r\n\r\n{}",
+            buf.len(),
+            String::from_utf8_lossy(&buf)
+        );
+        stream.write_all(response.as_bytes()).await?;
+        return Ok(());
+    }
+
+    if request.starts_with("GET /api/status") {
+        let kaspad_version = crate::kaspaapi::NODE_STATUS.lock().server_version.clone().unwrap_or_else(|| "-".to_string());
+        let status_cfg = get_web_status_config();
+        let web_bind = match mode {
+            HttpMode::Aggregated { web_bind } => web_bind.clone(),
+            HttpMode::Instance { web_bind, .. } => web_bind.clone(),
         };
 
-        if rel.contains("..") || rel.contains('\\') {
-            return None;
+        let status =
+            WebStatusResponse { kaspad_address: status_cfg.kaspad_address, kaspad_version, instances: status_cfg.instances, web_bind };
+        let json = serde_json::to_string(&status).unwrap_or_else(|_| "{}".to_string());
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+            json.len(),
+            json
+        );
+        stream.write_all(response.as_bytes()).await?;
+        return Ok(());
+    }
+
+    if request.starts_with("GET /api/stats") {
+        let stats = match mode {
+            HttpMode::Aggregated { .. } => get_stats_json_all().await,
+            HttpMode::Instance { instance_id, .. } => get_stats_json(instance_id).await,
+        };
+        let json = serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string());
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+            json.len(),
+            json
+        );
+        stream.write_all(response.as_bytes()).await?;
+        return Ok(());
+    }
+
+    if matches!(mode, HttpMode::Instance { .. }) && request.starts_with("GET /api/config") {
+        let config_json = get_config_json().await;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+            config_json.len(),
+            config_json
+        );
+        stream.write_all(response.as_bytes()).await?;
+        return Ok(());
+    }
+
+    if matches!(mode, HttpMode::Instance { .. }) && request.starts_with("POST /api/config") {
+        if !config_write_allowed() {
+            let json_response =
+                r#"{"success": false, "message": "Config write disabled. Set RKSTRATUM_ALLOW_CONFIG_WRITE=1 to enable."}"#;
+            let response = format!(
+                "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+                json_response.len(),
+                json_response
+            );
+            stream.write_all(response.as_bytes()).await?;
+            return Ok(());
         }
 
-        let file_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static").join(&rel);
-        let bytes = std::fs::read(&file_path).ok()?;
-        Some((rel, bytes))
+        let body_start = request.find("\r\n\r\n").unwrap_or(request.len());
+        let body = &request[body_start + 4..];
+        let result = update_config_from_json(body).await;
+        let json_response = if result.is_ok() {
+            r#"{"success": true, "message": "Config updated successfully. Bridge restart required for changes to take effect."}"#
+        } else {
+            r#"{"success": false, "message": "Failed to update config"}"#
+        };
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+            json_response.len(),
+            json_response
+        );
+        stream.write_all(response.as_bytes()).await?;
+        return Ok(());
     }
+
+    if request.starts_with("GET /") {
+        if let Some((rel, bytes)) = try_read_static_file(path) {
+            let ct = content_type_for_path(&rel);
+            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n", ct, bytes.len());
+            write_response(stream, response, Some(bytes)).await?;
+        } else {
+            stream.write_all("HTTP/1.1 404 Not Found\r\n\r\n".as_bytes()).await?;
+        }
+        return Ok(());
+    }
+
+    stream.write_all("HTTP/1.1 404 Not Found\r\n\r\n".as_bytes()).await?;
+    Ok(())
+}
+
+async fn serve_http_loop(listener: tokio::net::TcpListener, mode: HttpMode) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use tokio::io::AsyncReadExt;
 
     loop {
         let (mut stream, _) = listener.accept().await?;
@@ -278,62 +443,24 @@ pub async fn start_web_server_all(port: &str) -> Result<(), Box<dyn std::error::
 
         if let Ok(n) = stream.read(&mut buffer).await {
             let request = String::from_utf8_lossy(&buffer[..n]);
-
-            let path = request.lines().next().and_then(|line| line.split_whitespace().nth(1)).unwrap_or("/");
-
-            if request.starts_with("GET /metrics") {
-                use prometheus::Encoder;
-                let encoder = prometheus::TextEncoder::new();
-                let metric_families = prometheus::gather();
-                let mut buffer = Vec::new();
-                encoder.encode(&metric_families, &mut buffer)?;
-
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {}\r\n\r\n{}",
-                    buffer.len(),
-                    String::from_utf8_lossy(&buffer)
-                );
-                stream.write_all(response.as_bytes()).await?;
-            } else if request.starts_with("GET /api/status") {
-                let kaspad_version = crate::kaspaapi::NODE_STATUS.lock().server_version.clone().unwrap_or_else(|| "-".to_string());
-                let status = WebStatusResponse {
-                    kaspad_address: kaspad_address_for_status.clone(),
-                    kaspad_version,
-                    instances: instances_for_status,
-                    web_bind: web_bind_for_status.clone(),
-                };
-                let json = serde_json::to_string(&status).unwrap_or_else(|_| "{}".to_string());
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
-                    json.len(),
-                    json
-                );
-                stream.write_all(response.as_bytes()).await?;
-            } else if request.starts_with("GET /api/stats") {
-                let stats = get_stats_json_all().await;
-                let json = serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string());
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
-                    json.len(),
-                    json
-                );
-                stream.write_all(response.as_bytes()).await?;
-            } else if request.starts_with("GET /") {
-                if let Some((rel, bytes)) = try_read_static_file(path) {
-                    let ct = content_type_for_path(&rel);
-                    let response = format!("HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n", ct, bytes.len());
-                    stream.write_all(response.as_bytes()).await?;
-                    stream.write_all(&bytes).await?;
-                } else {
-                    let response = "HTTP/1.1 404 Not Found\r\n\r\n";
-                    stream.write_all(response.as_bytes()).await?;
-                }
-            } else {
-                let response = "HTTP/1.1 404 Not Found\r\n\r\n";
-                stream.write_all(response.as_bytes()).await?;
-            }
+            let _ = handle_http_request(stream, &request, &mode).await;
         }
     }
+}
+
+pub async fn start_web_server_all(port: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use std::net::SocketAddr;
+    use tokio::net::TcpListener;
+
+    init_metrics();
+
+    let addr_str = bind_addr_from_port(port);
+    let addr: SocketAddr = addr_str.parse()?;
+    let listener = TcpListener::bind(addr).await?;
+    let web_bind_for_status = addr_str.clone();
+
+    tracing::debug!("Hosting aggregated web stats on {}/", addr);
+    serve_http_loop(listener, HttpMode::Aggregated { web_bind: web_bind_for_status }).await
 }
 
 /// Worker context for metrics
@@ -463,6 +590,50 @@ struct WebStatusResponse {
     web_bind: String,
 }
 
+#[derive(Clone, Debug)]
+struct WebStatusConfig {
+    kaspad_address: String,
+    instances: usize,
+}
+
+static WEB_STATUS_CONFIG: OnceLock<parking_lot::RwLock<WebStatusConfig>> = OnceLock::new();
+static WEB_CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
+static WEB_CONFIG_WRITE_LOCK: OnceLock<parking_lot::Mutex<()>> = OnceLock::new();
+
+/// Set which config file `/api/config` reads/writes.
+/// If not set, it falls back to `config.yaml` in the current working directory.
+pub fn set_web_config_path(path: PathBuf) {
+    let _ = WEB_CONFIG_PATH.set(path);
+}
+
+fn get_web_config_path() -> PathBuf {
+    WEB_CONFIG_PATH.get().cloned().unwrap_or_else(|| PathBuf::from("config.yaml"))
+}
+
+fn config_write_allowed() -> bool {
+    matches!(
+        std::env::var("RKSTRATUM_ALLOW_CONFIG_WRITE").as_deref(),
+        Ok("1") | Ok("true") | Ok("TRUE") | Ok("yes") | Ok("YES") | Ok("on") | Ok("ON")
+    )
+}
+
+/// Set best-effort status fields used by `/api/status`.
+///
+/// This avoids re-reading `config.yaml` from within the web/prom servers (which can be wrong when
+/// using `--config` / CLI overrides, and also breaks when the working directory differs).
+pub fn set_web_status_config(kaspad_address: String, instances: usize) {
+    let lock =
+        WEB_STATUS_CONFIG.get_or_init(|| parking_lot::RwLock::new(WebStatusConfig { kaspad_address: "-".to_string(), instances: 1 }));
+    *lock.write() = WebStatusConfig { kaspad_address, instances: instances.max(1) };
+}
+
+fn get_web_status_config() -> WebStatusConfig {
+    WEB_STATUS_CONFIG
+        .get_or_init(|| parking_lot::RwLock::new(WebStatusConfig { kaspad_address: "-".to_string(), instances: 1 }))
+        .read()
+        .clone()
+}
+
 /// Record a worker error
 pub fn record_worker_error(instance_id: &str, wallet: &str, error: &str) {
     if let Some(counter) = ERROR_BY_WALLET.get() {
@@ -551,6 +722,10 @@ struct InternalCpuStats {
     hashesTried: u64,
     blocksSubmitted: u64,
     blocksAccepted: u64,
+    shares: u64,
+    stale: u64,
+    invalid: u64,
+    wallet: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -673,17 +848,37 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         }
     }
 
-    if internal_cpu_hashrate_ghs.is_some()
-        || internal_cpu_hashes_tried.is_some()
-        || internal_cpu_blocks_submitted.is_some()
-        || internal_cpu_blocks_accepted.is_some()
     {
-        stats.internalCpu = Some(InternalCpuStats {
-            hashrateGhs: internal_cpu_hashrate_ghs.unwrap_or(0.0),
-            hashesTried: internal_cpu_hashes_tried.unwrap_or(0),
-            blocksSubmitted: internal_cpu_blocks_submitted.unwrap_or(0),
-            blocksAccepted: internal_cpu_blocks_accepted.unwrap_or(0),
-        });
+        let blocks_submitted = internal_cpu_blocks_submitted.unwrap_or(0);
+        let blocks_accepted = internal_cpu_blocks_accepted.unwrap_or(0);
+        let hashes_tried = internal_cpu_hashes_tried.unwrap_or(0);
+        let hashrate_ghs = internal_cpu_hashrate_ghs.unwrap_or(0.0);
+
+        // Only surface internal CPU miner data when it is actually enabled/active.
+        // Otherwise a build that includes the feature would always show an "InternalCPU" row with zeros.
+        #[cfg(feature = "internal-cpu-miner")]
+        let wallet = INTERNAL_CPU_MINING_ADDRESS.get().cloned().unwrap_or_default();
+        #[cfg(not(feature = "internal-cpu-miner"))]
+        let wallet = String::new();
+
+        let should_show_internal_cpu =
+            !wallet.is_empty() || blocks_submitted > 0 || blocks_accepted > 0 || hashes_tried > 0 || hashrate_ghs > 0.0;
+
+        if should_show_internal_cpu {
+            let stale = blocks_submitted.saturating_sub(blocks_accepted);
+            stats.internalCpu = Some(InternalCpuStats {
+                hashrateGhs: hashrate_ghs,
+                hashesTried: hashes_tried,
+                blocksSubmitted: blocks_submitted,
+                blocksAccepted: blocks_accepted,
+                // Expose these so the UI can fill Shares/Stale/Invalid columns for InternalCPU.
+                // Internal CPU mining doesn't produce Stratum shares; blocks are the closest analogue.
+                shares: blocks_accepted,
+                stale,
+                invalid: 0,
+                wallet,
+            });
+        }
     }
 
     for family in families_for_workers_and_blocks {
@@ -954,7 +1149,44 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     }
 
     stats.workers = worker_stats.into_values().collect();
-    stats.activeWorkers = stats.workers.len();
+    // Active workers are the number of Stratum workers, plus the internal CPU miner if present.
+    stats.activeWorkers = stats.workers.len() + stats.internalCpu.as_ref().map(|_| 1).unwrap_or(0);
+
+    // Fold internal CPU miner counts into summary totals so the dashboard top-cards reflect
+    // internal mining even when no ASICs are connected.
+    if let Some(icpu) = stats.internalCpu.as_ref() {
+        stats.totalBlocks = stats.totalBlocks.saturating_add(icpu.blocksAccepted);
+        // Internal CPU mining doesn't produce shares in the Stratum sense; however, blocks are
+        // "shares too" operationally (they represent successful work). Counting accepted blocks
+        // here prevents the Total Shares card from staying at 0 for CPU-only runs.
+        stats.totalShares = stats.totalShares.saturating_add(icpu.blocksAccepted);
+    }
+
+    // Add internal CPU recent blocks into the unified blocks list so the donut chart and
+    // recent blocks table populate even in CPU-only runs.
+    #[cfg(feature = "internal-cpu-miner")]
+    if let Some(icpu) = stats.internalCpu.as_ref() {
+        if let Some(q) = INTERNAL_CPU_RECENT_BLOCKS.get() {
+            let wallet = icpu.wallet.clone();
+            let guard = q.lock();
+            for b in guard.iter() {
+                let hash = b.hash.clone();
+                if hash.is_empty() || block_set.contains(&hash) {
+                    continue;
+                }
+                block_set.insert(hash.clone());
+                stats.blocks.push(BlockInfo {
+                    instance: "-".to_string(),
+                    worker: "InternalCPU".to_string(),
+                    wallet: wallet.clone(),
+                    timestamp: b.timestamp_unix.to_string(),
+                    hash,
+                    nonce: b.nonce.to_string(),
+                    bluescore: b.bluescore.to_string(),
+                });
+            }
+        }
+    }
 
     // Sort blocks by bluescore (newest first)
     stats.blocks.sort_by(|a, b| {
@@ -982,8 +1214,8 @@ async fn get_config_json() -> String {
     use std::fs;
     use yaml_rust::YamlLoader;
 
-    let config_path = "config.yaml";
-    if let Ok(content) = fs::read_to_string(config_path) {
+    let config_path = get_web_config_path();
+    if let Ok(content) = fs::read_to_string(&config_path) {
         if let Ok(docs) = YamlLoader::load_from_str(&content) {
             if let Some(doc) = docs.first() {
                 let mut config = serde_json::Map::new();
@@ -1040,7 +1272,8 @@ async fn update_config_from_json(json_body: &str) -> Result<(), Box<dyn std::err
     use std::fs;
 
     let config: serde_json::Value = serde_json::from_str(json_body)?;
-    let config_path = "config.yaml";
+    let config_path = get_web_config_path();
+    let _guard = WEB_CONFIG_WRITE_LOCK.get_or_init(|| parking_lot::Mutex::new(())).lock();
 
     // Build YAML content directly from JSON values
     let mut out_str = String::new();
@@ -1110,170 +1343,17 @@ async fn update_config_from_json(json_body: &str) -> Result<(), Box<dyn std::err
 /// Start Prometheus metrics server
 pub async fn start_prom_server(port: &str, instance_id: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use std::net::SocketAddr;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
     init_metrics();
 
     let instance_id = instance_id.to_string();
 
-    // Handle ":PORT" format by prepending "0.0.0.0"
-    let addr_str = if port.starts_with(':') { format!("0.0.0.0{}", port) } else { port.to_string() };
-
-    // Best-effort status payload for the dashboard. Keep this local to the web server so we
-    // don't affect any mining/stratum logic.
-    let kaspad_address_for_status = {
-        // Try to read from config.yaml (same behavior as /api/config uses).
-        // If unavailable, default to "-".
-        let config_path = "config.yaml";
-        std::fs::read_to_string(config_path)
-            .ok()
-            .and_then(|content| yaml_rust::YamlLoader::load_from_str(&content).ok())
-            .and_then(|docs| docs.first().cloned())
-            .and_then(|doc| doc["kaspad_address"].as_str().map(|s| s.to_string()))
-            .unwrap_or_else(|| "-".to_string())
-    };
-    let instances_for_status = {
-        let config_path = "config.yaml";
-        std::fs::read_to_string(config_path)
-            .ok()
-            .and_then(|content| yaml_rust::YamlLoader::load_from_str(&content).ok())
-            .and_then(|docs| docs.first().cloned())
-            .and_then(|doc| doc["instances"].as_vec().map(|v| v.len()))
-            .unwrap_or(1)
-    };
+    let addr_str = bind_addr_from_port(port);
 
     let addr: SocketAddr = addr_str.parse()?;
     let listener = TcpListener::bind(addr).await?;
 
     tracing::debug!("Hosting prom stats on {}/metrics", addr);
-
-    fn content_type_for_path(path: &str) -> &'static str {
-        let p = path.to_ascii_lowercase();
-        if p.ends_with(".html") {
-            "text/html; charset=utf-8"
-        } else if p.ends_with(".css") {
-            "text/css; charset=utf-8"
-        } else if p.ends_with(".js") {
-            "application/javascript; charset=utf-8"
-        } else if p.ends_with(".svg") {
-            "image/svg+xml"
-        } else {
-            "application/octet-stream"
-        }
-    }
-
-    fn try_read_static_file(url_path: &str) -> Option<(String, Vec<u8>)> {
-        // Files are vendored under bridge/static.
-        // URL layout expected by the dashboard:
-        // - / -> index.html
-        // - /raw.html
-        // - /static/... -> maps to bridge/static/... (strip leading /static/)
-        let rel = match url_path {
-            "/" => "index.html".to_string(),
-            "/index.html" => "index.html".to_string(),
-            "/raw.html" => "raw.html".to_string(),
-            p if p.starts_with("/static/") => p.trim_start_matches("/static/").to_string(),
-            _ => return None,
-        };
-
-        // Prevent path traversal
-        if rel.contains("..") || rel.contains('\\') {
-            return None;
-        }
-
-        let file_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static").join(&rel);
-        let bytes = std::fs::read(&file_path).ok()?;
-        Some((rel, bytes))
-    }
-
-    loop {
-        let (mut stream, _) = listener.accept().await?;
-        let mut buffer = [0; 8192];
-
-        if let Ok(n) = stream.read(&mut buffer).await {
-            let request = String::from_utf8_lossy(&buffer[..n]);
-
-            let path = request.lines().next().and_then(|line| line.split_whitespace().nth(1)).unwrap_or("/");
-
-            if request.starts_with("GET /metrics") {
-                use prometheus::Encoder;
-                let encoder = prometheus::TextEncoder::new();
-                let metric_families = filter_metric_families_for_instance(prometheus::gather(), &instance_id);
-                let mut buffer = Vec::new();
-                encoder.encode(&metric_families, &mut buffer)?;
-
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {}\r\n\r\n{}",
-                    buffer.len(),
-                    String::from_utf8_lossy(&buffer)
-                );
-
-                stream.write_all(response.as_bytes()).await?;
-            } else if request.starts_with("GET /api/status") {
-                let kaspad_version = crate::kaspaapi::NODE_STATUS.lock().server_version.clone().unwrap_or_else(|| "-".to_string());
-                let status = WebStatusResponse {
-                    kaspad_address: kaspad_address_for_status.clone(),
-                    kaspad_version,
-                    instances: instances_for_status,
-                    web_bind: addr_str.clone(),
-                };
-                let json = serde_json::to_string(&status).unwrap_or_else(|_| "{}".to_string());
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
-                    json.len(),
-                    json
-                );
-                stream.write_all(response.as_bytes()).await?;
-            } else if request.starts_with("GET /api/stats") {
-                // Return JSON stats
-                let stats = get_stats_json(&instance_id).await;
-                let json = serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string());
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
-                    json.len(),
-                    json
-                );
-                stream.write_all(response.as_bytes()).await?;
-            } else if request.starts_with("GET /api/config") {
-                // Return current config as JSON
-                let config_json = get_config_json().await;
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
-                    config_json.len(),
-                    config_json
-                );
-                stream.write_all(response.as_bytes()).await?;
-            } else if request.starts_with("POST /api/config") {
-                // Update config from JSON body
-                let body_start = request.find("\r\n\r\n").unwrap_or(request.len());
-                let body = &request[body_start + 4..];
-                let result = update_config_from_json(body).await;
-                let json_response = if result.is_ok() {
-                    r#"{"success": true, "message": "Config updated successfully. Bridge restart required for changes to take effect."}"#
-                } else {
-                    r#"{"success": false, "message": "Failed to update config"}"#
-                };
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
-                    json_response.len(),
-                    json_response
-                );
-                stream.write_all(response.as_bytes()).await?;
-            } else if request.starts_with("GET /") {
-                if let Some((rel, bytes)) = try_read_static_file(path) {
-                    let ct = content_type_for_path(&rel);
-                    let response = format!("HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n", ct, bytes.len());
-                    stream.write_all(response.as_bytes()).await?;
-                    stream.write_all(&bytes).await?;
-                } else {
-                    let response = "HTTP/1.1 404 Not Found\r\n\r\n";
-                    stream.write_all(response.as_bytes()).await?;
-                }
-            } else {
-                let response = "HTTP/1.1 404 Not Found\r\n\r\n";
-                stream.write_all(response.as_bytes()).await?;
-            }
-        }
-    }
+    serve_http_loop(listener, HttpMode::Instance { instance_id, web_bind: addr_str }).await
 }
