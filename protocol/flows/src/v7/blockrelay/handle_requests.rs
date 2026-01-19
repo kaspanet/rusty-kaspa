@@ -64,7 +64,9 @@ impl HandleRelayBlockRequests {
         if sink == self.ctx.config.genesis.hash {
             return Ok(());
         }
-        self.router.enqueue(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(sink.into()), blue_work: None })).await?;
+        self.router
+            .enqueue(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(sink.into()), blue_work: None }))
+            .await?;
         Ok(())
     }
 }
