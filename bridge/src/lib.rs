@@ -9,7 +9,7 @@ pub mod mining_state;
 pub mod net_utils;
 pub mod pow_diagnostic;
 pub mod prom;
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 pub mod rkstratum_cpu_miner;
 pub mod share_handler;
 pub mod stratum_context;
@@ -24,7 +24,7 @@ pub use jsonrpc_event::*;
 pub use kaspaapi::*;
 pub use mining_state::*;
 pub use prom::{WorkerContext, *};
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 pub use rkstratum_cpu_miner::*;
 pub use share_handler::*;
 pub use stratum_context::*;

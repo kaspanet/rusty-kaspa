@@ -11,14 +11,14 @@ use tokio::sync::{mpsc, watch};
 const INTERNAL_BLOCK_CONFIRM_RETRY_DELAY: Duration = Duration::from_secs(2);
 const INTERNAL_BLOCK_CONFIRM_MAX_ATTEMPTS: usize = 30;
 
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 pub struct InternalMinerMetrics {
     pub hashes_tried: AtomicU64,
     pub blocks_submitted: AtomicU64,
     pub blocks_accepted: AtomicU64,
 }
 
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 impl Default for InternalMinerMetrics {
     fn default() -> Self {
         Self { hashes_tried: AtomicU64::new(0), blocks_submitted: AtomicU64::new(0), blocks_accepted: AtomicU64::new(0) }

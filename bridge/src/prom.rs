@@ -1,9 +1,9 @@
 use prometheus::proto::MetricFamily;
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 use prometheus::{register_counter, Counter};
 use prometheus::{register_counter_vec, register_gauge, register_gauge_vec, CounterVec, Gauge, GaugeVec};
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
@@ -72,17 +72,17 @@ static WORKER_START_TIME: OnceLock<GaugeVec> = OnceLock::new();
 // ---------------------------
 // Internal CPU miner metrics (feature-gated)
 // ---------------------------
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 static INTERNAL_CPU_HASHES_TRIED_TOTAL: OnceLock<Counter> = OnceLock::new();
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 static INTERNAL_CPU_BLOCKS_SUBMITTED_TOTAL: OnceLock<Counter> = OnceLock::new();
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 static INTERNAL_CPU_BLOCKS_ACCEPTED_TOTAL: OnceLock<Counter> = OnceLock::new();
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 static INTERNAL_CPU_HASHRATE_GHS: OnceLock<Gauge> = OnceLock::new();
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 static INTERNAL_CPU_MINING_ADDRESS: OnceLock<String> = OnceLock::new();
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 static INTERNAL_CPU_RECENT_BLOCKS: OnceLock<parking_lot::Mutex<VecDeque<InternalCpuBlock>>> = OnceLock::new();
 
 /// Initialize Prometheus metrics
@@ -159,7 +159,7 @@ pub fn init_metrics() {
     });
 
     // Internal CPU miner metrics (no labels; there is only one internal miner per process)
-    #[cfg(feature = "internal-cpu-miner")]
+    #[cfg(feature = "rkstratum_cpu_miner")]
     {
         INTERNAL_CPU_HASHES_TRIED_TOTAL.get_or_init(|| {
             register_counter!("ks_internal_cpu_hashes_tried_total", "Total hashes tried by the internal CPU miner since process start")
@@ -186,7 +186,7 @@ pub fn init_metrics() {
 
 /// Update internal CPU miner metrics from a snapshot.
 /// Values should be monotonically increasing counts; this function converts them to Prometheus counters.
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 pub fn record_internal_cpu_miner_snapshot(hashes_tried: u64, blocks_submitted: u64, blocks_accepted: u64, hashrate_ghs: f64) {
     // Ensure metrics are registered even if the prom server hasn't started yet.
     init_metrics();
@@ -217,7 +217,7 @@ pub fn record_internal_cpu_miner_snapshot(hashes_tried: u64, blocks_submitted: u
 
 /// Store the internal CPU miner reward address for display in `/api/stats`.
 /// Best-effort: if called multiple times, only the first value is kept.
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 pub fn set_internal_cpu_mining_address(addr: String) {
     let addr = addr.trim().to_string();
     if addr.is_empty() {
@@ -226,7 +226,7 @@ pub fn set_internal_cpu_mining_address(addr: String) {
     let _ = INTERNAL_CPU_MINING_ADDRESS.set(addr);
 }
 
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 #[derive(Clone, Debug)]
 struct InternalCpuBlock {
     timestamp_unix: u64,
@@ -237,7 +237,7 @@ struct InternalCpuBlock {
 
 /// Record a recently submitted internal CPU miner block so the dashboard can display it
 /// without relying on high-cardinality Prometheus labels.
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 pub fn record_internal_cpu_recent_block(hash: String, nonce: u64, bluescore: u64) {
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -824,7 +824,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
             }
         }
 
-        // Internal CPU miner metrics (exported when the bridge is built with `internal-cpu-miner`
+        // Internal CPU miner metrics (exported when the bridge is built with `rkstratum_cpu_miner`
         // and the internal miner is enabled at runtime).
         if name == "ks_internal_cpu_hashrate_ghs" {
             if let Some(metric) = family.get_metric().first() {
@@ -856,9 +856,9 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
 
         // Only surface internal CPU miner data when it is actually enabled/active.
         // Otherwise a build that includes the feature would always show an "InternalCPU" row with zeros.
-        #[cfg(feature = "internal-cpu-miner")]
+        #[cfg(feature = "rkstratum_cpu_miner")]
         let wallet = INTERNAL_CPU_MINING_ADDRESS.get().cloned().unwrap_or_default();
-        #[cfg(not(feature = "internal-cpu-miner"))]
+        #[cfg(not(feature = "rkstratum_cpu_miner"))]
         let wallet = String::new();
 
         let should_show_internal_cpu =
@@ -1164,7 +1164,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
 
     // Add internal CPU recent blocks into the unified blocks list so the donut chart and
     // recent blocks table populate even in CPU-only runs.
-    #[cfg(feature = "internal-cpu-miner")]
+    #[cfg(feature = "rkstratum_cpu_miner")]
     if let Some(icpu) = stats.internalCpu.as_ref() {
         if let Some(q) = INTERNAL_CPU_RECENT_BLOCKS.get() {
             let wallet = icpu.wallet.clone();

@@ -64,7 +64,10 @@ name = "stratum-bridge"
 path = "src/main.rs"
 
 [features]
-internal-cpu-miner = []
+# New feature name (preferred)
+rkstratum_cpu_miner = []
+# Backward-compatible alias (deprecated). Keeping this avoids breaking existing build scripts.
+internal-cpu-miner = ["rkstratum_cpu_miner"]
 
 [lints]
 workspace = true

@@ -8,7 +8,7 @@ use crate::{
     stratum_context::StratumContext,
 };
 
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 use crate::rkstratum_cpu_miner::InternalMinerMetrics;
 use kaspa_consensus_core::block::Block;
 // kaspa_pow used inline for PoW validation
@@ -121,11 +121,11 @@ struct StatsPrinterEntry {
 static STATS_PRINTER_REGISTRY: Lazy<Mutex<Vec<StatsPrinterEntry>>> = Lazy::new(|| Mutex::new(Vec::new()));
 pub static STATS_PRINTER_STARTED: AtomicBool = AtomicBool::new(false);
 
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 pub static RKSTRATUM_CPU_MINER_METRICS: Lazy<parking_lot::Mutex<Option<Arc<InternalMinerMetrics>>>> =
     Lazy::new(|| parking_lot::Mutex::new(None));
 
-#[cfg(feature = "internal-cpu-miner")]
+#[cfg(feature = "rkstratum_cpu_miner")]
 pub fn set_rkstratum_cpu_miner_metrics(metrics: Arc<InternalMinerMetrics>) {
     *RKSTRATUM_CPU_MINER_METRICS.lock() = Some(metrics);
 }
@@ -1313,9 +1313,9 @@ impl ShareHandler {
             let mut interval = tokio::time::interval(STATS_PRINT_INTERVAL);
             // Internal miner hashrate is based on hashes/sec (not Stratum shares), so we keep a
             // last-sample snapshot to compute a stable, accurate rate (matching the dashboard).
-            #[cfg(feature = "internal-cpu-miner")]
+            #[cfg(feature = "rkstratum_cpu_miner")]
             let mut last_internal_hashes: Option<u64> = None;
-            #[cfg(feature = "internal-cpu-miner")]
+            #[cfg(feature = "rkstratum_cpu_miner")]
             let mut last_internal_sample = Instant::now();
             loop {
                 if let Some(ref mut rx) = shutdown_rx {
@@ -1485,7 +1485,7 @@ impl ShareHandler {
                 out.push(sep.clone());
 
                 // Feature-gated internal miner row
-                #[cfg(feature = "internal-cpu-miner")]
+                #[cfg(feature = "rkstratum_cpu_miner")]
                 {
                     if let Some(metrics) = RKSTRATUM_CPU_MINER_METRICS.lock().as_ref() {
                         let hashes = metrics.hashes_tried.load(Ordering::Relaxed);
