@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
+use kaspa_stratum_bridge::net_utils::normalize_port;
 use yaml_rust::YamlLoader;
 
 /// Instance-specific configuration
@@ -110,13 +111,7 @@ impl BridgeConfig {
         }
 
         if let Some(port) = doc["web_port"].as_str() {
-            global.web_port = if port.starts_with(':') {
-                port.to_string()
-            } else if port.chars().all(|c| c.is_ascii_digit()) {
-                format!(":{}", port)
-            } else {
-                port.to_string()
-            };
+            global.web_port = normalize_port(port);
         }
 
         if let Some(vd) = doc["var_diff"].as_bool() {
@@ -161,13 +156,7 @@ impl BridgeConfig {
 
                 // Required: stratum_port
                 if let Some(port) = instance_yaml["stratum_port"].as_str() {
-                    instance.stratum_port = if port.starts_with(':') {
-                        port.to_string()
-                    } else if port.chars().all(|c| c.is_ascii_digit()) {
-                        format!(":{}", port)
-                    } else {
-                        port.to_string()
-                    };
+                    instance.stratum_port = normalize_port(port);
                 } else {
                     return Err(anyhow::anyhow!("Instance {} missing required 'stratum_port'", idx));
                 }
@@ -181,13 +170,7 @@ impl BridgeConfig {
 
                 // Optional: prom_port (per-instance)
                 if let Some(port) = instance_yaml["prom_port"].as_str() {
-                    instance.prom_port = Some(if port.starts_with(':') {
-                        port.to_string()
-                    } else if port.chars().all(|c| c.is_ascii_digit()) {
-                        format!(":{}", port)
-                    } else {
-                        port.to_string()
-                    });
+                    instance.prom_port = Some(normalize_port(port));
                 }
 
                 // Optional: log_to_file (per-instance)
@@ -243,13 +226,7 @@ impl BridgeConfig {
             let mut instance = InstanceConfig::default();
 
             if let Some(port) = doc["stratum_port"].as_str() {
-                instance.stratum_port = if port.starts_with(':') {
-                    port.to_string()
-                } else if port.chars().all(|c| c.is_ascii_digit()) {
-                    format!(":{}", port)
-                } else {
-                    port.to_string()
-                };
+                instance.stratum_port = normalize_port(port);
             }
 
             if let Some(diff) = doc["min_share_diff"].as_i64() {
@@ -257,13 +234,7 @@ impl BridgeConfig {
             }
 
             if let Some(port) = doc["prom_port"].as_str() {
-                instance.prom_port = Some(if port.starts_with(':') {
-                    port.to_string()
-                } else if port.chars().all(|c| c.is_ascii_digit()) {
-                    format!(":{}", port)
-                } else {
-                    port.to_string()
-                });
+                instance.prom_port = Some(normalize_port(port));
             }
 
             // Single-instance mode: use global log_to_file as instance default

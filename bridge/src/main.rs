@@ -199,6 +199,13 @@ async fn main() -> Result<(), anyhow::Error> {
     // Initialize color support detection
     LogColors::init();
 
+    // Provide web/prom status endpoints with the *actual* effective config (after CLI overrides),
+    // instead of having the server re-read `config.yaml` from disk.
+    // This is best-effort and does not affect any mining logic.
+    prom::set_web_status_config(config.global.kaspad_address.clone(), config.instances.len());
+    // Point the web config endpoint at the actual config file path the bridge is using.
+    prom::set_web_config_path(requested_config.clone());
+
     // Initialize tracing with WARN level by default (less verbose)
     // Can be overridden with RUST_LOG environment variable (e.g., RUST_LOG=info,debug)
     // To see more details, set RUST_LOG=info or RUST_LOG=debug
@@ -326,6 +333,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 cli.internal_cpu_miner_throttle_ms,
                 cfg.template_poll_interval.as_millis()
             );
+
+            kaspa_stratum_bridge::prom::set_internal_cpu_mining_address(cfg.mining_address.clone());
 
             let metrics = kaspa_stratum_bridge::spawn_internal_cpu_miner(Arc::clone(&kaspa_api), cfg, shutdown_rx.clone())?;
             kaspa_stratum_bridge::set_rkstratum_cpu_miner_metrics(metrics);

@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use crate::app_config::BridgeConfig;
 use crate::app_config::InstanceConfig;
+use kaspa_stratum_bridge::net_utils::normalize_port;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum NodeMode {
@@ -127,6 +128,10 @@ pub struct Cli {
     #[arg(long)]
     pub health_check_port: Option<String>,
 
+    /// Global Web UI / aggregated metrics server port (optional). Examples: ":3030", "0.0.0.0:3030"
+    #[arg(long)]
+    pub web_port: Option<String>,
+
     #[arg(long, value_parser = BoolishValueParser::new())]
     pub var_diff: Option<bool>,
 
@@ -207,16 +212,6 @@ impl Cli {
     }
 }
 
-fn normalize_port(port: &str) -> String {
-    if port.starts_with(':') {
-        port.to_string()
-    } else if port.chars().all(|c| c.is_ascii_digit()) {
-        format!(":{}", port)
-    } else {
-        port.to_string()
-    }
-}
-
 pub fn apply_cli_overrides(config: &mut BridgeConfig, cli: &Cli) -> Result<(), anyhow::Error> {
     if let Some(addr) = cli.kaspad_address.as_deref() {
         config.global.kaspad_address = addr.to_string();
@@ -232,6 +227,9 @@ pub fn apply_cli_overrides(config: &mut BridgeConfig, cli: &Cli) -> Result<(), a
     }
     if let Some(port) = cli.health_check_port.as_deref() {
         config.global.health_check_port = port.to_string();
+    }
+    if let Some(port) = cli.web_port.as_deref() {
+        config.global.web_port = normalize_port(port);
     }
     if let Some(v) = cli.var_diff {
         config.global.var_diff = v;

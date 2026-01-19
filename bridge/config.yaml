@@ -29,6 +29,10 @@ health_check_port: ""
 # Global Web UI / aggregated metrics server port (optional).
 # If set, the bridge will host a single dashboard that aggregates ALL instances.
 # Example: web_port: ":3030" then open http://127.0.0.1:3030/
+#
+# If you run TWO `stratum-bridge` processes at the same time (e.g. one `--node-mode inprocess`
+# and one `--node-mode external`), they cannot bind the same web_port. Keep this at :3030 for one
+# process and start the other with a CLI override, e.g. `--web-port :3031`.
 web_port: ":3030"
 
 # Variable difficulty settings (defaults, can be overridden per-instance)
