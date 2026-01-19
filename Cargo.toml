@@ -65,7 +65,7 @@ members = [
 ]
 
 [workspace.package]
-rust-version = "1.82.0"
+rust-version = "1.83.0"
 version = "1.0.2"
 authors = ["Kaspa developers"]
 license = "ISC"
