@@ -199,19 +199,19 @@ impl PerigeeManager {
             .filter(|r| peers_by_address.contains_key(&SocketAddr::new(r.net_address().ip(), r.net_address().port())))
             .collect::<Vec<_>>();
         let to_remove_amount = perigee_routers.len().saturating_sub(self.config.perigee_outbound_target);
-        let excused_peer: HashSet<PeerKey> = self.iter_excused_peers(&perigee_routers).into_iter().collect();
+        let excused_peers = self.get_excused_peers(&perigee_routers);
 
         perigee_routers
             .iter()
             // Ensure we do not remove leveraged or excused peers
-            .filter(|r| !self.last_round_leveraged_peers.contains(&r.key()) && !excused_peer.contains(&r.key()))
+            .filter(|r| !self.last_round_leveraged_peers.contains(&r.key()) && !excused_peers.contains(&r.key()))
             .map(|r| r.key())
             .choose_multiple(&mut thread_rng(), to_remove_amount)
             .iter()
             // In cases where we do not have enough non-excused/non-leveraged peers to remove,
             // we fill the remaining slots with excused peers.
             // Note: We do not expect to ever need to chain with last round's leveraged peers.
-            .chain(excused_peer.iter())
+            .chain(excused_peers.iter())
             .take(to_remove_amount)
             .cloned()
             .collect()
@@ -405,7 +405,7 @@ impl PerigeeManager {
 
     fn excuse(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, perigee_routers: &[Arc<Router>]) {
         // Removes excused peers from the peer table so they are not considered for eviction.
-        for k in self.iter_excused_peers(perigee_routers) {
+        for k in self.get_excused_peers(perigee_routers) {
             peer_table.remove(&k);
         }
     }
@@ -468,7 +468,7 @@ impl PerigeeManager {
         }
     }
 
-    fn iter_excused_peers(&self, perigee_routers: &[Arc<Router>]) -> Vec<PeerKey> {
+    fn get_excused_peers(&self, perigee_routers: &[Arc<Router>]) -> Vec<PeerKey> {
         // Define excused peers as those that joined perigee after the round started.
         // They should not be penalized for not having enough data in this round.
         // We also sort them by connection time to give more trimming security to the longest connected peers first,
@@ -753,5 +753,130 @@ impl PerigeeManager {
             p99,
             r99
         );
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_consensus_core::config::params::TESTNET_PARAMS;
+    use kaspa_consensus_core::Hash;
+    use kaspa_p2p_lib::test_utils::{HubTestExt, RouterTestExt};
+    use kaspa_p2p_lib::{Hub, PeerOutboundType, Router};
+    use kaspa_utils::networking::PeerId;
+
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Arc;
+    use std::time::Instant;
+    use uuid::Uuid;
+
+    /// Generates a unique PeerKey and incremental IPv4 SocketAddr for testing purposes.
+    fn generate_unique_router(time_connected: Instant) -> Arc<Router> {
+        static ROUTER_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+        let id = ROUTER_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let ip_seed = id;
+        let octet1 = ((ip_seed >> 24) & 0xFF) as u8;
+        let octet2 = ((ip_seed >> 16) & 0xFF) as u8;
+        let octet3 = ((ip_seed >> 8) & 0xFF) as u8;
+        let octet4 = (ip_seed & 0xFF) as u8;
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(octet1, octet2, octet3, octet4)), TESTNET_PARAMS.default_p2p_port());
+        let peer_id = PeerId::new(Uuid::from_u128(id as u128));
+        RouterTestExt::test_new(peer_id, addr, Some(PeerOutboundType::Perigee), time_connected)
+    }
+
+    fn generate_config() -> PerigeeConfig {
+        PerigeeConfig::new(8, 4, 2, 30, std::time::Duration::from_secs(30), true, true, TESTNET_PARAMS.bps())
+    }
+
+    #[test]
+    fn test_insert_timestamp() {
+        // Create a test router with a unique key and outbound type
+        let router = generate_unique_router(Instant::now());
+
+        // Create a mock hub
+        let hub = Hub::default();
+
+        // Create PerigeeManager
+        let config = generate_config();
+        let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut manager = PerigeeManager::new(hub, config, is_ibd_running).into_inner();
+
+        // Timestamps
+        let ts_1 = Instant::now();
+        let ts_2 = Instant::now(); // this one is later.
+
+        // Assert the timestamp was inserted, and aligns, correctly.
+        let hash = Hash::from_u64_word(1);
+        manager.insert_perigee_timestamp(&router, hash, ts_2, false);
+        assert_eq!(router.get_perigee_timestamps().len(), 1);
+        assert_eq!(manager.first_seen.len(), 1);
+        assert!(manager.verified_blocks.is_empty()); // verify was false
+        assert_eq!(router.get_perigee_timestamps().get(&hash), Some(&ts_2));
+        assert_eq!(manager.first_seen.get(&hash), Some(&ts_2));
+
+        // Assert new timestamp overrides the existing one with an earlier timestamp
+        let hash = Hash::from_u64_word(1);
+        manager.insert_perigee_timestamp(&router, hash, ts_1, true);
+        assert_eq!(router.get_perigee_timestamps().len(), 1);
+        assert_eq!(manager.first_seen.len(), 1);
+        assert_eq!(manager.verified_blocks.len(), 1); // verify was true
+        assert_eq!(manager.verified_blocks.get(&hash), Some(&hash));
+        assert_eq!(router.get_perigee_timestamps().get(&hash), Some(&ts_1));
+        assert_eq!(manager.first_seen.get(&hash), Some(&ts_1));
+
+        // Assert that a new hash ts is added correctly
+        let hash2 = Hash::from_u64_word(2);
+        manager.insert_perigee_timestamp(&router, hash2, ts_2, true);
+        assert_eq!(router.get_perigee_timestamps().len(), 2);
+        assert_eq!(manager.first_seen.len(), 2);
+        assert_eq!(manager.verified_blocks.len(), 2); // verify was true
+        assert_eq!(manager.verified_blocks.get(&hash2), Some(&hash2));
+        assert_eq!(router.get_perigee_timestamps().get(&hash2), Some(&ts_2));
+        assert_eq!(manager.first_seen.get(&hash2), Some(&ts_2));
+    }
+
+    #[test]
+    fn test_is_first_round() {
+        let hub = Hub::default();
+        let config = generate_config();
+        let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut manager = PerigeeManager::new(hub, config, is_ibd_running).into_inner();
+
+        assert!(manager.is_first_round());
+
+        manager.round_counter = 1;
+        assert!(!manager.is_first_round());
+    }
+
+    #[test]
+    fn test_rate_peer() {
+        let hub = Hub::default();
+        let config = generate_config();
+        let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let manager = PerigeeManager::new(hub, config, is_ibd_running).into_inner();
+
+        let delays = (0..1_000_001).collect::<Vec<_>>();
+        let score = manager.rate_peer(&delays);
+        assert_eq!(score.p90, 900_000);
+        assert_eq!(score.p95, 950_000);
+        assert_eq!(score.p97_5, 975_000);
+        assert_eq!(score.p98_25, 982_500);
+        assert_eq!(score.p99_125, 991_250);
+        assert_eq!(score.p99_6875, 996_875);
+        assert_eq!(score.p100, 1_000_000);
+    }
+
+    #[test]
+    fn test_start_new_round_resets_state() {
+        let hub = Hub::default();
+        let config = generate_config();
+        let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut manager = PerigeeManager::new(hub, config, is_ibd_running).into_inner();
+
+        manager.verified_blocks.insert(Hash::from_u64_word(1));
+        manager.first_seen.insert(Hash::from_u64_word(1), Instant::now());
+        manager.start_new_round();
+        assert!(manager.verified_blocks.is_empty());
     }
 }

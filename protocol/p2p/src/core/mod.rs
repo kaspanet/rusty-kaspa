@@ -4,3 +4,6 @@ pub mod hub;
 pub mod payload_type;
 pub mod peer;
 pub mod router;
+
+#[cfg(feature = "test-utils")]
+pub mod test_utils;

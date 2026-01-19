@@ -498,3 +498,53 @@ fn match_for_io_error(err_status: &tonic::Status) -> Option<&std::io::Error> {
         err = err.source()?;
     }
 }
+
+// --- TEST UTILS ---
+#[cfg(feature = "test-utils")]
+pub trait RouterTestExt {
+    fn test_new(
+        identity: PeerId,
+        net_address: std::net::SocketAddr,
+        outbound_type: Option<super::peer::PeerOutboundType>,
+        connection_started: std::time::Instant,
+    ) -> std::sync::Arc<Self>
+    where
+        Self: Sized;
+    fn set_perigee_timestamps(&self, timestamps: std::collections::HashMap<kaspa_consensus_core::Hash, std::time::Instant>);
+    fn get_perigee_timestamps(&self) -> std::collections::HashMap<kaspa_consensus_core::Hash, std::time::Instant>;
+}
+
+#[cfg(feature = "test-utils")]
+impl RouterTestExt for Router {
+    fn test_new(
+        identity: PeerId,
+        net_address: std::net::SocketAddr,
+        outbound_type: Option<super::peer::PeerOutboundType>,
+        connection_started: std::time::Instant,
+    ) -> std::sync::Arc<Self> {
+        use parking_lot::{Mutex, RwLock};
+        use seqlock::SeqLock;
+        use tokio::sync::mpsc::channel;
+        let (outgoing_route, _) = channel(1);
+        let (hub_sender, _) = channel(1);
+        std::sync::Arc::new(Router {
+            identity: SeqLock::new(identity),
+            net_address,
+            outbound_type,
+            connection_started,
+            routing_map_by_type: RwLock::new(Default::default()),
+            routing_map_by_id: RwLock::new(Default::default()),
+            outgoing_route,
+            hub_sender,
+            mutable_state: Mutex::new(Default::default()),
+        })
+    }
+
+    fn set_perigee_timestamps(&self, timestamps: std::collections::HashMap<kaspa_consensus_core::Hash, std::time::Instant>) {
+        self.mutable_state.lock().perigee_timestamps = timestamps;
+    }
+
+    fn get_perigee_timestamps(&self) -> std::collections::HashMap<kaspa_consensus_core::Hash, std::time::Instant> {
+        self.mutable_state.lock().perigee_timestamps.clone()
+    }
+}

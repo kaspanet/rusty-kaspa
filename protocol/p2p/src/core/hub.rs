@@ -218,3 +218,16 @@ impl Default for Hub {
         Self::new()
     }
 }
+
+// --- TEST UTILS ---
+#[cfg(feature = "test-utils")]
+pub trait HubTestExt {
+    fn set_peers(&self, peers: std::collections::HashMap<super::peer::PeerKey, std::sync::Arc<super::router::Router>>);
+}
+
+#[cfg(feature = "test-utils")]
+impl HubTestExt for Hub {
+    fn set_peers(&self, peers: std::collections::HashMap<super::peer::PeerKey, std::sync::Arc<super::router::Router>>) {
+        *self.peers.write() = peers;
+    }
+}
