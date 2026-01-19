@@ -30,6 +30,7 @@ pub(crate) struct GlobalConfig {
     pub(crate) var_diff_stats: bool,
     pub(crate) extranonce_size: u8,
     pub(crate) pow2_clamp: bool,
+    pub(crate) coinbase_tag_suffix: Option<String>,
 }
 
 /// Bridge configuration (supports both single and multi-instance modes)
@@ -52,6 +53,7 @@ impl Default for GlobalConfig {
             var_diff_stats: false,
             extranonce_size: 0,
             pow2_clamp: false,
+            coinbase_tag_suffix: None,
         }
     }
 }
@@ -119,6 +121,11 @@ impl BridgeConfig {
 
         if let Some(clamp) = doc["pow2_clamp"].as_bool() {
             global.pow2_clamp = clamp;
+        }
+
+        if let Some(suffix) = doc["coinbase_tag_suffix"].as_str() {
+            let suffix = suffix.trim();
+            global.coinbase_tag_suffix = if suffix.is_empty() { None } else { Some(suffix.to_string()) };
         }
 
         // Parse block_wait_time from config (in milliseconds, convert to Duration)
