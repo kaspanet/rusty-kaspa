@@ -458,7 +458,8 @@ impl PruningProcessor {
 
         while !queue.is_empty() {
             // Lock budget is best-effort because batch flush happens under the prune lock.
-            if lock_acquire_time.elapsed() > Duration::from_millis(PRUNE_LOCK_TARGET_MAX_DURATION_MS) {
+            let lock_elapsed = lock_acquire_time.elapsed();
+            if prune_batch.should_flush() || lock_elapsed > Duration::from_millis(PRUNE_LOCK_TARGET_MAX_DURATION_MS) {
                 // Commit staging stores and flush the batch so we can yield
                 let reachability_write = staging_reachability.commit(&mut prune_batch.batch).unwrap();
                 staging_reachability_relations.commit(&mut prune_batch.batch).unwrap();
@@ -566,33 +567,6 @@ impl PruningProcessor {
                     }
                 }
                 prune_batch.on_block_staged();
-            }
-
-            let lock_elapsed = lock_acquire_time.elapsed();
-            if prune_batch.should_flush() || lock_elapsed > Duration::from_millis(PRUNE_LOCK_TARGET_MAX_DURATION_MS) {
-                let reachability_write = staging_reachability.commit(&mut prune_batch.batch).unwrap();
-                staging_reachability_relations.commit(&mut prune_batch.batch).unwrap();
-                staging_relations.commit(&mut prune_batch.batch).unwrap();
-                drop(reachability_write);
-                drop(statuses_write);
-                drop(reachability_relations_write);
-                drop(relations_write);
-
-                prune_batch.flush(&self.db, &mut metrics);
-                if self.is_consensus_exiting.load(Ordering::Relaxed) {
-                    drop(prune_guard);
-                    info!("Header and Block pruning interrupted: Process is exiting");
-                    return;
-                }
-                prune_guard.blocking_yield();
-                lock_acquire_time = Instant::now();
-
-                relations_write = self.relations_store.write();
-                reachability_relations_write = self.reachability_relations_store.write();
-                staging_relations = StagingRelationsStore::new(&mut relations_write);
-                staging_reachability_relations = StagingRelationsStore::new(&mut reachability_relations_write);
-                staging_reachability = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
-                statuses_write = self.statuses_store.write();
             }
         }
 
