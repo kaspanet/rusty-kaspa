@@ -503,7 +503,16 @@ impl FlowContext {
         }
         // Broadcast as soon as the block has been validated and inserted into the DAG
         self.hub
-            .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()), blue_work: None }), None)
+            .broadcast(
+                make_message!(
+                    Payload::InvRelayBlock,
+                    InvRelayBlockMessage {
+                        hash: Some(hash.into()),
+                        blue_work: Some(block.header.blue_work.into()) //Note: in p2p protocol versions < 9 this will be None
+                    }
+                ),
+                None,
+            )
             .await;
 
         self.on_new_block(consensus, Default::default(), block, virtual_state_task).await;
@@ -544,7 +553,15 @@ impl FlowContext {
         // Broadcast unorphaned blocks
         let msgs = blocks
             .iter()
-            .map(|(b, _)| make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(b.hash().into()), blue_work: None }))
+            .map(|(b, _)| {
+                make_message!(
+                    Payload::InvRelayBlock,
+                    InvRelayBlockMessage {
+                        hash: Some(b.hash().into()),
+                        blue_work: Some(b.header.blue_work.into()) //Note: in p2p protocol versions < 9 this will be None
+                    }
+                )
+            })
             .collect();
         self.hub.broadcast_many(msgs, None).await;
 

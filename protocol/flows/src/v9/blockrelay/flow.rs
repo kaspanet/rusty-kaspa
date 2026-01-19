@@ -40,7 +40,7 @@ impl TryFrom<InvRelayBlockMessage> for RelayInvMessage {
             msg.hash.ok_or_else(|| ProtocolError::OtherOwned("Missing hash in InvRelayBlockMessage".to_string()))?.try_into()?;
         let blue_work = msg
             .blue_work
-            .ok_or_else(|| ProtocolError::OtherOwned("Missing blue work in InvRelayBlockMessage".to_string()))?
+            .unwrap_or_default() // turns None into zero blue work for backward compatibility with v7 and v8 protocol.
             .try_into()?;
         Ok(RelayInvMessage { hash, blue_work: Some(blue_work), is_orphan_root: false, known_within_range: false })
     }
@@ -145,12 +145,10 @@ impl HandleRelayInvsFlow {
 
             // Apply the blue work threshold skip heuristic to inv message
             let blue_work_threshold = session.async_get_virtual_merge_depth_blue_work_threshold().await;
-            if let Some(inv_blue_work) = inv.blue_work {
-                // We only expect none orphans to enter here, so we sanity check:
-                assert!(inv.is_orphan_root, "Orphan root invs should no blue work advertised");
+            // Orphan roots don't need to supply blue work and are always processed regardless of blue work
+            if !inv.is_orphan_root {
+                let inv_blue_work = inv.blue_work.expect("expected none orphan roots to always supply blue work"); // This should be guaranteed via `TryFrom<InvRelayBlockMessage> for RelayInvMessage` conversion.
                 if inv_blue_work < blue_work_threshold {
-                    // We do not apply the skip heuristic below if inv was queued indirectly (as an orphan root), since
-                    // that means the process started by a proper and relevant relay block
                     debug!(
                         "Relay block {} has lower blue work than virtual's merge depth root ({} <= {}), hence we are skipping it",
                         inv.hash, inv_blue_work, blue_work_threshold
@@ -177,8 +175,10 @@ impl HandleRelayInvsFlow {
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
 
-            // Check that blue work advertised in the inv matches actual block blue work
-            if let Some(inv_blue_work) = inv.blue_work {
+            // Check that blue work advertised in the inv matches actual block blue work for none orphans
+            if !inv.is_orphan_root {
+                let inv_blue_work = inv.blue_work.unwrap();
+                // Peer supplied "fake" blue work in the inv message
                 if block.header.blue_work != inv_blue_work {
                     return Err(ProtocolError::OtherOwned(format!(
                         "sent block {} with blue work {} differing from advertised blue work {}",
