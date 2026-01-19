@@ -145,10 +145,6 @@ impl HandleRelayInvsFlow {
 
             // Apply the blue work threshold skip heuristic to inv message
             let blue_work_threshold = session.async_get_virtual_merge_depth_blue_work_threshold().await;
-            // Since `blue_work` respects topology, the negation of this condition means that the relay
-            // block inv is not in the future of virtual's merge depth root, and thus cannot be merged unless
-            // other valid blocks Kosherize it (in which case it will be obtained once the merger is relayed)
-
             if let Some(inv_blue_work) = inv.blue_work {
                 // We only expect none orphans to enter here, so we sanity check:
                 assert!(inv.is_orphan_root, "Orphan root invs should no blue work advertised");
@@ -181,6 +177,7 @@ impl HandleRelayInvsFlow {
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
 
+            // Check that blue work advertised in the inv matches actual block blue work
             if let Some(inv_blue_work) = inv.blue_work {
                 if block.header.blue_work != inv_blue_work {
                     return Err(ProtocolError::OtherOwned(format!(
@@ -194,6 +191,9 @@ impl HandleRelayInvsFlow {
 
             let broadcast = block.header.blue_work > blue_work_threshold;
 
+            // Since `blue_work` respects topology, the negation of this condition means that the relay
+            // block inv is not in the future of virtual's merge depth root, and thus cannot be merged unless
+            // other valid blocks Kosherize it (in which case it will be obtained once the merger is relayed)
             if !broadcast && !inv.is_orphan_root {
                 debug!(
                     "Received block {} with blue work {} not passing the merge depth blue work threshold {}, hence not broadcasting it",
