@@ -3,7 +3,9 @@ use crate::{
     flow_trait::Flow,
     flowcontext::orphans::OrphanOutput,
 };
-use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
+use kaspa_consensus_core::{
+    api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError, BlueWorkType,
+};
 use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
@@ -15,10 +17,13 @@ use kaspa_p2p_lib::{
     IncomingRoute, Router, SharedIncomingRoute,
 };
 use kaspa_utils::channel::{JobSender, JobTrySendError as TrySendError};
+use std::convert::TryFrom;
 use std::{collections::VecDeque, sync::Arc};
 
 pub struct RelayInvMessage {
     hash: Hash,
+
+    blue_work: Option<BlueWorkType>,
 
     /// Indicates whether this inv is an orphan root of a previously relayed descendent
     /// (i.e. this inv was indirectly queued)
@@ -26,6 +31,19 @@ pub struct RelayInvMessage {
 
     /// Indicates whether this inv is already known to be within orphan resolution range
     known_within_range: bool,
+}
+
+impl TryFrom<InvRelayBlockMessage> for RelayInvMessage {
+    type Error = ProtocolError;
+    fn try_from(msg: InvRelayBlockMessage) -> Result<Self, Self::Error> {
+        let hash =
+            msg.hash.ok_or_else(|| ProtocolError::OtherOwned("Missing hash in InvRelayBlockMessage".to_string()))?.try_into()?;
+        let blue_work = msg
+            .blue_work
+            .ok_or_else(|| ProtocolError::OtherOwned("Missing blue work in InvRelayBlockMessage".to_string()))?
+            .try_into()?;
+        Ok(RelayInvMessage { hash, blue_work: Some(blue_work), is_orphan_root: false, known_within_range: false })
+    }
 }
 
 /// Encapsulates an incoming invs route which also receives data locally
@@ -41,7 +59,12 @@ impl TwoWayIncomingRoute {
 
     pub fn enqueue_indirect_invs<I: IntoIterator<Item = Hash>>(&mut self, iter: I, known_within_range: bool) {
         // All indirect invs are orphan roots; not all are known to be within orphan resolution range
-        self.indirect_invs.extend(iter.into_iter().map(|h| RelayInvMessage { hash: h, is_orphan_root: true, known_within_range }))
+        self.indirect_invs.extend(iter.into_iter().map(|h| RelayInvMessage {
+            hash: h,
+            blue_work: None,
+            is_orphan_root: true,
+            known_within_range,
+        }));
     }
 
     pub async fn dequeue(&mut self) -> Result<RelayInvMessage, ProtocolError> {
@@ -49,8 +72,7 @@ impl TwoWayIncomingRoute {
             Ok(inv)
         } else {
             let msg = dequeue!(self.incoming_route, Payload::InvRelayBlock)?;
-            let inv = msg.try_into()?;
-            Ok(RelayInvMessage { hash: inv, is_orphan_root: false, known_within_range: false })
+            Ok(msg.try_into()?)
         }
     }
 }
@@ -121,6 +143,26 @@ impl HandleRelayInvsFlow {
                 }
             }
 
+            // Apply the blue work threshold skip heuristic to inv message
+            let blue_work_threshold = session.async_get_virtual_merge_depth_blue_work_threshold().await;
+            // Since `blue_work` respects topology, the negation of this condition means that the relay
+            // block inv is not in the future of virtual's merge depth root, and thus cannot be merged unless
+            // other valid blocks Kosherize it (in which case it will be obtained once the merger is relayed)
+
+            if let Some(inv_blue_work) = inv.blue_work {
+                // We only expect none orphans to enter here, so we sanity check:
+                assert!(inv.is_orphan_root, "Orphan root invs should no blue work advertised");
+                if inv_blue_work < blue_work_threshold {
+                    // We do not apply the skip heuristic below if inv was queued indirectly (as an orphan root), since
+                    // that means the process started by a proper and relevant relay block
+                    debug!(
+                        "Relay block {} has lower blue work than virtual's merge depth root ({} <= {}), hence we are skipping it",
+                        inv.hash, inv_blue_work, blue_work_threshold
+                    );
+                    continue;
+                }
+            }
+
             if self.ctx.is_ibd_running() && !self.ctx.should_mine(&session).await {
                 // Note: If the node is considered nearly synced we continue processing relay blocks even though an IBD is in progress.
                 // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks.
@@ -139,21 +181,28 @@ impl HandleRelayInvsFlow {
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
 
-            let blue_work_threshold = session.async_get_virtual_merge_depth_blue_work_threshold().await;
-            // Since `blue_work` respects topology, the negation of this condition means that the relay
-            // block is not in the future of virtual's merge depth root, and thus cannot be merged unless
-            // other valid blocks Kosherize it (in which case it will be obtained once the merger is relayed)
+            if let Some(inv_blue_work) = inv.blue_work {
+                if block.header.blue_work != inv_blue_work {
+                    return Err(ProtocolError::OtherOwned(format!(
+                        "sent block {} with blue work {} differing from advertised blue work {}",
+                        block.hash(),
+                        &block.header.blue_work,
+                        inv_blue_work
+                    )));
+                }
+            }
+
             let broadcast = block.header.blue_work > blue_work_threshold;
 
-            // We do not apply the skip heuristic below if inv was queued indirectly (as an orphan root), since
-            // that means the process started by a proper and relevant relay block
-            if !inv.is_orphan_root && !broadcast {
+            if !broadcast && !inv.is_orphan_root {
                 debug!(
-                    "Relay block {} has lower blue work than virtual's merge depth root ({} <= {}), hence we are skipping it",
-                    inv.hash, block.header.blue_work, blue_work_threshold
+                    "Received block {} with blue work {} not passing the merge depth blue work threshold {}, hence not broadcasting it",
+                    block.hash(),
+                    &block.header.blue_work,
+                    blue_work_threshold
                 );
-                continue;
             }
+
             // if in a transitional ibd state, do not wait, sync immediately
             if is_ibd_in_transitional_state {
                 self.try_trigger_ibd(block)?;
@@ -206,7 +255,10 @@ impl HandleRelayInvsFlow {
                     .blocks
                     .iter()
                     .map(|b| {
-                        make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(b.hash().into()), blue_work: None })
+                        make_message!(
+                            Payload::InvRelayBlock,
+                            InvRelayBlockMessage { hash: Some(b.hash().into()), blue_work: Some(b.header.blue_work.into()) }
+                        )
                     })
                     .collect();
                 // we filter out the current peer to avoid sending it back invs we know it already has
@@ -216,7 +268,10 @@ impl HandleRelayInvsFlow {
                 self.ctx
                     .hub()
                     .broadcast(
-                        make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(inv.hash.into()), blue_work: None }),
+                        make_message!(
+                            Payload::InvRelayBlock,
+                            InvRelayBlockMessage { hash: Some(inv.hash.into()), blue_work: Some(block.header.blue_work.into()) }
+                        ),
                         Some(self.router.key()),
                     )
                     .await;

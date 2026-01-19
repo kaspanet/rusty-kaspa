@@ -3,7 +3,7 @@ use crate::flowcontext::{
     process_queue::ProcessQueue,
     transactions::TransactionsSpread,
 };
-use crate::{v7, v8};
+use crate::{v7, v8, v9};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
@@ -502,7 +502,9 @@ impl FlowContext {
             return Err(err)?;
         }
         // Broadcast as soon as the block has been validated and inserted into the DAG
-        self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) }), None).await;
+        self.hub
+            .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()), blue_work: None }), None)
+            .await;
 
         self.on_new_block(consensus, Default::default(), block, virtual_state_task).await;
         self.log_block_event(BlockLogEvent::Submit(hash));
@@ -542,7 +544,7 @@ impl FlowContext {
         // Broadcast unorphaned blocks
         let msgs = blocks
             .iter()
-            .map(|(b, _)| make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(b.hash().into()) }))
+            .map(|(b, _)| make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(b.hash().into()), blue_work: None }))
             .collect();
         self.hub.broadcast_many(msgs, None).await;
 
@@ -751,7 +753,7 @@ impl ConnectionInitializer for FlowContext {
 
         // Register all flows according to version
         let (flows, applied_protocol_version) = match peer_version.protocol_version {
-            v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
+            v if v >= 9 => (v9::register(self.clone(), router.clone(), 9), 9),
             8 => (v8::register(self.clone(), router.clone(), 8), 8),
             7 => (v7::register(self.clone(), router.clone()), 7),
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
