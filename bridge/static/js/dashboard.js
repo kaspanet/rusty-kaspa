@@ -63,6 +63,12 @@ function formatUnixSeconds(ts) {
   }
 }
 
+function displayWorkerName(worker) {
+  const w = String(worker ?? '').trim();
+  if (w === 'InternalCPU') return 'RKStratum CPU Miner';
+  return w || '-';
+}
+
 function escapeHtmlAttr(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -468,7 +474,7 @@ function initCollapsibles() {
 function updateBlocksChartFromBlocks(blocks, totalAllBlocks, walletFilter) {
   const blockBuckets = new Map();
   for (const b of (blocks || [])) {
-    const label = `${b.instance || '-'} / ${b.worker || '-'}`;
+    const label = `${b.instance || '-'} / ${displayWorkerName(b.worker)}`;
     blockBuckets.set(label, (blockBuckets.get(label) || 0) + 1);
   }
 
@@ -558,13 +564,14 @@ async function refresh() {
       const nonceInfo = formatNonceInfo(b.nonce);
       const hashFull = b.hash || '';
       const hashShort = shortHash(hashFull);
+      const workerDisplay = displayWorkerName(b.worker);
       const tr = document.createElement('tr');
       tr.className = 'border-b border-card/50';
       tr.innerHTML = `
         <td class="py-1.5 pr-3" title="${b.timestamp || ''}">${formatUnixSeconds(b.timestamp)}</td>
         <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.instance || '')}">${b.instance || '-'}</td>
         <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.bluescore || '')}">${b.bluescore || '-'}</td>
-        <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.worker || '')}">${b.worker || '-'}</td>
+        <td class="py-1.5 pr-3" title="${escapeHtmlAttr(workerDisplay)}">${workerDisplay}</td>
         <td class="py-1.5 pr-3">
           <div class="flex items-center gap-2 min-w-0">
             <span class="min-w-0 truncate" title="${b.wallet || ''}">${b.wallet || '-'}</span>
@@ -598,7 +605,7 @@ async function refresh() {
       const invalid = Number(icpu.invalid ?? 0) || 0;
       tr.innerHTML = `
         <td class="py-1.5 pr-3">-</td>
-        <td class="py-1.5 pr-3">InternalCPU</td>
+        <td class="py-1.5 pr-3">${displayWorkerName('InternalCPU')}</td>
         <td class="py-1.5 pr-3">
           <div class="flex items-center gap-2 min-w-0">
             <span class="min-w-0 truncate" title="${escapeHtmlAttr(wallet)}">${wallet || '-'}</span>
@@ -619,7 +626,7 @@ async function refresh() {
       tr.className = 'border-b border-card/50';
       tr.innerHTML = `
         <td class="py-1.5 pr-3" title="${escapeHtmlAttr(w.instance || '')}">${w.instance || '-'}</td>
-        <td class="py-1.5 pr-3" title="${escapeHtmlAttr(w.worker || '')}">${w.worker || '-'}</td>
+        <td class="py-1.5 pr-3" title="${escapeHtmlAttr(displayWorkerName(w.worker))}">${displayWorkerName(w.worker)}</td>
         <td class="py-1.5 pr-3">
           <div class="flex items-center gap-2 min-w-0">
             <span class="min-w-0 truncate" title="${w.wallet || ''}">${w.wallet || '-'}</span>
@@ -681,13 +688,14 @@ async function refresh() {
         const nonceInfo = formatNonceInfo(b.nonce);
         const hashFull = b.hash || '';
         const hashShort = shortHash(hashFull);
+      const workerDisplay = displayWorkerName(b.worker);
         const tr = document.createElement('tr');
         tr.className = 'border-b border-card/50';
         tr.innerHTML = `
           <td class="py-1.5 pr-3" title="${b.timestamp || ''}">${formatUnixSeconds(b.timestamp)}</td>
           <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.instance || '')}">${b.instance || '-'}</td>
           <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.bluescore || '')}">${b.bluescore || '-'}</td>
-          <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.worker || '')}">${b.worker || '-'}</td>
+        <td class="py-1.5 pr-3" title="${escapeHtmlAttr(workerDisplay)}">${workerDisplay}</td>
           <td class="py-1.5 pr-3">
             <div class="flex items-center gap-2 min-w-0">
               <span class="min-w-0 truncate" title="${b.wallet || ''}">${b.wallet || '-'}</span>
@@ -721,7 +729,7 @@ async function refresh() {
         const invalid = Number(icpu.invalid ?? 0) || 0;
         tr.innerHTML = `
           <td class="py-1.5 pr-3">-</td>
-          <td class="py-1.5 pr-3">InternalCPU</td>
+          <td class="py-1.5 pr-3">${displayWorkerName('InternalCPU')}</td>
           <td class="py-1.5 pr-3">
             <div class="flex items-center gap-2 min-w-0">
               <span class="min-w-0 truncate" title="${escapeHtmlAttr(wallet)}">${wallet || '-'}</span>
@@ -742,7 +750,7 @@ async function refresh() {
         tr.className = 'border-b border-card/50';
         tr.innerHTML = `
           <td class="py-1.5 pr-3" title="${escapeHtmlAttr(w.instance || '')}">${w.instance || '-'}</td>
-          <td class="py-1.5 pr-3" title="${escapeHtmlAttr(w.worker || '')}">${w.worker || '-'}</td>
+          <td class="py-1.5 pr-3" title="${escapeHtmlAttr(displayWorkerName(w.worker))}">${displayWorkerName(w.worker)}</td>
           <td class="py-1.5 pr-3">
             <div class="flex items-center gap-2 min-w-0">
               <span class="min-w-0 truncate" title="${w.wallet || ''}">${w.wallet || '-'}</span>
@@ -905,13 +913,14 @@ setInterval(() => {
     const nonceInfo = formatNonceInfo(b.nonce);
     const hashFull = b.hash || '';
     const hashShort = shortHash(hashFull);
+    const workerDisplay = displayWorkerName(b.worker);
     const tr = document.createElement('tr');
     tr.className = 'border-b border-card/50';
     tr.innerHTML = `
       <td class="py-1.5 pr-3" title="${b.timestamp || ''}">${formatUnixSeconds(b.timestamp)}</td>
       <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.instance || '')}">${b.instance || '-'}</td>
       <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.bluescore || '')}">${b.bluescore || '-'}</td>
-      <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.worker || '')}">${b.worker || '-'}</td>
+      <td class="py-1.5 pr-3" title="${escapeHtmlAttr(workerDisplay)}">${workerDisplay}</td>
       <td class="py-1.5 pr-3">
         <div class="flex items-center gap-2 min-w-0">
           <span class="min-w-0 truncate" title="${b.wallet || ''}">${b.wallet || '-'}</span>
