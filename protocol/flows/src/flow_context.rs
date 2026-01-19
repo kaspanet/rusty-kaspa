@@ -753,7 +753,7 @@ impl ConnectionInitializer for FlowContext {
 
         // Register all flows according to version
         let (flows, applied_protocol_version) = match peer_version.protocol_version {
-            v if v >= 9 => (v9::register(self.clone(), router.clone(), 9), 9),
+            v if v >= PROTOCOL_VERSION => (v9::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
             8 => (v8::register(self.clone(), router.clone(), 8), 8),
             7 => (v7::register(self.clone(), router.clone()), 7),
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
