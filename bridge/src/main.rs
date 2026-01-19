@@ -179,13 +179,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let cli = Cli::parse();
 
-    let requested_config = cli.config.clone().unwrap_or_else(|| {
-        if cli.testnet {
-            PathBuf::from("config.testnet.yaml")
-        } else {
-            PathBuf::from("config.yaml")
-        }
-    });
+    // Single-config model: default to `config.yaml` for both mainnet and testnet runs.
+    // `--testnet` affects the network behavior, but does not imply a different config file.
+    let requested_config = cli.config.clone().unwrap_or_else(|| PathBuf::from("config.yaml"));
 
     if REQUESTED_CONFIG_PATH.set(requested_config.clone()).is_err() {
         tracing::warn!("Failed to set requested config path - may already be initialized");
