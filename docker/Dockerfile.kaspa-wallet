@@ -42,10 +42,15 @@ RUN apk --no-cache add \
   libgcc \
   libstdc++ \
   tini \
-  ca-certificates
+  ca-certificates \
+  && addgroup -S kaspa \
+  && adduser -S -G kaspa -h /home/kaspa -s /sbin/nologin kaspa \
+  && mkdir -p /home/kaspa /app \
+  && chown -R kaspa:kaspa /home/kaspa /app
 
-COPY --from=builder /app/kaspa-wallet .
+COPY --from=builder --chown=kaspa:kaspa /app/kaspa-wallet .
 
-USER root
+ENV HOME=/home/kaspa
+USER kaspa
 ENTRYPOINT [ "/sbin/tini", "--" ]
 CMD [ "/app/kaspa-wallet" ]
