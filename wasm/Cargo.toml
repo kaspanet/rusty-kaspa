@@ -68,10 +68,13 @@ targets = [
 ]
 folder = "setup"
 
-
+# Workaround for Rust 1.87.0
+# https://github.com/rust-lang/rust/issues/141048
 [package.metadata.wasm-pack.profile.release]
-# We require these options:
-wasm-opt = ["-O","--enable-bulk-memory","--enable-nontrapping-float-to-int"]
+# This optimization configuration requires "-Ctarget-cpu=mvp" Rustflag (only enable W3C MVP feature set)
+# This flag is automatically used either via (release optimized) build script at root
+#   or via .cargo/config.toml when executing the build from /wasm
+wasm-opt = ["-O","--enable-bulk-memory"]
 
 [lints]
 workspace = true
