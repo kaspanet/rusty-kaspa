@@ -26,6 +26,7 @@ pub struct BridgeConfig {
     pub var_diff_stats: bool,
     pub extranonce_size: u8,
     pub pow2_clamp: bool,
+    pub coinbase_tag_suffix: Option<String>,
 }
 
 /// Start block template listener with concrete KaspaApi
