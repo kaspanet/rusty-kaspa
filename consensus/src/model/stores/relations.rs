@@ -346,8 +346,6 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
             .parents_access
             .iterator()
             .map(|r| r.unwrap().0)
-            .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
-            .map(Hash::from_bytes)
             .chain(self.parents_overrides.keys().copied())
             .collect::<BlockHashSet>()
             .difference(&self.entry_deletions)

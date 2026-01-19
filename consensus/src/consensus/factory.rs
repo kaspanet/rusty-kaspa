@@ -20,7 +20,7 @@ use kaspa_utils::mem_size::MemSizeEstimator;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, error::Error, fs, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ConsensusEntry {
@@ -181,14 +181,14 @@ impl MultiConsensusManagementStore {
         Ok(())
     }
 
-    fn iterator(&self) -> impl Iterator<Item = Result<ConsensusEntry, Box<dyn Error>>> + '_ {
+    fn iterator(&self) -> impl Iterator<Item = Result<ConsensusEntry, StoreError>> + '_ {
         self.entries.iterator().map(|iter_result| match iter_result {
             Ok((_, entry)) => Ok(entry),
             Err(e) => Err(e),
         })
     }
 
-    fn iterate_inactive_entries(&self) -> impl Iterator<Item = Result<ConsensusEntry, Box<dyn Error>>> + '_ {
+    fn iterate_inactive_entries(&self) -> impl Iterator<Item = Result<ConsensusEntry, StoreError>> + '_ {
         let current_consensus_key = self.metadata.read().unwrap().current_consensus_key;
         self.iterator().filter(move |entry_result| {
             if let Ok(entry) = entry_result {

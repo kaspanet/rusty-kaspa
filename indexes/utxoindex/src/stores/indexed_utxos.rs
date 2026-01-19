@@ -4,10 +4,11 @@ use kaspa_consensus_core::tx::{
     ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint,
 };
 use kaspa_core::debug;
-use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DirectDbWriter, StoreResult, DB};
+use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DirectDbWriter, StoreResult, DB};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -118,6 +119,16 @@ impl AsRef<[u8]> for UtxoEntryFullAccessKey {
     }
 }
 
+impl TryFrom<&[u8]> for UtxoEntryFullAccessKey {
+    type Error = &'static str;
+
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        assert!(!slice.is_empty(), "slice cannot be empty");
+        assert!(slice.len() >= TRANSACTION_OUTPOINT_KEY_SIZE, "slice length must be at least {} bytes", TRANSACTION_OUTPOINT_KEY_SIZE);
+        Ok(Self(Arc::new(slice.to_vec())))
+    }
+}
+
 // Traits:
 
 pub trait UtxoSetByScriptPublicKeyStoreReader {
@@ -129,13 +140,20 @@ pub trait UtxoSetByScriptPublicKeyStoreReader {
 
 pub trait UtxoSetByScriptPublicKeyStore: UtxoSetByScriptPublicKeyStoreReader {
     /// remove [UtxoSetByScriptPublicKey] from the [UtxoSetByScriptPublicKeyStore].
-    fn remove_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()>;
+    fn remove_utxo_entries(&self, batch: &mut WriteBatch, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()>;
 
     /// add [UtxoSetByScriptPublicKey] into the [UtxoSetByScriptPublicKeyStore].
-    fn add_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()>;
+    fn add_utxo_entries(&self, batch: &mut WriteBatch, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()>;
+
+    /// Writes UTXOs from an iterator without deleting existing data first.
+    /// Used for chunked writes during resync.
+    fn write_from_iterator(
+        &self,
+        utxo_iterator: impl Iterator<Item = (ScriptPublicKey, TransactionOutpoint, CompactUtxoEntry)>,
+    ) -> StoreResult<()>;
 
     /// removes all entries in the cache and db, besides prefixes themselves.
-    fn delete_all(&mut self) -> StoreResult<()>;
+    fn delete_all(&self) -> StoreResult<()>;
 }
 
 // Implementations:
@@ -149,6 +167,12 @@ pub struct DbUtxoSetByScriptPublicKeyStore {
 impl DbUtxoSetByScriptPublicKeyStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::UtxoIndex.into()) }
+    }
+
+    /// Commits a WriteBatch to the database
+    pub fn write_batch(&self, batch: WriteBatch) -> StoreResult<()> {
+        self.db.write(batch)?;
+        Ok(())
     }
 }
 
@@ -165,7 +189,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
             let utxos_by_script_public_keys_inner = CompactUtxoCollection::from_iter(
                 self.access.seek_iterator(Some(script_public_key_bucket.as_ref()), None, usize::MAX, false).map(|res| {
                     let (key, entry) = res.unwrap();
-                    (TransactionOutpointKey(<[u8; TRANSACTION_OUTPOINT_KEY_SIZE]>::try_from(&key[..]).unwrap()).into(), entry)
+                    (key.extract_outpoint(), entry)
                 }),
             );
             entries_count += utxos_by_script_public_keys_inner.len();
@@ -198,19 +222,17 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
 
     // This can have a big memory footprint, so it should be used only for tests.
     fn get_all_outpoints(&self) -> StoreResult<HashSet<TransactionOutpoint>> {
-        Ok(HashSet::from_iter(
-            self.access.iterator().map(|res| UtxoEntryFullAccessKey(Arc::new(res.unwrap().0.to_vec())).extract_outpoint()),
-        ))
+        Ok(HashSet::from_iter(self.access.iterator().map(|res| res.unwrap().0.extract_outpoint())))
     }
 }
 
 impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
-    fn remove_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()> {
+    fn remove_utxo_entries(&self, batch: &mut WriteBatch, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()> {
         if utxo_entries.is_empty() {
             return Ok(());
         }
 
-        let mut writer = DirectDbWriter::new(&self.db);
+        let mut writer = BatchDbWriter::new(batch);
 
         let mut to_remove = utxo_entries.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
             compact_utxo_collection.keys().map(move |transaction_outpoint| {
@@ -226,12 +248,12 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         Ok(())
     }
 
-    fn add_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()> {
+    fn add_utxo_entries(&self, batch: &mut WriteBatch, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()> {
         if utxo_entries.is_empty() {
             return Ok(());
         }
 
-        let mut writer = DirectDbWriter::new(&self.db);
+        let mut writer = BatchDbWriter::new(batch);
 
         let mut to_add = utxo_entries.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
             compact_utxo_collection.iter().map(move |(transaction_outpoint, compact_utxo)| {
@@ -250,8 +272,32 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         Ok(())
     }
 
+    fn write_from_iterator(
+        &self,
+        utxo_iterator: impl Iterator<Item = (ScriptPublicKey, TransactionOutpoint, CompactUtxoEntry)>,
+    ) -> StoreResult<()> {
+        let mut batch = WriteBatch::default();
+
+        {
+            let mut writer = BatchDbWriter::new(&mut batch);
+            let mut to_add = utxo_iterator.map(|(script_public_key, transaction_outpoint, compact_utxo)| {
+                let key = UtxoEntryFullAccessKey::new(
+                    ScriptPublicKeyBucket::from(&script_public_key),
+                    TransactionOutpointKey::from(&transaction_outpoint),
+                );
+                (key, compact_utxo)
+            });
+
+            self.access.write_many_without_cache(&mut writer, &mut to_add)?;
+        }
+
+        self.db.write(batch)?;
+
+        Ok(())
+    }
+
     /// Removes all entries in the cache and db, besides prefixes themselves.
-    fn delete_all(&mut self) -> StoreResult<()> {
+    fn delete_all(&self) -> StoreResult<()> {
         self.access.delete_all(DirectDbWriter::new(&self.db))
     }
 }

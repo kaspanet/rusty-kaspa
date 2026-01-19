@@ -66,7 +66,7 @@ impl RequestPruningPointUtxoSetFlow {
                     PruningPointUtxoSetChunkMessage {
                         outpoint_and_utxo_entry_pairs: pruning_point_utxos
                             .iter()
-                            .map(|(outpoint, entry)| { (outpoint, entry).into() })
+                            .map(|(outpoint, entry)| { (outpoint, entry.as_ref()).into() })
                             .collect_vec()
                     }
                 ))
