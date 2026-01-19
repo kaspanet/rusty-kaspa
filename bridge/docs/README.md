@@ -20,7 +20,7 @@ The sample configuration file is:
 
 `bridge/config.yaml`
 
-When running from the repository root, pass this full relative path via `--config`.
+When running from the repository root, pass the config path explicitly:
 
 By default it exposes these Stratum ports:
 
