@@ -36,15 +36,14 @@ use super::{ProofInternalResult, PruningProofManager};
 #[derive(Clone)]
 struct LevelProofContext {
     ghostdag_store: Arc<DbGhostdagStore>,
-    relations_store: Arc<DbRelationsStore>,
     tip: Hash,
     root: Hash,
     count: u64,
 }
 
-/// A relations-store reader restricted to the future cone of a fixed root block (including the root).
+/// A relations-store reader restricted to the future of a fixed root block (including the root).
 ///
-/// Only parents and children that lie within the root’s future cone are exposed.
+/// Only parents and children that lie within the root’s future are exposed.
 /// This provides a consistent, root-relative view of relations when operating on
 /// proofs or subgraphs confined to that region of the DAG.
 #[derive(Clone)]
@@ -317,7 +316,7 @@ impl PruningProofManager {
         let mut best_future_roots = TopK::<(u64, Hash), 8>::new();
 
         // Try to realize a level-proof from a candidate root
-        let mut try_root = |level_relations_store: &DbRelationsStore, root: Hash, future_size: u64| -> Option<Arc<DbGhostdagStore>> {
+        let mut try_root = |level_relations_store: &DbRelationsStore, root: Hash, future_size: u64| -> Option<LevelProofContext> {
             // Populate ghostdag for `future(root) ∩ past(selected_tip)` and test depth requirements.
             let ghostdag_store = ghostdag_factory.new_store();
             let has_required_block = self.populate_level_proof_ghostdag_data(
@@ -345,8 +344,10 @@ impl PruningProofManager {
             // Success:
             // - Genesis is always acceptable
             // - Otherwise require at least `2M` blue depth at this level
+            //
+            // Note that future_size + 1 = inclusive size of the diamond `future(root) ∩ past(tip)`
             if root == self.genesis_hash || current_level_score >= 2 * self.pruning_proof_m {
-                Some(ghostdag_store)
+                Some(LevelProofContext { ghostdag_store, tip: selected_tip, root, count: future_size + 1 })
             } else {
                 None
             }
@@ -385,14 +386,8 @@ impl PruningProofManager {
                     || (future_size >= required_future_size && base_level_depth >= required_base_level_depth)
                 {
                     let root = current;
-                    if let Some(ghostdag_store) = try_root(&level_relations_store, root, future_size) {
-                        return Ok(LevelProofContext {
-                            ghostdag_store,
-                            relations_store: level_relations_store.into(),
-                            tip: selected_tip,
-                            root,
-                            count: future_size + 1,
-                        });
+                    if let Some(level_ctx) = try_root(&level_relations_store, root, future_size) {
+                        return Ok(level_ctx);
                     }
 
                     // Large enough future with insufficient blue depth implies reds; increase the
@@ -417,29 +412,17 @@ impl PruningProofManager {
         // it continues to hold for all future progressions.
         if let Some(root) = prev_root {
             let future_size = *future_sizes_map.get(&root).expect("exhausted traversal");
-            if let Some(ghostdag_store) = try_root(&level_relations_store, root, future_size) {
-                return Ok(LevelProofContext {
-                    ghostdag_store,
-                    relations_store: level_relations_store.into(),
-                    tip: selected_tip,
-                    root,
-                    count: future_size + 1,
-                });
+            if let Some(level_ctx) = try_root(&level_relations_store, root, future_size) {
+                return Ok(level_ctx);
             }
         }
 
         // Final fallback: give a last chance to a few high-future-size roots.
-        // This is only needed for fresh nodes without a stored descriptor yet, and can be removed
+        // This is only needed for migrating nodes without a stored descriptor yet, and can be removed
         // once all nodes persist descriptors (along with the whole top-k fallback path).
         for (future_size, root) in best_future_roots.into_sorted_iter_ascending().collect_vec().into_iter().rev() {
-            if let Some(ghostdag_store) = try_root(&level_relations_store, root, future_size) {
-                return Ok(LevelProofContext {
-                    ghostdag_store,
-                    relations_store: level_relations_store.into(),
-                    tip: selected_tip,
-                    root,
-                    count: future_size + 1,
-                });
+            if let Some(level_ctx) = try_root(&level_relations_store, root, future_size) {
+                return Ok(level_ctx);
             }
         }
 
