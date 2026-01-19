@@ -120,47 +120,7 @@ impl PruningProofManager {
         if let Some(descriptor) = descriptor.as_ref() {
             // If the descriptor matches the pruning point and it was not obtained from an external source, use it to rebuild the proof
             if descriptor.pruning_point == pp && !descriptor.external {
-                return (0..=self.max_block_level)
-                    .map(|level| {
-                        let level_idx = level as usize;
-                        let tip = descriptor.tips[level_idx];
-                        let root = descriptor.roots[level_idx];
-                        let expected_count = descriptor.counts[level_idx];
-
-                        let mut headers = VecDeque::with_capacity(2 * self.pruning_proof_m as usize);
-                        let mut queue = BinaryHeap::<SortableBlock>::new();
-                        let mut visited = BlockHashSet::new();
-                        queue.push(SortableBlock::new(tip, get_header(tip).blue_work));
-
-                        while let Some(SortableBlock { hash: current, .. }) = queue.pop() {
-                            if !visited.insert(current) {
-                                continue;
-                            }
-
-                            // We are only interested in the exact diamond future(root) ⋂ past(tip)
-                            if !self.reachability_service.is_dag_ancestor_of(root, current) {
-                                continue;
-                            }
-
-                            let header = get_header(current);
-                            for parent in self.reachable_parents_at_level(level, &header) {
-                                queue.push(SortableBlock::new(parent, get_header(parent).blue_work));
-                            }
-
-                            headers.push_front(header);
-                        }
-
-                        assert_eq!(
-                            expected_count,
-                            headers.len() as u64,
-                            "rebuilt proof level {} count {} does not match the expected descriptor count {}",
-                            level,
-                            headers.len(),
-                            expected_count
-                        );
-                        headers.into()
-                    })
-                    .collect_vec();
+                return self.proof_from_descriptor(descriptor);
             }
         }
 
@@ -216,6 +176,55 @@ impl PruningProofManager {
         self.pruning_point_store.write().set_pruning_proof_descriptor(new_descriptor).unwrap();
 
         proof
+    }
+
+    fn proof_from_descriptor(&self, descriptor: &PruningProofDescriptor) -> PruningPointProof {
+        // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
+        // to make sure we hold a single Arc per header
+        let mut cache: BlockHashMap<Arc<Header>> = BlockHashMap::with_capacity(4 * self.pruning_proof_m as usize);
+        let mut get_header = |hash| cache.entry(hash).or_insert_with_key(|&hash| self.headers_store.get_header(hash).unwrap()).clone();
+
+        (0..=self.max_block_level)
+            .map(|level| {
+                let level_idx = level as usize;
+                let tip = descriptor.tips[level_idx];
+                let root = descriptor.roots[level_idx];
+                let expected_count = descriptor.counts[level_idx];
+
+                let mut headers = VecDeque::with_capacity(2 * self.pruning_proof_m as usize);
+                let mut queue = BinaryHeap::<SortableBlock>::new();
+                let mut visited = BlockHashSet::new();
+                queue.push(SortableBlock::new(tip, get_header(tip).blue_work));
+
+                while let Some(SortableBlock { hash: current, .. }) = queue.pop() {
+                    if !visited.insert(current) {
+                        continue;
+                    }
+
+                    // We are only interested in the exact diamond future(root) ⋂ past(tip)
+                    if !self.reachability_service.is_dag_ancestor_of(root, current) {
+                        continue;
+                    }
+
+                    let header = get_header(current);
+                    for parent in self.reachable_parents_at_level(level, &header) {
+                        queue.push(SortableBlock::new(parent, get_header(parent).blue_work));
+                    }
+
+                    headers.push_front(header);
+                }
+
+                assert_eq!(
+                    expected_count,
+                    headers.len() as u64,
+                    "rebuilt proof level {} count {} does not match the expected descriptor count {}",
+                    level,
+                    headers.len(),
+                    expected_count
+                );
+                headers.into()
+            })
+            .collect()
     }
 
     /// Computes level-proof contexts for all levels, processing levels from high to low to satisfy
