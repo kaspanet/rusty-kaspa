@@ -16,7 +16,6 @@ use kaspa_txscript::{
     EngineFlags, TxScriptEngine,
 };
 use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts};
-use std::time::Instant;
 use zk_covenant_inline_core::{Action, PublicInput, State, VersionedActionRaw};
 use zk_covenant_inline_methods::{ZK_COVENANT_INLINE_GUEST_ELF, ZK_COVENANT_INLINE_GUEST_ID};
 
@@ -156,7 +155,7 @@ fn verify_zk_succinct(tx: &Transaction, utxo_entry: &UtxoEntry) {
     let flags = EngineFlags { covenants_enabled: true };
 
     let populated = PopulatedTransaction::new(tx, vec![utxo_entry.clone()]);
-    let mut vm = TxScriptEngine::from_transaction_input(&populated, &tx.inputs[0], 0, utxo_entry, &reused_values, &sig_cache, flags);
+    let mut vm = TxScriptEngine::from_transaction_input(&populated, &tx.inputs[0], 0, utxo_entry, &reused_values, &sig_cache, flags, None);
     vm.execute().unwrap();
 }
 
