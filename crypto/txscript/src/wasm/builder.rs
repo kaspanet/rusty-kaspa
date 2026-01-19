@@ -106,6 +106,14 @@ impl ScriptBuilder {
         Ok(self.clone())
     }
 
+    #[wasm_bindgen(js_name = "addU16")]
+    pub fn add_u16(&self, value: u16) -> Result<ScriptBuilder> {
+        let mut inner = self.inner_mut();
+        inner.add_u16(value)?;
+
+        Ok(self.clone())
+    }
+
     #[wasm_bindgen(js_name = "addLockTime")]
     pub fn add_lock_time(&self, lock_time: u64) -> Result<ScriptBuilder> {
         let mut inner = self.inner_mut();

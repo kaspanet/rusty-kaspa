@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
     use crate::{
-        data_stack::Stack,
+        data_stack::{DataStack, Stack},
         zk_precompiles::{parse_tag, verify_zk},
     };
 
@@ -42,7 +42,7 @@ mod test {
         groth_stack.push(input2);
         groth_stack.push(input1);
         groth_stack.push(input0);
-        groth_stack.push((5u16).to_le_bytes().to_vec());
+        groth_stack.push_item(5u16).unwrap();
         groth_stack.push(groth16_proof_bytes);
         groth_stack.push(unprepared_compressed_vk);
         groth_stack.push([groth16_tag].to_vec());

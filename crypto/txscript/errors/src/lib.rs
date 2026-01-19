@@ -83,4 +83,6 @@ pub enum TxScriptError {
 pub enum SerializationError {
     #[error("Number exceeds 8 bytes: {0}")]
     NumberTooLong(i64),
+    #[error("Ark serialization error")]
+    ArkSerialization,
 }

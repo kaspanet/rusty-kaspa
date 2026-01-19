@@ -142,7 +142,7 @@ async function groth16Verify() {
         for (let i = publicInputs.length - 1; i >= 0; i--) {
             signatureScriptBuilder.addData(publicInputs[i]);
         }
-        signatureScriptBuilder.addData(Buffer.from([(numInputs & 0xFF), ((numInputs >> 8) & 0xFF)]));
+        signatureScriptBuilder.addU16(numInputs);
 
         // Push verifying key
         // Push proof

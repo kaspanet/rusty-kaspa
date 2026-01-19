@@ -7,7 +7,7 @@ pub use error::Groth16Error;
 
 use crate::{
     data_stack::{DataStack, Stack},
-    zk_precompiles::{fields::fr_from_bytes, ZkPrecompile},
+    zk_precompiles::{fields::Fr, ZkPrecompile},
 };
 
 pub struct Groth16Precompile;
@@ -21,17 +21,16 @@ impl ZkPrecompile for Groth16Precompile {
         let [proof_bytes] = dstack.pop_raw()?;
 
         // Retrieve number of public inputs
-        let [n_inputs] = dstack.pop_raw()?;
+        let [n_inputs] = dstack.pop_items::<1, u16>()?;
 
         // Retrieve public inputs
-        let n_inputs = u16::from_le_bytes(n_inputs.as_slice().try_into()?) as u16;
         let mut unprepared_public_inputs = Vec::new();
 
         // For each public input, pop from the stack and convert to Fr
         for _ in 0..n_inputs {
-            let [input_bytes] = dstack.pop_raw()?;
+            let [fr] = dstack.pop_items::<1, Fr>()?;
             // Convert bytes to Fr and add to public inputs
-            unprepared_public_inputs.push(fr_from_bytes(&input_bytes)?);
+            unprepared_public_inputs.push(fr);
         }
         // Deserialize verifying key
         let vk = VerifyingKey::deserialize_compressed(&*unprepared_compressed_key)?;
@@ -60,7 +59,7 @@ impl ZkPrecompile for Groth16Precompile {
 #[cfg(test)]
 mod tests {
     use crate::{
-        data_stack::Stack,
+        data_stack::{DataStack, Stack},
         zk_precompiles::{groth16::Groth16Precompile, ZkPrecompile},
     };
 
@@ -82,7 +81,7 @@ mod tests {
         stack.push(input2);
         stack.push(input1);
         stack.push(input0);
-        stack.push((5u16).to_le_bytes().to_vec());
+        stack.push_item(5u16).unwrap(); // Number of public inputs
         stack.push(proof);
         stack.push(unprepared_compressed_vk);
         Groth16Precompile::verify_zk(&mut stack).unwrap();
