@@ -42,13 +42,6 @@ struct LevelProofContext {
     count: u64,
 }
 
-struct MultiLevelProofContext {
-    transient_ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
-    transient_relations_stores: Vec<Arc<DbRelationsStore>>,
-    tips_by_level: Vec<Hash>,
-    roots_by_level: Vec<Hash>,
-}
-
 /// A relations-store reader restricted to the future cone of a fixed root block (including the root).
 ///
 /// Only parents and children that lie within the root’s future cone are exposed.
@@ -121,8 +114,8 @@ impl PruningProofManager {
     pub(crate) fn build_pruning_point_proof(&self, pp: Hash) -> PruningPointProof {
         let descriptor = self.pruning_point_store.read().pruning_proof_descriptor().optional().unwrap();
         if let Some(descriptor) = descriptor.as_ref() {
-            // If the descriptor matches the pruning point and it was not obtained from an external source, use it to rebuild the proof
-            // todo: reword
+            // Use a locally built descriptor (when it matches the current pruning point) for fast reconstruction.
+            // Otherwise, recalculate the descriptor to optimize proof size.
             if descriptor.pruning_point == pp && !descriptor.external {
                 return self.proof_from_descriptor(descriptor);
             }
@@ -136,7 +129,7 @@ impl PruningProofManager {
             }
             false => {
                 // General case
-                self.calc_new_proof(pp, descriptor.as_ref().map(|v| v.as_ref()))
+                self.calc_new_proof(pp, descriptor.as_deref())
             }
         };
 
@@ -146,7 +139,10 @@ impl PruningProofManager {
         proof
     }
 
-    /// todo: doc
+    /// Reconstructs the pruning proof described by `descriptor` by loading headers from storage
+    /// and collecting, per level, the blocks in `future(root) ∩ past(tip)`.
+    ///
+    /// Uses a local header-arc cache to deduplicate headers shared across levels.
     fn proof_from_descriptor(&self, descriptor: &PruningProofDescriptor) -> PruningPointProof {
         // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
         // to make sure we hold a single Arc per header
@@ -197,9 +193,8 @@ impl PruningProofManager {
     }
 
     /// Computes level-proof contexts for all levels, processing levels from high to low to satisfy
-    /// MLS inter-level constraints, and aggregates the results into a multi-level proof context.
-    /// todo: update
-    fn calc_new_proof(&self, pp: Hash, previous_descriptor: Option<&PruningProofDescriptor>) -> PruningProofDescriptor {
+    /// MLS inter-level constraints, and aggregates the results into a pruning-proof descriptor.
+    fn calc_new_proof(&self, pp: Hash, prev_descriptor: Option<&PruningProofDescriptor>) -> PruningProofDescriptor {
         let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
 
@@ -224,8 +219,8 @@ impl PruningProofManager {
                     &pp_header,
                     level,
                     required_block,
-                    previous_descriptor.as_ref().map(|d| d.tips[level_idx]),
-                    previous_descriptor.as_ref().map(|d| d.roots[level_idx]),
+                    prev_descriptor.as_ref().map(|d| d.tips[level_idx]),
+                    prev_descriptor.as_ref().map(|d| d.roots[level_idx]),
                     temp_db.clone(),
                 )
                 .unwrap_or_else(|e| panic!("calc_level_proof_context failed for level {level}: {e}")),
@@ -263,8 +258,8 @@ impl PruningProofManager {
         pp_header: &HeaderWithBlockLevel,
         level: BlockLevel,
         required_block: Option<Hash>,
-        previous_tip: Option<Hash>,
-        previous_root: Option<Hash>,
+        prev_tip: Option<Hash>,
+        prev_root: Option<Hash>,
         temp_db: Arc<DB>,
     ) -> ProofInternalResult<LevelProofContext> {
         // Select the tip at this level:
@@ -273,9 +268,12 @@ impl PruningProofManager {
         let selected_tip = if pp_header.block_level >= level {
             pp_header.header.hash
         } else {
-            // todo: explain
+            // When advancing from a previous descriptor, require `prev_tip` to lie in the past of the new selected tip.
+            // This preserves monotonicity across successive proofs (see `prev_root` rationale below).
+            //
+            // Note: such a parent always exists because the new pruning point is in the future of previous pruning points.
             self.reachable_parents_at_level(level, &pp_header.header)
-                .filter(|&p| previous_tip.is_none_or(|previous_tip| self.reachability_service.is_dag_ancestor_of(previous_tip, p)))
+                .filter(|&p| prev_tip.is_none_or(|previous_tip| self.reachability_service.is_dag_ancestor_of(previous_tip, p)))
                 .map(|p| self.headers_store.get_header(p).expect("reachable"))
                 .max_by_key(|h| SortableBlock::new(h.hash, h.blue_work))
                 .ok_or_else(|| ProofInternalError::NotEnoughHeadersToBuildProof("no reachable parents".to_string()))?
@@ -413,8 +411,11 @@ impl PruningProofManager {
             }
         }
 
-        // todo: explain
-        if let Some(root) = previous_root {
+        // Use the previous proof's root as the fallback anchor when progressing proofs.
+        // With a fixed root, ghostdag selection is deterministic, and if the new tip is in the future of the
+        // previous tip then blue score/work can only increase — so once the 2M (or genesis) invariant holds,
+        // it continues to hold for all future progressions.
+        if let Some(root) = prev_root {
             let future_size = *future_sizes_map.get(&root).expect("exhausted traversal");
             if let Some(ghostdag_store) = try_root(&level_relations_store, root, future_size) {
                 return Ok(LevelProofContext {
@@ -427,7 +428,9 @@ impl PruningProofManager {
             }
         }
 
-        // Final fallback: give a last chance to a few high-future-size roots
+        // Final fallback: give a last chance to a few high-future-size roots.
+        // This is only needed for fresh nodes without a stored descriptor yet, and can be removed
+        // once all nodes persist descriptors (along with the whole top-k fallback path).
         for (future_size, root) in best_future_roots.into_sorted_iter_ascending().collect_vec().into_iter().rev() {
             if let Some(ghostdag_store) = try_root(&level_relations_store, root, future_size) {
                 return Ok(LevelProofContext {
