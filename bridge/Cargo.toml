@@ -53,8 +53,10 @@ num-bigint = "0.4"
 prometheus = "0.13"
 yaml-rust = "0.4"
 faster-hex = "0.1"
-windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Console"] }
 chrono = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Console"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
