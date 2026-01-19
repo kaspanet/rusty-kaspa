@@ -56,13 +56,13 @@ pub struct Args {
     pub reset_db: bool,
     #[serde(rename = "outpeers")]
     pub outbound_target: usize,
-    #[serde(rename = "perigeepeers")]
-    pub perigee_target: usize, // total number of perigee peers, must be <= outbound_target
-    pub perigee_exploration_target: usize,
-    pub perigee_leverage_target: usize,
-    pub perigee_round_duration: usize, // round duration in seconds (rounded to the nearest 30 seconds), and clamped between: min 30 and max 300.
-    pub perigee_statistics: bool,
-    pub perigee_persistence: bool, // whether to persist perigee peers between restarts (This saves the perigee peers to the address db for re-use)
+    #[serde(rename = "blkperigeepeers")]
+    pub blk_perigee_target: usize, // total number of perigee peers, must be <= outbound_target
+    pub blk_perigee_exploration: usize,
+    pub blk_perigee_leverage: usize,
+    pub blk_perigee_duration: usize, // round duration in seconds (rounded to the nearest 30 seconds), and clamped between: min 30 and max 300.
+    pub blk_perigee_stats: bool,
+    pub blk_perigee_persist: bool, // whether to persist perigee peers between restarts (This saves the perigee peers to the address db for re-use)
     #[serde(rename = "maxinpeers")]
     pub inbound_limit: usize,
     #[serde(rename = "rpcmaxclients")]
@@ -118,12 +118,12 @@ impl Default for Args {
             utxoindex: false,
             reset_db: false,
             outbound_target: 8,
-            perigee_target: 0,
-            perigee_leverage_target: 0,    // 0 will default to 50% of perigee peers
-            perigee_exploration_target: 0, // 0 will default to 25% of perigee peers
-            perigee_round_duration: 30,    // Round duration will be 30 secs
-            perigee_statistics: false,
-            perigee_persistence: false,
+            blk_perigee_target: 0,
+            blk_perigee_leverage: 0,    // 0 will default to 50% of perigee peers
+            blk_perigee_exploration: 0, // 0 will default to 25% of perigee peers
+            blk_perigee_duration: 30,   // Round duration will be 30 secs
+            blk_perigee_stats: false,
+            blk_perigee_persist: false,
             inbound_limit: 128,
             rpc_max_clients: 128,
             max_tracked_addresses: 0,
@@ -321,51 +321,51 @@ pub fn cli() -> Command {
                 .help("Target number of outbound peers (default: 8)."),
         )
         .arg(
-            Arg::new("perigeepeers")
-                .long("perigeepeers")
-                .env("KASPAD_PERIGEEPEERS")
-                .value_name("perigeepeers")
+            Arg::new("blkperigeepeers")
+                .long("blkperigeepeers")
+                .env("KASPAD_BLKPERIGEEPEERS")
+                .value_name("blkperigeepeers")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
-                .help("Target number of Perigee peers (default: 0, which disables Perigee), note: it is expected that\n`perigeepeers <= outpeers`"),
+                .help("Target number of block perigee peers (default: 0, which disables block perigee), note: it is expected that\n`blkperigeepeers <= outpeers`"),
         )
         .arg(
-            Arg::new("perigee-exploration-target")
-                .long("perigee-exploration-target")
-                .env("KASPAD_PERIGEE_EXPLORATION_TARGET")
+            Arg::new("blk-perigee-exploration")
+                .long("blk-perigee-exploration")
+                .env("KASPAD_BLK_PERIGEE_EXPLORATION")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
-                .help("Number of perigee peers to drop per round of perigee (default: 0, [the default value will set the target to 25%, rounded down, of the perigee target])."),
+                .help("Number of block perigee peers to drop per round (default: 0, [the default value will set the target to 25%, rounded down, of the block perigee target])."),
         )
         .arg(
-            Arg::new("perigee-leverage-target")
-                .long("perigee-leverage-target")
-                .env("KASPAD_PERIGEE_LEVERAGE_TARGET")
+            Arg::new("blk-perigee-leverage")
+                .long("blk-perigee-leverage")
+                .env("KASPAD_BLK_PERIGEE_LEVERAGE")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
-                .help("Number of perigee peers to leverage per round of perigee (default: 0, [the default value will set the target to 50%, rounded down, of the perigee target])."),
+                .help("Number of block perigee peers to leverage per round (default: 0, [the default value will set the target to 50%, rounded down, of the block perigee target])."),
         )
         .arg(
-            Arg::new("perigee-round-duration")
-                .long("perigee-round-duration")
-                .env("KASPAD_PERIGEE_ROUND_DURATION")
+            Arg::new("blk-perigee-duration")
+                .long("blk-perigee-duration")
+                .env("KASPAD_BLK_PERIGEE_DURATION")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
                 .help("Round duration in seconds (rounded to the nearest 30 seconds), Note: this is clamped between 30 and 300 (default: 30, min 30, max 300)."),
         )
         .arg(
-            Arg::new( "perigee-statistics" )
-                .long("perigee-statistics")
-                .env("KASPAD_PERIGEE_STATISTICS")
+            Arg::new( "blk-perigee-stats" )
+                .long("blk-perigee-stats")
+                .env("KASPAD_BLK_PERIGEE_STATS")
                 .action(ArgAction::SetTrue)
-                .help("log perigee statistics after each round, Note: this evaluates and compares against other random graph outbound peers for testing purposes,\nas such, this requires significantly more resources.\nFor optimal comparison `perigeepeers` should equal `outboundpeers / 2`"
+                .help("Log block perigee statistics after each round, Note: this evaluates and compares against other random graph outbound peers for testing purposes,\nas such, this requires significantly more resources.\nFor optimal comparison `blkperigeepeers` should equal `outboundpeers / 2`"
             )
         )
-        .arg(Arg::new("perigee-persistence")
-            .long("perigee-persistence")
-            .env("KASPAD_PERIGEE_PERSISTENCE")
+        .arg(Arg::new("blk-perigee-persist")
+            .long("blk-perigee-persist")
+            .env("KASPAD_BLK_PERIGEE_PERSIST")
             .action(ArgAction::SetTrue)
-            .help("Persist perigee data between restarts."),
+            .help("Persist block perigee data between restarts."),
         )
         .arg(
             Arg::new("maxinpeers")
@@ -556,16 +556,12 @@ impl Args {
             add_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "add-peers", defaults.add_peers),
             listen: m.get_one::<ContextualNetAddress>("listen").cloned().or(defaults.listen),
             outbound_target: arg_match_unwrap_or::<usize>(&m, "outpeers", defaults.outbound_target),
-            perigee_target: arg_match_unwrap_or::<usize>(&m, "perigeepeers", defaults.perigee_target),
-            perigee_exploration_target: arg_match_unwrap_or::<usize>(
-                &m,
-                "perigee-exploration-target",
-                defaults.perigee_exploration_target,
-            ),
-            perigee_leverage_target: arg_match_unwrap_or::<usize>(&m, "perigee-leverage-target", defaults.perigee_leverage_target),
-            perigee_round_duration: arg_match_unwrap_or::<usize>(&m, "perigee-round-duration", defaults.perigee_round_duration),
-            perigee_statistics: arg_match_unwrap_or::<bool>(&m, "perigee-statistics", defaults.perigee_statistics),
-            perigee_persistence: arg_match_unwrap_or::<bool>(&m, "perigee-persistence", defaults.perigee_persistence),
+            blk_perigee_target: arg_match_unwrap_or::<usize>(&m, "blkperigeepeers", defaults.blk_perigee_target),
+            blk_perigee_exploration: arg_match_unwrap_or::<usize>(&m, "blk-perigee-exploration", defaults.blk_perigee_exploration),
+            blk_perigee_leverage: arg_match_unwrap_or::<usize>(&m, "blk-perigee-leverage", defaults.blk_perigee_leverage),
+            blk_perigee_duration: arg_match_unwrap_or::<usize>(&m, "blk-perigee-duration", defaults.blk_perigee_duration),
+            blk_perigee_stats: arg_match_unwrap_or::<bool>(&m, "blk-perigee-stats", defaults.blk_perigee_stats),
+            blk_perigee_persist: arg_match_unwrap_or::<bool>(&m, "blk-perigee-persist", defaults.blk_perigee_persist),
             inbound_limit: arg_match_unwrap_or::<usize>(&m, "maxinpeers", defaults.inbound_limit),
             rpc_max_clients: arg_match_unwrap_or::<usize>(&m, "rpcmaxclients", defaults.rpc_max_clients),
             max_tracked_addresses: arg_match_unwrap_or::<usize>(&m, "max-tracked-addresses", defaults.max_tracked_addresses),

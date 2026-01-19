@@ -620,7 +620,7 @@ Do you confirm? (y/n)";
     let mut random_graph_target = outbound_target;
 
     // Handle the Perigee configuration
-    let perigee_config = if args.perigee_target == 0 {
+    let perigee_config = if args.blk_perigee_target == 0 {
         debug!("Perigee disabled: perigee target is set to 0 (default behavior)");
         None
     } else if !connect_peers.is_empty() {
@@ -630,12 +630,12 @@ Do you confirm? (y/n)";
     } else {
         let perigee_config = create_perigee_config(
             outbound_target,
-            args.perigee_target,
-            args.perigee_round_duration,
-            args.perigee_leverage_target,
-            args.perigee_exploration_target,
-            args.perigee_persistence,
-            args.perigee_statistics,
+            args.blk_perigee_target,
+            args.blk_perigee_duration,
+            args.blk_perigee_leverage,
+            args.blk_perigee_exploration,
+            args.blk_perigee_persist,
+            args.blk_perigee_stats,
             config.bps(),
         );
         // Reduce random graph outbound target by perigee outbound target
