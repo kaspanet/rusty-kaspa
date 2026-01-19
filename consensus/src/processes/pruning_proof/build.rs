@@ -32,7 +32,15 @@ use crate::{
 };
 
 use super::{ProofInternalResult, PruningProofManager};
-type LevelProofContext = (Arc<DbGhostdagStore>, Arc<DbRelationsStore>, Hash, Hash);
+
+#[derive(Clone)]
+struct LevelProofContext {
+    ghostdag_store: Arc<DbGhostdagStore>,
+    relations_store: Arc<DbRelationsStore>,
+    tip: Hash,
+    root: Hash,
+    count: u64,
+}
 
 struct MultiLevelProofContext {
     transient_ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
@@ -111,73 +119,34 @@ impl PruningProofManager {
     /// Temporary stores are used during construction, and headers are shared (via arcs)
     /// across levels in the final proof.
     pub(crate) fn build_pruning_point_proof(&self, pp: Hash) -> PruningPointProof {
-        // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
-        // to make sure we hold a single Arc per header
-        let mut cache: BlockHashMap<Arc<Header>> = BlockHashMap::with_capacity(4 * self.pruning_proof_m as usize);
-        let mut get_header = |hash| cache.entry(hash).or_insert_with_key(|&hash| self.headers_store.get_header(hash).unwrap()).clone();
-
         let descriptor = self.pruning_point_store.read().pruning_proof_descriptor().optional().unwrap();
         if let Some(descriptor) = descriptor.as_ref() {
             // If the descriptor matches the pruning point and it was not obtained from an external source, use it to rebuild the proof
+            // todo: reword
             if descriptor.pruning_point == pp && !descriptor.external {
                 return self.proof_from_descriptor(descriptor);
             }
         }
 
-        let proof = match pp == self.genesis_hash {
+        let new_descriptor = match pp == self.genesis_hash {
             true => {
-                // Genesis case - create a proof where all levels hold only genesis
-                let genesis_header = self.headers_store.get_header(self.genesis_hash).unwrap();
-                (0..=self.max_block_level).map(|_| vec![genesis_header.clone()]).collect()
+                // Genesis case - create a proof where all levels hold genesis only
+                let (tips, roots, counts) = (0..=self.max_block_level).map(|_| (self.genesis_hash, self.genesis_hash, 1)).multiunzip();
+                PruningProofDescriptor::new(self.genesis_hash, tips, roots, counts)
             }
             false => {
                 // General case
-                let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
-                let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
-                let MultiLevelProofContext { transient_relations_stores, tips_by_level, roots_by_level, .. } =
-                    self.calc_all_level_proof_context(&pp_header, temp_db, descriptor);
-
-                (0..=self.max_block_level)
-                    .map(|level| {
-                        let level = level as usize;
-                        let tip = tips_by_level[level];
-                        let root = roots_by_level[level];
-
-                        let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
-                        let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
-                        let mut visited = BlockHashSet::new();
-                        queue.push(Reverse(SortableBlock::new(root, get_header(root).blue_work)));
-
-                        while let Some(current) = queue.pop() {
-                            let current = current.0.hash;
-                            if !visited.insert(current) {
-                                continue;
-                            }
-
-                            // We are only interested in the exact diamond future(root) ⋂ past(tip)
-                            if !self.reachability_service.is_dag_ancestor_of(current, tip) {
-                                continue;
-                            }
-
-                            headers.push(get_header(current));
-                            for child in transient_relations_stores[level].get_children(current).unwrap().read().iter().copied() {
-                                queue.push(Reverse(SortableBlock::new(child, get_header(child).blue_work)));
-                            }
-                        }
-
-                        headers
-                    })
-                    .collect()
+                self.calc_new_proof(pp, descriptor.as_ref().map(|v| v.as_ref()))
             }
         };
 
-        // Update the descriptor based on the new proof
-        let new_descriptor = PruningProofDescriptor::from_proof(&proof, pp, false);
+        let proof = self.proof_from_descriptor(&new_descriptor);
         self.pruning_point_store.write().set_pruning_proof_descriptor(new_descriptor).unwrap();
 
         proof
     }
 
+    /// todo: doc
     fn proof_from_descriptor(&self, descriptor: &PruningProofDescriptor) -> PruningPointProof {
         // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
         // to make sure we hold a single Arc per header
@@ -229,30 +198,30 @@ impl PruningProofManager {
 
     /// Computes level-proof contexts for all levels, processing levels from high to low to satisfy
     /// MLS inter-level constraints, and aggregates the results into a multi-level proof context.
-    fn calc_all_level_proof_context(
-        &self,
-        pp_header: &HeaderWithBlockLevel,
-        temp_db: Arc<DB>,
-        previous_descriptor: Option<Arc<PruningProofDescriptor>>,
-    ) -> MultiLevelProofContext {
-        let mut level_proof_stores_vec: Vec<Option<LevelProofContext>> = vec![None; (self.max_block_level + 1).into()];
+    /// todo: update
+    fn calc_new_proof(&self, pp: Hash, previous_descriptor: Option<&PruningProofDescriptor>) -> PruningProofDescriptor {
+        let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
+
+        let mut level_proof_ctxs: Vec<Option<LevelProofContext>> = vec![None; (self.max_block_level + 1).into()];
+
         for level in (0..=self.max_block_level).rev() {
             let level_idx = level as usize;
             let required_block = if level != self.max_block_level {
-                let (next_level_gd_store, _relation_store_at_next_level, selected_tip_at_next_level, _root_at_next_level) =
-                    level_proof_stores_vec[level_idx + 1].as_ref().unwrap();
+                let LevelProofContext { ghostdag_store: next_level_gd_store, tip: next_level_tip, .. } =
+                    level_proof_ctxs[level_idx + 1].as_ref().unwrap();
 
                 let block_at_depth_m_at_next_level = next_level_gd_store
-                    .block_at_depth(*selected_tip_at_next_level, self.pruning_proof_m)
+                    .block_at_depth(*next_level_tip, self.pruning_proof_m)
                     .map_err(|err| format!("next level: {}, err: {}", level + 1, err))
                     .unwrap();
                 Some(block_at_depth_m_at_next_level)
             } else {
                 None
             };
-            level_proof_stores_vec[level_idx] = Some(
+            level_proof_ctxs[level_idx] = Some(
                 self.calc_level_proof_context(
-                    pp_header,
+                    &pp_header,
                     level,
                     required_block,
                     previous_descriptor.as_ref().map(|d| d.tips[level_idx]),
@@ -263,10 +232,9 @@ impl PruningProofManager {
             );
         }
 
-        let (transient_ghostdag_stores, transient_relations_stores, tips_by_level, roots_by_level) =
-            level_proof_stores_vec.into_iter().map(Option::unwrap).multiunzip();
+        let (tips, roots, counts) = level_proof_ctxs.into_iter().map(Option::unwrap).map(|l| (l.tip, l.root, l.count)).multiunzip();
 
-        MultiLevelProofContext { transient_ghostdag_stores, transient_relations_stores, tips_by_level, roots_by_level }
+        PruningProofDescriptor::new(pp, tips, roots, counts)
     }
 
     /// Computes a level-proof context by incrementally expanding the level relations subgraph and
@@ -420,7 +388,13 @@ impl PruningProofManager {
                 {
                     let root = current;
                     if let Some(ghostdag_store) = try_root(&level_relations_store, root, future_size) {
-                        return Ok((ghostdag_store, level_relations_store.into(), selected_tip, root));
+                        return Ok(LevelProofContext {
+                            ghostdag_store,
+                            relations_store: level_relations_store.into(),
+                            tip: selected_tip,
+                            root,
+                            count: future_size + 1,
+                        });
                     }
 
                     // Large enough future with insufficient blue depth implies reds; increase the
@@ -440,18 +414,29 @@ impl PruningProofManager {
         }
 
         // todo: explain
-        if let Some(previous_root) = previous_root {
-            if let Some(ghostdag_store) =
-                try_root(&level_relations_store, previous_root, *future_sizes_map.get(&previous_root).expect("exhausted traversal"))
-            {
-                return Ok((ghostdag_store, level_relations_store.into(), selected_tip, previous_root));
+        if let Some(root) = previous_root {
+            let future_size = *future_sizes_map.get(&root).expect("exhausted traversal");
+            if let Some(ghostdag_store) = try_root(&level_relations_store, root, future_size) {
+                return Ok(LevelProofContext {
+                    ghostdag_store,
+                    relations_store: level_relations_store.into(),
+                    tip: selected_tip,
+                    root,
+                    count: future_size + 1,
+                });
             }
         }
 
         // Final fallback: give a last chance to a few high-future-size roots
         for (future_size, root) in best_future_roots.into_sorted_iter_ascending().collect_vec().into_iter().rev() {
             if let Some(ghostdag_store) = try_root(&level_relations_store, root, future_size) {
-                return Ok((ghostdag_store, level_relations_store.into(), selected_tip, root));
+                return Ok(LevelProofContext {
+                    ghostdag_store,
+                    relations_store: level_relations_store.into(),
+                    tip: selected_tip,
+                    root,
+                    count: future_size + 1,
+                });
             }
         }
 

@@ -43,6 +43,10 @@ pub struct PruningProofDescriptor {
 }
 
 impl PruningProofDescriptor {
+    pub fn new(pruning_point: Hash, tips: Vec<Hash>, roots: Vec<Hash>, counts: Vec<u64>) -> Self {
+        Self { pruning_point, external: false, tips, roots, counts }
+    }
+
     pub(crate) fn from_proof(proof: &PruningPointProof, pruning_point: Hash, external: bool) -> Self {
         let (tips, roots, counts) = proof
             .iter()
