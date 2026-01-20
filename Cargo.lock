@@ -3071,7 +3071,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-perigeemanager"
-version = "1.0.1"
+version = "1.1.0-rc.2"
 dependencies = [
  "itertools 0.13.0",
  "kaspa-consensus-core",
