@@ -1267,7 +1267,7 @@
   ],
   [
     "0",
-    "IF 0xc4 ELSE 1 ENDIF",
+    "IF 0xcb ELSE 1 ENDIF",
     "",
     "OK"
   ],
@@ -3823,7 +3823,7 @@
   ],
   [
     "0",
-    "IF 0xc4 ELSE 1 ENDIF",
+    "IF 0xcb ELSE 1 ENDIF",
     "",
     "OK",
     "OpZkPrecompile is enabled since kip16 (not executed)"
