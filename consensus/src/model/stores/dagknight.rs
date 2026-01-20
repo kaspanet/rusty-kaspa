@@ -11,18 +11,6 @@ use crate::model::stores::ghostdag::GhostdagData;
 use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB};
 use rocksdb::WriteBatch;
 
-pub struct DagknightConflictEntry {
-    // TODO: incremental colouring data for relevant k values
-}
-
-pub struct DagknightData {
-    /// A mapping from conflict roots to incremental conflict data
-    pub entries: BlockHashMap<DagknightConflictEntry>,
-
-    /// The selected parent of this block as chosen by the DAGKNIGHT protocol
-    pub selected_parent: Hash,
-}
-
 pub struct MemoryDagknightStore {
     dk_map: RefCell<HashMap<DagknightKey, Arc<GhostdagData>>>,
 }
