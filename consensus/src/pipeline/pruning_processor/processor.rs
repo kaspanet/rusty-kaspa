@@ -135,7 +135,7 @@ impl PruningProcessor {
                 }
                 recovered = true;
             }
-            self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+            self.advance_pruning_point_if_possible(sink_ghostdag_data);
         }
     }
 
@@ -198,7 +198,7 @@ impl PruningProcessor {
         true
     }
 
-    fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
+    fn advance_pruning_point_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
         let pruning_point_read = self.pruning_point_store.upgradable_read();
         let (current_pruning_point, current_index) = pruning_point_read.pruning_point_and_index().unwrap();
         let new_pruning_points = self.pruning_point_manager.next_pruning_points(sink_ghostdag_data, current_pruning_point);
@@ -662,30 +662,15 @@ impl PruningProcessor {
     fn assert_proof_rebuilding(&self, ref_proof: Arc<PruningPointProof>, new_pruning_point: Hash) {
         info!("Rebuilding the pruning proof after pruning data (sanity test)");
         let built_proof = self.pruning_proof_manager.build_pruning_point_proof(new_pruning_point);
-        let mut mismatch_detected = false;
         if ref_proof.len() != built_proof.len() {
-            mismatch_detected = true;
-            info!("Rebuilt proof does not match the original one ({} ref vs. {} rebuilt levels)", ref_proof.len(), built_proof.len());
+            panic!("Rebuilt proof does not match the original one ({} ref vs. {} rebuilt levels)", ref_proof.len(), built_proof.len());
         }
         for (i, (ref_level, built_level)) in ref_proof.iter().zip(built_proof.iter()).enumerate() {
-            if ref_level.iter().map(|h| h.hash).collect::<BlockHashSet>()
-                != built_level.iter().map(|h| h.hash).collect::<BlockHashSet>()
-            {
-                mismatch_detected = true;
-                info!("Rebuilt proof for level {} does not match the original one", i);
+            if ref_level.iter().map(|h| h.hash).ne(built_level.iter().map(|h| h.hash)) {
+                panic!("Rebuilt proof for level {} does not match the original one", i);
             }
         }
-        if mismatch_detected {
-            info!("Fallback: comparing the PoW strength of the rebuilt proof vs. the original one..");
-            // Note we pass the built proof as the defender since the comparison prefers the defender in case of equality
-            self.pruning_proof_manager
-                .compare_proofs(&built_proof, &ref_proof, 0.into(), 0.into())
-                .expect_err("rebuilt proof is weaker than the original pre-pruning reference proof");
-
-            info!("Rebuilt proof is slightly different than original pre-pruning reference proof, but it maintains its PoW strength");
-        } else {
-            info!("Proof was rebuilt successfully following pruning");
-        }
+        info!("Proof was rebuilt successfully following pruning");
     }
 
     fn assert_data_rebuilding(&self, ref_data: Arc<PruningPointTrustedData>, new_pruning_point: Hash) {
