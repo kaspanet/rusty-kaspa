@@ -21,6 +21,7 @@ parking_lot.workspace = true
 rand.workspace = true
 
 [dev-dependencies]
+kaspa-p2p-lib = { workspace = true, features = ["test-utils"] }
 kaspa-utils.workspace = true
 uuid.workspace = true
 

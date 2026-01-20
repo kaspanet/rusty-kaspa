@@ -523,6 +523,31 @@ pub trait RouterTestExt {
     ) -> std::sync::Arc<Self>
     where
         Self: Sized;
-    fn set_perigee_timestamps(&self, timestamps: std::collections::HashMap<kaspa_consensus_core::Hash, std::time::Instant>);
-    fn get_perigee_timestamps(&self) -> std::collections::HashMap<kaspa_consensus_core::Hash, std::time::Instant>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+impl RouterTestExt for Router {
+    fn test_new(
+        identity: PeerId,
+        net_address: std::net::SocketAddr,
+        outbound_type: Option<super::peer::PeerOutboundType>,
+        connection_started: std::time::Instant,
+    ) -> std::sync::Arc<Self> {
+        use tokio::sync::mpsc;
+        let (hub_sender, _hub_receiver) = mpsc::channel(1);
+        let (outgoing_route, _outgoing_receiver) = mpsc::channel(1);
+        // Create a dummy streaming object (not actually used in this test context)
+        // let dummy_stream = Streaming::<KaspadMessage>::new_empty(...); // not needed for struct
+        std::sync::Arc::new(Router {
+            identity: seqlock::SeqLock::new(identity),
+            net_address,
+            outbound_type,
+            connection_started,
+            routing_map_by_type: parking_lot::RwLock::new(std::collections::HashMap::new()),
+            routing_map_by_id: parking_lot::RwLock::new(std::collections::HashMap::new()),
+            outgoing_route,
+            hub_sender,
+            mutable_state: parking_lot::Mutex::new(RouterMutableState::new(None, None)),
+        })
+    }
 }

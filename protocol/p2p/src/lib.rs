@@ -1,4 +1,4 @@
-#[cfg(feature = "test-utils")]
+#[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
 pub mod pb {
     // this one includes messages.proto + p2p.proto + rcp.proto

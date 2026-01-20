@@ -9,9 +9,8 @@ use std::{
 
 use itertools::Itertools;
 use kaspa_consensus_core::{BlockHashSet, Hash, HashMapCustomHasher};
-use kaspa_core::{info, trace};
+use kaspa_core::{debug, info, trace};
 use kaspa_p2p_lib::{Peer, PeerKey, Router};
-use log::debug;
 use parking_lot::Mutex;
 use rand::{seq::IteratorRandom, thread_rng, Rng};
 
@@ -544,6 +543,10 @@ impl PerigeeManager {
         let expected_count = self.config.expected_blocks_per_round;
         let lower_bound = (expected_count as f64 * (1.0 - BLOCKS_VERIFIED_FAULT_TOLERANCE)) as usize;
         let upper_bound = (expected_count as f64 * (1.0 + BLOCKS_VERIFIED_FAULT_TOLERANCE)) as usize;
+        debug!(
+            "[{}]: block_threshold_reached: verified_count={}, expected_count={}, lower_bound={}, upper_bound={}",
+            IDENT, verified_count, expected_count, lower_bound, upper_bound
+        );
         verified_count >= lower_bound && verified_count <= upper_bound
     }
 
@@ -581,6 +584,7 @@ impl PerigeeManager {
                         peer_table.entry(*peer_key).or_default().push(delay);
                     }
                     Entry::Vacant(_) => {
+                        // Peer did not report this block this round; assign max delay
                         peer_table.entry(*peer_key).or_default().push(u64::MAX);
                     }
                 }
@@ -721,17 +725,20 @@ impl PerigeeManager {
 mod tests {
     use super::*;
     use kaspa_consensus_core::config::params::TESTNET_PARAMS;
+    use kaspa_hashes::Hash;
+    use kaspa_p2p_lib::test_utils::RouterTestExt;
     use kaspa_p2p_lib::PeerOutboundType;
     use kaspa_utils::networking::PeerId;
 
+    use std::collections::{HashMap, HashSet};
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
     use std::time::Instant;
     use uuid::Uuid;
 
-    /// Generates a unique PeerKey and incremental IPv4 SocketAddr for testing purposes.
-    fn generate_unique_peer(time_connected: Instant) -> Peer {
+    /// Generates a unique Router wit incremental IPv4 SocketAddr and PeerId for testing purposes.
+    fn generate_unique_router(time_connected: Instant) -> std::sync::Arc<kaspa_p2p_lib::Router> {
         static ROUTER_COUNTER: AtomicU64 = AtomicU64::new(1);
 
         let id = ROUTER_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -742,12 +749,89 @@ mod tests {
         let octet4 = (ip_seed & 0xFF) as u8;
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(octet1, octet2, octet3, octet4)), TESTNET_PARAMS.default_p2p_port());
         let peer_id = PeerId::new(Uuid::from_u128(id as u128));
-        todo!()
+        RouterTestExt::test_new(peer_id, addr, Some(PeerOutboundType::Perigee), time_connected)
     }
 
+    // Helper to generate a default PerigeeConfig for testing purposes
     fn generate_config() -> PerigeeConfig {
         PerigeeConfig::new(8, 4, 2, 30, std::time::Duration::from_secs(30), true, true, TESTNET_PARAMS.bps())
     }
 
-    //TODO: add tests
+    // Helper to generate a globally unique block hash
+    fn generate_unique_block_hash() -> Hash {
+        static HASH_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+        Hash::from_u64_word(HASH_COUNTER.fetch_add(1, Ordering::Relaxed))
+    }
+
+    #[test]
+    fn test_perigee_round_leverage_and_eviction() {
+        kaspa_core::log::try_init_logger("debug");
+
+        // Set up environment
+        let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut config = generate_config();
+        let now = Instant::now() - std::time::Duration::from_secs(3600);
+        let peer_count = config.perigee_outbound_target;
+        let blocks_per_router = 300;
+        config.expected_blocks_per_round = blocks_per_router as u64;
+        let manager = PerigeeManager::new(config, is_ibd_running);
+        let mut routers = Vec::new();
+        for _ in 0..peer_count {
+            let router = generate_unique_router(now);
+            routers.push(router);
+        }
+
+        // Insert blocks using a deterministic delay pattern via bucketing ts
+        let leverage_target = manager.lock().config.leverage_target;
+        for block_idx in 0..blocks_per_router {
+            let block_hash = generate_unique_block_hash();
+            let base_ts = now + std::time::Duration::from_millis((block_idx as u64) * 10_000);
+            for (i, router) in routers.iter().enumerate() {
+                let ts = if i < leverage_target {
+                    let bucket_start = (i as u64) * 10;
+                    let delay = bucket_start + (block_idx as u64 % 10);
+                    base_ts + std::time::Duration::from_millis(delay)
+                } else {
+                    base_ts + std::time::Duration::from_millis(100_000 + (i as u64) * 10)
+                };
+                manager.lock().insert_perigee_timestamp(router, block_hash, ts, true);
+            }
+        }
+
+        assert!(manager.lock().verified_blocks.len() == blocks_per_router);
+
+        // Build peers and peer_by_addr after all timestamps are inserted
+        let mut peers = HashMap::new();
+        for router in &routers {
+            let peer = Peer::from((&**router, true));
+            peers.insert(router.key(), peer.clone());
+        }
+        let mut peer_by_addr = HashMap::new();
+        for peer in peers.values() {
+            peer_by_addr.insert(peer.net_address(), peer.clone());
+        }
+
+        // Execute a perigee round
+        let (leveraged, evicted, skipped) = manager.lock().evaluate_round(&peer_by_addr);
+        debug!("Leveraged peers: {:?}", leveraged);
+        debug!("Evicted peers: {:?}", evicted);
+
+        // Perform assertions:
+        assert!(!skipped, "Leverage/exploration should not be skipped in this test");
+        assert_eq!(
+            leveraged,
+            routers.iter().take(leverage_target).map(|r| r.key()).collect::<Vec<PeerKey>>(),
+            "Leverage set should match actual deterministic selection (order and membership)"
+        );
+        // No leveraged peer should be evicted
+        assert!(leveraged.iter().all(|p| !evicted.contains(p)), "No leveraged peer should be evicted");
+        assert_eq!(evicted.len(), manager.lock().config.exploration_target);
+
+        // Reset round.
+        manager.lock().start_new_round();
+        // Ensure state is cleared.
+        assert!(manager.lock().verified_blocks.is_empty(), "Verified blocks should be cleared after starting new round");
+        assert!(manager.lock().first_seen.is_empty(), "First seen timestamps should be cleared after starting new round");
+    }
 }
