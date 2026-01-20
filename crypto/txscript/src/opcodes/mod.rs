@@ -1003,8 +1003,7 @@ opcode_list! {
     opcode OpUnknown199<0xc7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown200<0xc8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown201<0xc9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown202<0xcb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpZkPrecompile<0xc4, 1>(self, vm) {
+    opcode OpZkPrecompile<0xcb, 1>(self, vm) {
         // Parse the ZK Precompile tag
         let tag = parse_tag(&mut vm.dstack)?;
 
