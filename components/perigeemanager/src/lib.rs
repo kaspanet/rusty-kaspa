@@ -24,7 +24,6 @@ use rand::{seq::IteratorRandom, thread_rng, Rng};
 const BLOCKS_VERIFIED_FAULT_TOLERANCE: f64 = 0.175;
 const IDENT: &str = "PerigeeManager";
 
-
 /// Holds the score for a peer.
 #[derive(Debug)]
 pub struct PeerScore {
@@ -64,7 +63,6 @@ impl Ord for PeerScore {
         (self.p90, self.p95, self.p97_5).cmp(&(other.p90, other.p95, other.p97_5))
     }
 }
-
 
 /// Configuration for the perigee manager.
 #[derive(Debug, Clone)]
@@ -729,7 +727,6 @@ impl PerigeeManager {
     }
 }
 #[cfg(test)]
-#[allow(dead_code)]
 mod tests {
     use super::*;
     use kaspa_consensus_core::config::params::TESTNET_PARAMS;
@@ -738,7 +735,7 @@ mod tests {
     use kaspa_p2p_lib::PeerOutboundType;
     use kaspa_utils::networking::PeerId;
 
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;

@@ -722,6 +722,9 @@ Do you confirm? (y/n)";
     };
 
     let (address_manager, port_mapping_extender_svc) = AddressManager::new(config.clone(), meta_db, tick_service.clone());
+    if args.blk_perigee_reset {
+        address_manager.lock().reset_perigee_data();
+    }
 
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_extended_config(
         config.target_time_per_block(),

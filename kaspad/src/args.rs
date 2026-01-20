@@ -62,6 +62,7 @@ pub struct Args {
     pub blk_perigee_duration: usize, // round duration in seconds (rounded to the nearest 30 seconds), and clamped between: min 30 and max 300.
     pub blk_perigee_stats: bool,
     pub blk_perigee_persist: bool, // whether to persist perigee peers between restarts (This saves the perigee peers to the address db for re-use)
+    pub blk_perigee_reset: bool,   // whether to reset perigee persisted data on startup
     #[serde(rename = "maxinpeers")]
     pub inbound_limit: usize,
     #[serde(rename = "rpcmaxclients")]
@@ -123,6 +124,7 @@ impl Default for Args {
             blk_perigee_duration: 30,   // Round duration will be 30 secs
             blk_perigee_stats: false,
             blk_perigee_persist: false,
+            blk_perigee_reset: false,
             inbound_limit: 128,
             rpc_max_clients: 128,
             max_tracked_addresses: 0,
@@ -366,6 +368,12 @@ pub fn cli() -> Command {
             .action(ArgAction::SetTrue)
             .help("Persist block perigee data between restarts."),
         )
+        .arg(Arg::new("blk-perigee-reset")
+            .long("blk-perigee-reset")
+            .env("KASPAD_BLK_PERIGEE_RESET")
+            .action(ArgAction::SetTrue)
+            .help("Reset block perigee persisted data on startup."),
+        )
         .arg(
             Arg::new("maxinpeers")
                 .long("maxinpeers")
@@ -561,6 +569,7 @@ impl Args {
             blk_perigee_duration: arg_match_unwrap_or::<usize>(&m, "blk-perigee-duration", defaults.blk_perigee_duration),
             blk_perigee_stats: arg_match_unwrap_or::<bool>(&m, "blk-perigee-stats", defaults.blk_perigee_stats),
             blk_perigee_persist: arg_match_unwrap_or::<bool>(&m, "blk-perigee-persist", defaults.blk_perigee_persist),
+            blk_perigee_reset: arg_match_unwrap_or::<bool>(&m, "blk-perigee-reset", defaults.blk_perigee_reset),
             inbound_limit: arg_match_unwrap_or::<usize>(&m, "maxinpeers", defaults.inbound_limit),
             rpc_max_clients: arg_match_unwrap_or::<usize>(&m, "rpcmaxclients", defaults.rpc_max_clients),
             max_tracked_addresses: arg_match_unwrap_or::<usize>(&m, "max-tracked-addresses", defaults.max_tracked_addresses),
@@ -645,11 +654,12 @@ fn arg_match_many_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatch
                                             (default: 0, [the default value will set the target to 50%, rounded down, of the perigee target]).
       --blk-perigee-duration=               Round duration in seconds (rounded to the nearest 30 seconds),
                                             Note: this is clamped between 30 and 300 (default: 30, min 30, max 300).
-      --blk-perigee-stats                       log perigee statistics after each round.
+      --blk-perigee-stats                   log perigee statistics after each round.
                                             Note: this evaluates and compares against other random graph outbound peers for testing purposes,
                                             as such, this requires significantly more resources.
                                             For optimal comparison `perigeepeers` should equal `outboundpeers / 2`
       --blk-perigee-persist                 Persist perigee data between restarts.
+      --blk-perigee-reset                   Reset perigee persisted data on startup.
       --maxinpeers=                         Max number of inbound peers (default: 117)
       --enablebanning                       Enable banning of misbehaving peers
       --banduration=                        How long to ban misbehaving peers. Valid time units are {s, m, h}. Minimum
