@@ -1484,6 +1484,11 @@ impl ShareHandler {
 
                 out.push(sep.clone());
 
+                // If present, we also fold the feature-gated internal miner into the TOTAL row.
+                // Note: Internal CPU mining doesn't produce Stratum shares; we treat accepted/submitted blocks
+                // as the closest analogue for the Acc/Stl columns (same as the InternalCPU row does).
+                let mut internal_totals: Option<(f64, i64, i64, i64, i64)> = None; // (ghs, acc, stl, inv, blocks)
+
                 // Feature-gated internal miner row
                 #[cfg(feature = "rkstratum_cpu_miner")]
                 {
@@ -1498,6 +1503,8 @@ impl ShareHandler {
 
                         // Hashrate as GH/s (format_hashrate expects GH/s)
                         let hashrate_ghs = (dh as f64 / dt) / 1e9;
+                        internal_totals =
+                            Some((hashrate_ghs, accepted as i64, submitted.saturating_sub(accepted) as i64, 0, accepted as i64));
                         let internal_line = format!(
                             "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
                             "InternalCPU",
@@ -1513,6 +1520,14 @@ impl ShareHandler {
                         out.push(internal_line);
                         out.push(sep.clone());
                     }
+                }
+
+                if let Some((ghs, acc, stl, inv, blocks)) = internal_totals {
+                    total_rate += ghs;
+                    total_shares += acc;
+                    total_stales += stl;
+                    total_invalids += inv;
+                    total_blocks += blocks;
                 }
 
                 let overall_spm = if total_uptime_mins > 0.0 { (total_shares as f64) / total_uptime_mins } else { 0.0 };
