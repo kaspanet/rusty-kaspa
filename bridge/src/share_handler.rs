@@ -1487,7 +1487,7 @@ impl ShareHandler {
                 // If present, we also fold the feature-gated internal miner into the TOTAL row.
                 // Note: Internal CPU mining doesn't produce Stratum shares; we treat accepted/submitted blocks
                 // as the closest analogue for the Acc/Stl columns (same as the InternalCPU row does).
-                let mut internal_totals: Option<(f64, i64, i64, i64, i64)> = None; // (ghs, acc, stl, inv, blocks)
+                let internal_totals: Option<(f64, i64, i64, i64, i64)> = None; // (ghs, acc, stl, inv, blocks)
 
                 // Feature-gated internal miner row
                 #[cfg(feature = "rkstratum_cpu_miner")]
