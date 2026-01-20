@@ -24,6 +24,7 @@ use rand::{seq::IteratorRandom, thread_rng, Rng};
 const BLOCKS_VERIFIED_FAULT_TOLERANCE: f64 = 0.175;
 const IDENT: &str = "PerigeeManager";
 
+#[derive(Debug)]
 pub struct PeerScore {
     p90: u64,
     p95: u64,
@@ -469,6 +470,7 @@ impl PerigeeManager {
         // As such, we rate these even deeper into the tail-end delays to try to increase coverage of outlier blocks.
         let p95 = sorted_values[((0.95 * len as f64) as usize).min(len - 1)];
         let p97_5 = sorted_values[((0.975 * len as f64) as usize).min(len - 1)];
+        // Beyond p97_5 might be too sensitive to noise.
 
         PeerScore::new(p90, p95, p97_5)
     }
@@ -765,11 +767,139 @@ mod tests {
     }
 
     #[test]
+    fn test_insertions() {
+        let routers = (0..2).map(|_| generate_unique_router(Instant::now())).collect::<Vec<_>>();
+        let manager = PerigeeManager::new(generate_config(), Arc::new(std::sync::atomic::AtomicBool::new(false)));
+        let now: Vec<_> = (0..4).map(|_| Instant::now()).collect();
+        let block_hashes: Vec<_> = (0..4).map(|_| generate_unique_block_hash()).collect();
+        for (i, (now, block_hash)) in now.iter().zip(block_hashes.iter()).enumerate() {
+            manager.lock().insert_perigee_timestamp(&routers[(i + 1) % 2].clone(), *block_hash, *now, (i + 1) % 2 == 0);
+        }
+
+        let manager = manager.lock();
+        // Check first_seen and router timestamps
+        for (i, (now, block_hash)) in now.iter().zip(block_hashes.iter()).enumerate() {
+            let ts = manager.first_seen.get(block_hash).unwrap();
+            assert_eq!(ts, now);
+            // Only the router that received the block should have it, and timestamp should match
+            let idx = (i + 1) % 2;
+            if idx == 0 {
+                assert!(manager.verified_blocks.contains(block_hash), "Block should be verified for even indices");
+            } else {
+                assert!(!manager.verified_blocks.contains(block_hash), "Block should not be verified for odd indices");
+            }
+            let perigee_timestamps = &routers[idx].perigee_timestamps();
+            let router_ts = perigee_timestamps.get(block_hash).unwrap();
+            assert_eq!(router_ts, now, "Router's perigee_timestamps should match inserted timestamp");
+            assert_eq!(router_ts, ts, "Router's perigee_timestamps should match manager's first_seen");
+            // The other router should NOT have this block_hash
+            let other_perigee_timestamps = &routers[1 - idx].perigee_timestamps();
+            assert!(!other_perigee_timestamps.contains_key(block_hash), "Other router should not have this block hash");
+        }
+
+        // Check lengths
+        assert_eq!(manager.first_seen.len(), block_hashes.len(), "first_seen should have all inserted blocks");
+        assert_eq!(manager.verified_blocks.len(), block_hashes.len().div_ceil(2), "verified_blocks should have half the blocks");
+        for router in &routers {
+            let perigee_timestamps = router.perigee_timestamps();
+            assert_eq!(perigee_timestamps.len(), block_hashes.len() / 2, "Each router should have half the block hashes");
+        }
+    }
+
+    #[test]
+    fn test_trim_peers() {
+        // Set-up environment
+        let config = generate_config();
+        let manager = PerigeeManager::new(config.clone(), Arc::new(std::sync::atomic::AtomicBool::new(false)));
+        let leverage_target = config.leverage_target;
+        let perigee_outbound_target = config.perigee_outbound_target;
+        let excused_count = perigee_outbound_target + 1 - leverage_target;
+        // Set up so that all non-leveraged, non-excused peers are needed to fill the outbound target, so only one excused peer can be trimmed
+        let total_peers = leverage_target + excused_count;
+
+        // Create leveraged peers (should not be trimmed)
+        let now = Instant::now() - std::time::Duration::from_secs(3600);
+        let mut routers = Vec::new();
+        for _ in 0..leverage_target {
+            routers.push(generate_unique_router(now));
+        }
+
+        // Create excused peers, joined after round start, should be excused and and only trimmed as a last resort (ordered by connection time)
+        let mut excused_routers = Vec::new();
+        for i in 0..excused_count {
+            let t = now + std::time::Duration::from_secs(10 + i as u64);
+            excused_routers.push(generate_unique_router(t));
+        }
+
+        // Build all peers
+        let mut peers = HashMap::new();
+        for router in routers.iter().chain(excused_routers.iter()) {
+            let peer = Peer::from((&**router, true));
+            peers.insert(router.key(), peer.clone());
+        }
+
+        // Build peer_by_addr
+        let mut peer_by_addr = HashMap::new();
+        for peer in peers.values() {
+            peer_by_addr.insert(peer.net_address(), peer.clone());
+        }
+
+        // Set leveraged and excused peers in manager
+        manager.lock().set_initial_persistent_peers(routers.iter().map(|r| r.key()).collect());
+        manager.lock().round_start = now; // Set round start to 'now' for excused logic
+
+        // Call trim_peers
+        let to_remove = manager.lock().trim_peers(Arc::new(peer_by_addr));
+
+        // Assert correct number trimmed
+        let expected_trim = total_peers - perigee_outbound_target;
+        assert_eq!(to_remove.len(), expected_trim, "Should trim down to perigee_outbound_target");
+
+        // Assert no leveraged peer is trimmed
+        let leveraged_keys: Vec<_> = routers.iter().map(|r| r.key()).collect();
+        for k in &to_remove {
+            assert!(!leveraged_keys.contains(k), "Leveraged peer should not be trimmed");
+        }
+
+        // Assert that exactly one excused peer is trimmed (evicted), and the rest are not
+        let excused_keys: Vec<_> = excused_routers.iter().map(|r| r.key()).collect();
+        let excused_trimmed: Vec<_> = excused_keys.iter().filter(|k| to_remove.contains(k)).collect();
+        assert_eq!(excused_trimmed.len(), 1, "Exactly one excused peer should be trimmed as a last resort");
+        // The rest of the excused peers should not be trimmed
+        let excused_not_trimmed: Vec<_> = excused_keys.iter().filter(|k| !to_remove.contains(k)).collect();
+        assert_eq!(excused_not_trimmed.len(), excused_count - 1, "All but one excused peer should remain");
+        // Check excused ordering by connection time (still valid for remaining excused)
+        let mut excused_peers: Vec<_> = excused_routers.iter().map(|r| peers.get(&r.key()).unwrap()).collect();
+        excused_peers.sort_by_key(|p| p.connection_started());
+        for w in excused_peers.windows(2) {
+            assert!(w[0].connection_started() <= w[1].connection_started(), "Excused peers should be ordered by connection time");
+        }
+    }
+
+    #[test]
+    fn test_peer_rating() {
+        let score = (0..1000).collect::<Vec<u64>>();
+        let manager = PerigeeManager::new(generate_config(), Arc::new(std::sync::atomic::AtomicBool::new(false)));
+        let peer_score = manager.lock().rate_peer(&score);
+        let expected_peer_score = PeerScore::new(900, 950, 975);
+        assert_eq!(peer_score, expected_peer_score);
+    }
+
+    #[test]
     fn test_perigee_round_leverage_and_eviction() {
+        run_round(false);
+    }
+
+    #[test]
+    fn test_perigee_round_skips_while_ibd_running() {
+        run_round(true);
+    }
+
+    fn run_round(ibd_running: bool) {
         kaspa_core::log::try_init_logger("debug");
 
         // Set up environment
-        let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::new(ibd_running));
         let mut config = generate_config();
         let now = Instant::now() - std::time::Duration::from_secs(3600);
         let peer_count = config.perigee_outbound_target;
@@ -813,12 +943,19 @@ mod tests {
         }
 
         // Execute a perigee round
-        let (leveraged, evicted, skipped) = manager.lock().evaluate_round(&peer_by_addr);
+        let (leveraged, evicted, has_leveraged_changed) = manager.lock().evaluate_round(&peer_by_addr);
         debug!("Leveraged peers: {:?}", leveraged);
         debug!("Evicted peers: {:?}", evicted);
 
         // Perform assertions:
-        assert!(!skipped, "Leverage/exploration should not be skipped in this test");
+        if ibd_running {
+            // While IBD is running, no leveraging or eviction should occur
+            assert!(!has_leveraged_changed, "Leveraging should be skipped while IBD is running");
+            assert!(leveraged.is_empty(), "No peers should be leveraged while IBD is running");
+            assert!(evicted.is_empty(), "No peers should be evicted while IBD is running");
+            return;
+        };
+        assert!(has_leveraged_changed, "Leveraging should not be skipped in this test");
         assert_eq!(
             leveraged,
             routers.iter().take(leverage_target).map(|r| r.key()).collect::<Vec<PeerKey>>(),
