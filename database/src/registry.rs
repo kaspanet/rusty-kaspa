@@ -46,13 +46,19 @@ pub enum DatabaseStorePrefixes {
     // Stores headers with run-length encoded parents
     CompressedHeaders = 32,
 
+    // Stores a succinct pruning proof descriptor
+    PruningProofDescriptor = 33,
+
     // ---- Ghostdag Proof
     TempGhostdag = 40,
     TempGhostdagCompact = 41,
+    TempRelationsParents = 42,
+    TempRelationsChildren = 43,
 
     // ---- Retention Period Root ----
     RetentionPeriodRoot = 50,
-    // ---- pruning metadata ----
+
+    // ---- Pruning metadata ----
     PruningUtxosetSyncFlag = 60,
     BodyMissingAnticone = 61,
 

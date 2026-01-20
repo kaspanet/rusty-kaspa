@@ -1,15 +1,18 @@
-use std::{cmp::Reverse, collections::BinaryHeap, sync::Arc};
+use std::{
+    cmp::Reverse,
+    collections::{BinaryHeap, VecDeque},
+    sync::Arc,
+};
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    blockhash::{BlockHashExtensions, BlockHashes},
-    header::Header,
-    pruning::PruningPointProof,
-    BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
+    blockhash::BlockHashes, header::Header, pruning::PruningPointProof, BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher,
+    KType,
 };
-use kaspa_core::debug;
-use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions, DB};
+use kaspa_core::{debug, trace};
+use kaspa_database::prelude::*;
 use kaspa_hashes::Hash;
+use kaspa_utils::binary_heap::TopK;
 
 use crate::{
     model::{
@@ -17,60 +20,129 @@ use crate::{
         stores::{
             ghostdag::{DbGhostdagStore, GhostdagStore, GhostdagStoreReader},
             headers::{HeaderStoreReader, HeaderWithBlockLevel},
-            relations::RelationsStoreReader,
+            pruning::{PruningProofDescriptor, PruningStoreReader},
+            relations::{DbRelationsStore, RelationsStoreReader},
         },
     },
     processes::{
         ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
-        pruning_proof::PruningProofManagerInternalError,
+        pruning_proof::{GhostdagReaderExt, ProofInternalError},
+        relations::RelationsStoreExtensions,
     },
 };
 
-use super::{PruningProofManager, PruningProofManagerInternalResult};
+use super::{ProofInternalResult, PruningProofManager};
 
 #[derive(Clone)]
-struct RelationsStoreInFutureOfRoot<T: RelationsStoreReader, U: ReachabilityService> {
+struct LevelProofContext {
+    ghostdag_store: Arc<DbGhostdagStore>,
+    tip: Hash,
+    root: Hash,
+    count: u64,
+}
+
+/// A relations-store reader restricted to the future of a fixed root block (including the root).
+///
+/// Only parents and children that lie within the root’s future are exposed.
+/// This provides a consistent, root-relative view of relations when operating on
+/// proofs or subgraphs confined to that region of the DAG.
+#[derive(Clone)]
+struct FutureIntersectRelations<T: RelationsStoreReader, U: ReachabilityService> {
     relations_store: T,
     reachability_service: U,
     root: Hash,
 }
 
-impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for RelationsStoreInFutureOfRoot<T, U> {
-    fn get_parents(&self, hash: Hash) -> Result<BlockHashes, kaspa_database::prelude::StoreError> {
+impl<T: RelationsStoreReader, U: ReachabilityService> FutureIntersectRelations<T, U> {
+    fn new(relations_store: T, reachability_service: U, root: Hash) -> Self {
+        Self { relations_store, reachability_service, root }
+    }
+}
+
+impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for FutureIntersectRelations<T, U> {
+    fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         self.relations_store.get_parents(hash).map(|hashes| {
-            Arc::new(hashes.iter().copied().filter(|h| self.reachability_service.is_dag_ancestor_of(self.root, *h)).collect_vec())
+            // Reachability queries are safe here, since in this context all blocks are reached via `reachable_parents_at_level`
+            hashes.iter().copied().filter(|&h| self.reachability_service.is_dag_ancestor_of(self.root, h)).collect_vec().into()
         })
     }
 
-    fn get_children(&self, hash: Hash) -> StoreResult<kaspa_database::prelude::ReadLock<BlockHashSet>> {
-        // We assume hash is in future of root
-        assert!(self.reachability_service.is_dag_ancestor_of(self.root, hash));
+    fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
+        assert!(self.reachability_service.is_dag_ancestor_of(self.root, hash), "future(root) invariant violated");
         self.relations_store.get_children(hash)
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        if self.reachability_service.is_dag_ancestor_of(self.root, hash) {
-            Ok(false)
-        } else {
-            self.relations_store.has(hash)
-        }
+        Ok(self.relations_store.has(hash)? && self.reachability_service.is_dag_ancestor_of(self.root, hash))
     }
 
-    fn counts(&self) -> Result<(usize, usize), kaspa_database::prelude::StoreError> {
-        unimplemented!()
+    fn counts(&self) -> Result<(usize, usize), StoreError> {
+        unreachable!("not expected to be called in this context")
+    }
+}
+
+/// Utility for creating retry-indexed temporary GHOSTDAG stores.
+///
+/// Each call to `new_store` returns a fresh temporary `DbGhostdagStore` for the
+/// given level, using an incrementing retry index to avoid namespace collisions.
+/// This is used when multiple ghostdag attempts may be required for the same level.
+struct GhostdagStoreFactory {
+    db: Arc<DB>,
+    cache_policy: CachePolicy,
+    level: BlockLevel,
+    retries: u8,
+}
+
+impl GhostdagStoreFactory {
+    fn new(db: Arc<DB>, cache_policy: CachePolicy, level: BlockLevel) -> Self {
+        Self { db, cache_policy, level, retries: 0 }
+    }
+
+    /// Creates a fresh temporary ghostdag store for the next retry attempt
+    fn new_store(&mut self) -> Arc<DbGhostdagStore> {
+        self.retries += 1;
+        Arc::new(DbGhostdagStore::new_temp(self.db.clone(), self.level, self.cache_policy, self.cache_policy, self.retries - 1))
     }
 }
 
 impl PruningProofManager {
+    /// Builds a pruning-point proof for `pp` by computing per-level MLS proof contexts and
+    /// collecting the headers in `future(root) ∩ past(tip)` for each level.
+    /// Temporary stores are used during construction, and headers are shared (via arcs)
+    /// across levels in the final proof.
     pub(crate) fn build_pruning_point_proof(&self, pp: Hash) -> PruningPointProof {
-        if pp == self.genesis_hash {
-            return vec![];
+        let descriptor = self.pruning_point_store.read().pruning_proof_descriptor().optional().unwrap();
+        if let Some(descriptor) = descriptor.as_ref() {
+            // Use a locally built descriptor (when it matches the current pruning point) for fast reconstruction.
+            // Otherwise, recalculate the descriptor to optimize proof size.
+            if descriptor.pruning_point == pp && !descriptor.external {
+                return self.proof_from_descriptor(descriptor);
+            }
         }
 
-        let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
-        let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
-        let (ghostdag_stores, selected_tip_by_level, roots_by_level) = self.calc_gd_for_all_levels(&pp_header, temp_db);
+        let new_descriptor = match pp == self.genesis_hash {
+            true => {
+                // Genesis case - create a proof where all levels hold genesis only
+                let (tips, roots, counts) = (0..=self.max_block_level).map(|_| (self.genesis_hash, self.genesis_hash, 1)).multiunzip();
+                PruningProofDescriptor::new(self.genesis_hash, tips, roots, counts)
+            }
+            false => {
+                // General case
+                self.calc_new_proof(pp, descriptor.as_deref())
+            }
+        };
 
+        let proof = self.proof_from_descriptor(&new_descriptor);
+        self.pruning_point_store.write().set_pruning_proof_descriptor(new_descriptor).unwrap();
+
+        proof
+    }
+
+    /// Reconstructs the pruning proof described by `descriptor` by loading headers from storage
+    /// and collecting, per level, the blocks in `future(root) ∩ past(tip)`.
+    ///
+    /// Uses a local header-arc cache to deduplicate headers shared across levels.
+    fn proof_from_descriptor(&self, descriptor: &PruningProofDescriptor) -> PruningPointProof {
         // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
         // to make sure we hold a single Arc per header
         let mut cache: BlockHashMap<Arc<Header>> = BlockHashMap::with_capacity(4 * self.pruning_proof_m as usize);
@@ -78,465 +150,418 @@ impl PruningProofManager {
 
         (0..=self.max_block_level)
             .map(|level| {
-                let level = level as usize;
-                let selected_tip = selected_tip_by_level[level];
-                let block_at_depth_2m = self
-                    .block_at_depth(&*ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m)
-                    .map_err(|err| format!("level: {}, err: {}", level, err))
-                    .unwrap();
+                let level_idx = level as usize;
+                let tip = descriptor.tips[level_idx];
+                let root = descriptor.roots[level_idx];
+                let expected_count = descriptor.counts[level_idx];
 
-                // TODO (relaxed): remove the assertion below
-                // (New Logic) This is the root we calculated by going through block relations
-                let root = roots_by_level[level];
-                // (Old Logic) This is the root we can calculate given that the GD records are already filled
-                // The root calc logic below is the original logic before the on-demand higher level GD calculation
-                // We only need old_root to sanity check the new logic
-                let old_root = if level != self.max_block_level as usize {
-                    let block_at_depth_m_at_next_level = self
-                        .block_at_depth(&*ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m)
-                        .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
-                        .unwrap();
-                    if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m) {
-                        block_at_depth_m_at_next_level
-                    } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_2m, block_at_depth_m_at_next_level) {
-                        block_at_depth_2m
-                    } else {
-                        self.find_common_ancestor_in_chain_of_a(
-                            &*ghostdag_stores[level],
-                            block_at_depth_m_at_next_level,
-                            block_at_depth_2m,
-                        )
-                        .map_err(|err| format!("level: {}, err: {}", level, err))
-                        .unwrap()
-                    }
-                } else {
-                    block_at_depth_2m
-                };
-
-                // new root is expected to be always an ancestor of old_root because new root takes a safety margin
-                assert!(self.reachability_service.is_dag_ancestor_of(root, old_root));
-
-                let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
-                let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
+                let mut headers = VecDeque::with_capacity(2 * self.pruning_proof_m as usize);
+                let mut queue = BinaryHeap::<SortableBlock>::new();
                 let mut visited = BlockHashSet::new();
-                queue.push(Reverse(SortableBlock::new(root, get_header(root).blue_work)));
-                while let Some(current) = queue.pop() {
-                    let current = current.0.hash;
+                queue.push(SortableBlock::new(tip, get_header(tip).blue_work));
+
+                while let Some(SortableBlock { hash: current, .. }) = queue.pop() {
                     if !visited.insert(current) {
                         continue;
                     }
 
-                    // The second condition is always expected to be true (ghostdag store will have the entry)
-                    // because we are traversing the exact diamond (future(root) ⋂ past(tip)) for which we calculated
-                    // GD for (see fill_level_proof_ghostdag_data). TODO (relaxed): remove the condition or turn into assertion
-                    if !self.reachability_service.is_dag_ancestor_of(current, selected_tip)
-                        || !ghostdag_stores[level].has(current).is_ok_and(|found| found)
-                    {
+                    // We are only interested in the exact diamond future(root) ⋂ past(tip)
+                    if !self.reachability_service.is_dag_ancestor_of(root, current) {
                         continue;
                     }
 
-                    headers.push(get_header(current));
-                    for child in self.relations_stores.read()[level].get_children(current).unwrap().read().iter().copied() {
-                        queue.push(Reverse(SortableBlock::new(child, get_header(child).blue_work)));
+                    let header = get_header(current);
+                    for parent in self.reachable_parents_at_level(level, &header) {
+                        queue.push(SortableBlock::new(parent, get_header(parent).blue_work));
                     }
+
+                    headers.push_front(header);
                 }
 
-                // TODO (relaxed): remove the assertion below
-                // Temp assertion for verifying a bug fix: assert that the full 2M chain is actually contained in the composed level proof
-                let set = BlockHashSet::from_iter(headers.iter().map(|h| h.hash));
-                let chain_2m = self
-                    .chain_up_to_depth(&*ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m)
-                    .map_err(|err| {
-                        dbg!(level, selected_tip, block_at_depth_2m, root);
-                        format!("Assert 2M chain -- level: {}, err: {}", level, err)
-                    })
-                    .unwrap();
-                let chain_2m_len = chain_2m.len();
-                for (i, chain_hash) in chain_2m.into_iter().enumerate() {
-                    if !set.contains(&chain_hash) {
-                        let next_level_tip = selected_tip_by_level[level + 1];
-                        let next_level_chain_m =
-                            self.chain_up_to_depth(&*ghostdag_stores[level + 1], next_level_tip, self.pruning_proof_m).unwrap();
-                        let next_level_block_m = next_level_chain_m.last().copied().unwrap();
-                        dbg!(next_level_chain_m.len());
-                        dbg!(ghostdag_stores[level + 1].get_compact_data(next_level_tip).unwrap().blue_score);
-                        dbg!(ghostdag_stores[level + 1].get_compact_data(next_level_block_m).unwrap().blue_score);
-                        dbg!(ghostdag_stores[level].get_compact_data(selected_tip).unwrap().blue_score);
-                        dbg!(ghostdag_stores[level].get_compact_data(block_at_depth_2m).unwrap().blue_score);
-                        dbg!(level, selected_tip, block_at_depth_2m, root);
-                        panic!("Assert 2M chain -- missing block {} at index {} out of {} chain blocks", chain_hash, i, chain_2m_len);
-                    }
-                }
-
-                headers
+                assert_eq!(
+                    expected_count,
+                    headers.len() as u64,
+                    "rebuilt proof level {} count {} does not match the expected descriptor count {}",
+                    level,
+                    headers.len(),
+                    expected_count
+                );
+                headers.into()
             })
-            .collect_vec()
+            .collect()
     }
 
-    fn calc_gd_for_all_levels(
-        &self,
-        pp_header: &HeaderWithBlockLevel,
-        temp_db: Arc<DB>,
-    ) -> (Vec<Arc<DbGhostdagStore>>, Vec<Hash>, Vec<Hash>) {
-        // TODO: Uncomment line and send as argument to find_sufficiently_deep_level_root
-        // once full fix to minimize proof sizes comes
-        // let current_dag_level = self.find_current_dag_level(&pp_header.header);
-        let mut ghostdag_stores: Vec<Option<Arc<DbGhostdagStore>>> = vec![None; self.max_block_level as usize + 1];
-        let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
-        let mut root_by_level = vec![None; self.max_block_level as usize + 1];
+    /// Computes level-proof contexts for all levels, processing levels from high to low to satisfy
+    /// MLS inter-level constraints, and aggregates the results into a pruning-proof descriptor.
+    fn calc_new_proof(&self, pp: Hash, prev_descriptor: Option<&PruningProofDescriptor>) -> PruningProofDescriptor {
+        let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
+
+        let mut level_proof_ctxs: Vec<Option<LevelProofContext>> = vec![None; (self.max_block_level + 1).into()];
+
         for level in (0..=self.max_block_level).rev() {
-            let level_usize = level as usize;
+            let level_idx = level as usize;
             let required_block = if level != self.max_block_level {
-                let next_level_store = ghostdag_stores[level_usize + 1].as_ref().unwrap().clone();
-                let block_at_depth_m_at_next_level = self
-                    .block_at_depth(&*next_level_store, selected_tip_by_level[level_usize + 1].unwrap(), self.pruning_proof_m)
-                    .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
+                let LevelProofContext { ghostdag_store: next_level_gd_store, tip: next_level_tip, .. } =
+                    level_proof_ctxs[level_idx + 1].as_ref().unwrap();
+
+                let block_at_depth_m_at_next_level = next_level_gd_store
+                    .block_at_depth(*next_level_tip, self.pruning_proof_m)
+                    .map_err(|err| format!("next level: {}, err: {}", level + 1, err))
                     .unwrap();
                 Some(block_at_depth_m_at_next_level)
             } else {
                 None
             };
-            let (store, selected_tip, root) = self
-                .find_sufficiently_deep_level_root(pp_header, level, required_block, temp_db.clone())
-                .unwrap_or_else(|_| panic!("find_sufficient_root failed for level {level}"));
-            ghostdag_stores[level_usize] = Some(store);
-            selected_tip_by_level[level_usize] = Some(selected_tip);
-            root_by_level[level_usize] = Some(root);
+            level_proof_ctxs[level_idx] = Some(
+                self.calc_level_proof_context(
+                    &pp_header,
+                    level,
+                    required_block,
+                    prev_descriptor.as_ref().map(|d| d.tips[level_idx]),
+                    prev_descriptor.as_ref().map(|d| d.roots[level_idx]),
+                    temp_db.clone(),
+                )
+                .unwrap_or_else(|e| panic!("calc_level_proof_context failed for level {level}: {e}")),
+            );
         }
 
-        (
-            ghostdag_stores.into_iter().map(Option::unwrap).collect_vec(),
-            selected_tip_by_level.into_iter().map(Option::unwrap).collect_vec(),
-            root_by_level.into_iter().map(Option::unwrap).collect_vec(),
-        )
+        let (tips, roots, counts) = level_proof_ctxs.into_iter().map(Option::unwrap).map(|l| (l.tip, l.root, l.count)).multiunzip();
+
+        PruningProofDescriptor::new(pp, tips, roots, counts)
     }
 
-    /// Find a sufficient root at a given level by going through the headers store and looking
-    /// for a deep enough level block
-    /// For each root candidate, fill in the ghostdag data to see if it actually is deep enough.
-    /// If the root is deep enough, it will satisfy these conditions
-    /// 1. block at depth 2m at this level ∈ Future(root)
-    /// 2. block at depth m at the next level ∈ Future(root)
+    /// Computes a level-proof context by incrementally expanding the level relations subgraph and
+    /// periodically attempting to anchor a proof between a candidate `root` and the `selected_tip`.
     ///
-    /// Returns: the filled ghostdag store from root to tip, the selected tip and the root
-    fn find_sufficiently_deep_level_root(
+    /// High-level flow:
+    /// 1. Determine `selected_tip` at `level` (either the pruning point itself, or its approximate
+    ///    selected parent at that level).
+    /// 2. Traverse *backward* from `selected_tip` while populating a temporary relations store.
+    ///    Traversal is performed in reverse-topological order so that all derived data
+    ///    (e.g. future-size tracking, ghostdag inputs) is observed consistently.
+    /// 3. Whenever the current block is a viable root candidate (sufficient base-level depth,
+    ///    sufficient future size, and inclusion constraints), populate a temporary ghostdag store
+    ///    for the region `future(root) ∩ past(selected_tip)` and test whether it satisfies the
+    ///    proof-level requirements.
+    /// 4. If a candidate fails due to insufficient realized blue depth (due to reds),
+    ///    increase the future-size threshold and continue searching further into the past.
+    ///
+    /// If `required_block` is provided, the chosen root must lie in its past.
+    /// Typically, this block is the one at depth `M` from the *next* level, as mandated by the
+    /// MLS (mining-in-log-space) protocol. Since level proofs are computed from higher levels
+    /// to lower ones, the caller already has this block available and supplies it here to
+    /// constrain root selection and ensure inter-level consistency.
+    fn calc_level_proof_context(
         &self,
         pp_header: &HeaderWithBlockLevel,
         level: BlockLevel,
         required_block: Option<Hash>,
-        temp_db: Arc<DB>,
-    ) -> PruningProofManagerInternalResult<(Arc<DbGhostdagStore>, Hash, Hash)> {
-        // Step 1: Determine which selected tip to use
-        let selected_tip = if pp_header.block_level >= level {
+        prev_tip: Option<Hash>,
+        prev_root: Option<Hash>,
+        db: Arc<DB>,
+    ) -> ProofInternalResult<LevelProofContext> {
+        // Select the tip at this level:
+        // - If the pruning point level >= level, use it.
+        // - Otherwise, use the approximate selected parent at level.
+        let tip = if pp_header.block_level >= level {
             pp_header.header.hash
         } else {
-            self.find_selected_parent_header_at_level(&pp_header.header, level)?.hash
+            // When advancing from a previous descriptor, require `prev_tip` to lie in the past of the new selected tip.
+            // This preserves monotonicity across successive proofs (see `prev_root` rationale below).
+            //
+            // Note: such a parent always exists because the new pruning point is in the future of previous pruning points.
+            self.reachable_parents_at_level(level, &pp_header.header)
+                .filter(|&p| prev_tip.is_none_or(|prev_tip| self.reachability_service.is_dag_ancestor_of(prev_tip, p)))
+                .map(|p| self.headers_store.get_header(p).expect("reachable"))
+                .max_by_key(|h| SortableBlock::new(h.hash, h.blue_work))
+                .ok_or_else(|| ProofInternalError::NotEnoughHeadersToBuildProof("no reachable parents".to_string()))?
+                .hash
         };
 
+        // Base-level blue score of the selected tip, taken directly from the header.
+        // This is distinct from the *locally computed* blue score later derived from
+        // the temporary ghostdag instance at this level.
+        let tip_header_score = self.headers_store.get_blue_score(tip).unwrap();
+
+        // Proof thresholds:
+        // - required_future_size gates root candidacy based on how much future mass a root covers.
+        // - required_base_level_depth is a base-level (header) blue-depth guard: if level 0
+        //   lacks sufficient blues here, we avoid premature ghostdag attempts.
+        let mut required_future_size = 2 * self.pruning_proof_m;
+        let required_base_level_depth = (self.pruning_proof_m as f64 * 2.1) as u64; // ~= 2100 for M=1000
+
+        // If no explicit required block is provided, default to `selected_tip`.
+        // Typically, `required_block` is the block at depth `M` from the *next* level, per the MLS protocol
+        let required = required_block.unwrap_or(tip);
+
+        // Backward traversal from `selected_tip` in reverse-topological order
+        // to maintain consistency for all derived computations.
+        let mut queue = BinaryHeap::<SortableBlock>::new();
+        let mut visited = BlockHashSet::new();
+        queue.push(SortableBlock { hash: tip, blue_work: self.headers_store.get_header(tip).unwrap().blue_work });
+
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
-        let required_level_depth = 2 * self.pruning_proof_m;
 
-        // We only have the headers store (which has level 0 blue_scores) to assemble the proof data from.
-        // We need to look deeper at higher levels (2x deeper every level) to find 2M (plus margin) blocks at that level
-        // TODO: uncomment when the full fix to minimize proof sizes comes, and add current_dag_level as an argument
-        // let mut required_base_level_depth = self.estimated_blue_depth_at_level_0(
-        //     level,
-        //     required_level_depth + 100, // We take a safety margin
-        //     current_dag_level,
-        // );
-        // NOTE: Starting from required_level_depth (a much lower starting point than normal) will typically require O(N) iterations
-        // for level L + N where L is the current dag level. This is fine since the steps per iteration are still exponential
-        // and so we will complete each level in not much more than N iterations per level.
-        // We start here anyway so we can try to minimize the proof size when the current dag level goes down significantly.
-        let mut required_base_level_depth = required_level_depth + 100;
+        // A single shared relations store is maintained for the entire search of this level.
+        let mut relations_store = DbRelationsStore::new_temp(db.clone(), level, 0, cache_policy, cache_policy);
 
-        let mut is_last_level_header;
-        let mut tries = 0;
+        // For each visited block, store the size of its (known) future up to `selected_tip`.
+        let mut future_sizes_map = BlockHashMap::<u64>::new();
 
-        let block_at_depth_m_at_next_level = required_block.unwrap_or(selected_tip);
+        // Each ghostdag attempt uses a fresh temp store namespace (indexed internally by `retries`).
+        let mut ghostdag_factory = GhostdagStoreFactory::new(db.clone(), cache_policy, level);
 
-        loop {
-            // Step 2 - Find a deep enough root candidate
-            let block_at_depth_2m = match self.level_block_at_base_depth(level, selected_tip, required_base_level_depth) {
-                Ok((header, is_last_header)) => {
-                    is_last_level_header = is_last_header;
-                    header
-                }
-                Err(e) => return Err(e),
-            };
+        // Track a few high-future-size candidates for a final fallback pass
+        let mut best_future_roots = TopK::<(u64, Hash), 8>::new();
 
-            let root = if self.reachability_service.is_dag_ancestor_of(block_at_depth_2m, block_at_depth_m_at_next_level) {
-                block_at_depth_2m
-            } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m) {
-                block_at_depth_m_at_next_level
+        // Try to realize a level-proof from a candidate root
+        let mut try_root = |relations_store: &DbRelationsStore, root: Hash, future_size: u64| -> Option<LevelProofContext> {
+            // Populate ghostdag for `future(root) ∩ past(selected_tip)` and test depth requirements.
+            let ghostdag_store = ghostdag_factory.new_store();
+            let has_required_block =
+                self.populate_level_proof_ghostdag_data(relations_store, &ghostdag_store, root, tip, required, level, self.ghostdag_k);
+            assert!(has_required_block, "expected root ∈ past(required)");
+
+            // Realized blue depth for this root, computed from the level-specific ghostdag
+            let current_level_score = ghostdag_store.get_blue_score(tip).unwrap();
+
+            // Log all non-trivial cases
+            if tip != self.genesis_hash {
+                debug!(
+                    "level: {}, future: {}, blue score: {}, retries: {}",
+                    level, future_size, current_level_score, ghostdag_factory.retries
+                );
+            }
+
+            // Success:
+            // - Genesis is always acceptable
+            // - Otherwise require at least `2M` blue depth at this level
+            //
+            // Note that future_size + 1 = inclusive size of the diamond `future(root) ∩ past(tip)`
+            if root == self.genesis_hash || current_level_score >= 2 * self.pruning_proof_m {
+                Some(LevelProofContext { ghostdag_store, tip, root, count: future_size + 1 })
             } else {
-                // find common ancestor of block_at_depth_m_at_next_level and block_at_depth_2m in chain of block_at_depth_m_at_next_level
-                let mut common_ancestor = self.headers_store.get_header(block_at_depth_m_at_next_level).unwrap();
+                None
+            }
+        };
 
-                while !self.reachability_service.is_dag_ancestor_of(common_ancestor.hash, block_at_depth_2m) {
-                    common_ancestor = match self.find_selected_parent_header_at_level(&common_ancestor, level) {
-                        Ok(header) => header,
-                        // Try to give this last header a chance at being root
-                        Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => break,
-                        Err(e) => return Err(e),
-                    };
+        while let Some(SortableBlock { hash: current, .. }) = queue.pop() {
+            if !visited.insert(current) {
+                continue;
+            }
+
+            let header = self.headers_store.get_header(current).unwrap();
+
+            // Collect reachable parents at this level
+            let parents: BlockHashes = self.reachable_parents_at_level(level, &header).collect::<Vec<_>>().into();
+
+            // Persist relations for `current`
+            relations_store.insert(current, parents.clone()).unwrap();
+
+            trace!("Level: {} | Counting future size of {}", level, current);
+            let future_size = self.count_future_size(&relations_store, current, &future_sizes_map);
+            future_sizes_map.insert(current, future_size);
+            trace!("Level: {} | Hash: {} | Future Size: {}", level, current, future_size);
+
+            // Base-level depth from `selected_tip`, measured using *header* blue scores.
+            let base_level_depth = tip_header_score.saturating_sub(header.blue_score);
+
+            // Root candidacy conditions:
+            // - Must be in the past of `required`
+            // - And one of:
+            //   (a) genesis
+            //   (b) sufficiently large future and sufficiently deep base-level distance
+            if self.reachability_service.is_dag_ancestor_of(current, required) {
+                // If the root appears immediately viable, attempt ghostdag now.
+                // A successful attempt requires ≥ 2M realized blues at this level.
+                if current == self.genesis_hash
+                    || (future_size >= required_future_size && base_level_depth >= required_base_level_depth)
+                {
+                    let root = current;
+                    if let Some(level_ctx) = try_root(&relations_store, root, future_size) {
+                        return Ok(level_ctx);
+                    }
+
+                    // Large enough future with insufficient blue depth implies reds; increase the
+                    // future-size threshold and retry further in the past.
+                    required_future_size = (required_future_size as f64 * 1.1) as u64;
+                } else if future_size >= 2 * self.pruning_proof_m {
+                    // Minimum precondition for reaching ≥ 2M blues is future_size ≥ 2M.
+                    // Defer ghostdag and keep as a fallback candidate.
+                    best_future_roots.push((future_size, current));
                 }
-
-                common_ancestor.hash
-            };
-
-            if level == 0 {
-                return Ok((self.ghostdag_store.clone(), selected_tip, root));
             }
 
-            // Step 3 - Fill the ghostdag data from root to tip
-            let ghostdag_store = Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, tries));
-            let has_required_block = self.fill_level_proof_ghostdag_data(
-                root,
-                pp_header.header.hash,
-                &ghostdag_store,
-                Some(block_at_depth_m_at_next_level),
-                level,
-                self.ghostdag_k.get(pp_header.header.daa_score),
-            );
-
-            // Step 4 - Check if we actually have enough depth.
-            // Need to ensure this does the same 2M+1 depth that block_at_depth does
-            if has_required_block
-                && (root == self.genesis_hash || ghostdag_store.get_blue_score(selected_tip).unwrap() >= required_level_depth)
-            {
-                break Ok((ghostdag_store, selected_tip, root));
+            // Continue expanding the backward traversal.
+            for &p in parents.iter() {
+                queue.push(SortableBlock { hash: p, blue_work: self.headers_store.get_header(p).unwrap().blue_work });
             }
-
-            tries += 1;
-            if is_last_level_header {
-                if has_required_block {
-                    // Normally this scenario doesn't occur when syncing with nodes that already have the safety margin change in place.
-                    // However, when syncing with an older node version that doesn't have a safety margin for the proof, it's possible to
-                    // try to find 2500 depth worth of headers at a level, but the proof only contains about 2000 headers. To be able to sync
-                    // with such an older node. As long as we found the required block, we can still proceed.
-                    debug!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_base_level_depth} are already pruned. Required block found so trying anyway.");
-                    break Ok((ghostdag_store, selected_tip, root));
-                } else {
-                    panic!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_base_level_depth} are already pruned");
-                }
-            }
-
-            // If we don't have enough depth now, we need to look deeper
-            required_base_level_depth = (required_base_level_depth as f64 * 1.1) as u64;
-            debug!("Failed to find sufficient root for level {level} after {tries} tries. Retrying again to find with depth {required_base_level_depth}");
         }
+
+        // Use the previous proof's root as the fallback anchor when progressing proofs.
+        // With a fixed root, ghostdag selection is deterministic, and if the new tip is in the future of the
+        // previous tip then blue score/work can only increase — so once the 2M (or genesis) invariant holds,
+        // it continues to hold for all future progressions.
+        if let Some(root) = prev_root {
+            let future_size = *future_sizes_map.get(&root).expect("exhausted traversal");
+            if let Some(level_ctx) = try_root(&relations_store, root, future_size) {
+                return Ok(level_ctx);
+            }
+        }
+
+        // Final fallback: give a last chance to a few high-future-size roots.
+        // This is only needed for migrating nodes without a stored descriptor yet, and can be removed
+        // once all nodes persist descriptors (along with the whole top-k fallback path).
+        for (future_size, root) in best_future_roots.into_sorted_iter_ascending().collect_vec().into_iter().rev() {
+            if let Some(level_ctx) = try_root(&relations_store, root, future_size) {
+                return Ok(level_ctx);
+            }
+        }
+
+        panic!("Failed to find sufficient root for level {level} after exhausting all known headers.");
     }
 
-    /// BFS forward iterates from root until selected tip, ignoring blocks in the antipast of selected_tip.
-    /// For each block along the way, insert that hash into the ghostdag_store
-    /// If we have a required_block to find, this will return true if that block was found along the way
-    fn fill_level_proof_ghostdag_data(
+    /// Given a current hash, count the blocks in its future.
+    ///
+    /// The algorithm works as follows:
+    /// 1. Identify the dominant child (the one with the largest future) to minimize traversal,
+    ///    since most of the future is expected to be covered by it.
+    /// 2. Perform a BFS over all other children and their futures, skipping blocks that are
+    ///    already in the future of the dominant child.
+    ///
+    /// This is conceptually similar to mergeset calculation logic
+    /// (effectively a traversal over the reversed mergeset).
+    ///
+    /// Assumes `future_sizes` is populated for all children of `current` (caller is expected to be doing a topological BFS).
+    fn count_future_size(&self, relations: &DbRelationsStore, current: Hash, future_sizes: &BlockHashMap<u64>) -> u64 {
+        // Seed the BFS queue with all children of the current hash
+        let mut queue: VecDeque<_> = relations.get_children(current).unwrap().read().iter().copied().collect();
+        let mut visited = BlockHashSet::new();
+
+        struct Entry {
+            child: Hash,
+            fut_size: u64,
+        }
+
+        // Future sizes are guaranteed to exist due to the topological BFS invariant
+        let dominant_entry = queue
+            .iter()
+            .copied()
+            .map(|child| Entry { child, fut_size: *future_sizes.get(&child).expect("topological bfs") })
+            .max_by_key(|e| e.fut_size);
+
+        let mut count = 0;
+
+        if let Some(Entry { child: dominant_child, fut_size }) = dominant_entry {
+            // Fully account for the dominant child future (+1 for itself) and exclude it from the traversal
+            count += fut_size + 1;
+            visited.insert(dominant_child);
+
+            while let Some(hash) = queue.pop_front() {
+                if !visited.insert(hash) {
+                    continue;
+                }
+
+                // Skip blocks that are already in the future of the dominant child
+                if self.reachability_service.is_dag_ancestor_of(dominant_child, hash) {
+                    continue;
+                }
+
+                count += 1;
+                for &child in relations.get_children(hash).unwrap().read().iter() {
+                    queue.push_back(child);
+                }
+            }
+        }
+
+        trace!("Counted future size of {} as {}", current, count);
+        count
+    }
+
+    /// Forward-traverses from `root` toward `tip`, and inserts ghostdag data for each visited block.
+    ///
+    /// Traversal is restricted to `future(root) ∩ past(tip)` (i.e., blocks in the antipast of `tip` are ignored).
+    /// Returns `true` iff `required_block` was encountered during traversal.
+    fn populate_level_proof_ghostdag_data(
         &self,
-        root: Hash,
-        selected_tip: Hash,
+        relations_store: &DbRelationsStore,
         ghostdag_store: &Arc<DbGhostdagStore>,
-        required_block: Option<Hash>,
+        root: Hash,
+        tip: Hash,
+        required_block: Hash,
         level: BlockLevel,
         ghostdag_k: KType,
     ) -> bool {
-        let relations_service = RelationsStoreInFutureOfRoot {
-            relations_store: self.level_relations_services[level as usize].clone(),
-            reachability_service: self.reachability_service.clone(),
-            root,
-        };
-        let gd_manager = GhostdagManager::with_level(
+        // Restrict relations to `future(root)`
+        let relations_view = FutureIntersectRelations::new(relations_store, self.reachability_service.clone(), root);
+
+        // Create a ghostdag manager over the restricted relations view
+        let ghostdag_manager = GhostdagManager::with_level(
             root,
             ghostdag_k,
             ghostdag_store.clone(),
-            relations_service.clone(),
+            &relations_view,
             self.headers_store.clone(),
             self.reachability_service.clone(),
             level,
             self.max_block_level,
         );
 
-        // Note there is no need to initialize origin since we have a single root
-        ghostdag_store.insert(root, Arc::new(gd_manager.genesis_ghostdag_data())).unwrap();
+        // No need to initialize origin since we have a single root
+        ghostdag_store.insert(root, Arc::new(ghostdag_manager.genesis_ghostdag_data())).unwrap();
 
-        let mut topological_heap: BinaryHeap<_> = Default::default();
+        // Bottom-up topological traversal from `root` toward `tip`
+        let mut queue: BinaryHeap<_> = Default::default();
         let mut visited = BlockHashSet::new();
-        for child in relations_service.get_children(root).unwrap().read().iter().copied() {
-            topological_heap
-                .push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
+        for child in relations_view.get_children(root).unwrap().read().iter().copied() {
+            queue.push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
         }
 
-        let mut has_required_block = required_block.is_some_and(|required_block| root == required_block);
-        loop {
-            let Some(current) = topological_heap.pop() else {
-                break;
-            };
-            let current_hash = current.0.hash;
-            if !visited.insert(current_hash) {
+        let mut has_required_block = root == required_block;
+
+        while let Some(Reverse(SortableBlock { hash: current, .. })) = queue.pop() {
+            if !visited.insert(current) {
                 continue;
             }
 
-            if !self.reachability_service.is_dag_ancestor_of(current_hash, selected_tip) {
-                // We don't care about blocks in the antipast of the selected tip
+            // We only care about `future(root) ∩ past(tip)`
+            if !self.reachability_service.is_dag_ancestor_of(current, tip) {
                 continue;
             }
 
-            if !has_required_block && required_block.is_some_and(|required_block| current_hash == required_block) {
-                has_required_block = true;
-            }
+            has_required_block |= current == required_block;
 
-            let current_gd = gd_manager.ghostdag(&relations_service.get_parents(current_hash).unwrap());
+            ghostdag_store
+                .insert(current, Arc::new(ghostdag_manager.ghostdag(&relations_view.get_parents(current).unwrap())))
+                .unwrap();
 
-            ghostdag_store.insert(current_hash, Arc::new(current_gd)).unwrap_or_exists();
-
-            for child in relations_service.get_children(current_hash).unwrap().read().iter().copied() {
-                topological_heap
-                    .push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
+            for child in relations_view.get_children(current).unwrap().read().iter().copied() {
+                queue.push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
             }
         }
 
+        // Returned for sanity testing by the caller
         has_required_block
     }
 
-    // The "current dag level" is the level right before the level whose parents are
-    // not the same as our header's direct parents
-    //
-    // Find the current DAG level by going through all the parents at each level,
-    // starting from the bottom level and see which is the first level that has
-    // parents that are NOT our current pp_header's direct parents.
-    fn find_current_dag_level(&self, pp_header: &Header) -> BlockLevel {
-        let direct_parents = BlockHashSet::from_iter(pp_header.direct_parents().iter().copied());
-        pp_header
-            .parents_by_level
-            .expanded_iter()
-            .enumerate()
-            .skip(1) // skip checking direct parents
-            .find_map(|(level, parents)| {
-                if BlockHashSet::from_iter(parents.iter().copied()) == direct_parents {
-                    None
-                } else {
-                    Some((level - 1) as BlockLevel)
-                }
-            })
-            .unwrap_or(self.max_block_level)
-    }
-
-    fn estimated_blue_depth_at_level_0(&self, level: BlockLevel, level_depth: u64, current_dag_level: BlockLevel) -> u64 {
-        level_depth.checked_shl(level.saturating_sub(current_dag_level) as u32).unwrap_or(level_depth)
-    }
-
-    /// selected parent at level = the parent of the header at the level
-    /// with the highest blue_work
-    fn find_selected_parent_header_at_level(
-        &self,
-        header: &Header,
-        level: BlockLevel,
-    ) -> PruningProofManagerInternalResult<Arc<Header>> {
-        // Parents manager parents_at_level may return parents that aren't in relations_service, so it's important
-        // to filter to include only parents that are in relations_service.
-        let sp = self
-            .parents_manager
+    /// Returns the header's parents at `level` that are reachable according to the reachability service,
+    /// i.e., parents for which reachability data exists in the database.
+    ///
+    /// This function enforces the reachability / storage invariants described in the
+    /// [crate-level documentation](crate): only parents with reachability data are returned.
+    /// By convention, the returned hashes are therefore also guaranteed to have a header
+    /// entry in the database.
+    fn reachable_parents_at_level<'a>(&'a self, level: u8, header: &'a Header) -> impl Iterator<Item = Hash> + 'a {
+        // `parents_at_level` may include candidates that are not currently in the database.
+        // This is fine here: we only need *some* sufficiently-deep reachable root for a proof at this level,
+        // not necessarily the "best" / most complete set of candidates.
+        self.parents_manager
             .parents_at_level(header, level)
             .iter()
             .copied()
-            .filter(|p| self.level_relations_services[level as usize].has(*p).unwrap())
-            .filter_map(|p| self.headers_store.get_header(p).unwrap_option().map(|h| SortableBlock::new(p, h.blue_work)))
-            .max()
-            .ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof("no parents with header".to_string()))?;
-        Ok(self.headers_store.get_header(sp.hash).expect("unwrapped above"))
-    }
-
-    /// Finds the block on a given level that is at base_depth deep from it.
-    /// Also returns if the block was the last one in the level
-    /// base_depth = the blue score depth at level 0
-    fn level_block_at_base_depth(
-        &self,
-        level: BlockLevel,
-        high: Hash,
-        base_depth: u64,
-    ) -> PruningProofManagerInternalResult<(Hash, bool)> {
-        let high_header = self
-            .headers_store
-            .get_header(high)
-            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {base_depth}, {err}")))?;
-        let high_header_score = high_header.blue_score;
-        let mut current_header = high_header;
-
-        let mut is_last_header = false;
-
-        while current_header.blue_score + base_depth >= high_header_score {
-            if current_header.direct_parents().is_empty() {
-                // Reached genesis
-                break;
-            }
-
-            current_header = match self.find_selected_parent_header_at_level(&current_header, level) {
-                Ok(header) => header,
-                Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => {
-                    // We want to give this root a shot if all its past is pruned
-                    is_last_header = true;
-                    break;
-                }
-                Err(e) => return Err(e),
-            };
-        }
-        Ok((current_header.hash, is_last_header))
-    }
-
-    /// Copy of `block_at_depth` which returns the full chain up to depth. Temporarily used for assertion purposes.
-    fn chain_up_to_depth(
-        &self,
-        ghostdag_store: &impl GhostdagStoreReader,
-        high: Hash,
-        depth: u64,
-    ) -> Result<Vec<Hash>, PruningProofManagerInternalError> {
-        let high_gd = ghostdag_store
-            .get_compact_data(high)
-            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
-        let mut current_gd = high_gd;
-        let mut current = high;
-        let mut res = vec![current];
-        while current_gd.blue_score + depth >= high_gd.blue_score {
-            if current_gd.selected_parent.is_origin() {
-                break;
-            }
-            let prev = current;
-            current = current_gd.selected_parent;
-            res.push(current);
-            current_gd = ghostdag_store.get_compact_data(current).map_err(|err| {
-                PruningProofManagerInternalError::BlockAtDepth(format!(
-                    "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
-                    high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
-                ))
-            })?;
-        }
-        Ok(res)
-    }
-
-    fn find_common_ancestor_in_chain_of_a(
-        &self,
-        ghostdag_store: &impl GhostdagStoreReader,
-        a: Hash,
-        b: Hash,
-    ) -> Result<Hash, PruningProofManagerInternalError> {
-        let a_gd = ghostdag_store
-            .get_compact_data(a)
-            .map_err(|err| PruningProofManagerInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
-        let mut current_gd = a_gd;
-        let mut current;
-        let mut loop_counter = 0;
-        loop {
-            current = current_gd.selected_parent;
-            loop_counter += 1;
-            if current.is_origin() {
-                break Err(PruningProofManagerInternalError::NoCommonAncestor(format!("a: {a}, b: {b} ({loop_counter} loop steps)")));
-            }
-            if self.reachability_service.is_dag_ancestor_of(current, b) {
-                break Ok(current);
-            }
-            current_gd = ghostdag_store
-                .get_compact_data(current)
-                .map_err(|err| PruningProofManagerInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
-        }
+            // Filtering by header existence alone is not enough: we may store headers of past pruning points,
+            // but those are not part of the reachable DAG for proof purposes.
+            .filter(|&p| self.reachability_service.has_reachability_data(p))
     }
 }

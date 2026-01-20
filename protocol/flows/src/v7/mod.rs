@@ -14,7 +14,7 @@ use crate::v7::{
     txrelay::flow::{RelayTransactionsFlow, RequestTransactionsFlow},
 };
 use crate::{flow_context::FlowContext, flow_trait::Flow};
-use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
+use kaspa_p2p_lib::{convert::header::HeaderFormat, KaspadMessagePayloadType, Router, SharedIncomingRoute};
 use kaspa_utils::channel;
 use std::sync::Arc;
 
@@ -36,6 +36,8 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // maintain at most a single pending job which can be updated
     let (ibd_sender, relay_receiver) = channel::job();
     let body_only_ibd_permitted = false;
+    // P2P header format prior to v9 is not compressed (legacy)
+    let header_format = HeaderFormat::Legacy;
     let mut flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
             ctx.clone(),
@@ -58,11 +60,13 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             ]),
             relay_receiver,
             body_only_ibd_permitted,
+            header_format,
         )),
         Box::new(HandleRelayBlockRequests::new(
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestRelayBlocks]),
+            header_format,
         )),
         Box::new(ReceivePingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Ping]))),
         Box::new(SendPingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Pong]))),
@@ -70,11 +74,13 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestHeaders, KaspadMessagePayloadType::RequestNextHeaders]),
+            header_format,
         )),
         Box::new(RequestPruningPointProofFlow::new(
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointProof]),
+            header_format,
         )),
         Box::new(RequestIbdChainBlockLocatorFlow::new(
             ctx.clone(),
@@ -88,6 +94,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
                 KaspadMessagePayloadType::RequestPruningPointAndItsAnticone,
                 KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks,
             ]),
+            header_format,
         )),
         Box::new(RequestPruningPointUtxoSetFlow::new(
             ctx.clone(),
@@ -101,11 +108,13 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestIbdBlocks]),
+            header_format,
         )),
         Box::new(HandleAntipastRequests::new(
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestAntipast]),
+            header_format,
         )),
         Box::new(RelayTransactionsFlow::new(
             ctx.clone(),
@@ -138,7 +147,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     let invs_route = router.subscribe_with_capacity(vec![KaspadMessagePayloadType::InvRelayBlock], ctx.block_invs_channel_size());
     let shared_invs_route = SharedIncomingRoute::new(invs_route);
 
-    let num_relay_flows = (ctx.config.bps().after() as usize / 2).max(1);
+    let num_relay_flows = (ctx.config.bps() as usize / 2).max(1);
     flows.extend((0..num_relay_flows).map(|_| {
         Box::new(HandleRelayInvsFlow::new(
             ctx.clone(),
@@ -146,6 +155,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             shared_invs_route.clone(),
             router.subscribe(vec![]),
             ibd_sender.clone(),
+            header_format,
         )) as Box<dyn Flow>
     }));
 

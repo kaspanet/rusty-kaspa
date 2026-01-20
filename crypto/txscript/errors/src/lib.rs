@@ -77,6 +77,10 @@ pub enum TxScriptError {
     ExceededSigOpLimit(u8),
     #[error("ZK Integrity: {0}")]
     ZkIntegrity(String),
+    #[error("substring [{0}:{1}] is out of bounds for string of length {2}")]
+    OutOfBoundsSubstring(usize, usize, usize),
+    #[error("{0} cannot be used as an array index")]
+    InvalidIndex(i32),
 }
 
 #[derive(Error, PartialEq, Eq, Debug, Clone, Copy)]

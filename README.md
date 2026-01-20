@@ -287,7 +287,7 @@ The framework is compatible with all major desktop and mobile browsers.
   ```bash
 cargo run --release --bin kaspad -- --testnet
   ```
-  
+
 <details>
   <summary>
     Start a devnet node
@@ -299,8 +299,8 @@ Start the DevNet node with the following command:
 cargo run --bin kaspad -- --devnet --enable-unsynced-mining --rpclisten=127.0.0.1 --rpclisten-borsh=127.0.0.1 --utxoindex
 ```
 * `enable-unsynced-mining` is required when the network isn't synchronized, which is the case on the first launch
-* `uxtoindex` enables the UTXO index, which is necessary for wallet functionality.
-* `rpclisten-borsh` and `rpclisten-borsh` are likely to be required by mining softwares
+* `utxoindex` enables the UTXO index, which is necessary for wallet functionality.
+* `rpclisten` and `rpclisten-borsh` are likely to be required by mining software
 
 note: it will take a bit of time for difficulty to adjust, so you may need to wait a bit before you see blocks being mined consistently.
 
@@ -383,6 +383,13 @@ wRPC
 
 </details>
 
+## Stratum Bridge Beta
+
+This Stratum Bridge is currently in BETA. Support is available in the Kaspa Discord’s [#mining-and-hardware](https://discord.com/channels/599153230659846165/910178666099646584) channel.
+
+For bug reports or feature request, please open an issue at https://github.com/kaspanet/rusty-kaspa/issues and prefix your issue title with [Bridge].
+
+Check out the [README.md](bridge/docs/README.md) for instructions on how to run the stratum bridge.
 
 ## Benchmarking & Testing
 

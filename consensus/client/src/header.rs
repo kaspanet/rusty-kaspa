@@ -20,7 +20,7 @@ use workflow_wasm::prelude::*;
 const TS_HEADER: &'static str = r#"
 /**
  * Interface defining the structure of a block header.
- * 
+ *
  * @category Consensus
  */
 export interface IHeader {
@@ -41,10 +41,10 @@ export interface IHeader {
 
 /**
  * Interface defining the structure of a raw block header.
- * 
+ *
  * This interface is explicitly used by GetBlockTemplate and SubmitBlock RPCs
  * and unlike `IHeader`, does not include a hash.
- * 
+ *
  * @category Consensus
  */
 export interface IRawHeader {

@@ -99,7 +99,7 @@ impl TransactionsSpread {
             // TODO: Figure out a better number
             self.hub.broadcast_to_some_peers(msg, 8).await
         } else {
-            self.hub.broadcast(msg).await
+            self.hub.broadcast(msg, None).await
         }
     }
 }

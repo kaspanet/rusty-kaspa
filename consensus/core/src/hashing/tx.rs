@@ -1,6 +1,9 @@
 use super::HasherExtensions;
-use crate::tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput};
-use kaspa_hashes::{Hash, Hasher};
+use crate::{
+    mass::transaction_estimated_serialized_size,
+    tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
+};
+use kaspa_hashes::{Hash, HasherBase};
 
 bitflags::bitflags! {
     /// A bitmask defining which transaction fields we want to encode and which to ignore.
@@ -28,21 +31,19 @@ pub fn hash_pre_crescendo(tx: &Transaction) -> Hash {
 
 /// Not intended for direct use by clients. Instead use `tx.id()`
 pub(crate) fn id(tx: &Transaction) -> TransactionId {
-    // Encode the transaction, replace signature script with an empty array, skip
-    // sigop counts and mass commitment and hash the result.
-
-    let encoding_flags = if tx.is_coinbase() {
-        TxEncodingFlags::FULL
-    } else {
-        TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT
-    };
     let mut hasher = kaspa_hashes::TransactionID::new();
-    write_transaction(&mut hasher, tx, encoding_flags);
+    write_transaction_for_transaction_id(&mut hasher, tx);
     hasher.finalize()
 }
 
+fn write_transaction_for_transaction_id<T: HasherBase>(hasher: &mut T, tx: &Transaction) {
+    // Encode the transaction, replace signature script with an empty array, skip
+    // sigop counts and mass commitment and hash the result.
+    write_transaction(hasher, tx, TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT)
+}
+
 /// Write the transaction into the provided hasher according to the encoding flags
-fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags: TxEncodingFlags) {
+fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_flags: TxEncodingFlags) {
     hasher.update(tx.version.to_le_bytes()).write_len(tx.inputs.len());
     for input in tx.inputs.iter() {
         // Write the tx input
@@ -55,7 +56,7 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
         write_output(hasher, output);
     }
 
-    hasher.update(tx.lock_time.to_le_bytes()).update(&tx.subnetwork_id).update(tx.gas.to_le_bytes()).write_var_bytes(&tx.payload);
+    hasher.update(tx.lock_time.to_le_bytes()).update(tx.subnetwork_id).update(tx.gas.to_le_bytes()).write_var_bytes(&tx.payload);
 
     /*
        Design principles (mostly related to the new mass commitment field; see KIP-0009):
@@ -83,7 +84,7 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
 }
 
 #[inline(always)]
-fn write_input<T: Hasher>(hasher: &mut T, input: &TransactionInput, encoding_flags: TxEncodingFlags) {
+fn write_input<T: HasherBase>(hasher: &mut T, input: &TransactionInput, encoding_flags: TxEncodingFlags) {
     write_outpoint(hasher, &input.previous_outpoint);
     if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT) {
         hasher.write_var_bytes(input.signature_script.as_slice()).update([input.sig_op_count]);
@@ -94,16 +95,33 @@ fn write_input<T: Hasher>(hasher: &mut T, input: &TransactionInput, encoding_fla
 }
 
 #[inline(always)]
-fn write_outpoint<T: Hasher>(hasher: &mut T, outpoint: &TransactionOutpoint) {
+fn write_outpoint<T: HasherBase>(hasher: &mut T, outpoint: &TransactionOutpoint) {
     hasher.update(outpoint.transaction_id).update(outpoint.index.to_le_bytes());
 }
 
 #[inline(always)]
-fn write_output<T: Hasher>(hasher: &mut T, output: &TransactionOutput) {
+fn write_output<T: HasherBase>(hasher: &mut T, output: &TransactionOutput) {
     hasher
         .update(output.value.to_le_bytes())
         .update(output.script_public_key.version().to_le_bytes())
         .write_var_bytes(output.script_public_key.script());
+}
+
+struct PreimageHasher {
+    buff: Vec<u8>,
+}
+
+impl HasherBase for PreimageHasher {
+    fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
+        self.buff.extend_from_slice(data.as_ref());
+        self
+    }
+}
+
+pub fn transaction_id_preimage(tx: &Transaction) -> Vec<u8> {
+    let mut hasher = PreimageHasher { buff: Vec::with_capacity(transaction_estimated_serialized_size(tx) as usize) };
+    write_transaction_for_transaction_id(&mut hasher, tx);
+    hasher.buff
 }
 
 #[cfg(test)]
@@ -136,25 +154,25 @@ mod tests {
 
         // Test #2
         tests.push(Test {
-            tx: Transaction::new(1, inputs.clone(), Vec::new(), 0, SubnetworkId::from_byte(0), 0, Vec::new()),
-            expected_id: "dafa415216d26130a899422203559c809d3efe72e20d48505fb2f08787bc4f49",
-            expected_hash: "e4045023768d98839c976918f80c9419c6a93003724eda97f7c61a5b68de851b",
+            tx: Transaction::new(0, inputs.clone(), Vec::new(), 0, SubnetworkId::from_byte(0), 0, Vec::new()),
+            expected_id: "b2d65ae36e123eb73f253176d7234a57656b84d0d60b9fc746ab0d0f085c9cc7",
+            expected_hash: "7d9f7cfdd77f236a41895ac5cdda2fa42f7122964ba995fdfacebce54efad7e8",
         });
 
         let outputs = vec![TransactionOutput::new(1564, ScriptPublicKey::new(7, scriptvec![1, 2, 3, 4, 5]))];
 
         // Test #3
         tests.push(Test {
-            tx: Transaction::new(1, inputs.clone(), outputs.clone(), 0, SubnetworkId::from_byte(0), 0, Vec::new()),
-            expected_id: "d1cd9dc1f26955832ccd12c27afaef4b71443aa7e7487804baf340952ca927e5",
-            expected_hash: "e5523c70f6b986cad9f6959e63f080e6ac5f93bc2a9e0e01a89ca9bf6908f51c",
+            tx: Transaction::new(0, inputs.clone(), outputs.clone(), 0, SubnetworkId::from_byte(0), 0, Vec::new()),
+            expected_id: "67289b12146d1b5ef384332137399791a5cfe89506ff31688b0d95ae821d0a0c",
+            expected_hash: "492279c0ed5018aa00b0b2d42c1c42350285f2e689236a81829edaf818e30fdb",
         });
 
         // Test #4
         tests.push(Test {
-            tx: Transaction::new(2, inputs, outputs.clone(), 54, SubnetworkId::from_byte(0), 3, Vec::new()),
-            expected_id: "59b3d6dc6cdc660c389c3fdb5704c48c598d279cdf1bab54182db586a4c95dd5",
-            expected_hash: "b70f2f14c2f161a29b77b9a78997887a8e727bb57effca38cd246cb270b19cd5",
+            tx: Transaction::new(0, inputs, outputs.clone(), 54, SubnetworkId::from_byte(0), 3, Vec::new()),
+            expected_id: "7cd34b788d7d230970d4bfd955c34c5abc49e3bcdd5adb03a77bb71d05554401",
+            expected_hash: "de319664ee9f4197e89be0d0e08b2b6cac110efc2cf107de1fbc6bd2ce29d545",
         });
 
         let inputs = vec![TransactionInput::new(
@@ -166,35 +184,65 @@ mod tests {
 
         // Test #5
         tests.push(Test {
-            tx: Transaction::new(2, inputs.clone(), outputs.clone(), 54, SubnetworkId::from_byte(0), 3, Vec::new()),
-            expected_id: "9d106623860567915b19cea33af486286a31b4bfc68627c6d4d377287afb40ad",
-            expected_hash: "cd575e69fbf5f97fbfd4afb414feb56f8463b3948d6ac30f0ecdd9622672fab9",
+            tx: Transaction::new(0, inputs.clone(), outputs.clone(), 54, SubnetworkId::from_byte(0), 3, Vec::new()),
+            expected_id: "c9dd78e818445f617a28348d6db752142e2fab440effa58140ad2773e638b628",
+            expected_hash: "1be9978bcab9424f15adac6fca0a64c3f56344a7cd0ec92a225496e19a0d122c",
         });
 
         // Test #6
         tests.push(Test {
-            tx: Transaction::new(2, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_COINBASE, 3, Vec::new()),
-            expected_id: "3fad809b11bd5a4af027aa4ac3fbde97e40624fd40965ba3ee1ee1b57521ad10",
-            expected_hash: "b4eb5f0cab5060bf336af5dcfdeb2198cc088b693b35c87309bd3dda04f1cfb9",
+            // Valid coinbase transactions have no inputs.
+            tx: Transaction::new(0, vec![], outputs.clone(), 54, subnets::SUBNETWORK_ID_COINBASE, 3, Vec::new()),
+            expected_id: "2578783ec93c3a02414a228e10b1b5af298623254775f972f97df08d4ec28c8f",
+            expected_hash: "dffa96c75ef9d17520991fc6d88813531e230488e75b65f65ce958f2d54d2451",
         });
 
         // Test #7
         tests.push(Test {
-            tx: Transaction::new(2, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, Vec::new()),
-            expected_id: "c542a204ab9416df910b01540b0c51b85e6d4e1724e081e224ea199a9e54e1b3",
-            expected_hash: "31da267d5c34f0740c77b8c9ebde0845a01179ec68074578227b804bac306361",
+            tx: Transaction::new(0, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, Vec::new()),
+            expected_id: "3f6cea6d7ac8f6b2f86209fa748ea0ef5a1d5d380d43b79e77d52e770bb9a7b9",
+            expected_hash: "9abf01c6c312dd984ff19c23bec85e8678e6ea34041fe3c5de52fd9344adac63",
         });
 
         // Test #8, same as 7 but with a non-zero payload. The test checks id and hash are affected by payload change
         tests.push(Test {
-            tx: Transaction::new(2, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
-            expected_id: "1f18b18ab004ff1b44dd915554b486d64d7ebc02c054e867cc44e3d746e80b3b",
-            expected_hash: "a2029ebd66d29d41aa7b0c40230c1bfa7fe8e026fb44b7815dda4e991b9a5fad",
+            tx: Transaction::new(0, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
+            expected_id: "4acda997dfb31c6518224c9ac00d0777fc7cbecdab461be3c0816b1cba19a056",
+            expected_hash: "f0bb137ed71a91445ddf9224c76f755153a296eeb4fdc29b8393ddd81bf34ce6",
+        });
+
+        // Test #9, same as 7 but with a non-zero payload. The test checks only hash is affected by mass commitment
+        tests.push(Test {
+            tx: Transaction::new_with_mass(
+                0,
+                inputs.clone(),
+                outputs.clone(),
+                54,
+                subnets::SUBNETWORK_ID_REGISTRY,
+                3,
+                vec![1, 2, 3],
+                5,
+            ),
+            expected_id: "4acda997dfb31c6518224c9ac00d0777fc7cbecdab461be3c0816b1cba19a056",
+            expected_hash: "ced89bbf642cda42d29d9518d16e35cbbf85d10e1ab106b7dc2e0a821308ac91",
+        });
+
+        // Test #10, same as 9 with different version and checks it affects id and hash
+        tests.push(Test {
+            tx: Transaction::new(1, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
+            expected_id: "205fd04d30ec18079fefbe6319489b6c3a3f13299570ab687a93354a38d4eb18",
+            expected_hash: "186f2c81e54c5dd578697fefbed07d3eb909cf19a6288cf1bcf3a7c6b3262eb5",
         });
 
         for (i, test) in tests.iter().enumerate() {
             assert_eq!(test.tx.id(), Hash::from_str(test.expected_id).unwrap(), "transaction id failed for test {}", i + 1);
             assert_eq!(hash(&test.tx), Hash::from_str(test.expected_hash).unwrap(), "transaction hash failed for test {}", i + 1);
+
+            let preimage = transaction_id_preimage(&test.tx);
+            let mut hasher = kaspa_hashes::TransactionID::new();
+            hasher.update(&preimage);
+            let preimage_hash = hasher.finalize();
+            assert_eq!(preimage_hash, test.tx.id(), "transaction id preimage failed for test {}", i + 1);
         }
 
         // Avoid compiler warnings on the last clone
