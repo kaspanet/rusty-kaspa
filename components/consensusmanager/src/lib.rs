@@ -172,7 +172,12 @@ impl ConsensusManager {
         self.factory.delete_staging_entry();
     }
 
-    /// Explicit resetting of  service handlers
+    /// Synchronously invokes all registered consensus-reset handlers.
+    ///
+    /// This is used to notify external system components that the consensus state
+    /// has been explicitly reset. Handlers are invoked synchronously (rather than
+    /// via the generic notification system) to ensure state consistency across
+    /// components before normal operation resumes.
     pub fn invoke_consensus_reset_handlers(&self) {
         let handlers = self.inner.read().consensus_reset_handlers.iter().cloned().collect_vec();
         for handler in handlers {
