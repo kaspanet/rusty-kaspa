@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
-use kaspa_consensus_core::{BlockHashMap, KType};
+use kaspa_consensus_core::KType;
 use kaspa_database::{
     prelude::{DbKey, StoreError},
     registry::DatabaseStorePrefixes,
@@ -26,18 +26,20 @@ pub struct DagknightKey {
     pub pov_hash: Hash,
     pub root_hash: Hash,
     pub k: KType,
-    // Precomputed bytes in order: root_hash || k || pov_hash
-    bytes: [u8; kaspa_hashes::HASH_SIZE * 2 + 1],
+    pub free_search: bool,
+    // Precomputed bytes in order: root_hash || pov_hash || k || free_search
+    bytes: [u8; kaspa_hashes::HASH_SIZE * 2 + 2],
 }
 
 impl DagknightKey {
-    pub fn new(root_hash: Hash, pov_hash: Hash, k: KType) -> Self {
-        let mut bytes = [0u8; kaspa_hashes::HASH_SIZE * 2 + 1];
+    pub fn new(root_hash: Hash, pov_hash: Hash, k: KType, free_search: bool) -> Self {
+        let mut bytes = [0u8; kaspa_hashes::HASH_SIZE * 2 + 2];
         bytes[..kaspa_hashes::HASH_SIZE].copy_from_slice(root_hash.as_ref());
-        bytes[kaspa_hashes::HASH_SIZE] = k as u8;
-        bytes[kaspa_hashes::HASH_SIZE + 1..].copy_from_slice(pov_hash.as_ref());
+        bytes[kaspa_hashes::HASH_SIZE..(2 * kaspa_hashes::HASH_SIZE)].copy_from_slice(pov_hash.as_ref());
+        bytes[2 * kaspa_hashes::HASH_SIZE] = k as u8;
+        bytes[(2 * kaspa_hashes::HASH_SIZE) + 1] = if free_search { 1 } else { 0 };
 
-        Self { pov_hash, root_hash, k, bytes }
+        Self { pov_hash, root_hash, k, free_search, bytes }
     }
 }
 
