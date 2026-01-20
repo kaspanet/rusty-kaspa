@@ -340,23 +340,42 @@ impl<
             }
 
             if !reachability_service.is_dag_ancestor_of_any(current_hash, &mut tips.iter().copied()) {
-                // We don't care about blocks in the antipast of the selected tips
+                // We don't care about blocks in the antipast of tips
                 continue;
             }
 
             if !conflict_manager.has(current_hash) {
+                // TODO[DK]: Impement proper k-colouring lines 9-10 from DK paper if still needed
+
+                // Implements k-colouring assuming free_search is always false
                 let parents = &relations_service.get_parents(current_hash).unwrap();
-                let current_gd = conflict_manager.k_colouring(parents, ghostdag_k, None);
+                let next_chain_ancestor_of_current = reachability_service.get_next_chain_ancestor(current_hash, root);
+                let agreeing_parents = parents
+                    .iter()
+                    .copied()
+                    .filter(|&p| {
+                        next_chain_ancestor_of_current == current_hash
+                            || self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_current, p)
+                    })
+                    .collect::<Vec<_>>();
+                assert!(
+                    !agreeing_parents.is_empty(),
+                    "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
+                    current_hash,
+                    parents
+                );
+
+                let selected_parent = conflict_manager.find_selected_parent(agreeing_parents.iter().copied());
+                let current_gd = conflict_manager.k_colouring(parents, ghostdag_k, Some(selected_parent));
 
                 conflict_manager.insert(current_hash, Arc::new(current_gd)).optional().unwrap();
             }
 
             for child in relations_service.get_children(current_hash).unwrap().read().iter().copied() {
-                // TODO: Wrong assumption alert!
-                // I'm assuming self.ghostdag_store.get_blue_work will allow for topological BFS
-                // However, the global ghostdag_store is filled such that the SP is forced to be
-                // the DK selected parent (not GD max blue work parent). Not sure how else to get a blue
-                // work here for topological sort.
+                if !self.reachability_service.is_chain_ancestor_of(root, child) {
+                    debug!("Skipping child not a chain descendant of root | root: {:#?} | child: {:#?}", root, child);
+                    continue;
+                }
                 topological_heap
                     .push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
             }
