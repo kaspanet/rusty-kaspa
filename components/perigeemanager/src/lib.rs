@@ -24,6 +24,8 @@ use rand::{seq::IteratorRandom, thread_rng, Rng};
 const BLOCKS_VERIFIED_FAULT_TOLERANCE: f64 = 0.175;
 const IDENT: &str = "PerigeeManager";
 
+
+/// Holds the score for a peer.
 #[derive(Debug)]
 pub struct PeerScore {
     p90: u64,
@@ -63,6 +65,8 @@ impl Ord for PeerScore {
     }
 }
 
+
+/// Configuration for the perigee manager.
 #[derive(Debug, Clone)]
 pub struct PerigeeConfig {
     pub perigee_outbound_target: usize,
@@ -118,6 +122,8 @@ impl Display for PerigeeConfig {
 }
 
 #[derive(Debug)]
+
+/// Manages peer selection and scoring.
 pub struct PerigeeManager {
     verified_blocks: BlockHashSet, // holds blocks that are consensus verified.
     first_seen: HashMap<Hash, Instant>,
