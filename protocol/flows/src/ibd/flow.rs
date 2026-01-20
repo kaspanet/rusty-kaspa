@@ -588,11 +588,12 @@ impl IbdFlow {
     }
 
     async fn sync_new_utxo_set(&mut self, consensus: &ConsensusProxy, pruning_point: Hash) -> Result<(), ProtocolError> {
-        // A  better solution could be to create a copy of the old utxo state for some sort of fallback rather than delete it.
+        // A better solution could be to create a copy of the old utxo state for some sort of fallback rather than delete it.
         consensus.async_clear_pruning_utxo_set().await; // this deletes the old pruning utxoset and also sets the pruning utxo as invalidated
         self.sync_pruning_point_utxoset(consensus, pruning_point).await?;
-        consensus.async_set_pruning_utxoset_stable().await; //  only if the function has reached here, will the utxo be considered "final"
-                                                            // Once a new utxoset is stored, the utxoindex needs to be resynced as well. This does not occur automatically.
+        // Only if the function has reached here, will the utxo be considered "final"
+        consensus.async_set_pruning_utxoset_stable().await;
+        // Once a new utxoset is stored, the utxoindex needs to be resynced as well. This happens through the reset handler mechanism.
         let consensus_manager = self.ctx.consensus_manager.clone();
         spawn_blocking(move || consensus_manager.invoke_consensus_reset_handlers()).await.unwrap();
         self.ctx.on_pruning_point_utxoset_override();
