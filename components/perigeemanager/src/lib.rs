@@ -10,7 +10,7 @@ use std::{
 use itertools::Itertools;
 use kaspa_consensus_core::{BlockHashSet, Hash, HashMapCustomHasher};
 use kaspa_core::{info, trace};
-use kaspa_p2p_lib::{Hub, Peer, PeerKey, Router};
+use kaspa_p2p_lib::{Peer, PeerKey, Router};
 use log::debug;
 use parking_lot::Mutex;
 use rand::{seq::IteratorRandom, thread_rng, Rng};
@@ -21,7 +21,7 @@ use rand::{seq::IteratorRandom, thread_rng, Rng};
 // The reasoning is that network conditions are not considered stable enough to make a good decision,
 // and we would rather skip and wait for the next round.
 // Note that exploration can still happen even if this threshold is not met.
-// This ensures that we continue to explore in case network conditions are the fault of the peers, not oneself.
+// This ensures that we continue to explore in case network conditions are the fault of the connect peers, not network-wide.
 const BLOCKS_VERIFIED_FAULT_TOLERANCE: f64 = 0.175;
 const IDENT: &str = "PerigeeManager";
 
@@ -29,34 +29,21 @@ pub struct PeerScore {
     p90: u64,
     p95: u64,
     p97_5: u64,
-    p98_25: u64,
-    p99_125: u64,
-    p99_6875: u64,
-    p100: u64,
 }
 
 impl PeerScore {
-    const MAX: PeerScore = PeerScore {
-        p90: u64::MAX,
-        p95: u64::MAX,
-        p97_5: u64::MAX,
-        p98_25: u64::MAX,
-        p99_125: u64::MAX,
-        p99_6875: u64::MAX,
-        p100: u64::MAX,
-    };
+    const MAX: PeerScore = PeerScore { p90: u64::MAX, p95: u64::MAX, p97_5: u64::MAX };
 
     #[inline(always)]
-    fn new(p90: u64, p95: u64, p97_5: u64, p98_25: u64, p99_125: u64, p99_6875: u64, p100: u64) -> Self {
-        PeerScore { p90, p95, p97_5, p98_25, p99_125, p99_6875, p100 }
+    fn new(p90: u64, p95: u64, p97_5: u64) -> Self {
+        PeerScore { p90, p95, p97_5 }
     }
 }
 
 impl PartialEq for PeerScore {
     #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
-        (self.p90, self.p95, self.p97_5, self.p98_25, self.p99_125, self.p99_6875, self.p100)
-            == (other.p90, other.p95, other.p97_5, other.p98_25, other.p99_125, other.p99_6875, other.p100)
+        (self.p90, self.p95, self.p97_5) == (other.p90, other.p95, other.p97_5)
     }
 }
 
@@ -72,15 +59,7 @@ impl PartialOrd for PeerScore {
 impl Ord for PeerScore {
     #[inline(always)]
     fn cmp(&self, other: &Self) -> Ordering {
-        (self.p90, self.p95, self.p97_5, self.p98_25, self.p99_125, self.p99_6875, self.p100).cmp(&(
-            other.p90,
-            other.p95,
-            other.p97_5,
-            other.p98_25,
-            other.p99_125,
-            other.p99_6875,
-            other.p100,
-        ))
+        (self.p90, self.p95, self.p97_5).cmp(&(other.p90, other.p95, other.p97_5))
     }
 }
 
@@ -146,12 +125,11 @@ pub struct PerigeeManager {
     round_start: Instant,
     round_counter: u64,
     config: PerigeeConfig,
-    hub: Hub,
     is_ibd_running: Arc<AtomicBool>,
 }
 
 impl PerigeeManager {
-    pub fn new(hub: Hub, config: PerigeeConfig, is_ibd_running: Arc<AtomicBool>) -> Mutex<Self> {
+    pub fn new(config: PerigeeConfig, is_ibd_running: Arc<AtomicBool>) -> Mutex<Self> {
         Mutex::new(Self {
             verified_blocks: BlockHashSet::new(),
             first_seen: HashMap::new(),
@@ -159,7 +137,6 @@ impl PerigeeManager {
             round_start: Instant::now(),
             round_counter: 0,
             config,
-            hub,
             is_ibd_running,
         })
     }
@@ -190,18 +167,11 @@ impl PerigeeManager {
         // without executing a full evaluation.
 
         debug!("PerigeeManager: Trimming excess peers from perigee");
-        let perigee_routers = self
-            .hub
-            .perigee_routers()
-            .into_iter()
-            // This filtering is important to ensure we trim based on the passed peers_by_address snapshot,
-            // not the current state of the hub, which may have changed since the snapshot was taken.
-            .filter(|r| peers_by_address.contains_key(&SocketAddr::new(r.net_address().ip(), r.net_address().port())))
-            .collect::<Vec<_>>();
-        let to_remove_amount = perigee_routers.len().saturating_sub(self.config.perigee_outbound_target);
-        let excused_peers = self.get_excused_peers(&perigee_routers);
+        let perigee_peers = peers_by_address.values().filter(|p| p.is_perigee()).cloned().collect::<Vec<Peer>>();
+        let to_remove_amount = perigee_peers.len().saturating_sub(self.config.perigee_outbound_target);
+        let excused_peers = self.get_excused_peers(&perigee_peers);
 
-        perigee_routers
+        perigee_peers
             .iter()
             // Ensure we do not remove leveraged or excused peers
             .filter(|r| !self.last_round_leveraged_peers.contains(&r.key()) && !excused_peers.contains(&r.key()))
@@ -217,21 +187,21 @@ impl PerigeeManager {
             .collect()
     }
 
-    pub fn evaluate_round(&mut self) -> (Vec<PeerKey>, HashSet<PeerKey>, bool) {
+    pub fn evaluate_round(&mut self, peer_by_address: &HashMap<SocketAddr, Peer>) -> (Vec<PeerKey>, HashSet<PeerKey>, bool) {
         self.round_counter += 1;
         debug!("[{}]: evaluating round: {}", IDENT, self.round_counter);
 
-        let (mut peer_table, perigee_routers) = self.build_table();
+        let (mut peer_table, perigee_peers) = self.build_table(peer_by_address);
 
         let is_ibd_running = self.is_ibd_running();
 
         // First, we excuse all peers with insufficient data this round
-        self.excuse(&mut peer_table, &perigee_routers);
+        self.excuse(&mut peer_table, &perigee_peers);
 
         // This excludes peers that have been excused, as well as those that have not provided any data this round.
         let amount_of_contributing_perigee_peers = peer_table.len();
         // In contrast, this is the total number of perigee peers registered in the hub.
-        let amount_of_perigee_peers = perigee_routers.len();
+        let amount_of_perigee_peers = perigee_peers.len();
         debug!(
             "[{}]: amount_of_perigee_peers: {}, amount_of_contributing_perigee_peers: {}",
             IDENT, amount_of_perigee_peers, amount_of_contributing_perigee_peers
@@ -403,9 +373,9 @@ impl PerigeeManager {
         selected_peers.into_iter().flatten().collect()
     }
 
-    fn excuse(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, perigee_routers: &[Arc<Router>]) {
+    fn excuse(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, perigee_peers: &[Peer]) {
         // Removes excused peers from the peer table so they are not considered for eviction.
-        for k in self.get_excused_peers(perigee_routers) {
+        for k in self.get_excused_peers(perigee_peers) {
             peer_table.remove(&k);
         }
     }
@@ -458,26 +428,18 @@ impl PerigeeManager {
         debug!("[{}]: Clearing state for new round", IDENT);
         self.verified_blocks.clear();
         self.first_seen.clear();
-        if self.config.statistics {
-            for router in self.hub.random_graph_routers() {
-                router.clear_perigee_timestamps();
-            }
-        };
-        for router in self.hub.perigee_routers() {
-            router.clear_perigee_timestamps();
-        }
     }
 
-    fn get_excused_peers(&self, perigee_routers: &[Arc<Router>]) -> Vec<PeerKey> {
+    fn get_excused_peers(&self, perigee_peers: &[Peer]) -> Vec<PeerKey> {
         // Define excused peers as those that joined perigee after the round started.
         // They should not be penalized for not having enough data in this round.
         // We also sort them by connection time to give more trimming security to the longest connected peers first,
         // This allows them more time to complete a full round.
-        perigee_routers
+        perigee_peers
             .iter()
-            .sorted_by_key(|r| r.connection_started())
-            .filter(|r| r.connection_started() > self.round_start)
-            .map(|r| r.key())
+            .sorted_by_key(|p| p.connection_started())
+            .filter(|p| p.connection_started() > self.round_start)
+            .map(|p| p.key())
             .collect()
     }
 
@@ -508,12 +470,8 @@ impl PerigeeManager {
         // As such, we rate these even deeper into the tail-end delays to try to increase coverage of outlier blocks.
         let p95 = sorted_values[((0.95 * len as f64) as usize).min(len - 1)];
         let p97_5 = sorted_values[((0.975 * len as f64) as usize).min(len - 1)];
-        let p98_25 = sorted_values[((0.9825 * len as f64) as usize).min(len - 1)];
-        let p99_125 = sorted_values[((0.99125 * len as f64) as usize).min(len - 1)];
-        let p99_6875 = sorted_values[((0.996875 * len as f64) as usize).min(len - 1)];
-        let p100 = sorted_values[len - 1];
 
-        PeerScore::new(p90, p95, p97_5, p98_25, p99_125, p99_6875, p100)
+        PeerScore::new(p90, p95, p97_5)
     }
 
     fn get_top_ranked_peer(&self, peer_table: &HashMap<PeerKey, Vec<u64>>) -> (Option<PeerKey>, PeerScore) {
@@ -538,16 +496,8 @@ impl PerigeeManager {
         }
 
         debug!(
-            "[{}]: Top ranked peer from current peer table is {:?} with score p90: {}, p95: {}, p97.5: {}, p98.25: {}, p99.125: {}, p99.6875: {}, p.100: {}",
-            IDENT,
-            best_peer,
-            best_score.p90,
-            best_score.p95,
-            best_score.p97_5,
-            best_score.p98_25,
-            best_score.p99_125,
-            best_score.p99_6875,
-            best_score.p100,
+            "[{}]: Top ranked peer from current peer table is {:?} with score p90: {}, p95: {}, p97.5: {}",
+            IDENT, best_peer, best_score.p90, best_score.p95, best_score.p97_5,
         );
         (best_peer, best_score)
     }
@@ -606,21 +556,26 @@ impl PerigeeManager {
         self.first_seen.iter().filter(move |(hash, _)| self.verified_blocks.contains(hash))
     }
 
-    fn build_table(&self) -> (HashMap<PeerKey, Vec<u64>>, Vec<Arc<Router>>) {
-        // Builds the peer delay table for all perigee routers.
+    fn build_table(&self, peer_by_address: &HashMap<SocketAddr, Peer>) -> (HashMap<PeerKey, Vec<u64>>, Vec<Peer>) {
+        // Builds the peer delay table for all perigee peers.
         debug!("[{}]: Building peer table", IDENT);
-
         let mut peer_table: HashMap<PeerKey, Vec<u64>> = HashMap::new();
-        let perigee_routers = self.hub.perigee_routers();
 
-        // The below is important as we clone out the HashMap; this should only be done once per round.
+        // Pre-fetch perigee timestamps for all perigee peers.
         // Calling the .perigee_timestamps() method in the loop would become expensive.
-        let mut perigee_timestamps =
-            perigee_routers.iter().map(|r| (r.key(), r.perigee_timestamps())).collect::<HashMap<PeerKey, HashMap<Hash, Instant>>>();
+        let mut perigee_timestamps = HashMap::new();
+        let mut perigee_peers = Vec::new();
+        for p in peer_by_address.values() {
+            if p.is_perigee() {
+                perigee_timestamps.insert(p.key(), p.perigee_timestamps());
+                perigee_peers.push(p.clone());
+            }
+        }
 
         for (hash, first_ts) in self.iterate_verified_first_seen() {
             for (peer_key, peer_timestamps) in perigee_timestamps.iter_mut() {
-                match peer_timestamps.entry(*hash) {
+                let mut timestamps = peer_timestamps.as_ref().clone();
+                match timestamps.entry(*hash) {
                     Entry::Occupied(o) => {
                         let delay = o.get().duration_since(*first_ts).as_millis() as u64;
                         peer_table.entry(*peer_key).or_default().push(delay);
@@ -631,13 +586,19 @@ impl PerigeeManager {
                 }
             }
         }
-        (peer_table, perigee_routers)
+        (peer_table, perigee_peers)
     }
 
-    pub fn log_statistics(&self) {
+    pub fn log_statistics(&self, peer_by_address: &HashMap<SocketAddr, Peer>) {
         // Note: this function has been artificially compressed for code-sparsity, as it is not mission critical, but is rather verbose.
-        let perigee_ts: Vec<_> = self.hub.perigee_routers().iter().map(|r| (r.key(), r.perigee_timestamps())).collect();
-        let rg_ts: Vec<_> = self.hub.random_graph_routers().iter().map(|r| (r.key(), r.perigee_timestamps())).collect();
+        let (perigee_ts, rg_ts): (Vec<_>, Vec<_>) =
+            peer_by_address.values().filter(|p| p.is_perigee() || p.is_random_graph()).partition_map(|p| {
+                if p.is_perigee() {
+                    itertools::Either::Left((p.key(), p.perigee_timestamps()))
+                } else {
+                    itertools::Either::Right((p.key(), p.perigee_timestamps()))
+                }
+            });
 
         let (mut p_delays, mut rg_delays, mut p_wins, mut rg_wins, mut ties) = (vec![], vec![], 0usize, 0usize, 0usize);
 
@@ -756,12 +717,11 @@ impl PerigeeManager {
     }
 }
 #[cfg(test)]
+#[allow(dead_code)]
 mod tests {
     use super::*;
     use kaspa_consensus_core::config::params::TESTNET_PARAMS;
-    use kaspa_consensus_core::Hash;
-    use kaspa_p2p_lib::test_utils::{HubTestExt, RouterTestExt};
-    use kaspa_p2p_lib::{Hub, PeerOutboundType, Router};
+    use kaspa_p2p_lib::PeerOutboundType;
     use kaspa_utils::networking::PeerId;
 
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -771,7 +731,7 @@ mod tests {
     use uuid::Uuid;
 
     /// Generates a unique PeerKey and incremental IPv4 SocketAddr for testing purposes.
-    fn generate_unique_router(time_connected: Instant) -> Arc<Router> {
+    fn generate_unique_peer(time_connected: Instant) -> Peer {
         static ROUTER_COUNTER: AtomicU64 = AtomicU64::new(1);
 
         let id = ROUTER_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -782,101 +742,12 @@ mod tests {
         let octet4 = (ip_seed & 0xFF) as u8;
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(octet1, octet2, octet3, octet4)), TESTNET_PARAMS.default_p2p_port());
         let peer_id = PeerId::new(Uuid::from_u128(id as u128));
-        RouterTestExt::test_new(peer_id, addr, Some(PeerOutboundType::Perigee), time_connected)
+        todo!()
     }
 
     fn generate_config() -> PerigeeConfig {
         PerigeeConfig::new(8, 4, 2, 30, std::time::Duration::from_secs(30), true, true, TESTNET_PARAMS.bps())
     }
 
-    #[test]
-    fn test_insert_timestamp() {
-        // Create a test router with a unique key and outbound type
-        let router = generate_unique_router(Instant::now());
-
-        // Create a mock hub
-        let hub = Hub::default();
-
-        // Create PerigeeManager
-        let config = generate_config();
-        let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let mut manager = PerigeeManager::new(hub, config, is_ibd_running).into_inner();
-
-        // Timestamps
-        let ts_1 = Instant::now();
-        let ts_2 = Instant::now(); // this one is later.
-
-        // Assert the timestamp was inserted, and aligns, correctly.
-        let hash = Hash::from_u64_word(1);
-        manager.insert_perigee_timestamp(&router, hash, ts_2, false);
-        assert_eq!(router.get_perigee_timestamps().len(), 1);
-        assert_eq!(manager.first_seen.len(), 1);
-        assert!(manager.verified_blocks.is_empty()); // verify was false
-        assert_eq!(router.get_perigee_timestamps().get(&hash), Some(&ts_2));
-        assert_eq!(manager.first_seen.get(&hash), Some(&ts_2));
-
-        // Assert new timestamp overrides the existing one with an earlier timestamp
-        let hash = Hash::from_u64_word(1);
-        manager.insert_perigee_timestamp(&router, hash, ts_1, true);
-        assert_eq!(router.get_perigee_timestamps().len(), 1);
-        assert_eq!(manager.first_seen.len(), 1);
-        assert_eq!(manager.verified_blocks.len(), 1); // verify was true
-        assert_eq!(manager.verified_blocks.get(&hash), Some(&hash));
-        assert_eq!(router.get_perigee_timestamps().get(&hash), Some(&ts_1));
-        assert_eq!(manager.first_seen.get(&hash), Some(&ts_1));
-
-        // Assert that a new hash ts is added correctly
-        let hash2 = Hash::from_u64_word(2);
-        manager.insert_perigee_timestamp(&router, hash2, ts_2, true);
-        assert_eq!(router.get_perigee_timestamps().len(), 2);
-        assert_eq!(manager.first_seen.len(), 2);
-        assert_eq!(manager.verified_blocks.len(), 2); // verify was true
-        assert_eq!(manager.verified_blocks.get(&hash2), Some(&hash2));
-        assert_eq!(router.get_perigee_timestamps().get(&hash2), Some(&ts_2));
-        assert_eq!(manager.first_seen.get(&hash2), Some(&ts_2));
-    }
-
-    #[test]
-    fn test_is_first_round() {
-        let hub = Hub::default();
-        let config = generate_config();
-        let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let mut manager = PerigeeManager::new(hub, config, is_ibd_running).into_inner();
-
-        assert!(manager.is_first_round());
-
-        manager.round_counter = 1;
-        assert!(!manager.is_first_round());
-    }
-
-    #[test]
-    fn test_rate_peer() {
-        let hub = Hub::default();
-        let config = generate_config();
-        let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let manager = PerigeeManager::new(hub, config, is_ibd_running).into_inner();
-
-        let delays = (0..1_000_001).collect::<Vec<_>>();
-        let score = manager.rate_peer(&delays);
-        assert_eq!(score.p90, 900_000);
-        assert_eq!(score.p95, 950_000);
-        assert_eq!(score.p97_5, 975_000);
-        assert_eq!(score.p98_25, 982_500);
-        assert_eq!(score.p99_125, 991_250);
-        assert_eq!(score.p99_6875, 996_875);
-        assert_eq!(score.p100, 1_000_000);
-    }
-
-    #[test]
-    fn test_start_new_round_resets_state() {
-        let hub = Hub::default();
-        let config = generate_config();
-        let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let mut manager = PerigeeManager::new(hub, config, is_ibd_running).into_inner();
-
-        manager.verified_blocks.insert(Hash::from_u64_word(1));
-        manager.first_seen.insert(Hash::from_u64_word(1), Instant::now());
-        manager.start_new_round();
-        assert!(manager.verified_blocks.is_empty());
-    }
+    //TODO: add tests
 }

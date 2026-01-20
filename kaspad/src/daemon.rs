@@ -620,7 +620,7 @@ Do you confirm? (y/n)";
     let mut random_graph_target = outbound_target;
 
     // Handle the Perigee configuration
-    let perigee_config = if args.blk_perigee_target == 0 {
+    let perigee_config = if args.blk_perigee_peers == 0 {
         debug!("Perigee disabled: perigee target is set to 0 (default behavior)");
         None
     } else if !connect_peers.is_empty() {
@@ -630,7 +630,7 @@ Do you confirm? (y/n)";
     } else {
         let perigee_config = create_perigee_config(
             outbound_target,
-            args.blk_perigee_target,
+            args.blk_perigee_peers,
             args.blk_perigee_duration,
             args.blk_perigee_leverage,
             args.blk_perigee_exploration,
@@ -746,8 +746,7 @@ Do you confirm? (y/n)";
 
     // Ibd running flag, is created here to be potentially shared with the perigee manager
     let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::default());
-    let perigee_manager =
-        perigee_config.map(|perigee_config| Arc::new(PerigeeManager::new(hub.clone(), perigee_config, is_ibd_running.clone())));
+    let perigee_manager = perigee_config.map(|perigee_config| Arc::new(PerigeeManager::new(perigee_config, is_ibd_running.clone())));
 
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),

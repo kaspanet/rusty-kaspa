@@ -9,12 +9,13 @@ use kaspa_core::{debug, error, info, trace, warn};
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
 use seqlock::SeqLock;
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::net::SocketAddr;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
-use std::{collections::HashMap, sync::Arc};
 use tokio::select;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
@@ -157,8 +158,10 @@ impl From<&Router> for PeerKey {
     }
 }
 
-impl From<&Router> for Peer {
-    fn from(router: &Router) -> Self {
+impl From<(&Router, bool)> for Peer {
+    /// the bool indicates whether to include perigee data
+    fn from(item: (&Router, bool)) -> Self {
+        let (router, include_perigee_data) = item;
         Self::new(
             router.identity(),
             router.net_address,
@@ -166,6 +169,12 @@ impl From<&Router> for Peer {
             router.connection_started,
             router.properties(),
             router.last_ping_duration(),
+            if include_perigee_data {
+                let perigee_timestamps = router.perigee_timestamps();
+                Arc::new(perigee_timestamps)
+            } else {
+                Arc::new(HashMap::new())
+            },
         )
     }
 }
@@ -324,6 +333,10 @@ impl Router {
 
     pub fn incoming_flow_baseline_channel_size() -> usize {
         256
+    }
+
+    pub fn protocol_version(&self) -> u32 {
+        self.mutable_state.lock().properties.protocol_version
     }
 
     /// Send a signal to start this router's receive loop
@@ -512,39 +525,4 @@ pub trait RouterTestExt {
         Self: Sized;
     fn set_perigee_timestamps(&self, timestamps: std::collections::HashMap<kaspa_consensus_core::Hash, std::time::Instant>);
     fn get_perigee_timestamps(&self) -> std::collections::HashMap<kaspa_consensus_core::Hash, std::time::Instant>;
-}
-
-#[cfg(feature = "test-utils")]
-impl RouterTestExt for Router {
-    fn test_new(
-        identity: PeerId,
-        net_address: std::net::SocketAddr,
-        outbound_type: Option<super::peer::PeerOutboundType>,
-        connection_started: std::time::Instant,
-    ) -> std::sync::Arc<Self> {
-        use parking_lot::{Mutex, RwLock};
-        use seqlock::SeqLock;
-        use tokio::sync::mpsc::channel;
-        let (outgoing_route, _) = channel(1);
-        let (hub_sender, _) = channel(1);
-        std::sync::Arc::new(Router {
-            identity: SeqLock::new(identity),
-            net_address,
-            outbound_type,
-            connection_started,
-            routing_map_by_type: RwLock::new(Default::default()),
-            routing_map_by_id: RwLock::new(Default::default()),
-            outgoing_route,
-            hub_sender,
-            mutable_state: Mutex::new(Default::default()),
-        })
-    }
-
-    fn set_perigee_timestamps(&self, timestamps: std::collections::HashMap<kaspa_consensus_core::Hash, std::time::Instant>) {
-        self.mutable_state.lock().perigee_timestamps = timestamps;
-    }
-
-    fn get_perigee_timestamps(&self) -> std::collections::HashMap<kaspa_consensus_core::Hash, std::time::Instant> {
-        self.mutable_state.lock().perigee_timestamps.clone()
-    }
 }

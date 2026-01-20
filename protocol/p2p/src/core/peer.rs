@@ -19,12 +19,6 @@ impl Display for PeerOutboundType {
     }
 }
 
-/// Peer struct for use with the connection manager, contains extra information about the peer, not given out to the user via rpc.
-pub struct ConnectionManagerPeer {
-    pub peer: Peer,
-    pub perigee_timestamp: HashMap<BlockHash, Instant>,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct PeerProperties {
     pub user_agent: String,
@@ -44,6 +38,7 @@ pub struct Peer {
     connection_started: Instant,
     properties: Arc<PeerProperties>,
     last_ping_duration: u64,
+    perigee_timestamps: Arc<HashMap<BlockHash, Instant>>,
 }
 
 impl Peer {
@@ -54,8 +49,9 @@ impl Peer {
         connection_started: Instant,
         properties: Arc<PeerProperties>,
         last_ping_duration: u64,
+        perigee_timestamps: Arc<HashMap<BlockHash, Instant>>,
     ) -> Self {
-        Self { identity, net_address, outbound_type, connection_started, properties, last_ping_duration }
+        Self { identity, net_address, outbound_type, connection_started, properties, last_ping_duration, perigee_timestamps }
     }
 
     /// Internal identity of this peer
@@ -93,6 +89,10 @@ impl Peer {
         matches!(self.outbound_type, Some(PeerOutboundType::RandomGraph))
     }
 
+    pub fn connection_started(&self) -> Instant {
+        self.connection_started
+    }
+
     pub fn time_connected(&self) -> u64 {
         Instant::now().duration_since(self.connection_started).as_millis() as u64
     }
@@ -103,6 +103,10 @@ impl Peer {
 
     pub fn last_ping_duration(&self) -> u64 {
         self.last_ping_duration
+    }
+
+    pub fn perigee_timestamps(&self) -> Arc<HashMap<BlockHash, Instant>> {
+        self.perigee_timestamps.clone()
     }
 }
 

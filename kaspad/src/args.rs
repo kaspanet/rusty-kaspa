@@ -56,8 +56,7 @@ pub struct Args {
     pub reset_db: bool,
     #[serde(rename = "outpeers")]
     pub outbound_target: usize,
-    #[serde(rename = "blkperigeepeers")]
-    pub blk_perigee_target: usize, // total number of perigee peers, must be <= outbound_target
+    pub blk_perigee_peers: usize, // total number of perigee peers, must be <= outpeers, the diff will be routed through random graph.
     pub blk_perigee_exploration: usize,
     pub blk_perigee_leverage: usize,
     pub blk_perigee_duration: usize, // round duration in seconds (rounded to the nearest 30 seconds), and clamped between: min 30 and max 300.
@@ -118,7 +117,7 @@ impl Default for Args {
             utxoindex: false,
             reset_db: false,
             outbound_target: 8,
-            blk_perigee_target: 0,
+            blk_perigee_peers: 0,
             blk_perigee_leverage: 0,    // 0 will default to 50% of perigee peers
             blk_perigee_exploration: 0, // 0 will default to 25% of perigee peers
             blk_perigee_duration: 30,   // Round duration will be 30 secs
@@ -321,13 +320,13 @@ pub fn cli() -> Command {
                 .help("Target number of outbound peers (default: 8)."),
         )
         .arg(
-            Arg::new("blkperigeepeers")
-                .long("blkperigeepeers")
-                .env("KASPAD_BLKPERIGEEPEERS")
-                .value_name("blkperigeepeers")
+            Arg::new("blk-perigee-peers")
+                .long("blk-perigee-peers")
+                .env("KASPAD_BLK_PERIGEE_PEERS")
+                .value_name("blk-perigee-peers")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
-                .help("Target number of block perigee peers (default: 0, which disables block perigee), note: it is expected that\n`blkperigeepeers <= outpeers`"),
+                .help("Target number of block perigee peers (default: 0, which disables block perigee). Note: total number of perigee peers, must be <= outpeers, the diff will be routed through random graph"),
         )
         .arg(
             Arg::new("blk-perigee-exploration")
@@ -556,7 +555,7 @@ impl Args {
             add_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "add-peers", defaults.add_peers),
             listen: m.get_one::<ContextualNetAddress>("listen").cloned().or(defaults.listen),
             outbound_target: arg_match_unwrap_or::<usize>(&m, "outpeers", defaults.outbound_target),
-            blk_perigee_target: arg_match_unwrap_or::<usize>(&m, "blkperigeepeers", defaults.blk_perigee_target),
+            blk_perigee_peers: arg_match_unwrap_or::<usize>(&m, "blk-perigee-peers", defaults.blk_perigee_peers),
             blk_perigee_exploration: arg_match_unwrap_or::<usize>(&m, "blk-perigee-exploration", defaults.blk_perigee_exploration),
             blk_perigee_leverage: arg_match_unwrap_or::<usize>(&m, "blk-perigee-leverage", defaults.blk_perigee_leverage),
             blk_perigee_duration: arg_match_unwrap_or::<usize>(&m, "blk-perigee-duration", defaults.blk_perigee_duration),
@@ -637,19 +636,20 @@ fn arg_match_many_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatch
       --listen=                             Add an interface/port to listen for connections (default all interfaces
                                             port: 16111, testnet: 16211)
       --outpeers=                           Target number of outbound peers (default: 8)
-      --perigeepeers=                        Target number of Perigee peers (default: 0, which disables Perigee), note: it is expected that
-                                            `perigeepeers <= outpeers`
-      --perigee-exploration-target=         Number of perigee peers to drop per round of perigee
+      --blk-perigee-peers=                  Target number of block perigee peers (default: 0, which disables block perigee),
+                                            Note: total number of perigee peers, must be <= outpeers,
+                                            the diff will be routed through random graph`
+      --blk-perigee-exploration=            Number of perigee peers to drop per round of perigee
                                             (default: 0, [the default value will set the target to 25%, rounded down, of the perigee target]).
-      --perigee-leverage-target=            Number of perigee peers to leverage per round of perigee
+      --blk-perigee-leverage=               Number of perigee peers to leverage per round of perigee
                                             (default: 0, [the default value will set the target to 50%, rounded down, of the perigee target]).
-      --perigee-round-duration=             Round duration in seconds (rounded to the nearest 30 seconds),
+      --blk-perigee-duration=               Round duration in seconds (rounded to the nearest 30 seconds),
                                             Note: this is clamped between 30 and 300 (default: 30, min 30, max 300).
-      --perigee-statistics                  log perigee statistics after each round.
+      --blk-perigee-stats                       log perigee statistics after each round.
                                             Note: this evaluates and compares against other random graph outbound peers for testing purposes,
                                             as such, this requires significantly more resources.
                                             For optimal comparison `perigeepeers` should equal `outboundpeers / 2`
-      --perigee-persistence                 Persist perigee data between restarts.
+      --blk-perigee-persist                 Persist perigee data between restarts.
       --maxinpeers=                         Max number of inbound peers (default: 117)
       --enablebanning                       Enable banning of misbehaving peers
       --banduration=                        How long to ban misbehaving peers. Valid time units are {s, m, h}. Minimum
