@@ -16,7 +16,7 @@ async fn main() {
     for i in 0..1 {
         debug!("P2P, p2p_client::main - starting peer:{}", i);
         let _peer_key =
-            adaptor.connect_peer_with_retries(ip_port.clone(), 16, Duration::from_secs(1), PeerOutboundType::Temporary).await;
+            adaptor.connect_peer_with_retries(ip_port.clone(), 16, Duration::from_secs(1), PeerOutboundType::UserSupplied).await;
     }
     // [2] - wait for ~60 sec and terminate
     tokio::time::sleep(Duration::from_secs(64)).await;
