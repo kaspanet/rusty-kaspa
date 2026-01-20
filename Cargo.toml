@@ -115,6 +115,7 @@ kaspa-p2p-flows = { version = "1.1.0-rc.2", path = "protocol/flows" }
 kaspa-p2p-lib = { version = "1.1.0-rc.2", path = "protocol/p2p" }
 kaspa-p2p-mining = { version = "1.1.0-rc.2", path = "protocol/mining" }
 kaspa-perf-monitor = { version = "1.1.0-rc.2", path = "metrics/perf_monitor" }
+kaspa-perigeemanager = {version =  "1.1.0-rc.2", path = "components/perigeemanager" }
 kaspa-pow = { version = "1.1.0-rc.2", path = "consensus/pow" }
 kaspa-rpc-core = { version = "1.1.0-rc.2", path = "rpc/core" }
 kaspa-rpc-macros = { version = "1.1.0-rc.2", path = "rpc/macros" }
