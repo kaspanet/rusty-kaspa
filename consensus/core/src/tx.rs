@@ -139,6 +139,10 @@ impl TransactionOutput {
     pub fn new(value: u64, script_public_key: ScriptPublicKey) -> Self {
         Self { value, script_public_key, covenant: None }
     }
+
+    pub fn with_covenant(value: u64, script_public_key: ScriptPublicKey, covenant: Option<CovenantBinding>) -> Self {
+        Self { value, script_public_key, covenant }
+    }
 }
 
 /// Binds a transaction output to the covenant and input authorizing its creation.

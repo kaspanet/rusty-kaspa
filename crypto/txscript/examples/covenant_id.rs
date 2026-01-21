@@ -7,6 +7,7 @@ use kaspa_consensus_core::tx::{
 };
 use kaspa_hashes::Hash;
 use kaspa_txscript::caches::Cache;
+use kaspa_txscript::covenants::CovenantsContext;
 use kaspa_txscript::opcodes::codes::{
     Op1Add, OpBlake2b, OpCat, OpCovOutputCount, OpCovOutputIdx, OpData62, OpData8, OpEqual, OpEqualVerify, OpNum2Bin, OpSwap, OpTrue,
     OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpkLen, OpTxOutputSpkSubstr,
@@ -225,14 +226,9 @@ fn run_vm(
     flags: EngineFlags,
 ) -> Result<(), TxScriptError> {
     let populated = PopulatedTransaction::new(tx, vec![utxo_entry.clone()]);
-    let mut vm = TxScriptEngine::from_transaction_input(
-        &populated,
-        &tx.inputs[0],
-        0,
-        utxo_entry,
-        EngineCtx::new(sig_cache).with_reused(reused_values),
-        flags,
-    );
+    let cov_ctx = CovenantsContext::from_tx(&populated).unwrap();
+    let ctx = EngineCtx::new(sig_cache).with_reused(reused_values).with_covenants_ctx(&cov_ctx);
+    let mut vm = TxScriptEngine::from_transaction_input(&populated, &tx.inputs[0], 0, utxo_entry, ctx, flags);
     vm.execute()
 }
 

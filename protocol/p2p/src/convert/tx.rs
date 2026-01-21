@@ -2,7 +2,10 @@ use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb as protowire;
 use kaspa_consensus_core::{
     subnets::SubnetworkId,
-    tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
+    tx::{
+        CovenantBinding, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
+        UtxoEntry,
+    },
 };
 use kaspa_hashes::Hash;
 
@@ -51,9 +54,19 @@ impl From<&TransactionInput> for protowire::TransactionInput {
     }
 }
 
+impl From<&CovenantBinding> for protowire::CovenantBinding {
+    fn from(covenant: &CovenantBinding) -> Self {
+        Self { authorizing_input: covenant.authorizing_input as u32, covenant_id: Some(covenant.covenant_id.into()) }
+    }
+}
+
 impl From<&TransactionOutput> for protowire::TransactionOutput {
     fn from(output: &TransactionOutput) -> Self {
-        Self { value: output.value, script_public_key: Some((&output.script_public_key).into()) }
+        Self {
+            value: output.value,
+            script_public_key: Some((&output.script_public_key).into()),
+            covenant: output.covenant.as_ref().map(protowire::CovenantBinding::from),
+        }
     }
 }
 
@@ -134,7 +147,22 @@ impl TryFrom<protowire::TransactionOutput> for TransactionOutput {
     type Error = ConversionError;
 
     fn try_from(output: protowire::TransactionOutput) -> Result<Self, Self::Error> {
-        Ok(Self::new(output.value, output.script_public_key.try_into_ex()?))
+        Ok(Self::with_covenant(
+            output.value,
+            output.script_public_key.try_into_ex()?,
+            output.covenant.map(|c| c.try_into()).transpose()?,
+        ))
+    }
+}
+
+impl TryFrom<protowire::CovenantBinding> for CovenantBinding {
+    type Error = ConversionError;
+
+    fn try_from(covenant: protowire::CovenantBinding) -> Result<Self, Self::Error> {
+        Ok(CovenantBinding {
+            authorizing_input: covenant.authorizing_input.try_into()?,
+            covenant_id: covenant.covenant_id.try_into_ex()?,
+        })
     }
 }
 
