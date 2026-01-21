@@ -6,7 +6,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 pub use error::Groth16Error;
 
 use crate::{
-    data_stack::{DataStack, Stack},
+    data_stack::{Stack},
     zk_precompiles::{fields::Fr, ZkPrecompile},
 };
 
@@ -59,7 +59,7 @@ impl ZkPrecompile for Groth16Precompile {
 #[cfg(test)]
 mod tests {
     use crate::{
-        data_stack::{DataStack, Stack},
+        data_stack::Stack,
         zk_precompiles::{groth16::Groth16Precompile, ZkPrecompile},
     };
 
@@ -75,15 +75,15 @@ mod tests {
 
         println!("unprepared key len: {}, proof len: {}", unprepared_compressed_vk.len(), proof.len());
 
-        let mut stack = Stack::new();
-        stack.push(input4);
-        stack.push(input3);
-        stack.push(input2);
-        stack.push(input1);
-        stack.push(input0);
+        let mut stack = Stack::new(Vec::new(),1024*1024);
+        stack.push(input4).unwrap();
+        stack.push(input3).unwrap();
+        stack.push(input2).unwrap();
+        stack.push(input1).unwrap();
+        stack.push(input0).unwrap();
         stack.push_item(5u16).unwrap(); // Number of public inputs
-        stack.push(proof);
-        stack.push(unprepared_compressed_vk);
+        stack.push(proof).unwrap();
+        stack.push(unprepared_compressed_vk).unwrap();
         Groth16Precompile::verify_zk(&mut stack).unwrap();
     }
 }

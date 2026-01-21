@@ -5,7 +5,7 @@ mod groth16;
 mod risc0;
 mod tags;
 use crate::{
-    data_stack::{DataStack, Stack},
+    data_stack::Stack,
     zk_precompiles::{error::ZkIntegrityError, groth16::Groth16Precompile, risc0::R0SuccinctPrecompile, tags::ZkTag},
 };
 use kaspa_txscript_errors::TxScriptError;

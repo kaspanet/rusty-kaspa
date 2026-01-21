@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
     use crate::{
-        data_stack::{DataStack, Stack},
+        data_stack::Stack,
         zk_precompiles::{parse_tag, verify_zk},
     };
 
@@ -36,16 +36,16 @@ mod test {
         let stark_stack = Stack::from(vec![stark_proof_bytes, stark_journal_bytes, stark_image_id_bytes, [stark_tag].to_vec()]);
 
         // Build Groth16 stack with hardcoded values (matching the order from try_verify_stack test)
-        let mut groth_stack = Stack::new();
-        groth_stack.push(input4);
-        groth_stack.push(input3);
-        groth_stack.push(input2);
-        groth_stack.push(input1);
-        groth_stack.push(input0);
+        let mut groth_stack = Stack::new(Vec::new(), 1024 * 1024);
+        groth_stack.push(input4).unwrap();
+        groth_stack.push(input3).unwrap();
+        groth_stack.push(input2).unwrap();
+        groth_stack.push(input1).unwrap();
+        groth_stack.push(input0).unwrap();
         groth_stack.push_item(5u16).unwrap();
-        groth_stack.push(groth16_proof_bytes);
-        groth_stack.push(unprepared_compressed_vk);
-        groth_stack.push([groth16_tag].to_vec());
+        groth_stack.push(groth16_proof_bytes).unwrap();
+        groth_stack.push(unprepared_compressed_vk).unwrap();
+        groth_stack.push([groth16_tag].to_vec()).unwrap();
 
         // Prepare ECDSA verification components (outside timing loop)
         let secp = Secp256k1::new();

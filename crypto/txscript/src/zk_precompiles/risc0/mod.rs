@@ -1,5 +1,5 @@
 use crate::{
-    data_stack::{DataStack, Stack},
+    data_stack::Stack,
     zk_precompiles::{
         risc0::{rcpt::SuccinctReceipt, receipt_claim::compute_assert_claim},
         ZkPrecompile,
