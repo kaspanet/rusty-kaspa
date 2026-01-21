@@ -86,7 +86,7 @@ pub(super) const PRUNE_BATCH_MAX_BLOCKS: usize = 256;
 pub(super) const PRUNE_BATCH_MAX_OPS: usize = 50_000;
 pub(super) const PRUNE_BATCH_MAX_BYTES: usize = 4 * 1024 * 1024;
 pub(super) const PRUNE_BATCH_MAX_DURATION_MS: u64 = 50;
-pub(super) const PRUNE_LOCK_TARGET_MAX_DURATION_MS: u64 = 25;
+pub(super) const PRUNE_LOCK_TARGET_MAX_DURATION_MS: u64 = 5;
 
 pub(super) struct PruneBatch {
     pub(super) batch: WriteBatch,

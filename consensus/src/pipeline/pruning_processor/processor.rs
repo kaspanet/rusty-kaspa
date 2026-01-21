@@ -507,13 +507,16 @@ impl PruningProcessor {
             self.block_window_cache_for_past_median_time.remove(&current);
 
             if !keep_blocks.contains(&current) {
-                let batch = &mut prune_batch.batch;
+                {
+                    let mut body_batch = WriteBatch::default();
+                    self.utxo_multisets_store.delete_batch(&mut body_batch, current).unwrap();
+                    self.utxo_diffs_store.delete_batch(&mut body_batch, current).unwrap();
+                    self.acceptance_data_store.delete_batch(&mut body_batch, current).unwrap();
+                    self.block_transactions_store.delete_batch(&mut body_batch, current).unwrap();
+                    self.db.write(body_batch).unwrap();
+                }
 
-                // Prune data related to block bodies and UTXO state
-                self.utxo_multisets_store.delete_batch(batch, current).unwrap();
-                self.utxo_diffs_store.delete_batch(batch, current).unwrap();
-                self.acceptance_data_store.delete_batch(batch, current).unwrap();
-                self.block_transactions_store.delete_batch(batch, current).unwrap();
+                let batch = &mut prune_batch.batch;
 
                 if let Some(&affiliated_proof_level) = keep_relations.get(&current) {
                     if statuses_write.get(current).optional().unwrap().is_some_and(|s| s.is_valid()) {
