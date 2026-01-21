@@ -811,8 +811,20 @@ opcode_list! {
     }
 
     // Undefined opcodes.
-    opcode OpUnknown166<0xa6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpZkPrecompile<0xa6, 1>(self, vm) {
+        // Parse the ZK Precompile tag
+        let tag = parse_tag(&mut vm.dstack)?;
 
+        // Consume sigop cost
+        vm.runtime_sig_op_counter.consume_sig_ops(tag.sigop_cost())?;
+
+        // Verify the ZK proof
+        verify_zk(tag,&mut vm.dstack)?;
+
+        // If no errors, push true to the stack
+        vm.dstack.push_item(true)?;
+        Ok(())
+    }
     // Crypto opcodes.
     opcode OpBlake2bWithKey<0xa7, 1>(self, vm) {
         if vm.flags.covenants_enabled {
@@ -1352,20 +1364,7 @@ opcode_list! {
     }
 
     // Undefined opcodes
-opcode OpZkPrecompile<0xcb, 1>(self, vm) {
-        // Parse the ZK Precompile tag
-        let tag = parse_tag(&mut vm.dstack)?;
 
-        // Consume sigop cost
-        vm.runtime_sig_op_counter.consume_sig_ops(tag.sigop_cost())?;
-
-        // Verify the ZK proof
-        verify_zk(tag,&mut vm.dstack)?;
-
-        // If no errors, push true to the stack
-        vm.dstack.push_item(true)?;
-        Ok(())
-    }
     opcode OpUnknown204<0xcc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown205<0xcd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown206<0xce, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1555,7 +1554,7 @@ mod test {
     #[test]
     fn test_opcode_invalid() {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
-            opcodes::OpUnknown166::empty().expect("Should accept empty"),
+            opcodes::OpZkPrecompile::empty().expect("Should accept empty"),
             opcodes::OpBlake2bWithKey::empty().expect("Should accept empty"),
             opcodes::OpTxPayloadLen::empty().expect("Should accept empty"),
             opcodes::OpTxInputSpkLen::empty().expect("Should accept empty"),
