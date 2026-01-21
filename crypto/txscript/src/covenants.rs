@@ -102,7 +102,11 @@ impl CovenantsContext {
                         .auth_outputs
                         .push(i);
 
-                    ctx.shared_ctxs.entry(covenant_id).or_default().output_indices.push(i);
+                    ctx.shared_ctxs
+                        .get_mut(&covenant_id)
+                        .expect("Shared context should've been created by the authorizing input")
+                        .output_indices
+                        .push(i);
                 }
                 Some(_) => {
                     return Err(CovenantsError::WrongCovenantId(i));

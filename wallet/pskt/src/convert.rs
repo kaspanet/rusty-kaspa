@@ -4,6 +4,8 @@
 //! and [`kaspa_wallet_pskt`](crate) types.
 //!
 
+use core::panic;
+
 use crate::error::Error;
 use crate::input::{Input, InputBuilder};
 use crate::output::{Output, OutputBuilder};
@@ -56,6 +58,8 @@ impl TryFrom<TransactionOutput> for Output {
         // .proprietaries
         // .unknowns
         .build()?;
+
+        panic!("Should also convert the covenant field");
 
         Ok(output)
     }

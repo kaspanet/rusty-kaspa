@@ -72,6 +72,7 @@ impl Serializer for RpcUtxoEntry {
         store!(ScriptPublicKey, &self.script_public_key, writer)?;
         store!(u64, &self.block_daa_score, writer)?;
         store!(bool, &self.is_coinbase, writer)?;
+        store!(Option<RpcHash>, &self.covenant_id, writer)?; // TODO(covpp-mainnet): Bump borsh version
 
         Ok(())
     }
@@ -84,7 +85,7 @@ impl Deserializer for RpcUtxoEntry {
         let script_public_key = load!(ScriptPublicKey, reader)?;
         let block_daa_score = load!(u64, reader)?;
         let is_coinbase = load!(bool, reader)?;
-        let covenant_id = load!(Option<RpcHash>, reader)?;
+        let covenant_id = load!(Option<RpcHash>, reader)?; // TODO(covpp-mainnet): Bump borsh version
 
         Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, covenant_id })
     }
