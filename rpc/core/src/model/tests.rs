@@ -501,7 +501,13 @@ mod mockery {
 
     impl Mock for RpcUtxoEntry {
         fn mock() -> Self {
-            RpcUtxoEntry { amount: mock(), script_public_key: mock(), block_daa_score: mock(), is_coinbase: mock() }
+            RpcUtxoEntry {
+                amount: mock(),
+                script_public_key: mock(),
+                block_daa_score: mock(),
+                is_coinbase: mock(),
+                covenant_id: mock(),
+            }
         }
     }
 
@@ -513,6 +519,7 @@ mod mockery {
                 block_daa_score: mock(),
                 is_coinbase: mock(),
                 verbose_data: mock(),
+                covenant_id: mock(),
             }
         }
     }

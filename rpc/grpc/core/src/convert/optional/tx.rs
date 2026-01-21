@@ -1,5 +1,6 @@
 use crate::protowire;
 use crate::{from, try_from};
+use kaspa_consensus_core::Hash;
 use kaspa_rpc_core::{FromRpcHex, RpcAddress, RpcError, RpcResult, RpcScriptClass, RpcSubnetworkId, ToRpcHex};
 use std::str::FromStr;
 
@@ -76,6 +77,7 @@ from!(item: &kaspa_rpc_core::RpcOptionalUtxoEntry, protowire::RpcOptionalUtxoEnt
         block_daa_score: item.block_daa_score,
         is_coinbase: item.is_coinbase,
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
+        covenant_id: item.covenant_id.as_ref().map(|x| x.to_string()),
     }
 });
 
@@ -159,6 +161,7 @@ try_from!(item: &protowire::RpcOptionalUtxoEntry, kaspa_rpc_core::RpcOptionalUtx
         block_daa_score: item.block_daa_score,
         is_coinbase: item.is_coinbase,
         verbose_data: item.verbose_data.as_ref().map(|x| x.try_into()).transpose()?,
+        covenant_id: item.covenant_id.as_ref().map(|x| Hash::from_str(x)).transpose()?,
     }
 });
 

@@ -26,12 +26,15 @@ use std::{
     str::{self},
 };
 use wasm_bindgen::prelude::*;
+use workflow_wasm::prelude::CastFromJs;
 
 use crate::mass::{ContextualMasses, NonContextualMasses};
 use crate::{
     hashing,
     subnets::{self, SubnetworkId},
 };
+
+use kaspa_hashes::Hash;
 
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
 pub const COINBASE_TRANSACTION_INDEX: usize = 0;
@@ -54,11 +57,19 @@ pub struct UtxoEntry {
     pub block_daa_score: u64,
     #[wasm_bindgen(js_name = isCoinbase)]
     pub is_coinbase: bool,
+    #[wasm_bindgen(js_name = covenantId)]
+    pub covenant_id: Option<Hash>,
 }
 
 impl UtxoEntry {
-    pub fn new(amount: u64, script_public_key: ScriptPublicKey, block_daa_score: u64, is_coinbase: bool) -> Self {
-        Self { amount, script_public_key, block_daa_score, is_coinbase }
+    pub fn new(
+        amount: u64,
+        script_public_key: ScriptPublicKey,
+        block_daa_score: u64,
+        is_coinbase: bool,
+        covenant_id: Option<Hash>,
+    ) -> Self {
+        Self { amount, script_public_key, block_daa_score, is_coinbase, covenant_id }
     }
 }
 
@@ -121,12 +132,26 @@ impl std::fmt::Debug for TransactionInput {
 pub struct TransactionOutput {
     pub value: u64,
     pub script_public_key: ScriptPublicKey,
+    pub covenant: Option<CovenantBinding>,
 }
 
 impl TransactionOutput {
     pub fn new(value: u64, script_public_key: ScriptPublicKey) -> Self {
-        Self { value, script_public_key }
+        Self { value, script_public_key, covenant: None }
     }
+
+    pub fn with_covenant(value: u64, script_public_key: ScriptPublicKey, covenant: Option<CovenantBinding>) -> Self {
+        Self { value, script_public_key, covenant }
+    }
+}
+
+/// Binds a transaction output to the covenant and input authorizing its creation.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Copy, CastFromJs)]
+#[serde(rename_all = "camelCase")]
+#[wasm_bindgen(inspectable)]
+pub struct CovenantBinding {
+    pub authorizing_input: u16,
+    pub covenant_id: Hash,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -617,8 +642,8 @@ mod tests {
                 },
             ],
             vec![
-                TransactionOutput { value: 6, script_public_key: script_public_key.clone() },
-                TransactionOutput { value: 7, script_public_key },
+                TransactionOutput { value: 6, script_public_key: script_public_key.clone(), covenant: None },
+                TransactionOutput { value: 7, script_public_key, covenant: None },
             ],
             8,
             SUBNETWORK_ID_NATIVE,
@@ -648,15 +673,15 @@ mod tests {
             198, 0, 0, 0, 251, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 4, 0, 0, 0, 0, 0, 0, 0, 5, 2, 0, 0, 0, 0, 0, 0, 0, 6, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132, 185,
-            117, 220, 118, 217, 0, 59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            117, 220, 118, 217, 0, 59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 0, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132, 185, 117, 220, 118, 217, 0,
-            59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-            13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
-            43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
-            73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 0, 0, 0, 0, 0,
-            0, 0, 0, 68, 15, 100, 245, 228, 237, 168, 194, 55, 73, 105, 105, 205, 253, 74, 234, 87, 244, 163, 12, 201, 68, 207, 194,
-            9, 181, 172, 185, 10, 11, 239, 13,
+            59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+            12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
+            42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
+            72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 0, 0, 0,
+            0, 0, 0, 0, 0, 148, 230, 2, 150, 43, 13, 53, 17, 150, 141, 166, 224, 136, 3, 137, 1, 114, 18, 64, 66, 164, 99, 247, 137,
+            213, 94, 50, 244, 225, 71, 67, 208,
         ];
         assert_eq!(expected_bts, bts);
         assert_eq!(tx, bincode::deserialize(&bts).unwrap());
@@ -691,11 +716,13 @@ mod tests {
   "outputs": [
     {
       "value": 6,
-      "scriptPublicKey": "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e"
+      "scriptPublicKey": "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e",
+      "covenant": null
     },
     {
       "value": 7,
-      "scriptPublicKey": "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e"
+      "scriptPublicKey": "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e",
+      "covenant": null
     }
   ],
   "lockTime": 8,
@@ -703,7 +730,7 @@ mod tests {
   "gas": 9,
   "payload": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263",
   "mass": 0,
-  "id": "440f64f5e4eda8c237496969cdfd4aea57f4a30cc944cfc209b5acb90a0bef0d"
+  "id": "94e602962b0d3511968da6e08803890172124042a463f789d55e32f4e14743d0"
 }"#;
         assert_eq!(expected_str, str);
         assert_eq!(tx, serde_json::from_str(&str).unwrap());

@@ -53,9 +53,15 @@ message ScriptPublicKey {
   uint32 version = 2;
 }
 
+message CovenantBinding{
+  uint32 authorizingInput = 1;
+  Hash covenantId = 2;
+}
+
 message TransactionOutput{
   uint64 value = 1;
   ScriptPublicKey scriptPublicKey = 2;
+  CovenantBinding covenant = 3;
 }
 
 message BlockMessage{
@@ -176,6 +182,7 @@ message UtxoEntry {
   ScriptPublicKey scriptPublicKey = 2;
   uint64 blockDaaScore = 3;
   bool isCoinbase = 4;
+  Hash covenantId = 5;
 }
 
 message RequestNextPruningPointUtxoSetChunkMessage {

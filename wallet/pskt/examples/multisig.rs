@@ -27,6 +27,7 @@ fn main() {
             script_public_key: pay_to_script_hash_script(&redeem_script),
             block_daa_score: 36151168,
             is_coinbase: false,
+            covenant_id: Default::default(),
         })
         .previous_outpoint(TransactionOutpoint {
             transaction_id: TransactionId::from_str("63020db736215f8b1105a9281f7bcbb6473d965ecc45bb2fb5da59bd35e6ff84").unwrap(),

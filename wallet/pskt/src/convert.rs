@@ -4,6 +4,8 @@
 //! and [`kaspa_wallet_pskt`](crate) types.
 //!
 
+use core::panic;
+
 use crate::error::Error;
 use crate::input::{Input, InputBuilder};
 use crate::output::{Output, OutputBuilder};
@@ -45,7 +47,8 @@ impl TryFrom<TransactionOutput> for Output {
     fn try_from(output: TransactionOutput) -> std::result::Result<Output, Self::Error> {
         // Self::Transaction(transaction)
 
-        let TransactionOutputInner { value, script_public_key } = &*output.inner();
+        // TODO: covenant
+        let TransactionOutputInner { value, script_public_key, covenant } = &*output.inner();
 
         let output = OutputBuilder::default()
         .amount(*value)
@@ -55,6 +58,8 @@ impl TryFrom<TransactionOutput> for Output {
         // .proprietaries
         // .unknowns
         .build()?;
+
+        panic!("Should also convert the covenant field");
 
         Ok(output)
     }

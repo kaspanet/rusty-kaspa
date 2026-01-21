@@ -3,12 +3,12 @@ use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::processes::transaction_validator::tx_validation_in_utxo_context::{
     check_scripts_par_iter, check_scripts_par_iter_pool, check_scripts_sequential,
 };
-use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
+use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesSync, SigHashReusedValuesUnsync};
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, UtxoEntry};
 use kaspa_txscript::caches::Cache;
-use kaspa_txscript::pay_to_address_script;
+use kaspa_txscript::{pay_to_address_script, EngineCtx};
 use kaspa_utils::iter::parallelism_in_power_steps;
 use rand::{thread_rng, Rng};
 use secp256k1::Keypair;
@@ -40,6 +40,7 @@ fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload
             script_public_key: pay_to_address_script(&address),
             block_daa_score: 333,
             is_coinbase: false,
+            covenant_id: None,
         });
         kps.push(kp);
     }
@@ -53,6 +54,7 @@ fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload
             script_public_key: pay_to_address_script(&address),
             block_daa_score: 444,
             is_coinbase: false,
+            covenant_id: None,
         });
     }
 
@@ -90,7 +92,9 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
                     cache.clear();
-                    check_scripts_sequential(black_box(&cache), black_box(&tx.as_verifiable()), flags).unwrap();
+                    let reused_values = SigHashReusedValuesUnsync::new();
+                    let ctx = EngineCtx::new(black_box(&cache)).with_reused(&reused_values);
+                    check_scripts_sequential(black_box(&tx.as_verifiable()), ctx, flags).unwrap();
                 })
             });
 
@@ -99,7 +103,9 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
                     cache.clear();
-                    check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable()), flags).unwrap();
+                    let reused_values = SigHashReusedValuesSync::new();
+                    let ctx = EngineCtx::new(black_box(&cache)).with_reused(&reused_values);
+                    check_scripts_par_iter(black_box(&tx.as_verifiable()), ctx, flags).unwrap();
                 })
             });
 
@@ -111,8 +117,9 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                         let cache = Cache::new(inputs_count as u64);
                         b.iter(|| {
                             cache.clear();
-                            check_scripts_par_iter_pool(black_box(&cache), black_box(&tx.as_verifiable()), black_box(&pool), flags)
-                                .unwrap();
+                            let reused_values = SigHashReusedValuesSync::new();
+                            let ctx = EngineCtx::new(black_box(&cache)).with_reused(&reused_values);
+                            check_scripts_par_iter_pool(black_box(&tx.as_verifiable()), ctx, flags, black_box(&pool)).unwrap();
                         })
                     });
                 }
@@ -148,7 +155,9 @@ fn benchmark_check_scripts_with_payload(c: &mut Criterion) {
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
                     cache.clear();
-                    check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable()), Default::default()).unwrap();
+                    let reused_values = SigHashReusedValuesSync::new();
+                    let ctx = EngineCtx::new(black_box(&cache)).with_reused(&reused_values);
+                    check_scripts_par_iter(black_box(&tx.as_verifiable()), ctx, Default::default()).unwrap();
                 })
             });
         }

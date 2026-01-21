@@ -1433,7 +1433,13 @@ async fn kip10_test() {
     // Set up initial UTXO with our test script
     let initial_utxo_collection = [(
         TransactionOutpoint::new(1.into(), 0),
-        UtxoEntry { amount: SOMPI_PER_KASPA, script_public_key: spk.clone(), block_daa_score: 0, is_coinbase: false },
+        UtxoEntry {
+            amount: SOMPI_PER_KASPA,
+            script_public_key: spk.clone(),
+            block_daa_score: 0,
+            is_coinbase: false,
+            covenant_id: None,
+        },
     )];
 
     // Initialize consensus with KIP-10 activation point
@@ -1808,6 +1814,7 @@ async fn payload_for_native_tx_test() {
             script_public_key: ScriptPublicKey::from_vec(0, vec![OpTrue]),
             block_daa_score: 0,
             is_coinbase: false,
+            covenant_id: None,
         },
     )];
 
@@ -1912,7 +1919,13 @@ async fn runtime_sig_op_counting_test() {
     // Set up initial UTXO with P2SH script
     let initial_utxo_collection = [(
         TransactionOutpoint::new(1.into(), 0),
-        UtxoEntry { amount: SOMPI_PER_KASPA, script_public_key: script_pub_key.clone(), block_daa_score: 0, is_coinbase: false },
+        UtxoEntry {
+            amount: SOMPI_PER_KASPA,
+            script_public_key: script_pub_key.clone(),
+            block_daa_score: 0,
+            is_coinbase: false,
+            covenant_id: None,
+        },
     )];
 
     let config = ConfigBuilder::new(DEVNET_PARAMS)
@@ -2014,13 +2027,25 @@ async fn sighash_type_commitment_test() {
     for i in 0..6 {
         initial_utxo_collection.push((
             TransactionOutpoint::new((i + 1).into(), 0),
-            UtxoEntry { amount: SOMPI_PER_KASPA / 10, script_public_key: p2sh_script.clone(), block_daa_score: 0, is_coinbase: false },
+            UtxoEntry {
+                amount: SOMPI_PER_KASPA / 10,
+                script_public_key: p2sh_script.clone(),
+                block_daa_score: 0,
+                is_coinbase: false,
+                covenant_id: None,
+            },
         ));
     }
     for i in 0..3 {
         initial_utxo_collection.push((
             TransactionOutpoint::new((i + 7).into(), 0),
-            UtxoEntry { amount: SOMPI_PER_KASPA / 20, script_public_key: op_true_spk.clone(), block_daa_score: 0, is_coinbase: false },
+            UtxoEntry {
+                amount: SOMPI_PER_KASPA / 20,
+                script_public_key: op_true_spk.clone(),
+                block_daa_score: 0,
+                is_coinbase: false,
+                covenant_id: None,
+            },
         ));
     }
 

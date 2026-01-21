@@ -53,7 +53,7 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
     hasher.write_len(tx.outputs.len());
     for output in tx.outputs.iter() {
         // Write the tx output
-        write_output(hasher, output);
+        write_output(hasher, output, tx.version);
     }
 
     hasher.update(tx.lock_time.to_le_bytes()).update(tx.subnetwork_id).update(tx.gas.to_le_bytes()).write_var_bytes(&tx.payload);
@@ -77,7 +77,12 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
 
     if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_MASS_COMMIT) {
         let mass = tx.mass();
-        if mass > 0 {
+        if tx.version < 1 {
+            if mass > 0 {
+                hasher.update(mass.to_le_bytes());
+            }
+        } else {
+            // In order make the encoding unambiguous and invertible in case of future additional fields, for version >= 1 we always include the mass field
             hasher.update(mass.to_le_bytes());
         }
     }
@@ -100,11 +105,19 @@ fn write_outpoint<T: HasherBase>(hasher: &mut T, outpoint: &TransactionOutpoint)
 }
 
 #[inline(always)]
-fn write_output<T: HasherBase>(hasher: &mut T, output: &TransactionOutput) {
+fn write_output<T: HasherBase>(hasher: &mut T, output: &TransactionOutput, version: u16) {
     hasher
         .update(output.value.to_le_bytes())
         .update(output.script_public_key.version().to_le_bytes())
         .write_var_bytes(output.script_public_key.script());
+
+    if version >= 1 {
+        hasher.write_bool(output.covenant.is_some());
+        if let Some(covenant) = &output.covenant {
+            hasher.write_u16(covenant.authorizing_input);
+            hasher.update(covenant.covenant_id);
+        }
+    }
 }
 
 struct PreimageHasher {
@@ -230,8 +243,8 @@ mod tests {
         // Test #10, same as 9 with different version and checks it affects id and hash
         tests.push(Test {
             tx: Transaction::new(1, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
-            expected_id: "205fd04d30ec18079fefbe6319489b6c3a3f13299570ab687a93354a38d4eb18",
-            expected_hash: "186f2c81e54c5dd578697fefbed07d3eb909cf19a6288cf1bcf3a7c6b3262eb5",
+            expected_id: "9ec65c816b495e7da8f88c6d261af00b7bca45e398a4373f92eb665e7d7cf79d",
+            expected_hash: "6c8fed2799b478667914748b9c76da576fc18b44ce87c6ebc01c01705f13f3e3",
         });
 
         for (i, test) in tests.iter().enumerate() {
