@@ -1,12 +1,13 @@
 use std::{collections::HashSet, sync::Arc};
 
 use kaspa_consensus_core::{
-    tx::{ScriptPublicKeys, TransactionOutpoint},
+    tx::{ScriptPublicKey, ScriptPublicKeys, TransactionOutpoint},
     BlockHashSet,
 };
 use kaspa_core::trace;
 use kaspa_database::prelude::{CachePolicy, StoreResult, DB};
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, CompactUtxoEntry};
+use rocksdb::WriteBatch;
 
 use crate::{
     model::UtxoSetByScriptPublicKey,
@@ -53,10 +54,11 @@ impl Store {
         to_remove: &UtxoSetByScriptPublicKey,
         try_reset_on_err: bool,
     ) -> StoreResult<()> {
+        let mut batch = WriteBatch::default();
+
         // A UTXO entry can appear both in removed and in added (if the DAA score of the entry changed). Thus
         // we must first apply removals and then additions (so it will be re-added in the addition phase)
-        let mut res = self.utxos_by_script_public_key_store.remove_utxo_entries(to_remove);
-
+        let res = self.utxos_by_script_public_key_store.remove_utxo_entries(&mut batch, to_remove);
         if res.is_err() {
             if try_reset_on_err {
                 self.delete_all()?;
@@ -65,13 +67,16 @@ impl Store {
         }
 
         // Now apply additions
-        res = self.utxos_by_script_public_key_store.add_utxo_entries(to_add);
+        let res = self.utxos_by_script_public_key_store.add_utxo_entries(&mut batch, to_add);
+        if res.is_err() {
+            if try_reset_on_err {
+                self.delete_all()?;
+            }
+            return res;
+        }
 
-        if try_reset_on_err && res.is_err() {
-            self.delete_all()?;
-        };
-
-        res
+        // Commit the batch atomically
+        self.utxos_by_script_public_key_store.write_batch(batch)
     }
 
     pub fn get_circulating_supply(&self) -> StoreResult<u64> {
@@ -104,6 +109,13 @@ impl Store {
             self.delete_all()?;
         }
         res
+    }
+
+    pub fn write_utxos_from_iterator(
+        &self,
+        utxo_iterator: impl Iterator<Item = (ScriptPublicKey, TransactionOutpoint, CompactUtxoEntry)>,
+    ) -> StoreResult<()> {
+        self.utxos_by_script_public_key_store.write_from_iterator(utxo_iterator)
     }
 
     /// Resets the utxoindex database:

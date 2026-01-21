@@ -1,10 +1,16 @@
-use crate::{cache::CachePolicy, db::DB, errors::StoreError};
+use crate::{
+    cache::CachePolicy,
+    db::DB,
+    errors::{StoreError, StoreResult},
+};
 
 use super::prelude::{Cache, DbKey, DbWriter};
 use kaspa_utils::mem_size::MemSizeEstimator;
-use rocksdb::{Direction, IterateBounds, IteratorMode, ReadOptions};
+use rocksdb::{DBIteratorWithThreadMode, DBWithThreadMode, Direction, IterateBounds, IteratorMode, MultiThreaded, ReadOptions};
+use self_cell::self_cell;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, sync::Arc};
+use std::marker::PhantomData;
+use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
 #[derive(Clone)]
@@ -22,7 +28,7 @@ where
     prefix: Vec<u8>,
 }
 
-pub type KeyDataResult<TData> = Result<(Box<[u8]>, TData), Box<dyn Error>>;
+type KeyDataResult<TKey, TData> = StoreResult<(TKey, TData)>;
 
 impl<TKey, TData, S> CachedDbAccess<TKey, TData, S>
 where
@@ -112,9 +118,9 @@ where
         }
     }
 
-    pub fn iterator(&self) -> impl Iterator<Item = KeyDataResult<TData>> + '_
+    pub fn iterator(&self) -> impl Iterator<Item = KeyDataResult<TKey, TData>> + '_
     where
-        TKey: Clone + AsRef<[u8]>,
+        TKey: Clone + AsRef<[u8]> + for<'a> TryFrom<&'a [u8]>,
         TData: DeserializeOwned, // We need `DeserializeOwned` since the slice coming from `db.get_pinned` has short lifetime
     {
         let prefix_key = DbKey::prefix_only(&self.prefix);
@@ -122,13 +128,93 @@ where
         read_opts.set_iterate_range(rocksdb::PrefixRange(prefix_key.as_ref()));
         self.db.iterator_opt(IteratorMode::From(prefix_key.as_ref(), Direction::Forward), read_opts).map(move |iter_result| {
             match iter_result {
-                Ok((key, data_bytes)) => match bincode::deserialize(&data_bytes) {
-                    Ok(data) => Ok((key[prefix_key.prefix_len()..].into(), data)),
-                    Err(e) => Err(e.into()),
+                Ok((key_bytes, data_bytes)) => match TKey::try_from(&key_bytes[self.prefix.len()..]) {
+                    Ok(key) => match bincode::deserialize(&data_bytes) {
+                        Ok(data) => Ok((key, data)),
+                        Err(e) => Err(StoreError::DeserializationError(e)),
+                    },
+                    Err(_) => Err(StoreError::ConversionError(format!("Failed to deserialize key: {:?}", key_bytes))),
                 },
-                Err(e) => Err(e.into()),
+                Err(e) => Err(StoreError::DbError(e)),
             }
         })
+    }
+
+    /// A dynamic iterator that can iterate through a specific prefix / bucket, or from a certain start point.
+    pub fn seek_iterator(
+        &self,
+        bucket: Option<&[u8]>,   // iter self.prefix if None, else append bytes to self.prefix.
+        seek_from: Option<TKey>, // iter whole range if None
+        limit: usize,            // amount to take.
+        skip_first: bool,        // skips the first value, (useful in conjunction with the seek-key, as to not re-retrieve).
+    ) -> impl Iterator<Item = KeyDataResult<TKey, TData>> + '_
+    where
+        TKey: Clone + AsRef<[u8]> + for<'a> TryFrom<&'a [u8]>,
+        TData: DeserializeOwned,
+    {
+        let db_key = bucket.map_or_else(
+            move || DbKey::prefix_only(&self.prefix),
+            move |bucket| {
+                let mut key = DbKey::prefix_only(&self.prefix);
+                key.add_bucket(bucket);
+                key
+            },
+        );
+
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
+
+        let mut db_iterator = match seek_from {
+            Some(seek_key) => {
+                self.db.iterator_opt(IteratorMode::From(DbKey::new(&self.prefix, seek_key).as_ref(), Direction::Forward), read_opts)
+            }
+            None => self.db.iterator_opt(IteratorMode::Start, read_opts),
+        };
+
+        if skip_first {
+            db_iterator.next();
+        }
+
+        db_iterator.take(limit).map(move |item| match item {
+            Ok((ref key_bytes, ref data_bytes)) => match bincode::deserialize::<TData>(data_bytes.as_ref()) {
+                Ok(data) => Ok((
+                    TKey::try_from(&key_bytes[self.prefix.len()..])
+                        .map_err(|_e| StoreError::ConversionError(format!("Failed to deserialize key: {:?}", &key_bytes)))?,
+                    data,
+                )),
+
+                Err(e) => Err(StoreError::DeserializationError(e)),
+            },
+            Err(e) => Err(StoreError::DbError(e)),
+        })
+    }
+
+    pub fn iterator_owned(&self) -> impl Iterator<Item = KeyDataResult<TKey, TData>> + 'static
+    where
+        TKey: Clone + AsRef<[u8]> + for<'a> TryFrom<&'a [u8]> + 'static,
+        TData: DeserializeOwned + 'static,
+    {
+        let db = self.db.clone();
+        let prefix_key = DbKey::prefix_only(&self.prefix);
+        let prefix_len = self.prefix.len();
+        OwnedIter {
+            db_iter_cell: DbIterCell::new(db, |db| {
+                // TODO: Configure read options:
+                // this iterator is used to sync the utxoindex utxo set from the consensus db.
+                // Perhaps tailor the read options for this specific use-case.
+                // Although a few have been tried and no significant difference was observed.
+                // The option combinations were:
+                // async io - true false
+                // readahead - 4mb, 256 kb, 32kb
+                // Default options.
+                // As such staying with default options for now.
+                let mut read_ops = ReadOptions::default();
+                read_ops.set_iterate_range(rocksdb::PrefixRange(prefix_key.as_ref()));
+                db.iterator_opt(IteratorMode::From(prefix_key.as_ref(), Direction::Forward), read_ops)
+            }),
+            prefix_len,
+            data: Default::default(),
+        }
     }
 
     pub fn write(&self, mut writer: impl DbWriter, key: TKey, data: TData) -> Result<(), StoreError>
@@ -211,54 +297,46 @@ where
         writer.delete_range(from.unwrap(), to.unwrap())?;
         Ok(())
     }
+}
 
-    /// A dynamic iterator that can iterate through a specific prefix / bucket, or from a certain start point.
-    //TODO: loop and chain iterators for multi-prefix / bucket iterator.
-    pub fn seek_iterator(
-        &self,
-        bucket: Option<&[u8]>,   // iter self.prefix if None, else append bytes to self.prefix.
-        seek_from: Option<TKey>, // iter whole range if None
-        limit: usize,            // amount to take.
-        skip_first: bool,        // skips the first value, (useful in conjunction with the seek-key, as to not re-retrieve).
-    ) -> impl Iterator<Item = KeyDataResult<TData>> + '_
-    where
-        TKey: Clone + AsRef<[u8]>,
-        TData: DeserializeOwned,
-    {
-        let db_key = bucket.map_or_else(
-            move || DbKey::prefix_only(&self.prefix),
-            move |bucket| {
-                let mut key = DbKey::prefix_only(&self.prefix);
-                key.add_bucket(bucket);
-                key
-            },
-        );
+type DbIterator<'a> = DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>;
 
-        let mut read_opts = ReadOptions::default();
-        read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
+self_cell!(
+    struct DbIterCell {
+        owner: Arc<DB>,
 
-        let mut db_iterator = match seek_from {
-            Some(seek_key) => {
-                self.db.iterator_opt(IteratorMode::From(DbKey::new(&self.prefix, seek_key).as_ref(), Direction::Forward), read_opts)
-            }
-            None => self.db.iterator_opt(IteratorMode::Start, read_opts),
-        };
-
-        if skip_first {
-            db_iterator.next();
-        }
-
-        db_iterator.take(limit).map(move |item| match item {
-            Ok((key_bytes, value_bytes)) => match bincode::deserialize::<TData>(value_bytes.as_ref()) {
-                Ok(value) => Ok((key_bytes[db_key.prefix_len()..].into(), value)),
-                Err(err) => Err(err.into()),
-            },
-            Err(err) => Err(err.into()),
-        })
+        #[covariant]
+        dependent: DbIterator,
     }
+);
 
-    pub fn prefix(&self) -> &[u8] {
-        &self.prefix
+pub struct OwnedIter<TKey, TData> {
+    db_iter_cell: DbIterCell,
+    prefix_len: usize,
+    data: PhantomData<fn() -> (TKey, TData)>,
+}
+
+impl<TKey, TData> Iterator for OwnedIter<TKey, TData>
+where
+    TKey: for<'a> TryFrom<&'a [u8]>,
+    TData: DeserializeOwned,
+{
+    type Item = KeyDataResult<TKey, TData>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.db_iter_cell.with_dependent_mut(|_, db_iterator| match db_iterator.next() {
+            Some(item) => match item {
+                Ok((key_bytes, data_bytes)) => match TKey::try_from(&key_bytes[self.prefix_len..]) {
+                    Ok(key) => match bincode::deserialize::<TData>(data_bytes.as_ref()) {
+                        Ok(data) => Some(Ok((key, data))),
+                        Err(e) => Some(Err(StoreError::DeserializationError(e))),
+                    },
+                    Err(_) => Some(Err(StoreError::ConversionError(format!("Failed to deserialize key: {:?}", key_bytes)))),
+                },
+                Err(err) => Some(Err(err.into())),
+            },
+            None => None,
+        })
     }
 }
 

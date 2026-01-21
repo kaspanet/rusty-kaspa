@@ -40,6 +40,19 @@ impl AsRef<[u8]> for U64Key {
     }
 }
 
+impl TryFrom<&[u8]> for U64Key {
+    type Error = &'static str;
+
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        if slice.len() != size_of::<u64>() {
+            return Err("Invalid slice length for U64Key");
+        }
+        let mut bytes = [0u8; size_of::<u64>()];
+        bytes.copy_from_slice(slice);
+        Ok(Self(bytes))
+    }
+}
+
 impl Display for U64Key {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", u64::from_le_bytes(self.0))
