@@ -137,8 +137,10 @@ pub fn transaction_id_preimage(tx: &Transaction) -> Vec<u8> {
     hasher.buff
 }
 
-const ZERO_PAYLOAD_DIGEST: Hash =
-    Hash::from_bytes(hex_literal::hex!("9c0ca2acb45e92ffe6ceb4ae29188b35c82d9676cdd3ce067fd6ccc30a9c4a38"));
+const ZERO_PAYLOAD_DIGEST: Hash = Hash::from_bytes([
+    156, 12, 162, 172, 180, 94, 146, 255, 230, 206, 180, 174, 41, 24, 139, 53, 200, 45, 150, 118, 205, 211, 206, 6, 127, 214, 204,
+    195, 10, 156, 74, 56,
+]);
 pub fn payload_digest(payload: &[u8]) -> Hash {
     if payload.is_empty() {
         ZERO_PAYLOAD_DIGEST

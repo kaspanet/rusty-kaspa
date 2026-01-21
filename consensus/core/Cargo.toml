@@ -23,7 +23,6 @@ cfg-if.workspace = true
 faster-hex.workspace = true
 futures-util.workspace = true
 getrandom.workspace = true
-hex-literal.workspace = true
 itertools.workspace = true
 js-sys.workspace = true
 kaspa-addresses.workspace = true
