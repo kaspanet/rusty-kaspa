@@ -1487,40 +1487,46 @@ impl ShareHandler {
                 // If present, we also fold the feature-gated internal miner into the TOTAL row.
                 // Note: Internal CPU mining doesn't produce Stratum shares; we treat accepted/submitted blocks
                 // as the closest analogue for the Acc/Stl columns (same as the InternalCPU row does).
-                let internal_totals: Option<(f64, i64, i64, i64, i64)> = None; // (ghs, acc, stl, inv, blocks)
+                let internal_totals: Option<(f64, i64, i64, i64, i64)> = {
+                    // Feature-gated internal miner row
+                    #[cfg(feature = "rkstratum_cpu_miner")]
+                    {
+                        let mut internal_totals: Option<(f64, i64, i64, i64, i64)> = None; // (ghs, acc, stl, inv, blocks)
+                        if let Some(metrics) = RKSTRATUM_CPU_MINER_METRICS.lock().as_ref() {
+                            let hashes = metrics.hashes_tried.load(Ordering::Relaxed);
+                            let submitted = metrics.blocks_submitted.load(Ordering::Relaxed);
+                            let accepted = metrics.blocks_accepted.load(Ordering::Relaxed);
+                            let dt = now.duration_since(last_internal_sample).as_secs_f64().max(0.000_001);
+                            let dh = last_internal_hashes.map(|h| hashes.saturating_sub(h)).unwrap_or(0);
+                            last_internal_hashes = Some(hashes);
+                            last_internal_sample = now;
 
-                // Feature-gated internal miner row
-                #[cfg(feature = "rkstratum_cpu_miner")]
-                {
-                    if let Some(metrics) = RKSTRATUM_CPU_MINER_METRICS.lock().as_ref() {
-                        let hashes = metrics.hashes_tried.load(Ordering::Relaxed);
-                        let submitted = metrics.blocks_submitted.load(Ordering::Relaxed);
-                        let accepted = metrics.blocks_accepted.load(Ordering::Relaxed);
-                        let dt = now.duration_since(last_internal_sample).as_secs_f64().max(0.000_001);
-                        let dh = last_internal_hashes.map(|h| hashes.saturating_sub(h)).unwrap_or(0);
-                        last_internal_hashes = Some(hashes);
-                        last_internal_sample = now;
-
-                        // Hashrate as GH/s (format_hashrate expects GH/s)
-                        let hashrate_ghs = (dh as f64 / dt) / 1e9;
-                        internal_totals =
-                            Some((hashrate_ghs, accepted as i64, submitted.saturating_sub(accepted) as i64, 0, accepted as i64));
-                        let internal_line = format!(
-                            "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
-                            "InternalCPU",
-                            "-",
-                            format_hashrate(hashrate_ghs),
-                            "-",
-                            "-",
-                            "-",
-                            format!("{}/{}/{}", accepted, submitted.saturating_sub(accepted), 0),
-                            accepted,
-                            format_uptime(now.duration_since(start))
-                        );
-                        out.push(internal_line);
-                        out.push(sep.clone());
+                            // Hashrate as GH/s (format_hashrate expects GH/s)
+                            let hashrate_ghs = (dh as f64 / dt) / 1e9;
+                            internal_totals =
+                                Some((hashrate_ghs, accepted as i64, submitted.saturating_sub(accepted) as i64, 0, accepted as i64));
+                            let internal_line = format!(
+                                "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
+                                "InternalCPU",
+                                "-",
+                                format_hashrate(hashrate_ghs),
+                                "-",
+                                "-",
+                                "-",
+                                format!("{}/{}/{}", accepted, submitted.saturating_sub(accepted), 0),
+                                accepted,
+                                format_uptime(now.duration_since(start))
+                            );
+                            out.push(internal_line);
+                            out.push(sep.clone());
+                        }
+                        internal_totals
                     }
-                }
+                    #[cfg(not(feature = "rkstratum_cpu_miner"))]
+                    {
+                        None
+                    }
+                };
 
                 if let Some((ghs, acc, stl, inv, blocks)) = internal_totals {
                     total_rate += ghs;
