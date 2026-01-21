@@ -416,6 +416,18 @@ impl IbdFlow {
             return Err(ProtocolError::Other("pruning points are violating finality"));
         }
 
+        {
+            // Sanity check for consistency between past pruning points and the headers proof
+            let pruning_points_set: BlockHashSet = pruning_points.iter().map(|h| h.hash).collect();
+            for level in proof.iter() {
+                if let Some(root) = level.first() {
+                    if root.hash != self.ctx.config.genesis.hash && !pruning_points_set.contains(&root.pruning_point) {
+                        return Err(ProtocolError::Other("proof and past pruning points are inconsistent with each other"));
+                    }
+                }
+            }
+        }
+
         // Trusted data is sent in two stages:
         // The first, TrustedDataPackage, contains meta data about daa_window
         // blocks headers, and ghostdag data, which are required to verify the pruning
@@ -576,10 +588,14 @@ impl IbdFlow {
     }
 
     async fn sync_new_utxo_set(&mut self, consensus: &ConsensusProxy, pruning_point: Hash) -> Result<(), ProtocolError> {
-        // A  better solution could be to create a copy of the old utxo state for some sort of fallback rather than delete it.
+        // A better solution could be to create a copy of the old utxo state for some sort of fallback rather than delete it.
         consensus.async_clear_pruning_utxo_set().await; // this deletes the old pruning utxoset and also sets the pruning utxo as invalidated
         self.sync_pruning_point_utxoset(consensus, pruning_point).await?;
-        consensus.async_set_pruning_utxoset_stable().await; //  only if the function has reached here, will the utxo be considered "final"
+        // Only if the function has reached here, will the utxo be considered "final"
+        consensus.async_set_pruning_utxoset_stable().await;
+        // Once a new utxoset is stored, the utxoindex needs to be resynced as well. This happens through the reset handler mechanism.
+        let consensus_manager = self.ctx.consensus_manager.clone();
+        spawn_blocking(move || consensus_manager.invoke_consensus_reset_handlers()).await.unwrap();
         self.ctx.on_pruning_point_utxoset_override();
         Ok(())
     }

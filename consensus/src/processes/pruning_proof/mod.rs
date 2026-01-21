@@ -60,8 +60,9 @@ use crate::{
 
 use super::window::WindowManager;
 
+/// Pruning proof manager internal errors
 #[derive(Error, Debug)]
-enum PruningProofManagerInternalError {
+enum ProofInternalError {
     #[error("block at depth error: {0}")]
     BlockAtDepth(String),
 
@@ -75,7 +76,8 @@ enum PruningProofManagerInternalError {
     NotEnoughHeadersToBuildProof(String),
 }
 
-type PruningProofManagerInternalResult<T> = std::result::Result<T, PruningProofManagerInternalError>;
+/// Pruning proof manager internal result
+type ProofInternalResult<T> = std::result::Result<T, ProofInternalError>;
 
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
@@ -120,6 +122,7 @@ pub struct PruningProofManager {
     pruning_proof_m: u64,
     anticone_finalization_depth: u64,
     ghostdag_k: KType,
+    skip_proof_of_work: bool,
 
     is_consensus_exiting: Arc<AtomicBool>,
 }
@@ -139,6 +142,7 @@ impl PruningProofManager {
         pruning_proof_m: u64,
         anticone_finalization_depth: u64,
         ghostdag_k: KType,
+        skip_proof_of_work: bool,
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -159,6 +163,7 @@ impl PruningProofManager {
             depth_store: storage.depth_store.clone(),
             pruning_samples_store: storage.pruning_samples_store.clone(),
 
+            ghostdag_manager,
             traversal_manager,
             window_manager,
             parents_manager,
@@ -171,7 +176,7 @@ impl PruningProofManager {
             pruning_proof_m,
             anticone_finalization_depth,
             ghostdag_k,
-            ghostdag_manager,
+            skip_proof_of_work,
 
             is_consensus_exiting,
         }
@@ -382,10 +387,10 @@ where
     Self: GhostdagStoreReader,
 {
     /// Extension method to get the block at blue depth `depth` from `high` via this store reader. Used by build and validate.
-    fn block_at_depth(&self, high: Hash, depth: u64) -> Result<Hash, PruningProofManagerInternalError> {
+    fn block_at_depth(&self, high: Hash, depth: u64) -> Result<Hash, ProofInternalError> {
         let high_gd = self
             .get_compact_data(high)
-            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
+            .map_err(|err| ProofInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
         let mut current_gd = high_gd;
         let mut current = high;
         while current_gd.blue_score + depth >= high_gd.blue_score {
@@ -395,7 +400,7 @@ where
             let prev = current;
             current = current_gd.selected_parent;
             current_gd = self.get_compact_data(current).map_err(|err| {
-                PruningProofManagerInternalError::BlockAtDepth(format!(
+                ProofInternalError::BlockAtDepth(format!(
                     "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
                     high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
                 ))
