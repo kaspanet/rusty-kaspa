@@ -43,7 +43,7 @@ fn counter_state_in_spk() -> ScriptBuilderResult<()> {
         println!("[COVENANT P2SH-WS] Spending to counter {next}");
         let tx = build_spend_tx(&state, next, &covenant_script, &mut rng);
         run_vm(&tx, &state.utxo_entry, &sig_cache, &reused_values, flags).unwrap();
-        state = CovenantState::from_tx(tx, &covenant_script, next);
+        state = CovenantState::from_tx(tx, &covenant_script, next, state.covenant_id);
     }
 
     let counter_2_state = state.clone();
@@ -51,7 +51,7 @@ fn counter_state_in_spk() -> ScriptBuilderResult<()> {
     println!("[COVENANT P2SH-WS] Spending to counter {next}");
     let tx = build_spend_tx(&state, next, &covenant_script, &mut rng);
     run_vm(&tx, &state.utxo_entry, &sig_cache, &reused_values, flags).unwrap();
-    state = CovenantState::from_tx(tx, &covenant_script, next);
+    state = CovenantState::from_tx(tx, &covenant_script, next, state.covenant_id);
 
     println!("[COVENANT P2SH-WS] Attempting invalid spend (no increment)");
     let bad_tx = build_spend_tx(&state, state.counter, &covenant_script, &mut rng);
@@ -90,14 +90,21 @@ struct CovenantState {
 impl CovenantState {
     fn new(counter: u8, covenant_script: &[u8]) -> Self {
         let tx = genesis_tx(counter, covenant_script);
-        Self::from_tx(tx, covenant_script, counter)
+        let covenant_id = hashing::covenant_id::covenant_id(TransactionOutpoint::new(tx.id(), 0));
+        Self::from_tx(tx, covenant_script, counter, covenant_id)
     }
 
-    fn from_tx(tx: Transaction, covenant_script: &[u8], counter: u8) -> Self {
+    fn from_tx(tx: Transaction, covenant_script: &[u8], counter: u8, covenant_id: Hash) -> Self {
         let outpoint = TransactionOutpoint::new(tx.id(), 0);
         let spk = build_spk(counter, covenant_script);
-        let utxo_entry = UtxoEntry::new(1_000_000, spk, 0, false, None);
-        Self { utxo_outpoint: outpoint, utxo_entry, counter, covenant_id: hashing::covenant_id::covenant_id(outpoint) }
+        let utxo_entry = UtxoEntry::new(
+            1_000_000,
+            spk,
+            0,
+            false,
+            Some(covenant_id), // Note this is not needed for the genesis case, but we always set if for simplicity
+        );
+        Self { utxo_outpoint: outpoint, utxo_entry, counter, covenant_id }
     }
 }
 
