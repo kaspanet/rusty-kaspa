@@ -221,8 +221,12 @@ impl ConsensusStorage {
 
         // Virtual stores
         let lkg_virtual_state = LkgVirtualState::default();
-        let virtual_stores =
-            Arc::new(RwLock::new(VirtualStores::new(db.clone(), lkg_virtual_state.clone(), utxo_set_builder.build())));
+        let virtual_stores = Arc::new(RwLock::new(VirtualStores::new(
+            db.clone(),
+            lkg_virtual_state.clone(),
+            utxo_set_builder.build(),
+            block_transactions_store.as_ref(),
+        )));
 
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();

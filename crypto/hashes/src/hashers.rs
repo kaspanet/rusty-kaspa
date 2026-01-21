@@ -39,6 +39,8 @@ sha256_hasher! {
 
 blake3_hasher! {
     struct SeqCommitmentMerkleBranchHash => b"SeqCommitmentMerkleBranchHash",
+    struct SeqCommitmentMerkleLeafHash => b"SeqCommitmentMerkleLeafHash",
+    struct PayloadDigest => b"PayloadDigest",
 }
 
 macro_rules! sha256_hasher {

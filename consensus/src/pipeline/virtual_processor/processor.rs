@@ -560,6 +560,7 @@ impl VirtualStateProcessor {
             ctx.multiset_hash,
             ctx.mergeset_diff,
             ctx.accepted_tx_ids,
+            ctx.accepted_tx_payload_digest,
             ctx.mergeset_rewards,
             virtual_daa_window.mergeset_non_daa,
             virtual_ghostdag_data,
@@ -1086,6 +1087,7 @@ impl VirtualStateProcessor {
         let accepted_id_merkle_root = self.calc_accepted_id_merkle_root(
             virtual_state.daa_score,
             virtual_state.accepted_tx_ids.iter().copied(),
+            virtual_state.accepted_tx_payload_digests.iter().copied(),
             virtual_state.ghostdag_data.selected_parent,
         );
         let utxo_commitment = virtual_state.multiset.clone().finalize();

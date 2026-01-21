@@ -36,7 +36,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use kaspa_core::{info, trace};
-use kaspa_hashes::{Hash, SeqCommitmentMerkleBranchHash};
+use kaspa_hashes::{Hash, HasherBase, SeqCommitmentMerkleBranchHash, SeqCommitmentMerkleLeafHash};
 use kaspa_muhash::MuHash;
 use kaspa_utils::refs::Refs;
 
@@ -82,6 +82,7 @@ pub(super) struct UtxoProcessingContext<'a> {
     pub multiset_hash: MuHash,
     pub mergeset_diff: UtxoDiff,
     pub accepted_tx_ids: Vec<TransactionId>,
+    pub accepted_tx_payload_digest: Vec<Hash>,
     pub mergeset_acceptance_data: Vec<MergesetBlockAcceptanceData>,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
     pub pruning_sample_from_pov: Option<Hash>,
@@ -95,6 +96,7 @@ impl<'a> UtxoProcessingContext<'a> {
             multiset_hash: selected_parent_multiset_hash,
             mergeset_diff: UtxoDiff::default(),
             accepted_tx_ids: Vec::with_capacity(1), // We expect at least the selected parent coinbase tx
+            accepted_tx_payload_digest: Vec::with_capacity(1), // We expect at least the selected parent coinbase tx
             mergeset_rewards: BlockHashMap::with_capacity(mergeset_size),
             mergeset_acceptance_data: Vec::with_capacity(mergeset_size),
             pruning_sample_from_pov: Default::default(),
@@ -120,7 +122,9 @@ impl VirtualStateProcessor {
         ctx.mergeset_diff.add_transaction(&validated_coinbase, pov_daa_score).unwrap();
         ctx.multiset_hash.add_transaction(&validated_coinbase, pov_daa_score);
         let validated_coinbase_id = validated_coinbase.id();
+        let validated_coinbase_payload_digest = validated_coinbase.payload_digest();
         ctx.accepted_tx_ids.push(validated_coinbase_id);
+        ctx.accepted_tx_payload_digest.push(validated_coinbase_payload_digest);
 
         for (i, (merged_block, txs)) in once((ctx.selected_parent(), selected_parent_transactions))
             .chain(
@@ -154,6 +158,7 @@ impl VirtualStateProcessor {
             for (validated_tx, _) in validated_transactions.iter() {
                 ctx.mergeset_diff.add_transaction(validated_tx, pov_daa_score).unwrap();
                 ctx.accepted_tx_ids.push(validated_tx.id());
+                ctx.accepted_tx_payload_digest.push(validated_tx.payload_digest());
                 block_fee += validated_tx.calculated_fee;
             }
 
@@ -200,8 +205,12 @@ impl VirtualStateProcessor {
         trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
         // Verify header accepted_id_merkle_root
-        let expected_accepted_id_merkle_root =
-            self.calc_accepted_id_merkle_root(header.daa_score, ctx.accepted_tx_ids.iter().copied(), ctx.selected_parent());
+        let expected_accepted_id_merkle_root = self.calc_accepted_id_merkle_root(
+            header.daa_score,
+            ctx.accepted_tx_ids.iter().copied(),
+            ctx.accepted_tx_payload_digest.iter().copied(),
+            ctx.selected_parent(),
+        );
 
         if expected_accepted_id_merkle_root != header.accepted_id_merkle_root {
             return Err(BadAcceptedIDMerkleRoot(header.hash, header.accepted_id_merkle_root, expected_accepted_id_merkle_root));
@@ -449,13 +458,21 @@ impl VirtualStateProcessor {
         &self,
         daa_score: u64, // virtual in case of template, block in case of verification
         accepted_tx_ids: impl ExactSizeIterator<Item = Hash>,
+        accepted_tx_payload_digests: impl ExactSizeIterator<Item = Hash>,
         selected_parent: Hash,
     ) -> Hash {
         if self.covenants_activation.is_active(daa_score) {
             const HASH_SINGLE_ENTRY: bool = true;
+
+            let leaf_iter = accepted_tx_ids.zip(accepted_tx_payload_digests).map(|(txid, payload_digest)| {
+                let mut hasher = SeqCommitmentMerkleLeafHash::new();
+                hasher.update(txid);
+                hasher.update(payload_digest);
+                hasher.finalize()
+            });
             kaspa_merkle::merkle_hash_with_hasher(
                 self.headers_store.get_header(selected_parent).unwrap().accepted_id_merkle_root,
-                kaspa_merkle::calc_merkle_root_with_hasher::<SeqCommitmentMerkleBranchHash, HASH_SINGLE_ENTRY>(accepted_tx_ids),
+                kaspa_merkle::calc_merkle_root_with_hasher::<SeqCommitmentMerkleBranchHash, HASH_SINGLE_ENTRY>(leaf_iter),
                 SeqCommitmentMerkleBranchHash::new(),
             )
         } else {

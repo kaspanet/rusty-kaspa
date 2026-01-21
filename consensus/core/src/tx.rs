@@ -287,6 +287,10 @@ impl Transaction {
         self.set_mass(mass);
         self
     }
+
+    pub fn payload_digest(&self) -> Hash {
+        hashing::tx::payload_digest(&self.payload)
+    }
 }
 
 impl MemSizeEstimator for Transaction {
@@ -338,6 +342,10 @@ pub trait VerifiableTransaction {
     }
 
     fn utxo(&self, index: usize) -> Option<&UtxoEntry>;
+
+    fn payload_digest(&self) -> Hash {
+        self.tx().payload_digest()
+    }
 }
 
 /// A custom iterator written only so that `populated_inputs` has a known return type and can de defined on the trait level

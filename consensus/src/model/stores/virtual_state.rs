@@ -1,6 +1,10 @@
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use super::ghostdag::GhostdagData;
+use super::utxo_set::DbUtxoSetStore;
+use crate::model::stores::block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore};
 use arc_swap::ArcSwap;
 use kaspa_consensus_core::api::stats::VirtualStateStats;
 use kaspa_consensus_core::{
@@ -16,9 +20,6 @@ use kaspa_muhash::MuHash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 
-use super::ghostdag::GhostdagData;
-use super::utxo_set::DbUtxoSetStore;
-
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct VirtualState {
     pub parents: Vec<Hash>,
@@ -29,6 +30,7 @@ pub struct VirtualState {
     pub multiset: MuHash,
     pub utxo_diff: UtxoDiff, // This is the UTXO diff from the selected tip to the virtual. i.e., if this diff is applied on the past UTXO of the selected tip, we'll get the virtual UTXO set.
     pub accepted_tx_ids: Vec<TransactionId>, // TODO: consider saving `accepted_id_merkle_root` directly
+    pub accepted_tx_payload_digests: Vec<Hash>,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
     pub mergeset_non_daa: BlockHashSet,
 }
@@ -42,6 +44,7 @@ impl VirtualState {
         multiset: MuHash,
         utxo_diff: UtxoDiff,
         accepted_tx_ids: Vec<TransactionId>,
+        accepted_tx_payload_digests: Vec<Hash>,
         mergeset_rewards: BlockHashMap<BlockRewardData>,
         mergeset_non_daa: BlockHashSet,
         ghostdag_data: GhostdagData,
@@ -55,12 +58,14 @@ impl VirtualState {
             multiset,
             utxo_diff,
             accepted_tx_ids,
+            accepted_tx_payload_digests,
             mergeset_rewards,
             mergeset_non_daa,
         }
     }
 
     pub fn from_genesis(genesis: &GenesisBlock, ghostdag_data: GhostdagData) -> Self {
+        let genesis_txs = genesis.build_genesis_transactions();
         Self {
             parents: vec![genesis.hash],
             ghostdag_data,
@@ -69,7 +74,8 @@ impl VirtualState {
             past_median_time: genesis.timestamp,
             multiset: MuHash::new(),
             utxo_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
-            accepted_tx_ids: genesis.build_genesis_transactions().into_iter().map(|tx| tx.id()).collect(),
+            accepted_tx_ids: genesis_txs.iter().map(|tx| tx.id()).collect(),
+            accepted_tx_payload_digests: genesis_txs.iter().map(|tx| tx.payload_digest()).collect(),
             mergeset_rewards: BlockHashMap::new(),
             mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(genesis.hash)),
         }
@@ -78,6 +84,60 @@ impl VirtualState {
     pub fn to_virtual_state_approx_id(&self) -> VirtualStateApproxId {
         VirtualStateApproxId::new(self.daa_score, self.ghostdag_data.blue_work, self.ghostdag_data.selected_parent)
     }
+
+    fn from_deprecated(
+        VirtualStateDeprecated {
+            parents,
+            ghostdag_data,
+            daa_score,
+            bits,
+            past_median_time,
+            multiset,
+            utxo_diff,
+            accepted_tx_ids,
+            mergeset_rewards,
+            mergeset_non_daa,
+        }: VirtualStateDeprecated,
+        store: &DbBlockTransactionsStore,
+    ) -> Self {
+        let mut txid_to_payload: HashMap<_, _, std::hash::RandomState> =
+            HashMap::from_iter(accepted_tx_ids.iter().map(|tx| (*tx, None)));
+        for merged_block in ghostdag_data.mergeset_blues.iter().chain(ghostdag_data.mergeset_reds.iter()).copied().rev() {
+            let txs = store.get(merged_block).unwrap();
+            for tx in txs.iter() {
+                txid_to_payload.entry(tx.id()).and_modify(|old| {
+                    old.replace(tx.payload_digest());
+                });
+            }
+        }
+        Self {
+            parents,
+            ghostdag_data,
+            daa_score,
+            bits,
+            past_median_time,
+            multiset,
+            utxo_diff,
+            accepted_tx_payload_digests: accepted_tx_ids.iter().map(|txid| txid_to_payload[txid].unwrap()).collect(),
+            accepted_tx_ids,
+            mergeset_rewards,
+            mergeset_non_daa,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct VirtualStateDeprecated {
+    pub parents: Vec<Hash>,
+    pub ghostdag_data: GhostdagData,
+    pub daa_score: u64,
+    pub bits: u32,
+    pub past_median_time: u64,
+    pub multiset: MuHash,
+    pub utxo_diff: UtxoDiff, // This is the UTXO diff from the selected tip to the virtual. i.e., if this diff is applied on the past UTXO of the selected tip, we'll get the virtual UTXO set.
+    pub accepted_tx_ids: Vec<TransactionId>, // TODO: consider saving `accepted_id_merkle_root` directly
+    pub mergeset_rewards: BlockHashMap<BlockRewardData>,
+    pub mergeset_non_daa: BlockHashSet,
 }
 
 impl From<&VirtualState> for VirtualStateStats {
@@ -134,9 +194,14 @@ pub struct VirtualStores {
 }
 
 impl VirtualStores {
-    pub fn new(db: Arc<DB>, lkg_virtual_state: LkgVirtualState, utxoset_cache_policy: CachePolicy) -> Self {
+    pub fn new(
+        db: Arc<DB>,
+        lkg_virtual_state: LkgVirtualState,
+        utxoset_cache_policy: CachePolicy,
+        db_tx_store: &DbBlockTransactionsStore,
+    ) -> Self {
         Self {
-            state: DbVirtualStateStore::new(db.clone(), lkg_virtual_state),
+            state: DbVirtualStateStore::new(db.clone(), lkg_virtual_state, db_tx_store),
             utxo_set: DbUtxoSetStore::new(db, utxoset_cache_policy, DatabaseStorePrefixes::VirtualUtxoset.into()),
         }
     }
@@ -161,16 +226,28 @@ pub struct DbVirtualStateStore {
 }
 
 impl DbVirtualStateStore {
-    pub fn new(db: Arc<DB>, lkg_virtual_state: LkgVirtualState) -> Self {
-        let access = CachedDbItem::new(db.clone(), DatabaseStorePrefixes::VirtualState.into());
+    pub fn new(db: Arc<DB>, lkg_virtual_state: LkgVirtualState, db_tx_store: &DbBlockTransactionsStore) -> Self {
+        let mut access_v1 = CachedDbItem::new(db.clone(), DatabaseStorePrefixes::VirtualStateV1.into());
+        let state = if let Some(state) = access_v1.read().optional().unwrap() {
+            state
+        } else {
+            let access_deprecated = CachedDbItem::new(db.clone(), DatabaseStorePrefixes::VirtualState.into());
+            if let Some(state) = access_deprecated.read().optional().unwrap().unwrap_or_default() {
+                let state = Arc::new(VirtualState::from_deprecated(state, db_tx_store));
+                access_v1.write(DirectDbWriter::new(&db), &state).unwrap();
+                state
+            } else {
+                Arc::new(VirtualState::default())
+            }
+        };
         // Init the LKG cache from DB store data
-        lkg_virtual_state.store(access.read().optional().unwrap().unwrap_or_default());
-        Self { db, access, lkg_virtual_state }
+        lkg_virtual_state.store(state);
+        Self { db, access: access_v1, lkg_virtual_state }
     }
 
-    pub fn clone_with_new_cache(&self) -> Self {
-        Self::new(self.db.clone(), self.lkg_virtual_state.clone())
-    }
+    // pub fn clone_with_new_cache(&self) -> Self {
+    //     Self::new(self.db.clone(), self.lkg_virtual_state.clone())
+    // }
 
     pub fn is_initialized(&self) -> StoreResult<bool> {
         match self.access.read() {

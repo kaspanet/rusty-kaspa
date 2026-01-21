@@ -3,7 +3,7 @@ use crate::{
     mass::transaction_estimated_serialized_size,
     tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
 };
-use kaspa_hashes::{Hash, HasherBase};
+use kaspa_hashes::{Hash, Hasher, HasherBase, PayloadDigest};
 
 bitflags::bitflags! {
     /// A bitmask defining which transaction fields we want to encode and which to ignore.
@@ -137,6 +137,16 @@ pub fn transaction_id_preimage(tx: &Transaction) -> Vec<u8> {
     hasher.buff
 }
 
+const ZERO_PAYLOAD_DIGEST: Hash =
+    Hash::from_bytes(hex_literal::hex!("9c0ca2acb45e92ffe6ceb4ae29188b35c82d9676cdd3ce067fd6ccc30a9c4a38"));
+pub fn payload_digest(payload: &[u8]) -> Hash {
+    if payload.is_empty() {
+        ZERO_PAYLOAD_DIGEST
+    } else {
+        PayloadDigest::hash(payload)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,6 +155,11 @@ mod tests {
         tx::{scriptvec, ScriptPublicKey},
     };
     use std::str::FromStr;
+
+    #[test]
+    fn test_zero_payload_digest() {
+        assert_eq!(ZERO_PAYLOAD_DIGEST, payload_digest(&[]));
+    }
 
     #[test]
     fn test_transaction_hashing() {
