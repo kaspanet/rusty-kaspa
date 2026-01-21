@@ -59,7 +59,7 @@ impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for R
                     .copied()
                     // TODO(relaxed): consider removing this filtering altogether - in the context this is currently called
                     // blocks should not be inserted if they do not fulfill this condition
-                    .filter(|h| self.reachability_service.is_dag_ancestor_of_result(self.root, *h).optional().unwrap().unwrap_or(false))
+                    .filter(|h| self.reachability_service.try_is_dag_ancestor_of(self.root, *h).optional().unwrap().unwrap_or(false))
                     .collect_vec(),
             )
         })
@@ -269,7 +269,7 @@ impl PruningProofManager {
                     .parents_at_level(&header, level)
                     .iter()
                     .copied()
-                    .filter(|&p| self.reachability_service.is_dag_ancestor_of_result(root, p).optional().unwrap().unwrap_or(false))
+                    .filter(|&p| self.reachability_service.try_is_dag_ancestor_of(root, p).optional().unwrap().unwrap_or(false))
                     .collect::<Vec<_>>()
                     .push_if_empty(ORIGIN),
             );

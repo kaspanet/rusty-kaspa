@@ -3927,6 +3927,13 @@
     "OpTxOutputSpk is enabled since kip10"
   ],
   [
+    "'output_root_hashffffffffffffffff' 'input_blockfffffffffffffffffffff'",
+    "0xd4 EQUAL",
+    "",
+    "OK",
+    "OpChainblockSeqCommit puts the block sequence commitment on the stack"
+  ],
+  [
     "TODO (before merge): Add tests for the missing range 0xc4 to 0xca"
   ],
   [
@@ -4067,12 +4074,6 @@
   [
     "1",
     "IF 0xd3 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xd4 ELSE 1 ENDIF",
     "",
     "BAD_OPCODE"
   ],

@@ -132,19 +132,20 @@ impl std::fmt::Debug for TransactionInput {
 pub struct TransactionOutput {
     pub value: u64,
     pub script_public_key: ScriptPublicKey,
-    pub cov_out_info: Option<CovOutInfo>,
+    pub covenant: Option<CovenantBinding>,
 }
 
 impl TransactionOutput {
     pub fn new(value: u64, script_public_key: ScriptPublicKey) -> Self {
-        Self { value, script_public_key, cov_out_info: None }
+        Self { value, script_public_key, covenant: None }
     }
 }
 
+/// Binds a transaction output to the covenant and input authorizing its creation.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Copy, CastFromJs)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
-pub struct CovOutInfo {
+pub struct CovenantBinding {
     pub authorizing_input: u16,
     pub covenant_id: Hash,
 }
@@ -637,8 +638,8 @@ mod tests {
                 },
             ],
             vec![
-                TransactionOutput { value: 6, script_public_key: script_public_key.clone(), cov_out_info: None },
-                TransactionOutput { value: 7, script_public_key, cov_out_info: None },
+                TransactionOutput { value: 6, script_public_key: script_public_key.clone(), covenant: None },
+                TransactionOutput { value: 7, script_public_key, covenant: None },
             ],
             8,
             SUBNETWORK_ID_NATIVE,
@@ -712,12 +713,12 @@ mod tests {
     {
       "value": 6,
       "scriptPublicKey": "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e",
-      "covOutInfo": null
+      "covenant": null
     },
     {
       "value": 7,
       "scriptPublicKey": "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e",
-      "covOutInfo": null
+      "covenant": null
     }
   ],
   "lockTime": 8,

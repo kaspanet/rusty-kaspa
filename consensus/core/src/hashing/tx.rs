@@ -112,10 +112,10 @@ fn write_output<T: HasherBase>(hasher: &mut T, output: &TransactionOutput, versi
         .write_var_bytes(output.script_public_key.script());
 
     if version >= 1 {
-        hasher.write_bool(output.cov_out_info.is_some());
-        if let Some(cov_out_info) = &output.cov_out_info {
-            hasher.write_u16(cov_out_info.authorizing_input);
-            hasher.update(&cov_out_info.covenant_id);
+        hasher.write_bool(output.covenant.is_some());
+        if let Some(covenant) = &output.covenant {
+            hasher.write_u16(covenant.authorizing_input);
+            hasher.update(covenant.covenant_id);
         }
     }
 }

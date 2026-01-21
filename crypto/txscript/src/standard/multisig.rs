@@ -70,7 +70,7 @@ pub fn multisig_redeem_script_ecdsa(pub_keys: impl Iterator<Item = impl Borrow<[
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script, TxScriptEngine};
+    use crate::{caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script, EngineContext, TxScriptEngine};
     use core::str::FromStr;
     use kaspa_consensus_core::{
         hashing::{
@@ -185,7 +185,8 @@ mod tests {
         let (input, entry) = tx.populated_inputs().next().unwrap();
 
         let cache = Cache::new(10_000);
-        let mut engine = TxScriptEngine::from_transaction_input(&tx, input, 0, entry, &reused_values, &cache, Default::default());
+        let ctx = EngineContext::new(&cache).with_reused(&reused_values);
+        let mut engine = TxScriptEngine::from_transaction_input(&tx, input, 0, entry, ctx, Default::default());
         assert_eq!(engine.execute().is_ok(), is_ok);
     }
     #[test]

@@ -43,8 +43,8 @@ fn serialize_benchmark(c: &mut Criterion) {
             },
         ],
         vec![
-            TransactionOutput { value: 300, script_public_key: script_public_key.clone(), cov_out_info: None },
-            TransactionOutput { value: 300, script_public_key, cov_out_info: None },
+            TransactionOutput { value: 300, script_public_key: script_public_key.clone(), covenant: None },
+            TransactionOutput { value: 300, script_public_key, covenant: None },
         ],
         0,
         SUBNETWORK_ID_COINBASE,
@@ -105,8 +105,8 @@ fn deserialize_benchmark(c: &mut Criterion) {
             },
         ],
         vec![
-            TransactionOutput { value: 300, script_public_key: script_public_key.clone(), cov_out_info: None },
-            TransactionOutput { value: 300, script_public_key, cov_out_info: None },
+            TransactionOutput { value: 300, script_public_key: script_public_key.clone(), covenant: None },
+            TransactionOutput { value: 300, script_public_key, covenant: None },
         ],
         0,
         SUBNETWORK_ID_COINBASE,

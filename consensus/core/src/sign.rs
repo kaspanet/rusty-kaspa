@@ -223,16 +223,8 @@ mod tests {
                 },
             ],
             vec![
-                TransactionOutput {
-                    value: 300,
-                    script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
-                    cov_out_info: None,
-                },
-                TransactionOutput {
-                    value: 300,
-                    script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
-                    cov_out_info: None,
-                },
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()), covenant: None },
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()), covenant: None },
             ],
             1615462089000,
             SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),

@@ -48,7 +48,7 @@ impl TransactionValidator {
         lock_time_arg: LockTimeArg,
         block_daa_score: u64,
     ) -> TxResult<()> {
-        self.check_tx_is_finalized(tx, lock_time_arg);
+        self.check_tx_is_finalized(tx, lock_time_arg)?;
         self.check_transaction_version(tx, block_daa_score)
     }
 

@@ -39,7 +39,7 @@ mod tests {
                             0xba, 0x30, 0xcd, 0x5a, 0x4b, 0x87,
                         ],
                     ),
-                    cov_out_info: None,
+                    covenant: None,
                 }],
                 0,
                 SUBNETWORK_ID_COINBASE,
@@ -120,7 +120,7 @@ mod tests {
                                 0xac, // OP_CHECKSIG
                             ],
                         ),
-                        cov_out_info: None,
+                        covenant: None,
                     },
                     TransactionOutput {
                         value: 0x108e20f00,
@@ -135,7 +135,7 @@ mod tests {
                                 0xac, // OP_CHECKSIG
                             ],
                         ),
-                        cov_out_info: None,
+                        covenant: None,
                     },
                 ],
                 0,
@@ -182,7 +182,7 @@ mod tests {
                                 0xac, // OP_CHECKSIG
                             ],
                         ),
-                        cov_out_info: None,
+                        covenant: None,
                     },
                     TransactionOutput {
                         value: 0x11d260c0,
@@ -197,7 +197,7 @@ mod tests {
                                 0xac, // OP_CHECKSIG
                             ],
                         ),
-                        cov_out_info: None,
+                        covenant: None,
                     },
                 ],
                 0,
@@ -244,7 +244,7 @@ mod tests {
                             0xac, // OP_CHECKSIG
                         ],
                     ),
-                    cov_out_info: None,
+                    covenant: None,
                 }],
                 0,
                 SUBNETWORK_ID_NATIVE,

@@ -22,7 +22,13 @@ impl MuHashExtensions for MuHash {
         }
         for (i, output) in tx.outputs().iter().enumerate() {
             let outpoint = TransactionOutpoint::new(tx_id, i as u32);
-            let entry = UtxoEntry::new(output.value, output.script_public_key.clone(), block_daa_score, tx.is_coinbase(), output.cov_out_info.map(|info| info.covenant_id));
+            let entry = UtxoEntry::new(
+                output.value,
+                output.script_public_key.clone(),
+                block_daa_score,
+                tx.is_coinbase(),
+                output.covenant.map(|info| info.covenant_id),
+            );
             self.add_utxo(&outpoint, &entry);
         }
     }

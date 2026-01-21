@@ -17,7 +17,7 @@ use ahash::AHashMap;
 use cctx::VerifiableTransaction;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_consensus_core::tx::CovOutInfo;
+use kaspa_consensus_core::tx::CovenantBinding;
 use kaspa_hashes::Hash;
 use workflow_wasm::serde::{from_value, to_value};
 
@@ -190,32 +190,32 @@ impl TryFrom<&TransactionInput> for SerializableTransactionInput {
 pub struct SerializableTransactionOutput {
     pub value: u64,
     pub script_public_key: ScriptPublicKey,
-    pub cov_out_info: Option<CovOutInfo>,
+    pub covenant: Option<CovenantBinding>,
 }
 
 impl From<cctx::TransactionOutput> for SerializableTransactionOutput {
     fn from(output: cctx::TransactionOutput) -> Self {
-        Self { value: output.value, script_public_key: output.script_public_key, cov_out_info: output.cov_out_info }
+        Self { value: output.value, script_public_key: output.script_public_key, covenant: output.covenant }
     }
 }
 
 impl From<&cctx::TransactionOutput> for SerializableTransactionOutput {
     fn from(output: &cctx::TransactionOutput) -> Self {
-        Self { value: output.value, script_public_key: output.script_public_key.clone(), cov_out_info: output.cov_out_info }
+        Self { value: output.value, script_public_key: output.script_public_key.clone(), covenant: output.covenant }
     }
 }
 
 impl TryFrom<SerializableTransactionOutput> for cctx::TransactionOutput {
     type Error = Error;
     fn try_from(output: SerializableTransactionOutput) -> Result<Self> {
-        Ok(Self { value: output.value, script_public_key: output.script_public_key, cov_out_info: output.cov_out_info })
+        Ok(Self { value: output.value, script_public_key: output.script_public_key, covenant: output.covenant })
     }
 }
 
 impl TryFrom<&SerializableTransactionOutput> for TransactionOutput {
     type Error = Error;
     fn try_from(output: &SerializableTransactionOutput) -> Result<Self> {
-        Ok(TransactionOutput::new(output.value, output.script_public_key.clone(), output.cov_out_info))
+        Ok(TransactionOutput::new(output.value, output.script_public_key.clone(), output.covenant))
     }
 }
 
@@ -223,7 +223,7 @@ impl TryFrom<&TransactionOutput> for SerializableTransactionOutput {
     type Error = Error;
     fn try_from(output: &TransactionOutput) -> Result<Self> {
         let inner = output.inner();
-        Ok(Self { value: inner.value, script_public_key: inner.script_public_key.clone(), cov_out_info: inner.cov_out_info.clone() })
+        Ok(Self { value: inner.value, script_public_key: inner.script_public_key.clone(), covenant: inner.covenant })
     }
 }
 

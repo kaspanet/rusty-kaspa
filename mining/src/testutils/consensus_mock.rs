@@ -61,7 +61,7 @@ impl ConsensusMock {
                     x.script_public_key.clone(),
                     block_daa_score,
                     transaction.tx.is_coinbase(),
-                    x.cov_out_info.map(|y| y.covenant_id),
+                    x.covenant.map(|y| y.covenant_id),
                 ),
             );
         });

@@ -19,7 +19,7 @@ impl Mempool {
                     output.script_public_key.clone(),
                     UNACCEPTED_DAA_SCORE,
                     false,
-                    output.cov_out_info.map(|x| x.covenant_id),
+                    output.covenant.map(|x| x.covenant_id),
                 ));
             }
         }

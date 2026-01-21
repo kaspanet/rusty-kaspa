@@ -236,7 +236,7 @@ impl UtxoDiff {
                 output.script_public_key.clone(),
                 block_daa_score,
                 is_coinbase,
-                output.cov_out_info.map(|x| x.covenant_id),
+                output.covenant.map(|x| x.covenant_id),
             );
             self.add_entry(outpoint, entry)?;
         }

@@ -230,9 +230,9 @@ pub fn hash_output(hasher: &mut impl Hasher, output: &TransactionOutput, version
     hash_script_public_key(hasher, &output.script_public_key);
 
     if version >= 1 {
-        hasher.write_bool(output.cov_out_info.is_some());
-        if let Some(cov_out_info) = &output.cov_out_info {
-            hasher.write_u16(cov_out_info.authorizing_input).update(cov_out_info.covenant_id);
+        hasher.write_bool(output.covenant.is_some());
+        if let Some(covenant) = &output.covenant {
+            hasher.write_u16(covenant.authorizing_input).update(covenant.covenant_id);
         }
     }
 }
@@ -332,16 +332,8 @@ mod tests {
                 },
             ],
             vec![
-                TransactionOutput {
-                    value: 300,
-                    script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()),
-                    cov_out_info: None,
-                },
-                TransactionOutput {
-                    value: 300,
-                    script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()),
-                    cov_out_info: None,
-                },
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()), covenant: None },
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()), covenant: None },
             ],
             1615462089000,
             SUBNETWORK_ID_NATIVE,

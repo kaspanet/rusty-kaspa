@@ -93,7 +93,7 @@ impl UtxoPlurality for UtxoEntry {
 
 impl UtxoPlurality for TransactionOutput {
     fn plurality(&self) -> u64 {
-        utxo_plurality(&self.script_public_key, self.cov_out_info.is_some())
+        utxo_plurality(&self.script_public_key, self.covenant.is_some())
     }
 }
 
@@ -703,7 +703,7 @@ mod tests {
                 .map(|out_amount| TransactionOutput {
                     value: out_amount,
                     script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
-                    cov_out_info: None,
+                    covenant: None,
                 })
                 .collect(),
             1615462089000,

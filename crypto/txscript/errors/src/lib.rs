@@ -8,6 +8,8 @@ pub enum TxScriptError {
     MalformedPush(usize, usize),
     #[error("transaction input {0} is out of bounds, should be non-negative below {1}")]
     InvalidInputIndex(i32, usize),
+    #[error("transaction input {0} is either out of bounds or has no associated covenant outputs")]
+    InvalidCovInputIndex(i32),
     #[error("combined stack size {0} > max allowed {1}")]
     StackSizeExceeded(usize, usize),
     #[error("attempt to execute invalid opcode {0}")]
@@ -82,10 +84,30 @@ pub enum TxScriptError {
 
     #[error("{0} is not a valid covenant output index for input {1} with {2} covenant outputs")]
     InvalidCovOutIndex(usize, usize, usize),
+    #[error("blockhash must be exactly 32 bytes long, got {0} bytes instead")]
+    InvalidLengthOfBlockHash(usize),
+    #[error("block {0} not selected")]
+    BlockNotSelected(String),
+    #[error("block {0} already pruned")]
+    BlockAlreadyPruned(String),
+    #[error("block {0} is too deep")]
+    BlockIsTooDeep(String),
+    #[error("covenants error: {0}")]
+    CovenantsError(#[from] CovenantsError),
 }
 
 #[derive(Error, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum SerializationError {
     #[error("Number exceeds {1} bytes: {0}")]
     NumberTooLong(i64, usize),
+}
+
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+pub enum CovenantsError {
+    #[error("output #{0} covenant id does not correspond to the authorizing input covenant id")]
+    WrongCovenantId(usize),
+    #[error("output #{0} covenant id does not correspond to the authorizing input outpoint hashing (genesis case)")]
+    WrongGenesisCovenantId(usize),
+    #[error("output #{0} covenant authorizing input index {1} is out of bounds")]
+    AuthInputOutOfBounds(usize, u16),
 }

@@ -45,7 +45,8 @@ impl TryFrom<TransactionOutput> for Output {
     fn try_from(output: TransactionOutput) -> std::result::Result<Output, Self::Error> {
         // Self::Transaction(transaction)
 
-        let TransactionOutputInner { value, script_public_key } = &*output.inner();
+        // TODO: covenant
+        let TransactionOutputInner { value, script_public_key, covenant } = &*output.inner();
 
         let output = OutputBuilder::default()
         .amount(*value)

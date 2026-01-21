@@ -57,7 +57,7 @@ impl From<UtxoEntry> for RpcOptionalUtxoEntry {
             block_daa_score: Some(entry.block_daa_score),
             is_coinbase: Some(entry.is_coinbase),
             verbose_data: None,
-            covenant_id: entry.covenant_id.into(),
+            covenant_id: entry.covenant_id,
         }
     }
 }

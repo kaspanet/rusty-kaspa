@@ -145,7 +145,7 @@ impl VirtualStateProcessor {
             output.script_public_key.clone(),
             accepting_block_daa_score,
             other_tx.is_coinbase(),
-            output.cov_out_info.map(|x| x.covenant_id),
+            output.covenant.map(|x| x.covenant_id),
         );
         Ok(utxo_entry)
     }
@@ -185,7 +185,7 @@ impl VirtualStateProcessor {
                             output.script_public_key.clone(),
                             accepting_daa_score,
                             tx.is_coinbase(),
-                            output.cov_out_info.map(|x| x.covenant_id),
+                            output.covenant.map(|x| x.covenant_id),
                         ))
                     } else {
                         None
@@ -251,7 +251,7 @@ impl VirtualStateProcessor {
                             output.script_public_key.clone(),
                             accepting_daa_score,
                             tx.is_coinbase(),
-                            output.cov_out_info.map(|x| x.covenant_id),
+                            output.covenant.map(|x| x.covenant_id),
                         ))
                     } else {
                         None

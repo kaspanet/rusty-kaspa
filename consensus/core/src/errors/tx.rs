@@ -1,7 +1,7 @@
 use crate::constants::MAX_SOMPI;
 use crate::subnets::SubnetworkId;
 use crate::tx::TransactionOutpoint;
-use kaspa_txscript_errors::TxScriptError;
+use kaspa_txscript_errors::{CovenantsError, TxScriptError};
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
@@ -101,11 +101,11 @@ pub enum TxRuleError {
     #[error("fee rate per contextual mass gram is not greater than the fee rate of the replaced transaction")]
     FeerateTooLow,
 
-    #[error("transaction output #{0} has cov_out_info field but transaction version is below 1")]
-    CovOutInfoInPreCovTxVersion(usize),
+    #[error("transaction output #{0} has covenant field but transaction version is below 1")]
+    CovenantBindingInPreCovTxVersion(usize),
 
-    #[error("output #{0} has covenant id doesn't correspond to the referenced input covenant id")]
-    WrongCovenantId(usize),
+    #[error("covenants error: {0}")]
+    CovenantsError(#[from] CovenantsError),
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;
