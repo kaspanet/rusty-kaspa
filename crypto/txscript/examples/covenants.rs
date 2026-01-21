@@ -10,8 +10,8 @@ use kaspa_txscript::opcodes::codes::{
     Op1Add, OpBlake2bWithKey, OpCat, OpDup, OpEqual, OpEqualVerify, OpOutpointTxId, OpRot, OpTxInputIndex, OpTxInputSpk,
     OpTxOutputCount, OpTxOutputSpk, OpTxPayloadLen, OpTxPayloadSubstr,
 };
-use kaspa_txscript::pay_to_script_hash_script;
 use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
+use kaspa_txscript::{pay_to_script_hash_script, EngineCtx};
 use kaspa_txscript::{EngineFlags, TxScriptEngine};
 use kaspa_txscript_errors::TxScriptError;
 
@@ -97,7 +97,7 @@ impl CovenantState {
         let payload_len = tx.payload.len();
         let (rest, payload) = preimage.split_at(preimage.len() - payload_len);
         let outpoint = TransactionOutpoint::new(tx.id(), 0);
-        let utxo_entry = UtxoEntry::new(1_000_000, spk.clone(), 0, false);
+        let utxo_entry = UtxoEntry::new(1_000_000, spk.clone(), 0, false, None);
         Self { prev_tx_rest: rest.to_vec(), prev_payload: payload.to_vec(), utxo_outpoint: outpoint, utxo_entry, counter }
     }
 }
@@ -168,7 +168,14 @@ fn run_vm(
     flags: EngineFlags,
 ) -> Result<(), TxScriptError> {
     let populated = PopulatedTransaction::new(tx, vec![utxo_entry.clone()]);
-    let mut vm = TxScriptEngine::from_transaction_input(&populated, &tx.inputs[0], 0, utxo_entry, reused_values, sig_cache, flags);
+    let mut vm = TxScriptEngine::from_transaction_input(
+        &populated,
+        &tx.inputs[0],
+        0,
+        utxo_entry,
+        EngineCtx::new(sig_cache).with_reused(reused_values),
+        flags,
+    );
     vm.execute()
 }
 

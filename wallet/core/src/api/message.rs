@@ -630,6 +630,7 @@ impl From<UtxoEntryWrapper> for UtxoEntry {
             script_public_key: entry.script_public_key,
             block_daa_score: entry.block_daa_score,
             is_coinbase: entry.is_coinbase,
+            covenant_id: todo!(),
         }
     }
 }

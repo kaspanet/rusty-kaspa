@@ -41,6 +41,7 @@ smallvec.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
+once_cell.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

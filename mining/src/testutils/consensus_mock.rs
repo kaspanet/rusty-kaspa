@@ -56,7 +56,13 @@ impl ConsensusMock {
         transaction.tx.outputs.iter().enumerate().for_each(|(i, x)| {
             utxos.insert(
                 TransactionOutpoint::new(transaction.id(), i as u32),
-                UtxoEntry::new(x.value, x.script_public_key.clone(), block_daa_score, transaction.tx.is_coinbase()),
+                UtxoEntry::new(
+                    x.value,
+                    x.script_public_key.clone(),
+                    block_daa_score,
+                    transaction.tx.is_coinbase(),
+                    x.covenant.map(|y| y.covenant_id),
+                ),
             );
         });
         // Register the transaction

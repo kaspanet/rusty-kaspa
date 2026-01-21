@@ -1,4 +1,4 @@
-use crate::constants::{MAX_SOMPI, TX_VERSION};
+use crate::constants::{MAX_SOMPI, TX_VERSION_POST_COV_HF};
 use kaspa_consensus_core::tx::Transaction;
 use std::collections::HashSet;
 
@@ -22,7 +22,8 @@ impl TransactionValidator {
         check_duplicate_transaction_inputs(tx)?;
         check_gas(tx)?;
         check_transaction_subnetwork(tx)?;
-        check_transaction_version(tx)
+        check_transaction_version(tx)?;
+        check_tx_version_specific_fields(tx)
     }
 
     fn check_transaction_inputs_in_isolation(&self, tx: &Transaction) -> TxResult<()> {
@@ -122,7 +123,7 @@ fn check_gas(tx: &Transaction) -> TxResult<()> {
 }
 
 fn check_transaction_version(tx: &Transaction) -> TxResult<()> {
-    if tx.version != TX_VERSION {
+    if tx.version > TX_VERSION_POST_COV_HF {
         return Err(TxRuleError::UnknownTxVersion(tx.version));
     }
     Ok(())
@@ -161,18 +162,28 @@ fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
     }
 }
 
+fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
+    for (i, output) in tx.outputs.iter().enumerate() {
+        if tx.version < 1 && output.covenant.is_some() {
+            return Err(TxRuleError::CovenantBindingInPreCovTxVersion(i));
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use kaspa_consensus_core::{
+        constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
         subnets::{SubnetworkId, SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
         tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
     use kaspa_core::assert_match;
 
     use crate::{
-        constants::TX_VERSION,
         params::MAINNET_PARAMS,
-        processes::transaction_validator::{errors::TxRuleError, TransactionValidator},
+        processes::transaction_validator::{errors::TxRuleError, tx_validation_in_header_context::LockTimeArg, TransactionValidator},
     };
 
     #[test]
@@ -203,6 +214,7 @@ mod tests {
                         0x30, 0xcd, 0x5a, 0x4b, 0x87
                     ),
                 ),
+                covenant: None,
             }],
             0,
             SUBNETWORK_ID_COINBASE,
@@ -252,6 +264,7 @@ mod tests {
                             0xac  // OP_CHECKSIG
                         ),
                     ),
+                    covenant: None,
                 },
                 TransactionOutput {
                     value: 0x108e20f00,
@@ -266,6 +279,7 @@ mod tests {
                             0xac  // OP_CHECKSIG
                         ),
                     ),
+                    covenant: None,
                 },
             ],
             0,
@@ -312,8 +326,14 @@ mod tests {
         tx.payload = vec![0];
         assert_match!(tv.validate_tx_in_isolation(&tx), Ok(()));
 
+        let mut tx = valid_tx.clone();
+        tx.version = TX_VERSION_POST_COV_HF + 1;
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::UnknownTxVersion(_)));
+
+        // Test prev version upper bound in header context
+        // TODO (covpp): turn back into pure in-isolation test
         let mut tx = valid_tx;
         tx.version = TX_VERSION + 1;
-        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::UnknownTxVersion(_)));
+        assert_match!(tv.validate_tx_in_header_context(&tx, LockTimeArg::Finalized, 0), Err(TxRuleError::UnknownTxVersion(_)));
     }
 }

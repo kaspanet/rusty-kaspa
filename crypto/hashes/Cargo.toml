@@ -15,6 +15,7 @@ no-asm = ["keccak"]
 
 [dependencies]
 blake2b_simd.workspace = true
+blake3 = { workspace = true, features = ["default"] }
 borsh.workspace = true
 faster-hex.workspace = true
 js-sys.workspace = true

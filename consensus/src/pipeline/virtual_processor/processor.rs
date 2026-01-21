@@ -119,6 +119,7 @@ pub struct VirtualStateProcessor {
     pub(super) genesis: GenesisBlock,
     pub(super) max_block_parents: u8,
     pub(super) mergeset_size_limit: u64,
+    pub(super) finality_depth: u64,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -173,7 +174,7 @@ pub struct VirtualStateProcessor {
 
     // Crescendo hardfork activation score (used here for activating KIPs 9,10)
     pub(crate) crescendo_activation: ForkActivation,
-
+    pub(crate) covenants_activation: ForkActivation,
     // Mining Rule
     mining_rules: Arc<MiningRules>,
 }
@@ -242,7 +243,9 @@ impl VirtualStateProcessor {
             counters,
             crescendo_logger: CrescendoLogger::new(),
             crescendo_activation: params.crescendo_activation,
+            covenants_activation: params.covenants_activation,
             mining_rules,
+            finality_depth: params.finality_depth(),
         }
     }
 
@@ -837,6 +840,7 @@ impl VirtualStateProcessor {
         virtual_daa_score: u64,
         virtual_past_median_time: u64,
         args: &TransactionValidationArgs,
+        sp: Hash,
     ) -> TxResult<()> {
         self.transaction_validator.validate_tx_in_isolation(&mutable_tx.tx)?;
         self.transaction_validator.validate_tx_in_header_context_with_args(
@@ -844,7 +848,7 @@ impl VirtualStateProcessor {
             virtual_daa_score,
             virtual_past_median_time,
         )?;
-        self.validate_mempool_transaction_in_utxo_context(mutable_tx, virtual_utxo_view, virtual_daa_score, args)?;
+        self.validate_mempool_transaction_in_utxo_context(mutable_tx, virtual_utxo_view, virtual_daa_score, args, sp)?;
         Ok(())
     }
 
@@ -854,9 +858,18 @@ impl VirtualStateProcessor {
         let virtual_utxo_view = &virtual_read.utxo_set;
         let virtual_daa_score = virtual_state.daa_score;
         let virtual_past_median_time = virtual_state.past_median_time;
+
+        let sp = virtual_state.ghostdag_data.selected_parent;
         // Run within the thread pool since par_iter might be internally applied to inputs
         self.thread_pool.install(|| {
-            self.validate_mempool_transaction_impl(mutable_tx, virtual_utxo_view, virtual_daa_score, virtual_past_median_time, args)
+            self.validate_mempool_transaction_impl(
+                mutable_tx,
+                virtual_utxo_view,
+                virtual_daa_score,
+                virtual_past_median_time,
+                args,
+                sp,
+            )
         })
     }
 
@@ -870,7 +883,7 @@ impl VirtualStateProcessor {
         let virtual_utxo_view = &virtual_read.utxo_set;
         let virtual_daa_score = virtual_state.daa_score;
         let virtual_past_median_time = virtual_state.past_median_time;
-
+        let virtual_sp = virtual_state.ghostdag_data.selected_parent;
         self.thread_pool.install(|| {
             mutable_txs
                 .par_iter_mut()
@@ -881,6 +894,7 @@ impl VirtualStateProcessor {
                         virtual_daa_score,
                         virtual_past_median_time,
                         args.get(&mtx.id()),
+                        virtual_sp,
                     )
                 })
                 .collect::<Vec<TxResult<()>>>()
@@ -943,6 +957,7 @@ impl VirtualStateProcessor {
             virtual_state.daa_score,
             virtual_state.daa_score,
             TxValidationFlags::Full,
+            virtual_state.ghostdag_data.selected_parent,
         )?;
         Ok(calculated_fee)
     }
@@ -1068,8 +1083,11 @@ impl VirtualStateProcessor {
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter());
 
-        let accepted_id_merkle_root = self
-            .calc_accepted_id_merkle_root(virtual_state.accepted_tx_ids.iter().copied(), virtual_state.ghostdag_data.selected_parent);
+        let accepted_id_merkle_root = self.calc_accepted_id_merkle_root(
+            virtual_state.daa_score,
+            virtual_state.accepted_tx_ids.iter().copied(),
+            virtual_state.ghostdag_data.selected_parent,
+        );
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;
@@ -1178,7 +1196,7 @@ impl VirtualStateProcessor {
         }
 
         let virtual_read = self.virtual_stores.upgradable_read();
-
+        let sp = virtual_read.state.get().unwrap().ghostdag_data.selected_parent;
         // Validate transactions of the pruning point itself
         let new_pruning_point_transactions = self.block_transactions_store.get(new_pruning_point).unwrap();
         let validated_transactions = self.validate_transactions_in_parallel(
@@ -1187,6 +1205,7 @@ impl VirtualStateProcessor {
             new_pruning_point_header.daa_score,
             new_pruning_point_header.daa_score,
             TxValidationFlags::Full,
+            sp,
         );
         if validated_transactions.len() < new_pruning_point_transactions.len() - 1 {
             // Some non-coinbase transactions are invalid

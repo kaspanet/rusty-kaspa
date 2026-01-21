@@ -1200,6 +1200,7 @@ impl Generator {
             script_public_key,
             block_daa_score: UNACCEPTED_DAA_SCORE,
             is_coinbase: false, // entry
+            covenant_id: todo!(),
         };
         UtxoEntryReference { utxo: Arc::new(utxo) }
     }

@@ -46,6 +46,7 @@ pub fn generate_random_utxo_from_script_public_key_pool(rng: &mut SmallRng, scri
         script_public_key_pool.choose(rng).expect("expected_script_public key").clone(),
         rng.gen(),
         rng.gen_bool(0.5),
+        None,
     )
 }
 
@@ -55,6 +56,7 @@ pub fn generate_random_utxo(rng: &mut SmallRng) -> UtxoEntry {
         generate_random_p2pk_script_public_key(rng),
         rng.gen(),
         rng.gen_bool(0.5),
+        None,
     )
 }
 

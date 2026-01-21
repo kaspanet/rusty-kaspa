@@ -30,10 +30,15 @@ blake2b_hasher! {
     struct MuHashElementHash => b"MuHashElement",
     struct MuHashFinalizeHash => b"MuHashFinalize",
     struct PersonalMessageSigningHash => b"PersonalMessageSigningHash",
+    struct CovenantID => b"CovenantID",
 }
 
 sha256_hasher! {
     struct TransactionSigningHashECDSA => "TransactionSigningHashECDSA",
+}
+
+blake3_hasher! {
+    struct SeqCommitmentMerkleBranchHash => b"SeqCommitmentMerkleBranchHash",
 }
 
 macro_rules! sha256_hasher {
@@ -49,6 +54,7 @@ macro_rules! sha256_hasher {
                 // in the future we can replace this with the correct initial state.
                 static HASHER: Lazy<$name> = Lazy::new(|| {
                     // SHA256 doesn't natively support domain separation, so we hash it to make it constant size.
+                    // TODO: replace with Sha256::new_with_prefix() that does exactly this.
                     let mut tmp_state = Sha256::new();
                     tmp_state.update($domain_sep);
                     let mut out = $name(Sha256::new());
@@ -104,6 +110,43 @@ macro_rules! blake2b_hasher {
     impl_hasher!{ struct $name }
     )*};
 }
+
+macro_rules! blake3_hasher {
+    ($(struct $name:ident => $domain_sep:literal),+ $(,)? ) => {$(
+        #[derive(Clone)]
+        pub struct $name(blake3::Hasher);
+
+        impl $name {
+            #[inline(always)]
+            pub fn new() -> Self {
+                const KEY: [u8; blake3::KEY_LEN] = {
+                    let mut key = [0u8; blake3::KEY_LEN];
+                    let mut i = 0usize;
+                    while i < $domain_sep.len() {
+                        key[i] = $domain_sep[i];
+                        i += 1;
+                    }
+                    key
+                };
+
+                Self(blake3::Hasher::new_keyed(&KEY))
+            }
+
+            pub fn write<A: AsRef<[u8]>>(&mut self, data: A) {
+                self.0.update(data.as_ref());
+            }
+
+            #[inline(always)]
+            pub fn finalize(self) -> crate::Hash {
+                let mut out = [0u8; 32];
+                out.copy_from_slice(self.0.finalize().as_bytes());
+                crate::Hash(out)
+            }
+        }
+    impl_hasher!{ struct $name }
+    )*};
+}
+
 macro_rules! impl_hasher {
     (struct $name:ident) => {
         impl HasherBase for $name {
@@ -133,7 +176,7 @@ macro_rules! impl_hasher {
     };
 }
 
-use {blake2b_hasher, impl_hasher, sha256_hasher};
+use {blake2b_hasher, blake3_hasher, impl_hasher, sha256_hasher};
 
 #[cfg(test)]
 mod tests {
