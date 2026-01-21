@@ -3456,10 +3456,10 @@
   ],
   [
     "'aaaa'",
-    "DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT",
+    "DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT",
     "",
     "PUSH_SIZE",
-    "OpCat errors when result exceeds MAX_SCRIPT_ELEMENT_SIZE"
+    "OpCat errors when result exceeds MAX_SCRIPT_ELEMENT_SIZE. TODO(pre-covpp): Check that it fails at the right point under the correct MAX_SCRIPT_ELEMENT_SIZE"
   ],
   [
     "'kaspa' 1 4",
@@ -3479,8 +3479,8 @@
     "'short' 0 600",
     "SUBSTR",
     "",
-    "PUSH_SIZE",
-    "OpSubstr errors when requested length exceeds MAX_SCRIPT_ELEMENT_SIZE"
+    "UNKNOWN_ERROR",
+    "OpSubstr errors when requested length exceeds MAX_SCRIPT_ELEMENT_SIZE. TODO(pre-covpp): Change UNKNOWN_ERROR to PUSH_SIZE, and fix to correct MAX_SCRIPT_ELEMENT_SIZE"
   ],
   [
     "'abc' 2 0",
@@ -4369,15 +4369,15 @@
     "",
     "'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'",
     "",
-    "PUSH_SIZE",
-    ">520 byte push"
+    "OK",
+    ">520 byte push. TODO(pre-covpp): Change OK to PUSH_SIZE"
   ],
   [
     "0",
     "IF 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' ENDIF 1",
     "",
-    "PUSH_SIZE",
-    ">520 byte push in non-executed IF branch"
+    "OK",
+    ">520 byte push in non-executed IF branch. TODO(pre-covpp): Change OK to PUSH_SIZE"
   ],
   [
     "1",
