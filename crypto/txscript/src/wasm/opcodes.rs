@@ -196,7 +196,7 @@ pub enum Opcodes {
     OpWithin = 0xa5,
 
     /// Undefined opcodes.
-    OpUnknown166 = 0xa6,
+    OpZkPrecompile = 0xa6,
     OpUnknown167 = 0xa7,
 
     /// Crypto opcodes.
@@ -239,7 +239,7 @@ pub enum Opcodes {
     OpUnknown200 = 0xc8,
     OpUnknown201 = 0xc9,
     OpUnknown202 = 0xca,
-    OpZkPrecompile = 0xcb,
+    OpUnknown203 = 0xcb,
     OpUnknown204 = 0xcc,
     OpUnknown205 = 0xcd,
     OpUnknown206 = 0xce,
