@@ -13,6 +13,7 @@ use crate::outpoint::{TransactionOutpoint, TransactionOutpointInner};
 use crate::result::Result;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::mass::{UtxoCell, UtxoPlurality};
+use kaspa_hashes::Hash;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_UTXO_ENTRY: &'static str = r#"
@@ -72,6 +73,8 @@ pub struct UtxoEntry {
     pub block_daa_score: u64,
     #[wasm_bindgen(js_name = isCoinbase)]
     pub is_coinbase: bool,
+    #[wasm_bindgen(js_name = covenantId)]
+    pub covenant_id: Option<Hash>,
 }
 
 #[wasm_bindgen]
@@ -131,6 +134,7 @@ impl From<&UtxoEntry> for cctx::UtxoEntry {
             script_public_key: utxo.script_public_key.clone(),
             block_daa_score: utxo.block_daa_score,
             is_coinbase: utxo.is_coinbase,
+            covenant_id: utxo.covenant_id,
         }
         // value.entry.clone()
     }
@@ -252,7 +256,8 @@ impl From<UtxoEntry> for UtxoEntryReference {
 
 impl From<&UtxoEntryReference> for UtxoCell {
     fn from(entry: &UtxoEntryReference) -> Self {
-        Self::new(entry.utxo.script_public_key.plurality(), entry.amount())
+        let utxo: cctx::UtxoEntry = entry.into();
+        Self::new(utxo.plurality(), entry.amount())
     }
 }
 
@@ -437,7 +442,16 @@ impl TryCastFromJs for UtxoEntryReference {
                     })?;
                     let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
 
-                    UtxoEntry { address, outpoint, amount, script_public_key, block_daa_score, is_coinbase }
+                    UtxoEntry {
+                        address,
+                        outpoint,
+                        amount,
+                        script_public_key,
+                        block_daa_score,
+                        is_coinbase,
+
+                        covenant_id: todo!(), // TODO (before merge): See how to parse hash from JS
+                    }
                 } else {
                     let amount = object.get_u64("amount").map_err(|_| {
                         Error::custom("Supplied object does not contain `amount` property (or it is not a numerical value)")
@@ -449,7 +463,15 @@ impl TryCastFromJs for UtxoEntryReference {
                     })?;
                     let is_coinbase = object.try_get_bool("isCoinbase")?.unwrap_or(false);
 
-                    UtxoEntry { address, outpoint, amount, script_public_key, block_daa_score, is_coinbase }
+                    UtxoEntry {
+                        address,
+                        outpoint,
+                        amount,
+                        script_public_key,
+                        block_daa_score,
+                        is_coinbase,
+                        covenant_id: todo!(), // TODO (before merge): See how to parse hash from JS
+                    }
                 };
 
                 Ok(UtxoEntryReference::from(utxo_entry))
@@ -473,8 +495,15 @@ impl UtxoEntryReference {
         let block_daa_score = 0;
         let is_coinbase = false;
 
-        let utxo_entry =
-            UtxoEntry { address: Some(address.clone()), outpoint, amount, script_public_key, block_daa_score, is_coinbase };
+        let utxo_entry = UtxoEntry {
+            address: Some(address.clone()),
+            outpoint,
+            amount,
+            script_public_key,
+            block_daa_score,
+            is_coinbase,
+            covenant_id: None,
+        };
 
         UtxoEntryReference::from(utxo_entry)
     }

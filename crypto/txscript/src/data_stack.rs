@@ -1,6 +1,7 @@
-use crate::TxScriptError;
+use crate::{TxScriptError, MAX_SCRIPT_ELEMENT_SIZE};
 use core::fmt::Debug;
 use core::iter;
+use kaspa_hashes::Hash;
 use kaspa_txscript_errors::SerializationError;
 use std::cmp::Ordering;
 use std::num::TryFromIntError;
@@ -72,7 +73,7 @@ impl<const LEN: usize> From<SizedEncodeInt<LEN>> for i64 {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct Stack {
     inner: Vec<Vec<u8>>,
-    max_element_size: usize,
+    covenants_enabled: bool,
 }
 
 impl Deref for Stack {
@@ -94,8 +95,8 @@ impl Index<usize> for Stack {
 #[cfg(test)]
 impl From<Vec<Vec<u8>>> for Stack {
     fn from(inner: Vec<Vec<u8>>) -> Self {
-        // TODO: Replace with the correct max element size after the fork.
-        Self { inner, max_element_size: usize::MAX }
+        // TODO(covpp-mainnet): should have fork logic
+        Self { inner, covenants_enabled: true }
     }
 }
 
@@ -106,7 +107,7 @@ impl From<Stack> for Vec<Vec<u8>> {
 }
 
 pub(crate) trait OpcodeData<T> {
-    fn deserialize(&self) -> Result<T, TxScriptError>;
+    fn deserialize(&self, enforce_minimal: bool) -> Result<T, TxScriptError>;
     fn serialize(from: &T) -> Result<Self, SerializationError>
     where
         Self: Sized;
@@ -138,11 +139,12 @@ fn check_minimal_data_encoding(v: &[u8]) -> Result<(), TxScriptError> {
 }
 
 #[inline]
-fn serialize_i64(from: &i64) -> Vec<u8> {
+pub(crate) fn serialize_i64(from: i64, size: Option<usize>) -> Result<Vec<u8>, SerializationError> {
     let sign = from.signum();
     let mut positive = from.unsigned_abs();
     let mut last_saturated = false;
-    let mut number_vec: Vec<u8> = iter::from_fn(move || {
+    let mut number_vec: Vec<u8> = Vec::with_capacity(size.unwrap_or(8));
+    number_vec.extend(iter::from_fn(move || {
         if positive == 0 {
             if last_saturated {
                 last_saturated = false;
@@ -156,25 +158,36 @@ fn serialize_i64(from: &i64) -> Vec<u8> {
             positive >>= 8;
             Some(value as u8)
         }
-    })
-    .collect();
+    }));
+
+    if let Some(size) = size {
+        if number_vec.len() > size {
+            return Err(SerializationError::NumberTooLong(from, size));
+        }
+        number_vec.resize(size, 0);
+    }
+
     if sign == -1 {
         match number_vec.last_mut() {
             Some(num) => *num |= 0x80,
             _ => unreachable!(),
         }
     }
-    number_vec
+    Ok(number_vec)
 }
 
-fn deserialize_i64(v: &[u8]) -> Result<i64, TxScriptError> {
+fn deserialize_i64(v: &[u8], enforce_minimal: bool) -> Result<i64, TxScriptError> {
     match v.len() {
         l if l > size_of::<i64>() => {
+            // Even when `enforce_minimal` is false, we limit
             Err(TxScriptError::NotMinimalData(format!("numeric value encoded as {v:x?} is longer than 8 bytes")))
         }
         0 => Ok(0),
         _ => {
-            check_minimal_data_encoding(v)?;
+            if enforce_minimal {
+                check_minimal_data_encoding(v)?;
+            }
+
             let msb = v[v.len() - 1];
             let sign = 1 - 2 * ((msb >> 7) as i64);
             let first_byte = (msb & 0x7f) as i64;
@@ -185,8 +198,8 @@ fn deserialize_i64(v: &[u8]) -> Result<i64, TxScriptError> {
 
 impl OpcodeData<i64> for Vec<u8> {
     #[inline]
-    fn deserialize(&self) -> Result<i64, TxScriptError> {
-        OpcodeData::<SizedEncodeInt<8>>::deserialize(self).map(i64::from)
+    fn deserialize(&self, enforce_minimal: bool) -> Result<i64, TxScriptError> {
+        OpcodeData::<SizedEncodeInt<8>>::deserialize(self, enforce_minimal).map(i64::from)
     }
 
     #[inline]
@@ -197,8 +210,8 @@ impl OpcodeData<i64> for Vec<u8> {
 
 impl OpcodeData<i32> for Vec<u8> {
     #[inline]
-    fn deserialize(&self) -> Result<i32, TxScriptError> {
-        OpcodeData::<SizedEncodeInt<4>>::deserialize(self).map(|v| v.try_into().expect("number is within i32 range"))
+    fn deserialize(&self, enforce_minimal: bool) -> Result<i32, TxScriptError> {
+        OpcodeData::<SizedEncodeInt<4>>::deserialize(self, enforce_minimal).map(|v| v.try_into().expect("number is within i32 range"))
     }
 
     #[inline]
@@ -212,8 +225,8 @@ impl OpcodeData<i32> for Vec<u8> {
 // in minimal encoding when the high bit is set (0xFFFF00)
 impl OpcodeData<u16> for Vec<u8> {
     #[inline]
-    fn deserialize(&self) -> Result<u16, TxScriptError> {
-        OpcodeData::<SizedEncodeInt<3>>::deserialize(self).and_then(|v| {
+    fn deserialize(&self, enforce_minimal: bool) -> Result<u16, TxScriptError> {
+        OpcodeData::<SizedEncodeInt<3>>::deserialize(self, enforce_minimal).and_then(|v| {
             v.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(format!("value cannot fit in u16: {}", e)))
         })
     }
@@ -226,7 +239,7 @@ impl OpcodeData<u16> for Vec<u8> {
 
 impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for Vec<u8> {
     #[inline]
-    fn deserialize(&self) -> Result<SizedEncodeInt<LEN>, TxScriptError> {
+    fn deserialize(&self, enforce_minimal: bool) -> Result<SizedEncodeInt<LEN>, TxScriptError> {
         match self.len() > LEN {
             true => Err(TxScriptError::NumberTooBig(format!(
                 "numeric value encoded as {:x?} is {} bytes which exceeds the max allowed of {}",
@@ -234,15 +247,15 @@ impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for Vec<u8> {
                 self.len(),
                 LEN
             ))),
-            false => deserialize_i64(self).map(SizedEncodeInt::<LEN>),
+            false => deserialize_i64(self, enforce_minimal).map(SizedEncodeInt::<LEN>),
         }
     }
 
     #[inline]
     fn serialize(from: &SizedEncodeInt<LEN>) -> Result<Self, SerializationError> {
-        let bytes = serialize_i64(&from.0);
+        let bytes = serialize_i64(from.0, None)?;
         if bytes.len() > LEN {
-            return Err(SerializationError::NumberTooLong(from.0));
+            return Err(SerializationError::NumberTooLong(from.0, LEN));
         }
         Ok(bytes)
     }
@@ -250,7 +263,7 @@ impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for Vec<u8> {
 
 impl OpcodeData<bool> for Vec<u8> {
     #[inline]
-    fn deserialize(&self) -> Result<bool, TxScriptError> {
+    fn deserialize(&self, _enforce_minimal: bool) -> Result<bool, TxScriptError> {
         if self.is_empty() {
             Ok(false)
         } else {
@@ -268,15 +281,35 @@ impl OpcodeData<bool> for Vec<u8> {
     }
 }
 
+impl OpcodeData<Hash> for Vec<u8> {
+    #[inline]
+    fn deserialize(&self, _: bool) -> Result<Hash, TxScriptError> {
+        Hash::try_from_slice(self).map_err(|_| TxScriptError::InvalidLengthOfBlockHash(self.len()))
+    }
+
+    #[inline]
+    fn serialize(from: &Hash) -> Result<Self, SerializationError> {
+        Ok(from.as_bytes().to_vec())
+    }
+}
+
 impl Stack {
-    pub(crate) fn new(inner: Vec<Vec<u8>>, max_element_size: usize) -> Self {
-        Self { inner, max_element_size }
+    pub(crate) fn new(inner: Vec<Vec<u8>>, covenants_enabled: bool) -> Self {
+        Self { inner, covenants_enabled }
+    }
+
+    fn max_element_size(&self) -> usize {
+        if self.covenants_enabled {
+            MAX_SCRIPT_ELEMENT_SIZE
+        } else {
+            usize::MAX
+        }
     }
 
     #[inline]
     pub fn insert(&mut self, index: usize, element: Vec<u8>) -> Result<(), TxScriptError> {
-        if element.len() > self.max_element_size {
-            return Err(TxScriptError::ElementTooBig(element.len(), self.max_element_size));
+        if element.len() > self.max_element_size() {
+            return Err(TxScriptError::ElementTooBig(element.len(), self.max_element_size()));
         }
         self.inner.insert(index, element);
         Ok(())
@@ -296,7 +329,11 @@ impl Stack {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
         Ok(<[T; SIZE]>::try_from(
-            self.inner.split_off(self.len() - SIZE).iter().map(|v| v.deserialize()).collect::<Result<Vec<T>, _>>()?,
+            self.inner
+                .split_off(self.len() - SIZE)
+                .iter()
+                .map(|v| v.deserialize(!self.covenants_enabled))
+                .collect::<Result<Vec<T>, _>>()?,
         )
         .expect("Already exact item"))
     }
@@ -397,8 +434,8 @@ impl Stack {
     }
 
     pub fn push(&mut self, item: Vec<u8>) -> Result<(), TxScriptError> {
-        if item.len() > self.max_element_size {
-            return Err(TxScriptError::ElementTooBig(item.len(), self.max_element_size));
+        if item.len() > self.max_element_size() {
+            return Err(TxScriptError::ElementTooBig(item.len(), self.max_element_size()));
         }
         self.inner.push(item);
         Ok(())
@@ -412,7 +449,7 @@ impl Stack {
 #[cfg(test)]
 mod tests {
     use super::OpcodeData;
-    use crate::data_stack::SizedEncodeInt;
+    use crate::data_stack::{serialize_i64, SizedEncodeInt};
     use kaspa_txscript_errors::{SerializationError, TxScriptError};
 
     // TestScriptNumBytes
@@ -470,11 +507,16 @@ mod tests {
         for test in tests {
             let serialized: Vec<u8> = OpcodeData::<i64>::serialize(&test.num).unwrap();
             assert_eq!(serialized, test.serialized);
+            assert_eq!(serialize_i64(test.num, Some(test.serialized.len())).unwrap(), test.serialized);
+            if !test.serialized.is_empty() {
+                serialize_i64(test.num, Some(test.serialized.len() - 1)).unwrap_err();
+                // The default i64 serialization is minimal and cannot be encoded with less bytes.
+            }
         }
 
         // special case 9-byte i64
         let r: Result<Vec<u8>, _> = OpcodeData::<i64>::serialize(&-9223372036854775808);
-        assert_eq!(r, Err(SerializationError::NumberTooLong(-9223372036854775808)));
+        assert_eq!(r, Err(SerializationError::NumberTooLong(-9223372036854775808, 8)));
     }
 
     // Test u16 serialization/deserialization
@@ -483,7 +525,7 @@ mod tests {
         // Test valid u16 values
         for value in [0u16, 1, 127, 128, 255, 256, 32767, 32768, 65535] {
             let serialized: Vec<u8> = OpcodeData::<u16>::serialize(&value).unwrap();
-            let deserialized: u16 = serialized.deserialize().unwrap();
+            let deserialized: u16 = serialized.deserialize(false).unwrap();
             assert_eq!(deserialized, value, "Failed for value {}", value);
         }
     }
@@ -689,42 +731,42 @@ mod tests {
         for test in tests {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(), test.result);
+            assert_eq!(test.serialized.deserialize(true), test.result);
         }
 
         for test in test_of_size_5 {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(), test.result);
+            assert_eq!(test.serialized.deserialize(true), test.result);
         }
 
         for test in test_of_size_8 {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(), test.result);
+            assert_eq!(test.serialized.deserialize(true), test.result);
         }
 
         for test in test_of_size_9 {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(), test.result);
+            assert_eq!(test.serialized.deserialize(true), test.result);
         }
 
         for test in test_of_size_10 {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(), test.result);
+            assert_eq!(test.serialized.deserialize(true), test.result);
         }
 
         for test in test_bool {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(), test.result);
+            assert_eq!(test.serialized.deserialize(true), test.result);
         }
         for test in kip10_tests {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(), test.result);
+            assert_eq!(test.serialized.deserialize(true), test.result);
         }
     }
 }

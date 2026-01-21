@@ -61,7 +61,7 @@ pub fn transaction_output_estimated_serialized_size(output: &TransactionOutput) 
 /// Returns the UTXO storage "plurality" for this script public key.
 /// i.e., how many 100-byte "storage units" it occupies.
 /// The choice of 100 bytes per unit ensures that all standard SPKs have a plurality of 1.
-pub fn utxo_plurality(spk: &ScriptPublicKey) -> u64 {
+pub fn utxo_plurality(spk: &ScriptPublicKey, has_covenant_id: bool) -> u64 {
     /// A constant representing the number of bytes used by the fixed parts of a UTXO.
     const UTXO_CONST_STORAGE: usize =
         32  // outpoint::tx_id
@@ -77,7 +77,7 @@ pub fn utxo_plurality(spk: &ScriptPublicKey) -> u64 {
     // Hence, all standard SPKs end up with a plurality of 1.
     const UTXO_UNIT_SIZE: usize = 100;
 
-    (UTXO_CONST_STORAGE + spk.script().len()).div_ceil(UTXO_UNIT_SIZE) as u64
+    (UTXO_CONST_STORAGE + spk.script().len() + if has_covenant_id { HASH_SIZE } else { 0 }).div_ceil(UTXO_UNIT_SIZE) as u64
 }
 
 pub trait UtxoPlurality {
@@ -85,21 +85,15 @@ pub trait UtxoPlurality {
     fn plurality(&self) -> u64;
 }
 
-impl UtxoPlurality for ScriptPublicKey {
-    fn plurality(&self) -> u64 {
-        utxo_plurality(self)
-    }
-}
-
 impl UtxoPlurality for UtxoEntry {
     fn plurality(&self) -> u64 {
-        utxo_plurality(&self.script_public_key)
+        utxo_plurality(&self.script_public_key, self.covenant_id.is_some())
     }
 }
 
 impl UtxoPlurality for TransactionOutput {
     fn plurality(&self) -> u64 {
-        utxo_plurality(&self.script_public_key)
+        utxo_plurality(&self.script_public_key, self.covenant.is_some())
     }
 }
 
@@ -463,10 +457,12 @@ mod tests {
         }
 
         // verify P >= 1 also when the script is empty
-        assert!(utxo_plurality(&ScriptPublicKey::new(0, ScriptVec::from_slice(&[]))) == 1);
+        assert!(utxo_plurality(&ScriptPublicKey::new(0, ScriptVec::from_slice(&[])), false) == 1);
         // Assert the UTXO_CONST_STORAGE=63, UTXO_UNIT_SIZE=100 constants
-        assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE) as usize])) == 1);
-        assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE + 1) as usize])) == 2);
+        assert!(utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE) as usize]), false) == 1);
+        assert!(
+            utxo_plurality(&ScriptPublicKey::from_vec(0, vec![1; (UTXO_UNIT_SIZE - UTXO_CONST_STORAGE + 1) as usize]), false) == 2
+        );
     }
 
     #[derive(Debug)]
@@ -728,6 +724,7 @@ mod tests {
                 .map(|out_amount| TransactionOutput {
                     value: out_amount,
                     script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                    covenant: None,
                 })
                 .collect(),
             1615462089000,
@@ -743,6 +740,7 @@ mod tests {
                 script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
                 block_daa_score: 0,
                 is_coinbase: false,
+                covenant_id: None,
             })
             .collect();
         MutableTransaction::with_entries(tx, entries)

@@ -1,4 +1,5 @@
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
+use kaspa_hashes::Hash;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -22,12 +23,13 @@ pub struct CompactUtxoEntry {
     pub amount: u64,
     pub block_daa_score: u64,
     pub is_coinbase: bool,
+    pub covenant_id: Option<Hash>,
 }
 
 impl CompactUtxoEntry {
     /// Creates a new [`CompactUtxoEntry`]
-    pub fn new(amount: u64, block_daa_score: u64, is_coinbase: bool) -> Self {
-        Self { amount, block_daa_score, is_coinbase }
+    pub fn new(amount: u64, block_daa_score: u64, is_coinbase: bool, covenant_id: Option<Hash>) -> Self {
+        Self { amount, block_daa_score, is_coinbase, covenant_id }
     }
 }
 
@@ -35,7 +37,12 @@ impl MemSizeEstimator for CompactUtxoEntry {}
 
 impl From<UtxoEntry> for CompactUtxoEntry {
     fn from(utxo_entry: UtxoEntry) -> Self {
-        Self { amount: utxo_entry.amount, block_daa_score: utxo_entry.block_daa_score, is_coinbase: utxo_entry.is_coinbase }
+        Self {
+            amount: utxo_entry.amount,
+            block_daa_score: utxo_entry.block_daa_score,
+            is_coinbase: utxo_entry.is_coinbase,
+            covenant_id: utxo_entry.covenant_id,
+        }
     }
 }
 

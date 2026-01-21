@@ -36,7 +36,7 @@ mod test {
         let stark_stack = Stack::from(vec![stark_proof_bytes, stark_journal_bytes, stark_image_id_bytes, [stark_tag].to_vec()]);
 
         // Build Groth16 stack with hardcoded values (matching the order from try_verify_stack test)
-        let mut groth_stack = Stack::new(Vec::new(), 1024 * 1024);
+        let mut groth_stack = Stack::new(Vec::new(), true);
         groth_stack.push(input4).unwrap();
         groth_stack.push(input3).unwrap();
         groth_stack.push(input2).unwrap();

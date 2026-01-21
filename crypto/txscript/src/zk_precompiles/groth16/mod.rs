@@ -75,7 +75,7 @@ mod tests {
 
         println!("unprepared key len: {}, proof len: {}", unprepared_compressed_vk.len(), proof.len());
 
-        let mut stack = Stack::new(Vec::new(), 1024 * 1024);
+        let mut stack = Stack::new(Vec::new(), true);
         stack.push(input4).unwrap();
         stack.push(input3).unwrap();
         stack.push(input2).unwrap();

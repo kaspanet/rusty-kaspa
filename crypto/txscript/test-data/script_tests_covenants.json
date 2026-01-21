@@ -3456,10 +3456,10 @@
   ],
   [
     "'aaaa'",
-    "DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT",
+    "DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT DUP CAT",
     "",
     "PUSH_SIZE",
-    "OpCat errors when result exceeds MAX_SCRIPT_ELEMENT_SIZE"
+    "OpCat errors when result exceeds MAX_SCRIPT_ELEMENT_SIZE. TODO(pre-covpp): Check that it fails at the right point under the correct MAX_SCRIPT_ELEMENT_SIZE"
   ],
   [
     "'kaspa' 1 4",
@@ -3479,8 +3479,8 @@
     "'short' 0 600",
     "SUBSTR",
     "",
-    "PUSH_SIZE",
-    "OpSubstr errors when requested length exceeds MAX_SCRIPT_ELEMENT_SIZE"
+    "UNKNOWN_ERROR",
+    "OpSubstr errors when requested length exceeds MAX_SCRIPT_ELEMENT_SIZE. TODO(pre-covpp): Change UNKNOWN_ERROR to PUSH_SIZE, and fix to correct MAX_SCRIPT_ELEMENT_SIZE"
   ],
   [
     "'abc' 2 0",
@@ -3927,38 +3927,131 @@
     "OpTxOutputSpk is enabled since kip10"
   ],
   [
+    "'output_root_hashffffffffffffffff' 'input_blockfffffffffffffffffffff'",
+    "0xd4 EQUAL",
+    "",
+    "OK",
+    "OpChainblockSeqCommit puts the block sequence commitment on the stack"
+  ],
+  [
     "TODO (before merge): Add tests for the missing range 0xc4 to 0xca"
   ],
   [
     "1",
-    "IF 0xcb ELSE 1 ENDIF",
+    "0 0 COV_OUTPUT_COUNT EQUALVERIFY",
     "",
-    "BAD_OPCODE",
-    "opcodes above OpTxInputScriptSigSubstr invalid if executed"
+    "OK",
+    "OpCovOutputCount should return 0 for transactions with no covenant id"
   ],
   [
     "1",
-    "IF 0xcc ELSE 1 ENDIF",
+    "0 0 COV_OUTPUT_IDX DROP",
     "",
-    "BAD_OPCODE"
+    "UNKNOWN_ERROR",
+    "OpCovOutputIdx errors for transactions with no covenant id"
   ],
   [
     "1",
-    "IF 0xcd ELSE 1 ENDIF",
+    "2 NUM2BIN 0x02 0x0100 EQUAL",
     "",
-    "BAD_OPCODE"
+    "OK"
+  ],
+  [
+    "3",
+    "2 NUM2BIN 3 NUMEQUAL",
+    "",
+    "OK",
+    "NUM2BIN output compares equal to original value"
+  ],
+  [
+    "2",
+    "3 NUM2BIN 2 4 NUM2BIN NUMEQUAL",
+    "",
+    "OK",
+    "NUM2BIN padded forms remain numerically equal"
+  ],
+  [
+    "-1",
+    "3 NUM2BIN -1 NUMEQUAL",
+    "",
+    "OK",
+    "NUM2BIN preserves negative values for NUMEQUAL"
+  ],
+  [
+    "-2",
+    "4 NUM2BIN -2 4 NUM2BIN NUMEQUAL",
+    "",
+    "OK",
+    "Negative padded encodings remain equal"
+  ],
+  [
+    "0x02 0x0100",
+    "3 NUM2BIN 0x03 0x010000 EQUAL",
+    "",
+    "OK",
+    "NUM2BIN accepts non-minimal encoded inputs"
+  ],
+  [
+    "0",
+    "2 NUM2BIN 0x02 0x0000 EQUAL",
+    "",
+    "OK",
+    "NUM2BIN zero pads to requested length"
+  ],
+  [
+    "-1",
+    "2 NUM2BIN 0x02 0x0180 EQUAL",
+    "",
+    "OK",
+    "NUM2BIN preserves sign when padding"
+  ],
+  [
+    "0x02 0x0001",
+    "1 NUM2BIN",
+    "",
+    "UNKNOWN_ERROR",
+    "NUM2BIN errors if requested length is too small"
   ],
   [
     "1",
-    "IF 0xce ELSE 1 ENDIF",
+    "9 NUM2BIN",
     "",
-    "BAD_OPCODE"
+    "UNKNOWN_ERROR",
+    "NUM2BIN rejects lengths above 8 bytes"
+  ],
+  [
+    "1",
+    "BIN2NUM 1 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0500",
+    "BIN2NUM 5 NUMEQUAL",
+    "",
+    "OK",
+    "BIN2NUM minimizes positive numbers"
+  ],
+  [
+    "0x02 0x0580",
+    "BIN2NUM -5 NUMEQUAL",
+    "",
+    "OK",
+    "BIN2NUM minimizes negative numbers"
+  ],
+  [
+    "0x09 0x000000000000000001",
+    "BIN2NUM",
+    "",
+    "UNKNOWN_ERROR",
+    "BIN2NUM rejects inputs longer than 8 bytes"
   ],
   [
     "1",
     "IF 0xcf ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "opcodes above OpCovOutputIdx invalid if executed"
   ],
   [
     "1",
@@ -3981,12 +4074,6 @@
   [
     "1",
     "IF 0xd3 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xd4 ELSE 1 ENDIF",
     "",
     "BAD_OPCODE"
   ],
@@ -4282,15 +4369,15 @@
     "",
     "'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'",
     "",
-    "PUSH_SIZE",
-    ">520 byte push"
+    "OK",
+    ">520 byte push. TODO(pre-covpp): Change OK to PUSH_SIZE"
   ],
   [
     "0",
     "IF 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' ENDIF 1",
     "",
-    "PUSH_SIZE",
-    ">520 byte push in non-executed IF branch"
+    "OK",
+    ">520 byte push in non-executed IF branch. TODO(pre-covpp): Change OK to PUSH_SIZE"
   ],
   [
     "1",
@@ -5037,346 +5124,574 @@
     "PUSHDATA4 of 256 bytes minimally represented by PUSHDATA2"
   ],
   [
-    "MINIMALDATA enforcement for numeric arguments"
+    "MINIMALDATA non-enforcement for numeric arguments"
   ],
   [
     "0x01 0x00",
     "NOT DROP 1",
     "",
-    "UNKNOWN_ERROR",
+    "OK",
     "numequals 0"
   ],
   [
     "0x02 0x0000",
     "NOT DROP 1",
     "",
-    "UNKNOWN_ERROR",
+    "OK",
     "numequals 0"
   ],
   [
     "0x01 0x80",
     "NOT DROP 1",
     "",
-    "UNKNOWN_ERROR",
+    "OK",
     "0x80 (negative zero) numequals 0"
   ],
   [
     "0x02 0x0080",
     "NOT DROP 1",
     "",
-    "UNKNOWN_ERROR",
+    "OK",
     "numequals 0"
   ],
   [
     "0x02 0x0500",
     "NOT DROP 1",
     "",
-    "UNKNOWN_ERROR",
+    "OK",
     "numequals 5"
   ],
   [
     "0x03 0x050000",
     "NOT DROP 1",
     "",
-    "UNKNOWN_ERROR",
+    "OK",
     "numequals 5"
   ],
   [
     "0x02 0x0580",
     "NOT DROP 1",
     "",
-    "UNKNOWN_ERROR",
+    "OK",
     "numequals -5"
   ],
   [
     "0x03 0x050080",
     "NOT DROP 1",
     "",
-    "UNKNOWN_ERROR",
+    "OK",
     "numequals -5"
   ],
   [
     "0x03 0xff7f80",
     "NOT DROP 1",
     "",
-    "UNKNOWN_ERROR",
+    "OK",
     "Minimal encoding is 0xffff"
   ],
   [
     "0x03 0xff7f00",
     "NOT DROP 1",
     "",
-    "UNKNOWN_ERROR",
+    "OK",
     "Minimal encoding is 0xff7f"
   ],
   [
     "0x04 0xffff7f80",
     "NOT DROP 1",
     "",
-    "UNKNOWN_ERROR",
+    "OK",
     "Minimal encoding is 0xffffff"
   ],
   [
     "0x04 0xffff7f00",
     "NOT DROP 1",
     "",
-    "UNKNOWN_ERROR",
+    "OK",
     "Minimal encoding is 0xffff7f"
   ],
   [
-    "Test every numeric-accepting opcode for correct handling of the numeric minimal encoding rule"
+    "Test every numeric-accepting opcode for correct handling of different sized encodings"
   ],
   [
     "1 0x02 0x0000",
     "PICK DROP",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "1 0x02 0x0000",
+    "PICK EQUAL",
+    "",
+    "OK"
   ],
   [
     "1 0x02 0x0000",
     "ROLL DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "1 0x02 0x0000",
+    "ROLL 1 EQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000",
     "1ADD DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000",
+    "1ADD 1 EQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000",
     "1SUB DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000",
+    "1SUB -1 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000",
     "NEGATE DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000",
+    "NEGATE 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000",
     "ABS DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000",
+    "ABS 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000",
     "NOT DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000",
+    "NOT 1 EQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000",
     "0NOTEQUAL DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000",
+    "0NOTEQUAL NOT",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "ADD DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "ADD 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "ADD DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "ADD 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "SUB DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "SUB 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "SUB DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "SUB 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "BOOLAND DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "BOOLAND 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "BOOLAND DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "BOOLAND 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "BOOLOR DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "BOOLOR 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "BOOLOR DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "BOOLOR 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "NUMEQUAL DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 1",
     "NUMEQUAL DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 1",
+    "NUMEQUAL NOT",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "NUMEQUALVERIFY 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "NUMEQUALVERIFY 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "NUMNOTEQUAL DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "NUMNOTEQUAL NOT",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "NUMNOTEQUAL DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "NUMNOTEQUAL NOT",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "LESSTHAN DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "LESSTHAN NOT",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "LESSTHAN DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "LESSTHAN NOT",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "GREATERTHAN DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "GREATERTHAN NOT",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "GREATERTHAN DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "GREATERTHAN NOT",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "LESSTHANOREQUAL DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "LESSTHANOREQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "LESSTHANOREQUAL DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "LESSTHANOREQUAL",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "GREATERTHANOREQUAL DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "GREATERTHANOREQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "GREATERTHANOREQUAL DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "GREATERTHANOREQUAL",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "MIN DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "MIN 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "MIN DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "MIN 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "MAX DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "MAX 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "MAX DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "MAX 0 NUMEQUAL",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0 0",
     "WITHIN DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0 0",
+    "WITHIN NOT",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000 0",
     "WITHIN DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000 0",
+    "WITHIN NOT",
+    "",
+    "OK"
   ],
   [
     "0 0 0x02 0x0000",
     "WITHIN DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0 0x02 0x0000",
+    "WITHIN NOT",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "CHECKMULTISIG DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0 0x02 0x0000",
+    "CHECKMULTISIG",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "CHECKMULTISIG DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0",
+    "CHECKMULTISIG",
+    "",
+    "OK"
   ],
   [
     "0x02 0x0000 0 1",
     "CHECKMULTISIG DROP 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
+  ],
+  [
+    "0x02 0x0000 0 1",
+    "CHECKMULTISIG",
+    "",
+    "OK"
   ],
   [
     "0 0x02 0x0000",
     "CHECKMULTISIGVERIFY 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
   ],
   [
     "0x02 0x0000 0",
     "CHECKMULTISIGVERIFY 1",
     "",
-    "UNKNOWN_ERROR"
+    "OK"
   ],
   [
     "Check MINIMALIF"

@@ -254,6 +254,7 @@ impl ConsensusConverter {
             } else {
                 Default::default()
             },
+            covenant_id: utxo.covenant_id,
         })
     }
 

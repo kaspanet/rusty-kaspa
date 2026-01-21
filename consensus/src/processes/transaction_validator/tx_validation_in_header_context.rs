@@ -7,7 +7,10 @@ use super::{
     TransactionValidator,
 };
 use crate::constants::LOCK_TIME_THRESHOLD;
-use kaspa_consensus_core::tx::Transaction;
+use kaspa_consensus_core::{
+    constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
+    tx::Transaction,
+};
 
 pub(crate) enum LockTimeType {
     Finalized,
@@ -35,11 +38,18 @@ impl TransactionValidator {
                 LockTimeType::DaaScore => LockTimeArg::DaaScore(ctx_daa_score),
                 LockTimeType::Time => LockTimeArg::MedianTime(ctx_block_time),
             },
+            ctx_daa_score,
         )
     }
 
-    pub(crate) fn validate_tx_in_header_context(&self, tx: &Transaction, lock_time_arg: LockTimeArg) -> TxResult<()> {
-        self.check_tx_is_finalized(tx, lock_time_arg)
+    pub(crate) fn validate_tx_in_header_context(
+        &self,
+        tx: &Transaction,
+        lock_time_arg: LockTimeArg,
+        block_daa_score: u64,
+    ) -> TxResult<()> {
+        self.check_tx_is_finalized(tx, lock_time_arg)?;
+        self.check_transaction_version(tx, block_daa_score)
     }
 
     pub(crate) fn get_lock_time_type(tx: &Transaction) -> LockTimeType {
@@ -76,6 +86,22 @@ impl TransactionValidator {
             if input.sequence != u64::MAX {
                 return Err(TxRuleError::NotFinalized(i));
             }
+        }
+
+        Ok(())
+    }
+
+    // TODO (COVPP): Remove the contextual check and only leave the isolated one after the HF
+    fn check_transaction_version(&self, tx: &Transaction, block_daa_score: u64) -> TxResult<()> {
+        if self.covenants_activation.is_active(block_daa_score) {
+            if tx.version > TX_VERSION_POST_COV_HF {
+                return Err(TxRuleError::UnknownTxVersion(tx.version));
+            }
+            return Ok(());
+        }
+
+        if tx.version != TX_VERSION {
+            return Err(TxRuleError::UnknownTxVersion(tx.version));
         }
 
         Ok(())

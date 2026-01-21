@@ -52,6 +52,8 @@ risc0-zkp.workspace = true
 risc0-core.workspace = true
 risc0-binfmt.workspace = true
 bytemuck.workspace=true
+once_cell.workspace = true
+
 [dev-dependencies]
 criterion.workspace = true
 smallvec.workspace = true

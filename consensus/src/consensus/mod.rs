@@ -325,6 +325,7 @@ impl Consensus {
         // Upgrade to initialize the new retention root field correctly
         self.retention_root_database_upgrade();
         self.consensus_transitional_flags_upgrade();
+        // TODO(covpp-mainnet): Add upgrade logic to accomodate for new transaction fields
     }
 
     fn retention_root_database_upgrade(&self) {
