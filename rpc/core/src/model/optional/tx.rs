@@ -85,12 +85,13 @@ impl TryFrom<RpcOptionalUtxoEntry> for UtxoEntry {
 
 impl Serializer for RpcOptionalUtxoEntry {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         store!(Option<u64>, &self.amount, writer)?;
         store!(Option<ScriptPublicKey>, &self.script_public_key, writer)?;
         store!(Option<u64>, &self.block_daa_score, writer)?;
         store!(Option<bool>, &self.is_coinbase, writer)?;
         serialize!(Option<RpcOptionalUtxoEntryVerboseData>, &self.verbose_data, writer)?;
+        store!(Option<RpcHash>, &self.covenant_id, writer)?;
 
         Ok(())
     }
@@ -102,6 +103,15 @@ impl Deserializer for RpcOptionalUtxoEntry {
 
         match _version {
             1 => {
+                let amount = load!(Option<u64>, reader)?;
+                let script_public_key = load!(Option<ScriptPublicKey>, reader)?;
+                let block_daa_score = load!(Option<u64>, reader)?;
+                let is_coinbase = load!(Option<bool>, reader)?;
+                let verbose_data = deserialize!(Option<RpcOptionalUtxoEntryVerboseData>, reader)?;
+
+                Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, verbose_data, covenant_id: None })
+            }
+            2 => {
                 let amount = load!(Option<u64>, reader)?;
                 let script_public_key = load!(Option<ScriptPublicKey>, reader)?;
                 let block_daa_score = load!(Option<u64>, reader)?;
@@ -380,6 +390,7 @@ impl Serializer for RpcOptionalTransactionOutput {
         store!(Option<u64>, &self.value, writer)?;
         store!(Option<RpcScriptPublicKey>, &self.script_public_key, writer)?;
         serialize!(Option<RpcOptionalTransactionOutputVerboseData>, &self.verbose_data, writer)?;
+        serialize!(Option<RpcOptionalCovenantBinding>, &self.covenant, writer)?;
 
         Ok(())
     }
