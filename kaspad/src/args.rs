@@ -187,7 +187,13 @@ impl Args {
             .map(|i| {
                 (
                     TransactionOutpoint { transaction_id: i.into(), index: 0 },
-                    UtxoEntry { amount: self.prealloc_amount, script_public_key: spk.clone(), block_daa_score: 0, is_coinbase: false },
+                    UtxoEntry {
+                        amount: self.prealloc_amount,
+                        script_public_key: spk.clone(),
+                        block_daa_score: 0,
+                        is_coinbase: false,
+                        covenant_id: None,
+                    },
                 )
             })
             .collect()
