@@ -13,6 +13,7 @@ pub type AcceptanceData = Vec<MergesetBlockAcceptanceData>;
 /// Holds a merged block with its accepted transactions
 pub struct MergesetBlockAcceptanceData {
     pub block_hash: Hash,
+    pub accepting_blue_score: u64,
     pub accepted_transactions: Vec<AcceptedTxEntry>,
 }
 
@@ -28,7 +29,7 @@ mod tests {
     use crate::config::params::ALL_PARAMS;
 
     #[test]
-    fn test_mergeset_idx_does_not_overflow() {
+    fn test_mergeset_index_does_not_overflow() {
         for param in ALL_PARAMS.iter() {
             // make sure that MergesetIdx can hold mergeset_size_limit
             MergesetIndexType::try_from(param.mergeset_size_limit()).unwrap();

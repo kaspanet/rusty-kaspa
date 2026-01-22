@@ -21,4 +21,5 @@ pub mod prelude {
     pub use super::writer::{BatchDbWriter, DbWriter, DirectDbWriter, DirectWriter, MemoryWriter};
     pub use db::{delete_db, ConnBuilder, RocksDbPreset, DB};
     pub use errors::{StoreError, StoreErrorPredicates, StoreResult, StoreResultExt, StoreResultUnitExt};
+    pub use rocksdb::WriteBatch; // re-export WriteBatch
 }

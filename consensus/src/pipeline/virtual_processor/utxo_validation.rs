@@ -120,7 +120,6 @@ impl VirtualStateProcessor {
         ctx.multiset_hash.add_transaction(&validated_coinbase, pov_daa_score);
         let validated_coinbase_id = validated_coinbase.id();
         ctx.accepted_tx_ids.push(validated_coinbase_id);
-
         for (i, (merged_block, txs)) in once((ctx.selected_parent(), selected_parent_transactions))
             .chain(
                 ctx.ghostdag_data
@@ -152,6 +151,8 @@ impl VirtualStateProcessor {
 
             ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
                 block_hash: merged_block,
+                // For review: is this really the right blue score, (i.e. virtual vs selected parent).
+                accepting_blue_score: ctx.ghostdag_data.blue_score,
                 // For the selected parent, we prepend the coinbase tx
                 accepted_transactions: is_selected_parent
                     .then_some(AcceptedTxEntry { transaction_id: validated_coinbase_id, index_within_block: 0 })

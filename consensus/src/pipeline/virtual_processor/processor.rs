@@ -536,7 +536,6 @@ impl VirtualStateProcessor {
     ) -> Result<Arc<VirtualState>, RuleError> {
         let selected_parent_utxo_view = (&virtual_stores.utxo_set).compose(&*accumulated_diff);
         let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset);
-
         // Calc virtual DAA score, difficulty bits and past median time
         let virtual_daa_window = self.window_manager.block_daa_window(&virtual_ghostdag_data)?;
         let virtual_bits = self.window_manager.calculate_difficulty_bits(&virtual_ghostdag_data, &virtual_daa_window);
@@ -691,7 +690,7 @@ impl VirtualStateProcessor {
     /// Assumes:
     ///     1. `selected_parent` is a UTXO-valid block
     ///     2. `candidates` are an antichain ordered in descending blue work order
-    ///     3. `candidates` do not contain `selected_parent` and `selected_parent.blue work > max(candidates.blue_work)`  
+    ///     3. `candidates` do not contain `selected_parent` and `selected_parent.blue work > max(candidates.blue_work)`
     pub(super) fn pick_virtual_parents(
         &self,
         selected_parent: Hash,

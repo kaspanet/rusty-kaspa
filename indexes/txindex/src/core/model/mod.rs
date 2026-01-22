@@ -1,2 +1,2 @@
-pub mod bluescore_ref;
+pub mod bluescore_refs;
 pub mod transactions;

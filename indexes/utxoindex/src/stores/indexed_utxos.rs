@@ -183,7 +183,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
             let script_public_key_bucket = ScriptPublicKeyBucket::from(&script_public_key);
             let balance: u64 = self
                 .access
-                .seek_iterator(Some(script_public_key_bucket.as_ref()), None, usize::MAX, false)
+                .seek_iterator(Some(script_public_key_bucket.as_ref()), None, None, usize::MAX, false)
                 .map(|res| {
                     entries_count += 1;
                     let (_, entry) = res.unwrap();
