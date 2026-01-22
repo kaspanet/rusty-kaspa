@@ -6,6 +6,7 @@ use crate::{
         utils::CONTRACT_FACTOR,
     },
     tasks::{
+        Stopper, TasksRunner,
         block::group::MinerGroupTask,
         daemon::{DaemonArgs, DaemonTask},
         memory_monitor::MemoryMonitorTask,
@@ -13,7 +14,6 @@ use crate::{
         subscription::group::SubscriberGroupTask,
         tick::TickTask,
         tx::group::TxSenderGroupTask,
-        Stopper, TasksRunner,
     },
 };
 use itertools::Itertools;

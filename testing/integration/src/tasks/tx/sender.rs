@@ -1,4 +1,4 @@
-use crate::tasks::{tx::submitter::IndexedTransaction, Stopper, Task};
+use crate::tasks::{Stopper, Task, tx::submitter::IndexedTransaction};
 use async_channel::Sender;
 use async_trait::async_trait;
 use kaspa_consensus_core::tx::Transaction;
@@ -9,7 +9,7 @@ use kaspa_utils::triggers::SingleTrigger;
 use std::{sync::Arc, time::Duration};
 use tokio::{
     task::JoinHandle,
-    time::{sleep, Instant},
+    time::{Instant, sleep},
 };
 
 pub struct TransactionSenderTask {

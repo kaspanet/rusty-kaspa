@@ -1,7 +1,7 @@
 use kaspa_mining::feerate::{FeeEstimateVerbose, FeerateBucket, FeerateEstimations};
 use kaspa_rpc_core::{
-    message::GetFeeEstimateExperimentalResponse as RpcFeeEstimateVerboseResponse, RpcFeeEstimate,
-    RpcFeeEstimateVerboseExperimentalData as RpcFeeEstimateVerbose, RpcFeerateBucket,
+    RpcFeeEstimate, RpcFeeEstimateVerboseExperimentalData as RpcFeeEstimateVerbose, RpcFeerateBucket,
+    message::GetFeeEstimateExperimentalResponse as RpcFeeEstimateVerboseResponse,
 };
 
 pub trait FeerateBucketConverter {

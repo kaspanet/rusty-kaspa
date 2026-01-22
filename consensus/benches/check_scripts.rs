@@ -1,16 +1,16 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingMode};
+use criterion::{Criterion, SamplingMode, black_box, criterion_group, criterion_main};
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::processes::transaction_validator::tx_validation_in_utxo_context::{
     check_scripts_par_iter, check_scripts_par_iter_pool, check_scripts_sequential,
 };
-use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
+use kaspa_consensus_core::hashing::sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash};
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, UtxoEntry};
 use kaspa_txscript::caches::Cache;
 use kaspa_txscript::pay_to_address_script;
 use kaspa_utils::iter::parallelism_in_power_steps;
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use secp256k1::Keypair;
 
 fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload_size: usize) -> (Transaction, Vec<UtxoEntry>) {
@@ -36,7 +36,7 @@ fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload
         tx.inputs.push(TransactionInput { previous_outpoint: dummy_prev_out, signature_script: vec![], sequence: 0, sig_op_count: 1 });
         let address = Address::new(Prefix::Mainnet, Version::PubKey, &kp.x_only_public_key().0.serialize());
         utxos.push(UtxoEntry {
-            amount: thread_rng().gen::<u32>() as u64,
+            amount: thread_rng().r#gen::<u32>() as u64,
             script_public_key: pay_to_address_script(&address),
             block_daa_score: 333,
             is_coinbase: false,
@@ -49,7 +49,7 @@ fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload
         tx.inputs.push(TransactionInput { previous_outpoint: dummy_prev_out, signature_script: vec![], sequence: 0, sig_op_count: 1 });
         let address = Address::new(Prefix::Mainnet, Version::PubKey, &kp.x_only_public_key().0.serialize());
         utxos.push(UtxoEntry {
-            amount: thread_rng().gen::<u32>() as u64,
+            amount: thread_rng().r#gen::<u32>() as u64,
             script_public_key: pay_to_address_script(&address),
             block_daa_score: 444,
             is_coinbase: false,

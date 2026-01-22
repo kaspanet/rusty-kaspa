@@ -58,13 +58,13 @@ pub struct PruningPointManager<
 }
 
 impl<
-        S: GhostdagStoreReader,
-        T: ReachabilityStoreReader,
-        U: HeaderStoreReader,
-        V: PastPruningPointsStoreReader,
-        W: HeadersSelectedTipStoreReader,
-        Y: PruningSamplesStore,
-    > PruningPointManager<S, T, U, V, W, Y>
+    S: GhostdagStoreReader,
+    T: ReachabilityStoreReader,
+    U: HeaderStoreReader,
+    V: PastPruningPointsStoreReader,
+    W: HeadersSelectedTipStoreReader,
+    Y: PruningSamplesStore,
+> PruningPointManager<S, T, U, V, W, Y>
 {
     pub fn new(
         pruning_depth: u64,

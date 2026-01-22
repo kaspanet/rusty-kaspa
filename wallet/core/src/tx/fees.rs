@@ -62,11 +62,7 @@ impl Fees {
 /// result in priority fees that are included in the transaction value.
 impl From<i64> for Fees {
     fn from(fee: i64) -> Self {
-        if fee < 0 {
-            Fees::ReceiverPays(fee.unsigned_abs())
-        } else {
-            Fees::SenderPays(fee as u64)
-        }
+        if fee < 0 { Fees::ReceiverPays(fee.unsigned_abs()) } else { Fees::SenderPays(fee as u64) }
     }
 }
 

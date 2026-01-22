@@ -5,8 +5,8 @@ use crate::model::{
 };
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    blockhash::{BlockHashIteratorExtensions, BlockHashes, ORIGIN},
     BlockHashSet,
+    blockhash::{BlockHashIteratorExtensions, BlockHashes, ORIGIN},
 };
 use kaspa_database::prelude::{BatchDbWriter, DbWriter, DirectWriter, StoreError};
 use kaspa_hashes::Hash;

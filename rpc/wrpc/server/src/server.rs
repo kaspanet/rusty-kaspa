@@ -15,16 +15,16 @@ use kaspa_notify::{
     subscription::{MutationPolicies, UtxosChangedMutationPolicy},
 };
 use kaspa_rpc_core::{
+    Notification, RpcResult,
     api::rpc::{DynRpcService, RpcApi},
     notify::{channel::NotificationChannel, connection::ChannelConnection, mode::NotificationMode},
-    Notification, RpcResult,
 };
 use kaspa_rpc_service::service::RpcCoreService;
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
     },
 };
 use workflow_log::*;
@@ -169,11 +169,7 @@ impl Server {
     }
 
     pub fn rpc_service(&self, connection: &Connection) -> DynRpcService {
-        if let Some(rpc_core) = &self.inner.rpc_core {
-            rpc_core.service.clone()
-        } else {
-            connection.grpc_client()
-        }
+        if let Some(rpc_core) = &self.inner.rpc_core { rpc_core.service.clone() } else { connection.grpc_client() }
     }
 
     pub async fn start_notify(&self, connection: &Connection, scope: Scope) -> RpcResult<()> {
