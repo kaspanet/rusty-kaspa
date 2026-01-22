@@ -107,12 +107,14 @@ impl TryCastFromJs for PaymentOutput {
 
 #[wasm_bindgen]
 impl PaymentOutput {
+    /// Main constructor (no covenant)
     #[wasm_bindgen(constructor)]
     pub fn new(address: Address, amount: u64) -> Self {
         Self { address, amount, covenant: None }
     }
 
-    #[wasm_bindgen(constructor)]
+    /// Factory method for covenant variant
+    #[wasm_bindgen(js_name = withCovenant)]
     pub fn with_covenant(address: Address, amount: u64, covenant: CovenantBinding) -> Self {
         Self { address, amount, covenant: Some(covenant) }
     }
