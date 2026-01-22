@@ -24,9 +24,5 @@ pub fn normalize_port(port_or_addr: &str) -> String {
 /// `":3030"` becomes `"0.0.0.0:3030"` for backward compatibility with existing config.
 pub fn bind_addr_from_port(port_or_addr: &str) -> String {
     let s = normalize_port(port_or_addr);
-    if s.starts_with(':') {
-        format!("0.0.0.0{}", s)
-    } else {
-        s
-    }
+    if s.starts_with(':') { format!("0.0.0.0{}", s) } else { s }
 }

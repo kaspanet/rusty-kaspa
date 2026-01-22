@@ -1,7 +1,7 @@
 use prometheus::proto::MetricFamily;
 #[cfg(feature = "rkstratum_cpu_miner")]
-use prometheus::{register_counter, Counter};
-use prometheus::{register_counter_vec, register_gauge, register_gauge_vec, CounterVec, Gauge, GaugeVec};
+use prometheus::{Counter, register_counter};
+use prometheus::{CounterVec, Gauge, GaugeVec, register_counter_vec, register_gauge, register_gauge_vec};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "rkstratum_cpu_miner")]
 use std::collections::VecDeque;

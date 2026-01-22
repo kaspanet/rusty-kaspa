@@ -2,8 +2,8 @@ use crate::kaspaapi::KaspaApi;
 use crate::prom;
 use kaspa_consensus_core::block::Block;
 use parking_lot::{Condvar, Mutex};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 
