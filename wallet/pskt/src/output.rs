@@ -22,7 +22,6 @@ pub struct Output {
     /// A map from public keys needed to spend this output to their
     /// corresponding master key fingerprints and derivation paths.
     pub bip32_derivations: BTreeMap<secp256k1::PublicKey, Option<KeySource>>,
-    #[builder(setter(strip_option))]
     /// The covenant for this output.
     pub covenant: Option<CovenantBinding>,
     /// Proprietary key-value pairs for this output.
