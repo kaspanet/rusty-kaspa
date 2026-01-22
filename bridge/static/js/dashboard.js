@@ -132,21 +132,33 @@ function formatUnixSeconds(ts) {
   }
 }
 
-function formatServerTime(date) {
+function formatServerTime(date, isMobile = false) {
   if (!date || !(date instanceof Date)) return '-';
   try {
-    // Format: "Mon, Jan 15, 2024 3:45:30 PM"
-    const options = { 
-      weekday: 'short', 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true
-    };
-    return date.toLocaleString('en-US', options);
+    if (isMobile) {
+      // Compact format for mobile: "Jan 15, 3:45 PM"
+      const options = { 
+        month: 'short', 
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      };
+      return date.toLocaleString('en-US', options);
+    } else {
+      // Full format for desktop: "Mon, Jan 15, 2024 3:45:30 PM"
+      const options = { 
+        weekday: 'short', 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      };
+      return date.toLocaleString('en-US', options);
+    }
   } catch {
     return date.toLocaleString();
   }
@@ -155,7 +167,9 @@ function formatServerTime(date) {
 function updateServerTime() {
   const el = document.getElementById('serverTime');
   if (!el) return;
-  el.textContent = formatServerTime(new Date());
+  // Check if mobile based on window width (matches Tailwind's md breakpoint: 768px)
+  const isMobile = window.innerWidth < 768;
+  el.textContent = formatServerTime(new Date(), isMobile);
 }
 
 function getBlocksDayFilter() {
@@ -1177,6 +1191,15 @@ setInterval(() => {
 
 // Initial server time update
 updateServerTime();
+
+// Update server time format on window resize (for responsive display)
+let resizeTimeout;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(() => {
+    updateServerTime();
+  }, 100);
+});
 
 setInterval(() => {
   // avoid overlapping refresh calls if the network is slow
