@@ -1,4 +1,4 @@
-use clap::{builder::BoolishValueParser, Parser, ValueEnum};
+use clap::{Parser, ValueEnum, builder::BoolishValueParser};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;

@@ -2,7 +2,7 @@ use clap::Parser;
 use futures_util::future::try_join_all;
 use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_stratum_bridge::log_colors::LogColors;
-use kaspa_stratum_bridge::{listen_and_serve_with_shutdown, prom, BridgeConfig as StratumBridgeConfig, KaspaApi};
+use kaspa_stratum_bridge::{BridgeConfig as StratumBridgeConfig, KaspaApi, listen_and_serve_with_shutdown, prom};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 #[cfg(windows)]
@@ -14,7 +14,7 @@ use tokio::sync::watch;
 use tracing_subscriber::EnvFilter;
 
 #[cfg(windows)]
-use windows_sys::Win32::System::Console::{SetConsoleCtrlHandler, CTRL_C_EVENT};
+use windows_sys::Win32::System::Console::{CTRL_C_EVENT, SetConsoleCtrlHandler};
 
 use kaspad_lib::args as kaspad_args;
 
@@ -26,7 +26,7 @@ mod inprocess_node;
 mod tracing_setup;
 
 use app_config::BridgeConfig;
-use cli::{apply_cli_overrides, Cli, NodeMode};
+use cli::{Cli, NodeMode, apply_cli_overrides};
 use inprocess_node::InProcessNode;
 
 static CONFIG_LOADED_FROM: OnceLock<Option<PathBuf>> = OnceLock::new();
