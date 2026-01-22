@@ -3,7 +3,7 @@ use kaspa_core::{debug, info, warn};
 use kaspa_notify::connection::Connection as ConnectionT;
 use parking_lot::RwLock;
 use std::{
-    collections::{hash_map::Entry::Occupied, HashMap, HashSet},
+    collections::{HashMap, HashSet, hash_map::Entry::Occupied},
     sync::Arc,
     time::Duration,
 };

@@ -5,8 +5,8 @@ use subtle::{Choice, ConstantTimeEq};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
-    result::Result, types::*, ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPublicKey, Prefix, PrivateKey,
-    PublicKey,
+    ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPublicKey, Prefix, PrivateKey, PublicKey, result::Result,
+    types::*,
 };
 
 /// Derivation domain separator for BIP39 keys.

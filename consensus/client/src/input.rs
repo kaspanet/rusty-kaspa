@@ -4,10 +4,10 @@
 
 #![allow(non_snake_case)]
 
-use crate::imports::*;
-use crate::result::Result;
 use crate::TransactionOutpoint;
 use crate::UtxoEntryReference;
+use crate::imports::*;
+use crate::result::Result;
 use kaspa_utils::hex::*;
 
 #[wasm_bindgen(typescript_custom_section)]

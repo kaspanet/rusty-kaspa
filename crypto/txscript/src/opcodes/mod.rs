@@ -1,9 +1,9 @@
 #[macro_use]
 mod macros;
 use crate::{
-    data_stack::{serialize_i64, OpcodeData},
-    EngineFlags, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_SCRIPT_ELEMENT_SIZE,
-    MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
+    EngineFlags, LOCK_TIME_THRESHOLD, MAX_SCRIPT_ELEMENT_SIZE, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED,
+    SEQUENCE_LOCK_TIME_MASK, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError,
+    data_stack::{OpcodeData, serialize_i64},
 };
 use blake2b_simd::Params;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
@@ -1500,7 +1500,7 @@ mod test {
     use crate::caches::Cache;
     use crate::data_stack::Stack;
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
-    use crate::{opcodes, pay_to_address_script, EngineContext, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD};
+    use crate::{EngineContext, LOCK_TIME_THRESHOLD, SpkEncoding, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script};
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
@@ -3432,7 +3432,6 @@ mod test {
             opcodes::{codes::*, push_number},
             pay_to_script_hash_script,
             script_builder::ScriptBuilder,
-            SpkEncoding,
         };
         use kaspa_consensus_core::tx::MutableTransaction;
 
@@ -4154,7 +4153,7 @@ mod test {
         use super::*;
         use crate::covenants::CovenantsContext;
         use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
-        use crate::{opcodes::codes, EngineFlags, SpkEncoding};
+        use crate::{EngineFlags, SpkEncoding, opcodes::codes};
         use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
         use kaspa_consensus_core::subnets::SubnetworkId;
         use kaspa_consensus_core::tx::{

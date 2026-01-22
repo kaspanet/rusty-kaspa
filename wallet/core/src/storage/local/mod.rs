@@ -87,7 +87,9 @@ pub fn default_settings_file() -> &'static str {
 ///
 pub unsafe fn set_default_storage_folder(folder: String) -> Result<()> {
     create_dir_all_sync(&folder).map_err(|err| Error::custom(format!("Failed to create storage folder: {err}")))?;
-    DEFAULT_STORAGE_FOLDER = Some(folder);
+    unsafe {
+        DEFAULT_STORAGE_FOLDER = Some(folder);
+    }
     Ok(())
 }
 
@@ -130,7 +132,9 @@ pub fn js_set_default_storage_folder(folder: String) -> Result<()> {
 /// mut variable, meaning this function is not thread-safe.
 ///
 pub unsafe fn set_default_wallet_file(folder: String) -> Result<()> {
-    DEFAULT_WALLET_FILE = Some(folder);
+    unsafe {
+        DEFAULT_WALLET_FILE = Some(folder);
+    }
     Ok(())
 }
 

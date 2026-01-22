@@ -275,7 +275,9 @@ pub async fn handle_authorize(
         client_handler.send_immediate_job_to_client(ctx.clone(), kaspa_api).await;
     } else {
         // Fallback: let polling loop handle it (may cause disconnects for IceRiver)
-        tracing::warn!("[AUTHORIZE] WARNING: No client_handler/kaspa_api available - job will be sent by polling loop (may cause IceRiver disconnect)");
+        tracing::warn!(
+            "[AUTHORIZE] WARNING: No client_handler/kaspa_api available - job will be sent by polling loop (may cause IceRiver disconnect)"
+        );
     }
 
     tracing::debug!("[AUTHORIZE] ===== AUTHORIZE COMPLETE FOR {} =====", ctx.remote_addr);

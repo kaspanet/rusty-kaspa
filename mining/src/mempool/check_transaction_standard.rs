@@ -1,6 +1,6 @@
 use crate::mempool::{
-    errors::{NonStandardError, NonStandardResult},
     Mempool,
+    errors::{NonStandardError, NonStandardResult},
 };
 use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
@@ -235,8 +235,8 @@ impl Mempool {
 mod tests {
     use super::*;
     use crate::{
-        mempool::config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE},
         MiningCounters,
+        mempool::config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE},
     };
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{

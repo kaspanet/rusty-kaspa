@@ -2,8 +2,8 @@ use crate::jsonrpc_event::{JsonRpcEvent, JsonRpcResponse};
 use crate::log_colors::LogColors;
 use hex;
 use parking_lot::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -77,11 +77,7 @@ impl StratumContext {
     /// Get client ID
     pub fn id(&self) -> Option<i32> {
         let id = *self.id.lock();
-        if id > 0 {
-            Some(id)
-        } else {
-            None
-        }
+        if id > 0 { Some(id) } else { None }
     }
 
     /// Set client ID

@@ -121,11 +121,7 @@ impl TryCastFromJs for XPub {
         R: AsRef<JsValue> + 'a,
     {
         Self::resolve(value, || {
-            if let Some(xpub) = value.as_ref().as_string() {
-                Ok(XPub::try_new(xpub.as_str())?)
-            } else {
-                Err(Error::InvalidXPub)
-            }
+            if let Some(xpub) = value.as_ref().as_string() { Ok(XPub::try_new(xpub.as_str())?) } else { Err(Error::InvalidXPub) }
         })
     }
 }
