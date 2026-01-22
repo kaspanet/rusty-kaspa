@@ -111,11 +111,7 @@ impl Resolver {
     /// returns `None` if the resolver is configured to use public
     /// node endpoints.)
     pub fn urls(&self) -> Option<Vec<Arc<String>>> {
-        if self.inner.public {
-            None
-        } else {
-            Some(self.inner.urls.clone())
-        }
+        if self.inner.public { None } else { Some(self.inner.urls.clone()) }
     }
 
     /// Obtain the `tls` flag in the resolver client.
@@ -124,11 +120,7 @@ impl Resolver {
     }
 
     fn tls_as_str(&self) -> &'static str {
-        if self.inner.tls {
-            "tls"
-        } else {
-            "any"
-        }
+        if self.inner.tls { "tls" } else { "any" }
     }
 
     fn make_url(&self, url: &str, encoding: Encoding, network_id: NetworkId) -> String {
@@ -142,11 +134,7 @@ impl Resolver {
                     .and_then(|protocol| protocol.as_string())
                     .map(|protocol| protocol.starts_with("https"))
                     .unwrap_or(false);
-                if tls {
-                    "tls"
-                } else {
-                    self.tls_as_str()
-                }
+                if tls { "tls" } else { self.tls_as_str() }
             } else {
                 self.tls_as_str()
             }

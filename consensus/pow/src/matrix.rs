@@ -148,10 +148,10 @@ mod tests {
         let zero = Matrix([[0; 64]; 64]);
         assert_eq!(zero.compute_rank(), 0);
         let mut matrix = zero;
-        let mut gen = XoShiRo256PlusPlus::new(Hash::from_bytes([42; 32]));
+        let mut rng = XoShiRo256PlusPlus::new(Hash::from_bytes([42; 32]));
         matrix.0.iter_mut().for_each(|row| {
             row.iter_mut().for_each(|val| {
-                *val = gen.u64() as u16;
+                *val = rng.u64() as u16;
             })
         });
         assert_eq!(matrix.compute_rank(), 64);

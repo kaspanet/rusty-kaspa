@@ -16,7 +16,7 @@ pub(crate) mod request_block_bodies;
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 
 use crate::ibd::IbdFlow;
-use kaspa_p2p_lib::{convert::header::HeaderFormat, KaspadMessagePayloadType, Router, SharedIncomingRoute};
+use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute, convert::header::HeaderFormat};
 use kaspa_utils::channel;
 use request_block_bodies::HandleBlockBodyRequests;
 use std::sync::Arc;

@@ -1,5 +1,5 @@
 use crate::imports::*;
-use chacha20poly1305::{aead::AeadMut, Key, KeyInit};
+use chacha20poly1305::{Key, KeyInit, aead::AeadMut};
 
 pub fn decrypt_mnemonic<T: AsRef<[u8]>>(
     num_threads: u32,
@@ -39,7 +39,10 @@ mod test {
         let decrypted = decrypt_mnemonic(8, file.encrypted_mnemonic, b"");
         log_info!("decrypted: {decrypted:?}");
         assert!(decrypted.is_ok(), "decrypt error");
-        assert_eq!("dizzy uncover funny time weapon chat volume squirrel comic motion until diamond response remind hurt spider door strategy entire oyster hawk marriage soon fabric", decrypted.unwrap());
+        assert_eq!(
+            "dizzy uncover funny time weapon chat volume squirrel comic motion until diamond response remind hurt spider door strategy entire oyster hawk marriage soon fabric",
+            decrypted.unwrap()
+        );
     }
 
     #[tokio::test]

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use kaspa_p2p_lib::{
+    IncomingRoute, Router,
     common::ProtocolError,
     convert::header::HeaderFormat,
     dequeue_with_request_id, make_response,
-    pb::{kaspad_message::Payload, PruningPointProofMessage},
-    IncomingRoute, Router,
+    pb::{PruningPointProofMessage, kaspad_message::Payload},
 };
 use log::debug;
 

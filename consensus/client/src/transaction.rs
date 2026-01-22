@@ -9,7 +9,7 @@ use crate::input::{TransactionInput, TransactionInputArrayAsArgT, TransactionInp
 use crate::outpoint::TransactionOutpoint;
 use crate::output::{TransactionOutput, TransactionOutputArrayAsArgT, TransactionOutputArrayAsResultT};
 use crate::result::Result;
-use crate::serializable::{numeric, string, SerializableTransactionT};
+use crate::serializable::{SerializableTransactionT, numeric, string};
 use crate::utxo::{UtxoEntryId, UtxoEntryReference};
 use ahash::AHashMap;
 use kaspa_consensus_core::network::NetworkType;
@@ -429,14 +429,12 @@ impl Transaction {
 
     pub fn outputs(&self) -> Vec<cctx::TransactionOutput> {
         let inner = self.inner();
-        let outputs = inner.outputs.iter().map(|output| output.into()).collect::<Vec<cctx::TransactionOutput>>();
-        outputs
+        inner.outputs.iter().map(|output| output.into()).collect::<Vec<cctx::TransactionOutput>>()
     }
 
     pub fn inputs(&self) -> Vec<cctx::TransactionInput> {
         let inner = self.inner();
-        let inputs = inner.inputs.iter().map(Into::into).collect::<Vec<cctx::TransactionInput>>();
-        inputs
+        inner.inputs.iter().map(Into::into).collect::<Vec<cctx::TransactionInput>>()
     }
 
     pub fn inputs_outputs(&self) -> (Vec<cctx::TransactionInput>, Vec<cctx::TransactionOutput>) {

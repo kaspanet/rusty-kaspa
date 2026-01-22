@@ -34,13 +34,8 @@ impl TransactionTypeExtension for TransactionKind {
             TransactionKind::External => style("-".to_string() + s).red().to_string(),
             TransactionKind::Batch => style("".to_string() + s).dim().to_string(),
             TransactionKind::Reorg => {
-                if history {
-                    style("".to_string() + s).dim()
-                } else {
-                    style("-".to_string() + s).red()
-                }
+                { if history { style("".to_string() + s).dim() } else { style("-".to_string() + s).red() } }.to_string()
             }
-            .to_string(),
             TransactionKind::Stasis => style("".to_string() + s).dim().to_string(),
             _ => style(s).dim().to_string(),
         }

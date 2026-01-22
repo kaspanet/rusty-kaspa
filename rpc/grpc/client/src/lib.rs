@@ -1,6 +1,6 @@
 use self::{
     error::{Error, Result},
-    resolver::{id::IdResolver, queue::QueueResolver, DynResolver},
+    resolver::{DynResolver, id::IdResolver, queue::QueueResolver},
 };
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
@@ -9,31 +9,31 @@ use connection_event::ConnectionEvent;
 use futures::{future::FutureExt, pin_mut, select};
 use kaspa_core::{debug, error, trace};
 use kaspa_grpc_core::{
+    RPC_MAX_MESSAGE_SIZE,
     channel::NotificationChannel,
     ops::KaspadPayloadOps,
-    protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse},
-    RPC_MAX_MESSAGE_SIZE,
+    protowire::{GetInfoRequestMessage, KaspadRequest, KaspadResponse, kaspad_request, rpc_client::RpcClient},
 };
 use kaspa_notify::{
     collector::{Collector, CollectorFrom},
     error::{Error as NotifyError, Result as NotifyResult},
-    events::{EventArray, EventType, EVENT_TYPE_ARRAY},
+    events::{EVENT_TYPE_ARRAY, EventArray, EventType},
     listener::{ListenerId, ListenerLifespan},
     notifier::{DynNotify, Notifier},
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
     subscription::{
-        array::ArrayBuilder, context::SubscriptionContext, Command, DynSubscription, MutateSingle, Mutation, MutationPolicies,
-        UtxosChangedMutationPolicy,
+        Command, DynSubscription, MutateSingle, Mutation, MutationPolicies, UtxosChangedMutationPolicy, array::ArrayBuilder,
+        context::SubscriptionContext,
     },
 };
 use kaspa_rpc_core::{
+    Notification,
     api::rpc::RpcApi,
     error::RpcError,
     error::RpcResult,
     model::message::*,
     notify::{collector::RpcCoreConverter, connection::ChannelConnection, mode::NotificationMode},
-    Notification,
 };
 use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
 use kaspa_utils_tower::{
@@ -43,14 +43,14 @@ use kaspa_utils_tower::{
 use regex::Regex;
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
 use tokio::sync::Mutex;
-use tonic::codec::CompressionEncoding;
 use tonic::Streaming;
+use tonic::codec::CompressionEncoding;
 
 mod connection_event;
 pub mod error;
@@ -670,11 +670,7 @@ impl Inner {
     #[inline(always)]
     fn handle_stop_notify(&self) -> bool {
         // TODO - remove this
-        if self.override_handle_stop_notify {
-            true
-        } else {
-            self.server_features.handle_stop_notify
-        }
+        if self.override_handle_stop_notify { true } else { self.server_features.handle_stop_notify }
     }
 
     #[inline(always)]

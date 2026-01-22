@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::Write;
 
-use flate2::{write::GzEncoder, Compression};
+use flate2::{Compression, write::GzEncoder};
 
 use kaspa_consensus::params::Params;
 use kaspa_consensus::{consensus::Consensus, params::OverrideParams};

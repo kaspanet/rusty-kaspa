@@ -15,7 +15,7 @@ use kaspa_consensus_core::{
     config::Config,
     constants::MAX_SOMPI,
     network::NetworkType,
-    tx::{Transaction, COINBASE_TRANSACTION_INDEX},
+    tx::{COINBASE_TRANSACTION_INDEX, Transaction},
 };
 use kaspa_consensus_notify::{
     notifier::ConsensusNotifier,
@@ -46,7 +46,7 @@ use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_notify::{
     collector::DynCollector,
     connection::ChannelType,
-    events::{EventSwitches, EventType, EVENT_TYPE_ARRAY},
+    events::{EVENT_TYPE_ARRAY, EventSwitches, EventType},
     listener::ListenerId,
     notifier::Notifier,
     scope::Scope,
@@ -55,16 +55,16 @@ use kaspa_notify::{
 use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
-use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
+use kaspa_perf_monitor::{Monitor as PerfMonitor, counters::CountersSnapshot};
 use kaspa_rpc_core::{
+    Notification, RpcError, RpcResult,
     api::{
         connection::DynRpcConnection,
         ops::{RPC_API_REVISION, RPC_API_VERSION},
-        rpc::{RpcApi, MAX_SAFE_WINDOW_SIZE},
+        rpc::{MAX_SAFE_WINDOW_SIZE, RpcApi},
     },
     model::*,
     notify::connection::ChannelConnection,
-    Notification, RpcError, RpcResult,
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::expiring_cache::ExpiringCache;
@@ -76,7 +76,7 @@ use std::time::Duration;
 use std::{
     collections::HashMap,
     iter::once,
-    sync::{atomic::Ordering, Arc},
+    sync::{Arc, atomic::Ordering},
     vec,
 };
 use tokio::join;
@@ -561,7 +561,9 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<SubmitTransactionResponse> {
         let allow_orphan = self.config.unsafe_rpc && request.allow_orphan;
         if !self.config.unsafe_rpc && request.allow_orphan {
-            debug!("SubmitTransaction RPC command called with AllowOrphan enabled while node in safe RPC mode -- switching to ForbidOrphan.");
+            debug!(
+                "SubmitTransaction RPC command called with AllowOrphan enabled while node in safe RPC mode -- switching to ForbidOrphan."
+            );
         }
 
         let transaction: Transaction = request.transaction.try_into()?;

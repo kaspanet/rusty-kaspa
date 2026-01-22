@@ -18,9 +18,9 @@ use std::path::PathBuf;
 use workflow_core::env;
 use workflow_core::runtime;
 use workflow_store::fs;
+use workflow_store::fs::Options;
 use workflow_store::fs::exists_with_options;
 use workflow_store::fs::read_json_with_options;
-use workflow_store::fs::Options;
 use zeroize::Zeroize;
 
 type Aes256CfbDec = cfb_mode::Decryptor<aes::Aes256>;

@@ -70,7 +70,7 @@ version = "1.1.0-rc.2"
 authors = ["Kaspa developers"]
 license = "ISC"
 repository = "https://github.com/kaspanet/rusty-kaspa"
-edition = "2021"
+edition = "2024"
 include = [
     "src/**/*.rs",
     "src/**/*.s",

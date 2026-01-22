@@ -5,7 +5,7 @@ use crate::{
     events::{EventArray, EventType},
     listener::ListenerId,
     notification::Notification,
-    subscription::{context::SubscriptionContext, BroadcastingSingle, DynSubscription},
+    subscription::{BroadcastingSingle, DynSubscription, context::SubscriptionContext},
 };
 use async_channel::{Receiver, Sender};
 use core::fmt::Debug;
@@ -17,8 +17,8 @@ use std::{
     collections::HashMap,
     fmt::Display,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 use workflow_core::channel::Channel;
@@ -262,11 +262,11 @@ mod tests {
         listener::Listener,
         notification::test_helpers::*,
         notifier::test_helpers::{
-            overall_test_steps, utxos_changed_test_steps, virtual_chain_changed_test_steps, Step, TestConnection, SYNC_MAX_DELAY,
+            SYNC_MAX_DELAY, Step, TestConnection, overall_test_steps, utxos_changed_test_steps, virtual_chain_changed_test_steps,
         },
         subscription::context::SubscriptionContext,
     };
-    use async_channel::{unbounded, Sender};
+    use async_channel::{Sender, unbounded};
     use tokio::time::timeout;
 
     type TestBroadcaster = Broadcaster<TestNotification, ChannelConnection<TestNotification>>;
@@ -322,7 +322,7 @@ mod tests {
                 // Apply the subscription mutations and register the changes into the broadcaster
                 trace!("{} #{} - Initial Subscription Context {}", self.name, step_idx, self.subscription_context.address_tracker);
                 for (idx, mutation) in step.mutations.iter().enumerate() {
-                    if let Some(ref mutation) = mutation {
+                    if let Some(mutation) = mutation {
                         trace!("{} #{} - {}: L{} {:?}", self.name, step_idx, step.name, idx, mutation);
                         let event = mutation.event_type();
                         let outcome =
@@ -330,11 +330,7 @@ mod tests {
                         if outcome.has_new_state() {
                             trace!(
                                 "{} #{} - {}: - L{} has the new state {:?}",
-                                self.name,
-                                step_idx,
-                                step.name,
-                                idx,
-                                self.listeners[idx].subscriptions[event]
+                                self.name, step_idx, step.name, idx, self.listeners[idx].subscriptions[event]
                             );
                             let ctl = match mutation.active() {
                                 true => Ctl::Register(
@@ -361,20 +357,12 @@ mod tests {
                         } else if outcome.has_changes() {
                             trace!(
                                 "{} #{} - {}: - L{} is inner changed into {:?}",
-                                self.name,
-                                step_idx,
-                                step.name,
-                                idx,
-                                self.listeners[idx].subscriptions[event]
+                                self.name, step_idx, step.name, idx, self.listeners[idx].subscriptions[event]
                             );
                         } else {
                             trace!(
                                 "{} #{} - {}: - L{} is unchanged {:?}",
-                                self.name,
-                                step_idx,
-                                step.name,
-                                idx,
-                                self.listeners[idx].subscriptions[event]
+                                self.name, step_idx, step.name, idx, self.listeners[idx].subscriptions[event]
                             );
                         }
                     }
@@ -403,7 +391,7 @@ mod tests {
 
                 // Check what the listeners do receive
                 for (idx, expected) in step.expected_notifications.iter().enumerate() {
-                    if let Some(ref expected) = expected {
+                    if let Some(expected) = expected {
                         assert!(
                             !self.notification_receivers[idx].is_empty(),
                             "{} #{} - {}: listener[{}] has no notification in its channel though some is expected",

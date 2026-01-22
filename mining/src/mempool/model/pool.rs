@@ -4,13 +4,13 @@ use crate::{
         tx::Priority,
     },
     model::{
+        TransactionIdSet,
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
         topological_index::TopologicalIndex,
-        TransactionIdSet,
     },
 };
 use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
-use std::collections::{hash_set::Iter, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque, hash_set::Iter};
 
 pub(crate) type TransactionsEdges = HashMap<TransactionId, TransactionIdSet>;
 

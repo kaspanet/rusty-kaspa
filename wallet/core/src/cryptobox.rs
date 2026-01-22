@@ -4,8 +4,8 @@
 
 use crate::imports::*;
 use crypto_box::{
-    aead::{Aead, AeadCore, OsRng},
     ChaChaBox,
+    aead::{Aead, AeadCore, OsRng},
 };
 pub use crypto_box::{PublicKey, SecretKey};
 

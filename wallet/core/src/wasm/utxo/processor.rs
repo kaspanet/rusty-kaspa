@@ -6,7 +6,7 @@ use crate::utxo as native;
 use crate::wasm::notify::{UtxoProcessorEventTarget, UtxoProcessorNotificationCallback, UtxoProcessorNotificationTypeOrCallback};
 use kaspa_consensus_core::network::NetworkIdT;
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
-use kaspa_wasm_core::events::{get_event_targets, Sink};
+use kaspa_wasm_core::events::{Sink, get_event_targets};
 use kaspa_wrpc_wasm::RpcClient;
 use workflow_log::log_error;
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use kaspa_database::{
-    prelude::{CachedDbItem, DirectDbWriter, StoreResult, DB},
+    prelude::{CachedDbItem, DB, DirectDbWriter, StoreResult},
     registry::DatabaseStorePrefixes,
 };
 
@@ -43,11 +43,8 @@ impl CirculatingSupplyStore for DbCirculatingSupplyStore {
             return self.get();
         }
 
-        let circulating_supply = self
-            .access
-            .update(DirectDbWriter::new(&self.db), move |circulating_supply| circulating_supply.saturating_add_signed(supply_delta));
-
-        circulating_supply
+        self.access
+            .update(DirectDbWriter::new(&self.db), move |circulating_supply| circulating_supply.saturating_add_signed(supply_delta))
     }
 
     fn insert(&mut self, circulating_supply: CirculatingSupply) -> StoreResult<()> {

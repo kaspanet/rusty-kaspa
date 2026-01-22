@@ -1,14 +1,14 @@
 use crate::model::{CirculatingSupply, CirculatingSupplyDiff};
 use kaspa_consensus::test_helpers::*;
 use kaspa_consensus_core::{
+    BlockHashSet, HashMapCustomHasher,
     tx::ScriptPublicKey,
     utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
-    BlockHashSet, HashMapCustomHasher,
 };
 use kaspa_hashes::Hash;
 #[cfg(test)]
 use rand::Rng;
-use rand::{rngs::SmallRng, SeedableRng};
+use rand::{SeedableRng, rngs::SmallRng};
 use std::sync::Arc;
 
 pub struct VirtualChangeEmulator {
@@ -78,8 +78,8 @@ impl VirtualChangeEmulator {
             self.circulating_supply += new_circulating_supply_diff as CirculatingSupply;
         }
 
-        self.selected_parent_blue_score = rng.gen();
-        self.daa_score = rng.gen();
+        self.selected_parent_blue_score = rng.r#gen();
+        self.daa_score = rng.r#gen();
     }
 
     pub fn clear_virtual_state(&mut self) {

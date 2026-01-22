@@ -19,7 +19,7 @@ pub use pad::PadStr;
 pub use regex::Regex;
 pub use separator::Separatable;
 pub use serde::{Deserialize, Serialize};
-pub use serde_json::{to_value, Value};
+pub use serde_json::{Value, to_value};
 pub use std::collections::HashMap;
 pub use std::collections::VecDeque;
 pub use std::ops::Deref;

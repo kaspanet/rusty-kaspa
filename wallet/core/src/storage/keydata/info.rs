@@ -52,11 +52,7 @@ impl PrvKeyDataInfo {
     }
 
     pub fn name_or_id(&self) -> String {
-        if let Some(name) = &self.name {
-            name.to_owned()
-        } else {
-            self.id.to_hex()[0..16].to_string()
-        }
+        if let Some(name) = &self.name { name.to_owned() } else { self.id.to_hex()[0..16].to_string() }
     }
 
     pub fn requires_bip39_passphrase(&self) -> bool {

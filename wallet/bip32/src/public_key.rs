@@ -1,6 +1,6 @@
 use crate::types::*;
 use ripemd::{Digest, Ripemd160};
-use secp256k1::{scalar::Scalar, Secp256k1, VerifyOnly};
+use secp256k1::{Secp256k1, VerifyOnly, scalar::Scalar};
 use sha2::Sha256;
 
 /// Trait for public key types which can be derived using BIP32.

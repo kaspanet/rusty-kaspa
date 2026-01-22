@@ -1,21 +1,21 @@
 use std::{collections::HashSet, sync::Arc};
 
 use kaspa_consensus_core::{
-    tx::{ScriptPublicKeys, TransactionOutpoint},
     BlockHashSet,
+    tx::{ScriptPublicKeys, TransactionOutpoint},
 };
 use kaspa_core::trace;
-use kaspa_database::prelude::{CachePolicy, StoreResult, DB};
+use kaspa_database::prelude::{CachePolicy, DB, StoreResult};
 use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
 
 use crate::{
+    IDENT,
     model::UtxoSetByScriptPublicKey,
     stores::{
         indexed_utxos::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
         supply::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},
         tips::{DbUtxoIndexTipsStore, UtxoIndexTipsStore, UtxoIndexTipsStoreReader},
     },
-    IDENT,
 };
 
 #[derive(Clone)]

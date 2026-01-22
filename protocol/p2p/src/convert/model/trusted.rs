@@ -4,10 +4,10 @@
 //!
 
 use kaspa_consensus_core::{
+    BlockHashMap, BlockHashSet, HashMapCustomHasher,
     block::Block,
     blockhash::ORIGIN,
     trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
-    BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 
 use crate::common::ProtocolError;

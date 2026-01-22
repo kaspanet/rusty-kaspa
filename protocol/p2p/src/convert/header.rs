@@ -1,5 +1,5 @@
 use crate::pb as protowire;
-use kaspa_consensus_core::{header::Header, BlueWorkType};
+use kaspa_consensus_core::{BlueWorkType, header::Header};
 use kaspa_hashes::Hash;
 
 use super::error::ConversionError;
@@ -14,11 +14,7 @@ pub enum HeaderFormat {
 /// Determines the header format based on the protocol version.
 impl From<u32> for HeaderFormat {
     fn from(version: u32) -> Self {
-        if version >= 9 {
-            Self::Compressed
-        } else {
-            Self::Legacy
-        }
+        if version >= 9 { Self::Compressed } else { Self::Legacy }
     }
 }
 

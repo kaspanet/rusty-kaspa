@@ -1,5 +1,5 @@
 use crate::protowire::{
-    kaspad_response::Payload, BlockAddedNotificationMessage, KaspadResponse, NewBlockTemplateNotificationMessage, RpcNotifyCommand,
+    BlockAddedNotificationMessage, KaspadResponse, NewBlockTemplateNotificationMessage, RpcNotifyCommand, kaspad_response::Payload,
 };
 use crate::protowire::{
     FinalityConflictNotificationMessage, FinalityConflictResolvedNotificationMessage, NotifyPruningPointUtxoSetOverrideRequestMessage,
@@ -23,15 +23,15 @@ from!(item: &kaspa_rpc_core::Notification, KaspadResponse, { Self { id: 0, paylo
 
 from!(item: &kaspa_rpc_core::Notification, Payload, {
     match item {
-        Notification::BlockAdded(ref notification) => Payload::BlockAddedNotification(notification.into()),
-        Notification::NewBlockTemplate(ref notification) => Payload::NewBlockTemplateNotification(notification.into()),
-        Notification::VirtualChainChanged(ref notification) => Payload::VirtualChainChangedNotification(notification.into()),
-        Notification::FinalityConflict(ref notification) => Payload::FinalityConflictNotification(notification.into()),
-        Notification::FinalityConflictResolved(ref notification) => Payload::FinalityConflictResolvedNotification(notification.into()),
-        Notification::UtxosChanged(ref notification) => Payload::UtxosChangedNotification(notification.into()),
-        Notification::SinkBlueScoreChanged(ref notification) => Payload::SinkBlueScoreChangedNotification(notification.into()),
-        Notification::VirtualDaaScoreChanged(ref notification) => Payload::VirtualDaaScoreChangedNotification(notification.into()),
-        Notification::PruningPointUtxoSetOverride(ref notification) => {
+        Notification::BlockAdded(notification) => Payload::BlockAddedNotification(notification.into()),
+        Notification::NewBlockTemplate(notification) => Payload::NewBlockTemplateNotification(notification.into()),
+        Notification::VirtualChainChanged(notification) => Payload::VirtualChainChangedNotification(notification.into()),
+        Notification::FinalityConflict(notification) => Payload::FinalityConflictNotification(notification.into()),
+        Notification::FinalityConflictResolved(notification) => Payload::FinalityConflictResolvedNotification(notification.into()),
+        Notification::UtxosChanged(notification) => Payload::UtxosChangedNotification(notification.into()),
+        Notification::SinkBlueScoreChanged(notification) => Payload::SinkBlueScoreChangedNotification(notification.into()),
+        Notification::VirtualDaaScoreChanged(notification) => Payload::VirtualDaaScoreChangedNotification(notification.into()),
+        Notification::PruningPointUtxoSetOverride(notification) => {
             Payload::PruningPointUtxoSetOverrideNotification(notification.into())
         },
     }
@@ -102,19 +102,19 @@ try_from!(item: &KaspadResponse, kaspa_rpc_core::Notification, {
 
 try_from!(item: &Payload, kaspa_rpc_core::Notification, {
     match item {
-        Payload::BlockAddedNotification(ref notification) => Notification::BlockAdded(notification.try_into()?),
-        Payload::NewBlockTemplateNotification(ref notification) => Notification::NewBlockTemplate(notification.try_into()?),
-        Payload::VirtualChainChangedNotification(ref notification) => Notification::VirtualChainChanged(notification.try_into()?),
-        Payload::FinalityConflictNotification(ref notification) => Notification::FinalityConflict(notification.try_into()?),
-        Payload::FinalityConflictResolvedNotification(ref notification) => {
+        Payload::BlockAddedNotification(notification) => Notification::BlockAdded(notification.try_into()?),
+        Payload::NewBlockTemplateNotification(notification) => Notification::NewBlockTemplate(notification.try_into()?),
+        Payload::VirtualChainChangedNotification(notification) => Notification::VirtualChainChanged(notification.try_into()?),
+        Payload::FinalityConflictNotification(notification) => Notification::FinalityConflict(notification.try_into()?),
+        Payload::FinalityConflictResolvedNotification(notification) => {
             Notification::FinalityConflictResolved(notification.try_into()?)
         }
-        Payload::UtxosChangedNotification(ref notification) => Notification::UtxosChanged(notification.try_into()?),
-        Payload::SinkBlueScoreChangedNotification(ref notification) => Notification::SinkBlueScoreChanged(notification.try_into()?),
-        Payload::VirtualDaaScoreChangedNotification(ref notification) => {
+        Payload::UtxosChangedNotification(notification) => Notification::UtxosChanged(notification.try_into()?),
+        Payload::SinkBlueScoreChangedNotification(notification) => Notification::SinkBlueScoreChanged(notification.try_into()?),
+        Payload::VirtualDaaScoreChangedNotification(notification) => {
             Notification::VirtualDaaScoreChanged(notification.try_into()?)
         }
-        Payload::PruningPointUtxoSetOverrideNotification(ref notification) => {
+        Payload::PruningPointUtxoSetOverrideNotification(notification) => {
             Notification::PruningPointUtxoSetOverride(notification.try_into()?)
         }
         _ => Err(RpcError::UnsupportedFeature)?,

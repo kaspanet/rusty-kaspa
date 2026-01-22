@@ -8,11 +8,11 @@ use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
+    IncomingRoute, Router, SharedIncomingRoute,
     common::ProtocolError,
     convert::header::{HeaderFormat, Versioned},
     dequeue, dequeue_with_timeout, make_message, make_request,
-    pb::{kaspad_message::Payload, InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage},
-    IncomingRoute, Router, SharedIncomingRoute,
+    pb::{InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage, kaspad_message::Payload},
 };
 use kaspa_utils::channel::{JobSender, JobTrySendError as TrySendError};
 use std::{collections::VecDeque, sync::Arc};
