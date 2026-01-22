@@ -1,3 +1,4 @@
+use kaspa_hashes::Hash;
 use thiserror::Error;
 
 #[derive(Error, PartialEq, Eq, Debug, Clone)]
@@ -83,7 +84,7 @@ pub enum TxScriptError {
     InvalidIndex(i32),
 
     #[error("{0} is not a valid covenant output index for input {1} with {2} covenant outputs")]
-    InvalidCovOutIndex(usize, usize, usize),
+    InvalidInputCovOutIndex(usize, usize, usize),
     #[error("blockhash must be exactly 32 bytes long, got {0} bytes instead")]
     InvalidLengthOfBlockHash(usize),
     #[error("block {0} not selected")]
@@ -110,4 +111,8 @@ pub enum CovenantsError {
     WrongGenesisCovenantId(usize),
     #[error("output #{0} covenant authorizing input index {1} is out of bounds")]
     AuthInputOutOfBounds(usize, u16),
+    #[error("covenant id {0} input {1} is out of bounds")]
+    InvalidCovInIndex(Hash, usize),
+    #[error("covenant id {0} output {1} is out of bounds")]
+    InvalidCovOutIndex(Hash, usize),
 }
