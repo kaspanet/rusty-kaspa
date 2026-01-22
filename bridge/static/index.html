@@ -23,6 +23,12 @@
             <div class="loader" id="status-loader"></div>
             <span id="status-text" class="status-dot status-dot--loading" title="Loading"></span>
           </div>
+          <div class="hidden md:flex items-center gap-3">
+            <div class="bg-surface-2 border border-card px-4 py-2 rounded-lg text-sm">
+              <div class="text-xs text-gray-400">Server Time</div>
+              <div id="serverTime" class="text-white font-semibold tabular-nums">-</div>
+            </div>
+          </div>
           <div class="hidden md:flex items-center gap-2">
             <a class="bg-surface-2 border border-card px-4 py-2 rounded-full text-sm font-medium text-white hover:border-kaspa-primary flex items-center gap-2" href="raw.html">Raw</a>
             <a class="bg-kaspa-primary hover-bg-kaspa-primary px-4 py-2 rounded-full text-sm font-medium text-white flex items-center gap-2"
@@ -171,6 +177,17 @@
         <div class="flex items-center justify-between gap-4 mb-4">
           <h3 class="text-lg font-semibold kaspa-primary">Recent Blocks</h3>
           <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+              <label for="blocksDayFilter" class="text-xs text-gray-400">Filter by days:</label>
+              <select id="blocksDayFilter" class="bg-surface-1 border border-card px-3 py-1.5 rounded-lg text-sm text-white hover:border-kaspa-primary focus:outline-none focus:border-kaspa-primary">
+                <option value="0">All</option>
+                <option value="1">Last 1 day</option>
+                <option value="3">Last 3 days</option>
+                <option value="7">Last 7 days</option>
+                <option value="14">Last 14 days</option>
+                <option value="30">Last 30 days</option>
+              </select>
+            </div>
             <button type="button" class="bg-surface-1 border border-card px-3 py-1.5 rounded-lg text-xs font-medium text-white hover:border-kaspa-primary flex items-center gap-2" data-collapsible-toggle="recentBlocks" aria-expanded="true">
               <svg class="h-4 w-4 transition-transform" data-collapsible-icon="recentBlocks" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08z" clip-rule="evenodd"/></svg>
               <span data-collapsible-label="recentBlocks">Collapse</span>
