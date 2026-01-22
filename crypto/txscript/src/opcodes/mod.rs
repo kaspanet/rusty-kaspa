@@ -1352,7 +1352,7 @@ opcode_list! {
         }
     }
 
-    opcode OpCovOutputCount<0xcb, 1>(self, vm){
+    opcode OpAuthOutputCount<0xcb, 1>(self, vm){
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
@@ -1364,14 +1364,14 @@ opcode_list! {
                     let count = vm.covenants_ctx.num_auth_outputs(input_idx);
                     push_number(count as i64, vm)
                 },
-                _ => Err(TxScriptError::InvalidSource("OpCovOutCount only applies to transaction inputs".to_string()))
+                _ => Err(TxScriptError::InvalidSource("OpAuthOutputCount only applies to transaction inputs".to_string()))
             }
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
     }
 
-    opcode OpCovOutputIdx<0xcc, 1>(self, vm) {
+    opcode OpAuthOutputIdx<0xcc, 1>(self, vm) {
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
@@ -1383,7 +1383,7 @@ opcode_list! {
                     let output_idx = vm.covenants_ctx.auth_output_index(input_idx, k)?;
                     push_number(output_idx as i64, vm)
                 },
-                _ => Err(TxScriptError::InvalidSource("OpCovOutIdx only applies to transaction inputs".to_string()))
+                _ => Err(TxScriptError::InvalidSource("OpAuthOutputIdx only applies to transaction inputs".to_string()))
             }
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1415,7 +1415,7 @@ opcode_list! {
         }
     }
 
-    // Undefined opcodes
+    // Undefined opcodes TODO(pre-covpp): Change the location of this comment
     opcode OpInputCovenantId<0xcf, 1>(self, vm){
         if vm.flags.covenants_enabled {
             match vm.script_source {
@@ -1467,7 +1467,7 @@ opcode_list! {
         }
     }
 
-    opcode OpCovOutputCount<0xd2, 1>(self, vm) {
+    opcode OpCovOutCount<0xd2, 1>(self, vm) {
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
@@ -1709,15 +1709,15 @@ mod test {
             opcodes::OpTxInputScriptSigLen::empty().expect("Should accept empty"),
             opcodes::OpTxInputScriptSigSubstr::empty().expect("Should accept empty"),
             opcodes::OpBlake2bWithKey::empty().expect("Should accept empty"),
-            opcodes::OpCovOutputCount::empty().expect("Should accept empty"),
-            opcodes::OpCovOutputIdx::empty().expect("Should accept empty"),
+            opcodes::OpAuthOutputCount::empty().expect("Should accept empty"),
+            opcodes::OpAuthOutputIdx::empty().expect("Should accept empty"),
             opcodes::OpNum2Bin::empty().expect("Should accept empty"),
             opcodes::OpBin2Num::empty().expect("Should accept empty"),
-            opcodes::OpUnknown207::empty().expect("Should accept empty"),
-            opcodes::OpUnknown208::empty().expect("Should accept empty"),
-            opcodes::OpUnknown209::empty().expect("Should accept empty"),
-            opcodes::OpUnknown210::empty().expect("Should accept empty"),
-            opcodes::OpUnknown211::empty().expect("Should accept empty"),
+            opcodes::OpInputCovenantId::empty().expect("Should accept empty"),
+            opcodes::OpCovInputCount::empty().expect("Should accept empty"),
+            opcodes::OpCovInputIdx::empty().expect("Should accept empty"),
+            opcodes::OpAuthOutputCount::empty().expect("Should accept empty"),
+            opcodes::OpCovOutputIdx::empty().expect("Should accept empty"),
             opcodes::OpChainblockSeqCommit::empty().expect("Should accept empty"),
             opcodes::OpUnknown213::empty().expect("Should accept empty"),
             opcodes::OpUnknown214::empty().expect("Should accept empty"),
@@ -4531,12 +4531,12 @@ mod test {
 
             for (input_idx, expected_count) in [(0, 2), (1, 1)] {
                 let spk = script(|sb| {
-                    sb.add_i64(input_idx)?.add_op(codes::OpCovOutputCount)?.add_i64(expected_count)?.add_op(codes::OpEqual)
+                    sb.add_i64(input_idx)?.add_op(codes::OpAuthOutputCount)?.add_i64(expected_count)?.add_op(codes::OpEqual)
                 });
                 run_script(&tx, entries.clone(), 0, spk).expect("cov output count");
             }
 
-            let spk_invalid = script(|sb| sb.add_i64(3)?.add_op(codes::OpCovOutputCount));
+            let spk_invalid = script(|sb| sb.add_i64(3)?.add_op(codes::OpAuthOutputCount));
             let err = run_script(&tx, entries, 0, spk_invalid).expect_err("cov output count invalid input");
             assert!(matches!(err, TxScriptError::InvalidInputIndex(3, 2)));
         }
@@ -4549,14 +4549,14 @@ mod test {
                 let spk = script(|sb| {
                     sb.add_i64(input_idx)?
                         .add_i64(authorized_idx)?
-                        .add_op(codes::OpCovOutputIdx)?
+                        .add_op(codes::OpAuthOutputIdx)?
                         .add_i64(expected_output_idx)?
                         .add_op(codes::OpEqual)
                 });
                 run_script(&tx, entries.clone(), 0, spk).expect("cov output idx");
             }
 
-            let spk_missing = script(|sb| sb.add_i64(0)?.add_i64(2)?.add_op(codes::OpCovOutputIdx));
+            let spk_missing = script(|sb| sb.add_i64(0)?.add_i64(2)?.add_op(codes::OpAuthOutputIdx));
             let err = run_script(&tx, entries, 0, spk_missing).expect_err("cov output idx missing");
             assert!(matches!(err, TxScriptError::InvalidInputCovOutIndex(2, 0, 2)));
         }
