@@ -3,7 +3,7 @@ use crate::{cache::CachePolicy, db::DB, errors::StoreError};
 use super::prelude::{Cache, DbKey, DbWriter};
 use kaspa_utils::mem_size::MemSizeEstimator;
 use rocksdb::{Direction, IterateBounds, IteratorMode, ReadOptions};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store access with typed caching.

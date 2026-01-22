@@ -1,24 +1,25 @@
 use crate::{
     flow_context::FlowContext,
     flow_trait::Flow,
-    ibd::{negotiate::ChainNegotiationOutput, HeadersChunkStream, TrustedEntryStream},
+    ibd::{HeadersChunkStream, TrustedEntryStream, negotiate::ChainNegotiationOutput},
 };
-use futures::future::{join_all, select, try_join_all, Either};
+use futures::future::{Either, join_all, select, try_join_all};
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashSet,
     api::BlockValidationFuture,
     block::Block,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList, PruningProofMetadata},
     trusted::TrustedBlock,
     tx::Transaction,
-    BlockHashSet,
 };
-use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy, StagingConsensus};
+use kaspa_consensusmanager::{ConsensusProxy, StagingConsensus, spawn_blocking};
 use kaspa_core::{debug, info, time::unix_now, warn};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_p2p_lib::{
+    IncomingRoute, Router,
     common::ProtocolError,
     convert::{
         header::{HeaderFormat, Versioned},
@@ -26,10 +27,10 @@ use kaspa_p2p_lib::{
     },
     dequeue_with_timeout, make_message, make_request,
     pb::{
-        kaspad_message::Payload, RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
+        RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
         RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
+        kaspad_message::Payload,
     },
-    IncomingRoute, Router,
 };
 use kaspa_utils::channel::JobReceiver;
 use std::{
@@ -38,7 +39,7 @@ use std::{
 };
 use tokio::time::sleep;
 
-use super::{progress::ProgressReporter, HeadersChunk, PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
+use super::{HeadersChunk, IBD_BATCH_SIZE, PruningPointUtxosetChunkStream, progress::ProgressReporter};
 type BlockBody = Vec<Transaction>;
 
 /// Flow for managing IBD - Initial Block Download
@@ -162,8 +163,8 @@ impl IbdFlow {
                         spawn_blocking(|| staging.commit()).await.unwrap();
                         info!(
                             "Header download stage of IBD with headers proof completed successfully from {}. Committed staging consensus.",
-                                    self.router
-                                );
+                            self.router
+                        );
 
                         // This will reobtain the freshly committed staging consensus
                         session = self.ctx.consensus().session().await;
@@ -267,7 +268,9 @@ impl IbdFlow {
                     (SyncerSkew::Lagging, true) => {
                         Ok(IbdType::Sync { highest_known_syncer_chain_hash, is_utxo_stable, is_pp_anticone_synced })
                     }
-                    (SyncerSkew::Lagging, false) => Err(ProtocolError::Other("Local node is in a transitional state requiring external data to stabilize, but the syncer lags behind and is unable to provide said data")),
+                    (SyncerSkew::Lagging, false) => Err(ProtocolError::Other(
+                        "Local node is in a transitional state requiring external data to stabilize, but the syncer lags behind and is unable to provide said data",
+                    )),
                     (SyncerSkew::Leading, true) => {
                         if consensus.async_get_block_status(syncer_pruning_point).await.is_some_and(|b| b.has_block_body()) {
                             // While a leading syncer skew often indicates the need for catchup, in this case
