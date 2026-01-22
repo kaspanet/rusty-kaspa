@@ -167,9 +167,10 @@ tbody tr:hover {
 }
 
 .table-wrap {
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
   max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .table-wrap table {
