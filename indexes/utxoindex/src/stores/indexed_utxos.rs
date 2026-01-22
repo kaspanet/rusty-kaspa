@@ -163,7 +163,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
         for script_public_key in script_public_keys.into_iter() {
             let script_public_key_bucket = ScriptPublicKeyBucket::from(&script_public_key);
             let utxos_by_script_public_keys_inner = CompactUtxoCollection::from_iter(
-                self.access.seek_iterator(Some(script_public_key_bucket.as_ref()), None, usize::MAX, false).map(|res| {
+                self.access.seek_iterator(Some(script_public_key_bucket.as_ref()), None, None, usize::MAX, false).map(|res| {
                     let (key, entry) = res.unwrap();
                     (TransactionOutpointKey(<[u8; TRANSACTION_OUTPOINT_KEY_SIZE]>::try_from(&key[..]).unwrap()).into(), entry)
                 }),

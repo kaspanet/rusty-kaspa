@@ -29,6 +29,7 @@ members = [
     "notify",
     "indexes/core",
     "indexes/processor",
+    "indexes/txindex",
     "indexes/utxoindex",
     "rpc/macros",
     "rpc/core",
@@ -119,6 +120,7 @@ kaspa-pow = { version = "1.1.0-rc.2", path = "consensus/pow" }
 kaspa-rpc-core = { version = "1.1.0-rc.2", path = "rpc/core" }
 kaspa-rpc-macros = { version = "1.1.0-rc.2", path = "rpc/macros" }
 kaspa-rpc-service = { version = "1.1.0-rc.2", path = "rpc/service" }
+kaspa-txindex = { version = "1.1.0-rc.2", path = "indexes/txindex" }
 kaspa-txscript = { version = "1.1.0-rc.2", path = "crypto/txscript" }
 kaspa-txscript-errors = { version = "1.1.0-rc.2", path = "crypto/txscript/errors" }
 kaspa-utils = { version = "1.1.0-rc.2", path = "utils" }

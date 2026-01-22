@@ -218,6 +218,7 @@ where
         &self,
         bucket: Option<&[u8]>,   // iter self.prefix if None, else append bytes to self.prefix.
         seek_from: Option<TKey>, // iter whole range if None
+        seek_to: Option<TKey>,   // iter until this key (inclusive) if Some
         limit: usize,            // amount to take.
         skip_first: bool,        // skips the first value, (useful in conjunction with the seek-key, as to not re-retrieve).
     ) -> impl Iterator<Item = KeyDataResult<TData>> + '_
@@ -248,13 +249,39 @@ where
             db_iterator.next();
         }
 
-        db_iterator.take(limit).map(move |item| match item {
-            Ok((key_bytes, value_bytes)) => match bincode::deserialize::<TData>(value_bytes.as_ref()) {
-                Ok(value) => Ok((key_bytes[db_key.prefix_len()..].into(), value)),
+        let seek_to_bytes = seek_to.as_ref().map(|k| k.as_ref().to_vec());
+        let prefix_len = db_key.prefix_len();
+        db_iterator
+            .take_while(move |item| {
+                if let Some(ref seek_to_bytes) = seek_to_bytes {
+                    if let Ok((key_bytes, _)) = item {
+                        let key = &key_bytes[prefix_len..];
+                        key <= &seek_to_bytes[..]
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                }
+            })
+            .take(limit)
+            .map(move |item| match item {
+                Ok((key_bytes, value_bytes)) => match bincode::deserialize::<TData>(value_bytes.as_ref()) {
+                    Ok(value) => Ok((key_bytes[prefix_len..].into(), value)),
+                    Err(err) => Err(err.into()),
+                },
                 Err(err) => Err(err.into()),
-            },
-            Err(err) => Err(err.into()),
-        })
+            })
+    }
+
+    pub fn delete_range(&self, mut writer: impl DbWriter, from_key: TKey, to_key: TKey) -> Result<(), StoreError>
+    where
+        TKey: Clone + AsRef<[u8]>,
+    {
+        let from_db_key = DbKey::new(&self.prefix, from_key);
+        let to_db_key = DbKey::new(&self.prefix, to_key);
+        writer.delete_range(from_db_key.as_ref(), to_db_key.as_ref())?;
+        Ok(())
     }
 
     pub fn prefix(&self) -> &[u8] {

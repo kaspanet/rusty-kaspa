@@ -92,7 +92,7 @@ impl NotificationTrait for Notification {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct BlockAddedNotification {
     pub block: Block,
 }
