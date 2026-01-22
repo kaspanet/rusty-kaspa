@@ -1,5 +1,6 @@
 let lastFilteredWorkers = [];
 let lastFilteredBlocks = [];
+let lastInternalCpuWorker = null;
 
 const CACHE_KEYS = {
   status: 'ks_bridge_status_v1',
@@ -175,6 +176,50 @@ function showToast(message) {
   el.classList.remove('hidden');
   clearTimeout(showToast._t);
   showToast._t = setTimeout(() => el.classList.add('hidden'), 1600);
+}
+
+function isCoarsePointerDevice() {
+  try {
+    return window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  } catch {
+    return false;
+  }
+}
+
+function openRowDetailModal(title, rows) {
+  const modal = document.getElementById('rowDetailModal');
+  const body = document.getElementById('rowDetailBody');
+  const titleEl = document.getElementById('rowDetailTitle');
+  if (!modal || !body || !titleEl) return;
+
+  titleEl.textContent = title || 'Details';
+  body.innerHTML = (rows || []).map(({ label, value, copyValue }) => {
+    const v = value == null || value === '' ? '-' : String(value);
+    const copy = copyValue != null && String(copyValue) !== ''
+      ? `<button type="button" class="bg-surface-2 border border-card px-3 py-2 rounded-lg text-sm font-medium text-white hover:border-kaspa-primary shrink-0" data-copy-text="${escapeHtmlAttr(copyValue)}">Copy</button>`
+      : '';
+    return `
+      <div class="bg-surface-2 border border-card rounded-xl px-4 py-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-xs text-gray-400">${escapeHtmlAttr(label)}</div>
+            <div class="text-sm text-white break-all">${escapeHtmlAttr(v)}</div>
+          </div>
+          ${copy}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  modal.classList.remove('hidden');
+  try { document.body.style.overflow = 'hidden'; } catch {}
+}
+
+function closeRowDetailModal() {
+  const modal = document.getElementById('rowDetailModal');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  try { document.body.style.overflow = ''; } catch {}
 }
 
 function cacheReadJson(key) {
@@ -560,13 +605,15 @@ async function refresh() {
     lastFilteredBlocks = blocks;
     const blocksBody = document.getElementById('blocksBody');
     blocksBody.innerHTML = '';
-    for (const b of blocks) {
+    blocks.forEach((b, idx) => {
       const nonceInfo = formatNonceInfo(b.nonce);
       const hashFull = b.hash || '';
       const hashShort = shortHash(hashFull);
       const workerDisplay = displayWorkerName(b.worker);
       const tr = document.createElement('tr');
-      tr.className = 'border-b border-card/50';
+      tr.className = 'border-b border-card/50 cursor-pointer';
+      tr.setAttribute('data-row-kind', 'block');
+      tr.setAttribute('data-row-index', String(idx));
       tr.innerHTML = `
         <td class="py-1.5 pr-3" title="${b.timestamp || ''}">${formatUnixSeconds(b.timestamp)}</td>
         <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.instance || '')}">${b.instance || '-'}</td>
@@ -587,22 +634,26 @@ async function refresh() {
         </td>
       `;
       blocksBody.appendChild(tr);
-    }
+    });
 
     const workers = (mergedStats.workers || []).filter(w => !filter || (w.wallet || '').includes(filter));
     lastFilteredWorkers = workers;
     const workersBody = document.getElementById('workersBody');
     workersBody.innerHTML = '';
+    lastInternalCpuWorker = null;
 
     // Render internal CPU miner row as a pseudo-worker (not affected by wallet filter).
     if (!filter && icpu && typeof icpu === 'object') {
       const tr = document.createElement('tr');
-      tr.className = 'border-b border-card/50';
+      tr.className = 'border-b border-card/50 cursor-pointer';
       const hashrateHs = (Number(icpu.hashrateGhs) || 0) * 1e9;
       const wallet = String(icpu.wallet ?? '').trim();
       const shares = Number(icpu.shares ?? icpu.blocksAccepted) || 0;
       const stale = Number(icpu.stale ?? ((Number(icpu.blocksSubmitted) || 0) - (Number(icpu.blocksAccepted) || 0))) || 0;
       const invalid = Number(icpu.invalid ?? 0) || 0;
+      lastInternalCpuWorker = { wallet, hashrateHs, shares, stale, invalid, blocks: Number(icpu.blocksAccepted) || 0 };
+      tr.setAttribute('data-row-kind', 'icpu');
+      tr.setAttribute('data-row-index', '-1');
       tr.innerHTML = `
         <td class="py-1.5 pr-3">-</td>
         <td class="py-1.5 pr-3">${displayWorkerName('InternalCPU')}</td>
@@ -621,9 +672,11 @@ async function refresh() {
       workersBody.appendChild(tr);
     }
 
-    for (const w of workers) {
+    workers.forEach((w, idx) => {
       const tr = document.createElement('tr');
-      tr.className = 'border-b border-card/50';
+      tr.className = 'border-b border-card/50 cursor-pointer';
+      tr.setAttribute('data-row-kind', 'worker');
+      tr.setAttribute('data-row-index', String(idx));
       tr.innerHTML = `
         <td class="py-1.5 pr-3" title="${escapeHtmlAttr(w.instance || '')}">${w.instance || '-'}</td>
         <td class="py-1.5 pr-3" title="${escapeHtmlAttr(displayWorkerName(w.worker))}">${displayWorkerName(w.worker)}</td>
@@ -640,7 +693,7 @@ async function refresh() {
         <td class="py-1.5 pr-3">${w.blocks ?? '-'}</td>
       `;
       workersBody.appendChild(tr);
-    }
+    });
 
     updateBlocksChartFromBlocks(blocks, (mergedStats.blocks || []).length, filter);
 
@@ -684,13 +737,15 @@ async function refresh() {
       lastFilteredBlocks = blocks;
       const blocksBody = document.getElementById('blocksBody');
       blocksBody.innerHTML = '';
-      for (const b of blocks) {
+      blocks.forEach((b, idx) => {
         const nonceInfo = formatNonceInfo(b.nonce);
         const hashFull = b.hash || '';
         const hashShort = shortHash(hashFull);
       const workerDisplay = displayWorkerName(b.worker);
         const tr = document.createElement('tr');
-        tr.className = 'border-b border-card/50';
+        tr.className = 'border-b border-card/50 cursor-pointer';
+        tr.setAttribute('data-row-kind', 'block');
+        tr.setAttribute('data-row-index', String(idx));
         tr.innerHTML = `
           <td class="py-1.5 pr-3" title="${b.timestamp || ''}">${formatUnixSeconds(b.timestamp)}</td>
           <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.instance || '')}">${b.instance || '-'}</td>
@@ -711,22 +766,26 @@ async function refresh() {
           </td>
         `;
         blocksBody.appendChild(tr);
-      }
+      });
 
       const workers = (cached.stats.workers || []).filter(w => !filter || (w.wallet || '').includes(filter));
       lastFilteredWorkers = workers;
       const workersBody = document.getElementById('workersBody');
       workersBody.innerHTML = '';
+      lastInternalCpuWorker = null;
 
       // Render internal CPU miner row as a pseudo-worker (not affected by wallet filter).
       if (!filter && icpu && typeof icpu === 'object') {
         const tr = document.createElement('tr');
-        tr.className = 'border-b border-card/50';
+        tr.className = 'border-b border-card/50 cursor-pointer';
         const hashrateHs = (Number(icpu.hashrateGhs) || 0) * 1e9;
         const wallet = String(icpu.wallet ?? '').trim();
         const shares = Number(icpu.shares ?? icpu.blocksAccepted) || 0;
         const stale = Number(icpu.stale ?? ((Number(icpu.blocksSubmitted) || 0) - (Number(icpu.blocksAccepted) || 0))) || 0;
         const invalid = Number(icpu.invalid ?? 0) || 0;
+        lastInternalCpuWorker = { wallet, hashrateHs, shares, stale, invalid, blocks: Number(icpu.blocksAccepted) || 0 };
+        tr.setAttribute('data-row-kind', 'icpu');
+        tr.setAttribute('data-row-index', '-1');
         tr.innerHTML = `
           <td class="py-1.5 pr-3">-</td>
           <td class="py-1.5 pr-3">${displayWorkerName('InternalCPU')}</td>
@@ -745,9 +804,11 @@ async function refresh() {
         workersBody.appendChild(tr);
       }
 
-      for (const w of workers) {
+      workers.forEach((w, idx) => {
         const tr = document.createElement('tr');
-        tr.className = 'border-b border-card/50';
+        tr.className = 'border-b border-card/50 cursor-pointer';
+        tr.setAttribute('data-row-kind', 'worker');
+        tr.setAttribute('data-row-index', String(idx));
         tr.innerHTML = `
           <td class="py-1.5 pr-3" title="${escapeHtmlAttr(w.instance || '')}">${w.instance || '-'}</td>
           <td class="py-1.5 pr-3" title="${escapeHtmlAttr(displayWorkerName(w.worker))}">${displayWorkerName(w.worker)}</td>
@@ -764,7 +825,7 @@ async function refresh() {
           <td class="py-1.5 pr-3">${w.blocks ?? '-'}</td>
         `;
         workersBody.appendChild(tr);
-      }
+      });
 
       updateBlocksChartFromBlocks(blocks, (cached.stats.blocks || []).length, filter);
 
@@ -795,17 +856,75 @@ document.addEventListener('click', async (e) => {
   }
 
   const btn = e.target.closest('[data-copy-id],[data-copy-text]');
-  if (!btn) return;
-  let value = '';
-  if (btn.dataset.copyText != null) {
-    value = btn.dataset.copyText;
-  } else if (btn.dataset.copyId) {
-    const el = document.getElementById(btn.dataset.copyId);
-    value = el ? (el.textContent || '') : '';
+  if (btn) {
+    let value = '';
+    if (btn.dataset.copyText != null) {
+      value = btn.dataset.copyText;
+    } else if (btn.dataset.copyId) {
+      const el = document.getElementById(btn.dataset.copyId);
+      value = el ? (el.textContent || '') : '';
+    }
+
+    const ok = await copyToClipboard(value);
+    showToast(ok ? 'Copied' : 'Copy failed');
+    return;
   }
 
-  const ok = await copyToClipboard(value);
-  showToast(ok ? 'Copied' : 'Copy failed');
+  // Tap-to-expand rows on mobile / coarse pointer devices.
+  if (!isCoarsePointerDevice()) return;
+  const row = e.target.closest('tr[data-row-kind]');
+  if (!row) return;
+
+  const kind = row.getAttribute('data-row-kind');
+  const idx = Number(row.getAttribute('data-row-index') || -1);
+
+  if (kind === 'block') {
+    const b = lastFilteredBlocks[idx];
+    if (!b) return;
+    const nonceInfo = formatNonceInfo(b.nonce);
+    const workerDisplay = displayWorkerName(b.worker);
+    openRowDetailModal('Recent Block', [
+      { label: 'Timestamp', value: formatUnixSeconds(b.timestamp), copyValue: b.timestamp },
+      { label: 'Instance', value: b.instance || '-', copyValue: b.instance || '' },
+      { label: 'Bluescore', value: b.bluescore || '-', copyValue: b.bluescore || '' },
+      { label: 'Worker', value: workerDisplay, copyValue: workerDisplay },
+      { label: 'Wallet', value: b.wallet || '-', copyValue: b.wallet || '' },
+      { label: 'Nonce', value: nonceInfo.title || nonceInfo.display || '-', copyValue: b.nonce || '' },
+      { label: 'Hash', value: b.hash || '-', copyValue: b.hash || '' },
+    ]);
+    return;
+  }
+
+  if (kind === 'worker') {
+    const w = lastFilteredWorkers[idx];
+    if (!w) return;
+    const workerDisplay = displayWorkerName(w.worker);
+    openRowDetailModal('Worker', [
+      { label: 'Instance', value: w.instance || '-', copyValue: w.instance || '' },
+      { label: 'Worker', value: workerDisplay, copyValue: workerDisplay },
+      { label: 'Wallet', value: w.wallet || '-', copyValue: w.wallet || '' },
+      { label: 'Hashrate', value: formatHashrateHs((w.hashrate || 0) * 1e9), copyValue: String((w.hashrate || 0) * 1e9) },
+      { label: 'Shares', value: w.shares ?? '-', copyValue: w.shares ?? '' },
+      { label: 'Stale', value: w.stale ?? '-', copyValue: w.stale ?? '' },
+      { label: 'Invalid', value: w.invalid ?? '-', copyValue: w.invalid ?? '' },
+      { label: 'Blocks', value: w.blocks ?? '-', copyValue: w.blocks ?? '' },
+    ]);
+    return;
+  }
+
+  if (kind === 'icpu') {
+    const icpu = lastInternalCpuWorker;
+    if (!icpu) return;
+    openRowDetailModal('RKStratum CPU Miner', [
+      { label: 'Worker', value: displayWorkerName('InternalCPU'), copyValue: displayWorkerName('InternalCPU') },
+      { label: 'Wallet', value: icpu.wallet || '-', copyValue: icpu.wallet || '' },
+      { label: 'Hashrate', value: formatHashrateHs(icpu.hashrateHs || 0), copyValue: String(icpu.hashrateHs || 0) },
+      { label: 'Shares', value: icpu.shares ?? '-', copyValue: icpu.shares ?? '' },
+      { label: 'Stale', value: icpu.stale ?? '-', copyValue: icpu.stale ?? '' },
+      { label: 'Invalid', value: icpu.invalid ?? '-', copyValue: icpu.invalid ?? '' },
+      { label: 'Blocks', value: icpu.blocks ?? '-', copyValue: icpu.blocks ?? '' },
+    ]);
+  }
 });
 
 document.getElementById('downloadWorkersCsv').addEventListener('click', () => {
@@ -879,6 +998,16 @@ document.getElementById('clearCacheBtn').addEventListener('click', () => {
   setLastUpdated(0, false);
   showToast('Cache cleared');
 });
+
+(function initRowDetailModalControls() {
+  const closeBtn = document.getElementById('rowDetailClose');
+  const backdrop = document.getElementById('rowDetailBackdrop');
+  if (closeBtn) closeBtn.addEventListener('click', closeRowDetailModal);
+  if (backdrop) backdrop.addEventListener('click', closeRowDetailModal);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeRowDetailModal();
+  });
+})();
 setInterval(() => {
   // avoid overlapping refresh calls if the network is slow
   if (document.hidden) return;
@@ -909,13 +1038,15 @@ setInterval(() => {
   lastFilteredBlocks = blocks;
   const blocksBody = document.getElementById('blocksBody');
   blocksBody.innerHTML = '';
-  for (const b of blocks) {
+  blocks.forEach((b, idx) => {
     const nonceInfo = formatNonceInfo(b.nonce);
     const hashFull = b.hash || '';
     const hashShort = shortHash(hashFull);
     const workerDisplay = displayWorkerName(b.worker);
     const tr = document.createElement('tr');
-    tr.className = 'border-b border-card/50';
+    tr.className = 'border-b border-card/50 cursor-pointer';
+    tr.setAttribute('data-row-kind', 'block');
+    tr.setAttribute('data-row-index', String(idx));
     tr.innerHTML = `
       <td class="py-1.5 pr-3" title="${b.timestamp || ''}">${formatUnixSeconds(b.timestamp)}</td>
       <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.instance || '')}">${b.instance || '-'}</td>
@@ -936,18 +1067,22 @@ setInterval(() => {
       </td>
     `;
     blocksBody.appendChild(tr);
-  }
+  });
 
   const workers = (cached.stats.workers || []).filter(w => !filter || (w.wallet || '').includes(filter));
   lastFilteredWorkers = workers;
   const workersBody = document.getElementById('workersBody');
   workersBody.innerHTML = '';
-  for (const w of workers) {
+  lastInternalCpuWorker = null;
+  workers.forEach((w, idx) => {
     const tr = document.createElement('tr');
-    tr.className = 'border-b border-card/50';
+    tr.className = 'border-b border-card/50 cursor-pointer';
+    tr.setAttribute('data-row-kind', 'worker');
+    tr.setAttribute('data-row-index', String(idx));
+    const workerDisplay = displayWorkerName(w.worker);
     tr.innerHTML = `
       <td class="py-1.5 pr-3" title="${escapeHtmlAttr(w.instance || '')}">${w.instance || '-'}</td>
-      <td class="py-1.5 pr-3" title="${escapeHtmlAttr(w.worker || '')}">${w.worker || '-'}</td>
+      <td class="py-1.5 pr-3" title="${escapeHtmlAttr(workerDisplay)}">${workerDisplay || '-'}</td>
       <td class="py-1.5 pr-3">
         <div class="flex items-center gap-2 min-w-0">
           <span class="min-w-0 truncate" title="${w.wallet || ''}">${w.wallet || '-'}</span>
@@ -961,7 +1096,7 @@ setInterval(() => {
       <td class="py-1.5 pr-3">${w.blocks ?? '-'}</td>
     `;
     workersBody.appendChild(tr);
-  }
+  });
 
   updateBlocksChartFromBlocks(blocks, (cached.stats.blocks || []).length, filter);
 })();
