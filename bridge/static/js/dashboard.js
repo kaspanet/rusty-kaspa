@@ -10,6 +10,7 @@ const CACHE_KEYS = {
 
 const WALLET_FILTER_KEY = 'ks_bridge_wallet_filter_v1';
 const WORKER_ORDER_KEY = 'ks_bridge_worker_order_v1';
+const BLOCKS_DAY_FILTER_KEY = 'ks_bridge_blocks_day_filter_v1';
 
 function normalizeWalletFilter(value) {
   return String(value ?? '').trim();
@@ -129,6 +130,76 @@ function formatUnixSeconds(ts) {
   } catch {
     return String(ts);
   }
+}
+
+function formatServerTime(date) {
+  if (!date || !(date instanceof Date)) return '-';
+  try {
+    // Format: "Mon, Jan 15, 2024 3:45:30 PM"
+    const options = { 
+      weekday: 'short', 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    };
+    return date.toLocaleString('en-US', options);
+  } catch {
+    return date.toLocaleString();
+  }
+}
+
+function updateServerTime() {
+  const el = document.getElementById('serverTime');
+  if (!el) return;
+  el.textContent = formatServerTime(new Date());
+}
+
+function getBlocksDayFilter() {
+  const el = document.getElementById('blocksDayFilter');
+  if (!el) return 0;
+  const value = Number(el.value);
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+function setBlocksDayFilter(value) {
+  const el = document.getElementById('blocksDayFilter');
+  if (!el) return;
+  const v = Number(value);
+  if (Number.isFinite(v) && v >= 0) {
+    el.value = String(v);
+    try {
+      localStorage.setItem(BLOCKS_DAY_FILTER_KEY, String(v));
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function getBlocksDayFilterFromStorage() {
+  try {
+    const stored = localStorage.getItem(BLOCKS_DAY_FILTER_KEY);
+    if (!stored) return 0;
+    const value = Number(stored);
+    return Number.isFinite(value) && value >= 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function filterBlocksByDays(blocks, days) {
+  if (!Array.isArray(blocks) || days <= 0) return blocks;
+  const now = Math.floor(Date.now() / 1000);
+  const cutoffSeconds = days * 24 * 60 * 60;
+  const cutoffTime = now - cutoffSeconds;
+  return blocks.filter(b => {
+    const ts = Number(b?.timestamp);
+    if (!Number.isFinite(ts) || ts <= 0) return false;
+    return ts >= cutoffTime;
+  });
 }
 
 function displayWorkerName(worker) {
@@ -665,10 +736,12 @@ async function refresh() {
     }
 
     const filter = getWalletFilter();
+    const dayFilter = getBlocksDayFilter();
 
     renderWalletSummary(mergedStats, filter);
 
-    const blocks = (mergedStats.blocks || []).filter(b => !filter || (b.wallet || '').includes(filter));
+    let blocks = (mergedStats.blocks || []).filter(b => !filter || (b.wallet || '').includes(filter));
+    blocks = filterBlocksByDays(blocks, dayFilter);
     lastFilteredBlocks = blocks;
     const blocksBody = document.getElementById('blocksBody');
     blocksBody.innerHTML = '';
@@ -800,10 +873,12 @@ async function refresh() {
       }
 
       const filter = getWalletFilter();
+      const dayFilter = getBlocksDayFilter();
 
       renderWalletSummary(cached.stats, filter);
 
-      const blocks = (cached.stats.blocks || []).filter(b => !filter || (b.wallet || '').includes(filter));
+      let blocks = (cached.stats.blocks || []).filter(b => !filter || (b.wallet || '').includes(filter));
+      blocks = filterBlocksByDays(blocks, dayFilter);
       lastFilteredBlocks = blocks;
       const blocksBody = document.getElementById('blocksBody');
       blocksBody.innerHTML = '';
@@ -1066,6 +1141,20 @@ document.getElementById('refreshBtn').addEventListener('click', refresh);
     });
   }
 })();
+
+(function initBlocksDayFilter() {
+  const select = document.getElementById('blocksDayFilter');
+  if (!select) return;
+  
+  const persisted = getBlocksDayFilterFromStorage();
+  setBlocksDayFilter(persisted);
+  
+  select.addEventListener('change', () => {
+    const value = getBlocksDayFilter();
+    setBlocksDayFilter(value);
+    refresh();
+  });
+})();
 document.getElementById('clearCacheBtn').addEventListener('click', () => {
   cacheClear();
   setLastUpdated(0, false);
@@ -1081,6 +1170,14 @@ document.getElementById('clearCacheBtn').addEventListener('click', () => {
     if (e.key === 'Escape') closeRowDetailModal();
   });
 })();
+// Update server time every second
+setInterval(() => {
+  updateServerTime();
+}, 1000);
+
+// Initial server time update
+updateServerTime();
+
 setInterval(() => {
   // avoid overlapping refresh calls if the network is slow
   if (document.hidden) return;
@@ -1104,10 +1201,12 @@ setInterval(() => {
   document.getElementById('networkBlockCount').textContent = cached.stats.networkBlockCount ?? '-';
 
   const filter = getWalletFilter();
+  const dayFilter = getBlocksDayFilter();
 
   renderWalletSummary(cached.stats, filter);
 
-  const blocks = (cached.stats.blocks || []).filter(b => !filter || (b.wallet || '').includes(filter));
+  let blocks = (cached.stats.blocks || []).filter(b => !filter || (b.wallet || '').includes(filter));
+  blocks = filterBlocksByDays(blocks, dayFilter);
   lastFilteredBlocks = blocks;
   const blocksBody = document.getElementById('blocksBody');
   blocksBody.innerHTML = '';
