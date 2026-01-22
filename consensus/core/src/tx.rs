@@ -9,6 +9,7 @@
 mod script_public_key;
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use js_sys::Object;
 use kaspa_utils::hex::ToHex;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
@@ -26,6 +27,8 @@ use std::{
     str::{self},
 };
 use wasm_bindgen::prelude::*;
+use workflow_wasm::convert::{Cast, TryCastFromJs, TryCastJsInto};
+use workflow_wasm::extensions::ObjectExtension;
 use workflow_wasm::prelude::CastFromJs;
 
 use crate::mass::{ContextualMasses, NonContextualMasses};
@@ -152,6 +155,22 @@ impl TransactionOutput {
 pub struct CovenantBinding {
     pub authorizing_input: u16,
     pub covenant_id: Hash,
+}
+type CastErr = workflow_wasm::error::Error;
+impl TryCastFromJs for CovenantBinding {
+    type Error = CastErr;
+
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
+            let Some(object) = Object::try_from(value.as_ref()) else { return Err(CastErr::NotAnObject) };
+            let value = object.get_u16("authorizing_input")?;
+            let covenant_id = object.get_value("covenant_id")?.try_into_owned()?;
+            Ok(Self { authorizing_input: value, covenant_id })
+        })
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

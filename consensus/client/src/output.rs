@@ -148,7 +148,10 @@ impl TryCastFromJs for TransactionOutput {
             if let Some(object) = Object::try_from(value.as_ref()) {
                 let value = object.get_u64("value")?;
                 let script_public_key = ScriptPublicKey::try_owned_from(object.get_value("scriptPublicKey")?)?;
-                let covenant = todo!();
+                let covenant = object
+                    .try_get_value("covenant")?
+                    .map(|v| v.try_into_owned().map_err(|err| Error::convert("covenant", err)))
+                    .transpose()?;
                 Ok(TransactionOutput::new(value, script_public_key, covenant).into())
             } else {
                 Err("TransactionInput must be an object".into())
