@@ -8,6 +8,11 @@
 
 mod script_public_key;
 
+use crate::mass::{ContextualMasses, NonContextualMasses};
+use crate::{
+    hashing,
+    subnets::{self, SubnetworkId},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use js_sys::Object;
 use kaspa_utils::hex::ToHex;
@@ -30,12 +35,6 @@ use wasm_bindgen::prelude::*;
 use workflow_wasm::convert::{Cast, TryCastFromJs, TryCastJsInto};
 use workflow_wasm::extensions::ObjectExtension;
 use workflow_wasm::prelude::CastFromJs;
-
-use crate::mass::{ContextualMasses, NonContextualMasses};
-use crate::{
-    hashing,
-    subnets::{self, SubnetworkId},
-};
 
 use kaspa_hashes::Hash;
 
@@ -170,6 +169,14 @@ impl TryCastFromJs for CovenantBinding {
             let covenant_id = object.get_value("covenant_id")?.try_into_owned()?;
             Ok(Self { authorizing_input: value, covenant_id })
         })
+    }
+}
+
+#[wasm_bindgen]
+impl CovenantBinding {
+    #[wasm_bindgen(constructor)]
+    pub fn new(authorizing_input: u16, covenant_id: Hash) -> Self {
+        Self { authorizing_input, covenant_id }
     }
 }
 
