@@ -7,10 +7,10 @@ use kaspa_pow::{matrix::Matrix, xoshiro::XoShiRo256PlusPlus};
 const ITERS: usize = 1024;
 
 fn bench_pow(c: &mut Criterion) {
-    let mut r#gen = XoShiRo256PlusPlus::new(Hash::from_bytes([42; 32]));
-    let gen_hash = |r#gen: &mut XoShiRo256PlusPlus| Hash::from_le_u64([r#gen.u64(), r#gen.u64(), r#gen.u64(), r#gen.u64()]);
-    let matrices: Vec<_> = (0..ITERS).map(|_| Matrix::generate(gen_hash(&mut r#gen))).collect();
-    let hashes: Vec<_> = (0..ITERS).map(|_| gen_hash(&mut r#gen)).collect();
+    let mut rng = XoShiRo256PlusPlus::new(Hash::from_bytes([42; 32]));
+    let gen_hash = |rng: &mut XoShiRo256PlusPlus| Hash::from_le_u64([rng.u64(), rng.u64(), rng.u64(), rng.u64()]);
+    let matrices: Vec<_> = (0..ITERS).map(|_| Matrix::generate(gen_hash(&mut rng))).collect();
+    let hashes: Vec<_> = (0..ITERS).map(|_| gen_hash(&mut rng)).collect();
 
     c.bench_function("Compute Rank", |b| {
         b.iter(|| {

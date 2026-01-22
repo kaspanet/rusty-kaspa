@@ -168,7 +168,6 @@ impl ConnectionManager {
 
         let mut missing_connections = self.outbound_target - active_outbound.len();
         let mut addr_iter = self.address_manager.lock().iterate_prioritized_random_addresses(active_outbound);
-        // drop(address_manager);
         let mut progressing = true;
         let mut connecting = true;
         while connecting && missing_connections > 0 {
