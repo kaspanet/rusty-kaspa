@@ -1,7 +1,8 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{
-    ScriptPublicKey, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+    CovenantBinding, ScriptPublicKey, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
+    UtxoEntry,
 };
 use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,7 @@ use workflow_serializer::prelude::*;
 
 use crate::{
     prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
-    RpcError, RpcResult, RpcScriptPublicKey, RpcTransactionId,
+    RpcCovenantBinding, RpcError, RpcResult, RpcScriptPublicKey, RpcTransactionId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -347,6 +348,7 @@ pub struct RpcOptionalTransactionOutput {
     /// Level - Low
     pub script_public_key: Option<RpcScriptPublicKey>,
     pub verbose_data: Option<RpcOptionalTransactionOutputVerboseData>,
+    pub covenant: Option<RpcOptionalCovenantBinding>,
 }
 
 impl RpcOptionalTransactionOutput {
@@ -363,13 +365,18 @@ impl RpcOptionalTransactionOutput {
 
 impl From<TransactionOutput> for RpcOptionalTransactionOutput {
     fn from(output: TransactionOutput) -> Self {
-        Self { value: Some(output.value), script_public_key: Some(output.script_public_key), verbose_data: None }
+        Self {
+            value: Some(output.value),
+            script_public_key: Some(output.script_public_key),
+            verbose_data: None,
+            covenant: output.covenant.map(Into::into),
+        }
     }
 }
 
 impl Serializer for RpcOptionalTransactionOutput {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         store!(Option<u64>, &self.value, writer)?;
         store!(Option<RpcScriptPublicKey>, &self.script_public_key, writer)?;
         serialize!(Option<RpcOptionalTransactionOutputVerboseData>, &self.verbose_data, writer)?;
@@ -380,16 +387,24 @@ impl Serializer for RpcOptionalTransactionOutput {
 
 impl Deserializer for RpcOptionalTransactionOutput {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
-        Ok(match _version {
+        let version = load!(u8, reader)?;
+        Ok(match version {
             1 => {
                 let value = load!(Option<u64>, reader)?;
                 let script_public_key = load!(Option<RpcScriptPublicKey>, reader)?;
                 let verbose_data = deserialize!(Option<RpcOptionalTransactionOutputVerboseData>, reader)?;
 
-                Self { value, script_public_key, verbose_data }
+                Self { value, script_public_key, verbose_data, covenant: None }
             }
-            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
+            2 => {
+                let value = load!(Option<u64>, reader)?;
+                let script_public_key = load!(Option<RpcScriptPublicKey>, reader)?;
+                let verbose_data = deserialize!(Option<RpcOptionalTransactionOutputVerboseData>, reader)?;
+                let covenant = deserialize!(Option<RpcOptionalCovenantBinding>, reader)?;
+
+                Self { value, script_public_key, verbose_data, covenant }
+            }
+            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", version))),
         })
     }
 }
@@ -431,6 +446,59 @@ impl Deserializer for RpcOptionalTransactionOutputVerboseData {
             }
             _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
         })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcOptionalCovenantBinding(pub Option<RpcCovenantBinding>);
+
+impl Serializer for RpcOptionalCovenantBinding {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        serialize!(Option<RpcCovenantBinding>, &self.0, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcOptionalCovenantBinding {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        Ok(match _version {
+            1 => {
+                let covenant = deserialize!(Option<RpcCovenantBinding>, reader)?;
+                Self(covenant)
+            }
+            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
+        })
+    }
+}
+
+impl From<RpcCovenantBinding> for RpcOptionalCovenantBinding {
+    fn from(value: RpcCovenantBinding) -> Self {
+        Self(Some(value))
+    }
+}
+
+impl From<Option<RpcCovenantBinding>> for RpcOptionalCovenantBinding {
+    fn from(value: Option<RpcCovenantBinding>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<CovenantBinding> for RpcOptionalCovenantBinding {
+    fn from(value: CovenantBinding) -> Self {
+        Self(Some(value.into()))
+    }
+}
+
+impl TryFrom<RpcOptionalCovenantBinding> for RpcCovenantBinding {
+    type Error = RpcError;
+
+    fn try_from(covenant: RpcOptionalCovenantBinding) -> RpcResult<Self> {
+        let covenant = covenant.0.ok_or(RpcError::General("covenant binding is none".to_string()))?;
+        Ok(Self(CovenantBinding { authorizing_input: covenant.0.authorizing_input, covenant_id: covenant.0.covenant_id }))
     }
 }
 
