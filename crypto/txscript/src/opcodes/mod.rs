@@ -1361,7 +1361,7 @@ opcode_list! {
                     if input_idx >= tx.inputs().len() {
                         return Err(TxScriptError::InvalidInputIndex(input_idx.try_into().expect("casted above"), tx.inputs().len()));
                     }
-                    let count = vm.covenants_ctx.num_auth_outputs(input_idx)?;
+                    let count = vm.covenants_ctx.num_auth_outputs(input_idx);
                     push_number(count as i64, vm)
                 },
                 _ => Err(TxScriptError::InvalidSource("OpCovOutCount only applies to transaction inputs".to_string()))
@@ -1416,11 +1416,89 @@ opcode_list! {
     }
 
     // Undefined opcodes
-    opcode OpUnknown207<0xcf, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown208<0xd0, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown209<0xd1, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown210<0xd2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown211<0xd3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpInputCovenantId<0xcf, 1>(self, vm){
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                    let idx = i32_to_usize(idx)?;
+                    let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
+                    match utxo.covenant_id{
+                        None => vm.dstack.push_item(false), // TODO: Decide if we prefer to throw an error here instead
+                        Some(covenant_id) => push_data(covenant_id.as_bytes().into(), vm),
+                    }
+                },
+                _ => Err(TxScriptError::InvalidSource("OpInputCovenantId only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
+    opcode OpCovInputCount<0xd0, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [covenant_id]: [Hash; 1] = vm.dstack.pop_items()?;
+                    let count = vm.covenants_ctx.num_covenant_inputs(covenant_id);
+                    push_number(count as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpCovInCount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
+    opcode OpCovInputIdx<0xd1, 1>(self, vm){
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [k]: [i32; 1] = vm.dstack.pop_items()?;
+                    let k = i32_to_usize(k)?;
+                    let [covenant_id]: [Hash; 1] = vm.dstack.pop_items()?;
+                    let idx = vm.covenants_ctx.covenant_input_index(covenant_id, k)?;
+                    push_number(idx as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpCovInIdx only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
+    opcode OpCovOutputCount<0xd2, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [covenant_id]: [Hash; 1] = vm.dstack.pop_items()?;
+                    let count = vm.covenants_ctx.num_covenant_outputs(covenant_id);
+                    push_number(count as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpCovOutCount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
+    opcode OpCovOutputIdx<0xd3, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [k]: [i32; 1] = vm.dstack.pop_items()?;
+                    let k = i32_to_usize(k)?;
+                    let [covenant_id]: [Hash; 1] = vm.dstack.pop_items()?;
+                    let idx = vm.covenants_ctx.covenant_output_index(covenant_id, k)?;
+                    push_number(idx as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpCovOutIdx only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+
     opcode OpChainblockSeqCommit<0xd4, 1>(self, vm) {
         let Some(seq_commit_accessor) = vm.ctx.seq_commit_accessor else {
             // seq_commit_access is none only if the opcode is not enabled
@@ -4480,7 +4558,7 @@ mod test {
 
             let spk_missing = script(|sb| sb.add_i64(0)?.add_i64(2)?.add_op(codes::OpCovOutputIdx));
             let err = run_script(&tx, entries, 0, spk_missing).expect_err("cov output idx missing");
-            assert!(matches!(err, TxScriptError::InvalidCovOutIndex(2, 0, 2)));
+            assert!(matches!(err, TxScriptError::InvalidInputCovOutIndex(2, 0, 2)));
         }
 
         #[test]

@@ -1553,7 +1553,7 @@ mod bitcoind_tests {
                         TxScriptError::InvalidState(s) if s == "expected boolean" => vec!["MINIMALIF"],
                         TxScriptError::InvalidState(_) => vec!["UNKNOWN_ERROR"],
                         TxScriptError::ScriptSize(_, _) => vec!["SCRIPT_SIZE"],
-                        TxScriptError::InvalidCovOutIndex(_, _, _) => vec!["UNKNOWN_ERROR"],
+                        TxScriptError::InvalidInputCovOutIndex(_, _, _) => vec!["UNKNOWN_ERROR"],
                         _ => vec![],
                     },
                     UnifiedError::ScriptBuilderError(e) => match e {

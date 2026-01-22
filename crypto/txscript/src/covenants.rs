@@ -56,14 +56,32 @@ impl CovenantsContext {
     /// Missing input contexts are treated as having zero authorized outputs.
     pub(crate) fn auth_output_index(&self, input_idx: usize, k: usize) -> Result<usize, TxScriptError> {
         let auth_outputs = self.input_ctxs.get(&input_idx).map(|ctx| ctx.auth_outputs.as_slice()).unwrap_or(&[]);
-        auth_outputs.get(k).copied().ok_or(TxScriptError::InvalidCovOutIndex(k, input_idx, auth_outputs.len()))
+        auth_outputs.get(k).copied().ok_or(TxScriptError::InvalidInputCovOutIndex(k, input_idx, auth_outputs.len()))
     }
 
     /// Returns the number of outputs authorized by this input.
     ///
     /// Missing input contexts are treated as having zero authorized outputs.
-    pub(crate) fn num_auth_outputs(&self, input_idx: usize) -> Result<usize, TxScriptError> {
-        Ok(self.input_ctxs.get(&input_idx).map_or(0, |ctx| ctx.auth_outputs.len()))
+    pub(crate) fn num_auth_outputs(&self, input_idx: usize) -> usize {
+        self.input_ctxs.get(&input_idx).map_or(0, |ctx| ctx.auth_outputs.len())
+    }
+
+    pub(crate) fn num_covenant_inputs(&self, covenant_id: Hash) -> usize {
+        self.shared_ctxs.get(&covenant_id).map_or(0, |ctx| ctx.input_indices.len())
+    }
+
+    pub(crate) fn covenant_input_index(&self, covenant_id: Hash, k: usize) -> Result<usize, TxScriptError> {
+        let input_indices = self.shared_ctxs.get(&covenant_id).map(|ctx| ctx.input_indices.as_slice()).unwrap_or_default();
+        input_indices.get(k).copied().ok_or(CovenantsError::InvalidCovInIndex(covenant_id, k).into())
+    }
+
+    pub(crate) fn num_covenant_outputs(&self, covenant_id: Hash) -> usize {
+        self.shared_ctxs.get(&covenant_id).map_or(0, |ctx| ctx.output_indices.len())
+    }
+
+    pub(crate) fn covenant_output_index(&self, covenant_id: Hash, k: usize) -> Result<usize, TxScriptError> {
+        let output_indices = self.shared_ctxs.get(&covenant_id).map(|ctx| ctx.output_indices.as_slice()).unwrap_or_default();
+        output_indices.get(k).copied().ok_or(CovenantsError::InvalidCovOutIndex(covenant_id, k).into())
     }
 
     /// Constructs the covenants execution context for a transaction.
