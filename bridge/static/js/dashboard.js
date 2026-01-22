@@ -9,9 +9,76 @@ const CACHE_KEYS = {
 };
 
 const WALLET_FILTER_KEY = 'ks_bridge_wallet_filter_v1';
+const WORKER_ORDER_KEY = 'ks_bridge_worker_order_v1';
 
 function normalizeWalletFilter(value) {
   return String(value ?? '').trim();
+}
+
+function getWorkerKey(worker) {
+  // Create a unique key for a worker based on instance, worker name, and wallet
+  const instance = String(worker?.instance ?? '').trim();
+  const workerName = String(worker?.worker ?? '').trim();
+  const wallet = String(worker?.wallet ?? '').trim();
+  return `${instance}|${workerName}|${wallet}`;
+}
+
+function readWorkerOrder() {
+  try {
+    const stored = localStorage.getItem(WORKER_ORDER_KEY);
+    if (!stored) return [];
+    return JSON.parse(stored);
+  } catch {
+    return [];
+  }
+}
+
+function writeWorkerOrder(order) {
+  try {
+    localStorage.setItem(WORKER_ORDER_KEY, JSON.stringify(order || []));
+  } catch {
+    // ignore
+  }
+}
+
+function maintainWorkerOrder(existingWorkers, newWorkers) {
+  // existingWorkers: array of worker keys in the desired order
+  // newWorkers: array of worker objects from API
+  const order = [...existingWorkers];
+  const seen = new Set(existingWorkers);
+  const workerMap = new Map();
+  
+  // Create a map of worker key -> worker object
+  for (const w of newWorkers) {
+    const key = getWorkerKey(w);
+    workerMap.set(key, w);
+  }
+  
+  // Remove workers that no longer exist
+  const filteredOrder = order.filter(key => workerMap.has(key));
+  
+  // Add new workers at the end
+  for (const w of newWorkers) {
+    const key = getWorkerKey(w);
+    if (!seen.has(key)) {
+      filteredOrder.push(key);
+      seen.add(key);
+    }
+  }
+  
+  // Return sorted workers array based on the maintained order
+  const sorted = [];
+  for (const key of filteredOrder) {
+    const worker = workerMap.get(key);
+    if (worker) {
+      sorted.push(worker);
+    }
+  }
+  
+  // Update stored order
+  writeWorkerOrder(filteredOrder);
+  
+  return sorted;
 }
 
 function formatHashrateHs(hs) {
@@ -636,7 +703,10 @@ async function refresh() {
       blocksBody.appendChild(tr);
     });
 
-    const workers = (mergedStats.workers || []).filter(w => !filter || (w.wallet || '').includes(filter));
+    const allWorkers = mergedStats.workers || [];
+    const existingOrder = readWorkerOrder();
+    const orderedWorkers = maintainWorkerOrder(existingOrder, allWorkers);
+    const workers = orderedWorkers.filter(w => !filter || (w.wallet || '').includes(filter));
     lastFilteredWorkers = workers;
     const workersBody = document.getElementById('workersBody');
     workersBody.innerHTML = '';
@@ -768,7 +838,10 @@ async function refresh() {
         blocksBody.appendChild(tr);
       });
 
-      const workers = (cached.stats.workers || []).filter(w => !filter || (w.wallet || '').includes(filter));
+      const allWorkers = cached.stats.workers || [];
+      const existingOrder = readWorkerOrder();
+      const orderedWorkers = maintainWorkerOrder(existingOrder, allWorkers);
+      const workers = orderedWorkers.filter(w => !filter || (w.wallet || '').includes(filter));
       lastFilteredWorkers = workers;
       const workersBody = document.getElementById('workersBody');
       workersBody.innerHTML = '';
@@ -1069,7 +1142,10 @@ setInterval(() => {
     blocksBody.appendChild(tr);
   });
 
-  const workers = (cached.stats.workers || []).filter(w => !filter || (w.wallet || '').includes(filter));
+  const allWorkers = cached.stats.workers || [];
+  const existingOrder = readWorkerOrder();
+  const orderedWorkers = maintainWorkerOrder(existingOrder, allWorkers);
+  const workers = orderedWorkers.filter(w => !filter || (w.wallet || '').includes(filter));
   lastFilteredWorkers = workers;
   const workersBody = document.getElementById('workersBody');
   workersBody.innerHTML = '';
