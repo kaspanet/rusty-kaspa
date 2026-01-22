@@ -1,11 +1,11 @@
 use crate::processes::reachability::interval::Interval;
 use kaspa_consensus_core::{
-    blockhash::{self, BlockHashes},
     BlockHashMap, BlockHashSet, BlockHasher, BlockLevel, HashMapCustomHasher,
+    blockhash::{self, BlockHashes},
 };
 use kaspa_database::{
     prelude::{
-        BatchDbWriter, Cache, CachePolicy, CachedDbAccess, CachedDbItem, DbKey, DbSetAccess, DbWriter, DirectDbWriter, StoreError, DB,
+        BatchDbWriter, Cache, CachePolicy, CachedDbAccess, CachedDbItem, DB, DbKey, DbSetAccess, DbWriter, DirectDbWriter, StoreError,
     },
     registry::{DatabaseStorePrefixes, SEPARATOR},
 };
@@ -555,11 +555,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
 
     fn get_height(&self, hash: Hash) -> Result<u64, StoreError> {
         self.check_not_in_deletions(hash)?;
-        if let Some(data) = self.staging_writes.get(&hash) {
-            Ok(data.height)
-        } else {
-            Ok(self.store_read.access.read(hash)?.height)
-        }
+        if let Some(data) = self.staging_writes.get(&hash) { Ok(data.height) } else { Ok(self.store_read.access.read(hash)?.height) }
     }
 
     fn set_reindex_root(&mut self, root: Hash) -> Result<(), StoreError> {
@@ -568,11 +564,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
     }
 
     fn get_reindex_root(&self) -> Result<Hash, StoreError> {
-        if let Some(root) = self.staging_reindex_root {
-            Ok(root)
-        } else {
-            Ok(self.store_read.get_reindex_root()?)
-        }
+        if let Some(root) = self.staging_reindex_root { Ok(root) } else { Ok(self.store_read.get_reindex_root()?) }
     }
 }
 
@@ -595,11 +587,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
 
     fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
         self.check_not_in_deletions(hash)?;
-        if let Some(data) = self.staging_writes.get(&hash) {
-            Ok(data.parent)
-        } else {
-            Ok(self.store_read.access.read(hash)?.parent)
-        }
+        if let Some(data) = self.staging_writes.get(&hash) { Ok(data.parent) } else { Ok(self.store_read.access.read(hash)?.parent) }
     }
 
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {

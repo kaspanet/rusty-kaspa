@@ -1,7 +1,7 @@
 use crate::{
     events::{EventArray, EventType},
     listener::ListenerId,
-    subscription::{compounded, single, CompoundedSubscription, DynSubscription},
+    subscription::{CompoundedSubscription, DynSubscription, compounded, single},
 };
 use std::sync::Arc;
 

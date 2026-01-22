@@ -1,14 +1,14 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use itertools::Itertools;
 use kaspa_consensus_core::{
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{Transaction, TransactionInput, TransactionOutpoint},
 };
 use kaspa_hashes::{HasherBase, TransactionID};
-use kaspa_mining::{model::topological_index::TopologicalIndex, FeerateTransactionKey, Frontier, Policy};
-use rand::{thread_rng, Rng};
+use kaspa_mining::{FeerateTransactionKey, Frontier, Policy, model::topological_index::TopologicalIndex};
+use rand::{Rng, thread_rng};
 use std::{
-    collections::{hash_set::Iter, HashMap, HashSet},
+    collections::{HashMap, HashSet, hash_set::Iter},
     sync::Arc,
 };
 
