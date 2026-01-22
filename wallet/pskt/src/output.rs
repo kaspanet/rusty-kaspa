@@ -3,7 +3,7 @@
 use crate::pskt::KeySource;
 use crate::utils::combine_if_no_conflicts;
 use derive_builder::Builder;
-use kaspa_consensus_core::tx::ScriptPublicKey;
+use kaspa_consensus_core::tx::{CovenantBinding, ScriptPublicKey};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, ops::Add};
 
@@ -22,6 +22,9 @@ pub struct Output {
     /// A map from public keys needed to spend this output to their
     /// corresponding master key fingerprints and derivation paths.
     pub bip32_derivations: BTreeMap<secp256k1::PublicKey, Option<KeySource>>,
+    #[builder(setter(strip_option))]
+    /// The covenant for this output.
+    pub covenant: Option<CovenantBinding>,
     /// Proprietary key-value pairs for this output.
     pub proprietaries: BTreeMap<String, serde_value::Value>,
     #[serde(flatten)]
@@ -47,6 +50,16 @@ impl Add for Output {
                 return Err(CombineError::NotCompatibleRedeemScripts { this: script_left, that: script_right })
             }
         };
+
+        self.covenant = match (self.covenant.take(), rhs.covenant) {
+            (None, None) => None,
+            (Some(covenant), None) | (None, Some(covenant)) => Some(covenant),
+            (Some(covenant_left), Some(covenant_right)) if covenant_left == covenant_right => Some(covenant_left),
+            (Some(covenant_left), Some(covenant_right)) => {
+                return Err(CombineError::NotCompatibleCovenants { this: covenant_left, that: covenant_right })
+            }
+        };
+
         self.bip32_derivations = combine_if_no_conflicts(self.bip32_derivations, rhs.bip32_derivations)?;
         self.proprietaries =
             combine_if_no_conflicts(self.proprietaries, rhs.proprietaries).map_err(CombineError::NotCompatibleProprietary)?;
@@ -75,7 +88,8 @@ pub enum CombineError {
     },
     #[error("Two different redeem scripts detected")]
     NotCompatibleRedeemScripts { this: Vec<u8>, that: Vec<u8> },
-
+    #[error("Two different covenants detected")]
+    NotCompatibleCovenants { this: CovenantBinding, that: CovenantBinding },
     #[error("Two different derivations for the same key")]
     NotCompatibleBip32Derivations(#[from] crate::utils::Error<secp256k1::PublicKey, Option<KeySource>>),
     #[error("Two different unknown field values")]
