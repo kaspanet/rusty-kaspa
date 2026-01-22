@@ -372,6 +372,7 @@ opcode_list! {
     opcode OpVer<0x62, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
 
     opcode OpIf<0x63, 1>(self, vm) {
+        // TODO: Allow in vm.flags.covenants_enabled non-minimal encoding of bool. Instead of vm.dstack.pop() we should probably pop bool directly with vm.dstack.pop_items()
         let mut cond = OpCond::Skip;
         if vm.is_executing() {
             // This code seems identical to pop_bool, but was written this way to preserve
@@ -391,6 +392,7 @@ opcode_list! {
     }
 
     opcode OpNotIf<0x64, 1>(self, vm) {
+        // TODO: Allow in vm.flags.covenants_enabled non-minimal encoding of bool. Instead of vm.dstack.pop() we should probably pop bool directly with vm.dstack.pop_items()
         let mut cond = OpCond::Skip;
         if vm.is_executing() {
             let mut cond_buf = vm.dstack.pop()?;
@@ -1424,7 +1426,7 @@ opcode_list! {
                     let idx = i32_to_usize(idx)?;
                     let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
                     match utxo.covenant_id{
-                        None => vm.dstack.push_item(false), // TODO: Decide if we prefer to throw an error here instead
+                        None => vm.dstack.push_item(false),
                         Some(covenant_id) => push_data(covenant_id.as_bytes().into(), vm),
                     }
                 },
@@ -4240,6 +4242,7 @@ mod test {
             TransactionOutput, UtxoEntry,
         };
         use kaspa_hashes::Hash;
+        use kaspa_txscript_errors::CovenantsError;
 
         fn payload_bytes(len: usize) -> Vec<u8> {
             (0..len).map(|i| (i % 256) as u8).collect()
@@ -4292,7 +4295,10 @@ mod test {
             let sig_script = ScriptBuilder::new().add_op(codes::OpTrue).expect("sig script build").drain();
             let inputs = vec![
                 TransactionInput::new(TransactionOutpoint::new(Hash::default(), 0), sig_script.clone(), 0, 0),
-                TransactionInput::new(TransactionOutpoint::new(Hash::default(), 1), sig_script, 0, 0),
+                TransactionInput::new(TransactionOutpoint::new(Hash::default(), 1), sig_script.clone(), 0, 0),
+                TransactionInput::new(TransactionOutpoint::new(Hash::default(), 2), sig_script.clone(), 0, 0),
+                TransactionInput::new(TransactionOutpoint::new(Hash::default(), 3), sig_script.clone(), 0, 0),
+                TransactionInput::new(TransactionOutpoint::new(Hash::default(), 4), sig_script, 0, 0),
             ];
 
             let spk = ScriptBuilder::new().add_op(codes::OpTrue).expect("spk build").drain();
@@ -4305,14 +4311,24 @@ mod test {
                 TransactionOutput {
                     value: 22,
                     script_public_key: ScriptPublicKey::new(0, spk.clone().into()),
-                    covenant: Some(CovenantBinding { authorizing_input: 1, covenant_id: Hash::from_u64_word(2) }),
+                    covenant: Some(CovenantBinding { authorizing_input: 3, covenant_id: Hash::from_u64_word(1) }),
                 },
                 TransactionOutput {
                     value: 33,
                     script_public_key: ScriptPublicKey::new(0, spk.clone().into()),
-                    covenant: Some(CovenantBinding { authorizing_input: 0, covenant_id: Hash::from_u64_word(1) }),
+                    covenant: Some(CovenantBinding { authorizing_input: 1, covenant_id: Hash::from_u64_word(2) }),
                 },
-                TransactionOutput::new(44, ScriptPublicKey::new(0, spk.into())),
+                TransactionOutput::new(44, ScriptPublicKey::new(0, spk.clone().into())),
+                TransactionOutput {
+                    value: 55,
+                    script_public_key: ScriptPublicKey::new(0, spk.clone().into()),
+                    covenant: Some(CovenantBinding { authorizing_input: 3, covenant_id: Hash::from_u64_word(1) }),
+                },
+                TransactionOutput {
+                    value: 66,
+                    script_public_key: ScriptPublicKey::new(0, spk.into()),
+                    covenant: Some(CovenantBinding { authorizing_input: 4, covenant_id: Hash::from_u64_word(2) }),
+                },
             ];
 
             let mut tx = Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload);
@@ -4320,6 +4336,9 @@ mod test {
 
             let utxo_spk = ScriptBuilder::new().add_op(codes::OpTrue).expect("spk build").drain();
             let entries = vec![
+                UtxoEntry::new(1000, ScriptPublicKey::new(0, utxo_spk.clone().into()), 0, false, Some(Hash::from_u64_word(1))),
+                UtxoEntry::new(1000, ScriptPublicKey::new(0, utxo_spk.clone().into()), 0, false, Some(Hash::from_u64_word(2))),
+                UtxoEntry::new(1000, ScriptPublicKey::new(0, utxo_spk.clone().into()), 0, false, Some(Hash::from_u64_word(1))),
                 UtxoEntry::new(1000, ScriptPublicKey::new(0, utxo_spk.clone().into()), 0, false, Some(Hash::from_u64_word(1))),
                 UtxoEntry::new(1000, ScriptPublicKey::new(0, utxo_spk.into()), 0, false, Some(Hash::from_u64_word(2))),
             ];
@@ -4529,23 +4548,23 @@ mod test {
         fn cov_output_count() {
             let (tx, entries) = create_transaction_with_covenant();
 
-            for (input_idx, expected_count) in [(0, 2), (1, 1)] {
+            for (input_idx, expected_count) in [(0, 1), (1, 1), (2, 0), (3, 2), (4, 1)] {
                 let spk = script(|sb| {
                     sb.add_i64(input_idx)?.add_op(codes::OpAuthOutputCount)?.add_i64(expected_count)?.add_op(codes::OpEqual)
                 });
                 run_script(&tx, entries.clone(), 0, spk).expect("cov output count");
             }
 
-            let spk_invalid = script(|sb| sb.add_i64(3)?.add_op(codes::OpAuthOutputCount));
+            let spk_invalid = script(|sb| sb.add_i64(7)?.add_op(codes::OpAuthOutputCount));
             let err = run_script(&tx, entries, 0, spk_invalid).expect_err("cov output count invalid input");
-            assert!(matches!(err, TxScriptError::InvalidInputIndex(3, 2)));
+            assert!(matches!(err, TxScriptError::InvalidInputIndex(7, 5)));
         }
 
         #[test]
-        fn cov_output_idx() {
+        fn auth_output_idx() {
             let (tx, entries) = create_transaction_with_covenant();
 
-            for (input_idx, authorized_idx, expected_output_idx) in [(0, 0, 0), (0, 1, 2), (1, 0, 1)] {
+            for (input_idx, authorized_idx, expected_output_idx) in [(0, 0, 0), (1, 0, 2), (3, 0, 1), (3, 1, 4), (4, 0, 5)] {
                 let spk = script(|sb| {
                     sb.add_i64(input_idx)?
                         .add_i64(authorized_idx)?
@@ -4553,12 +4572,110 @@ mod test {
                         .add_i64(expected_output_idx)?
                         .add_op(codes::OpEqual)
                 });
-                run_script(&tx, entries.clone(), 0, spk).expect("cov output idx");
+                run_script(&tx, entries.clone(), 0, spk).unwrap();
             }
 
             let spk_missing = script(|sb| sb.add_i64(0)?.add_i64(2)?.add_op(codes::OpAuthOutputIdx));
             let err = run_script(&tx, entries, 0, spk_missing).expect_err("cov output idx missing");
-            assert!(matches!(err, TxScriptError::InvalidInputCovOutIndex(2, 0, 2)));
+            assert!(matches!(err, TxScriptError::InvalidInputCovOutIndex(2, 0, 1)));
+        }
+
+        #[test]
+        fn covenant_id_opcodes() {
+            let (tx, entries) = create_transaction_with_covenant();
+            let covenant_id_1 = Hash::from_u64_word(1);
+            let covenant_id_2 = Hash::from_u64_word(2);
+            let covenant_id_3 = Hash::from_u64_word(3);
+
+            // OpInputCovenantId for inputs with covenant ids
+            let spk_input_cov_id_0 = script(|sb| {
+                sb.add_i64(0)?.add_op(codes::OpInputCovenantId)?.add_data(&covenant_id_1.as_bytes())?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_input_cov_id_0).unwrap();
+
+            let spk_input_cov_id_1 = script(|sb| {
+                sb.add_i64(1)?.add_op(codes::OpInputCovenantId)?.add_data(&covenant_id_2.as_bytes())?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_input_cov_id_1).unwrap();
+
+            let spk_input_cov_id_3 = script(|sb| {
+                sb.add_i64(3)?.add_op(codes::OpInputCovenantId)?.add_data(&covenant_id_1.as_bytes())?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_input_cov_id_3).unwrap();
+
+            // OpCovInputCount
+            let spk_cov_in_count_1 = script(|sb| {
+                sb.add_data(&covenant_id_1.as_bytes())?.add_op(codes::OpCovInputCount)?.add_i64(3)?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_cov_in_count_1).unwrap();
+
+            let spk_cov_in_count_2 = script(|sb| {
+                sb.add_data(&covenant_id_2.as_bytes())?.add_op(codes::OpCovInputCount)?.add_i64(2)?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_cov_in_count_2).unwrap();
+
+            let spk_cov_in_count_0 = script(|sb| {
+                sb.add_data(&covenant_id_3.as_bytes())?.add_op(codes::OpCovInputCount)?.add_i64(0)?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_cov_in_count_0).unwrap();
+
+            // OpCovInputIdx
+            let spk_cov_in_idx_0 = script(|sb| {
+                sb.add_data(&covenant_id_1.as_bytes())?.add_i64(0)?.add_op(codes::OpCovInputIdx)?.add_i64(0)?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_cov_in_idx_0).unwrap();
+
+            let spk_cov_in_idx_3 = script(|sb| {
+                sb.add_data(&covenant_id_1.as_bytes())?.add_i64(2)?.add_op(codes::OpCovInputIdx)?.add_i64(3)?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_cov_in_idx_3).unwrap();
+
+            let spk_cov_in_idx_oob = script(|sb| sb.add_data(&covenant_id_1.as_bytes())?.add_i64(3)?.add_op(codes::OpCovInputIdx));
+            let err = run_script(&tx, entries.clone(), 0, spk_cov_in_idx_oob).expect_err("cov input idx oob");
+            assert!(matches!(err, TxScriptError::CovenantsError(CovenantsError::InvalidCovInIndex(_, _))));
+
+            // OpCovOutCount
+            let spk_cov_out_count_1 =
+                script(|sb| sb.add_data(&covenant_id_1.as_bytes())?.add_op(codes::OpCovOutCount)?.add_i64(3)?.add_op(codes::OpEqual));
+            run_script(&tx, entries.clone(), 0, spk_cov_out_count_1).unwrap();
+
+            let spk_cov_out_count_2 =
+                script(|sb| sb.add_data(&covenant_id_2.as_bytes())?.add_op(codes::OpCovOutCount)?.add_i64(2)?.add_op(codes::OpEqual));
+            run_script(&tx, entries.clone(), 0, spk_cov_out_count_2).unwrap();
+            let spk_cov_out_count_0 =
+                script(|sb| sb.add_data(&covenant_id_3.as_bytes())?.add_op(codes::OpCovOutCount)?.add_i64(0)?.add_op(codes::OpEqual));
+            run_script(&tx, entries.clone(), 0, spk_cov_out_count_0).unwrap();
+
+            // OpCovOutputIdx
+            let spk_cov_out_idx_0 = script(|sb| {
+                sb.add_data(&covenant_id_1.as_bytes())?.add_i64(0)?.add_op(codes::OpCovOutputIdx)?.add_i64(0)?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_cov_out_idx_0).unwrap();
+
+            let spk_cov_out_idx_4 = script(|sb| {
+                sb.add_data(&covenant_id_1.as_bytes())?.add_i64(2)?.add_op(codes::OpCovOutputIdx)?.add_i64(4)?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_cov_out_idx_4).unwrap();
+
+            let spk_cov_out_idx_5 = script(|sb| {
+                sb.add_data(&covenant_id_2.as_bytes())?.add_i64(1)?.add_op(codes::OpCovOutputIdx)?.add_i64(5)?.add_op(codes::OpEqual)
+            });
+            run_script(&tx, entries.clone(), 0, spk_cov_out_idx_5).unwrap();
+
+            let spk_cov_out_idx_oob = script(|sb| sb.add_data(&covenant_id_1.as_bytes())?.add_i64(3)?.add_op(codes::OpCovOutputIdx));
+            let err = run_script(&tx, entries, 0, spk_cov_out_idx_oob).expect_err("cov out idx oob");
+            assert!(matches!(err, TxScriptError::CovenantsError(CovenantsError::InvalidCovOutIndex(_, _))));
+
+            // OpInputCovenantId when covenant id is None
+            let (tx_no_cov, entries_no_cov) = base_transaction(0);
+            let spk_input_cov_none =
+                script(|sb| sb.add_i64(0)?.add_op(codes::OpInputCovenantId)?.add_op(codes::OpFalse)?.add_op(codes::OpEqual));
+            run_script(&tx_no_cov, entries_no_cov.clone(), 0, spk_input_cov_none).unwrap();
+
+            // OpInputCovenantId out-of-bounds
+            let spk_input_cov_oob = script(|sb| sb.add_i64(5)?.add_op(codes::OpInputCovenantId));
+            let err = run_script(&tx_no_cov, entries_no_cov, 0, spk_input_cov_oob).expect_err("input covenant id oob");
+            assert!(matches!(err, TxScriptError::InvalidInputIndex(5, 2)));
         }
 
         #[test]
