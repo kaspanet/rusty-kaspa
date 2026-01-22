@@ -151,11 +151,7 @@ impl TryCastFromJs for XPrv {
         R: AsRef<JsValue> + 'a,
     {
         Self::resolve(value, || {
-            if let Some(xprv) = value.as_ref().as_string() {
-                Ok(XPrv::from_xprv_str(xprv)?)
-            } else {
-                Err(Error::InvalidXPrv)
-            }
+            if let Some(xprv) = value.as_ref().as_string() { Ok(XPrv::from_xprv_str(xprv)?) } else { Err(Error::InvalidXPrv) }
         })
     }
 }

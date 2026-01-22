@@ -15,9 +15,9 @@ use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
-use kaspa_consensus::params::{ForkActivation, OverrideParams, DEVNET_PARAMS, MAINNET_PARAMS};
-use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
+use kaspa_consensus::params::{DEVNET_PARAMS, ForkActivation, MAINNET_PARAMS, OverrideParams};
 use kaspa_consensus::pipeline::ProcessingCounters;
+use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus::processes::window::{WindowManager, WindowType};
 use kaspa_consensus_core::api::args::TransactionValidationArgs;
@@ -32,7 +32,7 @@ use kaspa_consensus_core::hashing;
 use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::merkle::calc_hash_merkle_root;
 use kaspa_consensus_core::mining_rules::MiningRules;
-use kaspa_consensus_core::subnets::{SubnetworkId, SUBNETWORK_ID_NATIVE};
+use kaspa_consensus_core::subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId};
 use kaspa_consensus_core::tx::{
     MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
@@ -44,7 +44,7 @@ use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::Hash;
 use kaspa_rpc_core::RpcHeader;
-use kaspa_txscript::{pay_to_script_hash_script, MAX_SCRIPT_ELEMENT_SIZE};
+use kaspa_txscript::{MAX_SCRIPT_ELEMENT_SIZE, pay_to_script_hash_script};
 use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
@@ -67,10 +67,10 @@ use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_txscript::opcodes::codes::{Op0, OpCat, OpDrop, OpEqual, OpTrue, OpTxOutputSpk};
 use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
-use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
+use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use serde::{Deserialize, Serialize};
-use std::cmp::{max, Ordering};
+use std::cmp::{Ordering, max};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
@@ -687,7 +687,7 @@ async fn goref_tx_small_concurrent_test() {
     json_test("testdata/dags_for_json_tests/goref-1060-tx-265-blocks", true).await
 }
 
-fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
+fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> + 'static {
     let file = common::open_file(path);
     let decoder = GzDecoder::new(file);
     BufReader::new(decoder).lines().map(|line| line.unwrap())
@@ -2008,7 +2008,7 @@ async fn runtime_sig_op_counting_test() {
 async fn sighash_type_commitment_test() {
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::hashing::sighash_type::{
-        SigHashType, SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE,
+        SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE, SigHashType,
     };
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
     use kaspa_txscript::opcodes::codes::*;

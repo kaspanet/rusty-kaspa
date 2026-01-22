@@ -4,10 +4,10 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
-            block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
+            DB, block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
             headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore,
             pruning::DbPruningStore, pruning_samples::DbPruningSamplesStore, reachability::DbReachabilityStore,
-            relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
+            relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore,
         },
     },
     processes::{
@@ -18,7 +18,7 @@ use crate::{
 };
 use kaspa_consensus_core::mass::MassCalculator;
 use kaspa_txscript::caches::TxScriptCacheCounters;
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{Arc, atomic::AtomicBool};
 
 pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;

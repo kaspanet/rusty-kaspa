@@ -1,12 +1,12 @@
 pub use super::{
     bps::{Bps, TenBps},
     constants::consensus::*,
-    genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET12_GENESIS, TESTNET_GENESIS},
+    genesis::{DEVNET_GENESIS, GENESIS, GenesisBlock, SIMNET_GENESIS, TESTNET_GENESIS, TESTNET12_GENESIS},
 };
 use crate::{
+    BlockLevel, KType,
     constants::STORAGE_MASS_PARAMETER,
     network::{NetworkId, NetworkType},
-    BlockLevel, KType,
 };
 use kaspa_addresses::Prefix;
 use kaspa_math::Uint256;
@@ -55,11 +55,7 @@ impl ForkActivation {
     /// Checks if the fork is expected to be activated "soon", i.e., in the time frame of the provided range.
     /// Returns the distance from activation if so, or `None` otherwise.  
     pub fn is_within_range_before_activation(self, current_daa_score: u64, range: u64) -> Option<u64> {
-        if !self.is_active(current_daa_score) && current_daa_score + range > self.0 {
-            Some(self.0 - current_daa_score)
-        } else {
-            None
-        }
+        if !self.is_active(current_daa_score) && current_daa_score + range > self.0 { Some(self.0 - current_daa_score) } else { None }
     }
 }
 
@@ -85,11 +81,7 @@ impl<T: Copy> ForkedParam<T> {
     }
 
     pub fn get(&self, daa_score: u64) -> T {
-        if self.activation.is_active(daa_score) {
-            self.post
-        } else {
-            self.pre
-        }
+        if self.activation.is_active(daa_score) { self.post } else { self.pre }
     }
 
     /// Returns the value before activation (=pre unless activation = always)

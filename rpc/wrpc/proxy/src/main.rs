@@ -13,8 +13,8 @@ use kaspa_wrpc_server::{
 use result::Result;
 use std::sync::Arc;
 use workflow_log::*;
-use workflow_rpc::server::prelude::*;
 use workflow_rpc::server::WebSocketCounters;
+use workflow_rpc::server::prelude::*;
 
 #[derive(Debug, Parser)]
 #[clap(name = "proxy")]

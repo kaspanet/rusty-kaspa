@@ -1,6 +1,6 @@
 use crate::{
-    prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
     RpcOptionalHeader, RpcOptionalTransaction,
+    prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Address;

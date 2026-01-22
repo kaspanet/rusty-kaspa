@@ -9,14 +9,14 @@ use kaspa_hashes::Hash;
 use kaspa_txscript::caches::Cache;
 use kaspa_txscript::covenants::CovenantsContext;
 use kaspa_txscript::opcodes::codes::{
-    Op1Add, OpBlake2b, OpCat, OpCovOutputCount, OpCovOutputIdx, OpData62, OpData8, OpEqual, OpEqualVerify, OpNum2Bin, OpSwap, OpTrue,
+    Op1Add, OpBlake2b, OpCat, OpCovOutputCount, OpCovOutputIdx, OpData8, OpData62, OpEqual, OpEqualVerify, OpNum2Bin, OpSwap, OpTrue,
     OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpkLen, OpTxOutputSpkSubstr,
 };
 use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
-use kaspa_txscript::{pay_to_script_hash_script, EngineCtx};
+use kaspa_txscript::{EngineCtx, pay_to_script_hash_script};
 use kaspa_txscript::{EngineFlags, TxScriptEngine};
 use kaspa_txscript_errors::TxScriptError;
-use rand::{seq::SliceRandom, Rng, RngCore, SeedableRng};
+use rand::{Rng, RngCore, SeedableRng, seq::SliceRandom};
 
 fn main() -> ScriptBuilderResult<()> {
     counter_state_in_spk()

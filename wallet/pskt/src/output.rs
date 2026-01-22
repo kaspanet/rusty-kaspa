@@ -46,7 +46,7 @@ impl Add for Output {
             (Some(script), None) | (None, Some(script)) => Some(script),
             (Some(script_left), Some(script_right)) if script_left == script_right => Some(script_left),
             (Some(script_left), Some(script_right)) => {
-                return Err(CombineError::NotCompatibleRedeemScripts { this: script_left, that: script_right })
+                return Err(CombineError::NotCompatibleRedeemScripts { this: script_left, that: script_right });
             }
         };
 
@@ -55,7 +55,7 @@ impl Add for Output {
             (Some(covenant), None) | (None, Some(covenant)) => Some(covenant),
             (Some(covenant_left), Some(covenant_right)) if covenant_left == covenant_right => Some(covenant_left),
             (Some(covenant_left), Some(covenant_right)) => {
-                return Err(CombineError::NotCompatibleCovenants { this: covenant_left, that: covenant_right })
+                return Err(CombineError::NotCompatibleCovenants { this: covenant_left, that: covenant_right });
             }
         };
 

@@ -8,12 +8,12 @@ use crate::imports::*;
 use crate::storage::interface::{
     AddressBookStore, CreateArgs, OpenArgs, StorageDescriptor, StorageStream, WalletDescriptor, WalletExportOptions,
 };
+use crate::storage::local::Payload;
+use crate::storage::local::Storage;
 use crate::storage::local::cache::*;
 use crate::storage::local::streams::*;
 use crate::storage::local::transaction::*;
 use crate::storage::local::wallet::WalletStorage;
-use crate::storage::local::Payload;
-use crate::storage::local::Storage;
 use slugify_rs::slugify;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -161,7 +161,7 @@ impl LocalStoreInner {
 
                 Ok(())
             }
-            Store::Storage(ref storage) => {
+            Store::Storage(storage) => {
                 let wallet = {
                     let mut cache = self.cache.write().unwrap();
                     let old_prv_key_data: Decrypted<PrvKeyDataMap> = cache.prv_key_data.decrypt(old_secret)?;
@@ -180,7 +180,7 @@ impl LocalStoreInner {
     pub async fn update_stored_metadata(&self) -> Result<()> {
         match &*self.storage() {
             Store::Resident => Ok(()),
-            Store::Storage(ref storage) => {
+            Store::Storage(storage) => {
                 // take current metadata, load wallet, replace metadata, store wallet
                 // this bypasses the cache payload and wallet encryption
                 let metadata: Vec<AccountMetadata> = (&self.cache.read().unwrap().metadata).try_into()?;
@@ -207,7 +207,7 @@ impl LocalStoreInner {
     pub async fn store(&self, wallet_secret: &Secret) -> Result<()> {
         match &*self.storage() {
             Store::Resident => Ok(()),
-            Store::Storage(ref storage) => {
+            Store::Storage(storage) => {
                 let wallet = self.cache.read().unwrap().to_wallet(None, wallet_secret)?;
                 wallet.try_store(storage).await?;
                 self.set_modified(false);
