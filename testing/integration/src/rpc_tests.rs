@@ -15,7 +15,7 @@ use kaspa_notify::{
         SinkBlueScoreChangedScope, UtxosChangedScope, VirtualChainChangedScope, VirtualDaaScoreChangedScope,
     },
 };
-use kaspa_rpc_core::{api::rpc::RpcApi, model::*, Notification};
+use kaspa_rpc_core::{Notification, api::rpc::RpcApi, model::*};
 use kaspa_utils::{fd_budget, networking::ContextualNetAddress};
 use kaspad_lib::args::Args;
 use tokio::task::JoinHandle;

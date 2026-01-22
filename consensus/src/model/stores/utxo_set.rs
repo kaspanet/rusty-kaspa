@@ -5,8 +5,8 @@ use kaspa_consensus_core::{
         utxo_view::UtxoView,
     },
 };
-use kaspa_database::prelude::StoreResultExt;
 use kaspa_database::prelude::DB;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_hashes::Hash;

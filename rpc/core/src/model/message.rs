@@ -2,7 +2,7 @@ use crate::model::*;
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_consensus_core::api::stats::BlockCount;
 use kaspa_core::debug;
-use kaspa_notify::subscription::{context::SubscriptionContext, single::UtxosChangedSubscription, Command};
+use kaspa_notify::subscription::{Command, context::SubscriptionContext, single::UtxosChangedSubscription};
 use kaspa_utils::hex::ToHex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

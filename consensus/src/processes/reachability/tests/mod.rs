@@ -11,24 +11,24 @@ use crate::{
     processes::{
         ghostdag::mergeset::unordered_mergeset_without_selected_parent,
         reachability::interval::Interval,
-        relations::{delete_reachability_relations, init as relations_init, RelationsStoreExtensions},
+        relations::{RelationsStoreExtensions, delete_reachability_relations, init as relations_init},
     },
 };
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     BlockHashMap, BlockHashSet,
+    blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
 };
 use kaspa_database::prelude::{DirectWriter, StoreError};
 use kaspa_hashes::Hash;
 use std::collections::{
-    hash_map::Entry::{Occupied, Vacant},
     VecDeque,
+    hash_map::Entry::{Occupied, Vacant},
 };
 use thiserror::Error;
 
 #[cfg(test)]
-pub mod gen;
+pub mod r#gen;
 
 /// A struct with fluent API to streamline reachability store building
 pub struct StoreBuilder<'a, T: ReachabilityStore + ?Sized> {

@@ -75,11 +75,7 @@ impl Uint256 {
             }
         };
         // The mantissa is signed but may not be negative
-        if mant > 0x7FFFFF {
-            Uint256::ZERO
-        } else {
-            Uint256::from_u64(u64::from(mant)) << expt
-        }
+        if mant > 0x7FFFFF { Uint256::ZERO } else { Uint256::from_u64(u64::from(mant)) << expt }
     }
 
     #[inline]

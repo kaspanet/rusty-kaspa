@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 use kaspa_consensus_core::pruning::PruningPointProof;
-use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::DB;
+use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;

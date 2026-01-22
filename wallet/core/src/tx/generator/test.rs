@@ -235,7 +235,9 @@ where
             // mismatch between calculated fees and PT fees
             let dust_disposal_fees = pt_fees - total_fees_expected;
             if !calc.is_dust(dust_disposal_fees) {
-                panic!("[Fees SENDER] dust_disposal_fees test failure - pt fees: {pt_fees}  expected fees: {total_fees_expected} difference: {dust_disposal_fees}");
+                panic!(
+                    "[Fees SENDER] dust_disposal_fees test failure - pt fees: {pt_fees}  expected fees: {total_fees_expected} difference: {dust_disposal_fees}"
+                );
             }
 
             assert_eq!(
@@ -258,7 +260,9 @@ where
             // mismatch between calculated fees and PT fees
             let dust_disposal_fees = pt_fees - total_fees_expected;
             if !calc.is_dust(dust_disposal_fees) {
-                panic!("[Fees RECEIVER] dust_disposal_fees test failure - pt fees: {pt_fees}  expected fees: {total_fees_expected} difference: {dust_disposal_fees}");
+                panic!(
+                    "[Fees RECEIVER] dust_disposal_fees test failure - pt fees: {pt_fees}  expected fees: {total_fees_expected} difference: {dust_disposal_fees}"
+                );
             }
 
             assert_eq!(
@@ -275,7 +279,9 @@ where
             // mismatch between calculated fees and PT fees
             let dust_disposal_fees = pt_fees - calculated_fees;
             if !calc.is_dust(dust_disposal_fees) {
-                panic!("[Fees NONE] dust_disposal_fees test failure - pt fees: {pt_fees}  calculated fees: {calculated_fees} difference: {dust_disposal_fees}");
+                panic!(
+                    "[Fees NONE] dust_disposal_fees test failure - pt fees: {pt_fees}  calculated fees: {calculated_fees} difference: {dust_disposal_fees}"
+                );
             }
 
             let total_output_with_fees = aggregate_output_value + pt_fees;

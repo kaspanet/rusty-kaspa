@@ -9,7 +9,7 @@ pub mod xoshiro;
 use std::cmp::max;
 
 use crate::matrix::Matrix;
-use kaspa_consensus_core::{hashing, header::Header, BlockLevel};
+use kaspa_consensus_core::{BlockLevel, hashing, header::Header};
 use kaspa_hashes::PowHash;
 use kaspa_math::Uint256;
 

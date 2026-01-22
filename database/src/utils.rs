@@ -45,8 +45,7 @@ pub fn get_kaspa_tempdir() -> TempDir {
     let global_tempdir = std::env::temp_dir();
     let kaspa_tempdir = global_tempdir.join("rusty-kaspa");
     std::fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
-    let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
-    db_tempdir
+    tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap()
 }
 
 /// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/rusty-kaspa`

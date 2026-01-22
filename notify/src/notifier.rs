@@ -1,7 +1,7 @@
 use crate::{
     events::EVENT_TYPE_ARRAY,
     listener::ListenerLifespan,
-    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
+    subscription::{MutationPolicies, UtxosChangedMutationPolicy, context::SubscriptionContext},
 };
 
 use super::{
@@ -14,7 +14,7 @@ use super::{
     notification::Notification,
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
-    subscription::{array::ArrayBuilder, Command, CompoundedSubscription, Mutation},
+    subscription::{Command, CompoundedSubscription, Mutation, array::ArrayBuilder},
 };
 use async_channel::Sender;
 use async_trait::async_trait;
@@ -24,10 +24,10 @@ use itertools::Itertools;
 use kaspa_core::{debug, trace};
 use parking_lot::Mutex;
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 use workflow_core::channel::Channel;
@@ -830,7 +830,7 @@ mod tests {
         notification::test_helpers::*,
         subscriber::test_helpers::{SubscriptionManagerMock, SubscriptionMessage},
     };
-    use async_channel::{unbounded, Receiver, Sender};
+    use async_channel::{Receiver, Sender, unbounded};
     use tokio::time::timeout;
 
     const SUBSCRIPTION_MANAGER_ID: u64 = 0;
@@ -901,7 +901,7 @@ mod tests {
                 // Apply the subscription mutations and check the yielded subscriptions messages
                 // the subscription manager gets
                 for (idx, mutation) in step.mutations.iter().enumerate() {
-                    if let Some(ref mutation) = mutation {
+                    if let Some(mutation) = mutation {
                         trace!("Mutation #{idx}");
                         assert!(
                             self.notifier
@@ -961,7 +961,7 @@ mod tests {
 
                 // Check what the listeners do receive
                 for (idx, expected_notifications) in step.expected_notifications.iter().enumerate() {
-                    if let Some(ref expected_notifications) = expected_notifications {
+                    if let Some(expected_notifications) = expected_notifications {
                         let notification = self.notification_receivers[idx].recv().await.unwrap();
                         assert_eq!(
                             *expected_notifications, notification,

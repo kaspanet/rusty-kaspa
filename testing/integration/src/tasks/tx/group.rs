@@ -1,8 +1,8 @@
 use crate::{
     common::daemon::ClientManager,
     tasks::{
-        tx::{sender::TransactionSenderTask, submitter::TransactionSubmitterTask},
         Stopper, Task,
+        tx::{sender::TransactionSenderTask, submitter::TransactionSubmitterTask},
     },
 };
 use async_trait::async_trait;

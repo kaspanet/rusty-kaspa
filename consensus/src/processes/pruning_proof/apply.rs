@@ -1,17 +1,17 @@
 use std::{
     cmp::Reverse,
-    collections::{hash_map::Entry::Vacant, BinaryHeap, HashSet},
+    collections::{BinaryHeap, HashSet, hash_map::Entry::Vacant},
     sync::Arc,
 };
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashMap, BlockHashSet, HashMapCustomHasher,
     blockhash::{BlockHashes, ORIGIN},
     errors::pruning::{PruningImportError, PruningImportResult},
     header::Header,
     pruning::PruningPointProof,
     trusted::TrustedBlock,
-    BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use kaspa_core::{debug, trace};
 use kaspa_hashes::Hash;

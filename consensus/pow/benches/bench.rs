@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 use kaspa_hashes::Hash;
 use kaspa_pow::{matrix::Matrix, xoshiro::XoShiRo256PlusPlus};
@@ -7,10 +7,10 @@ use kaspa_pow::{matrix::Matrix, xoshiro::XoShiRo256PlusPlus};
 const ITERS: usize = 1024;
 
 fn bench_pow(c: &mut Criterion) {
-    let mut gen = XoShiRo256PlusPlus::new(Hash::from_bytes([42; 32]));
-    let gen_hash = |gen: &mut XoShiRo256PlusPlus| Hash::from_le_u64([gen.u64(), gen.u64(), gen.u64(), gen.u64()]);
-    let matrices: Vec<_> = (0..ITERS).map(|_| Matrix::generate(gen_hash(&mut gen))).collect();
-    let hashes: Vec<_> = (0..ITERS).map(|_| gen_hash(&mut gen)).collect();
+    let mut rng = XoShiRo256PlusPlus::new(Hash::from_bytes([42; 32]));
+    let gen_hash = |rng: &mut XoShiRo256PlusPlus| Hash::from_le_u64([rng.u64(), rng.u64(), rng.u64(), rng.u64()]);
+    let matrices: Vec<_> = (0..ITERS).map(|_| Matrix::generate(gen_hash(&mut rng))).collect();
+    let hashes: Vec<_> = (0..ITERS).map(|_| gen_hash(&mut rng)).collect();
 
     c.bench_function("Compute Rank", |b| {
         b.iter(|| {

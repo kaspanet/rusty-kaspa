@@ -210,22 +210,12 @@ impl StratumListener {
                     if is_pre_handshake && first_message && pending_buffer_bytes == 0 {
                         debug!(
                             "[CONNECTION] Client {}:{} closed connection (EOF) worker='{}' app='{}' first_message={} pending_buffer_bytes={}",
-                            ctx.remote_addr,
-                            ctx.remote_port,
-                            worker_name,
-                            remote_app,
-                            first_message,
-                            pending_buffer_bytes
+                            ctx.remote_addr, ctx.remote_port, worker_name, remote_app, first_message, pending_buffer_bytes
                         );
                     } else {
                         info!(
                             "[CONNECTION] Client {}:{} closed connection (EOF) worker='{}' app='{}' first_message={} pending_buffer_bytes={}",
-                            ctx.remote_addr,
-                            ctx.remote_port,
-                            worker_name,
-                            remote_app,
-                            first_message,
-                            pending_buffer_bytes
+                            ctx.remote_addr, ctx.remote_port, worker_name, remote_app, first_message, pending_buffer_bytes
                         );
                     }
                     break;

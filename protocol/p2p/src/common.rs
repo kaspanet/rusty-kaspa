@@ -1,4 +1,4 @@
-use crate::{convert::error::ConversionError, core::peer::PeerKey, KaspadMessagePayloadType};
+use crate::{KaspadMessagePayloadType, convert::error::ConversionError, core::peer::PeerKey};
 use kaspa_consensus_core::errors::{block::RuleError, consensus::ConsensusError, pruning::PruningImportError};
 use kaspa_mining_errors::manager::MiningManagerError;
 use std::time::Duration;
@@ -125,23 +125,17 @@ macro_rules! make_message {
         }
     }};
 
-    ($pattern:path, $msg:expr, $response_id:expr, $request_id: expr) => {{
-        $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: $response_id, request_id: $request_id }
-    }};
+    ($pattern:path, $msg:expr, $response_id:expr, $request_id: expr) => {{ $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: $response_id, request_id: $request_id } }};
 }
 
 #[macro_export]
 macro_rules! make_response {
-    ($pattern:path, $msg:expr, $response_id:expr) => {{
-        $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: $response_id, request_id: 0 }
-    }};
+    ($pattern:path, $msg:expr, $response_id:expr) => {{ $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: $response_id, request_id: 0 } }};
 }
 
 #[macro_export]
 macro_rules! make_request {
-    ($pattern:path, $msg:expr, $request_id:expr) => {{
-        $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: 0, request_id: $request_id }
-    }};
+    ($pattern:path, $msg:expr, $request_id:expr) => {{ $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: 0, request_id: $request_id } }};
 }
 
 /// Macro to extract a specific payload type from an `Option<pb::KaspadMessage>`.
@@ -213,14 +207,10 @@ macro_rules! dequeue_with_timeout {
 /// ```
 #[macro_export]
 macro_rules! dequeue {
-    ($receiver:expr, $pattern:path) => {{
-        $crate::unwrap_message!($receiver.recv().await, $pattern)
-    }};
+    ($receiver:expr, $pattern:path) => {{ $crate::unwrap_message!($receiver.recv().await, $pattern) }};
 }
 
 #[macro_export]
 macro_rules! dequeue_with_request_id {
-    ($receiver:expr, $pattern:path) => {{
-        $crate::unwrap_message_with_request_id!($receiver.recv().await, $pattern)
-    }};
+    ($receiver:expr, $pattern:path) => {{ $crate::unwrap_message_with_request_id!($receiver.recv().await, $pattern) }};
 }

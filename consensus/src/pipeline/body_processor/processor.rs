@@ -7,29 +7,29 @@ use crate::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
+            DB,
             block_transactions::DbBlockTransactionsStore,
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::{DbTipsStore, TipsStore},
-            DB,
         },
     },
     pipeline::{
-        deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId, VirtualStateProcessingMessage},
         ProcessingCounters,
+        deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId, VirtualStateProcessingMessage},
     },
     processes::{coinbase::CoinbaseManager, transaction_validator::TransactionValidator},
 };
 use crossbeam_channel::{Receiver, Sender};
 use kaspa_consensus_core::{
+    KType,
     block::Block,
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
     config::{genesis::GenesisBlock, params::Params},
     mass::{Mass, MassCalculator, MassOps},
     tx::Transaction,
-    KType,
 };
 use kaspa_consensus_notify::{
     notification::{BlockAddedNotification, Notification},
@@ -41,7 +41,7 @@ use kaspa_notify::notifier::Notify;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, atomic::Ordering};
 
 pub struct BlockBodyProcessor {
     // Channels

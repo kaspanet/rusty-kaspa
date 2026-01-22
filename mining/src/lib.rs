@@ -17,7 +17,7 @@ pub mod monitor;
 
 // Exposed for benchmarks
 pub use block_template::{policy::Policy, selector::RebalancingWeightedTransactionSelector};
-pub use mempool::model::frontier::{feerate_key::FeerateTransactionKey, search_tree::SearchTree, Frontier};
+pub use mempool::model::frontier::{Frontier, feerate_key::FeerateTransactionKey, search_tree::SearchTree};
 
 #[cfg(test)]
 pub mod testutils;
@@ -127,11 +127,7 @@ impl MempoolCountersSnapshot {
     /// (excluding coinbase transactions)
     pub fn u_tps(&self) -> f64 {
         let elapsed = self.elapsed_time.as_secs_f64();
-        if elapsed != 0f64 {
-            self.tx_accepted_counts as f64 / elapsed
-        } else {
-            0f64
-        }
+        if elapsed != 0f64 { self.tx_accepted_counts as f64 / elapsed } else { 0f64 }
     }
 
     /// Returns an estimate to the _Effective-TPS_ fraction which is a measure of how much of DAG capacity

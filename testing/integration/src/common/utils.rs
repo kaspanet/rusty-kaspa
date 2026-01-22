@@ -17,12 +17,12 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
-use kaspa_rpc_core::{api::rpc::RpcApi, BlockAddedNotification, Notification, RpcUtxoEntry, VirtualDaaScoreChangedNotification};
+use kaspa_rpc_core::{BlockAddedNotification, Notification, RpcUtxoEntry, VirtualDaaScoreChangedNotification, api::rpc::RpcApi};
 use kaspa_txscript::pay_to_address_script;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use secp256k1::Keypair;
 use std::{
-    collections::{hash_map::Entry::Occupied, HashMap, HashSet},
+    collections::{HashMap, HashSet, hash_map::Entry::Occupied},
     future::Future,
     sync::Arc,
     time::Duration,

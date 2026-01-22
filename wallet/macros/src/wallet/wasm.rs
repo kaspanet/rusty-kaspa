@@ -1,13 +1,13 @@
 use crate::handler::*;
 use convert_case::{Case, Casing};
 use proc_macro2::{Literal, TokenStream};
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use std::convert::Into;
 use syn::{
+    Error, Expr, ExprArray, ExprLit, Lit, Result, Token,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    Error, Expr, ExprArray, ExprLit, Lit, Result, Token,
 };
 
 #[derive(Debug)]
@@ -186,20 +186,14 @@ fn insert_typedoc(text: &str, insertion: &str) -> String {
         result.push_str(&insertion);
         result.push_str(&text[index..]);
 
-        let lines = result
+        result
             .split('\n')
             .map(|line| {
                 let trimmed = line.trim();
-                if trimmed.starts_with("/**") || trimmed.starts_with('*') {
-                    trimmed
-                } else {
-                    line
-                }
+                if trimmed.starts_with("/**") || trimmed.starts_with('*') { trimmed } else { line }
             })
             .collect::<Vec<&str>>()
-            .join("\n");
-
-        lines
+            .join("\n")
     } else {
         text.to_string()
     }

@@ -70,11 +70,11 @@ pub fn multisig_redeem_script_ecdsa(pub_keys: impl Iterator<Item = impl Borrow<[
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script, TxScriptEngine};
+    use crate::{TxScriptEngine, caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script};
     use core::str::FromStr;
     use kaspa_consensus_core::{
         hashing::{
-            sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValuesUnsync},
+            sighash::{SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash},
             sighash_type::SIG_HASH_ALL,
         },
         subnets::SubnetworkId,

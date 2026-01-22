@@ -9,8 +9,8 @@ use serde_nested_with::serde_nested;
 use workflow_serializer::prelude::*;
 
 use crate::{
-    prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
     RpcError, RpcResult, RpcScriptPublicKey, RpcTransactionId,
+    prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -517,7 +517,7 @@ impl Deserializer for RpcOptionalTransaction {
                 Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass, verbose_data }
             }
             _ => {
-                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _struct_version)))
+                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _struct_version)));
             }
         })
     }

@@ -1,7 +1,7 @@
 use crate::processes::ghostdag::ordering::SortableBlock;
 use kaspa_consensus_core::trusted::ExternalGhostdagData;
-use kaspa_consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
+use kaspa_consensus_core::{BlueWorkType, blockhash::BlockHashes};
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey};
 use kaspa_database::prelude::{CachePolicy, StoreError};

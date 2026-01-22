@@ -1,6 +1,6 @@
 use super::{extensions::ReachabilityStoreIntervalExtensions, inquirer::get_next_chain_ancestor_unchecked, interval::Interval, *};
 use crate::model::stores::reachability::ReachabilityStore;
-use kaspa_consensus_core::{blockhash::BlockHashExtensions, BlockHashMap, HashMapCustomHasher};
+use kaspa_consensus_core::{BlockHashMap, HashMapCustomHasher, blockhash::BlockHashExtensions};
 use kaspa_hashes::Hash;
 use std::collections::VecDeque;
 

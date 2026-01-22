@@ -3,8 +3,8 @@ use crate::subscription::context::SubscriptionContext;
 use super::{
     events::EventType,
     subscription::{
-        single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
         Single,
+        single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
     },
 };
 use std::fmt::{Debug, Display};
@@ -20,7 +20,7 @@ pub trait Notification: Clone + Debug + Display + Send + Sync + 'static {
     ) -> Option<Self>;
 
     fn apply_utxos_changed_subscription(&self, subscription: &UtxosChangedSubscription, context: &SubscriptionContext)
-        -> Option<Self>;
+    -> Option<Self>;
 
     fn apply_subscription(&self, subscription: &dyn Single, context: &SubscriptionContext) -> Option<Self> {
         match subscription.event_type() {
@@ -76,7 +76,7 @@ macro_rules! full_featured {
 pub use full_featured;
 
 pub mod test_helpers {
-    use crate::subscription::{context::SubscriptionContext, Subscription};
+    use crate::subscription::{Subscription, context::SubscriptionContext};
 
     use super::*;
     use derive_more::Display;
@@ -129,7 +129,7 @@ pub mod test_helpers {
         ) -> Option<Self> {
             match subscription.active() {
                 true => {
-                    if let TestNotification::VirtualChainChanged(ref payload) = self {
+                    if let TestNotification::VirtualChainChanged(payload) = self {
                         if !subscription.include_accepted_transaction_ids() && payload.accepted_transaction_ids.is_some() {
                             return Some(TestNotification::VirtualChainChanged(VirtualChainChangedNotification {
                                 data: payload.data,
@@ -150,7 +150,7 @@ pub mod test_helpers {
         ) -> Option<Self> {
             match subscription.active() {
                 true => {
-                    if let TestNotification::UtxosChanged(ref payload) = self {
+                    if let TestNotification::UtxosChanged(payload) = self {
                         let subscription = subscription.data();
                         if !subscription.to_all() {
                             // trace!("apply_utxos_changed_subscription: Notification payload {:?}", payload);

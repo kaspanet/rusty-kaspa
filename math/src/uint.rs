@@ -1038,8 +1038,8 @@ impl From<core::convert::Infallible> for TryFromSliceError {
 #[cfg(test)]
 mod tests {
     use rand_chacha::{
-        rand_core::{RngCore, SeedableRng},
         ChaCha8Rng,
+        rand_core::{RngCore, SeedableRng},
     };
     use std::fmt::Write;
     construct_uint!(Uint128, 2);
@@ -1069,7 +1069,7 @@ mod tests {
             assert_equal_args(format_args!("{a:0128b}"), format_args!("{b:0128b}")); // Test binary with length
             assert_equal_args(format_args!("{a:x}"), format_args!("{b:x}")); // Test LowerHex
             assert_equal_args(format_args!("{a:#x}"), format_args!("{b:#x}")); // Test LowerHex with prefix
-                                                                               // Test LowerHex with padding
+            // Test LowerHex with padding
             assert_equal_args(format_args!("{a:032x}"), format_args!("{b:032x}"));
         };
         let mut rng = ChaCha8Rng::from_seed([0; 32]);
@@ -1198,11 +1198,7 @@ mod tests {
 
         fn sum(x: Uint128, y: Uint128, m: Uint128) -> Uint128 {
             let res = x.overflowing_add(y).0;
-            if res < x || res >= m {
-                res.overflowing_sub(m).0
-            } else {
-                res
-            }
+            if res < x || res >= m { res.overflowing_sub(m).0 } else { res }
         }
         fn prod_bin(x: Uint128, y: Uint128, m: Uint128) -> Uint128 {
             if y == 1u64 {

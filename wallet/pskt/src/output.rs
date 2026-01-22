@@ -44,7 +44,7 @@ impl Add for Output {
             (Some(script), None) | (None, Some(script)) => Some(script),
             (Some(script_left), Some(script_right)) if script_left == script_right => Some(script_left),
             (Some(script_left), Some(script_right)) => {
-                return Err(CombineError::NotCompatibleRedeemScripts { this: script_left, that: script_right })
+                return Err(CombineError::NotCompatibleRedeemScripts { this: script_left, that: script_right });
             }
         };
         self.bip32_derivations = combine_if_no_conflicts(self.bip32_derivations, rhs.bip32_derivations)?;

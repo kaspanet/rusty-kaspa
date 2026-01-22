@@ -16,7 +16,7 @@ pub struct PSKB(Inner);
 
 impl Clone for PSKB {
     fn clone(&self) -> Self {
-        PSKB(Inner(self.0 .0.clone()))
+        PSKB(Inner(self.0.0.clone()))
     }
 }
 
@@ -47,7 +47,7 @@ impl PSKB {
 
     #[wasm_bindgen(getter, js_name = "length")]
     pub fn length(&self) -> usize {
-        self.0 .0.len()
+        self.0.0.len()
     }
 
     pub fn add(&mut self, pskt: &PSKT) -> Result<()> {
@@ -229,7 +229,7 @@ mod tests {
         // Deserialize the bundle
         let deserialized_bundle = PSKB::deserialize(pskb).expect("Failed to deserialize bundle");
         assert_eq!(deserialized_bundle.length(), 1, "Should be length 1");
-        let inner = deserialized_bundle.0 .0.first().expect("pskt after deserialize");
+        let inner = deserialized_bundle.0.0.first().expect("pskt after deserialize");
         assert_eq!(inner.inputs.len(), 1);
         let input_01 = inner.inputs.first().expect("first input");
         assert_eq!(input_01.clone().utxo_entry.expect("utxo entry").amount, 468928887);

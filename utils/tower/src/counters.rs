@@ -1,5 +1,5 @@
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 
 #[derive(Default, Clone, Debug)]
 pub struct TowerConnectionCounters {

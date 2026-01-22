@@ -3,6 +3,7 @@ use kaspa_muhash::MuHash;
 use std::sync::Arc;
 
 use crate::{
+    BlockHashSet, BlueWorkType, ChainPath,
     acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
@@ -24,7 +25,6 @@ use crate::{
         MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, TransactionQueryResult,
         TransactionType, UtxoEntry,
     },
-    BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
 

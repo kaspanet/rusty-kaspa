@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use core::fmt::Debug;
 use kaspa_core::{debug, trace};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 extern crate derive_more;
 use crate::events::{EventSwitches, EventType};

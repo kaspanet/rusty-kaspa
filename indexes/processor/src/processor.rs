@@ -1,6 +1,6 @@
 use crate::{
-    errors::{IndexError, IndexResult},
     IDENT,
+    errors::{IndexError, IndexResult},
 };
 use async_trait::async_trait;
 use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
@@ -16,8 +16,8 @@ use kaspa_notify::{
 use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 /// Processor processes incoming consensus UtxosChanged and PruningPointUtxoSetOverride
@@ -128,7 +128,7 @@ impl Collector<Notification> for Processor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_channel::{unbounded, Receiver, Sender};
+    use async_channel::{Receiver, Sender, unbounded};
     use kaspa_consensus::{config::Config, consensus::test_consensus::TestConsensus, params::DEVNET_PARAMS, test_helpers::*};
     use kaspa_consensus_core::utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff};
     use kaspa_consensusmanager::ConsensusManager;
@@ -137,7 +137,7 @@ mod tests {
     use kaspa_database::utils::DbLifetime;
     use kaspa_notify::notifier::test_helpers::NotifyMock;
     use kaspa_utxoindex::UtxoIndex;
-    use rand::{rngs::SmallRng, SeedableRng};
+    use rand::{SeedableRng, rngs::SmallRng};
     use std::sync::Arc;
 
     // TODO: rewrite with Simnet, when possible.

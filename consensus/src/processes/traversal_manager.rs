@@ -6,9 +6,9 @@ use crate::model::{
 };
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashSet, ChainPath,
     blockhash::BlockHashExtensions,
     errors::traversal::{TraversalError, TraversalResult},
-    BlockHashSet, ChainPath,
 };
 use kaspa_core::trace;
 use kaspa_hashes::Hash;

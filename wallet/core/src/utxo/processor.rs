@@ -12,12 +12,12 @@ use kaspa_notify::{
     scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope},
 };
 use kaspa_rpc_core::{
+    GetServerInfoResponse, RpcFeeEstimate,
     api::{
         ctl::{RpcCtl, RpcState},
         ops::{RPC_API_REVISION, RPC_API_VERSION},
     },
     message::UtxosChangedNotification,
-    GetServerInfoResponse, RpcFeeEstimate,
 };
 use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::{Channel, DuplexChannel, Sender};
@@ -28,8 +28,8 @@ use crate::result::Result;
 use crate::utxo::{Maturity, OutgoingTransaction, PendingUtxoEntryReference, SyncMonitor, UtxoContext, UtxoEntryId};
 use crate::wallet::WalletBusMessage;
 use kaspa_rpc_core::{
-    notify::connection::{ChannelConnection, ChannelType},
     Notification,
+    notify::connection::{ChannelConnection, ChannelType},
 };
 
 pub struct Inner {

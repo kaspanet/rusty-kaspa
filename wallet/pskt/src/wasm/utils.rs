@@ -1,6 +1,6 @@
 use kaspa_consensus_core::constants::*;
 use kaspa_consensus_core::network::NetworkType;
-use separator::{separated_float, separated_int, separated_uint_with_output, Separatable};
+use separator::{Separatable, separated_float, separated_int, separated_uint_with_output};
 
 #[inline]
 pub fn sompi_to_kaspa(sompi: u64) -> f64 {

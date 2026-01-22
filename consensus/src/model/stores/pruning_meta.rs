@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use kaspa_database::prelude::CachePolicy;
+use kaspa_database::prelude::DB;
 use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::StoreResultExt;
-use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;

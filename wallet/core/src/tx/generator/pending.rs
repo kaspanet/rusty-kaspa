@@ -10,7 +10,7 @@ use crate::rpc::DynRpcApi;
 use crate::tx::{DataKind, Generator, MAXIMUM_STANDARD_TRANSACTION_MASS};
 use crate::utxo::{UtxoContext, UtxoEntryId, UtxoEntryReference, UtxoIterator};
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
-use kaspa_consensus_core::sign::{sign_input, sign_with_multiple_v2, Signed};
+use kaspa_consensus_core::sign::{Signed, sign_input, sign_with_multiple_v2};
 use kaspa_consensus_core::tx::{SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput};
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionId};
 

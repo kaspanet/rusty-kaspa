@@ -7,8 +7,8 @@
 
 #![allow(non_snake_case)]
 
-use crate::imports::*;
 use crate::Resolver;
+use crate::imports::*;
 use crate::{RpcEventCallback, RpcEventType, RpcEventTypeOrCallback};
 use js_sys::{Function, Object};
 use kaspa_addresses::{Address, AddressOrStringArrayT};
@@ -23,7 +23,7 @@ pub use kaspa_rpc_core::wasm::message::*;
 pub use kaspa_rpc_macros::{
     build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions, declare_typescript_wasm_interface as declare,
 };
-use kaspa_wasm_core::events::{get_event_targets, Sink};
+use kaspa_wasm_core::events::{Sink, get_event_targets};
 pub use serde_wasm_bindgen::from_value;
 use workflow_rpc::client::Ctl;
 pub use workflow_rpc::client::IConnectOptions;
@@ -286,11 +286,7 @@ impl RpcClient {
         let url = url
             .map(
                 |url| {
-                    if let Some(network_id) = network_id {
-                        Self::parse_url(&url, encoding, network_id)
-                    } else {
-                        Ok(url.to_string())
-                    }
+                    if let Some(network_id) = network_id { Self::parse_url(&url, encoding, network_id) } else { Ok(url.to_string()) }
                 },
             )
             .transpose()?;

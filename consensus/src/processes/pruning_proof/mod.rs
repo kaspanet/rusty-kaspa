@@ -4,10 +4,10 @@ mod validate;
 
 use std::{
     collections::{
-        hash_map::Entry::{self},
         VecDeque,
+        hash_map::Entry::{self},
     },
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 use itertools::Itertools;
@@ -15,6 +15,7 @@ use parking_lot::{Mutex, RwLock};
 use rocksdb::WriteBatch;
 
 use kaspa_consensus_core::{
+    BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
     blockhash::{self, BlockHashExtensions},
     errors::{
         consensus::{ConsensusError, ConsensusResult},
@@ -23,7 +24,6 @@ use kaspa_consensus_core::{
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::{TrustedGhostdagData, TrustedHeader},
-    BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::info;
 use kaspa_database::prelude::StoreResultExt;
@@ -39,6 +39,7 @@ use crate::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
+            DB,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
@@ -52,7 +53,6 @@ use crate::{
             selected_chain::DbSelectedChainStore,
             tips::DbTipsStore,
             virtual_state::{VirtualStateStoreReader, VirtualStores},
-            DB,
         },
     },
     processes::window::WindowType,

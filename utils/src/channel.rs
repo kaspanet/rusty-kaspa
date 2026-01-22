@@ -1,4 +1,4 @@
-use async_channel::{bounded, unbounded, Receiver, RecvError, SendError, Sender, TryRecvError, TrySendError, WeakReceiver};
+use async_channel::{Receiver, RecvError, SendError, Sender, TryRecvError, TrySendError, WeakReceiver, bounded, unbounded};
 
 /// Multiple producers multiple consumers channel
 #[derive(Clone, Debug)]

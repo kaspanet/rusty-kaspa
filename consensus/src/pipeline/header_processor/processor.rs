@@ -10,6 +10,7 @@ use crate::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
+            DB,
             block_window_cache::{BlockWindowCacheStore, BlockWindowCacheWriter, BlockWindowHeap},
             daa::DbDaaStore,
             depth::DbDepthStore,
@@ -20,7 +21,6 @@ use crate::{
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreReader},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
-            DB,
         },
     },
     params::Params,
@@ -30,11 +30,11 @@ use crate::{
 use crossbeam_channel::{Receiver, Sender};
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashSet, BlockLevel,
     blockhash::{BlockHashes, ORIGIN},
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
     config::genesis::GenesisBlock,
     header::Header,
-    BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
 use kaspa_database::prelude::{StoreResultExt, StoreResultUnitExt};
@@ -43,7 +43,7 @@ use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, atomic::Ordering};
 
 use super::super::ProcessingCounters;
 

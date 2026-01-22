@@ -7,11 +7,11 @@ use crate::{
 use futures::{FutureExt, Stream};
 use kaspa_core::{debug, info, warn};
 use kaspa_grpc_core::{
-    protowire::{
-        rpc_server::{Rpc, RpcServer},
-        KaspadRequest, KaspadResponse,
-    },
     RPC_MAX_MESSAGE_SIZE,
+    protowire::{
+        KaspadRequest, KaspadResponse,
+        rpc_server::{Rpc, RpcServer},
+    },
 };
 use kaspa_notify::{
     connection::ChannelType,
@@ -19,12 +19,12 @@ use kaspa_notify::{
     listener::ListenerLifespan,
     notifier::Notifier,
     subscriber::Subscriber,
-    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
+    subscription::{MutationPolicies, UtxosChangedMutationPolicy, context::SubscriptionContext},
 };
 use kaspa_rpc_core::{
+    Notification, RpcResult,
     api::rpc::DynRpcService,
     notify::{channel::NotificationChannel, connection::ChannelConnection},
-    Notification, RpcResult,
 };
 use kaspa_utils::networking::NetAddress;
 use kaspa_utils_tower::{
@@ -35,18 +35,18 @@ use std::fmt::Debug;
 use std::{
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
-use tokio::sync::mpsc::{channel as mpsc_channel, Sender as MpscSender};
+use tokio::sync::mpsc::{Sender as MpscSender, channel as mpsc_channel};
 use tokio::{
-    sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender},
+    sync::oneshot::{Sender as OneshotSender, channel as oneshot_channel},
     time::timeout,
 };
-use tokio_stream::{wrappers::ReceiverStream, StreamExt};
-use tonic::{codec::CompressionEncoding, transport::Server as TonicServer, Request, Response};
+use tokio_stream::{StreamExt, wrappers::ReceiverStream};
+use tonic::{Request, Response, codec::CompressionEncoding, transport::Server as TonicServer};
 
 #[derive(Clone)]
 pub struct ServerContext {

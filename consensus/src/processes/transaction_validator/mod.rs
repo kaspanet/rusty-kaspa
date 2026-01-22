@@ -5,11 +5,11 @@ pub mod tx_validation_in_utxo_context;
 use std::sync::Arc;
 
 use kaspa_txscript::{
-    caches::{Cache, TxScriptCacheCounters},
     SigCacheKey,
+    caches::{Cache, TxScriptCacheCounters},
 };
 
-use kaspa_consensus_core::{mass::MassCalculator, KType};
+use kaspa_consensus_core::{KType, mass::MassCalculator};
 
 #[derive(Clone)]
 pub struct TransactionValidator {

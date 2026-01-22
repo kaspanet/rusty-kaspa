@@ -1,7 +1,7 @@
 use clap::Parser;
 use futures_util::future::try_join_all;
 use kaspa_stratum_bridge::log_colors::LogColors;
-use kaspa_stratum_bridge::{listen_and_serve, prom, BridgeConfig as StratumBridgeConfig, KaspaApi};
+use kaspa_stratum_bridge::{BridgeConfig as StratumBridgeConfig, KaspaApi, listen_and_serve, prom};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};

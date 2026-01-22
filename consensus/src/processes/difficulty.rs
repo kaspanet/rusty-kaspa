@@ -4,19 +4,19 @@ use crate::model::stores::{
     headers::HeaderStoreReader,
 };
 use kaspa_consensus_core::{
+    BlockHashSet, BlueWorkType, MAX_WORK_LEVEL,
     config::params::MAX_DIFFICULTY_TARGET_AS_F64,
     errors::difficulty::{DifficultyError, DifficultyResult},
-    BlockHashSet, BlueWorkType, MAX_WORK_LEVEL,
 };
 use kaspa_core::{info, log::CRESCENDO_KEYWORD};
 use kaspa_hashes::Hash;
 use kaspa_math::{Uint256, Uint320};
 use std::{
-    cmp::{max, Ordering},
+    cmp::{Ordering, max},
     ops::Deref,
     sync::{
-        atomic::{AtomicU8, Ordering as AtomicOrdering},
         Arc,
+        atomic::{AtomicU8, Ordering as AtomicOrdering},
     },
 };
 

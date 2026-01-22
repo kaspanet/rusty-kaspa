@@ -1,9 +1,9 @@
 use crate::{
+    IncomingRoute, KaspadMessagePayloadType, Router,
     common::ProtocolError,
     core::adaptor::ConnectionInitializer,
     handshake::KaspadHandshake,
     pb::{self, VersionMessage},
-    IncomingRoute, KaspadMessagePayloadType, Router,
 };
 use kaspa_core::{debug, time::unix_now, trace, warn};
 use std::sync::Arc;
