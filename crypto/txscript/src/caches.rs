@@ -5,8 +5,8 @@ use std::{
     collections::hash_map::RandomState,
     hash::BuildHasher,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
 };
 
@@ -77,11 +77,7 @@ pub struct TxScriptCacheCountersSnapshot {
 
 impl TxScriptCacheCountersSnapshot {
     pub fn hit_ratio(&self) -> f64 {
-        if self.insert_counts > 0 {
-            self.get_counts as f64 / self.insert_counts as f64
-        } else {
-            0f64
-        }
+        if self.insert_counts > 0 { self.get_counts as f64 / self.insert_counts as f64 } else { 0f64 }
     }
 }
 

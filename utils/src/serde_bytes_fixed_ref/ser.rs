@@ -1,5 +1,5 @@
-use serde::ser::SerializeTuple;
 use serde::Serializer;
+use serde::ser::SerializeTuple;
 use std::str;
 
 /// Trait for serialization of types which can be referenced as fixed-size byte arrays.

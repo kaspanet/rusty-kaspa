@@ -1,9 +1,9 @@
 // Example of simple grpc client to connect with Kaspa node and collect some node and network basic data
 
 use kaspa_grpc_client::GrpcClient;
-use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_rpc_core::RpcResult;
-use kaspa_rpc_core::{api::rpc::RpcApi, GetBlockDagInfoResponse, GetServerInfoResponse};
+use kaspa_rpc_core::notify::mode::NotificationMode;
+use kaspa_rpc_core::{GetBlockDagInfoResponse, GetServerInfoResponse, api::rpc::RpcApi};
 use std::process::ExitCode;
 
 #[tokio::main]
