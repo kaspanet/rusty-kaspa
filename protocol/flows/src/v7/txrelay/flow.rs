@@ -7,19 +7,19 @@ use kaspa_consensus_core::tx::{Transaction, TransactionId};
 use kaspa_consensusmanager::ConsensusProxy;
 use kaspa_core::{time::unix_now, warn};
 use kaspa_mining::{
+    P2pTxCountSample,
     errors::MiningManagerError,
     mempool::{
         errors::RuleError,
         tx::{Orphan, Priority, RbfPolicy},
     },
     model::tx_query::TransactionQuery,
-    P2pTxCountSample,
 };
 use kaspa_p2p_lib::{
-    common::{ProtocolError, DEFAULT_TIMEOUT},
-    dequeue, make_message,
-    pb::{kaspad_message::Payload, RequestTransactionsMessage, TransactionNotFoundMessage},
     IncomingRoute, Router,
+    common::{DEFAULT_TIMEOUT, ProtocolError},
+    dequeue, make_message,
+    pb::{RequestTransactionsMessage, TransactionNotFoundMessage, kaspad_message::Payload},
 };
 use std::sync::Arc;
 use tokio::time::timeout;

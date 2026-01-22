@@ -7,7 +7,7 @@ use crate::result::Result;
 use kaspa_consensus_client as kcc;
 use kaspa_consensus_client::UtxoEntryReference;
 use kaspa_consensus_core::mass::calc_storage_mass as consensus_calc_storage_mass;
-use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput, SCRIPT_VECTOR_SIZE};
+use kaspa_consensus_core::tx::{SCRIPT_VECTOR_SIZE, Transaction, TransactionInput, TransactionOutput};
 use kaspa_consensus_core::{config::params::Params, constants::*, subnets::SUBNETWORK_ID_SIZE};
 use kaspa_hashes::HASH_SIZE;
 
@@ -162,16 +162,16 @@ pub const fn blank_transaction_serialized_byte_size() -> u64 {
     let mut size: u64 = 0;
     size += 2; // Tx version (u16)
     size += 8; // Number of inputs (u64)
-               // ~ skip input size for blank tx
+    // ~ skip input size for blank tx
     size += 8; // number of outputs (u64)
-               // ~ skip output size for blank tx
+    // ~ skip output size for blank tx
     size += 8; // lock time (u64)
     size += SUBNETWORK_ID_SIZE as u64;
     size += 8; // gas (u64)
     size += HASH_SIZE as u64; // payload hash
 
     size += 8; // length of the payload (u64)
-               // ~ skip payload size for blank tx
+    // ~ skip payload size for blank tx
     size
 }
 
@@ -207,7 +207,7 @@ pub const fn transaction_standard_output_serialized_byte_size() -> u64 {
     size += 8; // value (u64)
     size += 2; // output.ScriptPublicKey.Version (u16)
     size += 8; // length of script public key (u64)
-               //max script size as per SCRIPT_VECTOR_SIZE
+    //max script size as per SCRIPT_VECTOR_SIZE
     size += SCRIPT_VECTOR_SIZE as u64;
     size
 }

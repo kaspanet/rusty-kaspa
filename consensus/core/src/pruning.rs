@@ -1,7 +1,7 @@
 use crate::{
+    BlueWorkType,
     header::Header,
     trusted::{TrustedGhostdagData, TrustedHeader},
-    BlueWorkType,
 };
 use kaspa_hashes::Hash;
 use std::sync::Arc;

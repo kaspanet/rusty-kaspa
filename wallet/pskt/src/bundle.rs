@@ -279,7 +279,7 @@ mod tests {
     use kaspa_consensus_core::tx::{TransactionId, TransactionOutpoint, UtxoEntry};
     use kaspa_txscript::{multisig_redeem_script, pay_to_script_hash_script};
     use secp256k1::Secp256k1;
-    use secp256k1::{rand::thread_rng, Keypair};
+    use secp256k1::{Keypair, rand::thread_rng};
     use std::str::FromStr;
     use std::sync::LazyLock;
 

@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_daemon::{locate_binaries, CpuMinerConfig};
+use kaspa_daemon::{CpuMinerConfig, locate_binaries};
 pub use workflow_node::process::Event;
 
 #[derive(Describe, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
