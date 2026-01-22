@@ -18,15 +18,15 @@
           <img src="static/assets/kaspa.svg" alt="Kaspa" class="rk-logo h-9 w-auto" />
           <span>RK-Stratum</span>
         </h1>
-        <div class="flex items-center gap-4">
-          <div class="flex items-center space-x-3">
+        <div class="flex items-center gap-2 sm:gap-4">
+          <div class="flex items-center space-x-2 sm:space-x-3">
             <div class="loader" id="status-loader"></div>
             <span id="status-text" class="status-dot status-dot--loading" title="Loading"></span>
           </div>
-          <div class="hidden md:flex items-center gap-3">
-            <div class="bg-surface-2 border border-card px-4 py-2 rounded-lg text-sm">
-              <div class="text-xs text-gray-400">Server Time</div>
-              <div id="serverTime" class="text-white font-semibold tabular-nums">-</div>
+          <div class="flex items-center gap-2 sm:gap-3">
+            <div class="bg-surface-2 border border-card px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm">
+              <div class="text-[10px] sm:text-xs text-gray-400">Server Time</div>
+              <div id="serverTime" class="text-white font-semibold tabular-nums text-[10px] sm:text-sm leading-tight">-</div>
             </div>
           </div>
           <div class="hidden md:flex items-center gap-2">
@@ -173,13 +173,13 @@
       </div>
     </div>
 
-    <div class="bg-surface-2 rounded-lg p-6 border border-card mb-8 xl:col-span-12">
-        <div class="flex items-center justify-between gap-4 mb-4">
+    <div class="bg-surface-2 rounded-lg p-4 sm:p-6 border border-card mb-8 xl:col-span-12">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4">
           <h3 class="text-lg font-semibold kaspa-primary">Recent Blocks</h3>
-          <div class="flex items-center gap-3">
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
             <div class="flex items-center gap-2">
-              <label for="blocksDayFilter" class="text-xs text-gray-400">Filter by days:</label>
-              <select id="blocksDayFilter" class="bg-surface-1 border border-card px-3 py-1.5 rounded-lg text-sm text-white hover:border-kaspa-primary focus:outline-none focus:border-kaspa-primary">
+              <label for="blocksDayFilter" class="text-xs text-gray-400 whitespace-nowrap">Filter by days:</label>
+              <select id="blocksDayFilter" class="flex-1 sm:flex-none bg-surface-1 border border-card px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm text-white hover:border-kaspa-primary focus:outline-none focus:border-kaspa-primary min-w-0">
                 <option value="0">All</option>
                 <option value="1">Last 1 day</option>
                 <option value="3">Last 3 days</option>
@@ -188,11 +188,13 @@
                 <option value="30">Last 30 days</option>
               </select>
             </div>
-            <button type="button" class="bg-surface-1 border border-card px-3 py-1.5 rounded-lg text-xs font-medium text-white hover:border-kaspa-primary flex items-center gap-2" data-collapsible-toggle="recentBlocks" aria-expanded="true">
-              <svg class="h-4 w-4 transition-transform" data-collapsible-icon="recentBlocks" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08z" clip-rule="evenodd"/></svg>
-              <span data-collapsible-label="recentBlocks">Collapse</span>
-            </button>
-            <button id="downloadBlocksCsv" type="button" class="bg-surface-1 border border-card px-4 py-2 rounded-lg text-sm font-medium text-white hover:border-kaspa-primary">Download CSV</button>
+            <div class="flex items-center gap-2">
+              <button type="button" class="bg-surface-1 border border-card px-2 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-white hover:border-kaspa-primary flex items-center gap-1.5 sm:gap-2" data-collapsible-toggle="recentBlocks" aria-expanded="true">
+                <svg class="h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform" data-collapsible-icon="recentBlocks" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08z" clip-rule="evenodd"/></svg>
+                <span data-collapsible-label="recentBlocks" class="hidden sm:inline">Collapse</span>
+              </button>
+              <button id="downloadBlocksCsv" type="button" class="flex-1 sm:flex-none bg-surface-1 border border-card px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium text-white hover:border-kaspa-primary whitespace-nowrap">Download CSV</button>
+            </div>
           </div>
         </div>
         <div data-collapsible-body="recentBlocks">
