@@ -2,6 +2,7 @@ mod extensions;
 pub mod inquirer;
 pub mod interval;
 mod reindex;
+pub mod relations;
 pub mod tests;
 mod tree;
 
