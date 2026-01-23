@@ -3,7 +3,7 @@ pub mod wasm;
 
 use crate::imports::*;
 
-use wasm::{version, Process, ProcessEvent, ProcessOptions};
+use wasm::{Process, ProcessEvent, ProcessOptions, version};
 
 #[derive(Default, Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct CpuMinerConfig {
@@ -135,11 +135,7 @@ impl CpuMiner {
     }
 
     pub fn uptime(&self) -> Option<Duration> {
-        if let Some(process) = self.inner().process.as_ref() {
-            process.uptime()
-        } else {
-            None
-        }
+        if let Some(process) = self.inner().process.as_ref() { process.uptime() } else { None }
     }
 
     pub fn process(&self) -> Option<Arc<Process>> {

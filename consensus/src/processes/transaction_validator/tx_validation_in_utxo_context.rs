@@ -5,17 +5,17 @@ use kaspa_consensus_core::{
     tx::{TransactionInput, VerifiableTransaction},
 };
 use kaspa_txscript::{
-    covenants::CovenantsContext, get_sig_op_count_upper_bound, EngineCtx, EngineCtxSync, EngineCtxUnsync, EngineFlags,
-    SeqCommitAccessor, TxScriptEngine,
+    EngineCtx, EngineCtxSync, EngineCtxUnsync, EngineFlags, SeqCommitAccessor, TxScriptEngine, covenants::CovenantsContext,
+    get_sig_op_count_upper_bound,
 };
 use kaspa_txscript_errors::TxScriptError;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon::ThreadPool;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::marker::Sync;
 
 use super::{
-    errors::{TxResult, TxRuleError},
     TransactionValidator,
+    errors::{TxResult, TxRuleError},
 };
 
 /// The threshold above which we apply parallelism to input script processing
@@ -234,11 +234,7 @@ pub fn check_scripts_par_iter_pool(
 }
 
 fn map_script_err(script_err: TxScriptError, input: &TransactionInput) -> TxRuleError {
-    if input.signature_script.is_empty() {
-        TxRuleError::SignatureEmpty(script_err)
-    } else {
-        TxRuleError::SignatureInvalid(script_err)
-    }
+    if input.signature_script.is_empty() { TxRuleError::SignatureEmpty(script_err) } else { TxRuleError::SignatureInvalid(script_err) }
 }
 
 #[cfg(test)]

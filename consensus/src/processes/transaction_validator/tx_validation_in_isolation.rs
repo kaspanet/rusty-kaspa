@@ -3,8 +3,8 @@ use kaspa_consensus_core::tx::Transaction;
 use std::collections::HashSet;
 
 use super::{
-    errors::{TxResult, TxRuleError},
     TransactionValidator,
+    errors::{TxResult, TxRuleError},
 };
 
 impl TransactionValidator {
@@ -155,11 +155,7 @@ fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
 }
 
 fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
-    if tx.is_coinbase() || tx.subnetwork_id.is_native() {
-        Ok(())
-    } else {
-        Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id))
-    }
+    if tx.is_coinbase() || tx.subnetwork_id.is_native() { Ok(()) } else { Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id)) }
 }
 
 fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
@@ -176,14 +172,14 @@ fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
 mod tests {
     use kaspa_consensus_core::{
         constants::{TX_VERSION, TX_VERSION_POST_COV_HF},
-        subnets::{SubnetworkId, SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
-        tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
+        subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE, SubnetworkId},
+        tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, scriptvec},
     };
     use kaspa_core::assert_match;
 
     use crate::{
         params::MAINNET_PARAMS,
-        processes::transaction_validator::{errors::TxRuleError, tx_validation_in_header_context::LockTimeArg, TransactionValidator},
+        processes::transaction_validator::{TransactionValidator, errors::TxRuleError, tx_validation_in_header_context::LockTimeArg},
     };
 
     #[test]

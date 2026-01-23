@@ -127,8 +127,8 @@ mod test {
     #[test]
     fn test_batch_verification_parallelism() {
         use hex::decode;
-        use rayon::prelude::*;
         use rayon::ThreadPoolBuilder;
+        use rayon::prelude::*;
         use std::time::Instant;
 
         // Load STARK proof

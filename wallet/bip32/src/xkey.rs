@@ -1,6 +1,6 @@
 //! Parser for extended key types (i.e. `xprv` and `xpub`)
 
-use crate::{ChildNumber, Error, ExtendedKeyAttrs, Prefix, Result, Version, KEY_SIZE};
+use crate::{ChildNumber, Error, ExtendedKeyAttrs, KEY_SIZE, Prefix, Result, Version};
 use core::{
     fmt::{self, Display},
     str::{self, FromStr},

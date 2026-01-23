@@ -7,7 +7,7 @@ pub use error::Groth16Error;
 
 use crate::{
     data_stack::Stack,
-    zk_precompiles::{fields::Fr, ZkPrecompile},
+    zk_precompiles::{ZkPrecompile, fields::Fr},
 };
 
 pub struct Groth16Precompile;
@@ -60,7 +60,7 @@ impl ZkPrecompile for Groth16Precompile {
 mod tests {
     use crate::{
         data_stack::Stack,
-        zk_precompiles::{groth16::Groth16Precompile, ZkPrecompile},
+        zk_precompiles::{ZkPrecompile, groth16::Groth16Precompile},
     };
 
     #[test]

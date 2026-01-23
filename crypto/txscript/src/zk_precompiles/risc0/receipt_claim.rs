@@ -14,7 +14,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use risc0_binfmt::{tagged_struct, Digestible, ExitCode, SystemState};
+use risc0_binfmt::{Digestible, ExitCode, SystemState, tagged_struct};
 use risc0_zkp::core::{digest::Digest, hash::sha::Sha256};
 use serde::{Deserialize, Serialize};
 

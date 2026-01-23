@@ -1,4 +1,4 @@
-use clap::{arg, Arg, ArgAction, Command};
+use clap::{Arg, ArgAction, Command, arg};
 use kaspa_consensus_core::{
     config::Config,
     network::{NetworkId, NetworkType},
@@ -8,7 +8,7 @@ use kaspa_notify::address::tracker::Tracker;
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_wrpc_server::address::WrpcNetAddress;
 use serde::Deserialize;
-use serde_with::{serde_as, DisplayFromStr};
+use serde_with::{DisplayFromStr, serde_as};
 use std::{ffi::OsString, fs};
 use toml::from_str;
 
@@ -187,7 +187,13 @@ impl Args {
             .map(|i| {
                 (
                     TransactionOutpoint { transaction_id: i.into(), index: 0 },
-                    UtxoEntry { amount: self.prealloc_amount, script_public_key: spk.clone(), block_daa_score: 0, is_coinbase: false },
+                    UtxoEntry {
+                        amount: self.prealloc_amount,
+                        script_public_key: spk.clone(),
+                        block_daa_score: 0,
+                        is_coinbase: false,
+                        covenant_id: None,
+                    },
                 )
             })
             .collect()

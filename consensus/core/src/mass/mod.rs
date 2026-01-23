@@ -293,11 +293,7 @@ impl MassCalculator {
 /// # Returns
 /// The actual (decoded) signature operation count as u16
 pub fn decode_sig_op_count(encoded: u8) -> u16 {
-    if encoded <= 100 {
-        encoded as u16
-    } else {
-        100 + ((encoded as u16 - 100) * 10)
-    }
+    if encoded <= 100 { encoded as u16 } else { 100 + ((encoded as u16 - 100) * 10) }
 }
 
 /// Calculates the storage mass (KIP-0009) for a given set of inputs and outputs.

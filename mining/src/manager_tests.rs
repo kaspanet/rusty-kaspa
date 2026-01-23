@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::{
+        MiningCounters,
         block_template::builder::BlockTemplateBuilder,
         errors::{MiningManagerError, MiningManagerResult},
         manager::MiningManager,
@@ -12,7 +13,6 @@ mod tests {
         },
         model::{tx_insert::TransactionInsertion, tx_query::TransactionQuery},
         testutils::consensus_mock::ConsensusMock,
-        MiningCounters,
     };
     use itertools::Itertools;
     use kaspa_addresses::{Address, Prefix, Version};
@@ -22,11 +22,11 @@ mod tests {
         coinbase::MinerData,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         errors::tx::TxRuleError,
-        mass::{transaction_estimated_serialized_size, NonContextualMasses},
+        mass::{NonContextualMasses, transaction_estimated_serialized_size},
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{
-            scriptvec, MutableTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
-            TransactionOutput, UtxoEntry,
+            MutableTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
+            UtxoEntry, scriptvec,
         },
     };
     use kaspa_hashes::Hash;
@@ -65,7 +65,10 @@ mod tests {
                         assert!(result.is_ok(), "({priority:?}, {orphan:?}, {rbf_policy:?}) inserting a valid transaction failed");
                     }
                     RbfPolicy::Mandatory => {
-                        assert!(result.is_err(), "({priority:?}, {orphan:?}, {rbf_policy:?}) replacing a valid transaction without replacement in mempool should fail");
+                        assert!(
+                            result.is_err(),
+                            "({priority:?}, {orphan:?}, {rbf_policy:?}) replacing a valid transaction without replacement in mempool should fail"
+                        );
                         let err = result.unwrap_err();
                         assert_eq!(
                             RuleError::RejectRbfNoDoubleSpend,
@@ -239,7 +242,9 @@ mod tests {
                     );
                 }
                 Ok(()) => {
-                    panic!("({priority:?}, {orphan:?}, {rbf_policy:?}) mempool should refuse a double submit of the same transaction but accepts it");
+                    panic!(
+                        "({priority:?}, {orphan:?}, {rbf_policy:?}) mempool should refuse a double submit of the same transaction but accepts it"
+                    );
                 }
             }
         }
@@ -268,7 +273,10 @@ mod tests {
                 orphan,
                 RbfPolicy::Forbidden,
             );
-            assert!(result.is_ok(), "({priority:?}, {orphan:?}, {rbf_policy:?}) the mempool should accept a valid transaction when it is able to populate its UTXO entries");
+            assert!(
+                result.is_ok(),
+                "({priority:?}, {orphan:?}, {rbf_policy:?}) the mempool should accept a valid transaction when it is able to populate its UTXO entries"
+            );
 
             let mut double_spending_transaction = transaction.clone();
             double_spending_transaction.outputs[0].value += 1; // do some minor change so that txID is different while not increasing fee
@@ -296,10 +304,14 @@ mod tests {
                     );
                 }
                 Err(err) => {
-                    panic!("({priority:?}, {orphan:?}, {rbf_policy:?}) the error returned by the mempool should be RuleError::RejectDoubleSpendInMempool but is {err:?}");
+                    panic!(
+                        "({priority:?}, {orphan:?}, {rbf_policy:?}) the error returned by the mempool should be RuleError::RejectDoubleSpendInMempool but is {err:?}"
+                    );
                 }
                 Ok(()) => {
-                    panic!("({priority:?}, {orphan:?}, {rbf_policy:?}) mempool should refuse a double spend transaction ineligible to RBF but accepts it");
+                    panic!(
+                        "({priority:?}, {orphan:?}, {rbf_policy:?}) mempool should refuse a double spend transaction ineligible to RBF but accepts it"
+                    );
                 }
             }
         }
@@ -593,7 +605,7 @@ mod tests {
         let result = mining_manager.handle_new_block_transactions(consensus.as_ref(), 3, &block_with_rest);
         assert!(
             result.is_ok(),
-            "the handling by the mempool of the transactions of a block accepted by the consensus should succeed but returned {result:?}"            
+            "the handling by the mempool of the transactions of a block accepted by the consensus should succeed but returned {result:?}"
         );
         for handled_tx_id in rest.iter().map(|x| x.id()) {
             assert!(
@@ -698,14 +710,18 @@ mod tests {
         let unorphaned_txs = result.unwrap();
         let (populated_txs, orphans) = mining_manager.get_all_transactions(TransactionQuery::All);
         assert_eq!(
-            unorphaned_txs.len(), child_txs.len() - SKIPPED_TXS,
+            unorphaned_txs.len(),
+            child_txs.len() - SKIPPED_TXS,
             "the mempool is expected to have unorphaned all but one child transactions after all but one parent transactions were accepted by the consensus: expected: {}, got: {}",
-            unorphaned_txs.len(), child_txs.len() - SKIPPED_TXS
+            unorphaned_txs.len(),
+            child_txs.len() - SKIPPED_TXS
         );
         assert_eq!(
-            child_txs.len() - SKIPPED_TXS, populated_txs.len(),
+            child_txs.len() - SKIPPED_TXS,
+            populated_txs.len(),
             "the mempool is expected to contain all but one child transactions after all but one parent transactions were accepted by the consensus: expected: {}, got: {}",
-            child_txs.len() - SKIPPED_TXS, populated_txs.len()
+            child_txs.len() - SKIPPED_TXS,
+            populated_txs.len()
         );
         for populated in populated_txs.iter() {
             assert!(
@@ -728,9 +744,11 @@ mod tests {
             assert!(contained_by(child.id(), &populated_txs), "child transaction {} should exist in the mempool", child.id());
         }
         assert_eq!(
-            SKIPPED_TXS, orphans.len(),
+            SKIPPED_TXS,
+            orphans.len(),
             "the orphan pool is expected to contain one child transaction after all but one parent transactions were accepted by the consensus: expected: {}, got: {}",
-            SKIPPED_TXS, orphans.len()
+            SKIPPED_TXS,
+            orphans.len()
         );
         for orphan in orphans.iter() {
             assert!(
@@ -811,9 +829,11 @@ mod tests {
         let unorphaned_txs = result.unwrap().accepted;
         let (populated_txs, orphans) = mining_manager.get_all_transactions(TransactionQuery::All);
         assert_eq!(
-            unorphaned_txs.len(), SKIPPED_TXS + 1,
+            unorphaned_txs.len(),
+            SKIPPED_TXS + 1,
             "the mempool is expected to have unorphaned the remaining child transaction after the matching parent transaction was inserted into the mempool: expected: {}, got: {}",
-            SKIPPED_TXS + 1, unorphaned_txs.len()
+            SKIPPED_TXS + 1,
+            unorphaned_txs.len()
         );
         assert_eq!(
             SKIPPED_TXS + SKIPPED_TXS,

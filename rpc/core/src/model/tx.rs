@@ -1,17 +1,18 @@
+use crate::{
+    RpcOptionalHeader, RpcOptionalTransaction,
+    prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{
-    ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
-    UtxoEntry,
+    CovenantBinding, ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint,
+    TransactionOutput, UtxoEntry,
 };
+use kaspa_hashes::Hash;
 use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
 use serde::{Deserialize, Serialize};
+use std::io::{Read, Write};
 use workflow_serializer::prelude::*;
-
-use crate::{
-    prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
-    RpcOptionalHeader, RpcOptionalTransaction,
-};
 
 /// Represents the ID of a Kaspa transaction
 pub type RpcTransactionId = TransactionId;
@@ -67,12 +68,12 @@ impl From<RpcUtxoEntry> for UtxoEntry {
 
 impl Serializer for RpcUtxoEntry {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         store!(u64, &self.amount, writer)?;
         store!(ScriptPublicKey, &self.script_public_key, writer)?;
         store!(u64, &self.block_daa_score, writer)?;
         store!(bool, &self.is_coinbase, writer)?;
-        store!(Option<RpcHash>, &self.covenant_id, writer)?; // TODO(covpp-mainnet): Bump borsh version
+        store!(Option<RpcHash>, &self.covenant_id, writer)?;
 
         Ok(())
     }
@@ -80,12 +81,12 @@ impl Serializer for RpcUtxoEntry {
 
 impl Deserializer for RpcUtxoEntry {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
         let amount = load!(u64, reader)?;
         let script_public_key = load!(ScriptPublicKey, reader)?;
         let block_daa_score = load!(u64, reader)?;
         let is_coinbase = load!(bool, reader)?;
-        let covenant_id = load!(Option<RpcHash>, reader)?; // TODO(covpp-mainnet): Bump borsh version
+        let covenant_id = if version > 1 { load!(Option<RpcHash>, reader)? } else { None };
 
         Ok(Self { amount, script_public_key, block_daa_score, is_coinbase, covenant_id })
     }
@@ -238,6 +239,7 @@ pub struct RpcTransactionOutput {
     pub value: u64,
     pub script_public_key: RpcScriptPublicKey,
     pub verbose_data: Option<RpcTransactionOutputVerboseData>,
+    pub covenant: Option<RpcCovenantBinding>,
 }
 
 impl RpcTransactionOutput {
@@ -248,29 +250,75 @@ impl RpcTransactionOutput {
 
 impl From<TransactionOutput> for RpcTransactionOutput {
     fn from(output: TransactionOutput) -> Self {
-        Self { value: output.value, script_public_key: output.script_public_key, verbose_data: None }
+        Self {
+            value: output.value,
+            script_public_key: output.script_public_key,
+            verbose_data: None,
+            covenant: output.covenant.map(Into::into),
+        }
     }
 }
 
 impl Serializer for RpcTransactionOutput {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u8, &1, writer)?;
+        store!(u8, &2, writer)?;
         store!(u64, &self.value, writer)?;
         store!(RpcScriptPublicKey, &self.script_public_key, writer)?;
         serialize!(Option<RpcTransactionOutputVerboseData>, &self.verbose_data, writer)?;
-
+        serialize!(Option<RpcCovenantBinding>, &self.covenant, writer)?;
         Ok(())
     }
 }
 
 impl Deserializer for RpcTransactionOutput {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u8, reader)?;
+        let version = load!(u8, reader)?;
         let value = load!(u64, reader)?;
         let script_public_key = load!(RpcScriptPublicKey, reader)?;
         let verbose_data = deserialize!(Option<RpcTransactionOutputVerboseData>, reader)?;
+        let covenant = if version > 1 { deserialize!(Option<RpcCovenantBinding>, reader)? } else { None };
 
-        Ok(Self { value, script_public_key, verbose_data })
+        Ok(Self { value, script_public_key, verbose_data, covenant })
+    }
+}
+
+#[repr(transparent)]
+#[derive(Clone, Debug, Serialize, Deserialize, Copy)]
+pub struct RpcCovenantBinding(pub CovenantBinding);
+
+impl RpcCovenantBinding {
+    pub fn new(authorizing_input: u16, covenant_id: Hash) -> Self {
+        Self(CovenantBinding { authorizing_input, covenant_id })
+    }
+}
+
+impl From<CovenantBinding> for RpcCovenantBinding {
+    fn from(value: CovenantBinding) -> Self {
+        Self(value)
+    }
+}
+
+impl From<RpcCovenantBinding> for CovenantBinding {
+    fn from(value: RpcCovenantBinding) -> Self {
+        value.0
+    }
+}
+
+impl Serializer for RpcCovenantBinding {
+    fn serialize<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        store!(u16, &self.0.authorizing_input, writer)?;
+        store!(Hash, &self.0.covenant_id, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcCovenantBinding {
+    fn deserialize<R: Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let authorizing_input = load!(u16, reader)?;
+        let covenant_id = load!(Hash, reader)?;
+        Ok(Self(CovenantBinding { authorizing_input, covenant_id }))
     }
 }
 

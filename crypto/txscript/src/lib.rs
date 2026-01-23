@@ -20,18 +20,18 @@ use std::ops::Deref;
 use crate::caches::Cache;
 use crate::covenants::CovenantsContext;
 use crate::data_stack::Stack;
-use crate::opcodes::{deserialize_next_opcode, OpCodeImplementation};
+use crate::opcodes::{OpCodeImplementation, deserialize_next_opcode};
 use crate::zk_precompiles::compute_zk_sigop_cost;
 use itertools::Itertools;
 use kaspa_consensus_core::hashing::sighash::{
-    calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues, SigHashReusedValuesUnsync,
+    SigHashReusedValues, SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash,
 };
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_txscript_errors::TxScriptError;
 use log::trace;
 use opcodes::codes::OpReturn;
-use opcodes::{codes, to_small_int, OpCond};
+use opcodes::{OpCond, codes, to_small_int};
 use script_class::ScriptClass;
 
 pub mod prelude {

@@ -239,7 +239,7 @@ pub fn unlock_utxo(
         .script_public_key(script_public_key.clone())
         .build()?;
 
-    let pskt: PSKT<Constructor> = PSKT::<Creator>::default().constructor().input(input).output(output);
+    let pskt: PSKT<Constructor> = PSKT::<Creator>::default().constructor().input(input).output(output)?;
     Ok(pskt.into())
 }
 
@@ -272,7 +272,7 @@ pub fn unlock_utxo_outputs_as_batch_transaction_pskb(
         .collect();
 
     let pskt: PSKT<Constructor> =
-        outputs.into_iter().fold(PSKT::<Creator>::default().constructor().input(input), |pskt, output| pskt.output(output));
+        outputs.into_iter().try_fold(PSKT::<Creator>::default().constructor().input(input), |pskt, output| pskt.output(output))?;
     Ok(pskt.into())
 }
 
@@ -285,7 +285,7 @@ mod tests {
     use kaspa_consensus_core::tx::{TransactionId, TransactionOutpoint, UtxoEntry};
     use kaspa_txscript::{multisig_redeem_script, pay_to_script_hash_script};
     use secp256k1::Secp256k1;
-    use secp256k1::{rand::thread_rng, Keypair};
+    use secp256k1::{Keypair, rand::thread_rng};
     use std::str::FromStr;
     use std::sync::LazyLock;
 

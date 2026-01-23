@@ -1,15 +1,15 @@
 use std::{
     ops::{ControlFlow, DerefMut},
-    sync::{atomic::Ordering, Arc},
+    sync::{Arc, atomic::Ordering},
 };
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockLevel, BlueWorkType,
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     errors::pruning::{ProofWeakness, PruningImportError, PruningImportResult},
     header::Header,
     pruning::{PruningPointProof, PruningProofMetadata},
-    BlockLevel, BlueWorkType,
 };
 use kaspa_core::info;
 use kaspa_database::{

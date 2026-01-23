@@ -1,5 +1,5 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_consensus_core::{header::Header, BlueWorkType};
+use kaspa_consensus_core::{BlueWorkType, header::Header};
 use kaspa_hashes::Hash;
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
@@ -192,39 +192,34 @@ impl Deserializer for RpcOptionalHeader {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
 
-        match _version {
-            1 => {
-                let hash = load!(Option<Hash>, reader)?;
-                let version = load!(Option<u16>, reader)?;
-                let parents_by_level = load!(Option<RpcCompressedParents>, reader)?;
-                let hash_merkle_root = load!(Option<Hash>, reader)?;
-                let accepted_id_merkle_root = load!(Option<Hash>, reader)?;
-                let utxo_commitment = load!(Option<Hash>, reader)?;
-                let timestamp = load!(Option<u64>, reader)?;
-                let bits = load!(Option<u32>, reader)?;
-                let nonce = load!(Option<u64>, reader)?;
-                let daa_score = load!(Option<u64>, reader)?;
-                let blue_work = load!(Option<BlueWorkType>, reader)?;
-                let blue_score = load!(Option<u64>, reader)?;
-                let pruning_point = load!(Option<Hash>, reader)?;
+        let hash = load!(Option<Hash>, reader)?;
+        let version = load!(Option<u16>, reader)?;
+        let parents_by_level = load!(Option<RpcCompressedParents>, reader)?;
+        let hash_merkle_root = load!(Option<Hash>, reader)?;
+        let accepted_id_merkle_root = load!(Option<Hash>, reader)?;
+        let utxo_commitment = load!(Option<Hash>, reader)?;
+        let timestamp = load!(Option<u64>, reader)?;
+        let bits = load!(Option<u32>, reader)?;
+        let nonce = load!(Option<u64>, reader)?;
+        let daa_score = load!(Option<u64>, reader)?;
+        let blue_work = load!(Option<BlueWorkType>, reader)?;
+        let blue_score = load!(Option<u64>, reader)?;
+        let pruning_point = load!(Option<Hash>, reader)?;
 
-                Ok(Self {
-                    hash,
-                    version,
-                    parents_by_level,
-                    hash_merkle_root,
-                    accepted_id_merkle_root,
-                    utxo_commitment,
-                    timestamp,
-                    bits,
-                    nonce,
-                    daa_score,
-                    blue_work,
-                    blue_score,
-                    pruning_point,
-                })
-            }
-            _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported version: {}", _version))),
-        }
+        Ok(Self {
+            hash,
+            version,
+            parents_by_level,
+            hash_merkle_root,
+            accepted_id_merkle_root,
+            utxo_commitment,
+            timestamp,
+            bits,
+            nonce,
+            daa_score,
+            blue_work,
+            blue_score,
+            pruning_point,
+        })
     }
 }

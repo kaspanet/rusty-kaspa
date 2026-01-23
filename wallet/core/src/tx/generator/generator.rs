@@ -57,21 +57,21 @@
 //!    UTXO sets will result in a browser UI freezing.
 //!
 
+use super::SignerT;
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{
-    mass::*, Fees, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, PendingTransactionIterator,
-    PendingTransactionStream,
+    Fees, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, PendingTransactionIterator,
+    PendingTransactionStream, mass::*,
 };
 use crate::utxo::{NetworkParams, UtxoContext, UtxoEntryReference};
 use kaspa_consensus_client::UtxoEntry;
 use kaspa_consensus_core::constants::UNACCEPTED_DAA_SCORE;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+use kaspa_hashes::Hash;
 use kaspa_txscript::pay_to_address_script;
 use std::collections::VecDeque;
-
-use super::SignerT;
 
 // fee reduction - when a transactions has some storage mass
 // and the total mass is below this threshold (as well as
@@ -568,7 +568,7 @@ impl Generator {
     /// transaction for each stream item request. NOTE: transactions
     /// are generated only when each stream item is polled.
     #[inline(always)]
-    pub fn stream(&self) -> impl Stream<Item = Result<PendingTransaction>> {
+    pub fn stream(&self) -> impl Stream<Item = Result<PendingTransaction>> + 'static {
         Box::pin(PendingTransactionStream::new(self))
     }
 
@@ -591,18 +591,20 @@ impl Generator {
             .pop_front()
             .or_else(|| stage.utxo_iterator.as_mut().and_then(|utxo_stage_iterator| utxo_stage_iterator.next()))
             .or_else(|| context.priority_utxo_entries.as_mut().and_then(|entries| entries.pop_front()))
-            .or_else(|| loop {
-                let utxo_entry = context.utxo_source_iterator.next()?;
+            .or_else(|| {
+                loop {
+                    let utxo_entry = context.utxo_source_iterator.next()?;
 
-                if let Some(filter) = context.priority_utxo_entry_filter.as_ref() {
-                    if filter.contains(&utxo_entry) {
-                        // skip the entry from the iterator intake
-                        // if it has been supplied as a priority entry
-                        continue;
+                    if let Some(filter) = context.priority_utxo_entry_filter.as_ref() {
+                        if filter.contains(&utxo_entry) {
+                            // skip the entry from the iterator intake
+                            // if it has been supplied as a priority entry
+                            continue;
+                        }
                     }
-                }
 
-                break Some(utxo_entry);
+                    break Some(utxo_entry);
+                }
             })
     }
 
@@ -1128,6 +1130,8 @@ impl Generator {
 
                 let output_value = aggregate_input_value.saturating_sub(transaction_fees);
                 let script_public_key = pay_to_address_script(&self.inner.change_address);
+
+                // todo add param to support covenants as part of output
                 let output = TransactionOutput::new(output_value, script_public_key.clone());
                 let tx = Transaction::new(0, inputs, vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
 
@@ -1146,8 +1150,13 @@ impl Generator {
                 context.aggregate_mass += transaction_mass;
                 context.number_of_transactions += 1;
 
-                let previous_batch_utxo_entry_reference =
-                    Self::create_batch_utxo_entry_reference(tx.id(), output_value, script_public_key, &self.inner.change_address);
+                let previous_batch_utxo_entry_reference = Self::create_batch_utxo_entry_reference(
+                    tx.id(),
+                    output_value,
+                    script_public_key,
+                    &self.inner.change_address,
+                    tx.outputs.first().as_ref().and_then(|output| output.covenant.map(|c| c.covenant_id)),
+                );
 
                 match kind {
                     DataKind::Node => {
@@ -1191,6 +1200,7 @@ impl Generator {
         amount: u64,
         script_public_key: ScriptPublicKey,
         address: &Address,
+        covenant_id: Option<Hash>,
     ) -> UtxoEntryReference {
         let outpoint = TransactionOutpoint::new(txid, 0);
         let utxo = UtxoEntry {
@@ -1200,7 +1210,7 @@ impl Generator {
             script_public_key,
             block_daa_score: UNACCEPTED_DAA_SCORE,
             is_coinbase: false, // entry
-            covenant_id: todo!(),
+            covenant_id,
         };
         UtxoEntryReference { utxo: Arc::new(utxo) }
     }

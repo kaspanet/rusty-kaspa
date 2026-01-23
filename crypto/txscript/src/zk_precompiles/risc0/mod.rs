@@ -1,8 +1,8 @@
 use crate::{
     data_stack::Stack,
     zk_precompiles::{
-        risc0::{rcpt::SuccinctReceipt, receipt_claim::compute_assert_claim},
         ZkPrecompile,
+        risc0::{rcpt::SuccinctReceipt, receipt_claim::compute_assert_claim},
     },
 };
 use kaspa_txscript_errors::TxScriptError;

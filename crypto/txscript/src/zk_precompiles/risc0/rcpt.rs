@@ -18,14 +18,14 @@ use std::collections::BTreeMap;
 use alloc::{collections::VecDeque, string::String, vec::Vec};
 use borsh::{BorshDeserialize, BorshSerialize};
 use risc0_binfmt::read_sha_halfs;
-use risc0_circuit_recursion::{control_id::ALLOWED_CONTROL_ROOT, CircuitImpl, CIRCUIT};
+use risc0_circuit_recursion::{CIRCUIT, CircuitImpl, control_id::ALLOWED_CONTROL_ROOT};
 use risc0_core::field::baby_bear::BabyBearElem;
-use risc0_zkp::core::hash::{blake2b::Blake2bCpuHashSuite, poseidon2::Poseidon2HashSuite, sha::Sha256HashSuite, HashSuite};
+use risc0_zkp::core::hash::{HashSuite, blake2b::Blake2bCpuHashSuite, poseidon2::Poseidon2HashSuite, sha::Sha256HashSuite};
 use risc0_zkp::{adapter::CircuitInfo, core::digest::Digest, verify::VerificationError};
 use serde::Serialize;
 
-use crate::zk_precompiles::risc0::merkle::MerkleProof;
 use crate::zk_precompiles::risc0::R0Error;
+use crate::zk_precompiles::risc0::merkle::MerkleProof;
 /// A succinct receipt, produced via recursion, proving the execution of the zkVM with a [STARK].
 ///
 /// Using recursion, a [CompositeReceipt][crate::CompositeReceipt] can be compressed to form a
@@ -130,7 +130,7 @@ impl SuccinctReceipt {
 #[cfg(test)]
 mod tests {
     use risc0_binfmt::tagged_struct;
-    use risc0_circuit_recursion::{control_id::ALLOWED_CONTROL_ROOT, CircuitImpl};
+    use risc0_circuit_recursion::{CircuitImpl, control_id::ALLOWED_CONTROL_ROOT};
     use risc0_zkp::adapter::{CircuitInfo, PROOF_SYSTEM_INFO};
     use risc0_zkp::core::{
         digest::digest,

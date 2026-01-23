@@ -3,7 +3,7 @@ pub mod error;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use kaspa_txscript_errors::SerializationError;
 
-use crate::{data_stack::OpcodeData, zk_precompiles::fields::error::FieldsError, TxScriptError};
+use crate::{TxScriptError, data_stack::OpcodeData, zk_precompiles::fields::error::FieldsError};
 
 #[derive(Clone, Debug)]
 pub struct Fr(ark_bn254::Fr);
