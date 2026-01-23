@@ -9,6 +9,7 @@ use crate::imports::*;
 use crate::tx::{Fees, GeneratorSummary, PaymentDestination};
 use kaspa_addresses::Address;
 use kaspa_consensus_client::{TransactionOutpoint, UtxoEntry};
+use kaspa_hashes::Hash;
 use kaspa_rpc_core::RpcFeerateBucket;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -580,6 +581,8 @@ pub struct UtxoEntryWrapper {
     pub script_public_key: ScriptPublicKey,
     pub block_daa_score: u64,
     pub is_coinbase: bool,
+
+    pub covenant_id: Option<Hash>, // todo check if its stored somewhere and causes errors during borsh deserialization
 }
 impl UtxoEntryWrapper {
     pub fn to_js_object(&self) -> Result<js_sys::Object> {
@@ -597,6 +600,7 @@ impl UtxoEntryWrapper {
         obj.set("scriptPublicKey", &workflow_wasm::serde::to_value(&self.script_public_key)?)?;
         obj.set("blockDaaScore", &self.block_daa_score.to_string().into())?;
         obj.set("isCoinbase", &self.is_coinbase.into())?;
+        obj.set("covenantId", &self.covenant_id.map(|h| h.to_string()).unwrap_or_default().into())?;
 
         Ok(obj)
     }
@@ -630,7 +634,7 @@ impl From<UtxoEntryWrapper> for UtxoEntry {
             script_public_key: entry.script_public_key,
             block_daa_score: entry.block_daa_score,
             is_coinbase: entry.is_coinbase,
-            covenant_id: todo!(),
+            covenant_id: entry.covenant_id,
         }
     }
 }
@@ -644,6 +648,7 @@ impl From<UtxoEntry> for UtxoEntryWrapper {
             script_public_key: entry.script_public_key,
             block_daa_score: entry.block_daa_score,
             is_coinbase: entry.is_coinbase,
+            covenant_id: entry.covenant_id,
         }
     }
 }

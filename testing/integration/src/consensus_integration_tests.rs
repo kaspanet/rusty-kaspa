@@ -44,7 +44,7 @@ use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::Hash;
 use kaspa_rpc_core::RpcHeader;
-use kaspa_txscript::pay_to_script_hash_script;
+use kaspa_txscript::{MAX_SCRIPT_ELEMENT_SIZE, pay_to_script_hash_script};
 use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
@@ -1609,11 +1609,16 @@ async fn covenants_activation_test() {
 
 #[tokio::test]
 async fn push_limit_activation_test() {
+    kaspa_core::log::try_init_logger("info");
+
     const ACTIVATION_DAA_SCORE: u64 = 4;
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.coinbase_maturity = 0;
+            p.max_block_mass = 100 * MAX_SCRIPT_ELEMENT_SIZE as u64;
+            p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE;
+            p.storage_mass_parameter = 1;
             p.covenants_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
         })
         .build();
@@ -1676,13 +1681,13 @@ async fn push_limit_activation_test() {
     }
     assert_eq!(consensus.get_virtual_daa_score(), ACTIVATION_DAA_SCORE - 1);
 
-    // Pre-activation: inserting block with a transaction that pushes more than 520 bytes onto the stack should be accepted
+    // Pre-activation: inserting block with a transaction that pushes more than MAX_SCRIPT_ELEMENT_SIZE bytes onto the stack should be accepted
     {
-        // Transaction spending the UTXO that pushes more than 520 bytes onto the stack (since it has an SPK of 1000 bytes)
+        // Transaction spending the UTXO that pushes more than MAX_SCRIPT_ELEMENT_SIZE bytes onto the stack
         let mut tx = Transaction::new(
             0,
             vec![TransactionInput::new(funding_outpoint2, ScriptBuilder::new().add_data(&redeem_script).unwrap().drain(), 0, 0)],
-            vec![TransactionOutput::new(funding_amount2 - 5000, ScriptPublicKey::from_vec(0, vec![0u8; 1000]))],
+            vec![TransactionOutput::new(funding_amount2 - 5000, ScriptPublicKey::from_vec(0, vec![0u8; MAX_SCRIPT_ELEMENT_SIZE + 1]))],
             0,
             SUBNETWORK_ID_NATIVE,
             0,
@@ -1716,11 +1721,11 @@ async fn push_limit_activation_test() {
 
     // Post-activation: a similar transaction should now be rejected
     {
-        // Transaction spending the UTXO that pushes more than 520 bytes onto the stack (since it has an SPK of 1000 bytes)
+        // Transaction spending the UTXO that pushes more than MAX_SCRIPT_ELEMENT_SIZE bytes onto the stack
         let mut tx = Transaction::new(
             0,
             vec![TransactionInput::new(funding_outpoint1, ScriptBuilder::new().add_data(&redeem_script).unwrap().drain(), 0, 0)],
-            vec![TransactionOutput::new(funding_amount1 - 5000, ScriptPublicKey::from_vec(0, vec![0u8; 1000]))],
+            vec![TransactionOutput::new(funding_amount1 - 5000, ScriptPublicKey::from_vec(0, vec![0u8; MAX_SCRIPT_ELEMENT_SIZE + 1]))],
             0,
             SUBNETWORK_ID_NATIVE,
             0,

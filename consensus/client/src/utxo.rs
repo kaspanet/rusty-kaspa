@@ -441,17 +441,8 @@ impl TryCastFromJs for UtxoEntryReference {
                         )
                     })?;
                     let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
-
-                    UtxoEntry {
-                        address,
-                        outpoint,
-                        amount,
-                        script_public_key,
-                        block_daa_score,
-                        is_coinbase,
-
-                        covenant_id: todo!(), // TODO (before merge): See how to parse hash from JS
-                    }
+                    let covenant_id = utxo_entry.try_get_value("covenant_id")?.map(|v| v.try_into_owned()).transpose()?;
+                    UtxoEntry { address, outpoint, amount, script_public_key, block_daa_score, is_coinbase, covenant_id }
                 } else {
                     let amount = object.get_u64("amount").map_err(|_| {
                         Error::custom("Supplied object does not contain `amount` property (or it is not a numerical value)")
@@ -462,16 +453,9 @@ impl TryCastFromJs for UtxoEntryReference {
                         Error::custom("Supplied object does not contain `blockDaaScore` property (or it is not a numerical value)")
                     })?;
                     let is_coinbase = object.try_get_bool("isCoinbase")?.unwrap_or(false);
+                    let covenant_id = object.try_get_value("covenant_id")?.map(|v| v.try_into_owned()).transpose()?;
 
-                    UtxoEntry {
-                        address,
-                        outpoint,
-                        amount,
-                        script_public_key,
-                        block_daa_score,
-                        is_coinbase,
-                        covenant_id: todo!(), // TODO (before merge): See how to parse hash from JS
-                    }
+                    UtxoEntry { address, outpoint, amount, script_public_key, block_daa_score, is_coinbase, covenant_id }
                 };
 
                 Ok(UtxoEntryReference::from(utxo_entry))

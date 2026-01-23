@@ -165,7 +165,12 @@ impl ConsensusConverter {
         let address = extract_script_pub_key_address(&output.script_public_key, self.config.prefix()).ok();
         let verbose_data =
             address.map(|address| RpcTransactionOutputVerboseData { script_public_key_type, script_public_key_address: address });
-        RpcTransactionOutput { value: output.value, script_public_key: output.script_public_key.clone(), verbose_data }
+        RpcTransactionOutput {
+            value: output.value,
+            script_public_key: output.script_public_key.clone(),
+            verbose_data,
+            covenant: output.covenant.map(Into::into),
+        }
     }
 
     pub async fn get_virtual_chain_accepted_transaction_ids(
@@ -358,6 +363,7 @@ impl ConsensusConverter {
             } else {
                 Default::default()
             },
+            covenant: if verbosity.include_covenant.is_some_and(|v| v) { output.covenant.map(Into::into) } else { Default::default() },
         })
     }
 

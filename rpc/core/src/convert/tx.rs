@@ -28,7 +28,12 @@ impl From<&Transaction> for RpcTransaction {
 
 impl From<&TransactionOutput> for RpcTransactionOutput {
     fn from(item: &TransactionOutput) -> Self {
-        Self { value: item.value, script_public_key: item.script_public_key.clone(), verbose_data: None }
+        Self {
+            value: item.value,
+            script_public_key: item.script_public_key.clone(),
+            verbose_data: None,
+            covenant: item.covenant.map(Into::into),
+        }
     }
 }
 
@@ -107,7 +112,12 @@ impl From<&Transaction> for RpcOptionalTransaction {
 
 impl From<&TransactionOutput> for RpcOptionalTransactionOutput {
     fn from(item: &TransactionOutput) -> Self {
-        Self { value: Some(item.value), script_public_key: Some(item.script_public_key.clone()), verbose_data: None }
+        Self {
+            value: Some(item.value),
+            script_public_key: Some(item.script_public_key.clone()),
+            verbose_data: None,
+            covenant: item.covenant.map(Into::into),
+        }
     }
 }
 

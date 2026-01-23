@@ -60,6 +60,14 @@ from!(item: &kaspa_rpc_core::RpcTransactionOutput, protowire::RpcTransactionOutp
         amount: item.value,
         script_public_key: Some((&item.script_public_key).into()),
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
+        covenant: item.covenant.as_ref().map(|x| x.into()),
+    }
+});
+
+from!(item: &kaspa_rpc_core::RpcCovenantBinding, protowire::RpcCovenantBinding, {
+   Self{
+        authorizing_input: item.0.authorizing_input as u32,
+        covenant_id: item.0.covenant_id.to_string(),
     }
 });
 
@@ -68,7 +76,15 @@ from!(item: &kaspa_rpc_core::RpcOptionalTransactionOutput, protowire::RpcTransac
         amount: item.value.unwrap_or_default(),
         script_public_key: item.script_public_key.as_ref().map(|x| x.into()),
         verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
+        covenant: item.covenant.as_ref().map(|x| x.into()),
     }
+});
+
+from!(item: &kaspa_rpc_core::RpcNullableCovenantBinding, protowire::RpcCovenantBinding, {
+   Self {
+        authorizing_input: item.0.map(|i| i.0.authorizing_input as u32).unwrap_or_default(),
+        covenant_id: item.0.map(|i| i.0.covenant_id.to_string()).unwrap_or_default(),
+   }
 });
 
 from!(item: &kaspa_rpc_core::RpcTransactionOutpoint, protowire::RpcOutpoint, {
@@ -268,6 +284,7 @@ try_from!(item: &protowire::RpcTransactionOutput, kaspa_rpc_core::RpcTransaction
             .ok_or_else(|| RpcError::MissingRpcFieldError("RpcTransactionOutput".to_string(), "script_public_key".to_string()))?
             .try_into()?,
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcTransactionOutputVerboseData::try_from).transpose()?,
+        covenant: item.covenant.as_ref().map(kaspa_rpc_core::RpcCovenantBinding::try_from).transpose()?,
     }
 });
 
@@ -280,6 +297,7 @@ try_from!(item: &protowire::RpcTransactionOutput, kaspa_rpc_core::RpcOptionalTra
             .map(kaspa_rpc_core::RpcScriptPublicKey::try_from)
             .transpose()?,
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionOutputVerboseData::try_from).transpose()?,
+        covenant: item.covenant.as_ref().map(kaspa_rpc_core::RpcNullableCovenantBinding::try_from).transpose()?,
     }
 });
 
@@ -379,6 +397,10 @@ try_from!(item: &protowire::RpcTransactionOutputVerboseData, kaspa_rpc_core::Rpc
         script_public_key_type: Some(RpcScriptClass::from_str(item.script_public_key_type.as_ref())?),
         script_public_key_address: Some(RpcAddress::try_from(item.script_public_key_address.as_ref())?),
     }
+});
+
+try_from!(item: &protowire::RpcCovenantBinding, kaspa_rpc_core::RpcNullableCovenantBinding, {
+    Self(Some(kaspa_rpc_core::RpcCovenantBinding::try_from(item)?))
 });
 
 try_from!(item: &protowire::RpcTransactionOutputVerboseData, kaspa_rpc_core::RpcTransactionOutputVerboseData, {

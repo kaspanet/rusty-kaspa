@@ -6,7 +6,7 @@ mod mockery {
     use kaspa_consensus_core::api::BlockCount;
     use kaspa_consensus_core::network::NetworkType;
     use kaspa_consensus_core::subnets::SubnetworkId;
-    use kaspa_consensus_core::tx::ScriptPublicKey;
+    use kaspa_consensus_core::tx::{CovenantBinding, ScriptPublicKey};
     use kaspa_hashes::Hash;
     use kaspa_math::Uint192;
     use kaspa_notify::subscription::Command;
@@ -255,13 +255,25 @@ mod mockery {
 
     impl Mock for RpcTransactionOutput {
         fn mock() -> Self {
-            RpcTransactionOutput { value: mock(), script_public_key: mock(), verbose_data: mock() }
+            RpcTransactionOutput { value: mock(), script_public_key: mock(), verbose_data: mock(), covenant: mock() }
+        }
+    }
+
+    impl Mock for RpcCovenantBinding {
+        fn mock() -> Self {
+            Self(CovenantBinding::new(mock(), mock()))
         }
     }
 
     impl Mock for RpcOptionalTransactionOutput {
         fn mock() -> Self {
-            RpcOptionalTransactionOutput { value: mock(), script_public_key: mock(), verbose_data: mock() }
+            RpcOptionalTransactionOutput { value: mock(), script_public_key: mock(), verbose_data: mock(), covenant: mock() }
+        }
+    }
+
+    impl Mock for RpcNullableCovenantBinding {
+        fn mock() -> Self {
+            Self(mock())
         }
     }
 
@@ -333,7 +345,12 @@ mod mockery {
 
     impl Mock for RpcTransactionOutputVerbosity {
         fn mock() -> Self {
-            RpcTransactionOutputVerbosity { include_amount: mock(), include_script_public_key: mock(), verbose_data_verbosity: mock() }
+            RpcTransactionOutputVerbosity {
+                include_amount: mock(),
+                include_script_public_key: mock(),
+                verbose_data_verbosity: mock(),
+                include_covenant: mock(),
+            }
         }
     }
 
