@@ -1,10 +1,10 @@
 use kaspa_notify::{scope::Scope, subscription::Command};
 
 use crate::protowire::{
-    kaspad_request, kaspad_response, KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage,
-    NotifyFinalityConflictRequestMessage, NotifyNewBlockTemplateRequestMessage, NotifyPruningPointUtxoSetOverrideRequestMessage,
-    NotifySinkBlueScoreChangedRequestMessage, NotifyUtxosChangedRequestMessage, NotifyVirtualChainChangedRequestMessage,
-    NotifyVirtualDaaScoreChangedRequestMessage,
+    KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage, NotifyFinalityConflictRequestMessage,
+    NotifyNewBlockTemplateRequestMessage, NotifyPruningPointUtxoSetOverrideRequestMessage, NotifySinkBlueScoreChangedRequestMessage,
+    NotifyUtxosChangedRequestMessage, NotifyVirtualChainChangedRequestMessage, NotifyVirtualDaaScoreChangedRequestMessage,
+    kaspad_request, kaspad_response,
 };
 
 impl KaspadRequest {
@@ -29,7 +29,7 @@ impl kaspad_request::Payload {
                 })
             }
 
-            Scope::VirtualChainChanged(ref scope) => {
+            Scope::VirtualChainChanged(scope) => {
                 kaspad_request::Payload::NotifyVirtualChainChangedRequest(NotifyVirtualChainChangedRequestMessage {
                     command: command.into(),
                     include_accepted_transaction_ids: scope.include_accepted_transaction_ids,
@@ -45,7 +45,7 @@ impl kaspad_request::Payload {
                     command: command.into(),
                 })
             }
-            Scope::UtxosChanged(ref scope) => kaspad_request::Payload::NotifyUtxosChangedRequest(NotifyUtxosChangedRequestMessage {
+            Scope::UtxosChanged(scope) => kaspad_request::Payload::NotifyUtxosChangedRequest(NotifyUtxosChangedRequestMessage {
                 addresses: scope.addresses.iter().map(|x| x.into()).collect::<Vec<String>>(),
                 command: command.into(),
             }),

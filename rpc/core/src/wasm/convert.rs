@@ -85,7 +85,7 @@ cfg_if::cfg_if! {
         impl From<TransactionOutput> for RpcTransactionOutput {
             fn from(output: TransactionOutput) -> Self {
                 let inner = output.inner();
-                RpcTransactionOutput { value: inner.value, script_public_key: inner.script_public_key.clone(), verbose_data: None }
+                RpcTransactionOutput { value: inner.value, script_public_key: inner.script_public_key.clone(), verbose_data: None, covenant: inner.covenant.map(Into::into) }
             }
         }
 
@@ -133,7 +133,7 @@ cfg_if::cfg_if! {
         impl From<TransactionOutput> for RpcOptionalTransactionOutput {
             fn from(output: TransactionOutput) -> Self {
                 let inner = output.inner();
-                RpcOptionalTransactionOutput { value: Some(inner.value), script_public_key: Some(inner.script_public_key.clone()), verbose_data: None }
+                RpcOptionalTransactionOutput { value: Some(inner.value), script_public_key: Some(inner.script_public_key.clone()), verbose_data: None, covenant: Some(inner.covenant.map(Into::into).into())}
             }
         }
 

@@ -1,10 +1,10 @@
 //! PSKT input structure.
 
 use crate::pskt::{KeySource, PartialSigs};
-use crate::utils::{combine_if_no_conflicts, Error as CombineMapErr};
+use crate::utils::{Error as CombineMapErr, combine_if_no_conflicts};
 use derive_builder::Builder;
 use kaspa_consensus_core::{
-    hashing::sighash_type::{SigHashType, SIG_HASH_ALL},
+    hashing::sighash_type::{SIG_HASH_ALL, SigHashType},
     tx::{TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use serde::{Deserialize, Serialize};
@@ -114,7 +114,7 @@ impl Add for Input {
             (Some(script), None) | (None, Some(script)) => Some(script),
             (Some(script_left), Some(script_right)) if script_left == script_right => Some(script_left),
             (Some(script_left), Some(script_right)) => {
-                return Err(CombineError::NotCompatibleRedeemScripts { this: script_left, that: script_right })
+                return Err(CombineError::NotCompatibleRedeemScripts { this: script_left, that: script_right });
             }
         };
 
@@ -124,7 +124,7 @@ impl Add for Input {
             (Some(script), None) | (None, Some(script)) => Some(script),
             (Some(script_left), Some(script_right)) if script_left == script_right => Some(script_left),
             (Some(script_left), Some(script_right)) => {
-                return Err(CombineError::NotCompatibleRedeemScripts { this: script_left, that: script_right })
+                return Err(CombineError::NotCompatibleRedeemScripts { this: script_left, that: script_right });
             }
         };
 

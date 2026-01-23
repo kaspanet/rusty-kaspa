@@ -8,31 +8,33 @@
 
 mod script_public_key;
 
+use crate::mass::{ContextualMasses, NonContextualMasses};
+use crate::{
+    hashing,
+    subnets::{self, SubnetworkId},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
+use js_sys::Object;
 use kaspa_utils::hex::ToHex;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
 pub use script_public_key::{
-    scriptvec, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, SCRIPT_VECTOR_SIZE,
+    SCRIPT_VECTOR_SIZE, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, scriptvec,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
-use std::sync::Arc;
 use std::{
     fmt::Display,
     ops::Range,
     str::{self},
 };
 use wasm_bindgen::prelude::*;
+use workflow_wasm::convert::{Cast, TryCastFromJs, TryCastJsInto};
+use workflow_wasm::extensions::ObjectExtension;
 use workflow_wasm::prelude::CastFromJs;
-
-use crate::mass::{ContextualMasses, NonContextualMasses};
-use crate::{
-    hashing,
-    subnets::{self, SubnetworkId},
-};
 
 use kaspa_hashes::Hash;
 
@@ -152,6 +154,30 @@ impl TransactionOutput {
 pub struct CovenantBinding {
     pub authorizing_input: u16,
     pub covenant_id: Hash,
+}
+type CastErr = workflow_wasm::error::Error;
+impl TryCastFromJs for CovenantBinding {
+    type Error = CastErr;
+
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
+            let Some(object) = Object::try_from(value.as_ref()) else { return Err(CastErr::NotAnObject) };
+            let value = object.get_u16("authorizing_input")?;
+            let covenant_id = object.get_value("covenant_id")?.try_into_owned()?;
+            Ok(Self { authorizing_input: value, covenant_id })
+        })
+    }
+}
+
+#[wasm_bindgen]
+impl CovenantBinding {
+    #[wasm_bindgen(constructor)]
+    pub fn new(authorizing_input: u16, covenant_id: Hash) -> Self {
+        Self { authorizing_input, covenant_id }
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -492,13 +518,10 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
 
     pub fn missing_outpoints(&self) -> impl Iterator<Item = TransactionOutpoint> + '_ {
         assert_eq!(self.entries.len(), self.tx.as_ref().inputs.len());
-        self.entries.iter().enumerate().filter_map(|(i, entry)| {
-            if entry.is_none() {
-                Some(self.tx.as_ref().inputs[i].previous_outpoint)
-            } else {
-                None
-            }
-        })
+        self.entries
+            .iter()
+            .enumerate()
+            .filter_map(|(i, entry)| if entry.is_none() { Some(self.tx.as_ref().inputs[i].previous_outpoint) } else { None })
     }
 
     pub fn clear_entries(&mut self) {

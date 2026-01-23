@@ -11,7 +11,7 @@ use kaspa_txscript::opcodes::codes::{
     OpTxOutputCount, OpTxOutputSpk, OpTxPayloadLen, OpTxPayloadSubstr,
 };
 use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
-use kaspa_txscript::{pay_to_script_hash_script, EngineCtx};
+use kaspa_txscript::{EngineCtx, pay_to_script_hash_script};
 use kaspa_txscript::{EngineFlags, TxScriptEngine};
 use kaspa_txscript_errors::TxScriptError;
 
@@ -189,9 +189,5 @@ fn genesis_tx(payload: &[u8], spk: kaspa_consensus_core::tx::ScriptPublicKey) ->
 }
 
 fn encode_counter(counter: u8) -> Vec<u8> {
-    if counter == 0 {
-        vec![]
-    } else {
-        vec![counter]
-    }
+    if counter == 0 { vec![] } else { vec![counter] }
 }

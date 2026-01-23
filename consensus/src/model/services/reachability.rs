@@ -5,7 +5,7 @@ use kaspa_consensus_core::blockhash;
 use parking_lot::RwLock;
 
 use crate::model::stores::reachability::ReachabilityStoreReader;
-use crate::processes::reachability::{inquirer, Result};
+use crate::processes::reachability::{Result, inquirer};
 use kaspa_hashes::Hash;
 
 pub trait ReachabilityService {

@@ -1,8 +1,8 @@
-use crate::mempool::{errors::RuleResult, model::pool::Pool, Mempool};
+use crate::mempool::{Mempool, errors::RuleResult, model::pool::Pool};
 use kaspa_consensus_core::{
     api::{
-        args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         ConsensusApi,
+        args::{TransactionValidationArgs, TransactionValidationBatchArgs},
     },
     constants::UNACCEPTED_DAA_SCORE,
     tx::{MutableTransaction, UtxoEntry},

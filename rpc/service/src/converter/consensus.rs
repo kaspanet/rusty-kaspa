@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use kaspa_addresses::{Address, AddressError};
 use kaspa_consensus_core::{
+    ChainPath,
     acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     block::Block,
     config::Config,
@@ -10,13 +11,12 @@ use kaspa_consensus_core::{
         MutableTransaction, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput,
         TransactionQueryResult, TransactionType, UtxoEntry,
     },
-    ChainPath,
 };
 use kaspa_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusProxy};
 use kaspa_hashes::Hash;
 use kaspa_math::Uint256;
-use kaspa_mining::model::{owner_txs::OwnerTransactions, TransactionIdSet};
+use kaspa_mining::model::{TransactionIdSet, owner_txs::OwnerTransactions};
 use kaspa_notify::converter::Converter;
 use kaspa_rpc_core::{
     BlockAddedNotification, Notification, RpcAcceptanceDataVerbosity, RpcAcceptedTransactionIds, RpcBlock, RpcBlockVerboseData,
@@ -165,7 +165,12 @@ impl ConsensusConverter {
         let address = extract_script_pub_key_address(&output.script_public_key, self.config.prefix()).ok();
         let verbose_data =
             address.map(|address| RpcTransactionOutputVerboseData { script_public_key_type, script_public_key_address: address });
-        RpcTransactionOutput { value: output.value, script_public_key: output.script_public_key.clone(), verbose_data }
+        RpcTransactionOutput {
+            value: output.value,
+            script_public_key: output.script_public_key.clone(),
+            verbose_data,
+            covenant: output.covenant.map(Into::into),
+        }
     }
 
     pub async fn get_virtual_chain_accepted_transaction_ids(
@@ -358,6 +363,7 @@ impl ConsensusConverter {
             } else {
                 Default::default()
             },
+            covenant: if verbosity.include_covenant.is_some_and(|v| v) { output.covenant.map(Into::into) } else { Default::default() },
         })
     }
 
@@ -628,11 +634,7 @@ impl ConsensusConverter {
             let accepting_chain_header_with_verbosity: RpcOptionalHeader =
                 if let Some(verbosity) = verbosity.accepting_chain_header_verbosity.as_ref() {
                     let header = self.adapt_header_to_header_with_verbosity(verbosity, &accepting_chain_header)?;
-                    if header.is_empty() {
-                        Default::default()
-                    } else {
-                        header
-                    }
+                    if header.is_empty() { Default::default() } else { header }
                 } else {
                     Default::default()
                 };

@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use kaspa_addresses::{Address, Prefix};
 use kaspa_math::Uint256;
 use kaspa_notify::{address::tracker::Indexes, subscription::context::SubscriptionContext};

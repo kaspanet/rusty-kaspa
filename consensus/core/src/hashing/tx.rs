@@ -142,11 +142,7 @@ const ZERO_PAYLOAD_DIGEST: Hash = Hash::from_bytes([
     195, 10, 156, 74, 56,
 ]);
 pub fn payload_digest(payload: &[u8]) -> Hash {
-    if payload.is_empty() {
-        ZERO_PAYLOAD_DIGEST
-    } else {
-        PayloadDigest::hash(payload)
-    }
+    if payload.is_empty() { ZERO_PAYLOAD_DIGEST } else { PayloadDigest::hash(payload) }
 }
 
 #[cfg(test)]
@@ -154,7 +150,7 @@ mod tests {
     use super::*;
     use crate::{
         subnets::{self, SubnetworkId},
-        tx::{scriptvec, ScriptPublicKey},
+        tx::{ScriptPublicKey, scriptvec},
     };
     use std::str::FromStr;
 

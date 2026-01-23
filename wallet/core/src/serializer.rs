@@ -35,13 +35,10 @@ impl StorageHeader {
 
     pub fn try_version(self, version: u32) -> IoResult<Self> {
         if self.version > version {
-            Err(IoError::other(
-                format!(
-                    "Deserializer data has a newer version than the current version: expected version at most '{}' received '{}' (your data may have been generated on a newer version of the software)",
-                    version,
-                    self.version
-                ),
-            ))
+            Err(IoError::other(format!(
+                "Deserializer data has a newer version than the current version: expected version at most '{}' received '{}' (your data may have been generated on a newer version of the software)",
+                version, self.version
+            )))
         } else {
             Ok(self)
         }

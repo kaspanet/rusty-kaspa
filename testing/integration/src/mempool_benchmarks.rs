@@ -6,7 +6,7 @@ use crate::{
         daemon::{ClientManager, Daemon},
         utils::CONTRACT_FACTOR,
     },
-    tasks::{block::group::MinerGroupTask, daemon::DaemonTask, tx::group::TxSenderGroupTask, Stopper, TasksRunner},
+    tasks::{Stopper, TasksRunner, block::group::MinerGroupTask, daemon::DaemonTask, tx::group::TxSenderGroupTask},
 };
 use futures_util::future::join_all;
 use kaspa_addresses::Address;
@@ -17,7 +17,7 @@ use kaspa_notify::{
     listener::ListenerId,
     scope::{NewBlockTemplateScope, Scope},
 };
-use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcError};
+use kaspa_rpc_core::{Notification, RpcError, api::rpc::RpcApi};
 use kaspa_txscript::pay_to_address_script;
 use kaspa_utils::fd_budget;
 use kaspad_lib::args::Args;
@@ -27,8 +27,8 @@ use rand_distr::{Distribution, Exp};
 use std::{
     cmp::max,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
 };

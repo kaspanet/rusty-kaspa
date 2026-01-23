@@ -4,6 +4,7 @@
 
 use crate::imports::*;
 use kaspa_consensus_client::{TransactionOutput, TransactionOutputInner};
+use kaspa_consensus_core::tx::CovenantBinding;
 use kaspa_txscript::pay_to_address_script;
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -59,7 +60,7 @@ impl PaymentDestination {
 }
 
 /// A Rust data structure representing a single payment
-/// output containing a destination address and amount.
+/// output containing a destination address, amount and covenant.
 ///
 /// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
@@ -68,6 +69,7 @@ pub struct PaymentOutput {
     #[wasm_bindgen(getter_with_clone)]
     pub address: Address,
     pub amount: u64,
+    pub covenant: Option<CovenantBinding>,
 }
 
 impl TryCastFromJs for PaymentOutput {
@@ -84,12 +86,18 @@ impl TryCastFromJs for PaymentOutput {
                 } else {
                     let address = Address::try_owned_from(array.get(0))?;
                     let amount = array.get(1).try_as_u64()?;
-                    Ok(Self { address, amount })
+                    let covenant = array.get(2);
+                    let covenant = if covenant.is_undefined() || covenant.is_null() { None } else { Some(covenant.try_into_owned()?) };
+                    Ok(Self { address, amount, covenant })
                 }
             } else if let Some(object) = Object::try_from(value.as_ref()) {
                 let address = object.cast_into::<Address>("address")?;
                 let amount = object.get_u64("amount")?;
-                Ok(Self { address, amount })
+                let covenant = object
+                    .try_get_value("covenant")?
+                    .map(|v| v.try_into_owned().map_err(|err| kaspa_consensus_client::error::Error::convert("covenant", err)))
+                    .transpose()?;
+                Ok(Self { address, amount, covenant })
             } else {
                 Err(Error::Custom("Invalid payment output".to_string()))
             }
@@ -99,9 +107,16 @@ impl TryCastFromJs for PaymentOutput {
 
 #[wasm_bindgen]
 impl PaymentOutput {
+    /// Main constructor (no covenant)
     #[wasm_bindgen(constructor)]
     pub fn new(address: Address, amount: u64) -> Self {
-        Self { address, amount }
+        Self { address, amount, covenant: None }
+    }
+
+    /// Factory method for covenant variant
+    #[wasm_bindgen(js_name = withCovenant)]
+    pub fn with_covenant(address: Address, amount: u64, covenant: CovenantBinding) -> Self {
+        Self { address, amount, covenant: Some(covenant) }
     }
 }
 
@@ -110,7 +125,7 @@ impl From<PaymentOutput> for TransactionOutput {
         Self::new_with_inner(TransactionOutputInner {
             script_public_key: pay_to_address_script(&value.address),
             value: value.amount,
-            covenant: todo!(),
+            covenant: value.covenant,
         })
     }
 }

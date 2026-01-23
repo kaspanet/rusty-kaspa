@@ -6,7 +6,7 @@ use derive_builder::Builder;
 use kaspa_consensus_core::tx::TransactionId;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{btree_map, BTreeMap},
+    collections::{BTreeMap, btree_map},
     ops::Add,
 };
 
@@ -130,7 +130,7 @@ impl Add for Global {
 impl Default for Global {
     fn default() -> Self {
         Global {
-            version: Version::Zero,
+            version: Version::One,
             tx_version: kaspa_consensus_core::constants::TX_VERSION,
             fallback_lock_time: None,
             inputs_modifiable: false,
