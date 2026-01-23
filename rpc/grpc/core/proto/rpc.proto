@@ -1039,7 +1039,7 @@ message RpcOptionalTransactionOutputVerboseData {
   optional string scriptPublicKeyAddress = 3;
 }
 
-message RpcOptionalCovenantBinding {
+message RpcNullableCovenantBinding {
   optional RpcCovenantBinding covenant = 1;
 }
 
@@ -1047,7 +1047,7 @@ message RpcOptionalTransactionOutput {
   optional uint64 value = 2;
   optional RpcScriptPublicKey scriptPublicKey = 3;
   optional RpcOptionalTransactionOutputVerboseData verboseData = 4;
-  optional RpcOptionalCovenantBinding covenant = 5;
+  optional RpcNullableCovenantBinding covenant = 5;
 }
 
 message RpcOptionalTransactionVerboseData {

@@ -271,7 +271,7 @@ mod mockery {
         }
     }
 
-    impl Mock for RpcOptionalCovenantBinding {
+    impl Mock for RpcNullableCovenantBinding {
         fn mock() -> Self {
             Self(mock())
         }

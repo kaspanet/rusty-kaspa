@@ -334,7 +334,7 @@ pub struct RpcOptionalTransactionOutput {
     /// Level - Low
     pub script_public_key: Option<RpcScriptPublicKey>,
     pub verbose_data: Option<RpcOptionalTransactionOutputVerboseData>,
-    pub covenant: Option<RpcOptionalCovenantBinding>,
+    pub covenant: Option<RpcNullableCovenantBinding>,
 }
 
 impl RpcOptionalTransactionOutput {
@@ -366,7 +366,7 @@ impl Serializer for RpcOptionalTransactionOutput {
         store!(Option<u64>, &self.value, writer)?;
         store!(Option<RpcScriptPublicKey>, &self.script_public_key, writer)?;
         serialize!(Option<RpcOptionalTransactionOutputVerboseData>, &self.verbose_data, writer)?;
-        serialize!(Option<RpcOptionalCovenantBinding>, &self.covenant, writer)?;
+        serialize!(Option<RpcNullableCovenantBinding>, &self.covenant, writer)?;
 
         Ok(())
     }
@@ -378,7 +378,7 @@ impl Deserializer for RpcOptionalTransactionOutput {
         let value = load!(Option<u64>, reader)?;
         let script_public_key = load!(Option<RpcScriptPublicKey>, reader)?;
         let verbose_data = deserialize!(Option<RpcOptionalTransactionOutputVerboseData>, reader)?;
-        let covenant = if version > 1 { deserialize!(Option<RpcOptionalCovenantBinding>, reader)? } else { None };
+        let covenant = if version > 1 { deserialize!(Option<RpcNullableCovenantBinding>, reader)? } else { None };
 
         Ok(Self { value, script_public_key, verbose_data, covenant })
     }
@@ -421,9 +421,10 @@ impl Deserializer for RpcOptionalTransactionOutputVerboseData {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RpcOptionalCovenantBinding(pub Option<RpcCovenantBinding>);
+#[repr(transparent)]
+pub struct RpcNullableCovenantBinding(pub Option<RpcCovenantBinding>);
 
-impl Serializer for RpcOptionalCovenantBinding {
+impl Serializer for RpcNullableCovenantBinding {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u8, &1, writer)?;
         serialize!(Option<RpcCovenantBinding>, &self.0, writer)?;
@@ -432,7 +433,7 @@ impl Serializer for RpcOptionalCovenantBinding {
     }
 }
 
-impl Deserializer for RpcOptionalCovenantBinding {
+impl Deserializer for RpcNullableCovenantBinding {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
         let covenant = deserialize!(Option<RpcCovenantBinding>, reader)?;
@@ -440,28 +441,28 @@ impl Deserializer for RpcOptionalCovenantBinding {
     }
 }
 
-impl From<RpcCovenantBinding> for RpcOptionalCovenantBinding {
+impl From<RpcCovenantBinding> for RpcNullableCovenantBinding {
     fn from(value: RpcCovenantBinding) -> Self {
         Self(Some(value))
     }
 }
 
-impl From<Option<RpcCovenantBinding>> for RpcOptionalCovenantBinding {
+impl From<Option<RpcCovenantBinding>> for RpcNullableCovenantBinding {
     fn from(value: Option<RpcCovenantBinding>) -> Self {
         Self(value)
     }
 }
 
-impl From<CovenantBinding> for RpcOptionalCovenantBinding {
+impl From<CovenantBinding> for RpcNullableCovenantBinding {
     fn from(value: CovenantBinding) -> Self {
         Self(Some(value.into()))
     }
 }
 
-impl TryFrom<RpcOptionalCovenantBinding> for RpcCovenantBinding {
+impl TryFrom<RpcNullableCovenantBinding> for RpcCovenantBinding {
     type Error = RpcError;
 
-    fn try_from(covenant: RpcOptionalCovenantBinding) -> RpcResult<Self> {
+    fn try_from(covenant: RpcNullableCovenantBinding) -> RpcResult<Self> {
         let covenant = covenant.0.ok_or(RpcError::General("covenant binding is none".to_string()))?;
         Ok(Self(CovenantBinding { authorizing_input: covenant.0.authorizing_input, covenant_id: covenant.0.covenant_id }))
     }
