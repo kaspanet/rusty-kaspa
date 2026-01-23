@@ -44,6 +44,8 @@ pub enum Error {
     PsktPrefixError,
     #[error("Cannot set payload on PSKT version {0}, payload requires version 1 or higher")]
     PayloadRequiresVersion1(crate::pskt::Version),
+    #[error("Outputs not allowed to contain covenant due to pskt or tx versions mismatch")]
+    Covenant,
 }
 #[derive(thiserror::Error, Debug)]
 pub enum ConstructorError {
