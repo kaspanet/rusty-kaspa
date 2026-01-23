@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn test_zero_payload_digest() {
-        assert_eq!(ZERO_PAYLOAD_DIGEST, payload_digest(&[]));
+        assert_eq!(ZERO_PAYLOAD_DIGEST, PayloadDigest::hash(&[]));
     }
 
     #[test]
