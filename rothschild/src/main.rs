@@ -562,7 +562,7 @@ fn estimated_mass(num_utxos: usize, num_outs: u64) -> u64 {
     200 + 34 * num_outs + 1000 * (num_utxos as u64)
 }
 
-fn get_covenant_binding(inputs: &[TransactionInput], with_covenant_id: bool) -> Option<CovenantBinding> {
+fn get_random_covenant_binding_among_input(inputs: &[TransactionInput], with_covenant_id: bool) -> Option<CovenantBinding> {
     if !with_covenant_id {
         return None;
     }
@@ -590,7 +590,7 @@ fn generate_tx(
         .map(|_| TransactionOutput {
             value: send_amount / num_outs,
             script_public_key: script_public_key.clone(),
-            covenant: get_covenant_binding(&inputs, with_covenant_id),
+            covenant: get_random_covenant_binding_among_input(&inputs, with_covenant_id),
         })
         .collect_vec();
     let mut data = vec![0u8; payload_size];
