@@ -318,7 +318,6 @@ fn main_impl(mut args: Args) {
                     });
                 });
             }
-
         }
 
         drop(consensus);

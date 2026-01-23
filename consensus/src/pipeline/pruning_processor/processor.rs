@@ -1,6 +1,6 @@
 //! TODO: module comment about locking safety and consistency of various pruning stores
 
-use super::batching::{PruneBatch, PruningPhaseMetrics, PRUNE_LOCK_TARGET_MAX_DURATION_MS};
+use super::batching::{PRUNE_LOCK_TARGET_MAX_DURATION_MS, PruneBatch, PruningPhaseMetrics};
 use crate::{
     consensus::{
         services::{ConsensusServices, DbParentsManager, DbPruningPointManager},
@@ -38,14 +38,14 @@ use kaspa_consensus_core::{
 };
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, trace, warn};
-use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExt, DB};
+use kaspa_database::prelude::{BatchDbWriter, DB, MemoryWriter, StoreResultExt};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
-    collections::{hash_map::Entry::Vacant, VecDeque},
+    collections::{VecDeque, hash_map::Entry::Vacant},
     ops::Deref,
     sync::{
         Arc,
