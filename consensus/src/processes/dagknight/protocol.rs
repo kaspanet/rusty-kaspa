@@ -213,28 +213,36 @@ impl<
         */
     }
 
-    fn rank(&self, conflict_genesis: Hash, subgroup: &[Hash], zone_work: BlueWorkType, full_subgroup: &[Hash]) -> RankValue {
+    fn rank(&self, conflict_genesis: Hash, subgroup: &[Hash], zone_work: BlueWorkType, all_tips: &[Hash]) -> RankValue {
         // for k in 0, 1, ..., infinity:
         // tie breaking is assumed to be by comparing selected_parent
         let (k, subgroup_virtual) = (0..u16::MAX)
             .find_map(|curr_k| {
-                let subgroup_virtual_gd = self.fill_bounded_ghostdag_data(conflict_genesis, subgroup, full_subgroup, curr_k);
-                let subgroup_virtual =
-                    SortableBlock { hash: subgroup_virtual_gd.selected_parent, blue_work: subgroup_virtual_gd.blue_work };
+                // TODO[DK]: Rename fill_bounded_ghostdag_data
+                let conflict_zone_manager = self.fill_conflict_zone_data(conflict_genesis, all_tips, curr_k);
 
-                // TODO: Since this implementation is still very lax in that it allows for coloring the
-                // side that doesn't agree with subgroup blue, we're guaranteed to always be able to cover
-                // zone_work / 2 with a large enough k.
-                //
-                // This is because K = |conflict zone| would make all blocks blue, therefore there must be a K
-                // that can cover zone_work / 2
-                if subgroup_virtual.blue_work >= zone_work / 2 {
-                    // Michael: here is where cascade voting eventually belongs
-                    // With this "k" value, our selected parent is at least half the total region's work
-                    Some((curr_k, subgroup_virtual))
-                } else {
-                    None
-                }
+                subgroup
+                    .iter()
+                    .filter_map(|&tip| {
+                        // TODO[DK]: Use the representatives here
+                        let tip_gd = conflict_zone_manager.get_data(tip).unwrap();
+                        let selected_tip_data = SortableBlock { hash: tip, blue_work: tip_gd.blue_work };
+
+                        // Add deficit logic here => sqrt(k) * work_of_some_block
+                        // TODO[DK]: Right now deficit logic uses conflict genesis. Maybe there's a better value to use like an average.
+                        // Figure it out
+                        let deficit_work_basis = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
+                        let deficit = Uint192::from_u64(curr_k.isqrt() as u64) * deficit_work_basis;
+                        if selected_tip_data.blue_work + deficit >= zone_work / 2 {
+                            // Michael: here is where cascade voting eventually belongs
+                            // With this "k" value, our selected parent is at least half the total region's work
+                            Some(selected_tip_data)
+                        } else {
+                            None
+                        }
+                    })
+                    .max()
+                    .map(|block| (curr_k, block))
             })
             .unwrap();
 
@@ -282,13 +290,8 @@ impl<
     // subgroup = the current subgroup
     // tips = all tips in this conflict. part of which is the subgroup
     //
-    // Returns the "virtual" GD of this subgroup where it's SP must be within subgroup
-    //
-    // Rationale for returning virtual GD:
-    // "virtual" would represent the total blue work in the conflict zone from the POV of this subgroup
-    // with the given K. Downside of the current implementation is that it will allow coloring
-    // the blocks from the side that doesn't agree with the subgroup blue.
-    fn fill_bounded_ghostdag_data(&self, root: Hash, subgroup: &[Hash], tips: &[Hash], ghostdag_k: KType) -> GhostdagData {
+    // Returns the conflict zone manager which gives access to the coloring data of the conflict zone
+    fn fill_conflict_zone_data(&self, root: Hash, tips: &[Hash], ghostdag_k: KType) -> ConflictZoneManager<C, E, R, D> {
         let reachability_service = self.reachability_service.clone();
         let relations_store = self.relations_store.read();
         let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), root);
@@ -381,12 +384,7 @@ impl<
             }
         }
 
-        // NOTE: This is how I'm doing the "conditioned" to be in agreement
-        let selected_parent_in_group = conflict_manager.find_selected_parent(subgroup.iter().copied());
-
-        // This would represent the blue work covered by the diamond <root, tips>
-        // where SP is guaranteed to be in subgroup
-        conflict_manager.k_colouring(tips, ghostdag_k, Some(selected_parent_in_group))
+        conflict_manager
     }
 }
 
