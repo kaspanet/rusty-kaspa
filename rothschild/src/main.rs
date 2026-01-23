@@ -5,7 +5,7 @@ use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
     config::params::TESTNET_PARAMS,
-    constants::{SOMPI_PER_KASPA, TX_VERSION, TX_VERSION_POST_COV_HF},
+    constants::{SOMPI_PER_KASPA, TX_VERSION_POST_COV_HF},
     hashing::covenant_id::covenant_id,
     sign::sign,
     subnets::SUBNETWORK_ID_NATIVE,
@@ -28,7 +28,7 @@ use tokio::time::{Instant, MissedTickBehavior, interval};
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
 const FEE_RATE: u64 = 10;
 const MILLIS_PER_TICK: u64 = 10;
-const ADDRESS_PREFIX: Prefix = Prefix::Testnet;
+const ADDRESS_PREFIX: Prefix = Prefix::Devnet;
 const ADDRESS_VERSION: Version = Version::PubKey;
 
 struct Stats {
@@ -567,7 +567,7 @@ fn get_random_covenant_binding_among_input(inputs: &[TransactionInput], with_cov
         return None;
     }
     let idx = thread_rng().gen_range(0..inputs.len());
-    Some(CovenantBinding::new(idx as u16, covenant_id(inputs[idx].previous_outpoint.clone())))
+    Some(CovenantBinding::new(idx as u16, covenant_id(inputs[idx].previous_outpoint)))
 }
 
 fn generate_tx(
