@@ -160,7 +160,7 @@ impl<
                 })
                 .min_by(|(a, _, _), (b, _, _)| a.cmp(b))
                 .map(|(rank, conflict_genesis, subgroup)| {
-                    debug!("Winning rank value: k = {} | sp = {:#?}", rank.k, rank.subgroup_virtual.hash);
+                    debug!("Winning rank value: k = {} | sp = {:#?}", rank.k, rank.selected_parent.hash);
                     (*conflict_genesis, subgroup)
                 })
                 .unwrap();
@@ -213,40 +213,110 @@ impl<
         */
     }
 
+    /// Follows the Calculate-Rank algorithm in the DK paper
+    /// For now, this is missing the concept of representatives, and instead subgroup_tips == representatives
+    /// TODO[DK]: Properly implement representatives
+    ///
+    /// Currently returns both the Rank and a selected parent (deviates from the paper) since the tie breaking logic
+    /// in the caller is simply using blue_work + hash to break ties between subgroups
+    /// TODO[DK]: Remove selected_parent from the RankValue and properly implement Tie-Breaking
+    ///
+    /// K-searching logic:
+    /// 1. Search for an upper bound using powers of 2
+    ///    1.1 For each unsuccessful step along the way, move the lower bound k up as well
+    ///    1.2 Also exits if lkg_k is a max
+    /// 2. Binary search between lower bound k and lkg_k
     fn rank(&self, conflict_genesis: Hash, subgroup: &[Hash], zone_work: BlueWorkType, all_tips: &[Hash]) -> RankValue {
         // for k in 0, 1, ..., infinity:
         // tie breaking is assumed to be by comparing selected_parent
-        let (k, subgroup_virtual) = (0..u16::MAX)
-            .find_map(|curr_k| {
-                // TODO[DK]: Rename fill_bounded_ghostdag_data
-                let conflict_zone_manager = self.fill_conflict_zone_data(conflict_genesis, all_tips, curr_k);
+        let mut selected_parent = None;
 
-                subgroup
-                    .iter()
-                    .filter_map(|&tip| {
-                        // TODO[DK]: Use the representatives here
-                        let tip_gd = conflict_zone_manager.get_data(tip).unwrap();
-                        let selected_tip_data = SortableBlock { hash: tip, blue_work: tip_gd.blue_work };
+        // The steps through which we'll check for the upper bound.
+        // This will cover the powers of 2, starting from 2^0
+        let mut increments = 1;
 
-                        // Add deficit logic here => sqrt(k) * work_of_some_block
-                        // TODO[DK]: Right now deficit logic uses conflict genesis. Maybe there's a better value to use like an average.
-                        // Figure it out
-                        let deficit_work_basis = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
-                        let deficit = Uint192::from_u64(curr_k.isqrt() as u64) * deficit_work_basis;
-                        if selected_tip_data.blue_work + deficit >= zone_work / 2 {
-                            // Michael: here is where cascade voting eventually belongs
-                            // With this "k" value, our selected parent is at least half the total region's work
-                            Some(selected_tip_data)
-                        } else {
-                            None
-                        }
-                    })
-                    .max()
-                    .map(|block| (curr_k, block))
+        // Find upper bound k (good k value that satisfies the condition):
+        let mut lkg_k = 0;
+        // binary search lower bound. upper bound is lkg_k
+        let mut lower_k: KType = 0;
+        let mut found_lkg = false;
+
+        let mut steps = 0;
+
+        while !found_lkg && lkg_k != u16::MAX {
+            steps += 1;
+            debug!("Finding upper bound k = {}", lkg_k);
+            let curr_selected_parent = self.select_parent_from_k_colouring(conflict_genesis, subgroup, zone_work, all_tips, lkg_k);
+
+            if curr_selected_parent.is_some() {
+                debug!("Found a valid sp at upper bound k = {}", lkg_k);
+                selected_parent = curr_selected_parent;
+                found_lkg = true;
+            } else {
+                // Move the lower bound up to start the binary search further later
+                lower_k = lkg_k;
+                // increment is powers of 2: 1, 2, 4, 8, 16...
+                lkg_k = increments;
+                increments = increments.saturating_mul(2);
+            }
+        }
+
+        while lower_k < lkg_k {
+            steps += 1;
+            let k_to_check = lower_k + ((lkg_k - lower_k) / 2);
+
+            let curr_selected_parent =
+                self.select_parent_from_k_colouring(conflict_genesis, subgroup, zone_work, all_tips, k_to_check);
+            let sp_found = curr_selected_parent.is_some();
+
+            if sp_found {
+                debug!("Found a valid sp at mid k = {} | low = {} | hi = {}", k_to_check, lower_k, lkg_k);
+                lkg_k = k_to_check;
+                selected_parent = curr_selected_parent;
+            } else {
+                lower_k = k_to_check + 1;
+            }
+        }
+
+        debug!("Steps taken: {steps}");
+
+        RankValue { k: lkg_k, selected_parent: selected_parent.unwrap() }
+    }
+
+    /// Applies a coloring to the conflict zone, and determines if the
+    /// coloring represents a majority over "g" only (as opposed to full UMC)
+    /// TODO[DK]: Implement full UMC cascade voting after coloring
+    fn select_parent_from_k_colouring(
+        &self,
+        conflict_genesis: Hash,
+        subgroup: &[Hash],
+        zone_work: BlueWorkType,
+        all_tips: &[Hash],
+        k_to_check: KType,
+    ) -> Option<SortableBlock> {
+        let conflict_zone_manager = self.fill_conflict_zone_data(conflict_genesis, all_tips, k_to_check);
+
+        subgroup
+            .iter()
+            .filter_map(|&tip| {
+                // TODO[DK]: Use the representatives here
+                let tip_gd = conflict_zone_manager.get_data(tip).unwrap();
+                let selected_tip_data = SortableBlock { hash: tip, blue_work: tip_gd.blue_work };
+
+                // Add deficit logic here => sqrt(k) * work_of_some_block
+                // TODO[DK]: Right now deficit logic uses conflict genesis. Maybe there's a better value to use like an average.
+                // Figure it out
+                let deficit_work_basis = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
+                let deficit = Uint192::from_u64(k_to_check.isqrt() as u64) * deficit_work_basis;
+                if selected_tip_data.blue_work + deficit >= zone_work / 2 {
+                    // Michael: here is where cascade voting eventually belongs
+                    // With this "k" value, our selected parent covers at least half the total region's work (minus some deficit)
+                    Some(selected_tip_data)
+                } else {
+                    None
+                }
             })
-            .unwrap();
-
-        RankValue { k, subgroup_virtual }
+            .max()
     }
 
     /// Goes through all the blocks in the conflict zone and sums up all their work (not blue work)
@@ -614,7 +684,7 @@ impl DagPlan {
 #[derive(PartialEq, Eq)]
 pub struct RankValue {
     pub k: KType,
-    pub subgroup_virtual: SortableBlock,
+    pub selected_parent: SortableBlock,
 }
 
 impl PartialOrd for RankValue {
@@ -632,8 +702,8 @@ impl Ord for RankValue {
         if self.k == other.k {
             // let ordering = self.selected_parent.cmp(&other.selected_parent);
             // NOTE: When ordering by RankValue and k is the same, a "smaller" rank would mean a "greater" selected parent
-            let ordering = other.subgroup_virtual.cmp(&self.subgroup_virtual);
-            // println!("a: {} | b: {} | ordering: {:?}", self.subgroup_virtual.blue_work, other.subgroup_virtual.blue_work, ordering);
+            let ordering = other.selected_parent.cmp(&self.selected_parent);
+            // println!("a: {} | b: {} | ordering: {:?}", self.selected_parent.blue_work, other.selected_parent.blue_work, ordering);
             return ordering;
         }
 
