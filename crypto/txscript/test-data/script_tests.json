@@ -1267,7 +1267,7 @@
   ],
   [
     "0",
-    "IF 0xcb ELSE 1 ENDIF",
+    "IF 0xc4 ELSE 1 ENDIF",
     "",
     "OK"
   ],
@@ -4254,6 +4254,13 @@
     "STACK_SIZE",
     ">244 stack+altstack size"
   ],
+  [
+    "",
+    "1",
+    "",
+    "OK",
+    "10,001-byte scriptPubKey TODO(pre-covpp): add script size check"
+  ],  
   [
     "1",
     "VER",
