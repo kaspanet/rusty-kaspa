@@ -68,7 +68,6 @@ use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_txscript::opcodes::codes::{Op0, OpCat, OpDrop, OpEqual, OpTrue, OpTxOutputSpk};
 use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
 use kaspa_utxoindex::UtxoIndex;
-use kaspa_utxoindex::api::UtxoIndexProxy;
 use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use serde::{Deserialize, Serialize};
 use std::cmp::{Ordering, max};
