@@ -32,8 +32,8 @@ jobs:
       - name: Run cargo check
         run: cargo check --tests --workspace --benches
 
-  test:
-    name: Test Suite
+  prepare-tests:
+    name: Build, check, doc-test, preparation of main test and kaspa hashes tests
     # runs-on: ${{ matrix.os }}
     runs-on: ubuntu-latest
     strategy:
@@ -118,14 +118,14 @@ jobs:
       - name: Run cargo build with devnet-prealloc feature
         run: cargo build --release --features devnet-prealloc --workspace --all --tests --benches
 
-      - name: Run cargo test regular features
-        run: cargo nextest run --release --workspace
+#      - name: Run cargo test regular features
+#        run: cargo nextest run --release --workspace
 
       - name: Run cargo doc tests
         run: cargo test --doc --release --workspace
 
-      - name: Run cargo test on kaspa-hashes without asm
-        run: cargo nextest run --release -p kaspa-hashes --features=no-asm --benches
+#      - name: Run cargo test on kaspa-hashes without asm
+#        run: cargo nextest run --release -p kaspa-hashes --features=no-asm --benches
 
       - name: Run cargo doc tests with features=no-asm on kaspa-hashes
         run: cargo test --doc --release -p kaspa-hashes --features=no-asm
@@ -134,6 +134,67 @@ jobs:
         run: cargo doc --release --no-deps --workspace
       - name: Run kip-10 example
         run: cargo run --example kip-10
+
+      - name: Archive main tests
+        run: cargo nextest archive --release --features devnet-prealloc --workspace --archive-file main-tests.tar.zst
+
+      - name: Archive kaspa-hashes no-asm
+        run: cargo nextest archive --release -p kaspa-hashes --features no-asm --archive-file hashes-no-asm.tar.zst
+
+      - name: Upload main tests archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-tests-archive
+          path: main-tests.tar.zst
+
+      - name: Upload hashes no-asm archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: hashes-no-asm-archive
+          path: hashes-no-asm.tar.zst
+  main-tests:
+    name: Main Tests (Partition ${{ matrix.partition }}/5)
+    needs: prepare-tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        partition: [1, 2, 3, 4, 5]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      # create ~/.cargo/bin as required by the install action.
+      - run: mkdir -p ~/.cargo/bin
+      - name: Download main tests archive
+        uses: actions/download-artifact@v4
+        with:
+          name: main-tests-archive
+          path: .
+
+      - name: Run main tests partition
+        run: cargo nextest run --archive-file main-tests.tar.zst --workspace-archive-dir . --partition hash:${{ matrix.partition }}/5
+
+  hashes-tests:
+    name: Hashes Tests (no-asm)
+    needs: prepare-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      # create ~/.cargo/bin as required by the install action.
+      - run: mkdir -p ~/.cargo/bin
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - name: Download hashes no-asm archive
+        uses: actions/download-artifact@v4
+        with:
+          name: hashes-no-asm-archive
+          path: .
+
+      - name: Run cargo test on kaspa-hashes without asm
+        run: cargo nextest run --archive-file hashes-no-asm.tar.zst --workspace-archive-dir . --benches
 
 
   # test-release:
