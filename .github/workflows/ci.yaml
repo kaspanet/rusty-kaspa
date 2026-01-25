@@ -100,7 +100,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
       
       - name: Install cargo-nextest
-        run: cargo install cargo-nextest
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cargo-nextest
+          locked: true
 
       - name: Cache
         uses: actions/cache@v4
