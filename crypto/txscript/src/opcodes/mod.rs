@@ -1500,7 +1500,7 @@ mod test {
     use crate::caches::Cache;
     use crate::data_stack::Stack;
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
-    use crate::{EngineContext, LOCK_TIME_THRESHOLD, SpkEncoding, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script};
+    use crate::{EngineContext, LOCK_TIME_THRESHOLD, TxScriptEngine, TxScriptError, opcodes, pay_to_address_script};
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
@@ -3428,6 +3428,7 @@ mod test {
     mod kip10 {
         use super::*;
         use crate::{
+            SpkEncoding,
             data_stack::OpcodeData,
             opcodes::{codes::*, push_number},
             pay_to_script_hash_script,
