@@ -982,4 +982,103 @@ mod tests {
 
         run_dagknight_test(5, plan, "dag_complex");
     }
+
+    #[test]
+    fn test_monitonicity_simple() {
+        // SETUP:
+        let genesis_hash = 1.into();
+
+        let dk_map = RefCell::new(HashMap::new());
+
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations = MemoryRelationsStore::new();
+
+        let headers_store = Arc::new(MemoryHeaderStore::new());
+        let mut genesis_header = Header::from_precomputed_hash(genesis_hash, vec![]);
+        genesis_header.bits = 0x207fffff;
+        headers_store.insert(Arc::new(genesis_header));
+        // Global GD store. To be used for topology:
+        let topology_ghostdag_store = Arc::new(MemoryGhostdagStore::new());
+
+        let topology_gd_manager = GhostdagManager::new(
+            genesis_hash,
+            5,
+            topology_ghostdag_store.clone(),
+            relations.clone(),
+            headers_store.clone(),
+            reachability.clone(),
+        );
+
+        topology_ghostdag_store.insert(genesis_hash, Arc::new(topology_gd_manager.genesis_ghostdag_data())).unwrap();
+
+        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+
+        let dk_executor = DagknightExecutor {
+            genesis_hash,
+            dagknight_store: dagknight_store.clone(),
+            ghostdag_store: topology_ghostdag_store.clone(),
+            headers_store: headers_store.clone(),
+            reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
+            relations_store: Arc::new(RwLock::new(relations.clone())),
+        };
+        let mut builder = DagBuilder::new(&mut reachability, &mut relations);
+        builder.init();
+        let genesis = DagBlock::new(genesis_hash, vec![ORIGIN]);
+        builder.add_block(genesis.clone());
+
+        // Add blocks 2 and 3 and insert headers/ghostdag entries.
+        // We'll use a small helper closure to reduce repetition when adding a block and its header.
+        let mut add_block_with_header = |id: u64, parents: Vec<Hash>| {
+            let current_hash = id.into();
+            let selected_parent = dk_executor.dagknight(&parents);
+            builder.add_block_with_selected_parent(DagBlock::new(current_hash, parents.clone()), selected_parent);
+            let gd = topology_gd_manager.ghostdag(&parents);
+
+            let mut header = Header::from_precomputed_hash(current_hash, parents);
+            header.bits = 0x207fffff;
+            header.daa_score = gd.blue_score;
+            header.blue_score = gd.blue_score;
+            header.blue_work = gd.blue_work;
+            headers_store.insert(Arc::new(header));
+            topology_ghostdag_store.insert(current_hash, Arc::new(gd)).unwrap();
+
+            current_hash
+        };
+
+        // TEST BEGINS HERE:
+        // This test follows the example described in the DK paper section 2.6.6
+        //     1
+        //    ↙ ↘
+        //   2   3
+        //   |   |\ \ \ \
+        //   ↓   ↓ ↓ ↓ ↓ ↓
+        //   9   4 5 6 7 8
+        //
+        let hash_of_2 = add_block_with_header(2, vec![genesis_hash]);
+        let hash_of_3 = add_block_with_header(3, vec![genesis_hash]);
+
+        let virtual_sp = dk_executor.dagknight(&[hash_of_2, hash_of_3]);
+        println!("virtual sp: {}", virtual_sp);
+
+        let other_tip = if hash_of_2 == virtual_sp { hash_of_3 } else { hash_of_2 };
+        let mut tips = vec![];
+
+        // Raise the rank of the selected tip of previos selected parent by pointing multiple blocks to it
+        for i in 4..9 {
+            let current_hash = add_block_with_header(i, vec![virtual_sp]);
+            tips.push(current_hash);
+        }
+
+        // Add just one tip to previously unselected parent
+        let hash_of_9 = add_block_with_header(9, vec![other_tip]);
+        tips.push(hash_of_9);
+
+        let new_sp_virtual = dk_executor.dagknight(&tips);
+        println!("new virtual sp: {}", new_sp_virtual);
+
+        assert!(
+            reachability.is_chain_ancestor_of(virtual_sp, new_sp_virtual),
+            "The selected parent chain changed after attacker raised the rank of previously selected tip"
+        )
+    }
 }
