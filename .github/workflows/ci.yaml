@@ -100,7 +100,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
       
       - name: Install cargo-nextest
-        run: cargo install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
 
       - name: Cache
         uses: actions/cache@v4
@@ -324,7 +326,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install wasm-pack
-        run: cargo install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
 
       - name: Add wasm32 target
         run: rustup target add wasm32-unknown-unknown
