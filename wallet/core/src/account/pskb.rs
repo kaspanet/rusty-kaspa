@@ -449,6 +449,7 @@ pub async fn commit_reveal_batch_bundle(
         CommitRevealBatchKind::Manual { hop_payment, destination_payment } => {
             let addr_commit = match hop_payment.clone() {
                 PaymentDestination::Change => Err(Error::CommitRevealInvalidPaymentDestination),
+                PaymentDestination::PayloadOnly => Err(Error::CommitRevealInvalidPaymentDestination),
                 PaymentDestination::PaymentOutputs(payment_outputs) => {
                     payment_outputs.outputs.first().map(|out| out.address.clone()).ok_or(Error::CommitRevealEmptyPaymentOutputs)
                 }
@@ -456,6 +457,7 @@ pub async fn commit_reveal_batch_bundle(
 
             let (addresses, payment_outputs) = match destination_payment {
                 PaymentDestination::Change => Err(Error::CommitRevealInvalidPaymentDestination),
+                PaymentDestination::PayloadOnly => Err(Error::CommitRevealInvalidPaymentDestination),
                 PaymentDestination::PaymentOutputs(payment_outputs) => {
                     Ok((payment_outputs.outputs.iter().map(|out| out.address.clone()).collect(), payment_outputs))
                 }
