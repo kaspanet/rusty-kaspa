@@ -4,10 +4,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_hashes::Hash;
 use kaspa_txscript_errors::CovenantsError;
-use std::{
-    collections::{HashMap, hash_map::Entry},
-    sync::LazyLock,
-};
+use std::{collections::HashMap, sync::LazyLock};
 
 /// Context for an input's specific authority over a subset of outputs.
 ///
@@ -98,12 +95,8 @@ impl CovenantsContext {
     pub fn from_tx(tx: &impl VerifiableTransaction) -> Result<Self, CovenantsError> {
         let mut ctx = CovenantsContext::default();
 
-        struct GenesisCtx {
-            covenant_id: Hash,
-            output_indices: Vec<usize>,
-        }
-
-        let mut genesis_ctxs: HashMap<usize, GenesisCtx> = HashMap::new();
+        // Aggregated per (authorizing input, covenant id) genesis groups.
+        let mut genesis_ctxs: HashMap<(usize, Hash), Vec<usize>> = HashMap::new();
 
         for (i, (_, entry)) in tx.populated_inputs().enumerate() {
             if let Some(covenant_id) = entry.covenant_id {
@@ -124,8 +117,8 @@ impl CovenantsContext {
 
             match utxo_entry.covenant_id {
                 Some(input_covenant_id) if input_covenant_id == covenant_id => {
-                    // Non-genesis case: the authorizing input is already under a covenant.
-                    // Add the output to the input- and covenant-level contexts.
+                    // Continuation case: the authorizing input already carries the same covenant id.
+                    // Record the output under both the per-input context and the shared covenant context.
 
                     ctx.input_ctxs
                         .entry(auth_input_idx)
@@ -141,29 +134,17 @@ impl CovenantsContext {
                 }
                 Some(_) | None => {
                     // Genesis case: the authorizing input does not carry this covenant id (either absent or different).
-                    // Treat the output as part of a new covenant instantiation rooted at this input, and only validate.
-                    // No covenant script is expected to run here, so we do not record these relations in the script-engine contexts.
+                    // Treat the output as a genesis-authorized output for the pair (authorizing input, covenant id).
+                    // These relations are validated via covenant-id reconstruction, but are not added to the script-engine contexts.
 
-                    // Aggregate all authorized outputs for this (authorizing input, covenant id) pair so we can compute and
-                    // validate the expected covenant id once collection is complete.
-                    match genesis_ctxs.entry(auth_input_idx) {
-                        Entry::Occupied(mut e) => {
-                            let GenesisCtx { covenant_id: existing_id, output_indices } = e.get_mut();
-                            if *existing_id != covenant_id {
-                                return Err(CovenantsError::MismatchedGenesisCovenantId(output_indices[0], i));
-                            }
-                            output_indices.push(i);
-                        }
-                        Entry::Vacant(e) => {
-                            e.insert(GenesisCtx { covenant_id, output_indices: vec![i] });
-                        }
-                    }
+                    genesis_ctxs.entry((auth_input_idx, covenant_id)).or_default().push(i);
                 }
             }
         }
 
-        // Verify aggregated genesis covenant id calculations (if any).
-        for (auth_input_idx, GenesisCtx { covenant_id, output_indices }) in genesis_ctxs.into_iter() {
+        // Validate genesis covenant ids by recomputing the id for each (authorizing input, covenant id) group
+        // from the genesis outpoint and the group's authorized outputs.
+        for ((auth_input_idx, covenant_id), output_indices) in genesis_ctxs.into_iter() {
             let input = tx.inputs().get(auth_input_idx).expect("utxo(auth_input) existed above");
 
             let expected_id = hashing::covenant_id::covenant_id(
