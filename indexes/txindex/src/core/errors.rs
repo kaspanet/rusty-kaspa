@@ -1,3 +1,4 @@
+use kaspa_consensus_core::errors::consensus::ConsensusError;
 use std::io;
 use thiserror::Error;
 
@@ -9,6 +10,9 @@ use kaspa_database::prelude::StoreError;
 pub enum TxIndexError {
     #[error("[{IDENT}]: {0}")]
     StoreAccessError(#[from] StoreError),
+
+    #[error("[{IDENT}]: {0}")]
+    ConsensusAccessError(#[from] ConsensusError),
 
     #[error("[{IDENT}]: {0}")]
     DBResetError(#[from] io::Error),

@@ -319,10 +319,10 @@ impl HeaderProcessor {
                 .direct_parents()
                 .iter()
                 .copied()
-                // filter out parents not part of the kept contiguous Dag - which is representd by the stored relations 
+                // filter out parents not part of the kept contiguous Dag - which is representd by the stored relations
                 .filter(|&parent| relations_read.has(parent).unwrap())
                 .collect_vec()
-                // This kicks-in only for trusted blocks. If an ordinary block is 
+                // This kicks-in only for trusted blocks. If an ordinary block is
                 // missing direct parents it will fail validation.
                 .push_if_empty(ORIGIN),
         )

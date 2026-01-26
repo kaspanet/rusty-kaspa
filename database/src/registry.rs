@@ -79,12 +79,16 @@ pub enum DatabaseStorePrefixes {
     CirculatingSupply = 194,
 
     // TxIndex
+    // - acceptance -
     TransactionAcceptanceData = 198,
-    TransactionInclusionData = 199,
-    BlueScoreRefs = 200,
-    PruningData = 201,
-    TxIndexTips = 202,
-    TxIndexSink = 203,
+    AcceptingBlueScoreRefs = 199,
+    TxIndexSink = 200,
+    // - inclusion -
+    TransactionInclusionData = 203,
+    IncludingBlueScoreRefs = 204,
+    TxIndexTips = 205,
+    // - pruning sync -
+    PruningData = 208,
 
     // ---- Separator ----
     /// Reserved as a separator

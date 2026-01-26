@@ -22,6 +22,7 @@ kaspa-utils.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 rocksdb.workspace = true
+itertools.workspace = true
 serde.workspace = true
 bincode.workspace = true
 thiserror.workspace = true

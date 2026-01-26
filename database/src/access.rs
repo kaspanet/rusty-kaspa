@@ -1,4 +1,8 @@
-use crate::{cache::CachePolicy, db::DB, errors::StoreError};
+use crate::{
+    cache::CachePolicy,
+    db::DB,
+    errors::StoreError,
+};
 
 use super::prelude::{Cache, DbKey, DbWriter};
 use kaspa_utils::mem_size::MemSizeEstimator;
@@ -160,7 +164,9 @@ where
         Ok(())
     }
 
-    /// Write directly from an iterator and do not cache any data. NOTE: this action also clears the cache
+    /// Write directly from an iterator and do not cache any data.
+    /// NOTE: 1) this action also clears the cache
+    /// This will not result in any idempotent behavior, i.e. overwriting existing keys will not error.
     pub fn write_many_without_cache(
         &self,
         mut writer: impl DbWriter,

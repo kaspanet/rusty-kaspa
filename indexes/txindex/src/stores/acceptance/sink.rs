@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use kaspa_consensus_core::Hash;
 use kaspa_database::{
-    prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter, StoreResult, DB},
+    prelude::{CachedDbItem, DbWriter, StoreResult, StoreResultExt, DB},
     registry::DatabaseStorePrefixes,
 };
 use serde::{Deserialize, Serialize};
@@ -16,13 +16,13 @@ struct SinkData {
 }
 
 pub trait TxIndexSinkStoreReader {
-    fn get_sink(&self) -> StoreResult<Hash>;
-    fn get_sink_blue_score(&self) -> StoreResult<u64>;
+    fn get_sink(&self) -> StoreResult<Option<Hash>>;
+    fn get_sink_blue_score(&self) -> StoreResult<Option<u64>>;
 }
 
 pub trait TxIndexSinkStore: TxIndexSinkStoreReader {
-    fn set_sink(&mut self, writer: BatchDbWriter, new_sink: Hash, new_sink_blue_score: u64) -> StoreResult<()>;
-    fn remove_sink(&mut self, writer: BatchDbWriter) -> StoreResult<()>;
+    fn set_sink(&mut self, writer: &mut impl DbWriter, new_sink: Hash, new_sink_blue_score: u64) -> StoreResult<()>;
+    fn remove_sink(&mut self, writer: &mut impl DbWriter) -> StoreResult<()>;
 }
 
 #[derive(Clone)]
@@ -38,25 +38,23 @@ impl DbTxIndexSinkStore {
 }
 
 impl TxIndexSinkStoreReader for DbTxIndexSinkStore {
-    fn get_sink(&self) -> StoreResult<Hash> {
-        let sink_data = self.access.read()?;
-        Ok(sink_data.sink_hash)
+    fn get_sink(&self) -> StoreResult<Option<Hash>> {
+        Ok(self.access.read().optional()?.map(|data| data.sink_hash))
     }
 
-    fn get_sink_blue_score(&self) -> StoreResult<u64> {
-        let sink_data = self.access.read()?;
-        Ok(sink_data.sink_blue_score)
+    fn get_sink_blue_score(&self) -> StoreResult<Option<u64>> {
+        Ok(self.access.read().optional()?.map(|data| data.sink_blue_score))
     }
 }
 
 impl TxIndexSinkStore for DbTxIndexSinkStore {
-    fn set_sink(&mut self, mut writer: BatchDbWriter, new_sink: Hash, new_sink_blue_score: u64) -> StoreResult<()> {
+    fn set_sink(&mut self, writer: &mut impl DbWriter, new_sink: Hash, new_sink_blue_score: u64) -> StoreResult<()> {
         let sink_data = SinkData { sink_hash: new_sink, sink_blue_score: new_sink_blue_score };
-        self.access.write(&mut writer, &sink_data)
+        self.access.write(writer, &sink_data)
     }
 
-    fn remove_sink(&mut self, mut writer: BatchDbWriter) -> StoreResult<()> {
-        self.access.remove(&mut writer)
+    fn remove_sink(&mut self, writer: &mut impl DbWriter) -> StoreResult<()> {
+        self.access.remove(writer)
     }
 }
 
@@ -79,33 +77,34 @@ mod tests {
         let sink2 = Hash::from_slice(&[2u8; 32]);
 
         // Initially empty
-        assert!(matches!(store.get_sink().unwrap_err(), StoreError::KeyNotFound(_)));
+        assert!(store.get_sink().unwrap().is_none());
 
         // Set sink1
         let mut write_batch = WriteBatch::new();
-        let writer = BatchDbWriter::new(&mut write_batch);
-        store.set_sink(writer, sink1, 0).unwrap();
+        let mut writer = BatchDbWriter::new(&mut write_batch);
+        store.set_sink(&mut writer, sink1, 0).unwrap();
         txindex_db.write(write_batch).unwrap();
         let retrieved_sink = store.get_sink().unwrap();
         let retrieved_sink_blue_score = store.get_sink_blue_score().unwrap();
-        assert_eq!(retrieved_sink_blue_score, 0);
-        assert_eq!(retrieved_sink, sink1);
+        assert_eq!(retrieved_sink_blue_score.unwrap(), 0);
+        assert_eq!(retrieved_sink.unwrap(), sink1);
 
         // Update to sink2
         let mut write_batch = WriteBatch::new();
-        let writer = BatchDbWriter::new(&mut write_batch);
-        store.set_sink(writer, sink2, 1).unwrap();
+        let mut writer = BatchDbWriter::new(&mut write_batch);
+        store.set_sink(&mut writer, sink2, 1).unwrap();
         txindex_db.write(write_batch).unwrap();
         let retrieved_sink = store.get_sink().unwrap();
         let retrieved_sink_blue_score = store.get_sink_blue_score().unwrap();
-        assert_eq!(retrieved_sink_blue_score, 1);
-        assert_eq!(retrieved_sink, sink2);
+        assert_eq!(retrieved_sink_blue_score.unwrap(), 1);
+        assert_eq!(retrieved_sink.unwrap(), sink2);
 
         // Remove sink
         let mut write_batch = WriteBatch::new();
-        let writer = BatchDbWriter::new(&mut write_batch);
-        store.remove_sink(writer).unwrap();
+        let mut writer = BatchDbWriter::new(&mut write_batch);
+        store.remove_sink(&mut writer).unwrap();
         txindex_db.write(write_batch).unwrap();
-        assert!(matches!(store.get_sink().unwrap_err(), StoreError::KeyNotFound(_)));
+        assert!(store.get_sink().unwrap().is_none());
+        assert!(store.get_sink_blue_score().unwrap().is_none());
     }
 }

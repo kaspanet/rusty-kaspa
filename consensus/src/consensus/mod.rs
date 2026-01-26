@@ -381,7 +381,10 @@ impl Consensus {
     fn validate_and_insert_block_impl(
         &self,
         task: BlockTask,
-    ) -> (impl Future<Output = BlockProcessResult<BlockStatus>>, impl Future<Output = BlockProcessResult<BlockStatus>>) {
+    ) -> (
+        impl Future<Output = BlockProcessResult<BlockStatus>> + 'static,
+        impl Future<Output = BlockProcessResult<BlockStatus>> + 'static,
+    ) {
         let (btx, brx): (BlockResultSender, _) = oneshot::channel();
         let (vtx, vrx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender.send(BlockProcessingMessage::Process(task, btx, vtx)).unwrap();
@@ -1149,6 +1152,16 @@ impl ConsensusApi for Consensus {
         // PRUNE SAFETY: proof is cached before the prune op begins and the
         // pruning point cannot move during the prune so the cache remains valid
         self.services.pruning_proof_manager.get_pruning_point_proof()
+    }
+
+    fn get_block_transaction_iterator(&self) -> Box<dyn Iterator<Item = (Hash, Arc<Vec<Transaction>>)> + Send + Sync + '_> {
+        Box::new(self.block_transactions_store.iterator())
+    }
+
+    fn get_acceptance_data_iterator(
+        &self,
+    ) -> Box<dyn Iterator<Item = (Hash, Arc<Vec<MergesetBlockAcceptanceData>>)> + Send + Sync + '_> {
+        Box::new(self.acceptance_data_store.iterator())
     }
 
     fn create_virtual_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>> {

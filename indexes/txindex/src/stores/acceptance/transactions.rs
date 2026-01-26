@@ -1,7 +1,9 @@
 use crate::model::transactions::TxAcceptanceData;
 
 use kaspa_consensus_core::{acceptance_data::MergesetIndexType, tx::TransactionId, Hash};
-use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DbWriter, DirectDbWriter, StoreResult, WriteBatch, DB};
+use kaspa_database::prelude::{
+    CachePolicy, CachedDbAccess, DbWriter, DirectDbWriter, StoreResult, DB,
+};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use std::mem;
@@ -117,11 +119,17 @@ where
 
 pub trait TxIndexAcceptedTransactionsStoreReader {
     fn get_transaction_acceptance_data(&self, txid: TransactionId) -> StoreResult<Vec<TxAcceptanceData>>;
+    fn has(&self, tx_id: TransactionId, blue_score: u64, accepting_block: Hash) -> StoreResult<bool>;
 }
 
 pub trait TxIndexAcceptedTransactionsStore: TxIndexAcceptedTransactionsStoreReader {
-    fn remove_transaction_acceptance_data(&mut self, writer: BatchDbWriter, txid: TransactionId, blue_score: u64) -> StoreResult<()>;
-    fn add_accepted_transaction_data<I>(&mut self, writer: BatchDbWriter, to_add: TxAcceptedIter<I>) -> StoreResult<()>
+    fn remove_transaction_acceptance_data(
+        &mut self,
+        writer: &mut impl DbWriter,
+        txid: TransactionId,
+        blue_score: u64,
+    ) -> StoreResult<()>;
+    fn add_accepted_transaction_data<I>(&mut self, writer: &mut impl DbWriter, to_add: TxAcceptedIter<I>) -> StoreResult<()>
     where
         I: Iterator<Item = TxAcceptedTuple>;
     fn delete_all(&mut self) -> StoreResult<()>;
@@ -159,10 +167,20 @@ impl TxIndexAcceptedTransactionsStoreReader for DbTxIndexAcceptedTransactionsSto
             })
             .collect()
     }
+
+    fn has(&self, tx_id: TransactionId, blue_score: u64, accepting_block: Hash) -> StoreResult<bool> {
+        let key = AcceptedTransactionStoreKey::from_parts(tx_id, blue_score, accepting_block);
+        self.access.has(key)
+    }
 }
 
 impl TxIndexAcceptedTransactionsStore for DbTxIndexAcceptedTransactionsStore {
-    fn remove_transaction_acceptance_data(&mut self, writer: BatchDbWriter, txid: TransactionId, blue_score: u64) -> StoreResult<()> {
+    fn remove_transaction_acceptance_data(
+        &mut self,
+        writer: &mut impl DbWriter,
+        txid: TransactionId,
+        blue_score: u64,
+    ) -> StoreResult<()> {
         self.access.delete_range(
             writer,
             AcceptedTransactionStoreKey::from_tx_id_and_blue_score_minimized(txid, blue_score),
@@ -170,18 +188,17 @@ impl TxIndexAcceptedTransactionsStore for DbTxIndexAcceptedTransactionsStore {
         )
     }
 
-    fn add_accepted_transaction_data<I>(&mut self, writer: BatchDbWriter, to_add: TxAcceptedIter<I>) -> StoreResult<()>
+    /// Returns the amount of successfully added entries
+    /// Note: if skip_on_first_idempotent, this call stops before the first idempotent write,
+    /// As such this method expects the iterator to be sorted by (txid, blue_score, block_hash) in strict virtual chain changed descending order.
+    fn add_accepted_transaction_data<I>(&mut self, writer: &mut impl DbWriter, to_add: TxAcceptedIter<I>) -> StoreResult<()>
     where
         I: Iterator<Item = TxAcceptedTuple>,
     {
-        self.access.write_many_without_cache(
-            writer,
-            &mut to_add.map(|(txid, blue_score, block_hash, mergeset_index)| {
-                (AcceptedTransactionStoreKey::from_parts(txid, blue_score, block_hash), mergeset_index)
-            }),
-        )
-    }
+        let kv_iter = to_add.into_iter().map(|(a, b, c, d)| (AcceptedTransactionStoreKey::from_parts(a, b, c), d));
 
+        self.access.write_many_without_cache(writer, &mut kv_iter.into_iter())
+    }
     fn delete_all(&mut self) -> StoreResult<()> {
         self.access.delete_all(DirectDbWriter::new(&self.db))
     }
@@ -251,9 +268,10 @@ mod tests {
 
         // Add included transaction data
         let mut batch = WriteBatch::new();
+        let mut writer = BatchDbWriter::new(&mut batch);
         store
             .add_accepted_transaction_data(
-                BatchDbWriter::new(&mut batch),
+                &mut writer,
                 TxAcceptedIter(
                     vec![
                         (txid1, blue_score1, block_hash1, mergeset_index1),
@@ -290,13 +308,15 @@ mod tests {
         );
 
         let mut batch = WriteBatch::default();
+        let mut writer = BatchDbWriter::new(&mut batch);
         // Test removal and clean up
-        store.remove_transaction_acceptance_data(BatchDbWriter::new(&mut batch), txid1, blue_score1).unwrap();
+        store.remove_transaction_acceptance_data(&mut writer, txid1, blue_score1).unwrap();
         txindex_db.write(batch).unwrap();
         assert!(store.get_transaction_acceptance_data(txid1).is_ok_and(|val| val.len() == 1
             && val[0] == TxAcceptanceData { blue_score: blue_score2, block_hash: block_hash2, mergeset_index: mergeset_index2 }));
         let mut batch = WriteBatch::default();
-        store.remove_transaction_acceptance_data(BatchDbWriter::new(&mut batch), txid1, blue_score2).unwrap();
+        let mut writer = BatchDbWriter::new(&mut batch);
+        store.remove_transaction_acceptance_data(&mut writer, txid1, blue_score2).unwrap();
         txindex_db.write(batch).unwrap();
         let res = store.get_transaction_acceptance_data(txid1);
         println!("{:?}", res);

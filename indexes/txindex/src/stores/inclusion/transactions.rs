@@ -4,7 +4,7 @@ use kaspa_consensus_core::{
     tx::{TransactionId, TransactionIndexType},
     Hash,
 };
-use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DirectDbWriter, StoreResult, DB};
+use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DbWriter, DirectDbWriter, StoreResult, DB};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use std::mem;
@@ -124,8 +124,13 @@ pub trait TxIndexIncludedTransactionsStoreReader {
 }
 
 pub trait TxIndexIncludedTransactionsStore: TxIndexIncludedTransactionsStoreReader {
-    fn remove_transaction_inclusion_data(&mut self, writer: BatchDbWriter, txid: TransactionId, blue_score: u64) -> StoreResult<()>;
-    fn add_included_transaction_data<I>(&mut self, writer: BatchDbWriter, to_add: TxInclusionIter<I>) -> StoreResult<()>
+    fn remove_transaction_inclusion_data(
+        &mut self,
+        writer: &mut impl DbWriter,
+        txid: TransactionId,
+        blue_score: u64,
+    ) -> StoreResult<()>;
+    fn add_included_transaction_data<I>(&mut self, writer: &mut impl DbWriter, to_add: TxInclusionIter<I>) -> StoreResult<()>
     where
         I: Iterator<Item = TxInclusionTuple>;
     fn delete_all(&mut self) -> StoreResult<()>;
@@ -167,7 +172,12 @@ impl TxIndexIncludedTransactionsStoreReader for DbTxIndexIncludedTransactionsSto
 }
 
 impl TxIndexIncludedTransactionsStore for DbTxIndexIncludedTransactionsStore {
-    fn remove_transaction_inclusion_data(&mut self, writer: BatchDbWriter, txid: TransactionId, blue_score: u64) -> StoreResult<()> {
+    fn remove_transaction_inclusion_data(
+        &mut self,
+        writer: &mut impl DbWriter,
+        txid: TransactionId,
+        blue_score: u64,
+    ) -> StoreResult<()> {
         self.access.delete_range(
             writer,
             IncludedTransactionStoreKey::from_tx_id_and_blue_score_minimized(txid, blue_score),
@@ -175,16 +185,15 @@ impl TxIndexIncludedTransactionsStore for DbTxIndexIncludedTransactionsStore {
         )
     }
 
-    fn add_included_transaction_data<I>(&mut self, writer: BatchDbWriter, to_add: TxInclusionIter<I>) -> StoreResult<()>
+    fn add_included_transaction_data<I>(&mut self, writer: &mut impl DbWriter, to_add: TxInclusionIter<I>) -> StoreResult<()>
     where
         I: Iterator<Item = TxInclusionTuple>,
     {
-        self.access.write_many_without_cache(
-            writer,
-            &mut to_add.map(|(txid, blue_score, block_hash, index_within_block)| {
-                (IncludedTransactionStoreKey::from_parts(txid, blue_score, block_hash), index_within_block)
-            }),
-        )
+        let kv_iter = to_add.map(|(txid, blue_score, block_hash, index_within_block)| {
+            (IncludedTransactionStoreKey::from_parts(txid, blue_score, block_hash), index_within_block)
+        });
+
+        self.access.write_many_without_cache(writer, &mut kv_iter.into_iter())
     }
 
     fn delete_all(&mut self) -> StoreResult<()> {
@@ -255,10 +264,10 @@ mod tests {
 
         // Add included transaction data
         let mut write_batch = WriteBatch::new();
-        let writer = BatchDbWriter::new(&mut write_batch);
+        let mut writer = BatchDbWriter::new(&mut write_batch);
         store
             .add_included_transaction_data(
-                writer,
+                &mut writer,
                 TxInclusionIter(
                     vec![
                         (txid1, blue_score1, block_hash1, index_within_block1),
@@ -296,15 +305,15 @@ mod tests {
 
         // Test removal and clean up
         let mut write_batch = WriteBatch::new();
-        let writer = BatchDbWriter::new(&mut write_batch);
-        store.remove_transaction_inclusion_data(writer, txid1, blue_score1).unwrap();
+        let mut writer = BatchDbWriter::new(&mut write_batch);
+        store.remove_transaction_inclusion_data(&mut writer, txid1, blue_score1).unwrap();
         txindex_db.write(write_batch).unwrap();
         assert!(store.get_transaction_inclusion_data(txid1).is_ok_and(|val| val.len() == 1
             && val[0]
                 == TxInclusionData { blue_score: blue_score2, block_hash: block_hash2, index_within_block: index_within_block2 }));
         let mut write_batch = WriteBatch::new();
-        let writer = BatchDbWriter::new(&mut write_batch);
-        store.remove_transaction_inclusion_data(writer, txid1, blue_score2).unwrap();
+        let mut writer = BatchDbWriter::new(&mut write_batch);
+        store.remove_transaction_inclusion_data(&mut writer, txid1, blue_score2).unwrap();
         txindex_db.write(write_batch).unwrap();
         let res = store.get_transaction_inclusion_data(txid1);
         println!("{:?}", res);

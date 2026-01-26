@@ -1,7 +1,5 @@
 use kaspa_consensus_core::tx::TransactionId;
 
-use crate::stores::bluescore_refs::RefType;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BlueScoreRefData {
     Acceptance(BlueScoreAcceptingRefData),

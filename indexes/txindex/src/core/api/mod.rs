@@ -1,4 +1,4 @@
-use std::{fmt::Debug, ops::RangeBounds, sync::Arc};
+use std::{fmt::Debug, sync::Arc};
 
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_consensus_notify::notification::{BlockAddedNotification, VirtualChainChangedNotification};
