@@ -140,6 +140,7 @@ impl HasherBase for PreimageHasher {
     }
 }
 
+/// Serializes the transaction for v0 TxID preimage (excluding signature scripts).
 pub fn transaction_v0_id_preimage(tx: &Transaction) -> Vec<u8> {
     assert_eq!(tx.version, 0);
     let mut hasher = PreimageHasher { buff: Vec::with_capacity(transaction_estimated_serialized_size(tx) as usize) };
@@ -147,16 +148,22 @@ pub fn transaction_v0_id_preimage(tx: &Transaction) -> Vec<u8> {
     hasher.buff
 }
 
+/// Precomputed hash digest for an empty payload using `PayloadDigest`.
 const ZERO_PAYLOAD_DIGEST: Hash = Hash::from_bytes([
     156, 12, 162, 172, 180, 94, 146, 255, 230, 206, 180, 174, 41, 24, 139, 53, 200, 45, 150, 118, 205, 211, 206, 6, 127, 214, 204,
     195, 10, 156, 74, 56,
 ]);
 
+/// Computes the Transaction ID for a version 1 transaction.
 pub fn id_v1(tx: &Transaction) -> TransactionId {
     let payload_digest = payload_digest(&tx.payload);
     let rest_digest = {
         let mut hasher = kaspa_hashes::TransactionRest::new();
-        write_transaction(&mut hasher, tx, TxEncodingFlags::EXCLUDE_PAYLOAD | TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT); // TODO: should it exclude mass or not?
+        write_transaction(
+            &mut hasher,
+            tx,
+            TxEncodingFlags::EXCLUDE_PAYLOAD | TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT,
+        );
         hasher.finalize()
     };
 
@@ -165,6 +172,7 @@ pub fn id_v1(tx: &Transaction) -> TransactionId {
     hasher.finalize()
 }
 
+/// Computes the digest of the transaction payload using `PayloadDigest` hasher.
 pub fn payload_digest(payload: &[u8]) -> Hash {
     if payload.is_empty() { ZERO_PAYLOAD_DIGEST } else { PayloadDigest::hash(payload) }
 }
