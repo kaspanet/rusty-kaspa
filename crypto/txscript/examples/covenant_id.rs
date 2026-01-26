@@ -9,8 +9,8 @@ use kaspa_hashes::Hash;
 use kaspa_txscript::caches::Cache;
 use kaspa_txscript::covenants::CovenantsContext;
 use kaspa_txscript::opcodes::codes::{
-    Op1Add, OpBlake2b, OpCat, OpCovOutputCount, OpCovOutputIdx, OpData8, OpData62, OpEqual, OpEqualVerify, OpNum2Bin, OpSwap, OpTrue,
-    OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpkLen, OpTxOutputSpkSubstr,
+    Op1Add, OpAuthOutputCount, OpAuthOutputIdx, OpBlake2b, OpCat, OpData8, OpData62, OpEqual, OpEqualVerify, OpNum2Bin, OpSwap,
+    OpTrue, OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpkLen, OpTxOutputSpkSubstr,
 };
 use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
 use kaspa_txscript::{EngineCtx, pay_to_script_hash_script};
@@ -129,7 +129,7 @@ fn build_covenant_script() -> ScriptBuilderResult<Vec<u8>> {
 
         // Check that there is exactly one authorized output
         .add_i64(0)?
-        .add_op(OpCovOutputCount)?
+        .add_op(OpAuthOutputCount)?
         .add_i64(1)?
         .add_op(OpEqualVerify)?
 
@@ -187,11 +187,11 @@ fn build_covenant_script() -> ScriptBuilderResult<Vec<u8>> {
         // Compare to the output scriptPubKey
         .add_i64(0)?
         .add_i64(0)?
-        .add_op(OpCovOutputIdx)? // Output index
+        .add_op(OpAuthOutputIdx)? // Output index
         .add_i64(0)? // Start
         .add_i64(0)?
         .add_i64(0)?
-        .add_op(OpCovOutputIdx)?
+        .add_op(OpAuthOutputIdx)?
         .add_op(OpTxOutputSpkLen)? // End
         .add_op(OpTxOutputSpkSubstr)?
         .add_op(OpEqual)?

@@ -3330,6 +3330,7 @@ dependencies = [
 name = "kaspa-txscript-errors"
 version = "1.1.0-rc.2"
 dependencies = [
+ "kaspa-hashes",
  "secp256k1",
  "thiserror 1.0.64",
 ]
