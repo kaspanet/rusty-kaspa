@@ -139,15 +139,13 @@ impl CovenantsContext {
                         .output_indices
                         .push(i);
                 }
-                Some(_) => {
-                    return Err(CovenantsError::WrongCovenantId(i));
-                }
-                None => {
-                    // Genesis case: the authorizing input is not under a covenant yet.
-                    // No covenant script is expected to run here, so we do not record these relations in the covenants context used by the script engine.
+                Some(_) | None => {
+                    // Genesis case: the authorizing input does not carry this covenant id (either absent or different).
+                    // Treat the output as part of a new covenant instantiation rooted at this input, and only validate.
+                    // No covenant script is expected to run here, so we do not record these relations in the script-engine contexts.
 
-                    // Aggregate all authorized outputs for this genesis covenant instance so we can compute and validate
-                    // the expected covenant id once collection is complete.
+                    // Aggregate all authorized outputs for this (authorizing input, covenant id) pair so we can compute and
+                    // validate the expected covenant id once collection is complete.
                     match genesis_ctxs.entry(auth_input_idx) {
                         Entry::Occupied(mut e) => {
                             let GenesisCtx { covenant_id: existing_id, output_indices } = e.get_mut();
