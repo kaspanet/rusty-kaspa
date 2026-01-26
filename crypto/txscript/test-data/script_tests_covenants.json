@@ -3938,17 +3938,17 @@
   ],
   [
     "1",
-    "0 0 COV_OUTPUT_COUNT EQUALVERIFY",
+    "0 0 AUTH_OUTPUT_COUNT EQUALVERIFY",
     "",
     "OK",
-    "OpCovOutputCount should return 0 for transactions with no covenant id"
+    "OpAuthOutputCount should return 0 for transactions with no covenant id"
   ],
   [
     "1",
-    "0 0 COV_OUTPUT_IDX DROP",
+    "0 0 AUTH_OUTPUT_IDX DROP",
     "",
     "UNKNOWN_ERROR",
-    "OpCovOutputIdx errors for transactions with no covenant id"
+    "OpAuthOutputIdx errors for transactions with no covenant id"
   ],
   [
     "1",
@@ -4048,40 +4048,17 @@
   ],
   [
     "1",
-    "IF 0xcf ELSE 1 ENDIF",
+    "RETURN",
     "",
-    "BAD_OPCODE",
-    "opcodes above OpCovOutputIdx invalid if executed"
-  ],
-  [
-    "1",
-    "IF 0xd0 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xd1 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xd2 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xd3 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
+    "OP_RETURN",
+    "TODO(pre-covpp): Add tests that check basic functionality for opcodes in this range"
   ],
   [
     "1",
     "IF 0xd5 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "opcodes above OpChainblockSeqCommit invalid if executed"
   ],
   [
     "1",
