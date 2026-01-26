@@ -1,11 +1,11 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
 use kaspa_p2p_lib::{
-    IncomingRoute, Router,
     common::ProtocolError,
     convert::header::HeaderFormat,
     dequeue_with_request_id, make_message, make_response,
-    pb::{InvRelayBlockMessage, kaspad_message::Payload},
+    pb::{kaspad_message::Payload, InvRelayBlockMessage},
+    IncomingRoute, Router,
 };
 use std::sync::Arc;
 
@@ -61,11 +61,15 @@ impl HandleRelayBlockRequests {
             return Ok(());
         }
         let sink = self.ctx.consensus().unguarded_session().async_get_sink().await;
+        let sink_blue_work = self.ctx.consensus().unguarded_session().async_get_header(sink).await.unwrap().blue_work;
         if sink == self.ctx.config.genesis.hash {
             return Ok(());
         }
         self.router
-            .enqueue(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(sink.into()), blue_work: None }))
+            .enqueue(make_message!(
+                Payload::InvRelayBlock,
+                InvRelayBlockMessage { hash: Some(sink.into()), blue_work: Some(sink_blue_work.into()) }
+            ))
             .await?;
         Ok(())
     }
