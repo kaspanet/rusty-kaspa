@@ -1,5 +1,3 @@
-use kaspa_consensus_core::constants::TX_VERSION;
-
 pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: usize = 1_000_000;
 pub(crate) const DEFAULT_MEMPOOL_SIZE_LIMIT: usize = 1_000_000_000;
 pub(crate) const DEFAULT_MAXIMUM_BUILD_BLOCK_TEMPLATE_ATTEMPTS: u64 = 5;
@@ -17,13 +15,6 @@ pub(crate) const DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_COUNT: u64 = 500;
 /// DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE specifies the minimum transaction fee for a transaction to be accepted to
 /// the mempool and relayed. It is specified in sompi per 1kg (or 1000 grams) of transaction mass.
 pub(crate) const DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE: u64 = 1000;
-
-/// Standard transaction version range might be different from what consensus accepts, therefore
-/// we define separate values in mempool.
-/// However, currently there's exactly one transaction version, so mempool accepts the same version
-/// as consensus.
-pub(crate) const DEFAULT_MINIMUM_STANDARD_TRANSACTION_VERSION: u16 = TX_VERSION;
-pub(crate) const DEFAULT_MAXIMUM_STANDARD_TRANSACTION_VERSION: u16 = TX_VERSION;
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -43,8 +34,6 @@ pub struct Config {
     pub accept_non_standard: bool,
     pub maximum_mass_per_block: u64,
     pub minimum_relay_transaction_fee: u64,
-    pub minimum_standard_transaction_version: u16,
-    pub maximum_standard_transaction_version: u16,
     pub network_blocks_per_second: u64,
 }
 
@@ -67,8 +56,6 @@ impl Config {
         accept_non_standard: bool,
         maximum_mass_per_block: u64,
         minimum_relay_transaction_fee: u64,
-        minimum_standard_transaction_version: u16,
-        maximum_standard_transaction_version: u16,
         network_blocks_per_second: u64,
     ) -> Self {
         Self {
@@ -88,8 +75,6 @@ impl Config {
             accept_non_standard,
             maximum_mass_per_block,
             minimum_relay_transaction_fee,
-            minimum_standard_transaction_version,
-            maximum_standard_transaction_version,
             network_blocks_per_second,
         }
     }
@@ -117,8 +102,6 @@ impl Config {
             accept_non_standard: relay_non_std_transactions,
             maximum_mass_per_block: max_block_mass,
             minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
-            minimum_standard_transaction_version: DEFAULT_MINIMUM_STANDARD_TRANSACTION_VERSION,
-            maximum_standard_transaction_version: DEFAULT_MAXIMUM_STANDARD_TRANSACTION_VERSION,
             network_blocks_per_second: 1000 / target_milliseconds_per_block,
         }
     }
