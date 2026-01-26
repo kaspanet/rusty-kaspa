@@ -4577,7 +4577,7 @@ mod test {
 
             let spk_missing = script(|sb| sb.add_i64(0)?.add_i64(2)?.add_op(codes::OpAuthOutputIdx));
             let err = run_script(&tx, entries, 0, spk_missing).expect_err("cov output idx missing");
-            assert!(matches!(err, TxScriptError::InvalidInputCovOutIndex(2, 0, 1)));
+            assert!(matches!(err, TxScriptError::CovenantsError(CovenantsError::InvalidAuthCovOutIndex(2, 0, 1))));
         }
 
         #[test]

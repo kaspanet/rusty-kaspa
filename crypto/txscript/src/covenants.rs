@@ -1,6 +1,6 @@
 use kaspa_consensus_core::tx::{CovenantBinding, VerifiableTransaction};
 use kaspa_hashes::Hash;
-use kaspa_txscript_errors::{CovenantsError, TxScriptError};
+use kaspa_txscript_errors::CovenantsError;
 use std::{collections::HashMap, sync::LazyLock};
 
 /// Context for an input's specific authority over a subset of outputs.
@@ -9,7 +9,7 @@ use std::{collections::HashMap, sync::LazyLock};
 /// (e.g., 1-to-N splits) without scanning unrelated outputs.
 pub struct CovenantInputContext {
     /// The covenant ID shared by this input and its authorized outputs.
-    pub covenant_id: Hash,
+    pub _covenant_id: Hash, // TODO(pre-covpp): Remove if unused.
 
     /// Indices of outputs that explicitly declare this input as their `authorizing_input`.
     ///
@@ -19,7 +19,7 @@ pub struct CovenantInputContext {
 
 impl CovenantInputContext {
     pub fn new(covenant_id: Hash) -> Self {
-        Self { covenant_id, auth_outputs: Default::default() }
+        Self { _covenant_id: covenant_id, auth_outputs: Default::default() }
     }
 }
 
@@ -54,9 +54,9 @@ impl CovenantsContext {
     /// Returns the absolute transaction output index of the k-th authorized output.
     ///
     /// Missing input contexts are treated as having zero authorized outputs.
-    pub(crate) fn auth_output_index(&self, input_idx: usize, k: usize) -> Result<usize, TxScriptError> {
-        let auth_outputs = self.input_ctxs.get(&input_idx).map(|ctx| ctx.auth_outputs.as_slice()).unwrap_or(&[]);
-        auth_outputs.get(k).copied().ok_or(TxScriptError::InvalidInputCovOutIndex(k, input_idx, auth_outputs.len()))
+    pub(crate) fn auth_output_index(&self, input_idx: usize, k: usize) -> Result<usize, CovenantsError> {
+        let auth_outputs = self.input_ctxs.get(&input_idx).map(|ctx| ctx.auth_outputs.as_slice()).unwrap_or_default();
+        auth_outputs.get(k).copied().ok_or(CovenantsError::InvalidAuthCovOutIndex(k, input_idx, auth_outputs.len()))
     }
 
     /// Returns the number of outputs authorized by this input.
@@ -70,18 +70,18 @@ impl CovenantsContext {
         self.shared_ctxs.get(&covenant_id).map_or(0, |ctx| ctx.input_indices.len())
     }
 
-    pub(crate) fn covenant_input_index(&self, covenant_id: Hash, k: usize) -> Result<usize, TxScriptError> {
+    pub(crate) fn covenant_input_index(&self, covenant_id: Hash, k: usize) -> Result<usize, CovenantsError> {
         let input_indices = self.shared_ctxs.get(&covenant_id).map(|ctx| ctx.input_indices.as_slice()).unwrap_or_default();
-        input_indices.get(k).copied().ok_or(CovenantsError::InvalidCovInIndex(covenant_id, k).into())
+        input_indices.get(k).copied().ok_or(CovenantsError::InvalidCovInIndex(covenant_id, k))
     }
 
     pub(crate) fn num_covenant_outputs(&self, covenant_id: Hash) -> usize {
         self.shared_ctxs.get(&covenant_id).map_or(0, |ctx| ctx.output_indices.len())
     }
 
-    pub(crate) fn covenant_output_index(&self, covenant_id: Hash, k: usize) -> Result<usize, TxScriptError> {
+    pub(crate) fn covenant_output_index(&self, covenant_id: Hash, k: usize) -> Result<usize, CovenantsError> {
         let output_indices = self.shared_ctxs.get(&covenant_id).map(|ctx| ctx.output_indices.as_slice()).unwrap_or_default();
-        output_indices.get(k).copied().ok_or(CovenantsError::InvalidCovOutIndex(covenant_id, k).into())
+        output_indices.get(k).copied().ok_or(CovenantsError::InvalidCovOutIndex(covenant_id, k))
     }
 
     /// Constructs the covenants execution context for a transaction.

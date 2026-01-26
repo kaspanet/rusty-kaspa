@@ -83,8 +83,6 @@ pub enum TxScriptError {
     #[error("{0} cannot be used as an array index")]
     InvalidIndex(i32),
 
-    #[error("{0} is not a valid covenant output index for input {1} with {2} covenant outputs")]
-    InvalidInputCovOutIndex(usize, usize, usize),
     #[error("blockhash must be exactly 32 bytes long, got {0} bytes instead")]
     InvalidLengthOfBlockHash(usize),
     #[error("block {0} not selected")]
@@ -115,4 +113,6 @@ pub enum CovenantsError {
     InvalidCovInIndex(Hash, usize),
     #[error("covenant id {0} output {1} is out of bounds")]
     InvalidCovOutIndex(Hash, usize),
+    #[error("{0} is not a valid covenant output index for input {1} with {2} authorized outputs")]
+    InvalidAuthCovOutIndex(usize, usize, usize),
 }
