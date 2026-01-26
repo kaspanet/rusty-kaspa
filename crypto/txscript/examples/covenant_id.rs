@@ -90,7 +90,7 @@ struct CovenantState {
 impl CovenantState {
     fn new(counter: u8, covenant_script: &[u8]) -> Self {
         let tx = genesis_tx(counter, covenant_script);
-        let covenant_id = hashing::covenant_id::covenant_id(TransactionOutpoint::new(tx.id(), 0));
+        let covenant_id = hashing::covenant_id::covenant_id(TransactionOutpoint::new(tx.id(), 0), std::iter::empty());
         Self::from_tx(tx, covenant_script, counter, covenant_id)
     }
 

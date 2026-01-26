@@ -1,7 +1,13 @@
-use kaspa_consensus_core::tx::{CovenantBinding, VerifiableTransaction};
+use kaspa_consensus_core::{
+    hashing,
+    tx::{CovenantBinding, VerifiableTransaction},
+};
 use kaspa_hashes::Hash;
 use kaspa_txscript_errors::CovenantsError;
-use std::{collections::HashMap, sync::LazyLock};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    sync::LazyLock,
+};
 
 /// Context for an input's specific authority over a subset of outputs.
 ///
@@ -92,6 +98,13 @@ impl CovenantsContext {
     pub fn from_tx(tx: &impl VerifiableTransaction) -> Result<Self, CovenantsError> {
         let mut ctx = CovenantsContext::default();
 
+        struct GenesisCtx {
+            covenant_id: Hash,
+            output_indices: Vec<usize>,
+        }
+
+        let mut genesis_ctxs: HashMap<usize, GenesisCtx> = HashMap::new();
+
         for (i, (_, entry)) in tx.populated_inputs().enumerate() {
             if let Some(covenant_id) = entry.covenant_id {
                 ctx.shared_ctxs.entry(covenant_id).or_default().input_indices.push(i);
@@ -133,13 +146,32 @@ impl CovenantsContext {
                     // Genesis case: the authorizing input is not under a covenant yet.
                     // No covenant script is expected to run at this point, so we only validate.
 
-                    let input = &tx.inputs()[auth_input_idx]; // safe: utxo(auth_input) existed above
-                    let expected_id = kaspa_consensus_core::hashing::covenant_id::covenant_id(input.previous_outpoint);
-
-                    if expected_id != covenant_id {
-                        return Err(CovenantsError::WrongGenesisCovenantId(i));
+                    match genesis_ctxs.entry(auth_input_idx) {
+                        Entry::Occupied(mut e) => {
+                            let GenesisCtx { covenant_id: existing_id, output_indices } = e.get_mut();
+                            if *existing_id != covenant_id {
+                                return Err(CovenantsError::MismatchedGenesisCovenantId(output_indices[0], i));
+                            }
+                            output_indices.push(i);
+                        }
+                        Entry::Vacant(e) => {
+                            e.insert(GenesisCtx { covenant_id, output_indices: vec![i] });
+                        }
                     }
                 }
+            }
+        }
+
+        for (auth_input_idx, GenesisCtx { covenant_id, output_indices }) in genesis_ctxs.into_iter() {
+            let input = tx.inputs().get(auth_input_idx).expect("utxo(auth_input) existed above");
+
+            let expected_id = hashing::covenant_id::covenant_id(
+                input.previous_outpoint,
+                output_indices.into_iter().map(|i| (i as u32, tx.outputs().get(i).expect("enumerated above"))),
+            );
+
+            if expected_id != covenant_id {
+                return Err(CovenantsError::WrongGenesisCovenantId(auth_input_idx));
             }
         }
 
