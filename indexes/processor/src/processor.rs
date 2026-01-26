@@ -13,6 +13,7 @@ use kaspa_notify::{
     notification::Notification as NotificationTrait,
     notifier::DynNotify,
 };
+use kaspa_txindex::api::TxIndexProxy;
 use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::sync::{
@@ -29,6 +30,8 @@ use std::sync::{
 pub struct Processor {
     /// An optional UTXO indexer
     utxoindex: Option<UtxoIndexProxy>,
+    /// An optional TX indexer
+    txindex: Option<TxIndexProxy>,
 
     recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
 
@@ -39,9 +42,10 @@ pub struct Processor {
 }
 
 impl Processor {
-    pub fn new(utxoindex: Option<UtxoIndexProxy>, recv_channel: CollectorNotificationReceiver<ConsensusNotification>) -> Self {
+    pub fn new(utxoindex: Option<UtxoIndexProxy>, txindex: Option<TxIndexProxy>, recv_channel: CollectorNotificationReceiver<ConsensusNotification>) -> Self {
         Self {
             utxoindex,
+            txindex,
             recv_channel,
             collect_shutdown: Arc::new(SingleTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
@@ -136,6 +140,7 @@ mod tests {
     use kaspa_database::prelude::ConnBuilder;
     use kaspa_database::utils::DbLifetime;
     use kaspa_notify::notifier::test_helpers::NotifyMock;
+    use kaspa_txindex::{TxIndex, api::TxIndexApi};
     use kaspa_utxoindex::UtxoIndex;
     use rand::{rngs::SmallRng, SeedableRng};
     use std::sync::Arc;
@@ -149,22 +154,25 @@ mod tests {
         processor_receiver: Receiver<Notification>,
         test_consensus: TestConsensus,
         utxoindex_db_lifetime: DbLifetime,
+        txindex_db_lifetime: DbLifetime,
     }
 
     impl NotifyPipeline {
         fn new() -> Self {
             let (consensus_sender, consensus_receiver) = unbounded();
             let (utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+            let (txindex_db_lifetime, txindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
             let config = Arc::new(Config::new(DEVNET_PARAMS));
             let tc = TestConsensus::new(&config);
             tc.init();
             let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
-            let utxoindex = Some(UtxoIndexProxy::new(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap()));
-            let processor = Arc::new(Processor::new(utxoindex, consensus_receiver));
+            let utxoindex = Some(UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap()));
+            let txindex = Some(TxIndexProxy::new(TxIndex::new(consensus_manager, txindex_db).unwrap()));
+            let processor = Arc::new(Processor::new(utxoindex, txindex, consensus_receiver));
             let (processor_sender, processor_receiver) = unbounded();
             let notifier = Arc::new(NotifyMock::new(processor_sender));
             processor.clone().start(notifier);
-            Self { test_consensus: tc, consensus_sender, processor, processor_receiver, utxoindex_db_lifetime }
+            Self { test_consensus: tc, consensus_sender, processor, processor_receiver, utxoindex_db_lifetime, txindex_db_lifetime }
         }
     }
 

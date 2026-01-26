@@ -1,7 +1,6 @@
 use std::{
     fmt::Display,
     sync::{Arc, Weak},
-    u64, usize,
 };
 
 use itertools::Itertools;
@@ -18,17 +17,13 @@ use kaspa_database::prelude::DB;
 use parking_lot::RwLock;
 
 use crate::{
-    errors::TxIndexResult,
-    model::{
+    IDENT, api::TxIndexApi, errors::TxIndexResult, model::{
         bluescore_refs::{BlueScoreAcceptingRefData, BlueScoreIncludingRefData},
         transactions::{TxAcceptanceData, TxInclusionData},
-    },
-    reindexer::{
+    }, reindexer::{
         block_reindexer,
         mergeset_reindexer::{self},
-    },
-    stores::store_manager::Store,
-    IDENT,
+    }, stores::store_manager::Store
 };
 
 const RESYNC_ACCEPTANCE_DATA_CHUNK_SIZE: u64 = 2048;
@@ -46,7 +41,7 @@ impl TxIndex {
         let mut txindex = Self { consensus_manager: consensus_manager.clone(), store: Store::new(db) };
         if !txindex.is_synced()? {
             info!("[{}] TxIndex is not synced, starting resync", IDENT);
-            txindex.try_resync()?;
+            txindex.resync_all_from_scratch()?;
         } else {
             info!("[{}] TxIndex is synced", IDENT);
         }
@@ -54,24 +49,27 @@ impl TxIndex {
         consensus_manager.register_consensus_reset_handler(Arc::new(TxIndexConsensusResetHandler::new(Arc::downgrade(&txindex))));
         Ok(txindex)
     }
+}
 
-    pub fn get_accepted_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxAcceptanceData>> {
+impl TxIndexApi for TxIndex {
+
+    fn get_accepted_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxAcceptanceData>> {
         debug!("[{}] Getting accepted transaction data for txid: {}", IDENT, txid);
         Ok(self.store.get_accepted_transaction_data(txid)?)
     }
 
-    pub fn get_included_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxInclusionData>> {
+    fn get_included_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxInclusionData>> {
         debug!("[{}] Getting included transaction data for txid: {}", IDENT, txid);
         Ok(self.store.get_included_transaction_data(txid)?)
     }
 
-    pub fn update_via_block_added(&mut self, block_added_notification: BlockAddedNotification) -> TxIndexResult<()> {
+    fn update_via_block_added(&mut self, block_added_notification: BlockAddedNotification) -> TxIndexResult<()> {
         debug!("[{}] Updating via block added notification: {:?}", IDENT, block_added_notification.block.hash());
         let reindexed_block_added_state = block_reindexer::reindex_block_added_notification(&block_added_notification);
         Ok(self.store.update_via_reindexed_block_added_state(reindexed_block_added_state)?)
     }
 
-    pub fn update_via_virtual_chain_changed(
+    fn update_via_virtual_chain_changed(
         &mut self,
         virtual_chain_changed_notification: VirtualChainChangedNotification,
     ) -> TxIndexResult<()> {
@@ -86,7 +84,7 @@ impl TxIndex {
     }
 
     /// Ranges are inclusive
-    pub fn get_transaction_inclusion_data_by_blue_score_range(
+    fn get_transaction_inclusion_data_by_blue_score_range(
         &self,
         from: u64, // inclusive
         to: u64,   // inclusive
@@ -96,7 +94,7 @@ impl TxIndex {
         Ok(self.store.get_transaction_inclusion_data_by_blue_score_range(from..=to, limit)?)
     }
     /// Ranges are inclusive
-    pub fn get_transaction_acceptance_data_by_blue_score_range(
+    fn get_transaction_acceptance_data_by_blue_score_range(
         &self,
         from: u64, // inclusive
         to: u64,   // inclusive
@@ -147,7 +145,7 @@ impl TxIndex {
         }))
     }
 
-    pub fn is_synced(&self) -> TxIndexResult<bool> {
+    fn is_synced(&self) -> TxIndexResult<bool> {
         debug!(
             "[{}] Checking if TxIndex is synced: acceptance data synced: {}, inclusion data synced: {}, retention synced: {}",
             IDENT,
@@ -158,9 +156,9 @@ impl TxIndex {
         Ok(self.is_acceptance_data_synced()? && self.is_inclusion_data_synced()? && self.is_retention_synced()?)
     }
 
-    pub fn try_resync(&mut self) -> TxIndexResult<()> {
+    fn resync_all_from_scratch(&mut self) -> TxIndexResult<()> {
         if !self.is_retention_synced()? {
-            self.resync_retention()?;
+            self.resync_retention_data_from_scratch()?;
         };
         if !self.is_acceptance_data_synced()? {
             self.resync_acceptance_data_from_scratch()?;
@@ -219,7 +217,7 @@ impl TxIndex {
         Ok(())
     }
 
-    pub fn prune_on_the_fly(&mut self) -> TxIndexResult<()> {
+    fn prune_on_the_fly(&mut self) -> TxIndexResult<()> {
         info!("[{}] Pruning TxIndex on the fly", IDENT);
         let txindex_retention_root_blue_score = self.store.get_retention_root_blue_score()?.unwrap();
         let next_to_prune_blue_score = self.store.get_next_to_prune_blue_score()?.unwrap();
@@ -233,7 +231,7 @@ impl TxIndex {
         Ok(())
     }
 
-    pub fn resync_retention(&mut self) -> TxIndexResult<()> {
+    fn resync_retention_data_from_scratch(&mut self) -> TxIndexResult<()> {
         info!("[{}] Pruning TxIndex", IDENT);
         let consensus = self.consensus_manager.consensus();
         let session = futures::executor::block_on(consensus.session_blocking());
@@ -292,7 +290,7 @@ impl ConsensusResetHandler for TxIndexConsensusResetHandler {
 
             if !txindex_write.is_synced().unwrap() {
                 info!("[{}] TxIndex is not synced, starting resync", IDENT);
-                txindex_write.try_resync().unwrap();
+                txindex_write.resync_all_from_scratch().unwrap();
             } else {
                 info!("[{}] TxIndex is synced", IDENT);
             };

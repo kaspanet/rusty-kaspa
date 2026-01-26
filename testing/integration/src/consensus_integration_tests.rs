@@ -743,6 +743,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
         &notify_service.notifier(),
         subscription_context.clone(),
         Some(UtxoIndexProxy::new(utxoindex.clone())),
+        None,
     ));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));

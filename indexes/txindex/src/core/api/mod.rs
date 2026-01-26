@@ -8,7 +8,7 @@ use parking_lot::RwLock;
 use crate::{
     errors::TxIndexResult,
     model::{
-        bluescore_refs::BlueScoreRefData,
+        bluescore_refs::{BlueScoreAcceptingRefData, BlueScoreIncludingRefData},
         transactions::{TxAcceptanceData, TxInclusionData},
     },
 };
@@ -17,15 +17,26 @@ use crate::{
 pub trait TxIndexApi: Send + Sync + Debug {
     fn get_accepted_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxAcceptanceData>>;
     fn get_included_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxInclusionData>>;
-    fn get_transaction_data_by_blue_score_range(&self, from: u64, to: u64) -> TxIndexResult<Vec<BlueScoreRefData>>;
-    fn get_transaction_inclusion_data_by_blue_score_range(&self, from: u64, to: u64) -> TxIndexResult<Vec<BlueScoreRefData>>;
-    fn get_transaction_acceptance_data_by_blue_score_range(&self, from: u64, to: u64) -> TxIndexResult<Vec<BlueScoreRefData>>;
+    fn get_transaction_inclusion_data_by_blue_score_range(&self, from: u64, to: u64, limit: Option<usize>) -> TxIndexResult<Vec<BlueScoreIncludingRefData>>;
+    fn get_transaction_acceptance_data_by_blue_score_range(&self, from: u64, to: u64, limit: Option<usize>) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>>;
+
+    fn is_synced(&self) -> TxIndexResult<bool>;
+    fn is_acceptance_data_synced(&self) -> TxIndexResult<bool>;
+    fn is_inclusion_data_synced(&self) -> TxIndexResult<bool>;
+    fn is_retention_synced(&self) -> TxIndexResult<bool>;
+
+    fn resync_all_from_scratch(&mut self) -> TxIndexResult<()>;
+    fn resync_acceptance_data_from_scratch(&mut self) -> TxIndexResult<()>;
+    fn resync_inclusion_data_from_scratch(&mut self) -> TxIndexResult<()>;
+    fn resync_retention_data_from_scratch(&mut self) -> TxIndexResult<()>;
 
     fn update_via_block_added(&mut self, block_added_notification: BlockAddedNotification) -> TxIndexResult<()>;
     fn update_via_virtual_chain_changed(
         &mut self,
         virtual_chain_changed_notification: VirtualChainChangedNotification,
     ) -> TxIndexResult<()>;
+
+    fn prune_on_the_fly(&mut self) -> TxIndexResult<()>;
 }
 
 /// Async proxy for the TxIndex
@@ -47,20 +58,17 @@ impl TxIndexProxy {
         spawn_blocking(move || self.inner.read().get_included_transaction_data(txid)).await.unwrap()
     }
 
-    pub async fn get_transaction_data_by_blue_score_range(self, from: u64, to: u64) -> TxIndexResult<Vec<BlueScoreRefData>> {
-        spawn_blocking(move || self.inner.read().get_transaction_data_by_blue_score_range(from, to)).await.unwrap()
-    }
-
-    pub async fn get_transaction_inclusion_data_by_blue_score_range(self, from: u64, to: u64) -> TxIndexResult<Vec<BlueScoreRefData>> {
-        spawn_blocking(move || self.inner.read().get_transaction_inclusion_data_by_blue_score_range(from, to)).await.unwrap()
+    pub async fn get_transaction_inclusion_data_by_blue_score_range(self, from: u64, to: u64, limit: Option<usize>) -> TxIndexResult<Vec<BlueScoreIncludingRefData>> {
+        spawn_blocking(move || self.inner.read().get_transaction_inclusion_data_by_blue_score_range(from, to, limit)).await.unwrap()
     }
 
     pub async fn get_transaction_acceptance_data_by_blue_score_range(
         self,
         from: u64,
         to: u64,
-    ) -> TxIndexResult<Vec<BlueScoreRefData>> {
-        spawn_blocking(move || self.inner.read().get_transaction_acceptance_data_by_blue_score_range(from, to)).await.unwrap()
+        limit: Option<usize>,
+    ) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>> {
+        spawn_blocking(move || self.inner.read().get_transaction_acceptance_data_by_blue_score_range(from, to, limit)).await.unwrap()
     }
 
     pub async fn update_via_block_added(self, block_added_notification: BlockAddedNotification) -> TxIndexResult<()> {

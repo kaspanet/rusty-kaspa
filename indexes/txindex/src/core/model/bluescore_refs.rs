@@ -1,12 +1,6 @@
 use kaspa_consensus_core::tx::TransactionId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BlueScoreRefData {
-    Acceptance(BlueScoreAcceptingRefData),
-    Inclusion(BlueScoreIncludingRefData),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlueScoreAcceptingRefData {
     /// The blue score of the block that accepted the transaction
     pub accepting_blue_score: u64,

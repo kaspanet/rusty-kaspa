@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
+use std::{fs, path::PathBuf, process::exit, sync::Arc, thread, time::Duration};
 
 use async_channel::unbounded;
 use kaspa_consensus_core::{
@@ -19,6 +19,7 @@ use kaspa_notify::{address::tracker::Tracker, subscription::context::Subscriptio
 use kaspa_p2p_lib::Hub;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_rpc_service::service::RpcCoreService;
+use kaspa_txindex::{TxIndex, api::TxIndexProxy};
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::git;
 use kaspa_utils::networking::ContextualNetAddress;
@@ -67,6 +68,7 @@ use crate::args::Args;
 const DEFAULT_DATA_DIR: &str = "datadir";
 const CONSENSUS_DB: &str = "consensus";
 const UTXOINDEX_DB: &str = "utxoindex";
+const TXINDEX_DB: &str = "txindex";
 const META_DB: &str = "meta";
 const META_DB_FILE_LIMIT: i32 = 5;
 const DEFAULT_LOG_DIR: &str = "logs";
@@ -281,12 +283,30 @@ fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathB
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
     let mut fd_remaining = fd_total_budget;
-    let utxo_files_limit = if args.utxoindex {
-        let utxo_files_limit = fd_remaining / 10;
-        fd_remaining -= utxo_files_limit;
-        utxo_files_limit
-    } else {
-        0
+    let (utxo_files_limit, tx_files_limit) = match (args.utxoindex, args.txindex) {
+        (false, 0) => {(0i32, 0i32)},
+        (true, 0) => {
+            let utxo_files_limit = fd_remaining / 10;
+            fd_remaining -= utxo_files_limit;
+            (utxo_files_limit, 0i32)
+        }
+        (false, 1) => {
+            let txindex_files_limit = fd_remaining / 10;
+            fd_remaining -= txindex_files_limit;
+            (0i32, txindex_files_limit)
+        }
+        (true, 1) => {
+            let file_limit = fd_remaining / 5;
+            let utxo_files_limit = file_limit / 2;
+            let txindex_files_limit = file_limit / 2;
+            fd_remaining -= txindex_files_limit;
+            fd_remaining -= utxo_files_limit;
+            (utxo_files_limit, txindex_files_limit)
+        }
+        _ => {
+            println!("Invalid txindex value: {}. Valid values are 0 (disabled) and 1 (enabled for inclusion and acceptance).", args.txindex);
+            exit(1);
+        }
     };
 
     // Configure RocksDB parameters
@@ -345,6 +365,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
 
     let consensus_db_dir = db_dir.join(CONSENSUS_DB);
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
+    let txindex_db_dir = db_dir.join(TXINDEX_DB);
     let meta_db_dir = db_dir.join(META_DB);
 
     let mut is_db_reset_needed = args.reset_db;
@@ -363,6 +384,10 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     if args.utxoindex {
         info!("Utxoindex Data directory {}", utxoindex_db_dir.display());
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+    }
+    if args.txindex == 1 {
+        info!("Txindex Data directory {}", txindex_db_dir.display());
+        fs::create_dir_all(txindex_db_dir.as_path()).unwrap();
     }
 
     if !args.archival && args.retention_period_days.is_some() {
@@ -524,6 +549,9 @@ Do you confirm? (y/n)";
         if args.utxoindex {
             fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
         }
+        if args.txindex == 1 {
+            fs::create_dir_all(txindex_db_dir.as_path()).unwrap();
+        }
 
         // Reopen the DB
         meta_db = kaspa_database::prelude::ConnBuilder::default()
@@ -605,23 +633,42 @@ Do you confirm? (y/n)";
     let system_info = SystemInfo::default();
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv, subscription_context.clone()));
-    let index_service: Option<Arc<IndexService>> = if args.utxoindex {
-        // Use only a single thread for none-consensus databases
-        let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
-            .with_db_path(utxoindex_db_dir)
-            .with_files_limit(utxo_files_limit)
-            .with_preset(rocksdb_preset)
-            .with_wal_dir(wal_dir.clone())
-            .with_cache_budget(cache_budget)
-            .build()
-            .unwrap();
-        let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
-        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), subscription_context.clone(), Some(utxoindex)));
+    let index_service: Option<Arc<IndexService>> = if args.utxoindex || args.txindex == 1 {
+        // We spawn, and hence sync indexes, in parallel.
+        let utxoindex_jh = if args.utxoindex {
+            let utxoindex_db = kaspa_database::prelude::ConnBuilder::default() // Use only a single thread for none-consensus databases
+                .with_db_path(utxoindex_db_dir)
+                .with_files_limit(utxo_files_limit)
+                .build()
+                .unwrap();
+            let utxoindex_consensus_manager = consensus_manager.clone();
+            Some(thread::spawn(move || UtxoIndexProxy::new(UtxoIndex::new(utxoindex_consensus_manager, utxoindex_db).unwrap())))
+        } else {
+            None
+        };
+
+        let txindex_jh = if args.txindex == 1 {
+            let txindex_db = kaspa_database::prelude::ConnBuilder::default() // Use only a single thread for none-consensus databases
+                .with_db_path(txindex_db_dir)
+                .with_files_limit(tx_files_limit)
+                .build()
+                .unwrap();
+            let txindex_consensus_manager = consensus_manager.clone();
+            Some(thread::spawn(move || TxIndexProxy::new(TxIndex::new(txindex_consensus_manager, txindex_db).unwrap())))
+        } else {
+            None
+        };
+
+        let index_service = Arc::new(IndexService::new(
+            &notify_service.notifier(),
+            subscription_context.clone(),
+            utxoindex_jh.map(|jh| jh.join().unwrap()),
+            txindex_jh.map(|jh| jh.join().unwrap()),
+        ));
         Some(index_service)
     } else {
         None
     };
-
     let (address_manager, port_mapping_extender_svc) = AddressManager::new(config.clone(), meta_db, tick_service.clone());
 
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_extended_config(
