@@ -153,7 +153,7 @@ impl CovenantsContext {
             );
 
             if expected_id != covenant_id {
-                return Err(CovenantsError::WrongGenesisCovenantId(auth_input_idx));
+                return Err(CovenantsError::WrongGenesisCovenantId(auth_input_idx, covenant_id));
             }
         }
 
