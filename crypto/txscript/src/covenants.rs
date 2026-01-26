@@ -144,8 +144,10 @@ impl CovenantsContext {
                 }
                 None => {
                     // Genesis case: the authorizing input is not under a covenant yet.
-                    // No covenant script is expected to run at this point, so we only validate.
+                    // No covenant script is expected to run here, so we do not record these relations in the covenants context used by the script engine.
 
+                    // Aggregate all authorized outputs for this genesis covenant instance so we can compute and validate
+                    // the expected covenant id once collection is complete.
                     match genesis_ctxs.entry(auth_input_idx) {
                         Entry::Occupied(mut e) => {
                             let GenesisCtx { covenant_id: existing_id, output_indices } = e.get_mut();
@@ -162,6 +164,7 @@ impl CovenantsContext {
             }
         }
 
+        // Verify aggregated genesis covenant id calculations (if any).
         for (auth_input_idx, GenesisCtx { covenant_id, output_indices }) in genesis_ctxs.into_iter() {
             let input = tx.inputs().get(auth_input_idx).expect("utxo(auth_input) existed above");
 
