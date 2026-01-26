@@ -5,6 +5,13 @@ use crate::{
     tx::{TransactionOutpoint, TransactionOutput},
 };
 
+/// Computes the covenant identifier from the genesis outpoint and its authorized outputs.
+///
+/// The genesis outpoint serves as a globally unique anchor; the authorized outputs
+/// define the covenant's initial rules and state.
+///
+/// The identifier incorporates each authorized output's index, value, and script
+/// public key; any change to these yields a distinct covenant identifier.
 pub fn covenant_id<'a>(
     outpoint: TransactionOutpoint,
     auth_outputs: impl ExactSizeIterator<Item = (u32, &'a TransactionOutput)>,
