@@ -32,7 +32,6 @@ pub fn hash_pre_crescendo(tx: &Transaction) -> Hash {
 
 /// Not intended for direct use by clients. Instead use `tx.id()`
 pub fn id(tx: &Transaction) -> TransactionId {
-    assert!(tx.version < 2);
     if tx.version == 0 { id_v0(tx) } else { id_v1(tx) }
 }
 
@@ -65,6 +64,8 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
     hasher.update(tx.lock_time.to_le_bytes()).update(tx.subnetwork_id).update(tx.gas.to_le_bytes());
     if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_PAYLOAD) {
         hasher.write_var_bytes(&tx.payload);
+    } else {
+        hasher.write_var_bytes(&[]);
     };
 
     /*
@@ -288,7 +289,7 @@ mod tests {
         // // Test #10, same as 9 with different version and checks it affects id and hash
         // tests.push(Test {
         //     tx: Transaction::new(1, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
-        //     expected_id: "a08a500b21be3e692c080b14e399fcfa2cfa01b25c08f2f8e7414d1c116e8d18",
+        //     expected_id: "9ec65c816b495e7da8f88c6d261af00b7bca45e398a4373f92eb665e7d7cf79d",
         //     expected_hash: "6c8fed2799b478667914748b9c76da576fc18b44ce87c6ebc01c01705f13f3e3",
         // });
 
@@ -306,5 +307,7 @@ mod tests {
         // Avoid compiler warnings on the last clone
         drop(inputs);
         drop(outputs);
+
+        // TODO(pre-covpp) add tests for v1 hashes
     }
 }
