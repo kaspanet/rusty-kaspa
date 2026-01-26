@@ -1,7 +1,9 @@
+use std::cell::RefCell;
 use std::sync::Arc;
 
+use kaspa_consensus_core::{BlockHashMap, HashMapCustomHasher};
 use kaspa_consensus_core::{BlockHasher, BlockLevel, header::Header};
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey};
 use kaspa_database::prelude::{CachePolicy, DB};
 use kaspa_database::prelude::{StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
@@ -220,5 +222,95 @@ impl HeaderStore for DbHeadersStore {
         self.headers_access.delete(BatchDbWriter::new(&mut batch), hash)?;
         self.db.write(batch)?;
         Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct MemoryHeaderStore {
+    header_map: RefCell<BlockHashMap<Arc<kaspa_consensus_core::header::Header>>>,
+}
+
+impl Default for MemoryHeaderStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MemoryHeaderStore {
+    pub fn new() -> Self {
+        Self { header_map: RefCell::new(BlockHashMap::new()) }
+    }
+}
+
+impl HeaderStoreReader for MemoryHeaderStore {
+    fn get_bits(&self, hash: Hash) -> std::result::Result<u32, StoreError> {
+        // Prefer stored header if available
+        let map = self.header_map.borrow();
+        if let Some(h) = map.get(&hash) {
+            return Ok(h.bits);
+        }
+        Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Headers.as_ref(), hash)))
+    }
+
+    fn get_blue_score(&self, hash: Hash) -> std::result::Result<u64, StoreError> {
+        let map = self.header_map.borrow();
+        if let Some(h) = map.get(&hash) {
+            return Ok(h.blue_score);
+        }
+        Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Headers.as_ref(), hash)))
+    }
+
+    fn get_compact_header_data(
+        &self,
+        hash: Hash,
+    ) -> std::result::Result<crate::model::stores::headers::CompactHeaderData, StoreError> {
+        let map = self.header_map.borrow();
+        if let Some(h) = map.get(&hash) {
+            let compact: crate::model::stores::headers::CompactHeaderData =
+                crate::model::stores::headers::CompactHeaderData::from(h.as_ref());
+            return Ok(compact);
+        }
+        Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::HeadersCompact.as_ref(), hash)))
+    }
+
+    fn get_daa_score(&self, hash: Hash) -> std::result::Result<u64, StoreError> {
+        let map = self.header_map.borrow();
+        if let Some(h) = map.get(&hash) {
+            return Ok(h.daa_score);
+        }
+        Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Headers.as_ref(), hash)))
+    }
+
+    fn get_header(&self, hash: Hash) -> std::result::Result<Arc<kaspa_consensus_core::header::Header>, StoreError> {
+        let map = self.header_map.borrow();
+        if let Some(h) = map.get(&hash) {
+            return Ok(Arc::clone(h));
+        }
+        Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Headers.as_ref(), hash)))
+    }
+
+    fn get_header_with_block_level(
+        &self,
+        hash: Hash,
+    ) -> std::result::Result<crate::model::stores::headers::HeaderWithBlockLevel, StoreError> {
+        let map = self.header_map.borrow();
+        if let Some(h) = map.get(&hash) {
+            return Ok(crate::model::stores::headers::HeaderWithBlockLevel { header: Arc::clone(h), block_level: 0 });
+        }
+        Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Headers.as_ref(), hash)))
+    }
+
+    fn get_timestamp(&self, hash: Hash) -> std::result::Result<u64, StoreError> {
+        let map = self.header_map.borrow();
+        if let Some(h) = map.get(&hash) {
+            return Ok(h.timestamp);
+        }
+        Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Headers.as_ref(), hash)))
+    }
+}
+
+impl MemoryHeaderStore {
+    pub fn insert(&self, header: Arc<Header>) {
+        self.header_map.borrow_mut().insert(header.hash, header);
     }
 }
