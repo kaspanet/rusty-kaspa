@@ -41,22 +41,6 @@ impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
 
-        // The transaction must be a currently supported version.
-        //
-        // This check is currently mirrored in consensus.
-        // However, in a later version of Kaspa the consensus-valid transaction version range might diverge from the
-        // standard transaction version range, and thus the validation should happen in both levels.
-        if transaction.tx.version > self.config.maximum_standard_transaction_version
-            || transaction.tx.version < self.config.minimum_standard_transaction_version
-        {
-            return Err(NonStandardError::RejectVersion(
-                transaction_id,
-                transaction.tx.version,
-                self.config.minimum_standard_transaction_version,
-                self.config.maximum_standard_transaction_version,
-            ));
-        }
-
         // Since extremely large transactions with a lot of inputs can cost
         // almost as much to process as the sender fees, limit the maximum
         // size of a transaction. This also helps mitigate CPU exhaustion
@@ -436,10 +420,10 @@ mod tests {
                 is_standard: true,
             },
             Test {
-                name: "Transaction version too high",
+                name: "Transaction version above allowed",
                 mtx: new_mtx(
                     Transaction::new(
-                        TX_VERSION + 1,
+                        TX_VERSION + 2,
                         vec![dummy_tx_input.clone()],
                         vec![dummy_tx_out.clone()],
                         0,
@@ -449,7 +433,7 @@ mod tests {
                     ),
                     1000,
                 ),
-                is_standard: false,
+                is_standard: true, // check_transaction_standard_in_isolation does not check version
             },
             Test {
                 name: "Transaction size is too large",
@@ -580,7 +564,7 @@ mod tests {
                         test.name, res
                     );
                 }
-                assert_eq!(res.is_ok(), test.is_standard, "ensuring transaction standard-ness is as expected");
+                assert_eq!(res.is_ok(), test.is_standard, "failed for test '{}': {:?}", test.name, res);
             }
         }
     }
