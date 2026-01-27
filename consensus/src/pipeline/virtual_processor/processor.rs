@@ -87,6 +87,7 @@ use super::{
 };
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
+use kaspa_consensus_core::hashing::tx::seq_commit_tx_digest;
 use kaspa_consensus_core::tx::ValidatedTransaction;
 use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
@@ -551,6 +552,16 @@ impl VirtualStateProcessor {
         // Update the accumulated diff
         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
 
+        let accepted_tx_digests = if self.covenants_activation.is_active(virtual_daa_window.daa_score) {
+            ctx.accepted_tx_ids
+                .into_iter()
+                .zip(ctx.accepted_tx_versions)
+                .map(|(txid, version)| seq_commit_tx_digest(txid, version))
+                .collect()
+        } else {
+            ctx.accepted_tx_ids
+        };
+
         // Build the new virtual state
         Ok(Arc::new(VirtualState::new(
             virtual_parents,
@@ -559,8 +570,7 @@ impl VirtualStateProcessor {
             virtual_past_median_time,
             ctx.multiset_hash,
             ctx.mergeset_diff,
-            ctx.accepted_tx_ids,
-            ctx.accepted_tx_payload_digest,
+            accepted_tx_digests,
             ctx.mergeset_rewards,
             virtual_daa_window.mergeset_non_daa,
             virtual_ghostdag_data,
@@ -1082,8 +1092,7 @@ impl VirtualStateProcessor {
 
         let accepted_id_merkle_root = self.calc_accepted_id_merkle_root(
             virtual_state.daa_score,
-            virtual_state.accepted_tx_ids.iter().copied(),
-            virtual_state.accepted_tx_payload_digests.iter().copied(),
+            virtual_state.accepted_tx_digests.iter().copied(),
             virtual_state.ghostdag_data.selected_parent,
         );
         let utxo_commitment = virtual_state.multiset.clone().finalize();

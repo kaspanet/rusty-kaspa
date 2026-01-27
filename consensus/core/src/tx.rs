@@ -36,6 +36,7 @@ use workflow_wasm::convert::{Cast, TryCastFromJs, TryCastJsInto};
 use workflow_wasm::extensions::ObjectExtension;
 use workflow_wasm::prelude::CastFromJs;
 
+use crate::hashing::tx::seq_commit_tx_digest;
 use kaspa_hashes::Hash;
 
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
@@ -317,6 +318,10 @@ impl Transaction {
     pub fn payload_digest(&self) -> Hash {
         hashing::tx::payload_digest(&self.payload)
     }
+
+    pub fn seq_commit_digest(&self) -> Hash {
+        seq_commit_tx_digest(self.id(), self.version)
+    }
 }
 
 impl MemSizeEstimator for Transaction {
@@ -371,6 +376,14 @@ pub trait VerifiableTransaction {
 
     fn payload_digest(&self) -> Hash {
         self.tx().payload_digest()
+    }
+
+    fn seq_commit_digest(&self) -> Hash {
+        self.tx().seq_commit_digest()
+    }
+
+    fn version(&self) -> u16 {
+        self.tx().version
     }
 }
 

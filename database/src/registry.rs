@@ -75,8 +75,6 @@ pub enum DatabaseStorePrefixes {
     UtxoIndexTips = 193,
     CirculatingSupply = 194,
 
-    VirtualStateV1 = 224,
-
     // ---- Separator ----
     /// Reserved as a separator
     Separator = SEPARATOR,
