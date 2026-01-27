@@ -39,7 +39,7 @@ sha256_hasher! {
 
 blake3_hasher! {
     struct SeqCommitmentMerkleBranchHash => b"SeqCommitmentMerkleBranchHash",
-
+    struct SeqCommitmentMerkleLeafHash => b"SeqCommitmentMerkleLeafHash",
     struct PayloadDigest => b"PayloadDigest",
     struct TransactionRest => b"TransactionRest",
     struct TransactionV1Id => b"TransactionV1Id",

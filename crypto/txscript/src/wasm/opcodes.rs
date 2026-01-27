@@ -144,7 +144,7 @@ pub enum Opcodes {
 
     /// Splice opcodes.
     OpCat = 0x7e,
-    OpSubStr = 0x7f,
+    OpSubstr = 0x7f,
     OpLeft = 0x80,
     OpRight = 0x81,
 
