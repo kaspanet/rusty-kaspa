@@ -114,7 +114,7 @@ impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
             matches!(
                 CODE,
                 codes::OpCat
-                    | codes::OpSubStr
+                    | codes::OpSubstr
                     | codes::OpLeft
                     | codes::OpRight
                     | codes::OpInvert
@@ -220,14 +220,22 @@ fn push_number<T: VerifiableTransaction, Reused: SigHashReusedValues>(
 }
 
 fn substring(data: &[u8], start: usize, end: usize) -> Result<Vec<u8>, TxScriptError> {
-    if end - start > MAX_SCRIPT_ELEMENT_SIZE {
-        return Err(TxScriptError::ElementTooBig(end - start, MAX_SCRIPT_ELEMENT_SIZE));
+    let diff = end.checked_sub(start).ok_or(TxScriptError::InvalidRange { start, end })?;
+    if diff > MAX_SCRIPT_ELEMENT_SIZE {
+        return Err(TxScriptError::ElementTooBig(diff, MAX_SCRIPT_ELEMENT_SIZE));
     }
-    data.get(start..end).map(|substr| substr.to_vec()).ok_or(TxScriptError::OutOfBoundsSubstring(start, end, data.len()))
+    data.get(start..end).map(<[u8]>::to_vec).ok_or(TxScriptError::OutOfBoundsSubstring(start, end, data.len()))
 }
 
 fn i32_to_usize(value: i32) -> Result<usize, TxScriptError> {
     value.try_into().map_err(|_| TxScriptError::InvalidIndex(value))
+}
+fn i32s_to_usizes<const N: usize>(arr: [i32; N]) -> Result<[usize; N], TxScriptError> {
+    let mut out = [0usize; N];
+    for i in 0..N {
+        out[i] = i32_to_usize(arr[i])?;
+    }
+    Ok(out)
 }
 
 /*
@@ -524,12 +532,11 @@ opcode_list! {
         }
     }
 
-    opcode OpSubStr<0x7f, 1>(self, vm){
+    opcode OpSubstr<0x7f, 1>(self, vm){
         if vm.flags.covenants_enabled{
-            let [start, end]: [i32; 2] = vm.dstack.pop_items()?;
+            let [start, end] = vm.dstack.pop_items()?;
             let data = vm.dstack.pop()?;
-            let end = i32_to_usize(end)?;
-            let start = i32_to_usize(start)?;
+            let [start, end] = i32s_to_usizes([start, end])?;
             let substr = substring(&data, start, end)?;
             vm.dstack.push(substr)
         } else {
@@ -1078,9 +1085,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
-                    let [start, end]: [i32; 2] = vm.dstack.pop_items()?;
-                    let end = i32_to_usize(end)?;
-                    let start = i32_to_usize(start)?;
+                    let [start, end] = i32s_to_usizes(vm.dstack.pop_items()?)?;
                     let substr = substring(&tx.tx().payload, start, end)?;
                     push_data(substr, vm)
                 },
@@ -1129,19 +1134,16 @@ opcode_list! {
             Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
         }
     }
-    opcode OpTxInputScriptSigSubStr<0xbc, 1>(self, vm){
+    opcode OpTxInputScriptSigSubstr<0xbc, 1>(self, vm){
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
-                    let [idx, start, end]: [i32; 3] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let start = i32_to_usize(start)?;
-                    let end = i32_to_usize(end)?;
+                    let [idx, start, end] = i32s_to_usizes(vm.dstack.pop_items()?)?;
                     let input = tx.inputs().get(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
                     let substr = substring(&input.signature_script, start, end)?;
                     push_data(substr, vm)
                 },
-                _ => Err(TxScriptError::InvalidSource("OpTxInputScriptSigSubStr only applies to transaction inputs".to_string()))
+                _ => Err(TxScriptError::InvalidSource("OpTxInputScriptSigSubstr only applies to transaction inputs".to_string()))
             }
         } else {
             Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
@@ -1265,10 +1267,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
-                    let [idx, start, end]: [i32; 3] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let start = i32_to_usize(start)?;
-                    let end = i32_to_usize(end)?;
+                    let [idx, start, end] = i32s_to_usizes(vm.dstack.pop_items()?)?;
                     let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
                     let spk_bytes = utxo.script_public_key.to_bytes();
                     let substr = substring(&spk_bytes, start, end)?;
@@ -1303,10 +1302,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
-                    let [idx, start, end]: [i32; 3] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let start = i32_to_usize(start)?;
-                    let end = i32_to_usize(end)?;
+                    let [idx, start, end] = i32s_to_usizes(vm.dstack.pop_items()?)?;
                     let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx as i32, tx.outputs().len()))?;
                     let spk_bytes = output.script_public_key.to_bytes();
                     let substr = substring(&spk_bytes, start, end)?;
@@ -1335,25 +1331,7 @@ opcode_list! {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
     }
-    opcode OpTxInputScriptSigSubstr<0xca, 1>(self, vm) {
-        if vm.flags.covenants_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx, start, end]: [i32; 3] = vm.dstack.pop_items()?;
-                    let idx = i32_to_usize(idx)?;
-                    let start = i32_to_usize(start)?;
-                    let end = i32_to_usize(end)?;
-                    let input = tx.inputs().get(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
-                    let substr = substring(&input.signature_script, start, end)?;
-                    push_data(substr, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpTxInputScriptSigSubstr only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-        }
-    }
-
+    opcode OpUnknown202<0xca, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpAuthOutputCount<0xcb, 1>(self, vm){
         if vm.flags.covenants_enabled {
             match vm.script_source {
@@ -1377,8 +1355,7 @@ opcode_list! {
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
-                    let [input_idx, k]: [i32; 2] = vm.dstack.pop_items()?;
-                    let (input_idx, k) = (i32_to_usize(input_idx)?, i32_to_usize(k)?);
+                    let [input_idx, k] = i32s_to_usizes(vm.dstack.pop_items()?)?;
                     if input_idx >= tx.inputs().len() {
                         return Err(TxScriptError::InvalidInputIndex(input_idx.try_into().expect("casted above"), tx.inputs().len()));
                     }
@@ -1638,7 +1615,7 @@ mod test {
     fn test_opcode_disabled() {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpCat::empty().expect("Should accept empty"),
-            opcodes::OpSubStr::empty().expect("Should accept empty"),
+            opcodes::OpSubstr::empty().expect("Should accept empty"),
             opcodes::OpLeft::empty().expect("Should accept empty"),
             opcodes::OpRight::empty().expect("Should accept empty"),
             opcodes::OpInvert::empty().expect("Should accept empty"),
@@ -1679,7 +1656,7 @@ mod test {
             opcodes::OpTxPayloadSubstr::empty().expect("Should accept empty"),
             opcodes::OpOutpointTxId::empty().expect("Should accept empty"),
             opcodes::OpOutpointIndex::empty().expect("Should accept empty"),
-            opcodes::OpTxInputScriptSigSubStr::empty().expect("Should accept empty"),
+            opcodes::OpTxInputScriptSigSubstr::empty().expect("Should accept empty"),
             opcodes::OpTxInputSeq::empty().expect("Should accept empty"),
             opcodes::OpTxInputBlockDaaScore::empty().expect("Should accept empty"),
             opcodes::OpTxInputIsCoinbase::empty().expect("Should accept empty"),
@@ -1709,7 +1686,7 @@ mod test {
             opcodes::OpTxOutputSpkLen::empty().expect("Should accept empty"),
             opcodes::OpTxOutputSpkSubstr::empty().expect("Should accept empty"),
             opcodes::OpTxInputScriptSigLen::empty().expect("Should accept empty"),
-            opcodes::OpTxInputScriptSigSubstr::empty().expect("Should accept empty"),
+            opcodes::OpUnknown202::empty().expect("Should accept empty"),
             opcodes::OpBlake2bWithKey::empty().expect("Should accept empty"),
             opcodes::OpAuthOutputCount::empty().expect("Should accept empty"),
             opcodes::OpAuthOutputIdx::empty().expect("Should accept empty"),

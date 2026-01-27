@@ -1,11 +1,14 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
+use super::ghostdag::GhostdagData;
+use super::utxo_set::DbUtxoSetStore;
 use arc_swap::ArcSwap;
 use kaspa_consensus_core::api::stats::VirtualStateStats;
+use kaspa_consensus_core::config::params::ForkActivation;
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher, block::VirtualStateApproxId, coinbase::BlockRewardData,
-    config::genesis::GenesisBlock, tx::TransactionId, utxo::utxo_diff::UtxoDiff,
+    config::genesis::GenesisBlock, utxo::utxo_diff::UtxoDiff,
 };
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter, StoreResultExt};
 use kaspa_database::prelude::{CachePolicy, StoreResult};
@@ -16,9 +19,6 @@ use kaspa_muhash::MuHash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 
-use super::ghostdag::GhostdagData;
-use super::utxo_set::DbUtxoSetStore;
-
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct VirtualState {
     pub parents: Vec<Hash>,
@@ -28,12 +28,13 @@ pub struct VirtualState {
     pub past_median_time: u64,
     pub multiset: MuHash,
     pub utxo_diff: UtxoDiff, // This is the UTXO diff from the selected tip to the virtual. i.e., if this diff is applied on the past UTXO of the selected tip, we'll get the virtual UTXO set.
-    pub accepted_tx_ids: Vec<TransactionId>, // TODO: consider saving `accepted_id_merkle_root` directly
+    pub accepted_tx_digests: Vec<Hash>, // TODO: consider saving `accepted_id_merkle_root` directly
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
     pub mergeset_non_daa: BlockHashSet,
 }
 
 impl VirtualState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         parents: Vec<Hash>,
         daa_score: u64,
@@ -41,7 +42,7 @@ impl VirtualState {
         past_median_time: u64,
         multiset: MuHash,
         utxo_diff: UtxoDiff,
-        accepted_tx_ids: Vec<TransactionId>,
+        accepted_tx_digests: Vec<Hash>,
         mergeset_rewards: BlockHashMap<BlockRewardData>,
         mergeset_non_daa: BlockHashSet,
         ghostdag_data: GhostdagData,
@@ -54,13 +55,18 @@ impl VirtualState {
             past_median_time,
             multiset,
             utxo_diff,
-            accepted_tx_ids,
+            accepted_tx_digests,
             mergeset_rewards,
             mergeset_non_daa,
         }
     }
 
-    pub fn from_genesis(genesis: &GenesisBlock, ghostdag_data: GhostdagData) -> Self {
+    pub fn from_genesis(genesis: &GenesisBlock, ghostdag_data: GhostdagData, covenants_activation: ForkActivation) -> Self {
+        let accepted_tx_digests = if covenants_activation.is_active(genesis.daa_score) {
+            genesis.build_genesis_transactions().iter().map(|tx| tx.seq_commit_digest()).collect()
+        } else {
+            genesis.build_genesis_transactions().iter().map(|tx| tx.id()).collect()
+        };
         Self {
             parents: vec![genesis.hash],
             ghostdag_data,
@@ -69,7 +75,7 @@ impl VirtualState {
             past_median_time: genesis.timestamp,
             multiset: MuHash::new(),
             utxo_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
-            accepted_tx_ids: genesis.build_genesis_transactions().into_iter().map(|tx| tx.id()).collect(),
+            accepted_tx_digests,
             mergeset_rewards: BlockHashMap::new(),
             mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(genesis.hash)),
         }
