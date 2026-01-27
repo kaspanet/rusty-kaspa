@@ -4,7 +4,7 @@ use kaspa_consensus_core::{
     tx::TransactionId,
     BlockHashSet, Hash,
 };
-use kaspa_core::trace;
+use kaspa_core::{info, trace};
 use kaspa_database::prelude::{
     BatchDbWriter, CachePolicy, DbWriter, StoreResult, WriteBatch, DB,
 };
@@ -229,14 +229,17 @@ impl Store {
         Ok(())
     }
 
-    pub fn prune_from_blue_score(&mut self, from_blue_score: u64, max_blue_score: u64, limit: Option<usize>) -> StoreResult<u64> {
-        trace!("Pruning stores below blue score: {}", from_blue_score);
+    pub fn prune_from_blue_score(&mut self, from_blue_score: u64, max_blue_score: u64, limit: Option<usize>) -> StoreResult<(u64, bool)> {
+        trace!("Pruning stores below blue score: {}", max_blue_score);
         let mut batch = WriteBatch::default();
         let mut writer = BatchDbWriter::new(&mut batch);
 
         let mut last_pruned_blue_score = 0u64;
+        let mut is_acceptance_store_empty = true;
+        let mut is_inclusion_store_empty = true;
 
-        for data in self.accepting_bluescore_refs_store.get_blue_score_refs(from_blue_score..max_blue_score, limit)? {
+        for data in self.accepting_bluescore_refs_store.get_blue_score_refs(from_blue_score..=u64::MAX, limit)? {
+            is_acceptance_store_empty = false;
             if last_pruned_blue_score != data.accepting_blue_score {
                 last_pruned_blue_score = data.accepting_blue_score;
                 if data.accepting_blue_score >= max_blue_score {
@@ -246,7 +249,8 @@ impl Store {
             self.accepted_transactions_store.remove_transaction_acceptance_data(&mut writer, data.tx_id, data.accepting_blue_score)?;
         }
 
-        for data in self.including_bluescore_refs_store.get_blue_score_refs(from_blue_score..max_blue_score, limit)? {
+        for data in self.including_bluescore_refs_store.get_blue_score_refs(from_blue_score..=u64::MAX, limit)? {
+            is_inclusion_store_empty = false;
             if last_pruned_blue_score != data.including_blue_score {
                 last_pruned_blue_score = data.including_blue_score;
                 if data.including_blue_score >= max_blue_score {
@@ -256,11 +260,13 @@ impl Store {
             self.included_transactions_store.remove_transaction_inclusion_data(&mut writer, data.tx_id, data.including_blue_score)?;
         }
 
-        self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, last_pruned_blue_score)?;
+        let next_to_prune_blue_score = last_pruned_blue_score + 1;
+
+        self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, next_to_prune_blue_score)?;
 
         self.commit_batch(batch)?;
 
-        Ok(last_pruned_blue_score)
+        Ok((next_to_prune_blue_score, is_acceptance_store_empty && is_inclusion_store_empty))
     }
 
     pub fn set_sink(&mut self, sink: Hash, blue_score: u64) -> StoreResult<()> {

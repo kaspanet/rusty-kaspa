@@ -93,20 +93,13 @@ impl std::fmt::Display for BlueScoreRefKey {
 // impl Builder pattern for BlueScoreRefKey
 impl BlueScoreRefKey {
     #[inline(always)]
-    pub fn new() -> Self {
+    pub fn new_minimized() -> Self {
         Self::default()
     }
 
     #[inline(always)]
-    pub fn with_blue_score_minimized(mut self) -> Self {
-        self.0[0..BLUE_SCORE_SIZE].copy_from_slice(&u64::MIN.to_be_bytes());
-        self
-    }
-
-    #[inline(always)]
-    pub fn with_blue_score_maximized(mut self) -> Self {
-        self.0[0..BLUE_SCORE_SIZE].copy_from_slice(&u64::MAX.to_be_bytes());
-        self
+    pub fn new_maximized() -> Self {
+        Self([u8::MAX; BLUE_SCORE_STORE_KEY_LEN])
     }
 
     #[inline(always)]
@@ -169,6 +162,7 @@ pub trait TxIndexAcceptingBlueScoreRefReader {
         blue_score_range: impl RangeBounds<u64>,
         limit: Option<usize>, // if some, Will stop after limit is reached
     ) -> StoreResult<BlueScoreRefDataResIter<impl Iterator<Item = BlueScoreAcceptingRefData>>>;
+    fn get_lowest_blue_score_ref(&self) -> StoreResult<Option<BlueScoreAcceptingRefData>>;
 }
 
 pub trait TxIndexAcceptingBlueScoreRefStore: TxIndexAcceptingBlueScoreRefReader {
@@ -196,7 +190,6 @@ impl DbTxIndexAcceptingBlueScoreRefStore {
 }
 
 impl TxIndexAcceptingBlueScoreRefReader for DbTxIndexAcceptingBlueScoreRefStore {
-    /// This is inclusive in regards to the range's end boundry
     fn get_blue_score_refs(
         &self,
         blue_score_range: impl RangeBounds<u64>,
@@ -206,12 +199,12 @@ impl TxIndexAcceptingBlueScoreRefReader for DbTxIndexAcceptingBlueScoreRefStore 
             self.access
                 .seek_iterator(
                     None,
-                    Some(BlueScoreRefKey::new().with_blue_score(match blue_score_range.start_bound() {
+                    Some(BlueScoreRefKey::new_minimized().with_blue_score(match blue_score_range.start_bound() {
                         std::ops::Bound::Included(v) => *v,
                         std::ops::Bound::Excluded(v) => v.saturating_add(1),
                         std::ops::Bound::Unbounded => u64::MIN,
                     })),
-                    Some(BlueScoreRefKey::new().with_blue_score(match blue_score_range.end_bound() {
+                    Some(BlueScoreRefKey::new_maximized().with_blue_score(match blue_score_range.end_bound() {
                         std::ops::Bound::Included(v) => *v,
                         std::ops::Bound::Excluded(v) => v.saturating_sub(1),
                         std::ops::Bound::Unbounded => u64::MAX,
@@ -225,6 +218,10 @@ impl TxIndexAcceptingBlueScoreRefReader for DbTxIndexAcceptingBlueScoreRefStore 
                 }),
         ))
     }
+
+    fn get_lowest_blue_score_ref(&self) -> StoreResult<Option<BlueScoreAcceptingRefData>> {
+        Ok(self.access.iterator().next().map(|res| BlueScoreAcceptingRefData::from(BlueScoreRefKey::from(res.unwrap().0))))
+    }
 }
 
 impl TxIndexAcceptingBlueScoreRefStore for DbTxIndexAcceptingBlueScoreRefStore {
@@ -233,15 +230,15 @@ impl TxIndexAcceptingBlueScoreRefStore for DbTxIndexAcceptingBlueScoreRefStore {
         I: Iterator<Item = BlueScoreRefTuple>,
     {
         let mut kv_iter =
-            to_add_data.into_iter().map(|(blue_score, txid)| (BlueScoreRefKey::new().with_blue_score(blue_score).with_txid(txid), ()));
+            to_add_data.into_iter().map(|(blue_score, txid)| (BlueScoreRefKey::new_minimized().with_blue_score(blue_score).with_txid(txid), ()));
         self.access.write_many_without_cache(writer, &mut kv_iter)
     }
 
     fn remove_blue_score_refs(&mut self, writer: &mut impl DbWriter, to_remove_blue_score_range: Range<u64>) -> StoreResult<()> {
         self.access.delete_range(
             writer,
-            BlueScoreRefKey::new().with_blue_score(to_remove_blue_score_range.start),
-            BlueScoreRefKey::new().with_blue_score(to_remove_blue_score_range.end),
+            BlueScoreRefKey::new_minimized().with_blue_score(to_remove_blue_score_range.start),
+            BlueScoreRefKey::new_maximized().with_blue_score(to_remove_blue_score_range.end),
         )
     }
 
@@ -273,7 +270,7 @@ mod tests {
     fn test_blue_score_refs_key_roundtrip() {
         let blue_score = 123456789u64;
         let txid = random_txid();
-        let key = BlueScoreRefKey::new().with_blue_score(blue_score).with_txid(txid);
+        let key = BlueScoreRefKey::new_minimized().with_blue_score(blue_score).with_txid(txid);
         let blue_score_ref_data = BlueScoreAcceptingRefData::from(key.clone());
         assert_eq!(blue_score, blue_score_ref_data.accepting_blue_score);
         assert_eq!(txid, blue_score_ref_data.tx_id);
