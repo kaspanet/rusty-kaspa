@@ -127,6 +127,26 @@ message RpcTransactionOutputVerboseData {
   string scriptPublicKeyAddress = 6;
 }
 
+message RpcTransactionData {
+  string transactionId = 1;
+  repeated RpcTransaction Transactions = 2;
+  repeated RpcTransactionInclusionData inclusionData = 3;
+  optional RpcTransactionAcceptanceData acceptanceData = 4;
+  optional uint64 confCount = 5; // None is unconfirmed.
+}
+
+message RpcTransactionInclusionData {
+  string includingBlockHash = 1; // the block that includes the transaction
+  uint64 includingBlueScore = 2; // the blue score of that block
+  uint32 indexWithinBlock = 3; // the index of the transaction within that block
+}
+
+message RpcTransactionAcceptanceData {
+  string acceptingBlockHash = 1; // the block that accepted the transaction
+  uint64 acceptingBlockBlueScore = 2; // the blue score of that block
+  uint32 mergesetIndex = 3; // the index of the including block within the mergeset of the accepting block
+}
+
 enum RpcNotifyCommand {
   NOTIFY_START = 0;
   NOTIFY_STOP = 1;
@@ -1080,6 +1100,39 @@ message GetVirtualChainFromBlockV2ResponseMessage {
 
   // Will be filled depending on the supplied RpcDataVerbosityLevel.
   repeated RpcChainBlockAcceptedTransactions chainBlockAcceptedTransactions = 3;
+
+  RPCError error = 1000;
+}
+
+message GetTransactionRequestMessage {
+  string transactionId = 1;
+  bool queryUnaccepted = 2; // if true, only search in accepted transactions
+  bool includeTransactions = 3;
+  bool includeInclusionData = 4;
+  bool includeAcceptanceData = 5;
+  bool includeConfCount = 6;
+  bool includeVerboseData = 7; // only valid if includeTransactions is set.
+}
+
+message GetTransactionResponseMessage {
+  RpcTransactionData transactionData = 1;
+
+  RPCError error = 1000;
+}
+
+message GetTransactionsByBlueScoreRequestMessage {
+  uint64 fromBlueScore = 1;
+  uint64 toBlueScore = 2;
+  bool queryUnaccepted = 3; // if true, only search in accepted transactions
+  bool includeTransactions = 4;
+  bool includeInclusionData = 5;
+  bool includeAcceptanceData = 6;
+  bool includeConfCount = 7;
+  bool includeVerboseData = 8; // only valid if includeTransactions is set.
+}
+
+message GetTransactionsByBlueScoreResponseMessage {
+  repeated RpcTransactionData transactionsData = 1;
 
   RPCError error = 1000;
 }

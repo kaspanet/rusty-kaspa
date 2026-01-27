@@ -4,7 +4,7 @@ use kaspa_consensus_core::{
     tx::TransactionId,
     BlockHashSet, Hash,
 };
-use kaspa_core::{info, trace};
+use kaspa_core::trace;
 use kaspa_database::prelude::{
     BatchDbWriter, CachePolicy, DbWriter, StoreResult, WriteBatch, DB,
 };

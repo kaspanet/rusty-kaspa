@@ -76,6 +76,7 @@ impl Router {
                 SubmitTransaction,
                 SubmitTransactionReplacement,
                 Unban,
+                TransactionsByBlueScore,
             ]
         );
 

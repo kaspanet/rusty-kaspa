@@ -2,7 +2,6 @@
 //! RPC Operations used to identify RPC methods during transport and in various RPC-related macros.
 //!
 
-use std::f32::consts::E;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_notify::events::EventType;
@@ -142,6 +141,10 @@ pub enum RpcApiOps {
     GetUtxoReturnAddress = 150,
     /// Get Virtual Chain from Block V2
     GetVirtualChainFromBlockV2 = 151,
+    /// Get Transaction by its ID
+    GetTransaction = 152,
+    /// Get Transactions By Blue Score range
+    GetTransactionsByBlueScore = 153,
 }
 
 impl RpcApiOps {

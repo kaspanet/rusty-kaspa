@@ -500,6 +500,51 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetVirtualChainFromBlockV2Request,
     ) -> RpcResult<GetVirtualChainFromBlockV2Response>;
 
+    async fn get_transaction(
+        &self,
+        transaction_id: RpcTransactionId,
+        query_unaccepted: bool,
+        include_transactions: bool,
+        include_inclusion_data: bool,
+        include_acceptance_data: bool,
+        include_conf_count: bool,
+        include_verbose_data: bool,
+    ) -> RpcResult<GetTransactionResponse> {
+        self.get_transaction_call(None, GetTransactionRequest {
+            transaction_id,
+            query_unaccepted,
+            include_transactions,
+            include_inclusion_data,
+            include_acceptance_data,
+            include_conf_count,
+            include_verbose_data,
+        }).await
+    }
+    async fn get_transaction_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetTransactionRequest,
+    ) -> RpcResult<GetTransactionResponse>;
+
+    async fn get_transactions_by_blue_score(
+        &self,
+        from_blue_score: u64,
+        to_blue_score: u64,
+        query_unaccepted: bool,
+        include_transactions: bool,
+        include_inclusion_data: bool,
+        include_acceptance_data: bool,
+        include_conf_count: bool,
+        include_verbose_data: bool,
+    ) -> RpcResult<GetTransactionsByBlueScoreResponse> {
+        self.get_transactions_by_blue_score_call(None, GetTransactionsByBlueScoreRequest { from_blue_score, to_blue_score, query_unaccepted, include_transactions, include_inclusion_data, include_acceptance_data, include_conf_count, include_verbose_data }).await
+    }
+
+    async fn get_transactions_by_blue_score_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetTransactionsByBlueScoreRequest,
+    ) -> RpcResult<GetTransactionsByBlueScoreResponse>;
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

@@ -1,6 +1,5 @@
 use std::{
     fmt::Display,
-    result,
     sync::{atomic::AtomicBool, Arc, Weak},
     time::Duration,
 };
@@ -222,6 +221,7 @@ impl TxIndexApi for TxIndex {
         let mut start_ts = std::time::Instant::now();
         let mut chunks_processed = 0;
         for chunk in &acceptance_iterator.into_iter().chunks(RESYNC_ACCEPTANCE_DATA_CHUNK_SIZE as usize) {
+            debug!("[{}] Resyncing acceptance data chunk: {}", IDENT, chunks_processed + 1);
             // split chunk into hashes and acceptance data
             let (hashes, acceptance_data): (Vec<Hash>, Vec<Arc<AcceptanceData>>) = chunk.unzip();
             let reindexed_virtual_changed_state = acceptance_data
@@ -249,6 +249,7 @@ impl TxIndexApi for TxIndex {
         let consensus_sink = session.get_sink();
         let consensus_sink_blue_score = session.get_header(consensus_sink)?.blue_score;
         self.store.set_sink(consensus_sink, consensus_sink_blue_score)?;
+        info!("[{}] Resynced acceptance data completed: {} chunks processed in {:.2} seconds", IDENT, chunks_processed, start_ts.elapsed().as_secs_f64());
         Ok(())
     }
 
@@ -282,6 +283,8 @@ impl TxIndexApi for TxIndex {
 
         let consensus_tips = session.get_tips().into_iter().collect::<BlockHashSet>();
         self.store.init_tips(consensus_tips)?;
+
+        info!("[{}] Resynced inclusion data completed: {} chunks processed in {:.2} seconds", IDENT, chunks_processed, start_ts.elapsed().as_secs_f64());
         Ok(())
     }
 
@@ -346,7 +349,7 @@ impl TxIndexApi for TxIndex {
                 start_ts = std::time::Instant::now();
             }
         }
-        info!("[{}] Pruning completed", IDENT);
+        info!("[{}] Pruning completed: {} chunks processed, in {:.2} seconds", IDENT, chunks_processed, start_ts.elapsed().as_secs_f64());
         Ok(())
     }
 }

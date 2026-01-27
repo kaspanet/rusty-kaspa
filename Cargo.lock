@@ -3110,6 +3110,7 @@ dependencies = [
  "kaspa-mining-errors",
  "kaspa-notify",
  "kaspa-rpc-macros",
+ "kaspa-txindex",
  "kaspa-txscript",
  "kaspa-utils",
  "log",

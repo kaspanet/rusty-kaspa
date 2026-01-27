@@ -533,6 +533,45 @@ from!(item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockV2Response>, prot
     }
 });
 
+from!(item: &kaspa_rpc_core::GetTransactionRequest, protowire::GetTransactionRequestMessage, {
+    Self {
+        transaction_id: item.transaction_id.to_string(),
+        query_unaccepted: item.query_unaccepted,
+        include_transactions: item.include_transactions,
+        include_inclusion_data: item.include_inclusion_data,
+        include_acceptance_data: item.include_acceptance_data,
+        include_conf_count: item.include_conf_count,
+        include_verbose_data: item.include_verbose_data,
+    }
+});
+
+from!(item: RpcResult<&kaspa_rpc_core::GetTransactionResponse>, protowire::GetTransactionResponseMessage, {
+    Self {
+        transaction_data: Some((&item.transaction_data).into()),
+        error: None,
+    }
+});
+
+from!(item: &kaspa_rpc_core::GetTransactionsByBlueScoreRequest, protowire::GetTransactionsByBlueScoreRequestMessage, {
+    Self {
+        from_blue_score: item.from_blue_score,
+        to_blue_score: item.to_blue_score,
+        query_unaccepted: item.query_unaccepted,
+        include_transactions: item.include_transactions,
+        include_inclusion_data: item.include_inclusion_data,
+        include_acceptance_data: item.include_acceptance_data,
+        include_conf_count: item.include_conf_count,
+        include_verbose_data: item.include_verbose_data,
+    }
+});
+
+from!(item: RpcResult<&kaspa_rpc_core::GetTransactionsByBlueScoreResponse>, protowire::GetTransactionsByBlueScoreResponseMessage, {
+    Self {
+        transactions_data: item.transactions_data.iter().map(|x| x.into()).collect(),
+        error: None,
+    }
+});
+
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
 });
@@ -798,6 +837,46 @@ try_from!(item: &protowire::GetVirtualChainFromBlockV2ResponseMessage, RpcResult
         removed_chain_block_hashes: Arc::new(item.removed_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?),
         added_chain_block_hashes: Arc::new(item.added_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?),
         chain_block_accepted_transactions: Arc::new(item.chain_block_accepted_transactions.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?),
+    }
+});
+
+try_from!(item: &protowire::GetTransactionRequestMessage, kaspa_rpc_core::GetTransactionRequest, {
+    Self {
+        transaction_id: kaspa_rpc_core::RpcTransactionId::from_str(&item.transaction_id)?,
+        query_unaccepted: item.query_unaccepted,
+        include_transactions: item.include_transactions,
+        include_inclusion_data: item.include_inclusion_data,
+        include_acceptance_data: item.include_acceptance_data,
+        include_conf_count: item.include_conf_count,
+        include_verbose_data: item.include_verbose_data,
+    }
+});
+
+try_from!(item: &protowire::GetTransactionResponseMessage, RpcResult<kaspa_rpc_core::GetTransactionResponse>, {
+    Self {
+        transaction_data: match item.transaction_data {
+            Some(ref data) => data.try_into()?,
+            None => return Err(RpcError::MissingRpcFieldError("GetTransactionResponseMessage".to_string(), "transaction_data".to_string())),
+        },
+    }
+});
+
+try_from!(item: &protowire::GetTransactionsByBlueScoreRequestMessage, kaspa_rpc_core::GetTransactionsByBlueScoreRequest, {
+    Self {
+        from_blue_score: item.from_blue_score,
+        to_blue_score: item.to_blue_score,
+        query_unaccepted: item.query_unaccepted,
+        include_transactions: item.include_transactions,
+        include_inclusion_data: item.include_inclusion_data,
+        include_acceptance_data: item.include_acceptance_data,
+        include_conf_count: item.include_conf_count,
+        include_verbose_data: item.include_verbose_data,
+    }
+});
+
+try_from!(item: &protowire::GetTransactionsByBlueScoreResponseMessage, RpcResult<kaspa_rpc_core::GetTransactionsByBlueScoreResponse>, {
+    Self {
+        transactions_data: item.transactions_data.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
     }
 });
 

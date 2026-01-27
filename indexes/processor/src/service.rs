@@ -9,7 +9,7 @@ use kaspa_core::{
 use kaspa_index_core::notifier::IndexNotifier;
 use kaspa_notify::{
     connection::ChannelType,
-    events::{EventSwitches, EventType},
+    events::EventType,
     listener::ListenerLifespan,
     scope::{BlockAddedScope, PruningPointUtxoSetOverrideScope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::{MutationPolicies, UtxosChangedMutationPolicy, context::SubscriptionContext},
