@@ -183,9 +183,10 @@ mod tests {
 
     /// Creates a transaction with configurable inputs and outputs for testing both genesis and continuation cases.
     ///
-    /// - `input_covenant_ids`: Covenant id for each input (None for genesis, Some for continuation)
+    /// - `input_covenant_ids`: Covenant id for each input (None for no covenant, Some for covenant-carrying inputs)
     /// - `outputs`: Configuration for each output
-    /// - `compute_correct_ids`: If true, computes correct covenant ids; if false, uses placeholder values
+    /// - `compute_correct_ids`: If true, computes covenant ids for genesis outputs via hashing;
+    ///   continuation outputs (where input covenant matches covenant_group) use covenant_group as-is
     fn create_genesis_tx(
         input_covenant_ids: Vec<Option<u64>>,
         outputs: Vec<OutputConfig>,
@@ -219,7 +220,7 @@ mod tests {
                 value: cfg.value,
                 script_public_key: Default::default(),
                 covenant: Some(CovenantBinding {
-                    covenant_id: cfg.covenant_group.into(), // Placeholder
+                    covenant_id: cfg.covenant_group.into(), // Correct for continuation, placeholder for genesis
                     authorizing_input: cfg.authorizing_input as u16,
                 }),
             })
@@ -228,28 +229,17 @@ mod tests {
         let mut tx = Transaction::new(0, inputs, tx_outputs, 0, SubnetworkId::default(), 0, vec![]);
 
         if compute_correct_ids {
-            // Separate continuation and genesis outputs
-            let mut continuation_outputs: Vec<(usize, u64)> = Vec::new(); // (output_idx, covenant_group)
+            // Collect genesis outputs and compute their covenant ids (continuation outputs already have correct covenant_id == covenant_group)
             let mut genesis_groups: HashMap<(usize, u64), Vec<usize>> = HashMap::new();
 
             for (i, cfg) in outputs.iter().enumerate() {
                 let input_cov_id = input_covenant_ids.get(cfg.authorizing_input).copied().flatten();
 
-                if input_cov_id == Some(cfg.covenant_group) {
-                    // Continuation case: input already has this covenant id
-                    continuation_outputs.push((i, cfg.covenant_group));
-                } else {
-                    // Genesis case: compute id from outpoint and outputs
+                if input_cov_id != Some(cfg.covenant_group) {
                     genesis_groups.entry((cfg.authorizing_input, cfg.covenant_group)).or_default().push(i);
                 }
             }
 
-            // For continuation outputs, covenant id is just the covenant_group
-            for (output_idx, covenant_group) in continuation_outputs {
-                tx.outputs[output_idx].covenant.as_mut().unwrap().covenant_id = covenant_group.into();
-            }
-
-            // Compute correct covenant ids for each genesis group
             for ((auth_input_idx, _), output_indices) in genesis_groups {
                 let outpoint = TransactionOutpoint::new((auth_input_idx as u64).into(), 0);
                 let expected_id =
@@ -396,7 +386,7 @@ mod tests {
             script_public_key: Default::default(),
             covenant: Some(CovenantBinding {
                 covenant_id: 1u64.into(),
-                authorizing_input: 5, // Out of bounds - only 1 input (index 0)
+                authorizing_input: 1, // Out of bounds - only 1 input (index 0)
             }),
         };
 
@@ -405,7 +395,7 @@ mod tests {
 
         let populated_tx = PopulatedTransaction::new(&tx, vec![utxo]);
         let result = CovenantsContext::from_tx(&populated_tx);
-        assert!(matches!(result, Err(CovenantsError::AuthInputOutOfBounds(0, 5))));
+        assert!(matches!(result, Err(CovenantsError::AuthInputOutOfBounds(0, 1))));
     }
 
     #[test]
