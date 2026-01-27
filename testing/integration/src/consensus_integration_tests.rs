@@ -1694,6 +1694,7 @@ async fn push_limit_activation_test() {
             vec![],
         );
         tx.finalize();
+        let seq_commit_digest = tx.seq_commit_digest();
         let mut tx = MutableTransaction::from_tx(tx);
         // This triggers storage mass population
         let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
@@ -1707,9 +1708,7 @@ async fn push_limit_activation_test() {
 
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Ok(BlockStatus::StatusUTXOValid)));
-
-        let digest = tx.seq_commit_digest();
-        assert!(consensus.lkg_virtual_state.load().accepted_tx_digests.contains(&digest));
+        assert!(consensus.lkg_virtual_state.load().accepted_tx_digests.contains(&seq_commit_digest)); // virtual block has daa where digests are not equal to tx_ids
     }
 
     next_id += 1;
@@ -1732,6 +1731,8 @@ async fn push_limit_activation_test() {
             vec![],
         );
         tx.finalize();
+        let digest = tx.seq_commit_digest();
+        let tx_id = tx.id();
         let mut tx = MutableTransaction::from_tx(tx);
         // This triggers storage mass population
         let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
@@ -1745,8 +1746,8 @@ async fn push_limit_activation_test() {
 
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
-        let digest = tx.seq_commit_digest();
-        assert!(consensus.lkg_virtual_state.load().accepted_tx_digests.contains(&digest));
+        assert!(!consensus.lkg_virtual_state.load().accepted_tx_digests.contains(&digest));
+        assert!(!consensus.lkg_virtual_state.load().accepted_tx_digests.contains(&tx_id));
     }
 
     consensus.shutdown(wait_handles);
