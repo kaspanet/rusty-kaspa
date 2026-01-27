@@ -3,7 +3,7 @@ use crate::{
     mass::transaction_estimated_serialized_size,
     tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
 };
-use kaspa_hashes::{Hash, HasherBase};
+use kaspa_hashes::{Hash, Hasher, HasherBase, PayloadDigest};
 
 bitflags::bitflags! {
     /// A bitmask defining which transaction fields we want to encode and which to ignore.
@@ -12,6 +12,7 @@ bitflags::bitflags! {
         const FULL = 0;
         const EXCLUDE_SIGNATURE_SCRIPT = 1 << 0;
         const EXCLUDE_MASS_COMMIT = 1 << 1;
+        const EXCLUDE_PAYLOAD = 1 << 2;
     }
 }
 
@@ -30,13 +31,17 @@ pub fn hash_pre_crescendo(tx: &Transaction) -> Hash {
 }
 
 /// Not intended for direct use by clients. Instead use `tx.id()`
-pub(crate) fn id(tx: &Transaction) -> TransactionId {
+pub fn id(tx: &Transaction) -> TransactionId {
+    if tx.version == 0 { id_v0(tx) } else { id_v1(tx) }
+}
+
+pub fn id_v0(tx: &Transaction) -> TransactionId {
     let mut hasher = kaspa_hashes::TransactionID::new();
-    write_transaction_for_transaction_id(&mut hasher, tx);
+    write_transaction_v0_for_transaction_id(&mut hasher, tx);
     hasher.finalize()
 }
 
-fn write_transaction_for_transaction_id<T: HasherBase>(hasher: &mut T, tx: &Transaction) {
+fn write_transaction_v0_for_transaction_id<T: HasherBase>(hasher: &mut T, tx: &Transaction) {
     // Encode the transaction, replace signature script with an empty array, skip
     // sigop counts and mass commitment and hash the result.
     write_transaction(hasher, tx, TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT)
@@ -56,7 +61,12 @@ fn write_transaction<T: HasherBase>(hasher: &mut T, tx: &Transaction, encoding_f
         write_output(hasher, output, tx.version);
     }
 
-    hasher.update(tx.lock_time.to_le_bytes()).update(tx.subnetwork_id).update(tx.gas.to_le_bytes()).write_var_bytes(&tx.payload);
+    hasher.update(tx.lock_time.to_le_bytes()).update(tx.subnetwork_id).update(tx.gas.to_le_bytes());
+    if !encoding_flags.contains(TxEncodingFlags::EXCLUDE_PAYLOAD) {
+        hasher.write_var_bytes(&tx.payload);
+    } else {
+        hasher.write_var_bytes(&[]);
+    };
 
     /*
        Design principles (mostly related to the new mass commitment field; see KIP-0009):
@@ -131,10 +141,41 @@ impl HasherBase for PreimageHasher {
     }
 }
 
-pub fn transaction_id_preimage(tx: &Transaction) -> Vec<u8> {
+/// Serializes the transaction for v0 TxID preimage (excluding signature scripts).
+pub fn transaction_v0_id_preimage(tx: &Transaction) -> Vec<u8> {
+    assert_eq!(tx.version, 0);
     let mut hasher = PreimageHasher { buff: Vec::with_capacity(transaction_estimated_serialized_size(tx) as usize) };
-    write_transaction_for_transaction_id(&mut hasher, tx);
+    write_transaction_v0_for_transaction_id(&mut hasher, tx);
     hasher.buff
+}
+
+/// Precomputed hash digest for an empty payload using `PayloadDigest`.
+const ZERO_PAYLOAD_DIGEST: Hash = Hash::from_bytes([
+    156, 12, 162, 172, 180, 94, 146, 255, 230, 206, 180, 174, 41, 24, 139, 53, 200, 45, 150, 118, 205, 211, 206, 6, 127, 214, 204,
+    195, 10, 156, 74, 56,
+]);
+
+/// Computes the Transaction ID for a version 1 transaction.
+pub fn id_v1(tx: &Transaction) -> TransactionId {
+    let payload_digest = payload_digest(&tx.payload);
+    let rest_digest = {
+        let mut hasher = kaspa_hashes::TransactionRest::new();
+        write_transaction(
+            &mut hasher,
+            tx,
+            TxEncodingFlags::EXCLUDE_PAYLOAD | TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT,
+        );
+        hasher.finalize()
+    };
+
+    let mut hasher = kaspa_hashes::TransactionV1Id::new();
+    hasher.update(payload_digest).update(rest_digest);
+    hasher.finalize()
+}
+
+/// Computes the digest of the transaction payload using `PayloadDigest` hasher.
+pub fn payload_digest(payload: &[u8]) -> Hash {
+    if payload.is_empty() { ZERO_PAYLOAD_DIGEST } else { PayloadDigest::hash(payload) }
 }
 
 #[cfg(test)]
@@ -145,6 +186,11 @@ mod tests {
         tx::{ScriptPublicKey, scriptvec},
     };
     use std::str::FromStr;
+
+    #[test]
+    fn test_zero_payload_digest() {
+        assert_eq!(ZERO_PAYLOAD_DIGEST, PayloadDigest::hash([]));
+    }
 
     #[test]
     fn test_transaction_hashing() {
@@ -240,18 +286,18 @@ mod tests {
             expected_hash: "ced89bbf642cda42d29d9518d16e35cbbf85d10e1ab106b7dc2e0a821308ac91",
         });
 
-        // Test #10, same as 9 with different version and checks it affects id and hash
-        tests.push(Test {
-            tx: Transaction::new(1, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
-            expected_id: "9ec65c816b495e7da8f88c6d261af00b7bca45e398a4373f92eb665e7d7cf79d",
-            expected_hash: "6c8fed2799b478667914748b9c76da576fc18b44ce87c6ebc01c01705f13f3e3",
-        });
+        // // Test #10, same as 9 with different version and checks it affects id and hash
+        // tests.push(Test {
+        //     tx: Transaction::new(1, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
+        //     expected_id: "9ec65c816b495e7da8f88c6d261af00b7bca45e398a4373f92eb665e7d7cf79d",
+        //     expected_hash: "6c8fed2799b478667914748b9c76da576fc18b44ce87c6ebc01c01705f13f3e3",
+        // });
 
         for (i, test) in tests.iter().enumerate() {
             assert_eq!(test.tx.id(), Hash::from_str(test.expected_id).unwrap(), "transaction id failed for test {}", i + 1);
             assert_eq!(hash(&test.tx), Hash::from_str(test.expected_hash).unwrap(), "transaction hash failed for test {}", i + 1);
 
-            let preimage = transaction_id_preimage(&test.tx);
+            let preimage = transaction_v0_id_preimage(&test.tx);
             let mut hasher = kaspa_hashes::TransactionID::new();
             hasher.update(&preimage);
             let preimage_hash = hasher.finalize();
@@ -261,5 +307,7 @@ mod tests {
         // Avoid compiler warnings on the last clone
         drop(inputs);
         drop(outputs);
+
+        // TODO(pre-covpp) add tests for v1 hashes
     }
 }

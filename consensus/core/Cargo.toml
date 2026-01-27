@@ -56,5 +56,9 @@ web-sys.workspace = true
 name = "serde_benchmark"
 harness = false
 
+[[bench]]
+name = "tx_id_bench"
+harness = false
+
 [lints]
 workspace = true
