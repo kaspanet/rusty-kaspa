@@ -1,5 +1,5 @@
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
-use kaspa_consensus_core::hashing::tx::transaction_id_preimage;
+use kaspa_consensus_core::hashing::tx::transaction_v0_id_preimage;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::{
     PopulatedTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
@@ -93,7 +93,7 @@ impl CovenantState {
     }
 
     fn from_tx(tx: Transaction, spk: &kaspa_consensus_core::tx::ScriptPublicKey, counter: u8) -> Self {
-        let preimage = transaction_id_preimage(&tx);
+        let preimage = transaction_v0_id_preimage(&tx);
         let payload_len = tx.payload.len();
         let (rest, payload) = preimage.split_at(preimage.len() - payload_len);
         let outpoint = TransactionOutpoint::new(tx.id(), 0);
