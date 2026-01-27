@@ -1,6 +1,5 @@
 use std::{
-    fmt::Display,
-    sync::{Arc, Weak},
+    fmt::Display, result, sync::{Arc, Weak, atomic::AtomicBool}, time::Duration
 };
 
 use itertools::Itertools;
@@ -10,7 +9,7 @@ use kaspa_consensus_core::{
     tx::TransactionId,
     BlockHashSet, Hash, HashMapCustomHasher,
 };
-use kaspa_consensus_notify::notification::{BlockAddedNotification, VirtualChainChangedNotification};
+use kaspa_consensus_notify::notification::{BlockAddedNotification, RetentionRootChangedNotification, VirtualChainChangedNotification};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{debug, info};
 use kaspa_database::prelude::DB;
@@ -29,16 +28,18 @@ use crate::{
 const RESYNC_ACCEPTANCE_DATA_CHUNK_SIZE: u64 = 2048;
 const RESYNC_INCLUSION_DATA_CHUNK_SIZE: u64 = 2048;
 const PRUNING_CHUNK_SIZE: u64 = 2048;
+pub const PRUNING_WAIT_INTERVAL: Duration = Duration::from_millis(15);
 
 pub struct TxIndex {
     consensus_manager: Arc<ConsensusManager>,
+    is_pruning: Arc<AtomicBool>,
     store: Store,
 }
 
 impl TxIndex {
     pub fn new(consensus_manager: Arc<ConsensusManager>, db: Arc<DB>) -> TxIndexResult<Arc<RwLock<Self>>> {
         debug!("[{}]Creating new TxIndex", IDENT);
-        let mut txindex = Self { consensus_manager: consensus_manager.clone(), store: Store::new(db) };
+        let mut txindex = Self { consensus_manager: consensus_manager.clone(), is_pruning: Arc::new(AtomicBool::new(false)), store: Store::new(db) };
         if !txindex.is_synced()? {
             info!("[{}] TxIndex is not synced, starting resync", IDENT);
             txindex.resync_all_from_scratch()?;
@@ -81,6 +82,16 @@ impl TxIndexApi for TxIndex {
         let reindexerd_virtual_changed_state =
             mergeset_reindexer::reindex_virtual_changed_notification(&virtual_chain_changed_notification);
         Ok(self.store.update_via_reindexed_virtual_chain_changed_state(reindexerd_virtual_changed_state)?)
+    }
+
+    fn update_via_retention_root_changed(&mut self, retention_root_changed_notification: RetentionRootChangedNotification) -> TxIndexResult<()> {
+        debug!(
+            "[{}] Updating via retention root changed to root: {} with blue score: {}",
+            self,
+            retention_root_changed_notification.retention_root,
+            retention_root_changed_notification.retention_root_blue_score
+        );
+        Ok(self.store.set_retention_root(retention_root_changed_notification.retention_root, retention_root_changed_notification.retention_root_blue_score)?)
     }
 
     /// Ranges are inclusive
@@ -156,6 +167,14 @@ impl TxIndexApi for TxIndex {
         Ok(self.is_acceptance_data_synced()? && self.is_inclusion_data_synced()? && self.is_retention_synced()?)
     }
 
+    fn is_pruning(&self) -> bool {
+        self.is_pruning.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn toggle_pruning_active(&self, active: bool) {
+        self.is_pruning.store(active, std::sync::atomic::Ordering::SeqCst);
+    }
+
     fn resync_all_from_scratch(&mut self) -> TxIndexResult<()> {
         if !self.is_retention_synced()? {
             self.resync_retention_data_from_scratch()?;
@@ -217,18 +236,18 @@ impl TxIndexApi for TxIndex {
         Ok(())
     }
 
-    fn prune_on_the_fly(&mut self) -> TxIndexResult<()> {
+    fn prune_on_the_fly(&mut self) -> TxIndexResult<bool> {
         info!("[{}] Pruning TxIndex on the fly", IDENT);
         let txindex_retention_root_blue_score = self.store.get_retention_root_blue_score()?.unwrap();
-        let next_to_prune_blue_score = self.store.get_next_to_prune_blue_score()?.unwrap();
+        let mut next_to_prune_blue_score = self.store.get_next_to_prune_blue_score()?.unwrap();
 
-        let _ = self.store.prune_from_blue_score(
+        next_to_prune_blue_score = self.store.prune_from_blue_score(
             next_to_prune_blue_score,
             txindex_retention_root_blue_score,
             Some(PRUNING_CHUNK_SIZE as usize),
         )?;
 
-        Ok(())
+        Ok(next_to_prune_blue_score == txindex_retention_root_blue_score)
     }
 
     fn resync_retention_data_from_scratch(&mut self) -> TxIndexResult<()> {

@@ -42,8 +42,10 @@ pub enum Notification {
 
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
-}
-}
+
+    #[display(fmt = "RetentionRootChanged notification: retention root {}", "_0.retention_root")]
+    RetentionRootChanged(RetentionRootChangedNotification),
+}}
 
 impl NotificationTrait for Notification {
     fn apply_overall_subscription(&self, subscription: &OverallSubscription, _context: &SubscriptionContext) -> Option<Self> {
@@ -181,3 +183,16 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 
 #[derive(Debug, Clone)]
 pub struct NewBlockTemplateNotification {}
+
+
+#[derive(Debug, Clone)]
+pub struct RetentionRootChangedNotification {
+    pub retention_root: Hash,
+    pub retention_root_blue_score: u64,
+}
+
+impl RetentionRootChangedNotification {
+    pub fn new(retention_root: Hash, retention_root_blue_score: u64) -> Self {
+        Self { retention_root, retention_root_blue_score }
+    }
+}

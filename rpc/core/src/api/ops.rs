@@ -2,6 +2,8 @@
 //! RPC Operations used to identify RPC methods during transport and in various RPC-related macros.
 //!
 
+use std::f32::consts::E;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_notify::events::EventType;
 use serde::{Deserialize, Serialize};
@@ -181,6 +183,7 @@ impl From<EventType> for RpcApiOps {
             EventType::VirtualDaaScoreChanged => RpcApiOps::VirtualDaaScoreChangedNotification,
             EventType::PruningPointUtxoSetOverride => RpcApiOps::PruningPointUtxoSetOverrideNotification,
             EventType::NewBlockTemplate => RpcApiOps::NewBlockTemplateNotification,
+            EventType::RetentionRootChanged => panic!("RetentionRootChanged has no corresponding RpcApiOps variant"),
         }
     }
 }

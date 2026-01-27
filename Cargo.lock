@@ -2809,6 +2809,7 @@ dependencies = [
  "derive_more",
  "futures",
  "kaspa-consensus-core",
+ "kaspa-consensus-notify",
  "kaspa-hashes",
  "kaspa-notify",
  "kaspa-utils",

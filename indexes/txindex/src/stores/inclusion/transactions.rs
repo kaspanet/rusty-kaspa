@@ -18,50 +18,59 @@ pub const HASH_SIZE: usize = mem::size_of::<Hash>(); // 32
 pub const BLUE_SCORE_SIZE: usize = mem::size_of::<u64>(); // 8
 pub const TRANSACTION_STORE_KEY_LEN: usize = TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE; // 72
 
-// TODO (Relaxed): Consider using a KeyBuilder pattern for this more complex key
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IncludedTransactionStoreKey(pub [u8; TRANSACTION_STORE_KEY_LEN]);
 
 impl IncludedTransactionStoreKey {
     #[inline(always)]
-    pub fn from_parts(txid: TransactionId, blue_score: u64, hash: Hash) -> Self {
-        let mut bytes = [0u8; TRANSACTION_STORE_KEY_LEN];
-        bytes[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
-        bytes[TRANSACTION_ID_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE].copy_from_slice(&blue_score.to_be_bytes()); // to_be_bytes important for rocks db ordering
+    pub fn new_minimized() -> Self {
+        Self([0u8; TRANSACTION_STORE_KEY_LEN])
+    }
 
-        bytes[TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE]
+    #[inline(always)]
+    pub fn new_maximized() -> Self {
+        Self([u8::MAX; TRANSACTION_STORE_KEY_LEN])
+    }
+
+    #[inline(always)]
+    pub fn with_txid(mut self, txid: TransactionId) -> Self {
+        self.0[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
+        self
+    }
+
+    #[inline(always)]
+    pub fn with_blue_score(mut self, blue_score: u64) -> Self {
+        self.0[TRANSACTION_ID_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE].copy_from_slice(&blue_score.to_be_bytes());
+        self
+    }
+
+    #[inline(always)]
+    pub fn with_block_hash(mut self, hash: Hash) -> Self {
+        self.0[TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE]
             .copy_from_slice(&hash.as_bytes());
-        Self(bytes)
+        self
     }
 
     #[inline(always)]
-    pub fn from_tx_id_maximized(txid: TransactionId) -> Self {
-        let mut bytes = [u8::MAX; TRANSACTION_STORE_KEY_LEN];
-        bytes[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
-        Self(bytes)
+    pub fn blue_score(&self) -> u64 {
+        u64::from_be_bytes(self.0[TRANSACTION_ID_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE].try_into().unwrap())
     }
 
     #[inline(always)]
-    pub fn from_tx_id_minimized(txid: TransactionId) -> Self {
-        let mut bytes = [0u8; TRANSACTION_STORE_KEY_LEN];
-        bytes[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
-        Self(bytes)
+    pub fn block_hash(&self) -> Hash {
+        Hash::from_slice(&self.0[TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE])
     }
 
     #[inline(always)]
-    pub fn from_tx_id_and_blue_score_maximized(txid: TransactionId, blue_score: u64) -> Self {
-        let mut bytes = [u8::MAX; TRANSACTION_STORE_KEY_LEN];
-        bytes[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
-        bytes[TRANSACTION_ID_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE].copy_from_slice(&blue_score.to_be_bytes());
-        Self(bytes)
+    pub fn txid(&self) -> TransactionId {
+        TransactionId::from_slice(&self.0[0..TRANSACTION_ID_SIZE])
     }
+}
 
+impl Default for IncludedTransactionStoreKey {
     #[inline(always)]
-    pub fn from_tx_id_and_blue_score_minimized(txid: TransactionId, blue_score: u64) -> Self {
-        let mut bytes = [0u8; TRANSACTION_STORE_KEY_LEN];
-        bytes[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
-        bytes[TRANSACTION_ID_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE].copy_from_slice(&blue_score.to_be_bytes());
-        Self(bytes)
+    fn default() -> Self {
+        Self([0u8; TRANSACTION_STORE_KEY_LEN])
     }
 }
 
@@ -118,7 +127,6 @@ where
 }
 
 /// -- Store Traits ---
-
 pub trait TxIndexIncludedTransactionsStoreReader {
     fn get_transaction_inclusion_data(&self, txid: TransactionId) -> StoreResult<Vec<TxInclusionData>>;
 }
@@ -158,8 +166,8 @@ impl TxIndexIncludedTransactionsStoreReader for DbTxIndexIncludedTransactionsSto
         self.access
             .seek_iterator(
                 None,
-                Some(IncludedTransactionStoreKey::from_tx_id_minimized(txid)),
-                Some(IncludedTransactionStoreKey::from_tx_id_maximized(txid)),
+                Some(IncludedTransactionStoreKey::new_minimized().with_txid(txid)),
+                Some(IncludedTransactionStoreKey::new_maximized().with_txid(txid)),
                 usize::MAX,
                 false,
             )
@@ -180,8 +188,8 @@ impl TxIndexIncludedTransactionsStore for DbTxIndexIncludedTransactionsStore {
     ) -> StoreResult<()> {
         self.access.delete_range(
             writer,
-            IncludedTransactionStoreKey::from_tx_id_and_blue_score_minimized(txid, blue_score),
-            IncludedTransactionStoreKey::from_tx_id_and_blue_score_maximized(txid, blue_score),
+            IncludedTransactionStoreKey::new_minimized().with_txid(txid).with_blue_score(blue_score),
+            IncludedTransactionStoreKey::new_maximized().with_txid(txid).with_blue_score(blue_score),
         )
     }
 
@@ -189,9 +197,8 @@ impl TxIndexIncludedTransactionsStore for DbTxIndexIncludedTransactionsStore {
     where
         I: Iterator<Item = TxInclusionTuple>,
     {
-        let kv_iter = to_add.map(|(txid, blue_score, block_hash, index_within_block)| {
-            (IncludedTransactionStoreKey::from_parts(txid, blue_score, block_hash), index_within_block)
-        });
+        let kv_iter =
+            to_add.map(|(a, b, c, d)| (IncludedTransactionStoreKey::default().with_txid(a).with_blue_score(b).with_block_hash(c), d));
 
         self.access.write_many_without_cache(writer, &mut kv_iter.into_iter())
     }
@@ -208,7 +215,7 @@ mod tests {
     use bincode;
     use kaspa_database::{
         create_temp_db,
-        prelude::{BatchDbWriter, ConnBuilder, StoreError, WriteBatch},
+        prelude::{BatchDbWriter, ConnBuilder, WriteBatch},
     };
     use rand::Rng;
 
@@ -240,7 +247,7 @@ mod tests {
         let txid = random_txid();
         let blue_score = 987654321u64;
         let block_hash = random_hash();
-        let key = IncludedTransactionStoreKey::from_parts(txid, blue_score, block_hash);
+        let key = IncludedTransactionStoreKey::default().with_txid(txid).with_blue_score(blue_score).with_block_hash(block_hash);
         let index_within_block = 42 as TransactionIndexType;
         let tx_inclusion_data: TxInclusionData = (key.clone(), index_within_block).into();
         assert_eq!(tx_inclusion_data.blue_score, blue_score);

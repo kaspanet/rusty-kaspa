@@ -1,7 +1,7 @@
 use std::{fmt::Debug, sync::Arc};
 
 use kaspa_consensus_core::tx::TransactionId;
-use kaspa_consensus_notify::notification::{BlockAddedNotification, VirtualChainChangedNotification};
+use kaspa_consensus_notify::notification::{BlockAddedNotification, RetentionRootChangedNotification, VirtualChainChangedNotification};
 use kaspa_consensusmanager::spawn_blocking;
 use parking_lot::RwLock;
 
@@ -35,8 +35,14 @@ pub trait TxIndexApi: Send + Sync + Debug {
         &mut self,
         virtual_chain_changed_notification: VirtualChainChangedNotification,
     ) -> TxIndexResult<()>;
+    fn update_via_retention_root_changed(
+        &mut self,
+        retention_root_changed_notification: RetentionRootChangedNotification,
+    ) -> TxIndexResult<()>;
 
-    fn prune_on_the_fly(&mut self) -> TxIndexResult<()>;
+    fn prune_on_the_fly(&mut self) -> TxIndexResult<bool>;
+    fn is_pruning(&self) -> bool;
+    fn toggle_pruning_active(&self, active: bool);
 }
 
 /// Async proxy for the TxIndex
@@ -80,5 +86,23 @@ impl TxIndexProxy {
         virtual_chain_changed_notification: VirtualChainChangedNotification,
     ) -> TxIndexResult<()> {
         spawn_blocking(move || self.inner.write().update_via_virtual_chain_changed(virtual_chain_changed_notification)).await.unwrap()
+    }
+
+    pub async fn update_via_retention_root_changed(
+        self,
+        retention_root_changed_notification: RetentionRootChangedNotification,
+    ) -> TxIndexResult<()> {
+        spawn_blocking(move || self.inner.write().update_via_retention_root_changed(retention_root_changed_notification)).await.unwrap()
+    }
+
+    pub async fn prune_on_the_fly(self) -> TxIndexResult<bool> {
+        spawn_blocking(move || self.inner.write().prune_on_the_fly()).await.unwrap()
+    }
+
+    pub async fn is_pruning(self) -> bool {
+        spawn_blocking(move || self.inner.read().is_pruning()).await.unwrap()
+    }
+    pub async fn toggle_pruning_active(self, active: bool) {
+        spawn_blocking(move || self.inner.write().toggle_pruning_active(active)).await.unwrap()
     }
 }

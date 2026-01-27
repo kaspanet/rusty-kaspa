@@ -202,7 +202,7 @@ impl RpcCoreService {
 
         // Create the rcp-core notifier
         let notifier =
-            Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, subscription_context, 1, policies));
+            Arc::new(Notifier::new(RPC_CORE, [EventType::BlockAdded, EventType::VirtualChainChanged, EventType::FinalityConflict, EventType::FinalityConflictResolved, EventType::UtxosChanged, EventType::SinkBlueScoreChanged, EventType::VirtualDaaScoreChanged, EventType::PruningPointUtxoSetOverride, EventType::NewBlockTemplate].as_ref().into(), collectors, subscribers, subscription_context, 1, policies));
 
         Self {
             consensus_manager,

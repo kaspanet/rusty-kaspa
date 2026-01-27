@@ -35,11 +35,13 @@ use kaspa_consensus_core::{
     trusted::ExternalGhostdagData,
     BlockHashMap, BlockHashSet, BlockLevel,
 };
+use kaspa_consensus_notify::{notification::{Notification, RetentionRootChangedNotification}, root::ConsensusNotificationRoot};
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, trace, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExt, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_notify::{events::EventType, notifier::Notify};
 use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
@@ -83,6 +85,9 @@ pub struct PruningProcessor {
 
     // Signals
     is_consensus_exiting: Arc<AtomicBool>,
+
+    // Notification root
+    notification_root: Arc<ConsensusNotificationRoot>,
 }
 
 impl Deref for PruningProcessor {
@@ -102,6 +107,7 @@ impl PruningProcessor {
         pruning_lock: SessionLock,
         config: Arc<Config>,
         is_consensus_exiting: Arc<AtomicBool>,
+        notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Self {
         Self {
             receiver,
@@ -114,6 +120,7 @@ impl PruningProcessor {
             pruning_lock,
             config,
             is_consensus_exiting,
+            notification_root
         }
     }
 
@@ -225,6 +232,10 @@ impl PruningProcessor {
             };
 
             self.db.write(batch).unwrap();
+            if self.notification_root.has_subscription(EventType::RetentionRootChanged) {
+                self.notification_root.notify(Notification::RetentionRootChanged(RetentionRootChangedNotification::new(retention_period_root, self.headers_store.get_blue_score(retention_period_root).unwrap())))
+                .unwrap();
+            };
             drop(pruning_point_write);
 
             trace!("New Pruning Point: {} | New Retention Period Root: {}", new_pruning_point, adjusted_retention_period_root);

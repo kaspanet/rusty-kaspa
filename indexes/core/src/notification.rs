@@ -1,13 +1,12 @@
 use crate::indexed_utxos::{UtxoChanges, UtxoSetByScriptPublicKey};
 use derive_more::Display;
+use kaspa_consensus_notify::notification::{BlockAddedNotification, VirtualChainChangedNotification, PruningPointUtxoSetOverrideNotification};
 use kaspa_notify::{
     events::EventType,
     full_featured,
-    notification::Notification as NotificationTrait,
+    notification::{Notification as NotificationTrait},
     subscription::{
-        context::SubscriptionContext,
-        single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
-        Subscription,
+        Subscription, context::SubscriptionContext, single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription}
     },
 };
 use std::{collections::HashMap, sync::Arc};
@@ -20,6 +19,12 @@ pub enum Notification {
 
     #[display(fmt = "PruningPointUtxoSetOverride notification")]
     PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification),
+
+    #[display(fmt = "BlockAdded notification")]
+    BlockAdded(BlockAddedNotification),
+
+    #[display(fmt = "VirtualChainChanged notification")]
+    VirtualChainChanged(VirtualChainChangedNotification),
 }
 }
 
@@ -57,9 +62,6 @@ impl NotificationTrait for Notification {
         self.into()
     }
 }
-
-#[derive(Debug, Clone, Default)]
-pub struct PruningPointUtxoSetOverrideNotification {}
 
 #[derive(Debug, Clone)]
 pub struct UtxosChangedNotification {

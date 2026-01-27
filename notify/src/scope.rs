@@ -45,6 +45,7 @@ pub enum Scope {
     VirtualDaaScoreChanged,
     PruningPointUtxoSetOverride,
     NewBlockTemplate,
+    RetentionRootChanged,
 }
 }
 
@@ -56,13 +57,14 @@ impl Scope {
 
 impl Serializer for Scope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         store!(Scope, self, writer)?;
         Ok(())
     }
 }
 
 impl Deserializer for Scope {
+
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         load!(Scope, reader)
@@ -74,7 +76,7 @@ pub struct BlockAddedScope {}
 
 impl Serializer for BlockAddedScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?; // increased version to 2, because retention root scope was added.
         Ok(())
     }
 }
@@ -261,6 +263,23 @@ impl Serializer for NewBlockTemplateScope {
 }
 
 impl Deserializer for NewBlockTemplateScope {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct RetentionRootChangedScope {}
+
+impl Serializer for RetentionRootChangedScope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for RetentionRootChangedScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})

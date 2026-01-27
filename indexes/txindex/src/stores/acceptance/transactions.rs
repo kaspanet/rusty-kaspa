@@ -17,49 +17,55 @@ pub const HASH_SIZE: usize = mem::size_of::<Hash>(); // 32
 pub const BLUE_SCORE_SIZE: usize = mem::size_of::<u64>(); // 8
 pub const TRANSACTION_STORE_KEY_LEN: usize = TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE; // 72
 
-// TODO (Relaxed): Consider using a KeyBuilder pattern for this more complex key
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct AcceptedTransactionStoreKey(pub [u8; TRANSACTION_STORE_KEY_LEN]);
 
 impl AcceptedTransactionStoreKey {
     #[inline(always)]
-    pub fn from_parts(txid: TransactionId, blue_score: u64, hash: Hash) -> Self {
-        let mut bytes = [0u8; TRANSACTION_STORE_KEY_LEN];
-        bytes[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
-        bytes[TRANSACTION_ID_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE].copy_from_slice(&blue_score.to_be_bytes());
-        bytes[TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE]
-            .copy_from_slice(&hash.as_bytes());
-        Self(bytes)
+    pub fn new_minimized() -> Self {
+        Self([0u8; TRANSACTION_STORE_KEY_LEN])
     }
 
     #[inline(always)]
-    pub fn from_tx_id_maximized(txid: TransactionId) -> Self {
-        let mut bytes = [u8::MAX; TRANSACTION_STORE_KEY_LEN];
-        bytes[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
-        Self(bytes)
+    pub fn new_maximized() -> Self {
+        Self([u8::MAX; TRANSACTION_STORE_KEY_LEN])
     }
 
     #[inline(always)]
-    pub fn from_tx_id_minimized(txid: TransactionId) -> Self {
-        let mut bytes = [0u8; TRANSACTION_STORE_KEY_LEN];
-        bytes[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
-        Self(bytes)
+    pub fn with_txid(mut self, txid: TransactionId) -> Self {
+        self.0[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
+        self
     }
 
     #[inline(always)]
-    pub fn from_tx_id_and_blue_score_maximized(txid: TransactionId, blue_score: u64) -> Self {
-        let mut bytes = [u8::MAX; TRANSACTION_STORE_KEY_LEN];
-        bytes[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
-        bytes[TRANSACTION_ID_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE].copy_from_slice(&blue_score.to_be_bytes());
-        Self(bytes)
+    pub fn with_blue_score(mut self, blue_score: u64) -> Self {
+        self.0[TRANSACTION_ID_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE].copy_from_slice(&blue_score.to_be_bytes());
+        self
     }
 
     #[inline(always)]
-    pub fn from_tx_id_and_blue_score_minimized(txid: TransactionId, blue_score: u64) -> Self {
-        let mut bytes = [0u8; TRANSACTION_STORE_KEY_LEN];
-        bytes[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
-        bytes[TRANSACTION_ID_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE].copy_from_slice(&blue_score.to_be_bytes());
-        Self(bytes)
+    pub fn with_block_hash(mut self, hash: Hash) -> Self {
+        self.0[TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE].copy_from_slice(&hash.as_bytes());
+        self
+    }
+
+    #[inline(always)]
+    pub fn blue_score(&self) -> u64 {
+        u64::from_be_bytes(self.0[TRANSACTION_ID_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE].try_into().unwrap())
+    }
+
+    #[inline(always)]
+    pub fn block_hash(&self) -> Hash {
+        Hash::from_slice(&self.0[TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE])
+    }
+
+}
+
+impl Default for AcceptedTransactionStoreKey {
+    #[inline(always)]
+    fn default() -> Self {
+        Self([0u8; TRANSACTION_STORE_KEY_LEN])
     }
 }
 
@@ -74,12 +80,11 @@ impl From<Box<[u8]>> for AcceptedTransactionStoreKey {
 impl From<(AcceptedTransactionStoreKey, MergesetIndexType)> for TxAcceptanceData {
     #[inline(always)]
     fn from(item: (AcceptedTransactionStoreKey, MergesetIndexType)) -> Self {
-        let (key, mergeset_index) = item;
-        let bytes = &key.0;
-        let blue_score = u64::from_be_bytes(bytes[TRANSACTION_ID_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE].try_into().unwrap());
-        let block_hash =
-            Hash::from_slice(&bytes[TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE]);
-        Self { blue_score, block_hash, mergeset_index }
+        TxAcceptanceData {
+            blue_score: item.0.blue_score(),
+            block_hash: item.0.block_hash(),
+            mergeset_index: item.1,
+        }
     }
 }
 
@@ -156,8 +161,8 @@ impl TxIndexAcceptedTransactionsStoreReader for DbTxIndexAcceptedTransactionsSto
         self.access
             .seek_iterator(
                 None,
-                Some(AcceptedTransactionStoreKey::from_tx_id_minimized(txid)),
-                Some(AcceptedTransactionStoreKey::from_tx_id_maximized(txid)),
+                Some(AcceptedTransactionStoreKey::new_minimized().with_txid(txid)),
+                Some(AcceptedTransactionStoreKey::new_maximized().with_txid(txid)),
                 usize::MAX,
                 false,
             )
@@ -169,7 +174,7 @@ impl TxIndexAcceptedTransactionsStoreReader for DbTxIndexAcceptedTransactionsSto
     }
 
     fn has(&self, tx_id: TransactionId, blue_score: u64, accepting_block: Hash) -> StoreResult<bool> {
-        let key = AcceptedTransactionStoreKey::from_parts(tx_id, blue_score, accepting_block);
+        let key = AcceptedTransactionStoreKey::default().with_txid(tx_id).with_blue_score(blue_score).with_block_hash(accepting_block);
         self.access.has(key)
     }
 }
@@ -183,8 +188,8 @@ impl TxIndexAcceptedTransactionsStore for DbTxIndexAcceptedTransactionsStore {
     ) -> StoreResult<()> {
         self.access.delete_range(
             writer,
-            AcceptedTransactionStoreKey::from_tx_id_and_blue_score_minimized(txid, blue_score),
-            AcceptedTransactionStoreKey::from_tx_id_and_blue_score_maximized(txid, blue_score),
+            AcceptedTransactionStoreKey::new_minimized().with_txid(txid).with_blue_score(blue_score),
+            AcceptedTransactionStoreKey::new_maximized().with_txid(txid).with_blue_score(blue_score),
         )
     }
 
@@ -195,7 +200,7 @@ impl TxIndexAcceptedTransactionsStore for DbTxIndexAcceptedTransactionsStore {
     where
         I: Iterator<Item = TxAcceptedTuple>,
     {
-        let kv_iter = to_add.into_iter().map(|(a, b, c, d)| (AcceptedTransactionStoreKey::from_parts(a, b, c), d));
+        let kv_iter = to_add.into_iter().map(|(a, b, c, d)| (AcceptedTransactionStoreKey::default().with_txid(a).with_blue_score(b).with_block_hash(c), d));
 
         self.access.write_many_without_cache(writer, &mut kv_iter.into_iter())
     }
@@ -244,7 +249,7 @@ mod tests {
         let txid = random_txid();
         let blue_score = 987654321u64;
         let block_hash = random_hash();
-        let key = AcceptedTransactionStoreKey::from_parts(txid, blue_score, block_hash);
+        let key = AcceptedTransactionStoreKey::default().with_txid(txid).with_blue_score(blue_score).with_block_hash(block_hash);
         let mergeset_index = 42 as MergesetIndexType;
         let tx_acceptance_data: TxAcceptanceData = (key.clone(), mergeset_index).into();
         assert_eq!(tx_acceptance_data.blue_score, blue_score);
