@@ -103,10 +103,8 @@ pub enum SerializationError {
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum CovenantsError {
-    #[error("output #{0} covenant id does not correspond to the authorizing input covenant id")]
-    WrongCovenantId(usize),
-    #[error("output #{0} covenant id does not correspond to the authorizing input outpoint hashing (genesis case)")]
-    WrongGenesisCovenantId(usize),
+    #[error("input #{0} and outputs with covenant id {1} do not correspond to the expected genesis hashing")]
+    WrongGenesisCovenantId(usize, Hash),
     #[error("output #{0} covenant authorizing input index {1} is out of bounds")]
     AuthInputOutOfBounds(usize, u16),
     #[error("covenant id {0} input {1} is out of bounds")]
