@@ -207,8 +207,6 @@ impl VirtualStateProcessor {
         trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
         let expected_accepted_id_merkle_root = if self.covenants_activation.is_active(header.daa_score) {
-            const HASH_SINGLE_ENTRY: bool = true;
-
             let digests = ctx
                 .accepted_tx_ids
                 .iter()
