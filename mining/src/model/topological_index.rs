@@ -51,11 +51,7 @@ where
             sorted.push(current);
         }
 
-        if sorted.len() != self.topology_nodes().len() {
-            Err(TopologicalIndexError::HasCycle)
-        } else {
-            Ok(sorted)
-        }
+        if sorted.len() != self.topology_nodes().len() { Err(TopologicalIndexError::HasCycle) } else { Ok(sorted) }
     }
 
     /// Returns a topologically ordered index of the node keys.
@@ -224,7 +220,7 @@ mod tests {
             is_acyclic: bool,
         }
 
-        let tests = vec![
+        let tests = [
             Test { name: "a regular DAG", dag: build_dag(false), is_acyclic: true },
             Test { name: "an invalid DAG with one cycle", dag: build_dag(true), is_acyclic: false },
         ];
@@ -278,7 +274,7 @@ mod tests {
             expected_result: TopologicalIndexResult<()>,
         }
 
-        let tests = vec![
+        let tests = [
             Test {
                 name: "topologically ordered index",
                 index: vec!["shirt", "socks", "tie", "boxer", "pants", "belt", "jacket", "shoes"],

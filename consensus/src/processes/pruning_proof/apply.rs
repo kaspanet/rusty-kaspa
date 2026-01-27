@@ -1,17 +1,17 @@
 use std::{
     cmp::Reverse,
-    collections::{hash_map::Entry::Vacant, BinaryHeap, HashSet},
+    collections::{BinaryHeap, HashSet, hash_map::Entry::Vacant},
     sync::Arc,
 };
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashMap, BlockHashSet, HashMapCustomHasher,
     blockhash::{BlockHashes, ORIGIN},
     errors::pruning::{PruningImportError, PruningImportResult},
     header::Header,
     pruning::PruningPointProof,
     trusted::TrustedBlock,
-    BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_core::{debug, trace};
 use kaspa_hashes::Hash;
@@ -25,6 +25,7 @@ use crate::{
         stores::{
             ghostdag::{GhostdagData, GhostdagStore},
             headers::HeaderStore,
+            pruning::PruningProofDescriptor,
             reachability::StagingReachabilityStore,
             relations::StagingRelationsStore,
             selected_chain::SelectedChainStore,
@@ -41,16 +42,24 @@ use crate::{
 use super::PruningProofManager;
 
 impl PruningProofManager {
-    pub fn apply_proof(&self, mut proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
+    pub fn apply_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
+        // Following validation of a pruning proof, various consensus storages must be updated
+
         let pruning_point_header = proof[0].last().unwrap().clone();
         let pruning_point = pruning_point_header.hash;
+
+        // Build the descriptor based on the new proof before modifying it
+        let descriptor = PruningProofDescriptor::from_proof(&proof, pruning_point, true);
 
         // Create a copy of the proof, since we're going to be mutating the proof passed to us
         let proof_sets = (0..=self.max_block_level)
             .map(|level| BlockHashSet::from_iter(proof[level as usize].iter().map(|header| header.hash)))
             .collect_vec();
 
+        let mut expanded_proof = proof;
         let mut trusted_gd_map: BlockHashMap<GhostdagData> = BlockHashMap::new();
+        // This loop expands the proof with the headers of the trusted set
+        // and creates a hash to ghostdag data map of the trusted set
         for tb in trusted_set.iter() {
             trusted_gd_map.insert(tb.block.hash(), tb.ghostdag.clone().into());
             let tb_block_level = calc_block_level(&tb.block.header, self.max_block_level);
@@ -60,67 +69,77 @@ impl PruningProofManager {
                 if proof_sets[current_proof_level as usize].contains(&tb.block.hash()) {
                     return;
                 }
-
-                proof[current_proof_level as usize].push(tb.block.header.clone());
+                // otherwise, add this block to the proof data
+                expanded_proof[current_proof_level as usize].push(tb.block.header.clone());
             });
         }
-
-        proof.iter_mut().for_each(|level_proof| {
+        // topologically sort every level in the proof
+        expanded_proof.iter_mut().for_each(|level_proof| {
             level_proof.sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
         });
 
-        self.populate_reachability_and_headers(&proof);
+        self.populate_reachability_and_headers(&expanded_proof);
 
+        // sanity check
         {
             let reachability_read = self.reachability_store.read();
             for tb in trusted_set.iter() {
-                // Header-only trusted blocks are expected to be in pruning point past
+                // A trusted block not in the past of the pruning point is in its anticone and thus must have a body
                 if tb.block.is_header_only() && !reachability_read.is_dag_ancestor_of(tb.block.hash(), pruning_point) {
-                    return Err(PruningImportError::PruningPointPastMissingReachability(tb.block.hash()));
+                    return Err(PruningImportError::PruningPointAnticoneMissingBody(tb.block.hash()));
+                }
+
+                // Trusted blocks are expected to be in the pruning point anti-future.
+                if tb.block.hash() != pruning_point && reachability_read.is_dag_ancestor_of(pruning_point, tb.block.hash()) {
+                    return Err(PruningImportError::TrustedBlockInPruningPointFuture(tb.block.hash(), pruning_point));
                 }
             }
         }
+        // Populate ghostdag_store and relation store for every block in the proof
+        trace!("Applying level 0 from the pruning point proof");
+        // We are only interested in those ancestors that belong to the pruning proof,
+        // so other parents are filtered out.
+        // Since the dag is topologically sorted, we can construct the ancestors
+        // on the fly rather than constructing it ahead of time
+        let mut ancestors: HashSet<Hash> = HashSet::new();
+        ancestors.insert(ORIGIN);
 
-        for (level, headers) in proof.iter().enumerate() {
-            trace!("Applying level {} from the pruning point proof", level);
-            let mut level_ancestors: HashSet<Hash> = HashSet::new();
-            level_ancestors.insert(ORIGIN);
+        for header in expanded_proof[0].iter() {
+            let parents = Arc::new(
+                self.parents_manager
+                    .parents_at_level(header, 0)
+                    .iter()
+                    .copied()
+                    .filter(|parent| ancestors.contains(parent))
+                    .collect_vec()
+                    .push_if_empty(ORIGIN),
+            );
 
-            for header in headers.iter() {
-                let parents = Arc::new(
-                    self.parents_manager
-                        .parents_at_level(header, level as BlockLevel)
-                        .iter()
-                        .copied()
-                        .filter(|parent| level_ancestors.contains(parent))
-                        .collect_vec()
-                        .push_if_empty(ORIGIN),
-                );
-
-                self.relations_stores.write()[level].insert(header.hash, parents.clone()).unwrap();
-
-                if level == 0 {
-                    let gd = if let Some(gd) = trusted_gd_map.get(&header.hash) {
-                        gd.clone()
-                    } else {
-                        let calculated_gd = self.ghostdag_manager.ghostdag(&parents);
-                        // Override the ghostdag data with the real blue score and blue work
-                        GhostdagData {
-                            blue_score: header.blue_score,
-                            blue_work: header.blue_work,
-                            selected_parent: calculated_gd.selected_parent,
-                            mergeset_blues: calculated_gd.mergeset_blues,
-                            mergeset_reds: calculated_gd.mergeset_reds,
-                            blues_anticone_sizes: calculated_gd.blues_anticone_sizes,
-                        }
-                    };
-                    self.ghostdag_store.insert(header.hash, Arc::new(gd)).unwrap();
+            self.relations_store.write().insert(header.hash, parents.clone()).unwrap();
+            let gd = if let Some(gd) = trusted_gd_map.get(&header.hash) {
+                gd.clone()
+            } else {
+                let calculated_gd = self.ghostdag_manager.ghostdag(&parents);
+                // Override the ghostdag data with the real blue score and blue work
+                GhostdagData {
+                    blue_score: header.blue_score,
+                    blue_work: header.blue_work,
+                    selected_parent: calculated_gd.selected_parent,
+                    mergeset_blues: calculated_gd.mergeset_blues,
+                    mergeset_reds: calculated_gd.mergeset_reds,
+                    blues_anticone_sizes: calculated_gd.blues_anticone_sizes,
                 }
+            };
+            self.ghostdag_store.insert(header.hash, Arc::new(gd)).unwrap();
 
-                level_ancestors.insert(header.hash);
-            }
+            ancestors.insert(header.hash);
         }
 
+        // Once applied, store the descriptor
+        self.pruning_point_store.write().set_pruning_proof_descriptor(descriptor).unwrap();
+
+        // Update virtual state based on proof derived pruning point.
+        // updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
         let virtual_parents = vec![pruning_point];
         let virtual_state = Arc::new(VirtualState {
             parents: virtual_parents.clone(),

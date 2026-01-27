@@ -1,0 +1,56 @@
+# ---------------------------------------- Chef image -------------------------------------------
+FROM rust:1.90-alpine AS chef
+RUN apk --no-cache add \
+  musl-dev \
+  protobuf-dev \
+  g++ \
+  clang15-dev \
+  linux-headers \
+  wasm-pack \
+  openssl-dev
+RUN cargo install cargo-chef --locked
+WORKDIR /app
+
+# ---------------------------------------- Planner image ----------------------------------------
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ---------------------------------------- Builder image ----------------------------------------
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+
+ENV RUSTFLAGS="-C target-feature=-crt-static" \
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL="sparse"
+
+# Build dependencies - this is the caching Docker layer
+RUN cargo chef cook --release --recipe-path recipe.json -p simpa --bin simpa
+
+COPY . .
+RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=cargo-target,target=/app/target,sharing=locked \
+    cargo build --release --bin simpa \
+    && cp /app/target/release/simpa /app/simpa   # <-- outside the mount, persists
+
+
+# ---------------------------------------- Runtime image ----------------------------------------
+FROM alpine AS runtime
+WORKDIR /app
+
+RUN apk --no-cache add \
+  libgcc \
+  libstdc++ \
+  tini \
+  ca-certificates \
+  && addgroup -S kaspa \
+  && adduser -S -G kaspa -h /home/kaspa -s /sbin/nologin kaspa \
+  && mkdir -p /home/kaspa /app \
+  && chown -R kaspa:kaspa /home/kaspa /app
+
+COPY --from=builder --chown=kaspa:kaspa /app/simpa .
+
+ENV HOME=/home/kaspa
+USER kaspa
+ENTRYPOINT [ "/sbin/tini", "--" ]
+CMD [ "/app/simpa" ]

@@ -22,6 +22,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
+    BlockHashMap, BlockHashSet, HashMapCustomHasher,
     acceptance_data::{AcceptedTxEntry, MergesetBlockAcceptanceData},
     api::args::TransactionValidationArgs,
     coinbase::*,
@@ -33,7 +34,6 @@ use kaspa_consensus_core::{
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
     },
-    BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use kaspa_core::{info, trace};
 use kaspa_hashes::Hash;
@@ -41,14 +41,14 @@ use kaspa_muhash::MuHash;
 use kaspa_utils::refs::Refs;
 
 use rayon::prelude::*;
-use smallvec::{smallvec, SmallVec};
+use smallvec::{SmallVec, smallvec};
 use std::{iter::once, ops::Deref};
 
 pub(crate) mod crescendo {
     use kaspa_core::{info, log::CRESCENDO_KEYWORD};
     use std::sync::{
-        atomic::{AtomicU8, Ordering},
         Arc,
+        atomic::{AtomicU8, Ordering},
     };
 
     #[derive(Clone)]
@@ -138,13 +138,8 @@ impl VirtualStateProcessor {
             // No need to fully validate selected parent transactions since selected parent txs were already validated
             // as part of selected parent UTXO state verification with the exact same UTXO context.
             let validation_flags = if is_selected_parent { TxValidationFlags::SkipScriptChecks } else { TxValidationFlags::Full };
-            let (validated_transactions, inner_multiset) = self.validate_transactions_with_muhash_in_parallel(
-                &txs,
-                &composed_view,
-                pov_daa_score,
-                self.headers_store.get_daa_score(merged_block).unwrap(),
-                validation_flags,
-            );
+            let (validated_transactions, inner_multiset) =
+                self.validate_transactions_with_muhash_in_parallel(&txs, &composed_view, pov_daa_score, validation_flags);
 
             ctx.multiset_hash.combine(&inner_multiset);
 
@@ -175,16 +170,6 @@ impl VirtualStateProcessor {
                 BlockRewardData::new(coinbase_data.subsidy, block_fee, coinbase_data.miner_data.script_public_key),
             );
         }
-
-        // Before crescendo HF:
-        //  - Make sure accepted tx ids are sorted before building the merkle root
-        // After crescendo HF:
-        //  - Preserve canonical order of accepted transactions after hard-fork
-        if !self.crescendo_activation.is_active(pov_daa_score) {
-            // Note that pov_daa_score is the score of the header which will have its accepted_id_merkle_root
-            // set according to accepted_tx_ids, so we are consistent in activating via the correct score
-            ctx.accepted_tx_ids.sort();
-        }
     }
 
     /// Verify that the current block fully respects its own UTXO view. We define a block as
@@ -209,7 +194,7 @@ impl VirtualStateProcessor {
 
         // Verify header accepted_id_merkle_root
         let expected_accepted_id_merkle_root =
-            self.calc_accepted_id_merkle_root(header.daa_score, ctx.accepted_tx_ids.iter().copied(), ctx.selected_parent());
+            self.calc_accepted_id_merkle_root(ctx.accepted_tx_ids.iter().copied(), ctx.selected_parent());
 
         if expected_accepted_id_merkle_root != header.accepted_id_merkle_root {
             return Err(BadAcceptedIDMerkleRoot(header.hash, header.accepted_id_merkle_root, expected_accepted_id_merkle_root));
@@ -232,13 +217,8 @@ impl VirtualStateProcessor {
 
         // Verify all transactions are valid in context
         let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
-        let validated_transactions = self.validate_transactions_in_parallel(
-            &txs,
-            &current_utxo_view,
-            header.daa_score,
-            header.daa_score,
-            TxValidationFlags::Full,
-        );
+        let validated_transactions =
+            self.validate_transactions_in_parallel(&txs, &current_utxo_view, header.daa_score, TxValidationFlags::Full);
         if validated_transactions.len() < txs.len() - 1 {
             // Some non-coinbase transactions are invalid
             return Err(InvalidTransactionsInUtxoContext(txs.len() - 1 - validated_transactions.len(), txs.len() - 1));
@@ -252,23 +232,9 @@ impl VirtualStateProcessor {
         header: &Header,
         ghostdag_data: CompactGhostdagData,
     ) -> BlockProcessResult<PruningPointReply> {
-        // [Crescendo]: changing expected pruning point check from header validity to chain qualification.
-        // Note that we activate here based on the selected parent DAA score thus complementing the deactivation
-        // in header processor which is based on selected parent DAA score as well.
-
-        if self.crescendo_activation.is_within_range_from_activation(header.daa_score, 1000) {
-            self.crescendo_logger.report_activation();
-        }
-
-        let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
-        // [Crescendo]: we need to save reply.pruning_sample to the database also prior to activation
-        let reply = self.pruning_point_manager.expected_header_pruning_point_v2(ghostdag_data);
-        if self.crescendo_activation.is_active(selected_parent_daa_score) {
-            if reply.pruning_point != header.pruning_point {
-                return Err(WrongHeaderPruningPoint(reply.pruning_point, header.pruning_point));
-            }
-        } else {
-            assert_eq!(reply.pruning_point, header.pruning_point, "verified by header validation (v1 = v2 pre activation)");
+        let reply = self.pruning_point_manager.expected_header_pruning_point(ghostdag_data);
+        if reply.pruning_point != header.pruning_point {
+            return Err(WrongHeaderPruningPoint(reply.pruning_point, header.pruning_point));
         }
         Ok(reply)
     }
@@ -288,15 +254,7 @@ impl VirtualStateProcessor {
             .expected_coinbase_transaction(daa_score, miner_data, ghostdag_data, mergeset_rewards, mergeset_non_daa)
             .unwrap()
             .tx;
-        // [Crescendo]: we can pass include_mass_field = false here since post activation coinbase mass field
-        // is guaranteed to be zero (see check_coinbase_has_zero_mass), so after the fork we will be able to
-        // safely remove the include_mass_field parameter. This is because internally include_mass_field = false
-        // and mass = 0 are treated the same.
-        if hashing::tx::hash(coinbase, false) != hashing::tx::hash(&expected_coinbase, false) {
-            Err(BadCoinbaseTransaction)
-        } else {
-            Ok(())
-        }
+        if hashing::tx::hash(coinbase) != hashing::tx::hash(&expected_coinbase) { Err(BadCoinbaseTransaction) } else { Ok(()) }
     }
 
     /// Validates transactions against the provided `utxo_view` and returns a vector with all transactions
@@ -306,7 +264,6 @@ impl VirtualStateProcessor {
         txs: &'a Vec<Transaction>,
         utxo_view: &V,
         pov_daa_score: u64,
-        block_daa_score: u64,
         flags: TxValidationFlags,
     ) -> Vec<(ValidatedTransaction<'a>, u32)> {
         self.thread_pool.install(|| {
@@ -315,7 +272,7 @@ impl VirtualStateProcessor {
                             // that all txs within each block are independent
                 .enumerate()
                 .skip(1) // Skip the coinbase tx.
-                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, block_daa_score, flags).ok().map(|vtx| (vtx, i as u32)))
+                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, flags).ok().map(|vtx| (vtx, i as u32)))
                 .collect()
         })
     }
@@ -327,7 +284,6 @@ impl VirtualStateProcessor {
         txs: &'a Vec<Transaction>,
         utxo_view: &V,
         pov_daa_score: u64,
-        block_daa_score: u64,
         flags: TxValidationFlags,
     ) -> (SmallVec<[(ValidatedTransaction<'a>, u32); 2]>, MuHash) {
         self.thread_pool.install(|| {
@@ -336,7 +292,7 @@ impl VirtualStateProcessor {
                             // that all txs within each block are independent
                 .enumerate()
                 .skip(1) // Skip the coinbase tx.
-                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, block_daa_score, flags).ok().map(|vtx| {
+                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, flags).ok().map(|vtx| {
                     let mh = MuHash::from_transaction(&vtx, pov_daa_score);
                     (smallvec![(vtx, i as u32)], mh)
                 }
@@ -358,7 +314,6 @@ impl VirtualStateProcessor {
         transaction: &'a Transaction,
         utxo_view: &impl UtxoView,
         pov_daa_score: u64,
-        block_daa_score: u64,
         flags: TxValidationFlags,
     ) -> TxResult<ValidatedTransaction<'a>> {
         let mut entries = Vec::with_capacity(transaction.inputs.len());
@@ -371,19 +326,11 @@ impl VirtualStateProcessor {
             }
         }
         let populated_tx = PopulatedTransaction::new(transaction, entries);
-        let res = self.transaction_validator.validate_populated_transaction_and_get_fee(
-            &populated_tx,
-            pov_daa_score,
-            block_daa_score,
-            flags,
-            None,
-        );
+        let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, pov_daa_score, flags, None);
         match res {
             Ok(calculated_fee) => Ok(ValidatedTransaction::new(populated_tx, calculated_fee)),
             Err(tx_rule_error) => {
                 // TODO (relaxed): aggregate by error types and log through the monitor (in order to not flood the logs)
-                // [Crescendo]: the above suggested aggregate seems not crucial for crescendo since unupdated miners
-                // will mine invalid blocks (due to difficulty, coinbase etc)
                 info!("Rejecting transaction {} due to transaction rule error: {}", transaction.id(), tx_rule_error);
                 Err(tx_rule_error)
             }
@@ -442,7 +389,6 @@ impl VirtualStateProcessor {
         let calculated_fee = self.transaction_validator.validate_populated_transaction_and_get_fee(
             &mutable_tx.as_verifiable(),
             pov_daa_score,
-            pov_daa_score,
             TxValidationFlags::SkipMassCheck, // we can skip the mass check since we just set it
             mass_and_feerate_threshold,
         )?;
@@ -454,18 +400,13 @@ impl VirtualStateProcessor {
     /// refer KIP-15 for more details
     pub(super) fn calc_accepted_id_merkle_root(
         &self,
-        daa_score: u64,
         accepted_tx_ids: impl ExactSizeIterator<Item = Hash>,
         selected_parent: Hash,
     ) -> Hash {
-        if self.crescendo_activation.is_active(daa_score) {
-            kaspa_merkle::merkle_hash(
-                self.headers_store.get_header(selected_parent).unwrap().accepted_id_merkle_root,
-                kaspa_merkle::calc_merkle_root(accepted_tx_ids),
-            )
-        } else {
-            kaspa_merkle::calc_merkle_root(accepted_tx_ids)
-        }
+        kaspa_merkle::merkle_hash(
+            self.headers_store.get_header(selected_parent).unwrap().accepted_id_merkle_root,
+            kaspa_merkle::calc_merkle_root(accepted_tx_ids),
+        )
     }
 }
 

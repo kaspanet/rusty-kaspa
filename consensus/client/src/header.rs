@@ -20,7 +20,7 @@ use workflow_wasm::prelude::*;
 const TS_HEADER: &'static str = r#"
 /**
  * Interface defining the structure of a block header.
- * 
+ *
  * @category Consensus
  */
 export interface IHeader {
@@ -41,10 +41,10 @@ export interface IHeader {
 
 /**
  * Interface defining the structure of a raw block header.
- * 
+ *
  * This interface is explicitly used by GetBlockTemplate and SubmitBlock RPCs
  * and unlike `IHeader`, does not include a hash.
- * 
+ *
  * @category Consensus
  */
 export interface IRawHeader {
@@ -233,7 +233,7 @@ impl Header {
     #[wasm_bindgen(setter = parentsByLevel)]
     pub fn set_parents_by_level_from_js_value(&mut self, js_value: JsValue) {
         let array = Array::from(&js_value);
-        self.inner_mut().parents_by_level = array
+        let parents = array
             .iter()
             .map(|jsv| {
                 Array::from(&jsv)
@@ -246,6 +246,8 @@ impl Header {
             .unwrap_or_else(|err| {
                 panic!("{}", err);
             });
+
+        self.inner_mut().parents_by_level = parents.try_into().unwrap();
     }
 
     #[wasm_bindgen(getter = blueWork)]
@@ -272,7 +274,7 @@ impl TryCastFromJs for Header {
     {
         Self::resolve(value, || {
             if let Some(object) = Object::try_from(value.as_ref()) {
-                let parents_by_level = object
+                let parents_by_level_vec = object
                     .get_vec("parentsByLevel")?
                     .iter()
                     .map(|jsv| {
@@ -283,6 +285,8 @@ impl TryCastFromJs for Header {
                             .collect::<std::result::Result<Vec<Hash>, Error>>()
                     })
                     .collect::<std::result::Result<Vec<Vec<Hash>>, Error>>()?;
+
+                let parents_by_level = parents_by_level_vec.try_into()?;
 
                 let header = native::Header {
                     hash: object.get_value("hash")?.try_into_owned().unwrap_or_default(),

@@ -42,6 +42,18 @@ from!(item: &kaspa_rpc_core::RpcBlockVerboseData, protowire::RpcBlockVerboseData
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
 
+try_from!(item: &protowire::RpcBlock, kaspa_rpc_core::RpcOptionalBlock, {
+    Self {
+        header: item
+            .header
+            .as_ref()
+            .map(kaspa_rpc_core::RpcOptionalHeader::try_from)
+            .transpose()?,
+        transactions: item.transactions.iter().map(kaspa_rpc_core::RpcOptionalTransaction::try_from).collect::<Result<Vec<_>, _>>()?,
+        verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcBlockVerboseData::try_from).transpose()?,
+    }
+});
+
 try_from!(item: &protowire::RpcBlock, kaspa_rpc_core::RpcBlock, {
     Self {
         header: item
@@ -56,12 +68,8 @@ try_from!(item: &protowire::RpcBlock, kaspa_rpc_core::RpcBlock, {
 
 try_from!(item: &protowire::RpcBlock, kaspa_rpc_core::RpcRawBlock, {
     Self {
-        header: item
-            .header
-            .as_ref()
-            .ok_or_else(|| RpcError::MissingRpcFieldError("RpcBlock".to_string(), "header".to_string()))?
-            .try_into()?,
-        transactions: item.transactions.iter().map(kaspa_rpc_core::RpcTransaction::try_from).collect::<Result<Vec<_>, _>>()?,
+    header: kaspa_rpc_core::RpcRawHeader::try_from(item.header.as_ref().ok_or(RpcError::MissingRpcFieldError("RpcBlock".to_string(), "header".to_string()))?)?,
+    transactions: item.transactions.iter().map(kaspa_rpc_core::RpcTransaction::try_from).collect::<Result<Vec<_>, _>>()?,
     }
 });
 

@@ -5,7 +5,7 @@ pub mod result;
 pub use data::{Metric, MetricGroup, MetricsData, MetricsSnapshot};
 
 use crate::result::Result;
-use futures::{pin_mut, select, FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, pin_mut, select};
 use kaspa_rpc_core::api::rpc::RpcApi;
 use std::{
     future::Future,
@@ -20,7 +20,7 @@ use workflow_core::time::unixtime_as_millis_f64;
 use workflow_log::*;
 
 pub type MetricsSinkFn =
-    Arc<Box<dyn Send + Sync + Fn(MetricsSnapshot) -> Option<Pin<Box<(dyn Send + 'static + Future<Output = Result<()>>)>>> + 'static>>;
+    Arc<Box<dyn Send + Sync + Fn(MetricsSnapshot) -> Option<Pin<Box<dyn Send + 'static + Future<Output = Result<()>>>>> + 'static>>;
 
 pub struct Metrics {
     task_ctl: DuplexChannel,

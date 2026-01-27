@@ -9,8 +9,8 @@ mod session;
 
 pub use batch::BlockProcessingBatch;
 pub use session::{
-    spawn_blocking, ConsensusInstance, ConsensusProxy, ConsensusSessionBlocking, ConsensusSessionOwned, SessionLock, SessionReadGuard,
-    SessionWriteGuard,
+    ConsensusInstance, ConsensusProxy, ConsensusSessionBlocking, ConsensusSessionOwned, SessionLock, SessionReadGuard,
+    SessionWriteGuard, spawn_blocking,
 };
 
 /// Consensus controller trait. Includes methods required to start/stop/control consensus, but which should not
@@ -171,6 +171,19 @@ impl ConsensusManager {
     pub fn delete_staging_entry(&self) {
         self.factory.delete_staging_entry();
     }
+
+    /// Synchronously invokes all registered consensus-reset handlers.
+    ///
+    /// This is used to notify external system components that the consensus state
+    /// has been explicitly reset. Handlers are invoked synchronously (rather than
+    /// via the generic notification system) to ensure state consistency across
+    /// components before normal operation resumes.
+    pub fn invoke_consensus_reset_handlers(&self) {
+        let handlers = self.inner.read().consensus_reset_handlers.iter().cloned().collect_vec();
+        for handler in handlers {
+            handler.handle_consensus_reset();
+        }
+    }
 }
 
 impl Service for ConsensusManager {
@@ -206,10 +219,7 @@ impl StagingConsensus {
         prev.ctl.stop();
         g.current.ctl.make_active();
         drop(g);
-        let handlers = self.manager.inner.read().consensus_reset_handlers.iter().cloned().collect_vec();
-        for handler in handlers {
-            handler.handle_consensus_reset();
-        }
+        self.manager.invoke_consensus_reset_handlers();
         // Drop `prev` so that deletion below succeeds
         drop(prev);
         // Staging was committed and is now the active consensus so we can delete

@@ -1,4 +1,4 @@
-use crate::{opcodes, MAX_SCRIPT_PUBLIC_KEY_VERSION};
+use crate::{MAX_SCRIPT_PUBLIC_KEY_VERSION, opcodes};
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Version;
 use kaspa_consensus_core::tx::{ScriptPublicKey, ScriptPublicKeyVersion};
@@ -16,7 +16,7 @@ pub enum Error {
 }
 
 /// Standard classes of script payment in the blockDAG
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[borsh(use_discriminant = true)]
 #[repr(u8)]
 pub enum ScriptClass {

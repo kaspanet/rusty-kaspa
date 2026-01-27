@@ -15,8 +15,8 @@ use kaspa_consensus_core::tx::{
 use kaspa_consensus_core::utxo::utxo_view::UtxoView;
 use kaspa_core::trace;
 use kaspa_utils::sim::{Environment, Process, Resumption, Suspension};
-use rand::rngs::ThreadRng;
 use rand::Rng;
+use rand::rngs::ThreadRng;
 use rand_distr::{Distribution, Exp};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::cmp::max;
@@ -180,7 +180,7 @@ impl Miner {
         let entry = utxo_view.get(&outpoint)?;
         if entry.amount < 2
             || (entry.is_coinbase
-                && (virtual_daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity().upper_bound() as i64)
+                && (virtual_daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity() as i64)
         {
             return None;
         }

@@ -1,16 +1,16 @@
 use itertools::Itertools;
 use kaspa_consensus_core::BlockHashSet;
-use kaspa_consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel};
+use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, blockhash::BlockHashes};
 use kaspa_database::prelude::{BatchDbWriter, CachePolicy, DbWriter};
 use kaspa_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
+use kaspa_database::prelude::{DB, StoreResult};
 use kaspa_database::prelude::{DirectWriter, MemoryWriter};
 use kaspa_database::prelude::{ReadLock, StoreError};
-use kaspa_database::prelude::{StoreResult, DB};
 use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
-use std::collections::hash_map::Entry;
 use std::collections::HashSet;
+use std::collections::hash_map::Entry;
 use std::iter::once;
 use std::sync::Arc;
 
@@ -55,6 +55,30 @@ impl DbRelationsStore {
             parents_access: CachedDbAccess::new(Arc::clone(&db), cache_policy, parents_prefix),
         }
     }
+    pub fn new_temp(
+        db: Arc<DB>,
+        level: BlockLevel,
+        try_number: u8,
+        cache_policy: CachePolicy,
+        children_cache_policy: CachePolicy,
+    ) -> Self {
+        assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
+        let lvl_bytes = level.to_le_bytes();
+        let temp_index_bytes = try_number.to_le_bytes();
+        let prefix = lvl_bytes.into_iter().chain(temp_index_bytes).collect_vec();
+        let parents_prefix: Vec<u8> = DatabaseStorePrefixes::TempRelationsParents
+            .into_iter()
+            .chain(prefix.clone())
+            .chain(DatabaseStorePrefixes::RelationsParents)
+            .collect_vec();
+        let children_prefix = DatabaseStorePrefixes::TempRelationsChildren.into_iter().chain(prefix).collect_vec();
+
+        Self {
+            db: Arc::clone(&db),
+            children_store: DbChildrenStore::with_prefix(db.clone(), children_prefix.as_ref(), children_cache_policy),
+            parents_access: CachedDbAccess::new(Arc::clone(&db), cache_policy, parents_prefix),
+        }
+    }
 
     pub fn with_prefix(db: Arc<DB>, prefix: &[u8], cache_policy: CachePolicy, children_cache_policy: CachePolicy) -> Self {
         let parents_prefix = prefix.iter().copied().chain(DatabaseStorePrefixes::RelationsParents).collect_vec();
@@ -86,16 +110,27 @@ impl RelationsStoreReader for DbRelationsStore {
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        if self.parents_access.has(hash)? {
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        if self.parents_access.has(hash)? { Ok(true) } else { Ok(false) }
     }
 
     fn counts(&self) -> Result<(usize, usize), StoreError> {
         let count = self.parents_access.iterator().count();
         Ok((count, count))
+    }
+}
+
+impl<T: RelationsStoreReader + ?Sized> RelationsStoreReader for &T {
+    fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
+        (*self).get_parents(hash)
+    }
+    fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
+        (*self).get_children(hash)
+    }
+    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
+        (*self).has(hash)
+    }
+    fn counts(&self) -> Result<(usize, usize), StoreError> {
+        (*self).counts()
     }
 }
 
@@ -267,11 +302,7 @@ impl RelationsStore for StagingRelationsStore<'_> {
 impl RelationsStoreReader for StagingRelationsStore<'_> {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         self.check_not_in_entry_deletions(hash)?;
-        if let Some(data) = self.parents_overrides.get(&hash) {
-            Ok(BlockHashes::clone(data))
-        } else {
-            self.store.get_parents(hash)
-        }
+        if let Some(data) = self.parents_overrides.get(&hash) { Ok(BlockHashes::clone(data)) } else { self.store.get_parents(hash) }
     }
 
     fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {

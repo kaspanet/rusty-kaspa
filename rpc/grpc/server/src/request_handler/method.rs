@@ -20,7 +20,7 @@ impl<Request, Response> Clone for RoutingPolicy<Request, Response> {
 #[async_trait]
 pub trait MethodTrait<ServerContext, ConnectionContext, Request, Response>: Send + Sync + 'static {
     async fn call(&self, server_ctx: ServerContext, connection_ctx: ConnectionContext, request: Request)
-        -> GrpcServerResult<Response>;
+    -> GrpcServerResult<Response>;
 
     fn method_fn(&self) -> MethodFn<ServerContext, ConnectionContext, Request, Response>;
     fn tasks(&self) -> usize;
@@ -33,7 +33,7 @@ pub type MethodFn<ServerContext, ConnectionContext, Request, Response> =
     Arc<Box<dyn Send + Sync + Fn(ServerContext, ConnectionContext, Request) -> MethodFnReturn<Response> + 'static>>;
 
 /// RPC method function return type
-pub type MethodFnReturn<T> = Pin<Box<(dyn Send + 'static + Future<Output = GrpcServerResult<T>>)>>;
+pub type MethodFnReturn<T> = Pin<Box<dyn Send + 'static + Future<Output = GrpcServerResult<T>>>>;
 
 /// RPC drop function type
 pub type DropFn<Request, Response> = Arc<Box<dyn Send + Sync + Fn(&Request) -> GrpcServerResult<Response>>>;

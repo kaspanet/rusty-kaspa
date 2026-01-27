@@ -1,8 +1,8 @@
 use crate::{
+    BlueWorkType,
     coinbase::MinerData,
     header::Header,
     tx::{Transaction, TransactionId},
-    BlueWorkType,
 };
 use kaspa_hashes::Hash;
 use kaspa_utils::mem_size::MemSizeEstimator;
@@ -68,6 +68,8 @@ impl Block {
         Block::from_header(Header::from_precomputed_hash(hash, parents))
     }
 
+    /// Check if the block in-memory size is too large to be cached as a pending-validation orphan block.
+    /// Returns None if the block is too large
     pub fn asses_for_cache(&self) -> Option<()> {
         (self.estimate_mem_bytes() < 1_000_000).then_some(())
     }

@@ -11,7 +11,7 @@ use crate::{
             ghostdag::{CompactGhostdagData, GhostdagStoreReader},
             headers::HeaderStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
-            pruning::{PruningStore, PruningStoreReader},
+            pruning::PruningStoreReader,
             pruning_samples::PruningSamplesStoreReader,
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::StagingRelationsStore,
@@ -19,6 +19,7 @@ use crate::{
             statuses::StatusesStoreReader,
             tips::{TipsStore, TipsStoreReader},
             utxo_diffs::UtxoDiffsStoreReader,
+            virtual_state::VirtualStateStoreReader,
         },
     },
     processes::{pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations},
@@ -26,28 +27,28 @@ use crate::{
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashMap, BlockHashSet, BlockLevel,
     blockhash::ORIGIN,
     blockstatus::BlockStatus::StatusHeaderOnly,
     config::Config,
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::ExternalGhostdagData,
-    BlockHashMap, BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, trace, warn};
-use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
+use kaspa_database::prelude::{BatchDbWriter, DB, MemoryWriter, StoreResultExt};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
-    collections::{hash_map::Entry::Vacant, VecDeque},
+    collections::{VecDeque, hash_map::Entry::Vacant},
     ops::Deref,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -117,27 +118,37 @@ impl PruningProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
-        let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() else {
-            return;
-        };
-
         // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
         // in order to make sure the node is already connected and receiving blocks before we start background recovery operations
-        self.recover_pruning_workflows_if_needed();
-        self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
-
+        let mut recovered = false;
         while let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() {
-            self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+            if !recovered {
+                if !self.recover_pruning_workflows_if_needed() {
+                    // Recovery could fail for several reasons:
+                    // (a) Consensus has exited while it was undergoing
+                    // (b) Consensus is in a transitional state
+                    // (c) Consensus is no longer in a transitional state per-se but has yet to catch up on sufficient block data
+                    // For (a), the best course of measure is to exit the loop
+                    // For (b)+(c), it is to attempt it again
+                    // Continuing the loop satisfies both since if consensus exited the next iteration of the loop will exit as well
+                    continue;
+                }
+                recovered = true;
+            }
+            self.advance_pruning_point_if_possible(sink_ghostdag_data);
         }
     }
 
-    fn recover_pruning_workflows_if_needed(&self) {
+    fn recover_pruning_workflows_if_needed(&self) -> bool {
+        // returns true if recovery was completed successfully or was not needed
         let pruning_point_read = self.pruning_point_store.read();
         let pruning_point = pruning_point_read.pruning_point().unwrap();
         let retention_checkpoint = pruning_point_read.retention_checkpoint().unwrap();
         let retention_period_root = pruning_point_read.retention_period_root().unwrap();
-        let pruning_utxoset_position = self.pruning_utxoset_stores.read().utxoset_position().unwrap();
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        let pruning_utxoset_position = pruning_meta_read.utxoset_position().unwrap();
         drop(pruning_point_read);
+        drop(pruning_meta_read);
 
         debug!(
             "[PRUNING PROCESSOR] recovery check: current pruning point: {}, retention checkpoint: {:?}, pruning utxoset position: {:?}",
@@ -149,15 +160,32 @@ impl PruningProcessor {
             info!("Recovering pruning utxo-set from {} to the pruning point {}", pruning_utxoset_position, pruning_point);
             if !self.advance_pruning_utxoset(pruning_utxoset_position, pruning_point) {
                 info!("Interrupted while advancing the pruning point UTXO set: Process is exiting");
-                return;
+                return false;
             }
         }
+        // The following two checks are implicitly checked in advance_pruning_utxoset, and hence can theoretically
+        // be skipped if that function was called. As these checks are cheap, we  perform them regardless
+        // as to not complicate the logic.
 
+        // If the latest pruning point is the result of an IBD catchup, it is guaranteed that the headers selected tip
+        // is pruning_depth on top of it
+        // but crucially it is not guaranteed *virtual* is of sufficient depth above it
+        // internally the pruning process checks this process for virtual and fails otherwise
+        // for this reason, pruning is held until virtual has advanced enough.
+        if !self.confirm_pruning_depth_below_virtual(pruning_point) {
+            return false;
+        }
+        let pruning_meta_read = self.pruning_meta_stores.read();
+
+        // don't prune if in a transitional ibd state.
+        if pruning_meta_read.is_in_transitional_ibd_state() {
+            return false;
+        }
+
+        drop(pruning_meta_read);
         trace!(
             "retention_checkpoint: {:?} | retention_period_root: {} | pruning_point: {}",
-            retention_checkpoint,
-            retention_period_root,
-            pruning_point
+            retention_checkpoint, retention_period_root, pruning_point
         );
 
         // This indicates the node crashed or was forced to stop during a former data prune operation hence
@@ -165,16 +193,13 @@ impl PruningProcessor {
         if retention_checkpoint != retention_period_root {
             self.prune(pruning_point, retention_period_root);
         }
+        true
     }
 
-    fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
+    fn advance_pruning_point_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
         let pruning_point_read = self.pruning_point_store.upgradable_read();
-        let current_pruning_info = pruning_point_read.get().unwrap();
-        let (new_pruning_points, new_candidate) = self.pruning_point_manager.next_pruning_points(
-            sink_ghostdag_data,
-            current_pruning_info.candidate,
-            current_pruning_info.pruning_point,
-        );
+        let (current_pruning_point, current_index) = pruning_point_read.pruning_point_and_index().unwrap();
+        let new_pruning_points = self.pruning_point_manager.next_pruning_points(sink_ghostdag_data, current_pruning_point);
 
         if let Some(new_pruning_point) = new_pruning_points.last().copied() {
             let retention_period_root = pruning_point_read.retention_period_root().unwrap();
@@ -183,10 +208,10 @@ impl PruningProcessor {
             let mut batch = WriteBatch::default();
             let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
             for (i, past_pp) in new_pruning_points.iter().copied().enumerate() {
-                self.past_pruning_points_store.insert_batch(&mut batch, current_pruning_info.index + i as u64 + 1, past_pp).unwrap();
+                self.past_pruning_points_store.insert_batch(&mut batch, current_index + i as u64 + 1, past_pp).unwrap();
             }
-            let new_pp_index = current_pruning_info.index + new_pruning_points.len() as u64;
-            pruning_point_write.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
+            let new_pp_index = current_index + new_pruning_points.len() as u64;
+            pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pp_index).unwrap();
 
             // For archival nodes, keep the retention root in place
             let adjusted_retention_period_root = if self.config.is_archival {
@@ -203,10 +228,10 @@ impl PruningProcessor {
             trace!("New Pruning Point: {} | New Retention Period Root: {}", new_pruning_point, adjusted_retention_period_root);
 
             // Inform the user
-            info!("Periodic pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
+            info!("Periodic pruning point movement: advancing from {} to {}", current_pruning_point, new_pruning_point);
 
             // Advance the pruning point utxoset to the state of the new pruning point using chain-block UTXO diffs
-            if !self.advance_pruning_utxoset(current_pruning_info.pruning_point, new_pruning_point) {
+            if !self.advance_pruning_utxoset(current_pruning_point, new_pruning_point) {
                 info!("Interrupted while advancing the pruning point UTXO set: Process is exiting");
                 return;
             }
@@ -214,25 +239,38 @@ impl PruningProcessor {
 
             // Finally, prune data in the new pruning point past
             self.prune(new_pruning_point, adjusted_retention_period_root);
-        } else if new_candidate != current_pruning_info.candidate {
-            let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
-            pruning_point_write.set(current_pruning_info.pruning_point, new_candidate, current_pruning_info.index).unwrap();
         }
     }
 
     fn advance_pruning_utxoset(&self, utxoset_position: Hash, new_pruning_point: Hash) -> bool {
-        let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
+        // If the latest pruning point is the result of an IBD catchup, it is guaranteed that the headers selected tip
+        // is pruning_depth on top of it
+        // but crucially it is not guaranteed *virtual* is of sufficient depth above it
+        // internally the pruning process checks this process for virtual and fails otherwise
+        // for this reason, pruning is held until virtual has advanced enough.
+        if !self.confirm_pruning_depth_below_virtual(new_pruning_point) {
+            return false;
+        }
+
         for chain_block in self.reachability_service.forward_chain_iterator(utxoset_position, new_pruning_point, true).skip(1) {
             if self.is_consensus_exiting.load(Ordering::Relaxed) {
                 return false;
             }
+            // halt pruning if an unstable IBD state was initiated in the midst of it
+            let pruning_meta_read = self.pruning_meta_stores.upgradable_read();
+
+            if pruning_meta_read.is_in_transitional_ibd_state() {
+                return false;
+            }
+            let mut pruning_meta_write = RwLockUpgradableReadGuard::upgrade(pruning_meta_read);
+
             let utxo_diff = self.utxo_diffs_store.get(chain_block).expect("chain blocks have utxo state");
             let mut batch = WriteBatch::default();
-            pruning_utxoset_write.utxo_set.write_diff_batch(&mut batch, utxo_diff.as_ref()).unwrap();
-            pruning_utxoset_write.set_utxoset_position(&mut batch, chain_block).unwrap();
+            pruning_meta_write.utxo_set.write_diff_batch(&mut batch, utxo_diff.as_ref()).unwrap();
+            pruning_meta_write.set_utxoset_position(&mut batch, chain_block).unwrap();
             self.db.write(batch).unwrap();
+            drop(pruning_meta_write);
         }
-        drop(pruning_utxoset_write);
 
         if self.config.enable_sanity_checks {
             info!("Performing a sanity check that the new UTXO set has the expected UTXO commitment");
@@ -245,8 +283,8 @@ impl PruningProcessor {
         info!("Verifying the new pruning point UTXO commitment (sanity test)");
         let commitment = self.headers_store.get_header(pruning_point).unwrap().utxo_commitment;
         let mut multiset = MuHash::new();
-        let pruning_utxoset_read = self.pruning_utxoset_stores.read();
-        for (outpoint, entry) in pruning_utxoset_read.utxo_set.iterator().map(|r| r.unwrap()) {
+        let pruning_meta_read = self.pruning_meta_stores.read();
+        for (outpoint, entry) in pruning_meta_read.utxo_set.iterator().map(|r| r.unwrap()) {
             multiset.add_utxo(&outpoint, &entry);
         }
         assert_eq!(multiset.finalize(), commitment, "Updated pruning point utxo set does not match the header utxo commitment");
@@ -297,7 +335,7 @@ impl PruningProcessor {
             let mut batch = WriteBatch::default();
             // At this point keep_relations only holds level-0 relations which is the correct filtering criteria for primary GHOSTDAG
             for kept in keep_relations.keys().copied() {
-                let Some(ghostdag) = self.ghostdag_store.get_data(kept).unwrap_option() else {
+                let Some(ghostdag) = self.ghostdag_store.get_data(kept).optional().unwrap() else {
                     continue;
                 };
                 if ghostdag.unordered_mergeset().any(|h| !keep_relations.contains_key(&h)) {
@@ -387,7 +425,7 @@ impl PruningProcessor {
             //                               hence we verify its existence first and only then proceed.
             // TODO (in upcoming versions): remove this temp condition
             if retention_period_root == new_pruning_point
-                || selected_chain_write.get_by_hash(retention_period_root).unwrap_option().is_some()
+                || selected_chain_write.get_by_hash(retention_period_root).optional().unwrap().is_some()
             {
                 selected_chain_write.prune_below_point(BatchDbWriter::new(&mut batch), retention_period_root).unwrap();
             }
@@ -437,9 +475,9 @@ impl PruningProcessor {
 
             if !keep_blocks.contains(&current) {
                 let mut batch = WriteBatch::default();
-                let mut level_relations_write = self.relations_stores.write();
+                let mut relations_write = self.relations_store.write();
                 let mut reachability_relations_write = self.reachability_relations_store.write();
-                let mut staging_relations = StagingRelationsStore::new(&mut reachability_relations_write);
+                let mut staging_reachability_relations = StagingRelationsStore::new(&mut reachability_relations_write);
                 let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
                 let mut statuses_write = self.statuses_store.write();
 
@@ -450,7 +488,7 @@ impl PruningProcessor {
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
 
                 if let Some(&affiliated_proof_level) = keep_relations.get(&current) {
-                    if statuses_write.get(current).unwrap_option().is_some_and(|s| s.is_valid()) {
+                    if statuses_write.get(current).optional().unwrap().is_some_and(|s| s.is_valid()) {
                         // We set the status to header-only only if it was previously set to a valid
                         // status. This is important since some proof headers might not have their status set
                         // and we would like to preserve this semantic (having a valid status implies that
@@ -458,16 +496,18 @@ impl PruningProcessor {
                         statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
                     }
 
-                    // Delete level-x relations for blocks which only belong to higher-than-x proof levels.
-                    // This preserves the semantic that for each level, relations represent a contiguous DAG area in that level
-                    for lower_level in 0..affiliated_proof_level as usize {
-                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[lower_level]);
-                        relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
-                        staging_level_relations.commit(&mut batch).unwrap();
-
-                        if lower_level == 0 {
-                            self.ghostdag_store.delete_batch(&mut batch, current).unwrap_option();
-                        }
+                    // delete relations and ghostdag unless current is in level 0 of the pruning proof
+                    if affiliated_proof_level > 0 {
+                        let mut staging_relations = StagingRelationsStore::new(&mut relations_write);
+                        relations::delete_level_relations(MemoryWriter, &mut staging_relations, current).optional().unwrap();
+                        staging_relations.commit(&mut batch).unwrap();
+                        self.ghostdag_store.delete_batch(&mut batch, current).optional().unwrap();
+                    }
+                    // while we keep headers for keep relation blocks regardless,
+                    // some of those relations blocks may accidentally have a pruning sample stored,
+                    // delete those samples unless the block is a pruning block itself
+                    if !keep_headers.contains(&current) {
+                        self.pruning_samples_store.delete_batch(&mut batch, current).unwrap();
                     }
                 } else {
                     // Count only blocks which get fully pruned including DAG relations
@@ -475,20 +515,16 @@ impl PruningProcessor {
                     // Prune data related to headers: relations, reachability, ghostdag
                     let mergeset = relations::delete_reachability_relations(
                         MemoryWriter, // Both stores are staging so we just pass a dummy writer
-                        &mut staging_relations,
+                        &mut staging_reachability_relations,
                         &staging_reachability,
                         current,
                     );
                     reachability::delete_block(&mut staging_reachability, current, &mut mergeset.iter().copied()).unwrap();
-                    // TODO: consider adding block level to compact header data
-                    let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
-                    (0..=block_level as usize).for_each(|level| {
-                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[level]);
-                        relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
-                        staging_level_relations.commit(&mut batch).unwrap();
-                    });
+                    let mut staging_relations = StagingRelationsStore::new(&mut relations_write);
+                    relations::delete_level_relations(MemoryWriter, &mut staging_relations, current).optional().unwrap();
+                    staging_relations.commit(&mut batch).unwrap();
 
-                    self.ghostdag_store.delete_batch(&mut batch, current).unwrap_option();
+                    self.ghostdag_store.delete_batch(&mut batch, current).optional().unwrap();
 
                     // Remove additional header related data
                     self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
@@ -508,7 +544,7 @@ impl PruningProcessor {
                 }
 
                 let reachability_write = staging_reachability.commit(&mut batch).unwrap();
-                staging_relations.commit(&mut batch).unwrap();
+                staging_reachability_relations.commit(&mut batch).unwrap();
 
                 // Flush the batch to the DB
                 self.db.write(batch).unwrap();
@@ -517,7 +553,7 @@ impl PruningProcessor {
                 drop(reachability_write);
                 drop(statuses_write);
                 drop(reachability_relations_write);
-                drop(level_relations_write);
+                drop(relations_write);
 
                 reachability_read = self.reachability_store.upgradable_read();
             }
@@ -558,7 +594,7 @@ impl PruningProcessor {
     /// doing any pruning. Pruning point must be the new pruning point this node is advancing to.
     ///
     /// The returned retention_period_root is guaranteed to be in past(pruning_point) or the pruning point itself.
-    fn advance_retention_period_root(&self, retention_period_root: Hash, pruning_point: Hash) -> Hash {
+    pub fn advance_retention_period_root(&self, retention_period_root: Hash, pruning_point: Hash) -> Hash {
         match self.config.retention_period_days {
             // If the retention period wasn't set, immediately default to the pruning point.
             None => pruning_point,
@@ -610,20 +646,26 @@ impl PruningProcessor {
     }
 
     fn past_pruning_points(&self) -> BlockHashSet {
-        (0..self.pruning_point_store.read().get().unwrap().index)
+        (0..self.pruning_point_store.read().pruning_point_index().unwrap())
             .map(|index| self.past_pruning_points_store.get(index).unwrap())
             .collect()
     }
 
+    fn confirm_pruning_depth_below_virtual(&self, pruning_point: Hash) -> bool {
+        let virtual_state = self.virtual_stores.read().state.get().unwrap();
+        let pp_bs = self.headers_store.get_blue_score(pruning_point).unwrap();
+        virtual_state.ghostdag_data.blue_score >= pp_bs + self.config.params.pruning_depth()
+    }
+
     fn assert_proof_rebuilding(&self, ref_proof: Arc<PruningPointProof>, new_pruning_point: Hash) {
         info!("Rebuilding the pruning proof after pruning data (sanity test)");
-        let proof_hashes = ref_proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
         let built_proof = self.pruning_proof_manager.build_pruning_point_proof(new_pruning_point);
-        let built_proof_hashes = built_proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
-        assert_eq!(proof_hashes.len(), built_proof_hashes.len(), "Rebuilt proof does not match the expected reference");
-        for (i, (a, b)) in proof_hashes.into_iter().zip(built_proof_hashes).enumerate() {
-            if a != b {
-                panic!("Proof built following pruning does not match the previous proof: built[{}]={}, prev[{}]={}", i, b, i, a);
+        if ref_proof.len() != built_proof.len() {
+            panic!("Rebuilt proof does not match the original one ({} ref vs. {} rebuilt levels)", ref_proof.len(), built_proof.len());
+        }
+        for (i, (ref_level, built_level)) in ref_proof.iter().zip(built_proof.iter()).enumerate() {
+            if ref_level.iter().map(|h| h.hash).ne(built_level.iter().map(|h| h.hash)) {
+                panic!("Rebuilt proof for level {} does not match the original one", i);
             }
         }
         info!("Proof was rebuilt successfully following pruning");

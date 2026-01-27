@@ -6,8 +6,8 @@ use crate::imports::*;
 use crate::result::Result;
 use argon2::Argon2;
 use chacha20poly1305::{
-    aead::{AeadCore, AeadInPlace, KeyInit, OsRng},
     Key, XChaCha20Poly1305,
+    aead::{AeadCore, AeadInPlace, KeyInit, OsRng},
 };
 use sha2::{Digest, Sha256};
 use std::ops::{Deref, DerefMut};

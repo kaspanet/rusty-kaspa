@@ -7,8 +7,8 @@ use crate::{
     scope::Scope,
     subscriber::SubscriptionManager,
     subscription::{
-        array::ArrayBuilder, context::SubscriptionContext, Command, DynSubscription, MutateSingle, Mutation, MutationPolicies,
-        UtxosChangedMutationPolicy,
+        Command, DynSubscription, MutateSingle, Mutation, MutationPolicies, UtxosChangedMutationPolicy, array::ArrayBuilder,
+        context::SubscriptionContext,
     },
 };
 use async_channel::Sender;

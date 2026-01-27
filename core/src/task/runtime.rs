@@ -61,13 +61,15 @@ impl AsyncRuntime {
 
     pub async fn worker_impl(self: &Arc<AsyncRuntime>, core: Arc<Core>) {
         let rt_handle = tokio::runtime::Handle::current();
-        std::thread::spawn(move || loop {
-            // See https://github.com/tokio-rs/tokio/issues/4730 and comment therein referring to
-            // https://gist.github.com/Darksonn/330f2aa771f95b5008ddd4864f5eb9e9#file-main-rs-L6
-            // In our case it's hard to avoid some short blocking i/o calls to the DB so we place this
-            // workaround for now to avoid any rare yet possible system freeze.
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            rt_handle.spawn(std::future::ready(()));
+        std::thread::spawn(move || {
+            loop {
+                // See https://github.com/tokio-rs/tokio/issues/4730 and comment therein referring to
+                // https://gist.github.com/Darksonn/330f2aa771f95b5008ddd4864f5eb9e9#file-main-rs-L6
+                // In our case it's hard to avoid some short blocking i/o calls to the DB so we place this
+                // workaround for now to avoid any rare yet possible system freeze.
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                rt_handle.spawn(std::future::ready(()));
+            }
         });
 
         // Start all async services

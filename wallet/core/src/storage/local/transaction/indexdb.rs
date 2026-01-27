@@ -4,8 +4,8 @@
 
 use crate::imports::*;
 use crate::result::Result;
-use crate::storage::interface::{StorageStream, TransactionRangeResult};
 use crate::storage::TransactionRecord;
+use crate::storage::interface::{StorageStream, TransactionRangeResult};
 use crate::storage::{Binding, TransactionKind, TransactionRecordStore};
 use indexed_db_futures::prelude::*;
 use itertools::Itertools;
@@ -153,11 +153,7 @@ impl TransactionStore {
 
     pub fn database_is_registered(&self, binding: &str, network_id: &str) -> bool {
         let inner = self.inner();
-        if let Some(network_ids) = inner.known_databases.get(binding) {
-            network_ids.contains(network_id)
-        } else {
-            false
-        }
+        if let Some(network_ids) = inner.known_databases.get(binding) { network_ids.contains(network_id) } else { false }
     }
 
     pub async fn register_database(&self, binding: &str, network_id: &str) -> Result<()> {

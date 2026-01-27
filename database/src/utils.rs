@@ -45,11 +45,10 @@ pub fn get_kaspa_tempdir() -> TempDir {
     let global_tempdir = std::env::temp_dir();
     let kaspa_tempdir = global_tempdir.join("rusty-kaspa");
     std::fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
-    let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
-    db_tempdir
+    tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap()
 }
 
-/// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/kaspa-rust`
+/// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/rusty-kaspa`
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB to exist.
 #[macro_export]
 macro_rules! create_temp_db {

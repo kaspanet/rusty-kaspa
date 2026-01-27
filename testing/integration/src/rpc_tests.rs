@@ -15,7 +15,7 @@ use kaspa_notify::{
         SinkBlueScoreChangedScope, UtxosChangedScope, VirtualChainChangedScope, VirtualDaaScoreChangedScope,
     },
 };
-use kaspa_rpc_core::{api::rpc::RpcApi, model::*, Notification};
+use kaspa_rpc_core::{Notification, api::rpc::RpcApi, model::*};
 use kaspa_utils::{fd_budget, networking::ContextualNetAddress};
 use kaspad_lib::args::Args;
 use tokio::task::JoinHandle;
@@ -117,7 +117,7 @@ async fn sanity_test() {
                     assert!(!is_synced);
 
                     // Compute the expected block hash for the received block
-                    let header: Header = (&block.header).into();
+                    let header: Header = (&block.header).try_into().unwrap();
                     let block_hash = header.hash;
 
                     // Submit the template (no mining, in simnet PoW is skipped)
@@ -712,6 +712,25 @@ async fn sanity_test() {
                             _ => false,
                         }
                     }));
+                })
+            }
+
+            KaspadPayloadOps::GetVirtualChainFromBlockV2 => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client
+                        .get_virtual_chain_from_block_v2_call(
+                            None,
+                            GetVirtualChainFromBlockV2Request {
+                                start_hash: SIMNET_GENESIS.hash,
+                                data_verbosity_level: None,
+                                min_confirmation_count: None,
+                            },
+                        )
+                        .await
+                        .unwrap();
+                    assert!(response.added_chain_block_hashes.is_empty());
+                    assert!(response.removed_chain_block_hashes.is_empty());
                 })
             }
 

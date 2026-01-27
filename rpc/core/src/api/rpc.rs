@@ -7,9 +7,9 @@
 //!
 
 use crate::api::connection::DynRpcConnection;
-use crate::{model::*, notify::connection::ChannelConnection, RpcResult};
+use crate::{RpcResult, model::*, notify::connection::ChannelConnection};
 use async_trait::async_trait;
-use downcast::{downcast_sync, AnySync};
+use downcast::{AnySync, downcast_sync};
 use kaspa_notify::{listener::ListenerId, scope::Scope, subscription::Command};
 use std::sync::Arc;
 
@@ -505,6 +505,24 @@ pub trait RpcApi: Sync + Send + AnySync {
         connection: Option<&DynRpcConnection>,
         request: GetCurrentBlockColorRequest,
     ) -> RpcResult<GetCurrentBlockColorResponse>;
+
+    async fn get_virtual_chain_from_block_v2(
+        &self,
+        start_hash: RpcHash,
+        data_verbosity_level: Option<RpcDataVerbosityLevel>,
+        min_confirmation_count: Option<u64>,
+    ) -> RpcResult<GetVirtualChainFromBlockV2Response> {
+        self.get_virtual_chain_from_block_v2_call(
+            None,
+            GetVirtualChainFromBlockV2Request::new(start_hash, data_verbosity_level, min_confirmation_count),
+        )
+        .await
+    }
+    async fn get_virtual_chain_from_block_v2_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetVirtualChainFromBlockV2Request,
+    ) -> RpcResult<GetVirtualChainFromBlockV2Response>;
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

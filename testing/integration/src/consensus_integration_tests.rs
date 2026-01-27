@@ -4,7 +4,6 @@
 
 use async_channel::unbounded;
 use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
 use kaspa_consensus::consensus::test_consensus::{TestConsensus, TestConsensusFactory};
@@ -16,30 +15,26 @@ use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
-use kaspa_consensus::params::{
-    ForkActivation, Params, CRESCENDO, DEVNET_PARAMS, MAINNET_PARAMS, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64,
-};
-use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
+use kaspa_consensus::params::{DEVNET_PARAMS, ForkActivation, MAINNET_PARAMS, OverrideParams};
 use kaspa_consensus::pipeline::ProcessingCounters;
+use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus::processes::window::{WindowManager, WindowType};
 use kaspa_consensus_core::api::args::TransactionValidationArgs;
 use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi};
 use kaspa_consensus_core::block::Block;
-use kaspa_consensus_core::blockhash::new_unique;
+use kaspa_consensus_core::blockhash::{self, new_unique};
 use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER, TRANSIENT_BYTE_TO_MASS_FACTOR};
+use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
+use kaspa_consensus_core::hashing;
 use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::mining_rules::MiningRules;
-use kaspa_consensus_core::network::{NetworkId, NetworkType::Mainnet};
 use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
 use kaspa_consensus_core::tx::{
     MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
-use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
@@ -47,15 +42,15 @@ use kaspa_core::task::tick::TickService;
 use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::Hash;
+use kaspa_rpc_core::RpcHeader;
 use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
+use crate::common::json::{json_line_to_block, json_line_to_trusted_block, json_line_to_utxo_pairs};
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
-use kaspa_consensus_core::errors::tx::TxRuleError;
 use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
-use kaspa_consensus_core::merkle::calc_hash_merkle_root;
 use kaspa_consensus_core::muhash::MuHashExtensions;
 use kaspa_core::core::Core;
 use kaspa_core::signals::Shutdown;
@@ -70,19 +65,20 @@ use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_txscript::opcodes::codes::OpTrue;
 use kaspa_txscript::script_builder::ScriptBuilderResult;
-use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
+use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use serde::{Deserialize, Serialize};
-use std::cmp::{max, Ordering};
+use std::cmp::{Ordering, max};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use std::{
     collections::HashMap,
     fs::File,
     future::Future,
     io::{BufRead, BufReader},
-    str::{from_utf8, FromStr},
+    str::from_utf8,
 };
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -207,7 +203,9 @@ async fn consensus_sanity_test() {
     let wait_handles = consensus.init();
 
     consensus
-        .validate_and_insert_block(consensus.build_block_with_parents(genesis_child, vec![MAINNET_PARAMS.genesis.hash]).to_immutable())
+        .validate_and_insert_block(
+            consensus.build_header_only_block_with_parents(genesis_child, vec![MAINNET_PARAMS.genesis.hash]).to_immutable(),
+        )
         .virtual_state_task
         .await
         .unwrap();
@@ -265,8 +263,8 @@ async fn ghostdag_test() {
             .skip_proof_of_work()
             .edit_consensus_params(|p| {
                 p.genesis.hash = string_to_hash(&test.genesis_id);
-                p.prior_ghostdag_k = test.k;
-                p.min_difficulty_window_size = p.prior_difficulty_window_size;
+                p.ghostdag_k = test.k;
+                p.min_difficulty_window_size = p.difficulty_window_size;
             })
             .build();
         let consensus = TestConsensus::new(&config);
@@ -340,7 +338,7 @@ async fn block_window_test() {
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.genesis.hash = string_to_hash("A");
-            p.prior_ghostdag_k = 1;
+            p.ghostdag_k = 1;
         })
         .build();
     let consensus = TestConsensus::new(&config);
@@ -372,7 +370,7 @@ async fn block_window_test() {
     for test_block in test_blocks {
         info!("Processing block {}", test_block.id);
         let block_id = string_to_hash(test_block.id);
-        let block = consensus.build_block_with_parents(
+        let block = consensus.build_header_only_block_with_parents(
             block_id,
             strings_to_hashes(&test_block.parents.iter().map(|parent| String::from(*parent)).collect()),
         );
@@ -409,7 +407,7 @@ async fn header_in_isolation_validation_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).edit_consensus_params(|p| p.skip_proof_of_work = true).build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
-    let block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
+    let block = consensus.build_header_only_block_with_parents(1.into(), vec![config.genesis.hash]);
 
     {
         let mut block = block.clone();
@@ -430,7 +428,8 @@ async fn header_in_isolation_validation_test() {
         block.header.hash = 2.into();
 
         let now = unix_now();
-        let block_ts = now + config.timestamp_deviation_tolerance * config.prior_target_time_per_block + 2000;
+        // Timestamp deviation tolerance is in seconds so we multiply by 1000 to get milliseconds (without BPS dependency)
+        let block_ts = now + config.timestamp_deviation_tolerance * 1000 + 2000;
         block.header.timestamp = block_ts;
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TimeTooFarIntoTheFuture(ts, _)) => {
@@ -445,7 +444,7 @@ async fn header_in_isolation_validation_test() {
     {
         let mut block = block.clone();
         block.header.hash = 3.into();
-        block.header.parents_by_level[0] = vec![];
+        block.header.parents_by_level.set_direct_parents(vec![]);
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::NoParents) => {}
             res => {
@@ -457,12 +456,13 @@ async fn header_in_isolation_validation_test() {
     {
         let mut block = block.clone();
         block.header.hash = 4.into();
-        block.header.parents_by_level[0] =
-            std::iter::repeat_n(config.genesis.hash, config.prior_max_block_parents as usize + 1).collect();
+        let max_block_parents = config.max_block_parents() as usize;
+        let parents = std::iter::repeat_n(config.genesis.hash, max_block_parents + 1).collect();
+        block.header.parents_by_level.set_direct_parents(parents);
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TooManyParents(num_parents, limit)) => {
-                assert_eq!((config.prior_max_block_parents + 1) as usize, num_parents);
-                assert_eq!(limit, config.prior_max_block_parents as usize);
+                assert_eq!(max_block_parents + 1, num_parents);
+                assert_eq!(limit, max_block_parents);
             }
             res => {
                 panic!("Unexpected result: {res:?}")
@@ -479,13 +479,14 @@ async fn incest_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
-    let block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
+    let block = consensus.build_header_only_block_with_parents(1.into(), vec![config.genesis.hash]);
     let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
     block_task.await.unwrap(); // Assert that block task completes as well
     virtual_state_task.await.unwrap();
 
-    let mut block = consensus.build_block_with_parents(2.into(), vec![config.genesis.hash]);
-    block.header.parents_by_level[0] = vec![1.into(), config.genesis.hash];
+    let mut block = consensus.build_header_only_block_with_parents(2.into(), vec![config.genesis.hash]);
+    block.header.parents_by_level.set_direct_parents(vec![1.into(), config.genesis.hash]);
+
     let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
     match virtual_state_task.await {
         Err(RuleError::InvalidParentsRelation(a, b)) => {
@@ -508,8 +509,9 @@ async fn missing_parents_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
-    let mut block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
-    block.header.parents_by_level[0] = vec![0.into()];
+    let mut block = consensus.build_header_only_block_with_parents(1.into(), vec![config.genesis.hash]);
+    block.header.parents_by_level.set_direct_parents(vec![0.into()]);
+
     let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
     match virtual_state_task.await {
         Err(RuleError::MissingParents(missing)) => {
@@ -533,7 +535,7 @@ async fn known_invalid_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
-    let mut block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
+    let mut block = consensus.build_header_only_block_with_parents(1.into(), vec![config.genesis.hash]);
     block.header.timestamp -= 1;
 
     match consensus.validate_and_insert_block(block.clone().to_immutable()).virtual_state_task.await {
@@ -561,45 +563,33 @@ async fn median_time_test() {
         config: Config,
     }
 
-    let tests = vec![
-        Test {
-            name: "MAINNET with full window",
-            config: ConfigBuilder::new(MAINNET_PARAMS)
-                .skip_proof_of_work()
-                .edit_consensus_params(|p| {
-                    p.crescendo_activation = ForkActivation::never();
-                })
-                .build(),
-        },
-        Test {
-            name: "MAINNET with sampled window",
-            config: ConfigBuilder::new(MAINNET_PARAMS)
-                .skip_proof_of_work()
-                .edit_consensus_params(|p| {
-                    p.crescendo_activation = ForkActivation::always();
-                    p.timestamp_deviation_tolerance = 120;
-                    p.crescendo.past_median_time_sample_rate = 3;
-                    p.crescendo.past_median_time_sampled_window_size = (2 * 120 - 1) / 3;
-                })
-                .build(),
-        },
-    ];
+    let tests = vec![Test {
+        name: "MAINNET with sampled window",
+        config: ConfigBuilder::new(MAINNET_PARAMS)
+            .skip_proof_of_work()
+            .edit_consensus_params(|p| {
+                p.crescendo_activation = ForkActivation::always();
+                p.timestamp_deviation_tolerance = 120;
+                p.past_median_time_sample_rate = 3;
+                p.past_median_time_window_size = (2 * 120 - 1) / 3;
+            })
+            .build(),
+    }];
 
     for test in tests {
         let consensus = TestConsensus::new(&test.config);
         let wait_handles = consensus.init();
 
-        let num_blocks =
-            test.config.past_median_time_window_size().before() as u64 * test.config.past_median_time_sample_rate().before();
+        let num_blocks = test.config.past_median_time_window_size as u64 * test.config.past_median_time_sample_rate();
         let timestamp_deviation_tolerance = test.config.timestamp_deviation_tolerance;
         for i in 1..(num_blocks + 1) {
             let parent = if i == 1 { test.config.genesis.hash } else { (i - 1).into() };
-            let mut block = consensus.build_block_with_parents(i.into(), vec![parent]);
+            let mut block = consensus.build_header_only_block_with_parents(i.into(), vec![parent]);
             block.header.timestamp = test.config.genesis.timestamp + i;
             consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await.unwrap();
         }
 
-        let mut block = consensus.build_block_with_parents((num_blocks + 2).into(), vec![num_blocks.into()]);
+        let mut block = consensus.build_header_only_block_with_parents((num_blocks + 2).into(), vec![num_blocks.into()]);
         // We set the timestamp to be less than the median time and expect the block to be rejected
         block.header.timestamp = test.config.genesis.timestamp + num_blocks - timestamp_deviation_tolerance - 1;
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
@@ -609,7 +599,7 @@ async fn median_time_test() {
             }
         }
 
-        let mut block = consensus.build_block_with_parents((num_blocks + 3).into(), vec![num_blocks.into()]);
+        let mut block = consensus.build_header_only_block_with_parents((num_blocks + 3).into(), vec![num_blocks.into()]);
         // We set the timestamp to be the exact median time and expect the block to be rejected
         block.header.timestamp = test.config.genesis.timestamp + num_blocks - timestamp_deviation_tolerance;
         match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
@@ -619,7 +609,7 @@ async fn median_time_test() {
             }
         }
 
-        let mut block = consensus.build_block_with_parents((num_blocks + 4).into(), vec![(num_blocks).into()]);
+        let mut block = consensus.build_header_only_block_with_parents((num_blocks + 4).into(), vec![(num_blocks).into()]);
         // We set the timestamp to be bigger than the median time and expect the block to be inserted successfully.
         block.header.timestamp = test.config.genesis.timestamp + timestamp_deviation_tolerance + 1;
         consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await.unwrap();
@@ -635,27 +625,27 @@ async fn mergeset_size_limit_test() {
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
-    let num_blocks_per_chain = config.prior_mergeset_size_limit + 1;
+    let num_blocks_per_chain = config.mergeset_size_limit() + 1;
 
     let mut tip1_hash = config.genesis.hash;
     for i in 1..(num_blocks_per_chain + 1) {
-        let block = consensus.build_block_with_parents(i.into(), vec![tip1_hash]);
+        let block = consensus.build_header_only_block_with_parents(i.into(), vec![tip1_hash]);
         tip1_hash = block.header.hash;
         consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await.unwrap();
     }
 
     let mut tip2_hash = config.genesis.hash;
     for i in (num_blocks_per_chain + 2)..(2 * num_blocks_per_chain + 1) {
-        let block = consensus.build_block_with_parents(i.into(), vec![tip2_hash]);
+        let block = consensus.build_header_only_block_with_parents(i.into(), vec![tip2_hash]);
         tip2_hash = block.header.hash;
         consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await.unwrap();
     }
 
-    let block = consensus.build_block_with_parents((3 * num_blocks_per_chain + 1).into(), vec![tip1_hash, tip2_hash]);
+    let block = consensus.build_header_only_block_with_parents((3 * num_blocks_per_chain + 1).into(), vec![tip1_hash, tip2_hash]);
     match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
         Err(RuleError::MergeSetTooBig(a, b)) => {
-            assert_eq!(a, config.prior_mergeset_size_limit + 1);
-            assert_eq!(b, config.prior_mergeset_size_limit);
+            assert_eq!(a, config.mergeset_size_limit() + 1);
+            assert_eq!(b, config.mergeset_size_limit());
         }
         res => {
             panic!("Unexpected result: {res:?}")
@@ -663,192 +653,6 @@ async fn mergeset_size_limit_test() {
     }
 
     consensus.shutdown(wait_handles);
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCBlock {
-    Header: RPCBlockHeader,
-    Transactions: Vec<RPCTransaction>,
-    VerboseData: RPCBlockVerboseData,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCTransaction {
-    Version: u16,
-    Inputs: Vec<RPCTransactionInput>,
-    Outputs: Vec<RPCTransactionOutput>,
-    LockTime: u64,
-    SubnetworkID: String,
-    Gas: u64,
-    Payload: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCTransactionOutput {
-    Amount: u64,
-    ScriptPublicKey: RPCScriptPublicKey,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCScriptPublicKey {
-    Version: u16,
-    Script: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCTransactionInput {
-    PreviousOutpoint: RPCOutpoint,
-    SignatureScript: String,
-    Sequence: u64,
-    SigOpCount: u8,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCOutpoint {
-    TransactionID: String,
-    Index: u32,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCBlockHeader {
-    Version: u16,
-    Parents: Vec<RPCBlockLevelParents>,
-    HashMerkleRoot: String,
-    AcceptedIDMerkleRoot: String,
-    UTXOCommitment: String,
-    Timestamp: u64,
-    Bits: u32,
-    Nonce: u64,
-    DAAScore: u64,
-    BlueScore: u64,
-    BlueWork: String,
-    PruningPoint: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCBlockLevelParents {
-    ParentHashes: Vec<String>,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCBlockVerboseData {
-    Hash: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct JsonBlockWithTrustedData {
-    Block: RPCBlock,
-    GHOSTDAG: JsonGHOSTDAGData,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct JsonGHOSTDAGData {
-    BlueScore: u64,
-    BlueWork: String,
-    SelectedParent: String,
-    MergeSetBlues: Vec<String>,
-    MergeSetReds: Vec<String>,
-    BluesAnticoneSizes: Vec<JsonBluesAnticoneSizes>,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct JsonBluesAnticoneSizes {
-    BlueHash: String,
-    AnticoneSize: GhostdagKType,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct JsonOutpointUTXOEntryPair {
-    Outpoint: RPCOutpoint,
-    UTXOEntry: RPCUTXOEntry,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCUTXOEntry {
-    Amount: u64,
-    ScriptPublicKey: RPCScriptPublicKey,
-    BlockDAAScore: u64,
-    IsCoinbase: bool,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct KaspadGoParams {
-    K: GhostdagKType,
-    TimestampDeviationTolerance: u64,
-    TargetTimePerBlock: u64,
-    MaxBlockParents: u8,
-    DifficultyAdjustmentWindowSize: usize,
-    MergeSetSizeLimit: u64,
-    MergeDepth: u64,
-    FinalityDuration: u64,
-    CoinbasePayloadScriptPublicKeyMaxLength: u8,
-    MaxCoinbasePayloadLength: usize,
-    MassPerTxByte: u64,
-    MassPerSigOp: u64,
-    MassPerScriptPubKeyByte: u64,
-    MaxBlockMass: u64,
-    DeflationaryPhaseDaaScore: u64,
-    PreDeflationaryPhaseBaseSubsidy: u64,
-    SkipProofOfWork: bool,
-    MaxBlockLevel: u8,
-    PruningProofM: u64,
-}
-
-impl KaspadGoParams {
-    fn into_params(self) -> Params {
-        let finality_depth = self.FinalityDuration / self.TargetTimePerBlock;
-        Params {
-            dns_seeders: &[],
-            net: NetworkId { network_type: Mainnet, suffix: None },
-            genesis: GENESIS,
-            prior_ghostdag_k: self.K,
-            timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
-            prior_target_time_per_block: self.TargetTimePerBlock / 1_000_000,
-            prior_max_block_parents: self.MaxBlockParents,
-            max_difficulty_target: MAX_DIFFICULTY_TARGET,
-            max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-            prior_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
-            min_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
-            prior_mergeset_size_limit: self.MergeSetSizeLimit,
-            prior_merge_depth: self.MergeDepth,
-            prior_finality_depth: finality_depth,
-            prior_pruning_depth: 2 * finality_depth + 4 * self.MergeSetSizeLimit * self.K as u64 + 2 * self.K as u64 + 2,
-            coinbase_payload_script_public_key_max_len: self.CoinbasePayloadScriptPublicKeyMaxLength,
-            max_coinbase_payload_len: self.MaxCoinbasePayloadLength,
-            prior_max_tx_inputs: MAINNET_PARAMS.prior_max_tx_inputs,
-            prior_max_tx_outputs: MAINNET_PARAMS.prior_max_tx_outputs,
-            prior_max_signature_script_len: MAINNET_PARAMS.prior_max_signature_script_len,
-            prior_max_script_public_key_len: MAINNET_PARAMS.prior_max_script_public_key_len,
-            mass_per_tx_byte: self.MassPerTxByte,
-            mass_per_script_pub_key_byte: self.MassPerScriptPubKeyByte,
-            mass_per_sig_op: self.MassPerSigOp,
-            max_block_mass: self.MaxBlockMass,
-            storage_mass_parameter: STORAGE_MASS_PARAMETER,
-            deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
-            pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
-            prior_coinbase_maturity: MAINNET_PARAMS.prior_coinbase_maturity,
-            skip_proof_of_work: self.SkipProofOfWork,
-            max_block_level: self.MaxBlockLevel,
-            pruning_proof_m: self.PruningProofM,
-            crescendo: CRESCENDO,
-            crescendo_activation: ForkActivation::never(),
-        }
-    }
 }
 
 #[tokio::test]
@@ -872,46 +676,16 @@ async fn goref_notx_concurrent_test() {
 #[tokio::test]
 async fn goref_tx_small_test() {
     init_allocator_with_default_settings();
-    json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks", false).await
+    json_test("testdata/dags_for_json_tests/goref-1060-tx-265-blocks", false).await
 }
 
 #[tokio::test]
 async fn goref_tx_small_concurrent_test() {
     init_allocator_with_default_settings();
-    json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks", true).await
+    json_test("testdata/dags_for_json_tests/goref-1060-tx-265-blocks", true).await
 }
 
-#[ignore]
-#[tokio::test]
-async fn goref_tx_big_test() {
-    init_allocator_with_default_settings();
-    // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", false).await
-}
-
-#[ignore]
-#[tokio::test]
-async fn goref_tx_big_concurrent_test() {
-    init_allocator_with_default_settings();
-    // TODO: add this file to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", true).await
-}
-
-#[tokio::test]
-#[ignore = "long"]
-async fn goref_mainnet_test() {
-    // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-mainnet", false).await
-}
-
-#[tokio::test]
-#[ignore = "long"]
-async fn goref_mainnet_concurrent_test() {
-    // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-mainnet", true).await
-}
-
-fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
+fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> + 'static {
     let file = common::open_file(path);
     let decoder = GzDecoder::new(file);
     BufReader::new(decoder).lines().map(|line| line.unwrap())
@@ -923,23 +697,28 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let proof_exists = common::file_exists(&main_path.join("proof.json.gz"));
 
     let mut lines = gzip_file_lines(&main_path.join("blocks.json.gz"));
-    let first_line = lines.next().unwrap();
-    let go_params_res: Result<KaspadGoParams, _> = serde_json::from_str(&first_line);
-    let params = if let Ok(go_params) = go_params_res {
-        let mut params = go_params.into_params();
-        if !proof_exists {
-            let second_line = lines.next().unwrap();
-            let genesis_block = json_line_to_block(second_line);
-            params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
+    let params = {
+        let first_line = lines.next().unwrap();
+        let parsed_params = if let Ok(override_params) = serde_json::from_str::<OverrideParams>(&first_line) {
+            Some(DEVNET_PARAMS.override_params(override_params))
+        } else {
+            None
+        };
+
+        if let Some(mut params) = parsed_params {
+            if !proof_exists {
+                let second_line = lines.next().unwrap();
+                let genesis_block = json_line_to_block(second_line);
+                params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
+            }
+            params
+        } else {
+            let genesis_block = json_line_to_block(first_line);
+            let mut params = DEVNET_PARAMS;
+            params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
+            params.min_difficulty_window_size = params.difficulty_window_size;
+            params
         }
-        params.min_difficulty_window_size = params.prior_difficulty_window_size;
-        params
-    } else {
-        let genesis_block = json_line_to_block(first_line);
-        let mut params = DEVNET_PARAMS;
-        params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
-        params.min_difficulty_window_size = params.prior_difficulty_window_size;
-        params
     };
 
     let mut config = Config::new(params);
@@ -981,12 +760,12 @@ async fn json_test(file_path: &str, concurrency: bool) {
         let proof_lines = gzip_file_lines(&main_path.join("proof.json.gz"));
         let proof = proof_lines
             .map(|line| {
-                let rpc_headers: Vec<RPCBlockHeader> = serde_json::from_str(&line).unwrap();
-                rpc_headers.iter().map(|rh| Arc::new(rpc_header_to_header(rh))).collect_vec()
+                let rpc_headers: Vec<RpcHeader> = serde_json::from_str(&line).unwrap();
+                rpc_headers.iter().map(|rh| Arc::new(rh.try_into().unwrap())).collect_vec()
             })
             .collect_vec();
 
-        let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_trusted_line_to_block_and_gd).collect_vec();
+        let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_line_to_trusted_block).collect_vec();
         tc.apply_pruning_proof(proof, &trusted_blocks).unwrap();
 
         let past_pruning_points =
@@ -1122,185 +901,49 @@ fn submit_body_chunk(
     futures
 }
 
-fn rpc_header_to_header(rpc_header: &RPCBlockHeader) -> Header {
-    Header::new_finalized(
-        rpc_header.Version,
-        rpc_header
-            .Parents
-            .iter()
-            .map(|item| item.ParentHashes.iter().map(|parent| Hash::from_str(parent).unwrap()).collect())
-            .collect(),
-        Hash::from_str(&rpc_header.HashMerkleRoot).unwrap(),
-        Hash::from_str(&rpc_header.AcceptedIDMerkleRoot).unwrap(),
-        Hash::from_str(&rpc_header.UTXOCommitment).unwrap(),
-        rpc_header.Timestamp,
-        rpc_header.Bits,
-        rpc_header.Nonce,
-        rpc_header.DAAScore,
-        BlueWorkType::from_hex(&rpc_header.BlueWork).unwrap(),
-        rpc_header.BlueScore,
-        Hash::from_str(&rpc_header.PruningPoint).unwrap(),
-    )
-}
-
-fn json_trusted_line_to_block_and_gd(line: String) -> TrustedBlock {
-    let json_block_with_trusted: JsonBlockWithTrustedData = serde_json::from_str(&line).unwrap();
-    let block = rpc_block_to_block(json_block_with_trusted.Block);
-
-    let gd = ExternalGhostdagData {
-        blue_score: json_block_with_trusted.GHOSTDAG.BlueScore,
-        blue_work: BlueWorkType::from_hex(&json_block_with_trusted.GHOSTDAG.BlueWork).unwrap(),
-        selected_parent: Hash::from_str(&json_block_with_trusted.GHOSTDAG.SelectedParent).unwrap(),
-        mergeset_blues: json_block_with_trusted
-            .GHOSTDAG
-            .MergeSetBlues
-            .into_iter()
-            .map(|hex| Hash::from_str(&hex).unwrap())
-            .collect_vec(),
-
-        mergeset_reds: json_block_with_trusted
-            .GHOSTDAG
-            .MergeSetReds
-            .into_iter()
-            .map(|hex| Hash::from_str(&hex).unwrap())
-            .collect_vec(),
-
-        blues_anticone_sizes: BlockHashMap::from_iter(
-            json_block_with_trusted
-                .GHOSTDAG
-                .BluesAnticoneSizes
-                .into_iter()
-                .map(|e| (Hash::from_str(&e.BlueHash).unwrap(), e.AnticoneSize)),
-        ),
-    };
-
-    TrustedBlock::new(block, gd)
-}
-
-fn json_line_to_utxo_pairs(line: String) -> Vec<(TransactionOutpoint, UtxoEntry)> {
-    let json_pairs: Vec<JsonOutpointUTXOEntryPair> = serde_json::from_str(&line).unwrap();
-    json_pairs
-        .iter()
-        .map(|json_pair| {
-            (
-                TransactionOutpoint {
-                    transaction_id: Hash::from_str(&json_pair.Outpoint.TransactionID).unwrap(),
-                    index: json_pair.Outpoint.Index,
-                },
-                UtxoEntry {
-                    amount: json_pair.UTXOEntry.Amount,
-                    script_public_key: ScriptPublicKey::from_vec(
-                        json_pair.UTXOEntry.ScriptPublicKey.Version,
-                        hex_decode(&json_pair.UTXOEntry.ScriptPublicKey.Script),
-                    ),
-                    block_daa_score: json_pair.UTXOEntry.BlockDAAScore,
-                    is_coinbase: json_pair.UTXOEntry.IsCoinbase,
-                },
-            )
-        })
-        .collect_vec()
-}
-
-fn json_line_to_block(line: String) -> Block {
-    let rpc_block: RPCBlock = serde_json::from_str(&line).unwrap();
-    rpc_block_to_block(rpc_block)
-}
-
-fn rpc_block_to_block(rpc_block: RPCBlock) -> Block {
-    let header = rpc_header_to_header(&rpc_block.Header);
-    assert_eq!(header.hash, Hash::from_str(&rpc_block.VerboseData.Hash).unwrap());
-    Block::new(
-        header,
-        rpc_block
-            .Transactions
-            .iter()
-            .map(|tx| {
-                Transaction::new(
-                    tx.Version,
-                    tx.Inputs
-                        .iter()
-                        .map(|input| TransactionInput {
-                            previous_outpoint: TransactionOutpoint {
-                                transaction_id: Hash::from_str(&input.PreviousOutpoint.TransactionID).unwrap(),
-                                index: input.PreviousOutpoint.Index,
-                            },
-                            signature_script: hex_decode(&input.SignatureScript),
-                            sequence: input.Sequence,
-                            sig_op_count: input.SigOpCount,
-                        })
-                        .collect(),
-                    tx.Outputs
-                        .iter()
-                        .map(|output| TransactionOutput {
-                            value: output.Amount,
-                            script_public_key: ScriptPublicKey::from_vec(
-                                output.ScriptPublicKey.Version,
-                                hex_decode(&output.ScriptPublicKey.Script),
-                            ),
-                        })
-                        .collect(),
-                    tx.LockTime,
-                    SubnetworkId::from_str(&tx.SubnetworkID).unwrap(),
-                    tx.Gas,
-                    hex_decode(&tx.Payload),
-                )
-            })
-            .collect(),
-    )
-}
-
-fn hex_decode(src: &str) -> Vec<u8> {
-    if src.is_empty() {
-        return Vec::new();
-    }
-    let mut dst: Vec<u8> = vec![0; src.len() / 2];
-    faster_hex::hex_decode(src.as_bytes(), &mut dst).unwrap();
-    dst
-}
-
 #[tokio::test]
 async fn bounded_merge_depth_test() {
     init_allocator_with_default_settings();
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.prior_ghostdag_k = 5;
-            p.prior_merge_depth = 7;
+            p.ghostdag_k = 5;
+            p.merge_depth = 7;
         })
         .build();
 
-    assert!(
-        (config.ghostdag_k().before() as u64) < config.prior_merge_depth,
-        "K must be smaller than merge depth for this test to run"
-    );
+    assert!((config.ghostdag_k() as u64) < config.merge_depth(), "K must be smaller than merge depth for this test to run");
 
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
     let mut selected_chain = vec![config.genesis.hash];
-    for i in 1..(config.prior_merge_depth + 3) {
+    for i in 1..(config.merge_depth + 3) {
         let hash: Hash = (i + 1).into();
-        consensus.add_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
+        consensus.add_header_only_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
     }
 
     // The length of block_chain_2 is shorter by one than selected_chain, so selected_chain will remain the selected chain.
     let mut block_chain_2 = vec![config.genesis.hash];
-    for i in 1..(config.prior_merge_depth + 2) {
-        let hash: Hash = (i + config.prior_merge_depth + 3).into();
-        consensus.add_block_with_parents(hash, vec![*block_chain_2.last().unwrap()]).await.unwrap();
+    for i in 1..(config.merge_depth + 2) {
+        let hash: Hash = (i + config.merge_depth + 3).into();
+        consensus.add_header_only_block_with_parents(hash, vec![*block_chain_2.last().unwrap()]).await.unwrap();
         block_chain_2.push(hash);
     }
 
     // The merge depth root belongs to selected_chain, and block_chain_2[1] is red and doesn't have it in its past, and is not in the
     // past of any kosherizing block, so we expect the next block to be rejected.
-    match consensus.add_block_with_parents(100.into(), vec![block_chain_2[1], *selected_chain.last().unwrap()]).await {
+    match consensus.add_header_only_block_with_parents(100.into(), vec![block_chain_2[1], *selected_chain.last().unwrap()]).await {
         Err(RuleError::ViolatingBoundedMergeDepth) => {}
         res => panic!("Unexpected result: {res:?}"),
     }
 
     // A block that points to tip of both chains will be rejected for similar reasons (since block_chain_2 tip is also red).
-    match consensus.add_block_with_parents(101.into(), vec![*block_chain_2.last().unwrap(), *selected_chain.last().unwrap()]).await {
+    match consensus
+        .add_header_only_block_with_parents(101.into(), vec![*block_chain_2.last().unwrap(), *selected_chain.last().unwrap()])
+        .await
+    {
         Err(RuleError::ViolatingBoundedMergeDepth) => {}
         res => panic!("Unexpected result: {res:?}"),
     }
@@ -1308,7 +951,7 @@ async fn bounded_merge_depth_test() {
     let kosherizing_hash: Hash = 102.into();
     // This will pass since now genesis is the mutual merge depth root.
     consensus
-        .add_block_with_parents(
+        .add_header_only_block_with_parents(
             kosherizing_hash,
             vec![block_chain_2[block_chain_2.len() - 3], selected_chain[selected_chain.len() - 3]],
         )
@@ -1318,25 +961,28 @@ async fn bounded_merge_depth_test() {
     let point_at_blue_kosherizing: Hash = 103.into();
     // We expect it to pass because all of the reds are in the past of a blue kosherizing block.
     consensus
-        .add_block_with_parents(point_at_blue_kosherizing, vec![kosherizing_hash, *selected_chain.last().unwrap()])
+        .add_header_only_block_with_parents(point_at_blue_kosherizing, vec![kosherizing_hash, *selected_chain.last().unwrap()])
         .await
         .unwrap();
 
     // We extend the selected chain until kosherizing_hash will be red from the virtual POV.
-    for i in 0..config.ghostdag_k().before() {
+    for i in 0..config.ghostdag_k() {
         let hash = Hash::from_u64_word((i + 1) as u64 * 1000);
-        consensus.add_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
+        consensus.add_header_only_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
     }
 
     // Since kosherizing_hash is now red, we expect this to fail.
-    match consensus.add_block_with_parents(1200.into(), vec![kosherizing_hash, *selected_chain.last().unwrap()]).await {
+    match consensus.add_header_only_block_with_parents(1200.into(), vec![kosherizing_hash, *selected_chain.last().unwrap()]).await {
         Err(RuleError::ViolatingBoundedMergeDepth) => {}
         res => panic!("Unexpected result: {res:?}"),
     }
 
     // point_at_blue_kosherizing is kosherizing kosherizing_hash, so this should pass.
-    consensus.add_block_with_parents(1201.into(), vec![point_at_blue_kosherizing, *selected_chain.last().unwrap()]).await.unwrap();
+    consensus
+        .add_header_only_block_with_parents(1201.into(), vec![point_at_blue_kosherizing, *selected_chain.last().unwrap()])
+        .await
+        .unwrap();
 
     consensus.shutdown(wait_handles);
 }
@@ -1347,7 +993,7 @@ async fn difficulty_test() {
     async fn add_block(consensus: &TestConsensus, block_time: Option<u64>, parents: Vec<Hash>) -> Header {
         let selected_parent = consensus.ghostdag_manager().find_selected_parent(parents.iter().copied());
         let block_time = block_time.unwrap_or_else(|| {
-            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params().prior_target_time_per_block
+            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params().target_time_per_block()
         });
         let mut header = consensus.build_header_with_parents(new_unique(), parents);
         header.timestamp = block_time;
@@ -1370,8 +1016,7 @@ async fn difficulty_test() {
     }
 
     fn full_window_bits(consensus: &TestConsensus, hash: Hash) -> u32 {
-        let window_size =
-            consensus.params().difficulty_window_size().before() * consensus.params().difficulty_sample_rate().before() as usize;
+        let window_size = consensus.params().difficulty_window_size * consensus.params().difficulty_sample_rate() as usize;
         let ghostdag_data = &consensus.ghostdag_store().get_data(hash).unwrap();
         let window = consensus.window_manager().block_window(ghostdag_data, WindowType::VaryingWindow(window_size)).unwrap();
         assert_eq!(window.blocks.len(), window_size);
@@ -1385,46 +1030,29 @@ async fn difficulty_test() {
         config: Config,
     }
 
-    const FULL_WINDOW_SIZE: usize = 90;
-    const SAMPLED_WINDOW_SIZE: u64 = 11;
+    const SAMPLED_WINDOW_SIZE: usize = 11;
     const SAMPLE_RATE: u64 = 6;
     const PMT_DEVIATION_TOLERANCE: u64 = 20;
     const PMT_SAMPLE_RATE: u64 = 3;
-    const PMT_SAMPLED_WINDOW_SIZE: u64 = 13;
-    const HIGH_BPS_SAMPLED_WINDOW_SIZE: u64 = 12;
+    const PMT_SAMPLED_WINDOW_SIZE: usize = 13;
+    const HIGH_BPS_SAMPLED_WINDOW_SIZE: usize = 12;
     const HIGH_BPS: u64 = 4;
-    let tests = vec![
-        Test {
-            name: "MAINNET with full window",
-            enabled: true,
-            config: ConfigBuilder::new(MAINNET_PARAMS)
-                .skip_proof_of_work()
-                .edit_consensus_params(|p| {
-                    p.prior_ghostdag_k = 1;
-                    p.prior_difficulty_window_size = FULL_WINDOW_SIZE;
-                    p.crescendo_activation = ForkActivation::never();
-                    // Define past median time so that calls to add_block_with_min_time create blocks
-                    // which timestamps fit within the min-max timestamps found in the difficulty window
-                    p.timestamp_deviation_tolerance = 60;
-                })
-                .build(),
-        },
+    let tests = [
         Test {
             name: "MAINNET with sampled window",
             enabled: true,
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.prior_ghostdag_k = 1;
-                    p.crescendo.ghostdag_k = 1;
-                    p.crescendo.sampled_difficulty_window_size = SAMPLED_WINDOW_SIZE;
-                    p.crescendo.difficulty_sample_rate = SAMPLE_RATE;
+                    p.ghostdag_k = 1;
+                    p.ghostdag_k = 1;
+                    p.difficulty_window_size = SAMPLED_WINDOW_SIZE;
+                    p.difficulty_sample_rate = SAMPLE_RATE;
                     p.crescendo_activation = ForkActivation::always();
-                    p.prior_target_time_per_block = p.crescendo.target_time_per_block;
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
-                    p.crescendo.past_median_time_sample_rate = PMT_SAMPLE_RATE;
-                    p.crescendo.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
+                    p.past_median_time_sample_rate = PMT_SAMPLE_RATE;
+                    p.past_median_time_window_size = PMT_SAMPLED_WINDOW_SIZE;
                     p.timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
                 })
                 .build(),
@@ -1435,17 +1063,16 @@ async fn difficulty_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.prior_ghostdag_k = 1;
-                    p.crescendo.ghostdag_k = 1;
-                    p.prior_target_time_per_block /= HIGH_BPS;
-                    p.crescendo.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
-                    p.crescendo.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
+                    p.ghostdag_k = 1;
+                    p.ghostdag_k = 1;
+                    p.target_time_per_block /= HIGH_BPS;
+                    p.difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
+                    p.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
                     p.crescendo_activation = ForkActivation::always();
-                    p.prior_target_time_per_block = p.crescendo.target_time_per_block;
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
-                    p.crescendo.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;
-                    p.crescendo.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
+                    p.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;
+                    p.past_median_time_window_size = PMT_SAMPLED_WINDOW_SIZE;
                     p.timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
                 })
                 .build(),
@@ -1457,13 +1084,13 @@ async fn difficulty_test() {
         let consensus = TestConsensus::new(&test.config);
         let wait_handles = consensus.init();
 
-        let sample_rate = test.config.difficulty_sample_rate().before();
-        let expanded_window_size = test.config.difficulty_window_size().before() * sample_rate as usize;
+        let sample_rate = test.config.difficulty_sample_rate();
+        let expanded_window_size = test.config.difficulty_window_size * sample_rate as usize;
 
         let fake_genesis = Header {
             hash: test.config.genesis.hash,
             version: 0,
-            parents_by_level: vec![],
+            parents_by_level: Vec::<Vec<Hash>>::new().try_into().unwrap(),
             hash_merkle_root: 0.into(),
             accepted_id_merkle_root: 0.into(),
             utxo_commitment: 0.into(),
@@ -1574,7 +1201,7 @@ async fn difficulty_test() {
         for _ in 0..sample_rate {
             if (tip.daa_score + 1) % sample_rate == 0 {
                 // This block should be part of the sampled window
-                let slow_block_time = tip.timestamp + test.config.prior_target_time_per_block * 3;
+                let slow_block_time = tip.timestamp + test.config.target_time_per_block() * 3;
                 let slow_block = add_block(&consensus, Some(slow_block_time), vec![tip.hash]).await;
                 tip = slow_block;
                 break;
@@ -1673,7 +1300,7 @@ async fn selected_chain_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.min_difficulty_window_size = p.prior_difficulty_window_size;
+            p.min_difficulty_window_size = p.difficulty_window_size;
         })
         .build();
     let consensus = TestConsensus::new(&config);
@@ -1761,6 +1388,9 @@ async fn staging_consensus_test() {
         tx_script_cache_counters,
         200,
         Arc::new(MiningRules::default()),
+        kaspa_database::prelude::RocksDbPreset::Default,
+        None,
+        None,
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
 
@@ -1775,28 +1405,27 @@ async fn staging_consensus_test() {
     core.join(joins);
 }
 
-/// Tests the KIP-10 transaction introspection opcode activation by verifying that:
-/// 1. Transactions using these opcodes are rejected before the activation DAA score
-/// 2. The same transactions are accepted at and after the activation score
-/// Uses OpInputSpk opcode as an example
+/// Tests the KIP-10 transaction introspection opcodes by verifying that:
+/// 1. Transactions using these opcodes are accepted from genesis (DAA score 0)
+/// 2. The introspection opcodes (like OpInputSpk) function correctly in transaction validation
+///
+/// KIP-10 is now enabled by default from the genesis block, allowing scripts to access
+/// transaction data through introspection opcodes for advanced smart contract capabilities.
 #[tokio::test]
-async fn run_kip10_activation_test() {
+async fn kip10_test() {
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
     use kaspa_txscript::opcodes::codes::{Op0, OpTxInputSpk};
     use kaspa_txscript::pay_to_script_hash_script;
     use kaspa_txscript::script_builder::ScriptBuilder;
-
-    // KIP-10 activates at DAA score 3 in this test
-    const KIP10_ACTIVATION_DAA_SCORE: u64 = 3;
 
     init_allocator_with_default_settings();
 
     // Create P2SH script that attempts to use OpInputSpk - this will be our test subject
     // The script should fail before KIP-10 activation and succeed after
     let redeem_script = ScriptBuilder::new()
-        .add_op(Op0).unwrap() // Push 0 for input index
-        .add_op(OpTxInputSpk).unwrap() // Get the input's script pubkey
-        .drain();
+            .add_op(Op0).unwrap() // Push 0 for input index
+            .add_op(OpTxInputSpk).unwrap() // Get the input's script pubkey
+            .drain();
     let spk = pay_to_script_hash_script(&redeem_script);
 
     // Set up initial UTXO with our test script
@@ -1818,7 +1447,7 @@ async fn run_kip10_activation_test() {
             cfg.params.genesis.hash = genesis_header.hash;
         })
         .edit_consensus_params(|p| {
-            p.crescendo_activation = ForkActivation::new(KIP10_ACTIVATION_DAA_SCORE);
+            p.crescendo_activation = ForkActivation::always();
         })
         .build();
 
@@ -1828,14 +1457,8 @@ async fn run_kip10_activation_test() {
     consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
     consensus.init();
 
-    // Build blockchain up to one block before activation
-    let mut index = 0;
-    for _ in 0..KIP10_ACTIVATION_DAA_SCORE - 1 {
-        let parent = if index == 0 { config.genesis.hash } else { index.into() };
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).await.unwrap();
-        index += 1;
-    }
-    assert_eq!(consensus.get_virtual_daa_score(), index);
+    // Start from genesis block
+    let index = 0;
 
     // Create transaction that attempts to use the KIP-10 opcode
     let mut tx = Transaction::new(
@@ -1859,30 +1482,8 @@ async fn run_kip10_activation_test() {
     // This triggers storage mass population
     let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
     let tx = tx.tx.unwrap_or_clone();
-
-    // Test 1: Build empty block, then manually insert invalid tx and verify consensus rejects it
-    {
-        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-
-        // First build block without transactions
-        let mut block =
-            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
-
-        // Insert our test transaction and recalculate block hashes
-        block.transactions.push(tx.clone());
-        block.header.hash_merkle_root =
-            calc_hash_merkle_root(block.transactions.iter(), config.crescendo_activation.is_active(block.header.daa_score));
-        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
-        assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
-        assert_eq!(consensus.lkg_virtual_state.load().daa_score, 2);
-        index += 1;
-    }
-    // // Add one more block to reach activation score
-    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
-    index += 1;
-
-    // Test 2: Verify the same transaction is accepted after activation
-    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx.clone()]).await;
+    // Verify the transaction with KIP-10 opcodes is accepted
+    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![config.genesis.hash], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }
@@ -1892,8 +1493,7 @@ async fn payload_test() {
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.prior_coinbase_maturity = 0;
-            p.crescendo.coinbase_maturity = 0;
+            p.coinbase_maturity = 0;
             p.crescendo_activation = ForkActivation::always()
         })
         .build();
@@ -1941,11 +1541,8 @@ async fn payload_test() {
 }
 
 #[tokio::test]
-async fn payload_activation_test() {
+async fn payload_for_native_tx_test() {
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-
-    // Set payload activation at DAA score 3 for this test
-    const PAYLOAD_ACTIVATION_DAA_SCORE: u64 = 3;
 
     init_allocator_with_default_settings();
 
@@ -1972,9 +1569,6 @@ async fn payload_activation_test() {
             let genesis_header: Header = (&cfg.params.genesis).into();
             cfg.params.genesis.hash = genesis_header.hash;
         })
-        .edit_consensus_params(|p| {
-            p.crescendo_activation = ForkActivation::new(PAYLOAD_ACTIVATION_DAA_SCORE);
-        })
         .build();
 
     let consensus = TestConsensus::new(&config);
@@ -1982,15 +1576,6 @@ async fn payload_activation_test() {
     consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
     consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
     consensus.init();
-
-    // Build blockchain up to one block before activation
-    let mut index = 0;
-    for _ in 0..PAYLOAD_ACTIVATION_DAA_SCORE - 1 {
-        let parent = if index == 0 { config.genesis.hash } else { index.into() };
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).await.unwrap();
-        index += 1;
-    }
-    assert_eq!(consensus.get_virtual_daa_score(), index);
 
     // Create transaction with large payload
     let large_payload = vec![0u8; (config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
@@ -2011,54 +1596,36 @@ async fn payload_activation_test() {
     tx_with_payload.finalize();
     let tx_id = tx_with_payload.id();
 
-    // Test 1: Build empty block, then manually insert invalid tx and verify consensus rejects it
-    {
-        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-
-        // First build block without transactions
-        let mut block =
-            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
-
-        let mut tx = MutableTransaction::from_tx(tx_with_payload.clone());
-        // This triggers storage mass population
-        let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
-
-        // Insert our test transaction and recalculate block hashes
-        block.transactions.push(tx.tx.unwrap_or_clone());
-
-        block.header.hash_merkle_root =
-            calc_hash_merkle_root(block.transactions.iter(), config.crescendo_activation.is_active(block.header.daa_score));
-        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
-        assert!(matches!(block_status, Err(RuleError::TxInContextFailed(tx, TxRuleError::NonCoinbaseTxHasPayload)) if tx == tx_id));
-        assert_eq!(consensus.lkg_virtual_state.load().daa_score, PAYLOAD_ACTIVATION_DAA_SCORE - 1);
-        index += 1;
-    }
-
-    // Add one more block to reach activation score
-    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
-    index += 1;
-
     let mut tx = MutableTransaction::from_tx(tx_with_payload.clone());
     // This triggers storage mass population
     let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
 
     // Test 2: Verify the same transaction is accepted after activation
-    let status =
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx.tx.unwrap_or_clone()]).await;
+    let status = consensus.add_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], vec![tx.tx.unwrap_or_clone()]).await;
 
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }
 
+/// Tests runtime signature operation counting by verifying that:
+/// 1. Transactions are validated using runtime (execution-time) sig op counting from genesis (DAA score 0)
+/// 2. Only executed signature operations are counted, not all opcodes in the script
+///
+/// Runtime sig op counting is now enabled by default from genesis. This allows scripts with
+/// multiple signature opcodes to pass validation if only a subset are actually executed
+/// (e.g., in if-branches), as opposed to static counting which counts all sig ops regardless
+/// of execution path.
+///
+/// Test scenario: A P2SH script with sig_op_count=1 contains 3 CheckSig opcodes, but only 1
+/// is executed due to conditional logic. With runtime counting enabled from genesis, this
+/// transaction is accepted because only 1 sig op is actually executed, even though static
+/// analysis would see 3 sig ops.
 #[tokio::test]
 async fn runtime_sig_op_counting_test() {
     use kaspa_consensus_core::{
         hashing::sighash::SigHashReusedValuesUnsync, hashing::sighash_type::SIG_HASH_ALL, subnets::SUBNETWORK_ID_NATIVE,
     };
     use kaspa_txscript::{opcodes::codes::*, script_builder::ScriptBuilder};
-
-    // Runtime sig op counting activates at DAA score 3
-    const RUNTIME_SIGOP_ACTIVATION_DAA_SCORE: u64 = 3;
 
     init_allocator_with_default_settings();
 
@@ -2106,7 +1673,7 @@ async fn runtime_sig_op_counting_test() {
             cfg.params.genesis.hash = genesis_header.hash;
         })
         .edit_consensus_params(|p| {
-            p.crescendo_activation = ForkActivation::new(RUNTIME_SIGOP_ACTIVATION_DAA_SCORE);
+            p.crescendo_activation = ForkActivation::always();
         })
         .build();
 
@@ -2117,12 +1684,7 @@ async fn runtime_sig_op_counting_test() {
     consensus.init();
 
     // Build blockchain up to one block before activation
-    let mut index = 0;
-    for _ in 0..RUNTIME_SIGOP_ACTIVATION_DAA_SCORE - 1 {
-        let parent = if index == 0 { config.genesis.hash } else { index.into() };
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).await.unwrap();
-        index += 1;
-    }
+    let index = 0;
 
     // Create transaction spending P2SH with 1 sig op limit
     let mut tx = Transaction::new(
@@ -2131,7 +1693,7 @@ async fn runtime_sig_op_counting_test() {
             initial_utxo_collection[0].0,
             vec![], // Placeholder for signature script
             0,
-            1, // Only allowing 1 sig op - important for test
+            1, // Script declares 1 sig op (will execute only 1 despite having 3 CheckSig opcodes)
         )],
         vec![TransactionOutput::new(initial_utxo_collection[0].1.amount - 5000, ScriptPublicKey::from_vec(0, vec![OpTrue]))],
         0,
@@ -2164,24 +1726,301 @@ async fn runtime_sig_op_counting_test() {
     let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
     let tx = tx.tx.unwrap_or_clone();
 
-    // Test 1: Before activation, tx should be rejected due to static sig op counting (sees 3 ops)
-    {
-        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-        let mut block =
-            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
-        block.transactions.push(tx.clone());
-        block.header.hash_merkle_root =
-            calc_hash_merkle_root(block.transactions.iter(), config.crescendo_activation.is_active(block.header.daa_score));
-        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
-        assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
-        index += 1;
+    // Verify transaction is accepted with runtime sig op counting from genesis
+    // Runtime counting sees only 1 executed sig op (in the IF branch), not the 3 total CheckSig opcodes
+    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![config.genesis.hash], vec![tx]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+}
+
+#[tokio::test]
+async fn sighash_type_commitment_test() {
+    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
+    use kaspa_consensus_core::hashing::sighash_type::{
+        SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE, SigHashType,
+    };
+    use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+    use kaspa_txscript::opcodes::codes::*;
+    use kaspa_txscript::pay_to_script_hash_script;
+    use kaspa_txscript::script_builder::ScriptBuilder;
+    use secp256k1::Keypair;
+
+    init_allocator_with_default_settings();
+
+    let secp = secp256k1::Secp256k1::new();
+    let (secret_key, _) = secp.generate_keypair(&mut rand::thread_rng());
+    let keypair = Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
+    let pub_key = keypair.x_only_public_key().0.serialize();
+
+    // Basic redeem script: check a single Schnorr signature against the generated pubkey
+    let redeem_script = ScriptBuilder::new().add_data(&pub_key).unwrap().add_op(OpCheckSig).unwrap().drain();
+    let p2sh_script = pay_to_script_hash_script(&redeem_script);
+    let op_true_spk = ScriptPublicKey::from_vec(0, vec![OpTrue]);
+
+    let mut initial_utxo_collection: Vec<(TransactionOutpoint, UtxoEntry)> = Vec::new();
+    for i in 0..6 {
+        initial_utxo_collection.push((
+            TransactionOutpoint::new((i + 1).into(), 0),
+            UtxoEntry { amount: SOMPI_PER_KASPA / 10, script_public_key: p2sh_script.clone(), block_daa_score: 0, is_coinbase: false },
+        ));
+    }
+    for i in 0..3 {
+        initial_utxo_collection.push((
+            TransactionOutpoint::new((i + 7).into(), 0),
+            UtxoEntry { amount: SOMPI_PER_KASPA / 20, script_public_key: op_true_spk.clone(), block_daa_score: 0, is_coinbase: false },
+        ));
     }
 
-    // Add block to reach activation
-    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
-    index += 1;
+    let config = ConfigBuilder::new(DEVNET_PARAMS)
+        .skip_proof_of_work()
+        .apply_args(|cfg| {
+            let mut genesis_multiset = MuHash::new();
+            initial_utxo_collection.iter().for_each(|(outpoint, utxo)| {
+                genesis_multiset.add_utxo(outpoint, utxo);
+            });
+            cfg.params.genesis.utxo_commitment = genesis_multiset.finalize();
+            let genesis_header: Header = (&cfg.params.genesis).into();
+            cfg.params.genesis.hash = genesis_header.hash;
+        })
+        .build();
 
-    // Test 2: After activation, tx should be accepted as runtime counting only sees 1 executed sig op
-    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx]).await;
+    let consensus = TestConsensus::new(&config);
+    let mut genesis_multiset = MuHash::new();
+    consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
+    consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
+    consensus.init();
+
+    let make_sig_script = |tx: &Transaction, utxo: &UtxoEntry, sig_hash: SigHashType| -> Vec<u8> {
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let mut tx_for_signing = MutableTransaction::from_tx(tx.clone());
+        tx_for_signing.entries[0] = Some(utxo.clone());
+        let hash = calc_schnorr_signature_hash(&tx_for_signing.as_verifiable(), 0, sig_hash, &reused_values);
+        let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).unwrap();
+        let sig = keypair.sign_schnorr(msg);
+        let mut signature = sig.as_ref().to_vec();
+        signature.push(sig_hash.to_u8());
+        ScriptBuilder::new().add_data(&signature).unwrap().add_data(&redeem_script).unwrap().drain()
+    };
+
+    let mut block_index: u64 = 0;
+
+    // SIGHASH_ALL commits to every input and output. Signed transaction is accepted as-is.
+    let mut tx_all = Transaction::new(
+        0,
+        vec![TransactionInput::new(initial_utxo_collection[0].0, vec![], 0, 1)],
+        vec![TransactionOutput::new(initial_utxo_collection[0].1.amount - 1_000, op_true_spk.clone())],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let sig_script = make_sig_script(&tx_all, &initial_utxo_collection[0].1, SIG_HASH_ALL);
+    tx_all.inputs[0].signature_script = sig_script;
+    tx_all.finalize();
+    let mut tx_all = MutableTransaction::from_tx(tx_all);
+    let _ = consensus.validate_mempool_transaction(&mut tx_all, &TransactionValidationArgs::default());
+    let tx_all = tx_all.tx.unwrap_or_clone();
+    let status = consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_all]).await;
+    block_index += 1;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+
+    // SIGHASH_NONE commits to inputs only; outputs can be added after signing.
+    let mut tx_none = Transaction::new(
+        0,
+        vec![TransactionInput::new(initial_utxo_collection[1].0, vec![], 0, 1)],
+        vec![],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let sig_script = make_sig_script(&tx_none, &initial_utxo_collection[1].1, SIG_HASH_NONE);
+    tx_none.inputs[0].signature_script = sig_script;
+    tx_none.outputs.push(TransactionOutput::new(initial_utxo_collection[1].1.amount - 2_000, op_true_spk.clone()));
+    tx_none.finalize();
+    let mut tx_none = MutableTransaction::from_tx(tx_none);
+    let _ = consensus.validate_mempool_transaction(&mut tx_none, &TransactionValidationArgs::default());
+    let tx_none = tx_none.tx.unwrap_or_clone();
+    let status = consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_none]).await;
+    block_index += 1;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+
+    // SIGHASH_SINGLE commits input 0 to output 0 only; later outputs do not invalidate the signature.
+    let mut tx_single = Transaction::new(
+        0,
+        vec![TransactionInput::new(initial_utxo_collection[2].0, vec![], 0, 1)],
+        vec![TransactionOutput::new(initial_utxo_collection[2].1.amount - 5_500_000, op_true_spk.clone())],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let sig_script = make_sig_script(&tx_single, &initial_utxo_collection[2].1, SIG_HASH_SINGLE);
+    tx_single.inputs[0].signature_script = sig_script;
+    tx_single.outputs.push(TransactionOutput::new(5_000_000, op_true_spk.clone()));
+    tx_single.finalize();
+    let mut tx_single = MutableTransaction::from_tx(tx_single);
+    let _ = consensus.validate_mempool_transaction(&mut tx_single, &TransactionValidationArgs::default());
+    let tx_single = tx_single.tx.unwrap_or_clone();
+    let status =
+        consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_single]).await;
+    block_index += 1;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+
+    // SIGHASH_ALL | ANYONECANPAY commits to this input and all outputs; adding inputs later remains valid.
+    let mut tx_all_acp = Transaction::new(
+        0,
+        vec![TransactionInput::new(initial_utxo_collection[3].0, vec![], 0, 1)],
+        vec![TransactionOutput::new(
+            initial_utxo_collection[3].1.amount + initial_utxo_collection[6].1.amount - 4_000, // The first inputs signs an output that will be feasible only after adding the second input
+            op_true_spk.clone(),
+        )],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let sig_script = make_sig_script(&tx_all_acp, &initial_utxo_collection[3].1, SIG_HASH_ALL | SIG_HASH_ANY_ONE_CAN_PAY);
+    tx_all_acp.inputs[0].signature_script = sig_script;
+    tx_all_acp.inputs.push(TransactionInput::new(initial_utxo_collection[6].0, vec![], 0, 0));
+    tx_all_acp.finalize();
+    let mut tx_all_acp = MutableTransaction::from_tx(tx_all_acp);
+    let _ = consensus.validate_mempool_transaction(&mut tx_all_acp, &TransactionValidationArgs::default());
+    let tx_all_acp = tx_all_acp.tx.unwrap_or_clone();
+    let status =
+        consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_all_acp]).await;
+    block_index += 1;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+
+    // SIGHASH_NONE | ANYONECANPAY commits to this input only; outputs and additional inputs may be appended after signing.
+    let mut tx_none_acp = Transaction::new(
+        0,
+        vec![TransactionInput::new(initial_utxo_collection[4].0, vec![], 0, 1)],
+        vec![],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let sig_script = make_sig_script(&tx_none_acp, &initial_utxo_collection[4].1, SIG_HASH_NONE | SIG_HASH_ANY_ONE_CAN_PAY);
+    tx_none_acp.inputs[0].signature_script = sig_script;
+    tx_none_acp.inputs.push(TransactionInput::new(initial_utxo_collection[7].0, vec![], 0, 0));
+    tx_none_acp.outputs.push(TransactionOutput::new(initial_utxo_collection[4].1.amount - 5_000, op_true_spk.clone()));
+    tx_none_acp.finalize();
+    let mut tx_none_acp = MutableTransaction::from_tx(tx_none_acp);
+    let _ = consensus.validate_mempool_transaction(&mut tx_none_acp, &TransactionValidationArgs::default());
+    let tx_none_acp = tx_none_acp.tx.unwrap_or_clone();
+    let status =
+        consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_none_acp]).await;
+    block_index += 1;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+
+    // SIGHASH_SINGLE | ANYONECANPAY commits to this input and its matching output; other outputs and inputs are free to change.
+    let mut tx_single_acp = Transaction::new(
+        0,
+        vec![TransactionInput::new(initial_utxo_collection[5].0, vec![], 0, 1)],
+        vec![TransactionOutput::new(initial_utxo_collection[5].1.amount - 5_500_000, op_true_spk.clone())],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let sig_script = make_sig_script(&tx_single_acp, &initial_utxo_collection[5].1, SIG_HASH_SINGLE | SIG_HASH_ANY_ONE_CAN_PAY);
+    tx_single_acp.inputs[0].signature_script = sig_script;
+    tx_single_acp.inputs.push(TransactionInput::new(initial_utxo_collection[8].0, vec![], 0, 0));
+    tx_single_acp.outputs.push(TransactionOutput::new(5_000_000, op_true_spk.clone()));
+    tx_single_acp.finalize();
+    let mut tx_single_acp = MutableTransaction::from_tx(tx_single_acp);
+    let _ = consensus.validate_mempool_transaction(&mut tx_single_acp, &TransactionValidationArgs::default());
+    let tx_single_acp = tx_single_acp.tx.unwrap_or_clone();
+    let status =
+        consensus.add_utxo_valid_block_with_parents((block_index + 1).into(), vec![config.genesis.hash], vec![tx_single_acp]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+}
+
+// Checks that pruning works and that we do not allow attaching a body to a pruned block
+#[tokio::test]
+async fn pruning_test() {
+    init_allocator_with_default_settings();
+    let config = ConfigBuilder::new(MAINNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| {
+            p.finality_depth = 2;
+            p.mergeset_size_limit = 2;
+            p.ghostdag_k = 2;
+            p.merge_depth = 3;
+            p.pruning_depth = 100;
+        })
+        .build();
+
+    assert!((config.ghostdag_k() as u64) < config.merge_depth(), "K must be smaller than merge depth for this test to run");
+
+    let consensus = TestConsensus::new(&config);
+    let wait_handles = consensus.init();
+
+    let mut selected_chain = vec![config.genesis.hash];
+
+    let genesis_child = 1.into();
+    consensus.add_empty_utxo_valid_block_with_parents(genesis_child, vec![*selected_chain.last().unwrap()]).await.unwrap();
+    selected_chain.push(genesis_child);
+    let genesis_child_block = consensus.get_block(genesis_child).unwrap();
+
+    let genesis_child_child = 2.into();
+    consensus.add_empty_utxo_valid_block_with_parents(genesis_child_child, vec![*selected_chain.last().unwrap()]).await.unwrap();
+    selected_chain.push(genesis_child_child);
+    let genesis_child_child_block = consensus.get_block(genesis_child_child).unwrap();
+
+    for i in 3..config.pruning_depth() + config.finality_depth() + 100 {
+        let hash: Hash = i.into();
+        consensus.add_empty_utxo_valid_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
+        selected_chain.push(hash);
+    }
+
+    // Waiting for genesis_child_child to get pruned
+    let start = Instant::now();
+    while consensus.get_block_status(genesis_child_child).unwrap() == BlockStatus::StatusUTXOValid {
+        if start.elapsed() > Duration::from_secs(10) {
+            panic!("Timed out waiting 10 seconds for pruning to occur");
+        }
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    // Since pruning happens topologically from older to later blocks, we expect both blocks to be pruned at this point
+    assert_match!(
+        consensus.validate_and_insert_block(genesis_child_block).virtual_state_task.await,
+        Err(RuleError::MissingParents(_))
+    );
+
+    assert_match!(
+        consensus.validate_and_insert_block(genesis_child_child_block).virtual_state_task.await,
+        Err(RuleError::MissingParents(_))
+    );
+
+    consensus.shutdown(wait_handles);
+}
+
+// Checks that consensus can handle blocks from multiple levels
+#[tokio::test]
+async fn indirect_parents_test() {
+    init_allocator_with_default_settings();
+    let config = ConfigBuilder::new(DEVNET_PARAMS).skip_proof_of_work().build();
+    let consensus = TestConsensus::new(&config);
+    let wait_handles = consensus.init();
+
+    let mut level_3_count = 3;
+    let mut selected_chain = vec![config.genesis.hash];
+    for i in 1.. {
+        let hash: Hash = i.into();
+        consensus.add_header_only_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
+        selected_chain.push(hash);
+        if consensus.get_header(*selected_chain.last().unwrap()).unwrap().parents_by_level.expanded_len() >= 3 {
+            level_3_count += 1;
+        }
+
+        if level_3_count > 5 {
+            break;
+        }
+    }
+
+    consensus.shutdown(wait_handles);
 }
