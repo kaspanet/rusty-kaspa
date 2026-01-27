@@ -10,6 +10,7 @@ use std::{collections::HashMap, sync::LazyLock};
 ///
 /// Used by scripts to verify the state transitions they directly authorized
 /// (e.g., 1-to-N splits) without scanning unrelated outputs.
+#[cfg_attr(test, derive(PartialEq, Eq, Debug))]
 pub struct CovenantInputContext {
     /// The covenant ID shared by this input and its authorized outputs.
     pub _covenant_id: Hash, // TODO(pre-covpp): Remove if unused.
@@ -31,6 +32,7 @@ impl CovenantInputContext {
 /// Used for verifying global invariants across all participants of the same covenant
 /// (e.g., merges, batching, or conservation of amounts).
 #[derive(Default)]
+#[cfg_attr(test, derive(PartialEq, Eq, Debug))]
 pub struct CovenantSharedContext {
     /// Indices of *all* inputs in the transaction carrying this `covenant_id`.
     pub input_indices: Vec<usize>,
@@ -43,6 +45,7 @@ pub struct CovenantSharedContext {
 ///
 /// Enables O(1) access for covenant introspection opcodes.
 #[derive(Default)]
+#[cfg_attr(test, derive(PartialEq, Eq, Debug))]
 pub struct CovenantsContext {
     /// Maps an input index to its local authority context.
     pub input_ctxs: HashMap<usize, CovenantInputContext>,
@@ -158,5 +161,283 @@ impl CovenantsContext {
         }
 
         Ok(ctx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_consensus_core::{
+        hashing,
+        subnets::SubnetworkId,
+        tx::{
+            CovenantBinding, PopulatedTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+        },
+    };
+
+    struct OutputConfig {
+        value: u64,
+        authorizing_input: usize,
+        covenant_group: u64, // Outputs with the same group id share a covenant id
+    }
+
+    /// Creates a transaction with configurable inputs and outputs for testing both genesis and continuation cases.
+    ///
+    /// - `input_covenant_ids`: Covenant id for each input (None for genesis, Some for continuation)
+    /// - `outputs`: Configuration for each output
+    /// - `compute_correct_ids`: If true, computes correct covenant ids; if false, uses placeholder values
+    fn create_genesis_tx(
+        input_covenant_ids: Vec<Option<u64>>,
+        outputs: Vec<OutputConfig>,
+        compute_correct_ids: bool,
+    ) -> (Transaction, Vec<UtxoEntry>) {
+        // Create inputs and UTXOs
+        let inputs: Vec<_> = input_covenant_ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| {
+                let outpoint = TransactionOutpoint::new((i as u64).into(), 0);
+                TransactionInput::new(outpoint, vec![], 0, 0)
+            })
+            .collect();
+
+        let utxos: Vec<_> = input_covenant_ids
+            .iter()
+            .map(|&cov_id| UtxoEntry {
+                amount: 1000,
+                script_public_key: Default::default(),
+                block_daa_score: 0,
+                is_coinbase: false,
+                covenant_id: cov_id.map(|id| id.into()),
+            })
+            .collect();
+
+        // Create outputs with placeholder covenant ids
+        let tx_outputs: Vec<_> = outputs
+            .iter()
+            .map(|cfg| TransactionOutput {
+                value: cfg.value,
+                script_public_key: Default::default(),
+                covenant: Some(CovenantBinding {
+                    covenant_id: cfg.covenant_group.into(), // Placeholder
+                    authorizing_input: cfg.authorizing_input as u16,
+                }),
+            })
+            .collect();
+
+        let mut tx = Transaction::new(0, inputs, tx_outputs, 0, SubnetworkId::default(), 0, vec![]);
+
+        if compute_correct_ids {
+            // Separate continuation and genesis outputs
+            let mut continuation_outputs: Vec<(usize, u64)> = Vec::new(); // (output_idx, covenant_group)
+            let mut genesis_groups: HashMap<(usize, u64), Vec<usize>> = HashMap::new();
+
+            for (i, cfg) in outputs.iter().enumerate() {
+                let input_cov_id = input_covenant_ids.get(cfg.authorizing_input).copied().flatten();
+
+                if input_cov_id == Some(cfg.covenant_group) {
+                    // Continuation case: input already has this covenant id
+                    continuation_outputs.push((i, cfg.covenant_group));
+                } else {
+                    // Genesis case: compute id from outpoint and outputs
+                    genesis_groups.entry((cfg.authorizing_input, cfg.covenant_group)).or_default().push(i);
+                }
+            }
+
+            // For continuation outputs, covenant id is just the covenant_group
+            for (output_idx, covenant_group) in continuation_outputs {
+                tx.outputs[output_idx].covenant.as_mut().unwrap().covenant_id = covenant_group.into();
+            }
+
+            // Compute correct covenant ids for each genesis group
+            for ((auth_input_idx, _), output_indices) in genesis_groups {
+                let outpoint = TransactionOutpoint::new((auth_input_idx as u64).into(), 0);
+                let expected_id =
+                    hashing::covenant_id::covenant_id(outpoint, output_indices.iter().map(|&i| (i as u32, &tx.outputs[i])));
+
+                for &output_idx in &output_indices {
+                    tx.outputs[output_idx].covenant.as_mut().unwrap().covenant_id = expected_id;
+                }
+            }
+        }
+
+        tx.finalize();
+        (tx, utxos)
+    }
+
+    #[test]
+    fn test_genesis_single_output() {
+        let (tx, entries) =
+            create_genesis_tx(vec![None], vec![OutputConfig { value: 100, authorizing_input: 0, covenant_group: 1 }], true);
+        let populated_tx = PopulatedTransaction::new(&tx, entries);
+        let ctx = CovenantsContext::from_tx(&populated_tx).unwrap();
+
+        // For genesis, contexts should be empty since genesis outputs don't populate contexts
+        assert!(ctx.input_ctxs.is_empty());
+        assert!(ctx.shared_ctxs.is_empty());
+    }
+
+    #[test]
+    fn test_genesis_multiple_outputs() {
+        let (tx, entries) = create_genesis_tx(
+            vec![None],
+            vec![
+                OutputConfig { value: 100, authorizing_input: 0, covenant_group: 1 },
+                OutputConfig { value: 100, authorizing_input: 0, covenant_group: 1 },
+            ],
+            true,
+        );
+        let populated_tx = PopulatedTransaction::new(&tx, entries);
+        let ctx = CovenantsContext::from_tx(&populated_tx).unwrap();
+
+        // Genesis contexts empty
+        assert!(ctx.input_ctxs.is_empty());
+        assert!(ctx.shared_ctxs.is_empty());
+    }
+
+    #[test]
+    fn test_genesis_invalid_covenant_id() {
+        let (tx, entries) = create_genesis_tx(
+            vec![None],
+            vec![OutputConfig { value: 100, authorizing_input: 0, covenant_group: 1 }],
+            false, // Use wrong covenant ids
+        );
+        let populated_tx = PopulatedTransaction::new(&tx, entries);
+        let result = CovenantsContext::from_tx(&populated_tx);
+        assert!(matches!(result, Err(CovenantsError::WrongGenesisCovenantId(0, _))));
+    }
+
+    #[test]
+    fn test_genesis_single_input_multiple_covenant_groups() {
+        // Three outputs with two different covenant groups from the same input
+        let (tx, entries) = create_genesis_tx(
+            vec![None],
+            vec![
+                OutputConfig { value: 100, authorizing_input: 0, covenant_group: 1 }, // Group A
+                OutputConfig { value: 100, authorizing_input: 0, covenant_group: 2 }, // Group B
+                OutputConfig { value: 100, authorizing_input: 0, covenant_group: 1 }, // Group A
+            ],
+            true,
+        );
+        let populated_tx = PopulatedTransaction::new(&tx, entries);
+        let ctx = CovenantsContext::from_tx(&populated_tx).unwrap();
+
+        // Genesis contexts empty
+        assert!(ctx.input_ctxs.is_empty());
+        assert!(ctx.shared_ctxs.is_empty());
+    }
+
+    #[test]
+    fn test_genesis_multiple_inputs() {
+        let (tx, entries) = create_genesis_tx(
+            vec![None, None],
+            vec![
+                OutputConfig { value: 100, authorizing_input: 0, covenant_group: 1 },
+                OutputConfig { value: 100, authorizing_input: 1, covenant_group: 2 },
+            ],
+            true,
+        );
+        let populated_tx = PopulatedTransaction::new(&tx, entries);
+        let ctx = CovenantsContext::from_tx(&populated_tx).unwrap();
+
+        // Genesis contexts empty
+        assert!(ctx.input_ctxs.is_empty());
+        assert!(ctx.shared_ctxs.is_empty());
+    }
+
+    #[test]
+    fn test_continuation_with_genesis() {
+        // Complex case: 1 input with covenant id 42, creating:
+        // - 1 continuation output (covenant 42)
+        // - 2 genesis outputs (group A, non-contiguous at indices 1 and 3)
+        // - 1 genesis output (group B, at index 2)
+        // This tests a single input both continuing its covenant and creating new genesis covenants
+        let (tx, entries) = create_genesis_tx(
+            vec![Some(42)],
+            vec![
+                OutputConfig { value: 100, authorizing_input: 0, covenant_group: 42 }, // Continuation
+                OutputConfig { value: 100, authorizing_input: 0, covenant_group: 100 }, // Genesis A
+                OutputConfig { value: 100, authorizing_input: 0, covenant_group: 200 }, // Genesis B
+                OutputConfig { value: 100, authorizing_input: 0, covenant_group: 100 }, // Genesis A
+            ],
+            true,
+        );
+        let populated_tx = PopulatedTransaction::new(&tx, entries);
+        let actual_ctx = CovenantsContext::from_tx(&populated_tx).unwrap();
+
+        // Build expected context: input 0 continues covenant 42 with output 0
+        // Genesis outputs (1, 2, 3) should not appear in contexts
+        let covenant_42: Hash = 42u64.into();
+        let expected_ctx = CovenantsContext {
+            input_ctxs: HashMap::from_iter([(0, CovenantInputContext { _covenant_id: covenant_42, auth_outputs: vec![0] })]),
+            shared_ctxs: HashMap::from_iter([(
+                covenant_42,
+                CovenantSharedContext { input_indices: vec![0], output_indices: vec![0] },
+            )]),
+        };
+
+        assert_eq!(actual_ctx, expected_ctx);
+    }
+
+    #[test]
+    fn test_authorizing_input_out_of_bounds() {
+        // Create a transaction with an output referencing a non-existent input
+        let input = TransactionInput::new(TransactionOutpoint::new(1u64.into(), 0), vec![], 0, 0);
+        let utxo = UtxoEntry {
+            amount: 1000,
+            script_public_key: Default::default(),
+            block_daa_score: 0,
+            is_coinbase: false,
+            covenant_id: None,
+        };
+
+        let output = TransactionOutput {
+            value: 100,
+            script_public_key: Default::default(),
+            covenant: Some(CovenantBinding {
+                covenant_id: 1u64.into(),
+                authorizing_input: 5, // Out of bounds - only 1 input (index 0)
+            }),
+        };
+
+        let mut tx = Transaction::new(0, vec![input], vec![output], 0, SubnetworkId::default(), 0, vec![]);
+        tx.finalize();
+
+        let populated_tx = PopulatedTransaction::new(&tx, vec![utxo]);
+        let result = CovenantsContext::from_tx(&populated_tx);
+        assert!(matches!(result, Err(CovenantsError::AuthInputOutOfBounds(0, 5))));
+    }
+
+    #[test]
+    fn test_no_covenant_outputs() {
+        // Create a transaction with outputs that have no covenants
+        let input = TransactionInput::new(TransactionOutpoint::new(1u64.into(), 0), vec![], 0, 0);
+        let utxo = UtxoEntry {
+            amount: 1000,
+            script_public_key: Default::default(),
+            block_daa_score: 0,
+            is_coinbase: false,
+            covenant_id: Some(42u64.into()),
+        };
+
+        // Outputs with no covenant bindings
+        let output1 = TransactionOutput::new(100, Default::default());
+        let output2 = TransactionOutput::new(200, Default::default());
+
+        let mut tx = Transaction::new(0, vec![input], vec![output1, output2], 0, SubnetworkId::default(), 0, vec![]);
+        tx.finalize();
+
+        let populated_tx = PopulatedTransaction::new(&tx, vec![utxo]);
+        let actual_ctx = CovenantsContext::from_tx(&populated_tx).unwrap();
+
+        // Input 0 has covenant_id, so shared context contains it
+        // No outputs have covenants, so input_ctxs is empty and shared context has no output indices
+        let covenant_42: Hash = 42u64.into();
+        let expected_ctx = CovenantsContext {
+            input_ctxs: HashMap::new(),
+            shared_ctxs: HashMap::from_iter([(covenant_42, CovenantSharedContext { input_indices: vec![0], output_indices: vec![] })]),
+        };
+
+        assert_eq!(actual_ctx, expected_ctx);
     }
 }
