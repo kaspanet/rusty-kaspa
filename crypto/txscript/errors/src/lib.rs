@@ -82,6 +82,8 @@ pub enum TxScriptError {
     OutOfBoundsSubstring(usize, usize, usize),
     #[error("{0} cannot be used as an array index")]
     InvalidIndex(i32),
+    #[error("{start}..{end} is not a valid range, {end} must be greater than {start}")]
+    InvalidRange { start: usize, end: usize },
 
     #[error("blockhash must be exactly 32 bytes long, got {0} bytes instead")]
     InvalidLengthOfBlockHash(usize),

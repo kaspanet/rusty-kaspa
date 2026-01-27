@@ -220,8 +220,9 @@ fn push_number<T: VerifiableTransaction, Reused: SigHashReusedValues>(
 }
 
 fn substring(data: &[u8], start: usize, end: usize) -> Result<Vec<u8>, TxScriptError> {
-    if end.saturating_sub(start) > MAX_SCRIPT_ELEMENT_SIZE {
-        return Err(TxScriptError::ElementTooBig(end - start, MAX_SCRIPT_ELEMENT_SIZE));
+    let diff = end.checked_sub(start).ok_or(TxScriptError::InvalidRange { start, end })?;
+    if diff > MAX_SCRIPT_ELEMENT_SIZE {
+        return Err(TxScriptError::ElementTooBig(diff, MAX_SCRIPT_ELEMENT_SIZE));
     }
     data.get(start..end).map(<[u8]>::to_vec).ok_or(TxScriptError::OutOfBoundsSubstring(start, end, data.len()))
 }
