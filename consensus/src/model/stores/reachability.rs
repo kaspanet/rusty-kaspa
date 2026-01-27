@@ -13,7 +13,7 @@ use kaspa_hashes::Hash;
 
 use itertools::Itertools;
 use kaspa_utils::mem_size::MemSizeEstimator;
-use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
+use parking_lot::{RwLock, RwLockUpgradableReadGuard, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -642,8 +642,9 @@ impl MemoryReachabilityData {
     }
 }
 
+#[derive(Clone)]
 pub struct MemoryReachabilityStore {
-    map: BlockHashMap<MemoryReachabilityData>,
+    map: Arc<RwLock<BlockHashMap<MemoryReachabilityData>>>,
     reindex_root: Option<Hash>,
 }
 
@@ -655,21 +656,7 @@ impl Default for MemoryReachabilityStore {
 
 impl MemoryReachabilityStore {
     pub fn new() -> Self {
-        Self { map: BlockHashMap::new(), reindex_root: None }
-    }
-
-    fn get_data_mut(&mut self, hash: Hash) -> Result<&mut MemoryReachabilityData, StoreError> {
-        match self.map.get_mut(&hash) {
-            Some(data) => Ok(data),
-            None => Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash))),
-        }
-    }
-
-    fn get_data(&self, hash: Hash) -> Result<&MemoryReachabilityData, StoreError> {
-        match self.map.get(&hash) {
-            Some(data) => Ok(data),
-            None => Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash))),
-        }
+        Self { map: Arc::new(RwLock::new(BlockHashMap::new())), reindex_root: None }
     }
 }
 
@@ -681,7 +668,8 @@ impl ReachabilityStore for MemoryReachabilityStore {
     }
 
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
-        if let Vacant(e) = self.map.entry(hash) {
+        let mut map = self.map.write();
+        if let Vacant(e) = map.entry(hash) {
             e.insert(MemoryReachabilityData::new(parent, interval, height));
             Ok(())
         } else {
@@ -690,25 +678,37 @@ impl ReachabilityStore for MemoryReachabilityStore {
     }
 
     fn set_interval(&mut self, hash: Hash, interval: Interval) -> Result<(), StoreError> {
-        let data = self.get_data_mut(hash)?;
+        let mut map = self.map.write();
+        let data = map
+            .get_mut(&hash)
+            .ok_or_else(|| StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))?;
         data.interval = interval;
         Ok(())
     }
 
     fn append_child(&mut self, hash: Hash, child: Hash) -> Result<(), StoreError> {
-        let data = self.get_data_mut(hash)?;
+        let mut map = self.map.write();
+        let data = map
+            .get_mut(&hash)
+            .ok_or_else(|| StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))?;
         Arc::make_mut(&mut data.children).push(child);
         Ok(())
     }
 
     fn insert_future_covering_item(&mut self, hash: Hash, fci: Hash, insertion_index: usize) -> Result<(), StoreError> {
-        let data = self.get_data_mut(hash)?;
+        let mut map = self.map.write();
+        let data = map
+            .get_mut(&hash)
+            .ok_or_else(|| StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))?;
         Arc::make_mut(&mut data.future_covering_set).insert(insertion_index, fci);
         Ok(())
     }
 
     fn set_parent(&mut self, hash: Hash, new_parent: Hash) -> Result<(), StoreError> {
-        let data = self.get_data_mut(hash)?;
+        let mut map = self.map.write();
+        let data = map
+            .get_mut(&hash)
+            .ok_or_else(|| StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))?;
         data.parent = new_parent;
         Ok(())
     }
@@ -720,7 +720,10 @@ impl ReachabilityStore for MemoryReachabilityStore {
         replaced_index: usize,
         replace_with: &[Hash],
     ) -> Result<(), StoreError> {
-        let data = self.get_data_mut(hash)?;
+        let mut map = self.map.write();
+        let data = map
+            .get_mut(&hash)
+            .ok_or_else(|| StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))?;
         let removed_hash = Arc::make_mut(&mut data.children).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
         debug_assert_eq!(replaced_hash, removed_hash.exactly_one().unwrap());
         Ok(())
@@ -733,7 +736,10 @@ impl ReachabilityStore for MemoryReachabilityStore {
         replaced_index: usize,
         replace_with: &[Hash],
     ) -> Result<(), StoreError> {
-        let data = self.get_data_mut(hash)?;
+        let mut map = self.map.write();
+        let data = map
+            .get_mut(&hash)
+            .ok_or_else(|| StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))?;
         let removed_hash =
             Arc::make_mut(&mut data.future_covering_set).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
         debug_assert_eq!(replaced_hash, removed_hash.exactly_one().unwrap());
@@ -741,12 +747,16 @@ impl ReachabilityStore for MemoryReachabilityStore {
     }
 
     fn delete(&mut self, hash: Hash) -> Result<(), StoreError> {
-        self.map.remove(&hash);
+        let mut map = self.map.write();
+        map.remove(&hash);
         Ok(())
     }
 
     fn get_height(&self, hash: Hash) -> Result<u64, StoreError> {
-        Ok(self.get_data(hash)?.height)
+        let map = self.map.read();
+        let data =
+            map.get(&hash).ok_or_else(|| StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))?;
+        Ok(data.height)
     }
 
     fn set_reindex_root(&mut self, root: Hash) -> Result<(), StoreError> {
@@ -764,27 +774,41 @@ impl ReachabilityStore for MemoryReachabilityStore {
 
 impl ReachabilityStoreReader for MemoryReachabilityStore {
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        Ok(self.map.contains_key(&hash))
+        let map = self.map.read();
+        Ok(map.contains_key(&hash))
     }
 
     fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError> {
-        Ok(self.get_data(hash)?.interval)
+        let map = self.map.read();
+        let data =
+            map.get(&hash).ok_or_else(|| StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))?;
+        Ok(data.interval)
     }
 
     fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
-        Ok(self.get_data(hash)?.parent)
+        let map = self.map.read();
+        let data =
+            map.get(&hash).ok_or_else(|| StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))?;
+        Ok(data.parent)
     }
 
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        Ok(Arc::clone(&self.get_data(hash)?.children))
+        let map = self.map.read();
+        let data =
+            map.get(&hash).ok_or_else(|| StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))?;
+        Ok(Arc::clone(&data.children))
     }
 
     fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        Ok(Arc::clone(&self.get_data(hash)?.future_covering_set))
+        let map = self.map.read();
+        let data =
+            map.get(&hash).ok_or_else(|| StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))?;
+        Ok(Arc::clone(&data.future_covering_set))
     }
 
     fn count(&self) -> Result<usize, StoreError> {
-        Ok(self.map.len())
+        let map = self.map.read();
+        Ok(map.len())
     }
 }
 
