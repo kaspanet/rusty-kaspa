@@ -1493,7 +1493,7 @@ async fn kip10_test() {
     // Verify the transaction with KIP-10 opcodes is accepted
     let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![config.genesis.hash], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
-    assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
+    assert!(consensus.lkg_virtual_state.load().accepted_tx_digests.contains(&tx_id)); // covenants not enabled yet, so accepted_tx_digests contains txid
 }
 
 #[tokio::test]
@@ -1572,8 +1572,6 @@ async fn covenants_activation_test() {
         vec![],
     );
     tx.finalize();
-    let tx_id = tx.id();
-
     let mut tx = MutableTransaction::from_tx(tx);
     // This triggers storage mass population
     let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
@@ -1602,7 +1600,9 @@ async fn covenants_activation_test() {
     // Post-activation: same transaction should now be accepted
     let status = consensus.add_utxo_valid_block_with_parents(next_id.into(), vec![tip], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
-    assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
+
+    let digest = tx.seq_commit_digest();
+    assert!(consensus.lkg_virtual_state.load().accepted_tx_digests.contains(&digest));
 
     consensus.shutdown(wait_handles);
 }
@@ -1694,8 +1694,6 @@ async fn push_limit_activation_test() {
             vec![],
         );
         tx.finalize();
-        let tx_id = tx.id();
-
         let mut tx = MutableTransaction::from_tx(tx);
         // This triggers storage mass population
         let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
@@ -1709,7 +1707,9 @@ async fn push_limit_activation_test() {
 
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Ok(BlockStatus::StatusUTXOValid)));
-        assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
+
+        let digest = tx.seq_commit_digest();
+        assert!(consensus.lkg_virtual_state.load().accepted_tx_digests.contains(&digest));
     }
 
     next_id += 1;
@@ -1732,8 +1732,6 @@ async fn push_limit_activation_test() {
             vec![],
         );
         tx.finalize();
-        let tx_id = tx.id();
-
         let mut tx = MutableTransaction::from_tx(tx);
         // This triggers storage mass population
         let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
@@ -1747,7 +1745,8 @@ async fn push_limit_activation_test() {
 
         let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
         assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
-        assert!(!consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
+        let digest = tx.seq_commit_digest();
+        assert!(consensus.lkg_virtual_state.load().accepted_tx_digests.contains(&digest));
     }
 
     consensus.shutdown(wait_handles);
@@ -1870,7 +1869,7 @@ async fn payload_for_native_tx_test() {
     let status = consensus.add_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], vec![tx.tx.unwrap_or_clone()]).await;
 
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
-    assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
+    assert!(consensus.lkg_virtual_state.load().accepted_tx_digests.contains(&tx_id)); // covenants not enabled yet, so accepted_tx_digests contains txid
 }
 
 /// Tests runtime signature operation counting by verifying that:

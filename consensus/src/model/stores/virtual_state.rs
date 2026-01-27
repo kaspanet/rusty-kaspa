@@ -5,6 +5,7 @@ use super::ghostdag::GhostdagData;
 use super::utxo_set::DbUtxoSetStore;
 use arc_swap::ArcSwap;
 use kaspa_consensus_core::api::stats::VirtualStateStats;
+use kaspa_consensus_core::config::params::ForkActivation;
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher, block::VirtualStateApproxId, coinbase::BlockRewardData,
     config::genesis::GenesisBlock, utxo::utxo_diff::UtxoDiff,
@@ -60,7 +61,12 @@ impl VirtualState {
         }
     }
 
-    pub fn from_genesis(genesis: &GenesisBlock, ghostdag_data: GhostdagData) -> Self {
+    pub fn from_genesis(genesis: &GenesisBlock, ghostdag_data: GhostdagData, covenants_activation: ForkActivation) -> Self {
+        let accepted_tx_digests = if covenants_activation.is_active(genesis.daa_score) {
+            genesis.build_genesis_transactions().iter().map(|tx| tx.seq_commit_digest()).collect()
+        } else {
+            genesis.build_genesis_transactions().iter().map(|tx| tx.id()).collect()
+        };
         Self {
             parents: vec![genesis.hash],
             ghostdag_data,
@@ -69,7 +75,7 @@ impl VirtualState {
             past_median_time: genesis.timestamp,
             multiset: MuHash::new(),
             utxo_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
-            accepted_tx_digests: genesis.build_genesis_transactions().iter().map(|tx| tx.seq_commit_digest()).collect(),
+            accepted_tx_digests,
             mergeset_rewards: BlockHashMap::new(),
             mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(genesis.hash)),
         }

@@ -1160,7 +1160,11 @@ impl VirtualStateProcessor {
         // Init virtual state
         self.commit_virtual_state(
             self.virtual_stores.upgradable_read(),
-            Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))),
+            Arc::new(VirtualState::from_genesis(
+                &self.genesis,
+                self.ghostdag_manager.ghostdag(&[self.genesis.hash]),
+                self.covenants_activation,
+            )),
             &Default::default(),
             &Default::default(),
         );
