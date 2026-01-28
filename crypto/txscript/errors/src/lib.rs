@@ -1,3 +1,4 @@
+use kaspa_hashes::Hash;
 use thiserror::Error;
 
 #[derive(Error, PartialEq, Eq, Debug, Clone)]
@@ -83,9 +84,9 @@ pub enum TxScriptError {
     OutOfBoundsSubstring(usize, usize, usize),
     #[error("{0} cannot be used as an array index")]
     InvalidIndex(i32),
+    #[error("{start}..{end} is not a valid range, {end} must be greater than {start}")]
+    InvalidRange { start: usize, end: usize },
 
-    #[error("{0} is not a valid covenant output index for input {1} with {2} covenant outputs")]
-    InvalidCovOutIndex(usize, usize, usize),
     #[error("blockhash must be exactly 32 bytes long, got {0} bytes instead")]
     InvalidLengthOfBlockHash(usize),
     #[error("block {0} not selected")]
@@ -108,10 +109,14 @@ pub enum SerializationError {
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum CovenantsError {
-    #[error("output #{0} covenant id does not correspond to the authorizing input covenant id")]
-    WrongCovenantId(usize),
-    #[error("output #{0} covenant id does not correspond to the authorizing input outpoint hashing (genesis case)")]
-    WrongGenesisCovenantId(usize),
+    #[error("input #{0} and outputs with covenant id {1} do not correspond to the expected genesis hashing")]
+    WrongGenesisCovenantId(usize, Hash),
     #[error("output #{0} covenant authorizing input index {1} is out of bounds")]
     AuthInputOutOfBounds(usize, u16),
+    #[error("covenant id {0} input {1} is out of bounds")]
+    InvalidCovInIndex(Hash, usize),
+    #[error("covenant id {0} output {1} is out of bounds")]
+    InvalidCovOutIndex(Hash, usize),
+    #[error("{0} is not a valid covenant output index for input {1} with {2} authorized outputs")]
+    InvalidAuthCovOutIndex(usize, usize, usize),
 }

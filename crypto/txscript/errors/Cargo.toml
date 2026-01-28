@@ -15,6 +15,7 @@ repository.workspace = true
 thiserror.workspace = true
 secp256k1.workspace = true
 borsh.workspace = true
+kaspa-hashes.workspace = true
 
 [lints]
 workspace = true

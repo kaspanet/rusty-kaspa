@@ -52,7 +52,7 @@ pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 pub const MAX_STACK_SIZE: usize = 244;
 pub const MAX_SCRIPTS_SIZE: usize = 300_000;
 pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 1_000_000; // TODO(covpp-mainnet): Add proper activation logic, and think of a better regulation mechanism.
-pub const MAX_OPS_PER_SCRIPT: i32 = 201;
+pub const MAX_OPS_PER_SCRIPT: i32 = 2010; // TODO(covpp-mainnet): Add proper activation logic, and think of a better regulation mechanism.
 pub const MAX_TX_IN_SEQUENCE_NUM: u64 = u64::MAX;
 pub const SEQUENCE_LOCK_TIME_DISABLED: u64 = 1 << 63;
 pub const SEQUENCE_LOCK_TIME_MASK: u64 = 0x00000000ffffffff;
@@ -1561,7 +1561,7 @@ mod bitcoind_tests {
                         TxScriptError::InvalidState(s) if s == "expected boolean" => vec!["MINIMALIF"],
                         TxScriptError::InvalidState(_) => vec!["UNKNOWN_ERROR"],
                         TxScriptError::ScriptSize(_, _) => vec!["SCRIPT_SIZE"],
-                        TxScriptError::InvalidCovOutIndex(_, _, _) => vec!["UNKNOWN_ERROR"],
+                        TxScriptError::CovenantsError(_) => vec!["UNKNOWN_ERROR"],
                         _ => vec![],
                     },
                     UnifiedError::ScriptBuilderError(e) => match e {
