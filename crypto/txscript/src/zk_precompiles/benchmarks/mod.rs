@@ -125,6 +125,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "long-running benchmark test"]
     fn test_batch_verification_parallelism() {
         use hex::decode;
         use rayon::ThreadPoolBuilder;
