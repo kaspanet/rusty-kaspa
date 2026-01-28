@@ -2,7 +2,7 @@ use clap::Parser;
 use futures_util::future::try_join_all;
 use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_stratum_bridge::log_colors::LogColors;
-use kaspa_stratum_bridge::{BridgeConfig as StratumBridgeConfig, KaspaApi, listen_and_serve_with_shutdown, prom};
+use kaspa_stratum_bridge::{KaspaApi, StratumServerBridgeConfig as StratumBridgeConfig, listen_and_serve_with_shutdown, prom};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 #[cfg(windows)]
@@ -18,16 +18,18 @@ use windows_sys::Win32::System::Console::{CTRL_C_EVENT, SetConsoleCtrlHandler};
 
 use kaspad_lib::args as kaspad_args;
 
-mod app_config;
 mod app_dirs;
 mod cli;
 mod health_check;
 mod inprocess_node;
 mod tracing_setup;
 
-use app_config::BridgeConfig;
+#[cfg(test)]
+mod tests;
+
 use cli::{Cli, NodeMode, apply_cli_overrides};
 use inprocess_node::InProcessNode;
+use kaspa_stratum_bridge::BridgeConfig;
 
 static CONFIG_LOADED_FROM: OnceLock<Option<PathBuf>> = OnceLock::new();
 static REQUESTED_CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -145,7 +147,7 @@ fn initialize_config() -> BridgeConfig {
 }
 
 /// Log the bridge configuration at startup
-fn log_bridge_configuration(config: &app_config::BridgeConfig) {
+fn log_bridge_configuration(config: &BridgeConfig) {
     let instance_count = config.instances.len();
     tracing::info!("----------------------------------");
     tracing::info!("initializing bridge ({} instance{})", instance_count, if instance_count > 1 { "s" } else { "" });
@@ -250,17 +252,13 @@ async fn main() -> Result<(), anyhow::Error> {
         argv.extend(node_args.iter().map(OsString::from));
         let args = kaspad_args::Args::parse(argv).map_err(|e| anyhow::anyhow!("{}", e))?;
         inprocess_node = Some(InProcessNode::start_from_args(args)?);
-
-        // Install our handler after the embedded node starts so we run first (Windows calls handlers LIFO).
-        // This prevents the embedded node's ctrl handler from consuming Ctrl+C and bypassing our graceful shutdown.
-        #[cfg(windows)]
-        install_windows_ctrl_handler(shutdown_tx.clone())?;
-    } else {
-        // In external mode on Windows, tokio's Ctrl+C handling is usually fine, but we install our handler
-        // anyway to keep behavior consistent across modes.
-        #[cfg(windows)]
-        install_windows_ctrl_handler(shutdown_tx.clone())?;
     }
+
+    // Install our handler after the embedded node starts (if inprocess) so we run first (Windows calls handlers LIFO).
+    // This prevents the embedded node's ctrl handler from consuming Ctrl+C and bypassing our graceful shutdown.
+    // In external mode, we install our handler anyway to keep behavior consistent across modes.
+    #[cfg(windows)]
+    install_windows_ctrl_handler(shutdown_tx.clone())?;
 
     if CONFIG_LOADED_FROM.get().and_then(|p| p.as_ref()).is_none() {
         let config_path = requested_config.as_path();
@@ -286,10 +284,10 @@ async fn main() -> Result<(), anyhow::Error> {
     .await
     .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?;
 
-    if !config.global.web_port.is_empty() {
-        let web_port = config.global.web_port.clone();
+    if !config.global.web_dashboard_port.is_empty() {
+        let web_dashboard_port = config.global.web_dashboard_port.clone();
         tokio::spawn(async move {
-            if let Err(e) = prom::start_web_server_all(&web_port).await {
+            if let Err(e) = prom::start_web_server_all(&web_dashboard_port).await {
                 tracing::error!("Aggregated web server error: {}", e);
             }
         });

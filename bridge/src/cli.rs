@@ -3,9 +3,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::app_config::BridgeConfig;
-use crate::app_config::InstanceConfig;
-use kaspa_stratum_bridge::net_utils::normalize_port;
+use kaspa_stratum_bridge::{BridgeConfig, InstanceConfig, net_utils::normalize_port};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum NodeMode {
@@ -13,15 +11,20 @@ pub enum NodeMode {
     Inprocess,
 }
 
-fn parse_bool(s: &str) -> Result<bool, anyhow::Error> {
+/// Parses a boolean value from a string, matching `clap::builder::BoolishValueParser` behavior.
+///
+/// Accepts the following values (case-insensitive):
+/// - True: "true", "1", "yes", "y", "on", "enable", "enabled"
+/// - False: "false", "0", "no", "n", "off", "disable", "disabled"
+pub(crate) fn parse_bool(s: &str) -> Result<bool, anyhow::Error> {
     match s.trim().to_ascii_lowercase().as_str() {
-        "true" | "1" | "yes" | "y" | "on" => Ok(true),
-        "false" | "0" | "no" | "n" | "off" => Ok(false),
+        "true" | "1" | "yes" | "y" | "on" | "enable" | "enabled" => Ok(true),
+        "false" | "0" | "no" | "n" | "off" | "disable" | "disabled" => Ok(false),
         _ => Err(anyhow::anyhow!("invalid boolean value: {s}")),
     }
 }
 
-fn parse_instance_spec(spec: &str, default_min_share_diff: Option<u32>) -> Result<InstanceConfig, anyhow::Error> {
+pub(crate) fn parse_instance_spec(spec: &str, default_min_share_diff: Option<u32>) -> Result<InstanceConfig, anyhow::Error> {
     let mut instance = InstanceConfig { stratum_port: String::new(), min_share_diff: 0, ..InstanceConfig::default() };
 
     let mut has_port = false;
@@ -130,7 +133,7 @@ pub struct Cli {
 
     /// Global Web UI / aggregated metrics server port (optional). Examples: ":3030", "0.0.0.0:3030"
     #[arg(long)]
-    pub web_port: Option<String>,
+    pub web_dashboard_port: Option<String>,
 
     #[arg(long, value_parser = BoolishValueParser::new())]
     pub var_diff: Option<bool>,
@@ -228,8 +231,8 @@ pub fn apply_cli_overrides(config: &mut BridgeConfig, cli: &Cli) -> Result<(), a
     if let Some(port) = cli.health_check_port.as_deref() {
         config.global.health_check_port = port.to_string();
     }
-    if let Some(port) = cli.web_port.as_deref() {
-        config.global.web_port = normalize_port(port);
+    if let Some(port) = cli.web_dashboard_port.as_deref() {
+        config.global.web_dashboard_port = normalize_port(port);
     }
     if let Some(v) = cli.var_diff {
         config.global.var_diff = v;

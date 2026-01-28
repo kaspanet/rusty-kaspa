@@ -59,18 +59,18 @@ cargo run -p kaspa-stratum-bridge --release --features rkstratum_cpu_miner --bin
 
 If you run **two `stratum-bridge` processes** simultaneously (e.g. one in-process and one external),
 they **cannot share the same**:
-- `web_port` (dashboard)
+- `web_dashboard_port` (dashboard)
 - any Stratum ports
 - any per-instance Prometheus ports
 
 Recommended setup:
-- **In-process bridge**: run normally with `--config config.yaml` (uses `web_port: ":3030"` and the configured instance ports)
-- **External bridge**: do **not** reuse the same instance ports; instead, run a single custom Stratum instance on a different port and set a different web port.
+- **In-process bridge**: run normally with `--config config.yaml` (uses `web_dashboard_port: ":3030"` and the configured instance ports)
+- **External bridge**: do **not** reuse the same instance ports; instead, run a single custom Stratum instance on a different port and set a different web dashboard port.
 
 Example (external bridge on `:3031` + Stratum `:16120`):
 
 ```bash
-cargo run -p kaspa-stratum-bridge --release --features rkstratum_cpu_miner --bin stratum-bridge -- --config config.yaml --web-port :3031 --node-mode external --kaspad-address 127.0.0.1:16210 --instance "port=:16120,diff=1" --internal-cpu-miner --internal-cpu-miner-address "kaspatest:address" --internal-cpu-miner-threads 1
+cargo run -p kaspa-stratum-bridge --release --features rkstratum_cpu_miner --bin stratum-bridge -- --config config.yaml --web-dashboard-port :3031 --node-mode external --kaspad-address 127.0.0.1:16210 --instance "port=:16120,diff=1" --internal-cpu-miner --internal-cpu-miner-address "kaspatest:address" --internal-cpu-miner-threads 1
 ```
 
 Open:
@@ -82,7 +82,7 @@ Open:
 Terminal A (node):
 
 ```bash
-cargo run --release --bin kaspad -- --utxoindex --rpclisten=127.0.0.1:16110 --rpclisten-borsh=127.0.0.1:17110 --rpclisten-json=127.0.0.1:18110
+cargo run --release --bin kaspad -- --utxoindex --rpclisten=127.0.0.1:16110
 ```
 
 Terminal B (bridge):
@@ -94,7 +94,7 @@ cargo run -p kaspa-stratum-bridge --release --bin stratum-bridge -- --config bri
 ### Run (in-process node)
 
 ```bash
-cargo run -p kaspa-stratum-bridge --release --bin stratum-bridge -- --config bridge/config.yaml --node-mode inprocess -- --utxoindex --rpclisten=127.0.0.1:16110 --rpclisten-borsh=127.0.0.1:17110
+cargo run -p kaspa-stratum-bridge --release --bin stratum-bridge -- --config bridge/config.yaml --node-mode inprocess -- --utxoindex --rpclisten=127.0.0.1:16110
 ```
 
 **Important:** Use `--` separator before kaspad arguments. Arguments starting with hyphens must come after the `--` separator.

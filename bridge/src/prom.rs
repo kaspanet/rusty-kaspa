@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
+use crate::app_config::BridgeConfig;
 use crate::net_utils::bind_addr_from_port;
 use std::path::PathBuf;
 
@@ -1220,56 +1221,35 @@ async fn get_stats_json_all() -> StatsResponse {
 /// Get current config as JSON
 async fn get_config_json() -> String {
     use std::fs;
-    use yaml_rust::YamlLoader;
 
     let config_path = get_web_config_path();
     if let Ok(content) = fs::read_to_string(&config_path) {
-        if let Ok(docs) = YamlLoader::load_from_str(&content) {
-            if let Some(doc) = docs.first() {
-                let mut config = serde_json::Map::new();
+        if let Ok(config) = BridgeConfig::from_yaml(&content) {
+            // Convert BridgeConfig to JSON for web UI
+            // For backward compatibility with single-instance mode UI, show first instance fields
+            let first_instance = config.instances.first();
 
-                if let Some(port) = doc["stratum_port"].as_str() {
-                    config.insert("stratum_port".to_string(), serde_json::Value::String(port.to_string()));
-                }
-                if let Some(addr) = doc["kaspad_address"].as_str() {
-                    config.insert("kaspad_address".to_string(), serde_json::Value::String(addr.to_string()));
-                }
-                if let Some(port) = doc["prom_port"].as_str() {
-                    config.insert("prom_port".to_string(), serde_json::Value::String(port.to_string()));
-                }
-                if let Some(stats) = doc["print_stats"].as_bool() {
-                    config.insert("print_stats".to_string(), serde_json::Value::Bool(stats));
-                }
-                if let Some(log) = doc["log_to_file"].as_bool() {
-                    config.insert("log_to_file".to_string(), serde_json::Value::Bool(log));
-                }
-                if let Some(port) = doc["health_check_port"].as_str() {
-                    config.insert("health_check_port".to_string(), serde_json::Value::String(port.to_string()));
-                }
-                if let Some(diff) = doc["min_share_diff"].as_i64() {
-                    config.insert("min_share_diff".to_string(), serde_json::Value::Number(serde_json::Number::from(diff)));
-                }
-                if let Some(vd) = doc["var_diff"].as_bool() {
-                    config.insert("var_diff".to_string(), serde_json::Value::Bool(vd));
-                }
-                if let Some(spm) = doc["shares_per_min"].as_i64() {
-                    config.insert("shares_per_min".to_string(), serde_json::Value::Number(serde_json::Number::from(spm)));
-                }
-                if let Some(vds) = doc["var_diff_stats"].as_bool() {
-                    config.insert("var_diff_stats".to_string(), serde_json::Value::Bool(vds));
-                }
-                if let Some(bwt) = doc["block_wait_time"].as_i64() {
-                    config.insert("block_wait_time".to_string(), serde_json::Value::Number(serde_json::Number::from(bwt)));
-                }
-                if let Some(ens) = doc["extranonce_size"].as_i64() {
-                    config.insert("extranonce_size".to_string(), serde_json::Value::Number(serde_json::Number::from(ens)));
-                }
-                if let Some(clamp) = doc["pow2_clamp"].as_bool() {
-                    config.insert("pow2_clamp".to_string(), serde_json::Value::Bool(clamp));
-                }
+            let json_value = serde_json::json!({
+                // Global fields
+                "kaspad_address": config.global.kaspad_address,
+                "block_wait_time": config.global.block_wait_time.as_millis() as u64,
+                "print_stats": config.global.print_stats,
+                "log_to_file": config.global.log_to_file,
+                "health_check_port": config.global.health_check_port,
+                "web_dashboard_port": config.global.web_dashboard_port,
+                "var_diff": config.global.var_diff,
+                "shares_per_min": config.global.shares_per_min,
+                "var_diff_stats": config.global.var_diff_stats,
+                "extranonce_size": config.global.extranonce_size,
+                "pow2_clamp": config.global.pow2_clamp,
+                "coinbase_tag_suffix": config.global.coinbase_tag_suffix,
+                // Instance fields (from first instance for backward compatibility)
+                "stratum_port": first_instance.map(|i| &i.stratum_port),
+                "min_share_diff": first_instance.map(|i| i.min_share_diff),
+                "prom_port": first_instance.and_then(|i| i.prom_port.as_ref()),
+            });
 
-                return serde_json::to_string(&config).unwrap_or_else(|_| "{}".to_string());
-            }
+            return serde_json::to_string(&json_value).unwrap_or_else(|_| "{}".to_string());
         }
     }
     "{}".to_string()
@@ -1278,72 +1258,86 @@ async fn get_config_json() -> String {
 /// Update config from JSON
 async fn update_config_from_json(json_body: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use std::fs;
+    use std::time::Duration;
 
-    let config: serde_json::Value = serde_json::from_str(json_body)?;
+    let updates: serde_json::Value = serde_json::from_str(json_body)?;
     let config_path = get_web_config_path();
     let _guard = WEB_CONFIG_WRITE_LOCK.get_or_init(|| parking_lot::Mutex::new(())).lock();
 
-    // Build YAML content directly from JSON values
-    let mut out_str = String::new();
-    out_str.push_str("# RKStratum Configuration\n");
-    out_str.push_str("# This file configures the stratum bridge that connects miners to the Kaspa node\n\n");
+    // Read existing config
+    let content = fs::read_to_string(&config_path).unwrap_or_else(|_| String::new());
+    let mut config = if content.is_empty() {
+        BridgeConfig::default()
+    } else {
+        BridgeConfig::from_yaml(&content).unwrap_or_else(|_| BridgeConfig::default())
+    };
 
-    if let Some(port) = config.get("stratum_port").and_then(|v| v.as_str()) {
-        out_str.push_str("# Stratum server port (format: \":PORT\" or \"HOST:PORT\")\n");
-        out_str.push_str(&format!("stratum_port: {}\n\n", port));
+    // Update global fields if provided
+    if let Some(addr) = updates.get("kaspad_address").and_then(|v| v.as_str()) {
+        config.global.kaspad_address = addr.to_string();
     }
-    if let Some(addr) = config.get("kaspad_address").and_then(|v| v.as_str()) {
-        out_str.push_str("# Kaspa node gRPC address (format: \"HOST:PORT\" or \"grpc://HOST:PORT\")\n");
-        out_str.push_str(&format!("kaspad_address: {}\n\n", addr));
+    if let Some(bwt) = updates.get("block_wait_time").and_then(|v| v.as_u64()) {
+        config.global.block_wait_time = Duration::from_millis(bwt);
     }
-    if let Some(port) = config.get("prom_port").and_then(|v| v.as_str()) {
-        out_str.push_str("# Prometheus metrics server port (format: \":PORT\" or \"HOST:PORT\")\n");
-        out_str.push_str(&format!("prom_port: {}\n\n", port));
+    if let Some(stats) = updates.get("print_stats").and_then(|v| v.as_bool()) {
+        config.global.print_stats = stats;
     }
-    if let Some(stats) = config.get("print_stats").and_then(|v| v.as_bool()) {
-        out_str.push_str("# Print statistics to console\n");
-        out_str.push_str(&format!("print_stats: {}\n\n", stats));
+    if let Some(log) = updates.get("log_to_file").and_then(|v| v.as_bool()) {
+        config.global.log_to_file = log;
     }
-    if let Some(log) = config.get("log_to_file").and_then(|v| v.as_bool()) {
-        out_str.push_str("# Log to file (if true, logs will be written to a file)\n");
-        out_str.push_str(&format!("log_to_file: {}\n\n", log));
+    if let Some(port) = updates.get("health_check_port").and_then(|v| v.as_str()) {
+        config.global.health_check_port = port.to_string();
     }
-    if let Some(port) = config.get("health_check_port").and_then(|v| v.as_str()) {
-        out_str.push_str("# Health check server port (optional, leave empty to disable)\n");
-        out_str.push_str(&format!("health_check_port: {}\n\n", port));
+    if let Some(port) = updates.get("web_dashboard_port").and_then(|v| v.as_str()) {
+        config.global.web_dashboard_port = crate::net_utils::normalize_port(port);
     }
-    if let Some(diff) = config.get("min_share_diff").and_then(|v| v.as_u64()) {
-        out_str.push_str("# Minimum share difficulty\n");
-        out_str.push_str(&format!("min_share_diff: {}\n\n", diff));
+    if let Some(vd) = updates.get("var_diff").and_then(|v| v.as_bool()) {
+        config.global.var_diff = vd;
     }
-    if let Some(vd) = config.get("var_diff").and_then(|v| v.as_bool()) {
-        out_str.push_str("# Enable variable difficulty adjustment\n");
-        out_str.push_str(&format!("var_diff: {}\n\n", vd));
+    if let Some(spm) = updates.get("shares_per_min").and_then(|v| v.as_u64()) {
+        config.global.shares_per_min = spm as u32;
     }
-    if let Some(spm) = config.get("shares_per_min").and_then(|v| v.as_u64()) {
-        out_str.push_str("# Target shares per minute for variable difficulty\n");
-        out_str.push_str(&format!("shares_per_min: {}\n\n", spm));
+    if let Some(vds) = updates.get("var_diff_stats").and_then(|v| v.as_bool()) {
+        config.global.var_diff_stats = vds;
     }
-    if let Some(vds) = config.get("var_diff_stats").and_then(|v| v.as_bool()) {
-        out_str.push_str("# Enable variable difficulty statistics logging\n");
-        out_str.push_str(&format!("var_diff_stats: {}\n\n", vds));
+    if let Some(ens) = updates.get("extranonce_size").and_then(|v| v.as_u64()) {
+        config.global.extranonce_size = ens as u8;
     }
-    if let Some(bwt) = config.get("block_wait_time").and_then(|v| v.as_u64()) {
-        out_str.push_str("# Block template wait time in seconds\n");
-        out_str.push_str(&format!("block_wait_time: {}\n\n", bwt));
+    if let Some(clamp) = updates.get("pow2_clamp").and_then(|v| v.as_bool()) {
+        config.global.pow2_clamp = clamp;
     }
-    if let Some(ens) = config.get("extranonce_size").and_then(|v| v.as_u64()) {
-        out_str.push_str("# Extranonce size in bytes (0-3)\n");
-        out_str.push_str("# NOTE: Auto-detected per client based on miner type (Bitmain=0, IceRiver/BzMiner/Goldshell=2)\n");
-        out_str.push_str(&format!("extranonce_size: {}\n\n", ens));
+    if let Some(suffix) = updates.get("coinbase_tag_suffix") {
+        if suffix.is_null() {
+            config.global.coinbase_tag_suffix = None;
+        } else if let Some(s) = suffix.as_str() {
+            let trimmed = s.trim();
+            config.global.coinbase_tag_suffix = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+        }
     }
-    if let Some(clamp) = config.get("pow2_clamp").and_then(|v| v.as_bool()) {
-        out_str.push_str("# Enable power-of-2 difficulty clamping\n");
-        out_str.push_str(&format!("pow2_clamp: {}\n\n", clamp));
+
+    // Update first instance fields if provided (for single-instance mode compatibility)
+    if config.instances.is_empty() {
+        config.instances.push(Default::default());
     }
+    let instance = &mut config.instances[0];
+
+    if let Some(port) = updates.get("stratum_port").and_then(|v| v.as_str()) {
+        instance.stratum_port = crate::net_utils::normalize_port(port);
+    }
+    if let Some(diff) = updates.get("min_share_diff").and_then(|v| v.as_u64()) {
+        instance.min_share_diff = diff as u32;
+    }
+    if let Some(port) = updates.get("prom_port").and_then(|v| v.as_str()) {
+        instance.prom_port = Some(crate::net_utils::normalize_port(port));
+    } else if updates.get("prom_port").map(|v| v.is_null()).unwrap_or(false) {
+        instance.prom_port = None;
+    }
+
+    // Convert back to YAML using serde_yaml
+    let yaml_content = serde_yaml::to_string(&config).map_err(|e| format!("Failed to serialize config to YAML: {}", e))?;
 
     // Write to file
-    fs::write(config_path, out_str)?;
+    fs::write(config_path, yaml_content)?;
 
     Ok(())
 }

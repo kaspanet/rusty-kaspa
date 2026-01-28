@@ -8,8 +8,8 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt};
 
 use kaspa_stratum_bridge::log_colors::LogColors;
 
-use crate::app_config::BridgeConfig;
 use crate::app_dirs;
+use kaspa_stratum_bridge::BridgeConfig;
 
 // Global registry mapping instance_id strings to instance numbers
 // This persists across async boundaries and thread switches
