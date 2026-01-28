@@ -13,9 +13,9 @@ print_stats: true
 log_to_file: true
 health_check_port: ""
 web_dashboard_port: ":3030"
-var_diff: false
-shares_per_min: 20
-var_diff_stats: false
+var_diff: true
+shares_per_min: 30
+var_diff_stats: true
 pow2_clamp: true
 extranonce_size: 2
 coinbase_tag_suffix: ""
