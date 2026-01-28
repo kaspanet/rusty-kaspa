@@ -204,8 +204,8 @@ shares_per_min: 30
     let config = BridgeConfig::from_yaml(yaml);
     assert!(config.is_ok());
     let config = config.unwrap();
-    assert_eq!(config.global.var_diff, true);
-    assert_eq!(config.global.var_diff_stats, true);
+    assert!(config.global.var_diff);
+    assert!(config.global.var_diff_stats);
     assert_eq!(config.global.shares_per_min, 30);
     assert_eq!(config.instances.len(), 1);
 
@@ -227,8 +227,8 @@ instances:
     let config2 = BridgeConfig::from_yaml(yaml2);
     assert!(config2.is_ok());
     let config2 = config2.unwrap();
-    assert_eq!(config2.global.var_diff, false);
-    assert_eq!(config2.global.var_diff_stats, false);
+    assert!(!config2.global.var_diff);
+    assert!(!config2.global.var_diff_stats);
     assert_eq!(config2.instances.len(), 2);
     assert_eq!(config2.instances[0].var_diff, Some(true));
     assert_eq!(config2.instances[0].var_diff_stats, Some(true));

@@ -799,6 +799,29 @@ async function refresh() {
     workersBody.innerHTML = '';
     lastInternalCpuWorker = null;
 
+    // Show filter indicator if wallet filter is active
+    const workersTable = document.querySelector('[data-workers-table]');
+    if (workersTable) {
+      const filterIndicator = workersTable.querySelector('.wallet-filter-indicator');
+      if (filter) {
+        if (!filterIndicator) {
+          const indicator = document.createElement('div');
+          indicator.className = 'wallet-filter-indicator bg-yellow-900/20 border border-yellow-700/50 rounded-lg px-3 py-2 mb-3 text-sm text-yellow-300';
+          indicator.innerHTML = `
+            <div class="flex items-center justify-between gap-3">
+              <span>⚠️ Showing ${workers.length} of ${allWorkers.length} workers (filtered by wallet)</span>
+              <button type="button" class="text-yellow-300 hover:text-yellow-200 underline text-xs" onclick="document.getElementById('walletClearBtn')?.click()">Clear filter</button>
+            </div>
+          `;
+          workersTable.insertBefore(indicator, workersTable.firstChild);
+        } else {
+          filterIndicator.querySelector('span').textContent = `⚠️ Showing ${workers.length} of ${allWorkers.length} workers (filtered by wallet)`;
+        }
+      } else if (filterIndicator) {
+        filterIndicator.remove();
+      }
+    }
+
     // Render internal CPU miner row as a pseudo-worker (not affected by wallet filter).
     if (!filter && icpu && typeof icpu === 'object') {
       const tr = document.createElement('tr');
@@ -935,6 +958,29 @@ async function refresh() {
       const workersBody = document.getElementById('workersBody');
       workersBody.innerHTML = '';
       lastInternalCpuWorker = null;
+
+      // Show filter indicator if wallet filter is active
+      const workersTable = document.querySelector('[data-workers-table]');
+      if (workersTable) {
+        const filterIndicator = workersTable.querySelector('.wallet-filter-indicator');
+        if (filter) {
+          if (!filterIndicator) {
+            const indicator = document.createElement('div');
+            indicator.className = 'wallet-filter-indicator bg-yellow-900/20 border border-yellow-700/50 rounded-lg px-3 py-2 mb-3 text-sm text-yellow-300';
+            indicator.innerHTML = `
+              <div class="flex items-center justify-between gap-3">
+                <span>⚠️ Showing ${workers.length} of ${allWorkers.length} workers (filtered by wallet)</span>
+                <button type="button" class="text-yellow-300 hover:text-yellow-200 underline text-xs" onclick="document.getElementById('walletClearBtn')?.click()">Clear filter</button>
+              </div>
+            `;
+            workersTable.insertBefore(indicator, workersTable.firstChild);
+          } else {
+            filterIndicator.querySelector('span').textContent = `⚠️ Showing ${workers.length} of ${allWorkers.length} workers (filtered by wallet)`;
+          }
+        } else if (filterIndicator) {
+          filterIndicator.remove();
+        }
+      }
 
       // Render internal CPU miner row as a pseudo-worker (not affected by wallet filter).
       if (!filter && icpu && typeof icpu === 'object') {
@@ -1272,6 +1318,30 @@ setInterval(() => {
   const workersBody = document.getElementById('workersBody');
   workersBody.innerHTML = '';
   lastInternalCpuWorker = null;
+
+  // Show filter indicator if wallet filter is active
+  const workersTable = document.querySelector('[data-workers-table]');
+  if (workersTable) {
+    const filterIndicator = workersTable.querySelector('.wallet-filter-indicator');
+    if (filter) {
+      if (!filterIndicator) {
+        const indicator = document.createElement('div');
+        indicator.className = 'wallet-filter-indicator bg-yellow-900/20 border border-yellow-700/50 rounded-lg px-3 py-2 mb-3 text-sm text-yellow-300';
+        indicator.innerHTML = `
+          <div class="flex items-center justify-between gap-3">
+            <span>⚠️ Showing ${workers.length} of ${allWorkers.length} workers (filtered by wallet)</span>
+            <button type="button" class="text-yellow-300 hover:text-yellow-200 underline text-xs" onclick="document.getElementById('walletClearBtn')?.click()">Clear filter</button>
+          </div>
+        `;
+        workersTable.insertBefore(indicator, workersTable.firstChild);
+      } else {
+        filterIndicator.querySelector('span').textContent = `⚠️ Showing ${workers.length} of ${allWorkers.length} workers (filtered by wallet)`;
+      }
+    } else if (filterIndicator) {
+      filterIndicator.remove();
+    }
+  }
+
   workers.forEach((w, idx) => {
     const tr = document.createElement('tr');
     tr.className = 'border-b border-card/50 cursor-pointer';
