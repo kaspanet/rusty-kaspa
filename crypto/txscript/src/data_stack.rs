@@ -22,7 +22,21 @@ impl<const LEN: usize> From<i32> for SizedEncodeInt<LEN> {
     }
 }
 
+impl<const LEN: usize> From<u16> for SizedEncodeInt<LEN> {
+    fn from(value: u16) -> Self {
+        SizedEncodeInt(value as i64)
+    }
+}
+
 impl<const LEN: usize> TryFrom<SizedEncodeInt<LEN>> for i32 {
+    type Error = TryFromIntError;
+
+    fn try_from(value: SizedEncodeInt<LEN>) -> Result<Self, Self::Error> {
+        value.0.try_into()
+    }
+}
+
+impl<const LEN: usize> TryFrom<SizedEncodeInt<LEN>> for u16 {
     type Error = TryFromIntError;
 
     fn try_from(value: SizedEncodeInt<LEN>) -> Result<Self, Self::Error> {
@@ -81,7 +95,8 @@ impl Index<usize> for Stack {
 #[cfg(test)]
 impl From<Vec<Vec<u8>>> for Stack {
     fn from(inner: Vec<Vec<u8>>) -> Self {
-        Self { inner, covenants_enabled: false }
+        // TODO(covpp-mainnet): should have fork logic
+        Self { inner, covenants_enabled: true }
     }
 }
 
@@ -202,6 +217,23 @@ impl OpcodeData<i32> for Vec<u8> {
     #[inline]
     fn serialize(from: &i32) -> Result<Self, SerializationError> {
         OpcodeData::<SizedEncodeInt<4>>::serialize(&(*from).into())
+    }
+}
+
+// Add OpcodeData implementation for u16 using SizedEncodeInt pattern
+// Note: Using SizedEncodeInt<3> because u16::MAX (65535) requires 3 bytes
+// in minimal encoding when the high bit is set (0xFFFF00)
+impl OpcodeData<u16> for Vec<u8> {
+    #[inline]
+    fn deserialize(&self, enforce_minimal: bool) -> Result<u16, TxScriptError> {
+        OpcodeData::<SizedEncodeInt<3>>::deserialize(self, enforce_minimal).and_then(|v| {
+            v.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(format!("value cannot fit in u16: {}", e)))
+        })
+    }
+
+    #[inline]
+    fn serialize(from: &u16) -> Result<Self, SerializationError> {
+        OpcodeData::<SizedEncodeInt<3>>::serialize(&(*from).into())
     }
 }
 
@@ -481,6 +513,17 @@ mod tests {
         // special case 9-byte i64
         let r: Result<Vec<u8>, _> = OpcodeData::<i64>::serialize(&-9223372036854775808);
         assert_eq!(r, Err(SerializationError::NumberTooLong(-9223372036854775808, 8)));
+    }
+
+    // Test u16 serialization/deserialization
+    #[test]
+    fn test_u16() {
+        // Test valid u16 values
+        for value in [0u16, 1, 127, 128, 255, 256, 32767, 32768, 65535] {
+            let serialized: Vec<u8> = OpcodeData::<u16>::serialize(&value).unwrap();
+            let deserialized: u16 = serialized.deserialize(false).unwrap();
+            assert_eq!(deserialized, value, "Failed for value {}", value);
+        }
     }
 
     // TestMakeScriptNum

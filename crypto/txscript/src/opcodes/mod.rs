@@ -1,5 +1,6 @@
 #[macro_use]
 mod macros;
+use crate::zk_precompiles::{parse_tag, verify_zk};
 use crate::{
     EngineFlags, LOCK_TIME_THRESHOLD, MAX_SCRIPT_ELEMENT_SIZE, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE, SEQUENCE_LOCK_TIME_DISABLED,
     SEQUENCE_LOCK_TIME_MASK, ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError,
@@ -820,8 +821,25 @@ opcode_list! {
         Ok(())
     }
 
-    // Undefined opcodes.
-    opcode OpUnknown166<0xa6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    // ZK precompile opcodes.
+    opcode OpZkPrecompile<0xa6, 1>(self, vm) {
+        if vm.flags.covenants_enabled {
+            // Parse the ZK Precompile tag
+            let tag = parse_tag(&mut vm.dstack)?;
+
+            // Consume sigop cost
+            vm.runtime_sig_op_counter.consume_sig_ops(tag.sigop_cost())?;
+
+            // Verify the ZK proof
+            verify_zk(tag,&mut vm.dstack)?;
+
+            // If no errors, push true to the stack
+            vm.dstack.push_item(true)?;
+            Ok(())
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
 
     // Crypto opcodes.
     opcode OpBlake2bWithKey<0xa7, 1>(self, vm) {
@@ -1678,7 +1696,7 @@ mod test {
     #[test]
     fn test_opcode_invalid() {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
-            opcodes::OpUnknown166::empty().expect("Should accept empty"),
+            opcodes::OpZkPrecompile::empty().expect("Should accept empty"),
             opcodes::OpBlake2bWithKey::empty().expect("Should accept empty"),
             opcodes::OpTxPayloadLen::empty().expect("Should accept empty"),
             opcodes::OpTxInputSpkLen::empty().expect("Should accept empty"),

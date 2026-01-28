@@ -1,6 +1,5 @@
 extern crate alloc;
 extern crate core;
-
 pub mod caches;
 pub mod covenants;
 mod data_stack;
@@ -12,6 +11,7 @@ pub mod script_class;
 pub mod standard;
 #[cfg(feature = "wasm32-sdk")]
 pub mod wasm;
+mod zk_precompiles;
 
 pub mod runtime_sig_op_counter;
 
@@ -21,6 +21,7 @@ use crate::caches::Cache;
 use crate::covenants::CovenantsContext;
 use crate::data_stack::Stack;
 use crate::opcodes::{OpCodeImplementation, deserialize_next_opcode};
+use crate::zk_precompiles::compute_zk_sigop_cost;
 use itertools::Itertools;
 use kaspa_consensus_core::hashing::sighash::{
     SigHashReusedValues, SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash,
@@ -49,7 +50,7 @@ pub use engine_context::{EngineCtx, EngineCtxSync, EngineCtxUnsync};
 
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 pub const MAX_STACK_SIZE: usize = 244;
-pub const MAX_SCRIPTS_SIZE: usize = 10_000;
+pub const MAX_SCRIPTS_SIZE: usize = 300_000;
 pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 1_000_000; // TODO(covpp-mainnet): Add proper activation logic, and think of a better regulation mechanism.
 pub const MAX_OPS_PER_SCRIPT: i32 = 2010; // TODO(covpp-mainnet): Add proper activation logic, and think of a better regulation mechanism.
 pub const MAX_TX_IN_SEQUENCE_NUM: u64 = u64::MAX;
@@ -159,7 +160,7 @@ pub fn get_sig_op_count<T: VerifiableTransaction>(
     input_idx: usize,
     covenants_ctx: &CovenantsContext,
     seq_commit_accessor: Option<&dyn SeqCommitAccessor>,
-) -> Result<u8, TxScriptError> {
+) -> Result<u16, TxScriptError> {
     let sig_cache = Cache::new(0);
     let reused_values = SigHashReusedValuesUnsync::new();
     let ctx = EngineCtx::new(&sig_cache)
@@ -212,6 +213,7 @@ pub fn get_sig_op_count_upper_bound<T: VerifiableTransaction, Reused: SigHashReu
 
     let p2sh_script = signature_script_ops.last().expect("checked if empty above").as_ref().expect("checked if err above").get_data();
     let p2sh_ops = parse_script::<T, Reused>(p2sh_script).collect_vec();
+
     get_sig_op_count_by_opcodes(&p2sh_ops)
 }
 
@@ -237,6 +239,14 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
                         } else {
                             num_sigs += MAX_PUB_KEYS_PER_MUTLTISIG as u64;
                         }
+                    }
+                    codes::OpZkPrecompile => {
+                        let tag = if let Some(Ok(zk_tag)) = opcodes.get(i - 1).as_ref() {
+                            zk_tag.get_data().first().unwrap_or(&u8::MAX)
+                        } else {
+                            &u8::MAX
+                        };
+                        num_sigs += compute_zk_sigop_cost(*tag) as u64;
                     }
                     _ => {} // If the opcode is not a sigop, no need to increase the count
                 }
@@ -273,7 +283,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 
     /// Returns the number of signature operations used in script execution.
-    pub fn used_sig_ops(&self) -> u8 {
+    pub fn used_sig_ops(&self) -> u16 {
         self.runtime_sig_op_counter.used_sig_ops()
     }
 
@@ -343,8 +353,6 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 
     fn execute_opcode(&mut self, opcode: DynOpcodeImplementation<T, Reused>) -> Result<(), TxScriptError> {
-        // Different from kaspad: Illegal and disabled opcode are checked on execute instead
-        // Note that this includes OP_RESERVED which counts as a push operation.
         if !opcode.is_push_opcode() {
             self.num_ops += 1;
             if self.num_ops > MAX_OPS_PER_SCRIPT {
@@ -1119,7 +1127,7 @@ mod tests {
         name: &'static str,
         script_builder: ScriptBuilderFn,
         sig_builder: SigBuilder,
-        expected_sig_ops: u8,
+        expected_sig_ops: u16,
         sig_op_limit: u8,
         should_pass: bool,
     }

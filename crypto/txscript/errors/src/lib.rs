@@ -78,6 +78,8 @@ pub enum TxScriptError {
     Serialization(#[from] SerializationError),
     #[error("sig op count exceeds passed limit of {0}")]
     ExceededSigOpLimit(u8),
+    #[error("ZK Integrity: {0}")]
+    ZkIntegrity(String),
     #[error("substring [{0}:{1}] is out of bounds for string of length {2}")]
     OutOfBoundsSubstring(usize, usize, usize),
     #[error("{0} cannot be used as an array index")]
@@ -101,6 +103,8 @@ pub enum TxScriptError {
 pub enum SerializationError {
     #[error("Number exceeds {1} bytes: {0}")]
     NumberTooLong(i64, usize),
+    #[error("Ark serialization error")]
+    ArkSerialization,
 }
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]

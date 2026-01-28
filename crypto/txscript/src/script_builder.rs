@@ -235,6 +235,16 @@ impl ScriptBuilder {
         self.add_data(&bytes)
     }
 
+    pub fn add_u16(&mut self, val: u16) -> ScriptBuilderResult<&mut Self> {
+        // Pushes that would cause the script to exceed the largest allowed
+        // script size would result in a non-canonical script.
+        if self.script.len() + 1 > MAX_SCRIPTS_SIZE {
+            return Err(ScriptBuilderError::IntegerRejected(val as i64));
+        }
+        let bytes: Vec<_> = OpcodeData::serialize(&val).expect("infallible");
+        self.add_data(&bytes)
+    }
+
     // Bitcoind tests utilizes this function
     #[cfg(test)]
     pub fn add_i64_min(&mut self) -> ScriptBuilderResult<&mut Self> {
@@ -478,15 +488,9 @@ mod tests {
             //     unchecked: false,
             // },
             Test {
-                name: "push data len 32767 (canonical)",
-                data: vec![0x49; 32767],
-                expected: Err(ScriptBuilderError::DataRejected(32770)),
-                unchecked: false,
-            },
-            Test {
-                name: "push data len 65536 (canonical)",
-                data: vec![0x49; 65536],
-                expected: Err(ScriptBuilderError::DataRejected(65541)),
+                name: "push data len 300001 (canonical)",
+                data: vec![0x1; 3000001],
+                expected: Err(ScriptBuilderError::DataRejected(3000006)),
                 unchecked: false,
             },
             // // Additional tests for the add_data_unchecked function that
