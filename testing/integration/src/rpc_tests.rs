@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::Arc, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration, u64};
 
 use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
 use futures_util::future::try_join_all;
@@ -705,6 +705,24 @@ async fn sanity_test() {
                         .unwrap();
                     assert!(response.added_chain_block_hashes.is_empty());
                     assert!(response.removed_chain_block_hashes.is_empty());
+                })
+            }
+
+            KaspadPayloadOps::GetTransaction => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let result = rpc_client.get_transaction_call(None, GetTransactionRequest {transaction_id: 0.into(), query_unaccepted: true, include_transactions: true, include_inclusion_data: true, include_acceptance_data: true, include_conf_count: true, include_verbose_data: true }).await;
+                    // Test Get Transaction:
+                    assert!(result.is_err());
+                })
+            }
+
+            KaspadPayloadOps::GetTransactionsByBlueScore => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let result = rpc_client.get_transactions_by_blue_score_call(None, GetTransactionsByBlueScoreRequest { from_blue_score: u64::MIN, to_blue_score: u64::MAX, query_unaccepted: true, include_transactions: true, include_inclusion_data: true, include_acceptance_data: true, include_conf_count: true, include_verbose_data: true }).await;
+                    // Test Get Transactions By Blue Score:
+                    assert!(result.is_err());
                 })
             }
 

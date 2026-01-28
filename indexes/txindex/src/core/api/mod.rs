@@ -3,6 +3,7 @@ use std::{fmt::Debug, sync::Arc};
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_consensus_notify::notification::{BlockAddedNotification, RetentionRootChangedNotification, VirtualChainChangedNotification};
 use kaspa_consensusmanager::spawn_blocking;
+use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 
 use crate::{
@@ -19,6 +20,8 @@ pub trait TxIndexApi: Send + Sync + Debug {
     fn get_included_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxInclusionData>>;
     fn get_transaction_inclusion_data_by_blue_score_range(&self, from: u64, to: u64, limit: Option<usize>) -> TxIndexResult<Vec<BlueScoreIncludingRefData>>;
     fn get_transaction_acceptance_data_by_blue_score_range(&self, from: u64, to: u64, limit: Option<usize>) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>>;
+
+    fn get_sink_with_blue_score(&self) -> TxIndexResult<(Hash, u64)>;
 
     fn is_synced(&self) -> TxIndexResult<bool>;
     fn is_acceptance_data_synced(&self) -> TxIndexResult<bool>;
@@ -56,19 +59,19 @@ impl TxIndexProxy {
         Self { inner }
     }
 
-    pub async fn get_accepted_transaction_data(self, txid: TransactionId) -> TxIndexResult<Vec<TxAcceptanceData>> {
+    pub async fn async_get_accepted_transaction_data(self, txid: TransactionId) -> TxIndexResult<Vec<TxAcceptanceData>> {
         spawn_blocking(move || self.inner.read().get_accepted_transaction_data(txid)).await.unwrap()
     }
 
-    pub async fn get_included_transaction_data(self, txid: TransactionId) -> TxIndexResult<Vec<TxInclusionData>> {
+    pub async fn async_get_included_transaction_data(self, txid: TransactionId) -> TxIndexResult<Vec<TxInclusionData>> {
         spawn_blocking(move || self.inner.read().get_included_transaction_data(txid)).await.unwrap()
     }
 
-    pub async fn get_transaction_inclusion_data_by_blue_score_range(self, from: u64, to: u64, limit: Option<usize>) -> TxIndexResult<Vec<BlueScoreIncludingRefData>> {
+    pub async fn async_get_transaction_inclusion_data_by_blue_score_range(self, from: u64, to: u64, limit: Option<usize>) -> TxIndexResult<Vec<BlueScoreIncludingRefData>> {
         spawn_blocking(move || self.inner.read().get_transaction_inclusion_data_by_blue_score_range(from, to, limit)).await.unwrap()
     }
 
-    pub async fn get_transaction_acceptance_data_by_blue_score_range(
+    pub async fn async_get_transaction_acceptance_data_by_blue_score_range(
         self,
         from: u64,
         to: u64,
@@ -77,32 +80,36 @@ impl TxIndexProxy {
         spawn_blocking(move || self.inner.read().get_transaction_acceptance_data_by_blue_score_range(from, to, limit)).await.unwrap()
     }
 
-    pub async fn update_via_block_added(self, block_added_notification: BlockAddedNotification) -> TxIndexResult<()> {
+    pub async fn async_get_sink_with_blue_score(self) -> TxIndexResult<(Hash, u64)> {
+        spawn_blocking(move || self.inner.read().get_sink_with_blue_score()).await.unwrap()
+    }
+
+    pub async fn async_update_via_block_added(self, block_added_notification: BlockAddedNotification) -> TxIndexResult<()> {
         spawn_blocking(move || self.inner.write().update_via_block_added(block_added_notification)).await.unwrap()
     }
 
-    pub async fn update_via_virtual_chain_changed(
+    pub async fn async_update_via_virtual_chain_changed(
         self,
         virtual_chain_changed_notification: VirtualChainChangedNotification,
     ) -> TxIndexResult<()> {
         spawn_blocking(move || self.inner.write().update_via_virtual_chain_changed(virtual_chain_changed_notification)).await.unwrap()
     }
 
-    pub async fn update_via_retention_root_changed(
+    pub async fn async_update_via_retention_root_changed(
         self,
         retention_root_changed_notification: RetentionRootChangedNotification,
     ) -> TxIndexResult<()> {
         spawn_blocking(move || self.inner.write().update_via_retention_root_changed(retention_root_changed_notification)).await.unwrap()
     }
 
-    pub async fn prune_on_the_fly(self) -> TxIndexResult<bool> {
+    pub async fn async_prune_on_the_fly(self) -> TxIndexResult<bool> {
         spawn_blocking(move || self.inner.write().prune_on_the_fly()).await.unwrap()
     }
 
-    pub async fn is_pruning(self) -> bool {
+    pub async fn async_is_pruning(self) -> bool {
         spawn_blocking(move || self.inner.read().is_pruning()).await.unwrap()
     }
-    pub async fn toggle_pruning_active(self, active: bool) {
+    pub async fn async_toggle_pruning_active(self, active: bool) {
         spawn_blocking(move || self.inner.write().toggle_pruning_active(active)).await.unwrap()
     }
 }

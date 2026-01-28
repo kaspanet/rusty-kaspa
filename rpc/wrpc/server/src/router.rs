@@ -70,13 +70,14 @@ impl Router {
                 GetUtxosByAddresses,
                 GetVirtualChainFromBlock,
                 GetVirtualChainFromBlockV2,
+                GetTransaction,
+                GetTransactionsByBlueScore,
                 ResolveFinalityConflict,
                 Shutdown,
                 SubmitBlock,
                 SubmitTransaction,
                 SubmitTransactionReplacement,
                 Unban,
-                TransactionsByBlueScore,
             ]
         );
 

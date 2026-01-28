@@ -6,6 +6,7 @@ use kaspa_consensus_core::{
     errors::header::CompressedParentsError, subnets::SubnetworkConversionError, tx::TransactionId,
     utxo::utxo_inquirer::UtxoInquirerError,
 };
+use kaspa_txindex::errors::TxIndexError;
 use kaspa_utils::networking::IpAddress;
 use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
@@ -65,6 +66,12 @@ pub enum RpcError {
 
     #[error("Method unavailable. Run the node with the --utxoindex argument.")]
     NoUtxoIndex,
+
+    #[error("Method unavailable. Run the node with the --txindex=1 argument.")]
+    NoTxIndex,
+
+    #[error("txindex error: {0}")]
+    TxIndexError(String),
 
     #[error("Method unavailable. No connection manager is currently available.")]
     NoConnectionManager,
@@ -172,6 +179,13 @@ impl From<ChannelError<RpcState>> for RpcError {
 impl From<serde_wasm_bindgen::Error> for RpcError {
     fn from(value: serde_wasm_bindgen::Error) -> Self {
         RpcError::SerdeWasmBindgen(value.to_string())
+    }
+}
+
+// Custom From implementation for TxIndexError to allow conversion to string and preserve Clone on RpcError
+impl From<TxIndexError> for RpcError {
+    fn from(err: TxIndexError) -> Self {
+        RpcError::TxIndexError(err.to_string())
     }
 }
 

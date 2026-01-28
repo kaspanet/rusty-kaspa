@@ -721,6 +721,7 @@ Do you confirm? (y/n)";
         flow_context,
         subscription_context,
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
+        index_service.as_ref().map(|x| x.txindex().unwrap()),
         config.clone(),
         core.clone(),
         processing_counters,

@@ -686,6 +686,7 @@ mod mockery {
                 mempool_size: mock(),
                 server_version: "0.4.2".to_string(),
                 is_utxo_indexed: true,
+                is_tx_indexed: true,
                 is_synced: false,
                 has_notify_command: true,
                 has_message_id: false,

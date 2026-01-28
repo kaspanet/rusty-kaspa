@@ -133,7 +133,7 @@ impl Processor {
     ) -> IndexResult<()> {
         trace!("[{IDENT}]: processing {:?}", notification);
         if let Some(txindex) = self.txindex.clone() {
-            txindex.update_via_virtual_chain_changed(notification).await?;
+            txindex.async_update_via_virtual_chain_changed(notification).await?;
             return Ok(());
         };
         Err(IndexError::NotSupported(EventType::VirtualChainChanged))
@@ -142,7 +142,7 @@ impl Processor {
     async fn process_block_added(self: &Arc<Self>, notification: consensus_notification::BlockAddedNotification) -> IndexResult<()> {
         trace!("[{IDENT}]: processing {:?}", notification);
         if let Some(txindex) = self.txindex.clone() {
-            txindex.update_via_block_added(notification).await?;
+            txindex.async_update_via_block_added(notification).await?;
             return Ok(());
         };
         Err(IndexError::NotSupported(EventType::BlockAdded))
@@ -154,7 +154,7 @@ impl Processor {
     ) -> IndexResult<()> {
         trace!("[{IDENT}]: processing {:?}", notification);
         if let Some(txindex) = self.txindex.clone() {
-            txindex.update_via_retention_root_changed(notification).await?;
+            txindex.async_update_via_retention_root_changed(notification).await?;
             let self_clone = Arc::clone(self);
             // We prune in a separate task, to not block the processing of other notifications.
             tokio::spawn(async move { self_clone.prune_txindex().await });
@@ -166,14 +166,14 @@ impl Processor {
     async fn prune_txindex(self: &Arc<Self>) -> IndexResult<()> {
         trace!("[Index processor] pruning txindex on the fly");
         if let Some(txindex) = self.txindex.clone() {
-            if !txindex.clone().is_pruning().await {
-                txindex.clone().toggle_pruning_active(true).await;
+            if !txindex.clone().async_is_pruning().await {
+                txindex.clone().async_toggle_pruning_active(true).await;
                 let mut is_fully_pruned = false;
                 while !is_fully_pruned || self.collect_shutdown.trigger.is_triggered() {
-                    is_fully_pruned = txindex.clone().prune_on_the_fly().await?;
+                    is_fully_pruned = txindex.clone().async_prune_on_the_fly().await?;
                     tokio::time::sleep(PRUNING_WAIT_INTERVAL).await;
                 }
-                txindex.clone().toggle_pruning_active(false).await;
+                txindex.clone().async_toggle_pruning_active(false).await;
             }
             return Ok(());
         };

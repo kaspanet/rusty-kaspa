@@ -268,6 +268,7 @@ pub struct GetInfoResponse {
     pub mempool_size: u64,
     pub server_version: String,
     pub is_utxo_indexed: bool,
+    pub is_tx_indexed: bool,
     pub is_synced: bool,
     pub has_notify_command: bool,
     pub has_message_id: bool,
@@ -275,11 +276,12 @@ pub struct GetInfoResponse {
 
 impl Serializer for GetInfoResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         store!(String, &self.p2p_id, writer)?;
         store!(u64, &self.mempool_size, writer)?;
         store!(String, &self.server_version, writer)?;
         store!(bool, &self.is_utxo_indexed, writer)?;
+        store!(bool, &self.is_tx_indexed, writer)?;
         store!(bool, &self.is_synced, writer)?;
         store!(bool, &self.has_notify_command, writer)?;
         store!(bool, &self.has_message_id, writer)?;
@@ -290,16 +292,32 @@ impl Serializer for GetInfoResponse {
 
 impl Deserializer for GetInfoResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let version = load!(u16, reader)?;
         let p2p_id = load!(String, reader)?;
         let mempool_size = load!(u64, reader)?;
         let server_version = load!(String, reader)?;
         let is_utxo_indexed = load!(bool, reader)?;
+        if version > 1 {
+            let is_tx_indexed = load!(bool, reader)?;
+            let is_synced = load!(bool, reader)?;
+            let has_notify_command = load!(bool, reader)?;
+            let has_message_id = load!(bool, reader)?;
+            return Ok(Self {
+                p2p_id,
+                mempool_size,
+                server_version,
+                is_utxo_indexed,
+                is_tx_indexed,
+                is_synced,
+                has_notify_command,
+                has_message_id,
+            })
+        };
         let is_synced = load!(bool, reader)?;
         let has_notify_command = load!(bool, reader)?;
         let has_message_id = load!(bool, reader)?;
 
-        Ok(Self { p2p_id, mempool_size, server_version, is_utxo_indexed, is_synced, has_notify_command, has_message_id })
+        Ok(Self { p2p_id, mempool_size, server_version, is_utxo_indexed, is_tx_indexed: false, is_synced, has_notify_command, has_message_id })
     }
 }
 

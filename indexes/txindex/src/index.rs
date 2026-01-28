@@ -140,15 +140,20 @@ impl TxIndexApi for TxIndex {
         Ok(self.store.get_transaction_acceptance_data_by_blue_score_range(from..=to, limit)?)
     }
 
+    fn get_sink_with_blue_score(&self) -> TxIndexResult<(Hash, u64)> {
+        debug!("[{}] Getting sink with blue score", IDENT);
+        Ok(self.store.get_sink_with_blue_score()?.unwrap())
+        }
+
     fn is_acceptance_data_synced(&self) -> TxIndexResult<bool> {
         debug!("[{}] Checking if acceptance data is synced", IDENT);
         let consensus = self.consensus_manager.consensus();
         let session = futures::executor::block_on(consensus.session_blocking());
 
         let consensus_sink = session.get_sink();
-        let txindex_sink = self.store.get_sink()?;
+        let txindex_sink_with_blue_score = self.store.get_sink_with_blue_score()?;
 
-        Ok(txindex_sink.is_some_and(|tx_sink| tx_sink == consensus_sink))
+        Ok(txindex_sink_with_blue_score.is_some_and(|(tx_sink, _)| tx_sink == consensus_sink))
     }
 
     fn is_inclusion_data_synced(&self) -> TxIndexResult<bool> {

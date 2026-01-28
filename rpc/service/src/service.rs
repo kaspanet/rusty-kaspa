@@ -66,12 +66,14 @@ use kaspa_rpc_core::{
     notify::connection::ChannelConnection,
     Notification, RpcError, RpcResult,
 };
+use kaspa_txindex::api::{TxIndexApi, TxIndexProxy};
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::expiring_cache::ExpiringCache;
 use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
+use std::cell::{LazyCell, OnceCell};
 use std::time::Duration;
 use std::{
     collections::HashMap,
@@ -105,6 +107,7 @@ pub struct RpcCoreService {
     mining_manager: MiningManagerProxy,
     flow_context: Arc<FlowContext>,
     utxoindex: Option<UtxoIndexProxy>,
+    txindex: Option<TxIndexProxy>,
     config: Arc<Config>,
     consensus_converter: Arc<ConsensusConverter>,
     index_converter: Arc<IndexConverter>,
@@ -138,6 +141,7 @@ impl RpcCoreService {
         flow_context: Arc<FlowContext>,
         subscription_context: SubscriptionContext,
         utxoindex: Option<UtxoIndexProxy>,
+        txindex: Option<TxIndexProxy>,
         config: Arc<Config>,
         core: Arc<Core>,
         processing_counters: Arc<ProcessingCounters>,
@@ -164,6 +168,7 @@ impl RpcCoreService {
 
         // Prepare the rpc-core notifier objects
         let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
+        consensus_events[EventType::RetentionRootChanged] = false;
         consensus_events[EventType::UtxosChanged] = false;
         consensus_events[EventType::PruningPointUtxoSetOverride] = index_notifier.is_none();
         let consensus_converter = Arc::new(ConsensusConverter::new(consensus_manager.clone(), config.clone()));
@@ -201,8 +206,27 @@ impl RpcCoreService {
         let protocol_converter = Arc::new(ProtocolConverter::new(flow_context.clone()));
 
         // Create the rcp-core notifier
-        let notifier =
-            Arc::new(Notifier::new(RPC_CORE, [EventType::BlockAdded, EventType::VirtualChainChanged, EventType::FinalityConflict, EventType::FinalityConflictResolved, EventType::UtxosChanged, EventType::SinkBlueScoreChanged, EventType::VirtualDaaScoreChanged, EventType::PruningPointUtxoSetOverride, EventType::NewBlockTemplate].as_ref().into(), collectors, subscribers, subscription_context, 1, policies));
+        let notifier = Arc::new(Notifier::new(
+            RPC_CORE,
+            [
+                EventType::BlockAdded,
+                EventType::VirtualChainChanged,
+                EventType::FinalityConflict,
+                EventType::FinalityConflictResolved,
+                EventType::UtxosChanged,
+                EventType::SinkBlueScoreChanged,
+                EventType::VirtualDaaScoreChanged,
+                EventType::PruningPointUtxoSetOverride,
+                EventType::NewBlockTemplate,
+            ]
+            .as_ref()
+            .into(),
+            collectors,
+            subscribers,
+            subscription_context,
+            1,
+            policies,
+        ));
 
         Self {
             consensus_manager,
@@ -210,6 +234,7 @@ impl RpcCoreService {
             mining_manager,
             flow_context,
             utxoindex,
+            txindex,
             config,
             consensus_converter,
             index_converter,
@@ -493,6 +518,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
+            is_tx_indexed: self.config.txindex == 1,
             is_synced: self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp),
             has_notify_command: true,
             has_message_id: true,
@@ -1289,6 +1315,38 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             added_chain_block_hashes: chain_path.added.into(),
             chain_block_accepted_transactions: chain_blocks_accepted_transactions.into(),
         })
+    }
+
+    async fn get_transaction_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetTransactionRequest,
+    ) -> RpcResult<GetTransactionResponse> {
+        if self.config.txindex != 1 {
+            return Err(RpcError::NoTxIndex);
+        };
+
+        let need_acceptance_data = request.include_acceptance_data || request.include_conf_count;
+        let need_inclusion_data = (request.include_inclusion_data && !request.query_unaccepted) || request.include_transactions;
+        let require_sink = need_acceptance_data;
+        let require_sink_blue_score = need_acceptance_data;
+        // to do
+        todo!();
+    }
+
+    async fn get_transactions_by_blue_score_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetTransactionsByBlueScoreRequest,
+    ) -> RpcResult<GetTransactionsByBlueScoreResponse> {
+        if self.config.txindex != 1 {
+            return Err(RpcError::NoTxIndex);
+        };
+        let session = self.consensus_manager.consensus().session().await;
+        let txindex = self.txindex.as_ref().unwrap();
+
+        // to do
+        todo!();
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

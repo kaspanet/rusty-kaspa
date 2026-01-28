@@ -3161,6 +3161,7 @@ dependencies = [
  "kaspa-p2p-mining",
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
+ "kaspa-txindex",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",

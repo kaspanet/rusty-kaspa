@@ -24,10 +24,15 @@ use kaspa_rpc_core::{
     RpcMergesetBlockAcceptanceDataVerbosity, RpcOptionalHeader, RpcOptionalTransaction, RpcOptionalTransactionInput,
     RpcOptionalTransactionInputVerboseData, RpcOptionalTransactionOutput, RpcOptionalTransactionOutputVerboseData,
     RpcOptionalTransactionVerboseData, RpcOptionalUtxoEntry, RpcOptionalUtxoEntryVerboseData, RpcResult, RpcTransaction,
-    RpcTransactionInput, RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity, RpcTransactionOutput,
-    RpcTransactionOutputVerboseData, RpcTransactionOutputVerboseDataVerbosity, RpcTransactionOutputVerbosity,
-    RpcTransactionVerboseData, RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerboseDataVerbosity,
-    RpcUtxoEntryVerbosity,
+    RpcTransactionAcceptanceData, RpcTransactionData, RpcTransactionInclusionData, RpcTransactionInput,
+    RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity, RpcTransactionOutput, RpcTransactionOutputVerboseData,
+    RpcTransactionOutputVerboseDataVerbosity, RpcTransactionOutputVerbosity, RpcTransactionVerboseData,
+    RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerboseDataVerbosity, RpcUtxoEntryVerbosity,
+};
+use kaspa_txindex::{
+    api::TxIndexProxy,
+    model::transactions::{TxAcceptanceData, TxInclusionData},
+    stores::{inclusion, sink},
 };
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
@@ -154,6 +159,77 @@ impl ConsensusConverter {
         } else {
             transaction.into()
         }
+    }
+
+    async fn get_transaction_data(
+        &self,
+        consensus: &ConsensusProxy,
+        txindex: &TxIndexProxy,
+        transaction_id: TransactionId,
+        include_unaccepted: bool,
+        include_transactions: bool,
+        include_inclusion_data: bool,
+        include_acceptance_data: bool,
+        include_conf_count: bool,
+        include_verbose_data: bool,
+    ) -> RpcResult<RpcTransactionData> {
+        let (acceptance_data, sink, sink_blue_score) = if include_acceptance_data || include_conf_count || !include_unaccepted {
+            let (sink, sink_blue_score) = txindex.clone().async_get_sink_with_blue_score().await?;
+            let rpc_accepted_acceptance_data = self
+                .find_accepted_rpc_acceptance_data(
+                    consensus,
+                    sink,
+                    &txindex.clone().async_get_accepted_transaction_data(transaction_id).await?,
+                )
+                .await?;
+            (Some(rpc_accepted_acceptance_data), Some(sink), Some(sink_blue_score))
+        } else {
+            (None, None, None)
+        };
+
+        let inclusion_data = if include_inclusion_data || include_transactions {
+            let mut inclusion_data = txindex.clone().async_get_included_transaction_data(transaction_id).await?;
+            if !include_unaccepted {
+                let acceptance_data_unwrapped = acceptance_data.as_ref().unwrap();
+                let mbad = &consensus.clone().async_get_block_acceptance_data(acceptance_data_unwrapped.accepting_block_hash).await?
+                        [acceptance_data_unwrapped.mergeset_index as usize];
+                inclusion_data = vec![inclusion_data
+                    .into_iter()
+                    .find(|x| x.block_hash == mbad.block_hash)
+                    .ok_or(RpcError::TransactionNotFound(transaction_id))?];
+            }
+            inclusion_data.into_iter().map(RpcTransactionInclusionData::from).collect()
+        } else {
+            vec![]
+        };
+
+        let mut transactions = vec![];
+        if include_transactions {
+            transactions.reserve(inclusion_data.len());
+            for inclusion_data_point in inclusion_data.iter() {
+                let header = if include_verbose_data {
+                    Some(consensus.clone().async_get_header(inclusion_data_point.including_block_hash).await?)
+                } else {
+                    None
+                };
+                transactions.push(self.get_transaction(
+                    consensus,
+                    &consensus.clone().async_get_block_body(inclusion_data_point.including_block_hash).await?
+                        [inclusion_data_point.index_within_block as usize],
+                    header.as_ref().map(|h| h.as_ref()),
+                    include_verbose_data,
+                ));
+            }
+        }
+
+        let conf_count = if include_conf_count {
+            let acceptance_data_unwrapped = acceptance_data.as_ref().unwrap();
+            Some(sink_blue_score.unwrap().saturating_sub(acceptance_data_unwrapped.accepting_block_blue_score))
+        } else {
+            None
+        };
+
+        Ok(RpcTransactionData { transaction_id, transactions, inclusion_data, acceptance_data, conf_count })
     }
 
     fn get_transaction_input(&self, input: &TransactionInput) -> RpcTransactionInput {
@@ -658,6 +734,20 @@ impl ConsensusConverter {
             };
         }
         Ok(rpc_acceptance_data)
+    }
+
+    async fn find_accepted_rpc_acceptance_data(
+        &self,
+        consensus: &ConsensusProxy,
+        pov_sink: Hash,
+        rpc_acceptance_data: &[TxAcceptanceData],
+    ) -> RpcResult<RpcTransactionAcceptanceData> {
+        for data in rpc_acceptance_data.iter() {
+            if consensus.async_is_chain_ancestor_of(data.block_hash, pov_sink).await? {
+                return Ok(RpcTransactionAcceptanceData::from(data.clone()));
+            }
+        }
+        Err(RpcError::ConsensusConverterNotFound(format!("Accepted transaction data for sink block {} missing", pov_sink)))
     }
 }
 

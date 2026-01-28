@@ -11,7 +11,7 @@ use kaspa_notify::{
     connection::ChannelType,
     events::EventType,
     listener::ListenerLifespan,
-    scope::{BlockAddedScope, PruningPointUtxoSetOverrideScope, UtxosChangedScope, VirtualChainChangedScope},
+    scope::{BlockAddedScope, PruningPointUtxoSetOverrideScope, RetentionRootChangedScope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::{MutationPolicies, UtxosChangedMutationPolicy, context::SubscriptionContext},
 };
 use kaspa_txindex::api::TxIndexProxy;
@@ -80,6 +80,9 @@ impl IndexService {
             consensus_notifier
                 .try_start_notify(consensus_notify_listener_id, BlockAddedScope::default().into())
                 .expect("the subscription always succeeds");
+            consensus_notifier
+                .try_start_notify(consensus_notify_listener_id, RetentionRootChangedScope::default().into())
+                .expect("the subscription always succeeds");
         };
 
         Self { utxoindex, txindex, notifier, shutdown: SingleTrigger::default() }
@@ -91,6 +94,10 @@ impl IndexService {
 
     pub fn utxoindex(&self) -> Option<UtxoIndexProxy> {
         self.utxoindex.clone()
+    }
+
+    pub fn txindex(&self) -> Option<TxIndexProxy> {
+        self.txindex.clone()
     }
 }
 

@@ -60,8 +60,8 @@ impl Store {
     }
 
     // -- getters --
-    pub fn get_sink(&self) -> StoreResult<Option<Hash>> {
-        self.sink_store.get_sink()
+    pub fn get_sink_with_blue_score(&self) -> StoreResult<Option<(Hash, u64)>> {
+        self.sink_store.get_sink_with_blue_score()
     }
 
     pub fn get_tips(&self) -> StoreResult<Option<Arc<BlockHashSet>>> {

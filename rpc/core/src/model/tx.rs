@@ -445,7 +445,7 @@ pub struct RpcTransactionInclusionData {
 impl From<TxInclusionData> for RpcTransactionInclusionData {
     fn from(data: TxInclusionData) -> Self {
         Self {
-            including_block_hash: data.block_hash.into(),
+            including_block_hash: data.block_hash,
             including_blue_score: data.blue_score,
             index_within_block: data.index_within_block,
         }
