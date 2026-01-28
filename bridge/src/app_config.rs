@@ -1,47 +1,178 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
-use kaspa_stratum_bridge::net_utils::normalize_port;
-use yaml_rust::YamlLoader;
+use crate::net_utils::normalize_port;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Instance-specific configuration
-#[derive(Debug, Clone)]
-pub(crate) struct InstanceConfig {
-    pub(crate) stratum_port: String,
-    pub(crate) min_share_diff: u32,
-    pub(crate) prom_port: Option<String>, // Optional per-instance prom port
-    pub(crate) log_to_file: Option<bool>, // Optional per-instance logging
-    pub(crate) block_wait_time: Option<Duration>,
-    pub(crate) extranonce_size: Option<u8>,
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct InstanceConfig {
+    #[serde(deserialize_with = "deserialize_port")]
+    pub stratum_port: String,
+    pub min_share_diff: u32,
+    #[serde(deserialize_with = "deserialize_optional_port")]
+    pub prom_port: Option<String>, // Optional per-instance prom port
+    pub log_to_file: Option<bool>, // Optional per-instance logging
+    #[serde(deserialize_with = "deserialize_optional_duration_ms", serialize_with = "serialize_optional_duration_ms")]
+    pub block_wait_time: Option<Duration>,
+    pub extranonce_size: Option<u8>,
     // Instance-specific settings that can override global defaults
-    pub(crate) var_diff: Option<bool>,
-    pub(crate) shares_per_min: Option<u32>,
-    pub(crate) var_diff_stats: Option<bool>,
-    pub(crate) pow2_clamp: Option<bool>,
+    pub var_diff: Option<bool>,
+    pub shares_per_min: Option<u32>,
+    pub var_diff_stats: Option<bool>,
+    pub pow2_clamp: Option<bool>,
 }
 
 /// Global configuration (shared across all instances)
-#[derive(Debug, Clone)]
-pub(crate) struct GlobalConfig {
-    pub(crate) kaspad_address: String,
-    pub(crate) block_wait_time: Duration,
-    pub(crate) print_stats: bool,
-    pub(crate) log_to_file: bool, // Default for instances that don't specify
-    pub(crate) health_check_port: String,
-    pub(crate) web_port: String,
-    pub(crate) var_diff: bool,
-    pub(crate) shares_per_min: u32,
-    pub(crate) var_diff_stats: bool,
-    pub(crate) extranonce_size: u8,
-    pub(crate) pow2_clamp: bool,
-    pub(crate) coinbase_tag_suffix: Option<String>,
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct GlobalConfig {
+    pub kaspad_address: String,
+    #[serde(deserialize_with = "deserialize_duration_ms", serialize_with = "serialize_duration_ms")]
+    pub block_wait_time: Duration,
+    pub print_stats: bool,
+    pub log_to_file: bool, // Default for instances that don't specify
+    pub health_check_port: String,
+    #[serde(deserialize_with = "deserialize_port")]
+    pub web_dashboard_port: String,
+    pub var_diff: bool,
+    pub shares_per_min: u32,
+    pub var_diff_stats: bool,
+    pub extranonce_size: u8,
+    pub pow2_clamp: bool,
+    #[serde(deserialize_with = "deserialize_coinbase_tag_suffix")]
+    pub coinbase_tag_suffix: Option<String>,
 }
 
 /// Bridge configuration (supports both single and multi-instance modes)
-#[derive(Debug)]
-pub(crate) struct BridgeConfig {
-    pub(crate) global: GlobalConfig,
-    pub(crate) instances: Vec<InstanceConfig>,
+#[derive(Debug, Serialize)]
+pub struct BridgeConfig {
+    pub global: GlobalConfig,
+    pub instances: Vec<InstanceConfig>,
+}
+
+// Custom deserializers
+
+/// Deserialize a port string and normalize it
+fn deserialize_port<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(normalize_port(&s))
+}
+
+/// Deserialize an optional port string and normalize it
+fn deserialize_optional_port<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deserializer)?.map(|s| normalize_port(&s)))
+}
+
+/// Deserialize a duration from milliseconds (supports both int and float)
+fn deserialize_duration_ms<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    let value: serde_yaml::Value = Deserialize::deserialize(deserializer)?;
+
+    let ms = match value {
+        serde_yaml::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                i as u64
+            } else if let Some(f) = n.as_f64() {
+                f as u64
+            } else {
+                return Err(D::Error::custom("duration must be a number"));
+            }
+        }
+        _ => return Err(D::Error::custom("duration must be a number")),
+    };
+
+    Ok(Duration::from_millis(ms))
+}
+
+/// Deserialize an optional duration from milliseconds
+fn deserialize_optional_duration_ms<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    let value: Option<serde_yaml::Value> = Option::deserialize(deserializer)?;
+
+    if let Some(v) = value {
+        let ms = match v {
+            serde_yaml::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    i as u64
+                } else if let Some(f) = n.as_f64() {
+                    f as u64
+                } else {
+                    return Err(D::Error::custom("duration must be a number"));
+                }
+            }
+            _ => return Err(D::Error::custom("duration must be a number")),
+        };
+        Ok(Some(Duration::from_millis(ms)))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Deserialize coinbase_tag_suffix, converting empty strings to None
+fn deserialize_coinbase_tag_suffix<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = Option::<String>::deserialize(deserializer)?;
+    Ok(s.and_then(|s| {
+        let trimmed = s.trim();
+        if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+    }))
+}
+
+// Custom serializers
+
+/// Serialize a duration as milliseconds (u64)
+fn serialize_duration_ms<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_u64(duration.as_millis() as u64)
+}
+
+/// Serialize an optional duration as milliseconds (u64)
+fn serialize_optional_duration_ms<S>(duration: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match duration {
+        Some(d) => serializer.serialize_some(&(d.as_millis() as u64)),
+        None => serializer.serialize_none(),
+    }
+}
+
+/// Raw config structure for deserialization (handles both single and multi-instance modes)
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct BridgeConfigRaw {
+    #[serde(flatten)]
+    global: GlobalConfig,
+
+    // Multi-instance mode
+    #[serde(default)]
+    instances: Option<Vec<InstanceConfig>>,
+
+    // Single-instance mode (for backward compatibility)
+    #[serde(default, deserialize_with = "deserialize_optional_port")]
+    stratum_port: Option<String>,
+    #[serde(default)]
+    min_share_diff: Option<u32>,
+    #[serde(default, deserialize_with = "deserialize_optional_port")]
+    prom_port: Option<String>,
 }
 
 impl Default for GlobalConfig {
@@ -52,7 +183,7 @@ impl Default for GlobalConfig {
             print_stats: true,
             log_to_file: true,
             health_check_port: String::new(),
-            web_port: String::new(),
+            web_dashboard_port: String::new(),
             var_diff: true,
             shares_per_min: 20,
             var_diff_stats: false,
@@ -87,160 +218,56 @@ impl Default for BridgeConfig {
 }
 
 impl BridgeConfig {
-    pub(crate) fn from_yaml(content: &str) -> Result<Self, anyhow::Error> {
-        let docs = YamlLoader::load_from_str(content)?;
-        let doc = docs.first().ok_or_else(|| anyhow::anyhow!("empty YAML document"))?;
+    pub fn from_yaml(content: &str) -> Result<Self, anyhow::Error> {
+        // Deserialize using serde_yaml
+        let raw: BridgeConfigRaw = serde_yaml::from_str(content)?;
 
-        // Parse global config
-        let mut global = GlobalConfig::default();
-
-        if let Some(addr) = doc["kaspad_address"].as_str() {
-            global.kaspad_address = addr.to_string();
-        }
-
-        if let Some(stats) = doc["print_stats"].as_bool() {
-            global.print_stats = stats;
-        }
-
-        if let Some(log) = doc["log_to_file"].as_bool() {
-            global.log_to_file = log;
-        }
-
-        if let Some(port) = doc["health_check_port"].as_str() {
-            global.health_check_port = port.to_string();
-        }
-
-        if let Some(port) = doc["web_port"].as_str() {
-            global.web_port = normalize_port(port);
-        }
-
-        if let Some(vd) = doc["var_diff"].as_bool() {
-            global.var_diff = vd;
-        }
-
-        if let Some(spm) = doc["shares_per_min"].as_i64() {
-            global.shares_per_min = spm as u32;
-        }
-
-        if let Some(vds) = doc["var_diff_stats"].as_bool() {
-            global.var_diff_stats = vds;
-        }
-
-        if let Some(ens) = doc["extranonce_size"].as_i64() {
-            global.extranonce_size = ens as u8;
-        }
-
-        if let Some(clamp) = doc["pow2_clamp"].as_bool() {
-            global.pow2_clamp = clamp;
-        }
-
-        if let Some(suffix) = doc["coinbase_tag_suffix"].as_str() {
-            let suffix = suffix.trim();
-            global.coinbase_tag_suffix = if suffix.is_empty() { None } else { Some(suffix.to_string()) };
-        }
-
-        // Parse block_wait_time from config (in milliseconds, convert to Duration)
-        if let Some(bwt) = doc["block_wait_time"].as_i64() {
-            global.block_wait_time = Duration::from_millis(bwt as u64);
-        } else if let Some(bwt) = doc["block_wait_time"].as_f64() {
-            global.block_wait_time = Duration::from_millis(bwt as u64);
-        }
-
-        // Check if multi-instance mode (instances array exists)
-        if let Some(instances_yaml) = doc["instances"].as_vec() {
-            // Multi-instance mode
-            let mut instances = Vec::new();
-
-            for (idx, instance_yaml) in instances_yaml.iter().enumerate() {
-                let mut instance = InstanceConfig::default();
-
-                // Required: stratum_port
-                if let Some(port) = instance_yaml["stratum_port"].as_str() {
-                    instance.stratum_port = normalize_port(port);
-                } else {
-                    return Err(anyhow::anyhow!("Instance {} missing required 'stratum_port'", idx));
-                }
-
-                // Required: min_share_diff
-                if let Some(diff) = instance_yaml["min_share_diff"].as_i64() {
-                    instance.min_share_diff = diff as u32;
-                } else {
-                    return Err(anyhow::anyhow!("Instance {} missing required 'min_share_diff'", idx));
-                }
-
-                // Optional: prom_port (per-instance)
-                if let Some(port) = instance_yaml["prom_port"].as_str() {
-                    instance.prom_port = Some(normalize_port(port));
-                }
-
-                // Optional: log_to_file (per-instance)
-                if let Some(log) = instance_yaml["log_to_file"].as_bool() {
-                    instance.log_to_file = Some(log);
-                }
-
-                if let Some(bwt) = instance_yaml["block_wait_time"].as_i64() {
-                    instance.block_wait_time = Some(Duration::from_millis(bwt as u64));
-                } else if let Some(bwt) = instance_yaml["block_wait_time"].as_f64() {
-                    instance.block_wait_time = Some(Duration::from_millis(bwt as u64));
-                }
-
-                if let Some(ens) = instance_yaml["extranonce_size"].as_i64() {
-                    instance.extranonce_size = Some(ens as u8);
-                }
-
-                // Optional: instance-specific overrides
-                if let Some(vd) = instance_yaml["var_diff"].as_bool() {
-                    instance.var_diff = Some(vd);
-                }
-
-                if let Some(spm) = instance_yaml["shares_per_min"].as_i64() {
-                    instance.shares_per_min = Some(spm as u32);
-                }
-
-                if let Some(vds) = instance_yaml["var_diff_stats"].as_bool() {
-                    instance.var_diff_stats = Some(vds);
-                }
-
-                if let Some(clamp) = instance_yaml["pow2_clamp"].as_bool() {
-                    instance.pow2_clamp = Some(clamp);
-                }
-
-                instances.push(instance);
+        // Post-process: Handle single-instance mode
+        let instances = if raw.instances.is_none() {
+            // Single-instance mode (backward compatible)
+            if raw.stratum_port.is_none() || raw.min_share_diff.is_none() {
+                return Err(anyhow::anyhow!("Single-instance mode requires 'stratum_port' and 'min_share_diff'"));
             }
 
+            let instance = InstanceConfig {
+                stratum_port: raw.stratum_port.unwrap(),
+                min_share_diff: raw.min_share_diff.unwrap(),
+                prom_port: raw.prom_port,
+                log_to_file: Some(raw.global.log_to_file), // Use global default
+                ..InstanceConfig::default()
+            };
+
+            vec![instance]
+        } else {
+            // Multi-instance mode
+            let instances = raw.instances.unwrap();
+
+            // Validate: instances cannot be empty
             if instances.is_empty() {
                 return Err(anyhow::anyhow!("instances array cannot be empty"));
             }
 
-            // Validate unique ports
-            let mut ports = HashSet::new();
-            for instance in &instances {
-                if !ports.insert(&instance.stratum_port) {
-                    return Err(anyhow::anyhow!("Duplicate stratum_port: {}", instance.stratum_port));
+            // Validate: required fields are present (serde will error if missing, but we check anyway)
+            for (idx, instance) in instances.iter().enumerate() {
+                if instance.stratum_port.is_empty() {
+                    return Err(anyhow::anyhow!("Instance {} missing required 'stratum_port'", idx));
+                }
+                if instance.min_share_diff == 0 {
+                    // Note: 0 is technically valid but unlikely, we'll allow it
                 }
             }
 
-            Ok(BridgeConfig { global, instances })
-        } else {
-            // Single-instance mode (backward compatible)
-            let mut instance = InstanceConfig::default();
+            instances
+        };
 
-            if let Some(port) = doc["stratum_port"].as_str() {
-                instance.stratum_port = normalize_port(port);
+        // Validate: duplicate ports
+        let mut ports = HashSet::new();
+        for instance in &instances {
+            if !ports.insert(&instance.stratum_port) {
+                return Err(anyhow::anyhow!("Duplicate stratum_port: {}", instance.stratum_port));
             }
-
-            if let Some(diff) = doc["min_share_diff"].as_i64() {
-                instance.min_share_diff = diff as u32;
-            }
-
-            if let Some(port) = doc["prom_port"].as_str() {
-                instance.prom_port = Some(normalize_port(port));
-            }
-
-            // Single-instance mode: use global log_to_file as instance default
-            instance.log_to_file = Some(global.log_to_file);
-
-            Ok(BridgeConfig { global, instances: vec![instance] })
         }
+
+        Ok(BridgeConfig { global: raw.global, instances })
     }
 }

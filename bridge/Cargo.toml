@@ -51,13 +51,19 @@ tracing-appender = "0.2"
 blake2 = "0.10"
 num-bigint = "0.4"
 prometheus = "0.13"
-yaml-rust = "0.4"
+serde_yaml = "0.9"
 faster-hex = "0.1"
 chrono = { workspace = true }
 include_dir = "0.7"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Console"] }
+
+# Platform-specific mimalloc dependency for Linux builds
+# This ensures the bridge builds correctly on Linux (including musl toolchain)
+# The override feature is not used for musl builds (handled by kaspa-alloc)
+[target.'cfg(all(not(target_os = "macos"), not(target_env = "musl")))'.dependencies]
+mimalloc = { version = "0.1.48", default-features = false, features = ["override"] }
 
 [dev-dependencies]
 tokio-test = "0.4"

@@ -1,0 +1,189 @@
+#[cfg(test)]
+use crate::cli::{parse_bool, parse_instance_spec};
+#[cfg(test)]
+use kaspa_stratum_bridge::BridgeConfig;
+
+#[cfg(test)]
+#[test]
+fn test_parse_bool_true_values() {
+    // Test all true values (matching BoolishValueParser)
+    assert!(parse_bool("true").unwrap());
+    assert!(parse_bool("1").unwrap());
+    assert!(parse_bool("yes").unwrap());
+    assert!(parse_bool("y").unwrap());
+    assert!(parse_bool("on").unwrap());
+    assert!(parse_bool("enable").unwrap());
+    assert!(parse_bool("enabled").unwrap());
+
+    // Case insensitive
+    assert!(parse_bool("TRUE").unwrap());
+    assert!(parse_bool("True").unwrap());
+    assert!(parse_bool("ENABLE").unwrap());
+    assert!(parse_bool("Enabled").unwrap());
+
+    // With whitespace
+    assert!(parse_bool("  true  ").unwrap());
+    assert!(parse_bool("  enable  ").unwrap());
+}
+
+#[cfg(test)]
+#[test]
+fn test_parse_bool_false_values() {
+    // Test all false values (matching BoolishValueParser)
+    assert!(!parse_bool("false").unwrap());
+    assert!(!parse_bool("0").unwrap());
+    assert!(!parse_bool("no").unwrap());
+    assert!(!parse_bool("n").unwrap());
+    assert!(!parse_bool("off").unwrap());
+    assert!(!parse_bool("disable").unwrap());
+    assert!(!parse_bool("disabled").unwrap());
+
+    // Case insensitive
+    assert!(!parse_bool("FALSE").unwrap());
+    assert!(!parse_bool("False").unwrap());
+    assert!(!parse_bool("DISABLE").unwrap());
+    assert!(!parse_bool("Disabled").unwrap());
+
+    // With whitespace
+    assert!(!parse_bool("  false  ").unwrap());
+    assert!(!parse_bool("  disable  ").unwrap());
+}
+
+#[cfg(test)]
+#[test]
+fn test_parse_bool_invalid_values() {
+    // Test invalid values
+    assert!(parse_bool("invalid").is_err());
+    assert!(parse_bool("maybe").is_err());
+    assert!(parse_bool("2").is_err());
+    assert!(parse_bool("").is_err());
+    assert!(parse_bool("tru").is_err());
+    assert!(parse_bool("fals").is_err());
+}
+
+#[cfg(test)]
+#[test]
+fn test_parse_bool_in_instance_spec() {
+    // Test that parse_bool works correctly in instance spec parsing
+    let spec = "port=:5555,var_diff=enable,log=disabled";
+    let result = parse_instance_spec(spec, Some(8192));
+    assert!(result.is_ok());
+    let instance = result.unwrap();
+    assert!(instance.var_diff.unwrap());
+    assert!(!instance.log_to_file.unwrap());
+
+    // Test with enabled/disabled
+    let spec2 = "port=:5556,var_diff=enabled,pow2_clamp=disable";
+    let result2 = parse_instance_spec(spec2, Some(8192));
+    assert!(result2.is_ok());
+    let instance2 = result2.unwrap();
+    assert!(instance2.var_diff.unwrap());
+    assert!(!instance2.pow2_clamp.unwrap());
+}
+
+#[cfg(test)]
+#[test]
+fn test_config_single_instance_mode() {
+    let yaml = r#"
+kaspad_address: "127.0.0.1:16110"
+stratum_port: ":5555"
+min_share_diff: 8192
+print_stats: true
+"#;
+
+    let config = BridgeConfig::from_yaml(yaml);
+    assert!(config.is_ok());
+    let config = config.unwrap();
+    assert_eq!(config.instances.len(), 1);
+    assert_eq!(config.instances[0].stratum_port, ":5555");
+    assert_eq!(config.instances[0].min_share_diff, 8192);
+    assert_eq!(config.global.kaspad_address, "127.0.0.1:16110");
+}
+
+#[cfg(test)]
+#[test]
+fn test_config_multi_instance_mode() {
+    let yaml = r#"
+kaspad_address: "127.0.0.1:16110"
+instances:
+  - stratum_port: ":5555"
+    min_share_diff: 8192
+  - stratum_port: ":5556"
+    min_share_diff: 4096
+"#;
+
+    let config = BridgeConfig::from_yaml(yaml);
+    assert!(config.is_ok());
+    let config = config.unwrap();
+    assert_eq!(config.instances.len(), 2);
+    assert_eq!(config.instances[0].stratum_port, ":5555");
+    assert_eq!(config.instances[0].min_share_diff, 8192);
+    assert_eq!(config.instances[1].stratum_port, ":5556");
+    assert_eq!(config.instances[1].min_share_diff, 4096);
+}
+
+#[cfg(test)]
+#[test]
+fn test_config_port_normalization() {
+    let yaml = r#"
+kaspad_address: "127.0.0.1:16110"
+stratum_port: "3030"
+min_share_diff: 8192
+web_dashboard_port: "3031"
+"#;
+
+    let config = BridgeConfig::from_yaml(yaml);
+    assert!(config.is_ok());
+    let config = config.unwrap();
+    assert_eq!(config.instances[0].stratum_port, ":3030");
+    assert_eq!(config.global.web_dashboard_port, ":3031");
+}
+
+#[cfg(test)]
+#[test]
+fn test_config_duplicate_ports_error() {
+    let yaml = r#"
+kaspad_address: "127.0.0.1:16110"
+instances:
+  - stratum_port: ":5555"
+    min_share_diff: 8192
+  - stratum_port: ":5555"
+    min_share_diff: 4096
+"#;
+
+    let config = BridgeConfig::from_yaml(yaml);
+    assert!(config.is_err());
+    assert!(config.unwrap_err().to_string().contains("Duplicate stratum_port"));
+}
+
+#[cfg(test)]
+#[test]
+fn test_config_coinbase_tag_suffix_empty_string() {
+    let yaml = r#"
+kaspad_address: "127.0.0.1:16110"
+stratum_port: ":5555"
+min_share_diff: 8192
+coinbase_tag_suffix: ""
+"#;
+
+    let config = BridgeConfig::from_yaml(yaml);
+    assert!(config.is_ok());
+    let config = config.unwrap();
+    assert_eq!(config.global.coinbase_tag_suffix, None);
+}
+
+#[cfg(test)]
+#[test]
+fn test_config_coinbase_tag_suffix_with_value() {
+    let yaml = r#"
+kaspad_address: "127.0.0.1:16110"
+stratum_port: ":5555"
+min_share_diff: 8192
+coinbase_tag_suffix: "test"
+"#;
+
+    let config = BridgeConfig::from_yaml(yaml);
+    assert!(config.is_ok());
+    let config = config.unwrap();
+    assert_eq!(config.global.coinbase_tag_suffix, Some("test".to_string()));
+}
