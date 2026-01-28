@@ -187,3 +187,50 @@ coinbase_tag_suffix: "test"
     let config = config.unwrap();
     assert_eq!(config.global.coinbase_tag_suffix, Some("test".to_string()));
 }
+
+#[cfg(test)]
+#[test]
+fn test_config_var_diff_parsing() {
+    // Test single-instance mode with var_diff
+    let yaml = r#"
+kaspad_address: "127.0.0.1:16110"
+stratum_port: ":5555"
+min_share_diff: 8192
+var_diff: true
+var_diff_stats: true
+shares_per_min: 30
+"#;
+
+    let config = BridgeConfig::from_yaml(yaml);
+    assert!(config.is_ok());
+    let config = config.unwrap();
+    assert_eq!(config.global.var_diff, true);
+    assert_eq!(config.global.var_diff_stats, true);
+    assert_eq!(config.global.shares_per_min, 30);
+    assert_eq!(config.instances.len(), 1);
+
+    // Test multi-instance mode with var_diff
+    let yaml2 = r#"
+kaspad_address: "127.0.0.1:16110"
+var_diff: false
+var_diff_stats: false
+shares_per_min: 20
+instances:
+  - stratum_port: ":5555"
+    min_share_diff: 8192
+    var_diff: true
+    var_diff_stats: true
+  - stratum_port: ":5556"
+    min_share_diff: 4096
+"#;
+
+    let config2 = BridgeConfig::from_yaml(yaml2);
+    assert!(config2.is_ok());
+    let config2 = config2.unwrap();
+    assert_eq!(config2.global.var_diff, false);
+    assert_eq!(config2.global.var_diff_stats, false);
+    assert_eq!(config2.instances.len(), 2);
+    assert_eq!(config2.instances[0].var_diff, Some(true));
+    assert_eq!(config2.instances[0].var_diff_stats, Some(true));
+    assert_eq!(config2.instances[1].var_diff, None); // Should inherit from global
+}
