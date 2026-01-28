@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 use crate::app_config::BridgeConfig;
 use crate::net_utils::bind_addr_from_port;
@@ -69,6 +70,10 @@ static NETWORK_BLOCK_COUNT: OnceLock<Gauge> = OnceLock::new();
 
 /// Worker start time gauge (Unix timestamp in seconds)
 static WORKER_START_TIME: OnceLock<GaugeVec> = OnceLock::new();
+
+/// Worker last activity time - tracks when each worker last submitted a share
+/// Key: "instance:worker:wallet", Value: Instant of last activity
+static WORKER_LAST_ACTIVITY: OnceLock<parking_lot::Mutex<HashMap<String, Instant>>> = OnceLock::new();
 
 // ---------------------------
 // Internal CPU miner metrics (feature-gated)
@@ -507,6 +512,8 @@ pub fn record_share_found(worker: &WorkerContext, share_diff: f64) {
     if let Some(counter) = SHARE_DIFF_COUNTER.get() {
         counter.with_label_values(&worker.labels()).inc_by(share_diff);
     }
+    // Update last activity time for this worker
+    update_worker_activity(worker);
 }
 
 /// Record a stale share
@@ -516,6 +523,8 @@ pub fn record_stale_share(worker: &WorkerContext) {
         labels.push("stale");
         counter.with_label_values(&labels).inc();
     }
+    // Update activity time - worker is still connected even if share is stale
+    update_worker_activity(worker);
 }
 
 /// Record a duplicate share
@@ -525,6 +534,8 @@ pub fn record_dupe_share(worker: &WorkerContext) {
         labels.push("duplicate");
         counter.with_label_values(&labels).inc();
     }
+    // Update activity time - worker is still connected even if share is duplicate
+    update_worker_activity(worker);
 }
 
 /// Record an invalid share
@@ -534,6 +545,8 @@ pub fn record_invalid_share(worker: &WorkerContext) {
         labels.push("invalid");
         counter.with_label_values(&labels).inc();
     }
+    // Update activity time - worker is still connected even if share is invalid
+    update_worker_activity(worker);
 }
 
 /// Record a weak share
@@ -543,6 +556,15 @@ pub fn record_weak_share(worker: &WorkerContext) {
         labels.push("weak");
         counter.with_label_values(&labels).inc();
     }
+    // Update activity time - worker is still connected even if share is weak
+    update_worker_activity(worker);
+}
+
+/// Helper function to update worker activity time
+fn update_worker_activity(worker: &WorkerContext) {
+    let key = format!("{}:{}:{}", worker.instance_id, worker.worker_name, worker.wallet);
+    let activity_map = WORKER_LAST_ACTIVITY.get_or_init(|| parking_lot::Mutex::new(HashMap::new()));
+    activity_map.lock().insert(key, Instant::now());
 }
 
 /// Record a block found
@@ -569,6 +591,11 @@ pub fn record_disconnect(worker: &WorkerContext) {
     if let Some(counter) = DISCONNECT_COUNTER.get() {
         counter.with_label_values(&worker.labels()).inc();
     }
+
+    // Remove worker from activity tracking immediately on disconnect
+    let key = format!("{}:{}:{}", worker.instance_id, worker.worker_name, worker.wallet);
+    let activity_map = WORKER_LAST_ACTIVITY.get_or_init(|| parking_lot::Mutex::new(HashMap::new()));
+    activity_map.lock().remove(&key);
 }
 
 /// Record a new job sent
@@ -1157,7 +1184,54 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         stats.networkHashrate = (total_worker_hashrate_ghs * 1e9) as u64;
     }
 
-    stats.workers = worker_stats.into_values().collect();
+    // Filter out inactive workers (no activity in the last 5 minutes)
+    const WORKER_INACTIVITY_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
+    let now = Instant::now();
+    let activity_map = WORKER_LAST_ACTIVITY.get_or_init(|| parking_lot::Mutex::new(HashMap::new()));
+
+    // Clean up old entries and filter active workers
+    let mut active_workers: Vec<WorkerInfo> = Vec::new();
+    {
+        let mut activity = activity_map.lock();
+        for (key, worker) in worker_stats.into_iter() {
+            // Check if worker has been active recently
+            if let Some(&last_activity) = activity.get(&key) {
+                // Check if duration is valid (handles clock adjustments)
+                if let Some(duration) = now.checked_duration_since(last_activity) {
+                    if duration <= WORKER_INACTIVITY_TIMEOUT {
+                        active_workers.push(worker);
+                    } else {
+                        // Remove stale entries (no activity for > 5 minutes)
+                        activity.remove(&key);
+                    }
+                } else {
+                    // Clock went backwards or instant is in the future - treat as active
+                    // Update to current time to prevent issues
+                    activity.insert(key.clone(), now);
+                    active_workers.push(worker);
+                }
+            } else {
+                // No activity record exists - this means the worker hasn't submitted any shares
+                // since the last stats collection. If they have shares, they might be disconnected.
+                // Only include them if they have very recent activity (check worker start time)
+                if let Some(&start_time_secs) = worker_start_times.get(&key) {
+                    let current_time_secs =
+                        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as f64;
+                    let elapsed_secs = current_time_secs - start_time_secs;
+                    // If worker started less than 1 minute ago and has shares, they might be active
+                    // Otherwise, assume they're disconnected
+                    if elapsed_secs < 60.0 && worker.shares > 0 {
+                        // Very new worker - give them a chance
+                        activity.insert(key.clone(), now);
+                        active_workers.push(worker);
+                    }
+                    // Otherwise, don't include them (they're likely disconnected)
+                }
+            }
+        }
+    }
+
+    stats.workers = active_workers;
     // Active workers are the number of Stratum workers, plus the internal CPU miner if present.
     stats.activeWorkers = stats.workers.len() + stats.internalCpu.as_ref().map(|_| 1).unwrap_or(0);
 
