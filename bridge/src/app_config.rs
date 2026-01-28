@@ -223,24 +223,8 @@ impl BridgeConfig {
         let raw: BridgeConfigRaw = serde_yaml::from_str(content)?;
 
         // Post-process: Handle single-instance mode
-        let instances = if raw.instances.is_none() {
-            // Single-instance mode (backward compatible)
-            if raw.stratum_port.is_none() || raw.min_share_diff.is_none() {
-                return Err(anyhow::anyhow!("Single-instance mode requires 'stratum_port' and 'min_share_diff'"));
-            }
-
-            let instance = InstanceConfig {
-                stratum_port: raw.stratum_port.unwrap(),
-                min_share_diff: raw.min_share_diff.unwrap(),
-                prom_port: raw.prom_port,
-                log_to_file: Some(raw.global.log_to_file), // Use global default
-                ..InstanceConfig::default()
-            };
-
-            vec![instance]
-        } else {
+        let instances = if let Some(instances) = raw.instances {
             // Multi-instance mode
-            let instances = raw.instances.unwrap();
 
             // Validate: instances cannot be empty
             if instances.is_empty() {
@@ -258,6 +242,21 @@ impl BridgeConfig {
             }
 
             instances
+        } else {
+            // Single-instance mode (backward compatible)
+            if raw.stratum_port.is_none() || raw.min_share_diff.is_none() {
+                return Err(anyhow::anyhow!("Single-instance mode requires 'stratum_port' and 'min_share_diff'"));
+            }
+
+            let instance = InstanceConfig {
+                stratum_port: raw.stratum_port.unwrap(),
+                min_share_diff: raw.min_share_diff.unwrap(),
+                prom_port: raw.prom_port,
+                log_to_file: Some(raw.global.log_to_file), // Use global default
+                ..InstanceConfig::default()
+            };
+
+            vec![instance]
         };
 
         // Validate: duplicate ports
