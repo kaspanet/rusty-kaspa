@@ -3684,6 +3684,7 @@ dependencies = [
  "ark-groth16",
  "ark-relations",
  "ark-serialize",
+ "ark-snark",
  "blake2b_simd",
  "borsh",
  "bytemuck",

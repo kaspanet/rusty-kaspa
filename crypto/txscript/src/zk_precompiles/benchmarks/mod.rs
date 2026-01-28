@@ -1,5 +1,9 @@
 #[cfg(test)]
 mod test {
+    use ark_relations::lc;
+    use ark_snark::SNARK;
+    use rand::thread_rng;
+
     use crate::{
         data_stack::Stack,
         zk_precompiles::{parse_tag, verify_zk},
@@ -213,6 +217,72 @@ mod test {
                 "{:2} threads: {:7.2}ms ± {:5.2}ms (min: {:6.2}ms, max: {:6.2}ms, speedup: {:.2}x, efficiency: {:.1}%, {:.0} proofs/sec)",
                 num_threads, mean_ms, std_dev_ms, min_ms, max_ms, speedup, efficiency, proofs_per_sec
             );
+        }
+    }
+
+    #[test]
+    #[ignore = "generates large circuits"]
+    fn benchmark_prepare() {
+        use ark_bn254::{Bn254, Fr};
+        use ark_groth16::Groth16;
+        use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+        use std::time::Instant;
+
+        struct Circuit {
+            num_public_inputs: usize,
+        }
+
+        impl ConstraintSynthesizer<Fr> for Circuit {
+            fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
+                let mut running_sum = 0u64;
+                let mut sum_var = cs.new_witness_variable(|| Ok(Fr::from(0u64)))?;
+                // create r1cs (sum_var + input) × 1 = new_sum_var
+                for i in 0..self.num_public_inputs {
+                    let input = cs.new_input_variable(|| Ok(Fr::from(i as u64)))?;
+
+                    running_sum += i as u64;
+                    let new_sum_var = cs.new_witness_variable(|| Ok(Fr::from(running_sum)))?;
+
+                    // Constraint: old_sum + input = new_sum
+                    let one = ark_relations::r1cs::Variable::One;
+                    cs.enforce_constraint(lc!() + sum_var + input, lc!() + one, lc!() + new_sum_var)?;
+
+                    sum_var = new_sum_var;
+                }
+
+                Ok(())
+            }
+        }
+
+        let test_sizes = vec![10_000, 20_000, 40_000, 80_000, 160_000];
+
+        println!("{:<15} {:<20} {:<25} {:<20}", "Num Inputs", "VK Gen (sec)", "Prepare Time (ms)", "Per Input (μs)");
+        println!("{:-<80}", "");
+
+        for num_inputs in test_sizes {
+            let mut rng = thread_rng();
+
+            let vk_gen_start = Instant::now();
+            let circuit = Circuit { num_public_inputs: num_inputs };
+            let (_, vk) = Groth16::<Bn254>::circuit_specific_setup(circuit, &mut rng).expect("Setup failed");
+            let vk_gen_time = vk_gen_start.elapsed().as_secs_f64();
+
+            let pvk = ark_groth16::prepare_verifying_key(&vk);
+
+            let public_inputs: Vec<Fr> = (0..num_inputs).map(|i| Fr::from(i as u64)).collect();
+
+            // Benchmark prepare_inputs
+            const ITERATIONS: u32 = 100;
+            let start = Instant::now();
+            for _ in 0..ITERATIONS {
+                let _ = Groth16::<Bn254>::prepare_inputs(&pvk, &public_inputs).unwrap();
+            }
+            let duration = start.elapsed() / ITERATIONS;
+
+            let total_ms = duration.as_secs_f64() * 1000.0;
+            let per_input_us = (duration.as_secs_f64() * 1_000_000.0) / num_inputs as f64;
+
+            println!("{:<15} {:<20.1} {:<25.3} {:<20.3}", num_inputs, vk_gen_time, total_ms, per_input_us);
         }
     }
 }
