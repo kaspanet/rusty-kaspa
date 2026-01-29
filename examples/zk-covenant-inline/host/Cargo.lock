@@ -1986,7 +1986,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-addresses"
-version = "1.0.1"
+version = "1.1.0-rc.2"
 dependencies = [
  "borsh",
  "js-sys",
@@ -2000,7 +2000,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensus-core"
-version = "1.0.1"
+version = "1.1.0-rc.2"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -2036,7 +2036,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-core"
-version = "1.0.1"
+version = "1.1.0-rc.2"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2055,7 +2055,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-hashes"
-version = "1.0.1"
+version = "1.1.0-rc.2"
 dependencies = [
  "blake2b_simd",
  "blake3",
@@ -2074,7 +2074,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-math"
-version = "1.0.1"
+version = "1.1.0-rc.2"
 dependencies = [
  "borsh",
  "faster-hex 0.9.0",
@@ -2093,14 +2093,14 @@ dependencies = [
 
 [[package]]
 name = "kaspa-merkle"
-version = "1.0.1"
+version = "1.1.0-rc.2"
 dependencies = [
  "kaspa-hashes",
 ]
 
 [[package]]
 name = "kaspa-muhash"
-version = "1.0.1"
+version = "1.1.0-rc.2"
 dependencies = [
  "kaspa-hashes",
  "kaspa-math",
@@ -2110,13 +2110,14 @@ dependencies = [
 
 [[package]]
 name = "kaspa-txscript"
-version = "1.0.1"
+version = "1.1.0-rc.2"
 dependencies = [
  "ark-bn254",
  "ark-ec",
  "ark-groth16",
  "ark-relations",
  "ark-serialize",
+ "ark-snark",
  "blake2b_simd",
  "borsh",
  "bytemuck",
@@ -2132,6 +2133,7 @@ dependencies = [
  "kaspa-utils",
  "kaspa-wasm-core",
  "log",
+ "once_cell",
  "parking_lot",
  "rand 0.8.5",
  "risc0-binfmt",
@@ -2152,16 +2154,17 @@ dependencies = [
 
 [[package]]
 name = "kaspa-txscript-errors"
-version = "1.0.1"
+version = "1.1.0-rc.2"
 dependencies = [
  "borsh",
+ "kaspa-hashes",
  "secp256k1",
  "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "kaspa-utils"
-version = "1.0.1"
+version = "1.1.0-rc.2"
 dependencies = [
  "arc-swap",
  "async-channel 2.5.0",
@@ -2190,7 +2193,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wasm-core"
-version = "1.0.1"
+version = "1.1.0-rc.2"
 dependencies = [
  "faster-hex 0.9.0",
  "hexplay",
@@ -5297,7 +5300,7 @@ dependencies = [
 
 [[package]]
 name = "zk-covenant-inline-core"
-version = "1.0.1"
+version = "1.1.0-rc.2"
 dependencies = [
  "bytemuck",
  "sha2",

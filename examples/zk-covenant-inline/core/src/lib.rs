@@ -90,11 +90,7 @@ impl State {
     }
     pub fn get_result(&self, index: usize) -> Option<&ActionWithOutput> {
         assert!(index < N);
-        if index > self.current as usize {
-            None
-        } else {
-            self.results_ring.get(index % N)
-        }
+        if index > self.current as usize { None } else { self.results_ring.get(index % N) }
     }
 
     pub fn last_result(&self) -> Option<&ActionWithOutput> {

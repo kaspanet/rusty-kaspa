@@ -5,7 +5,8 @@ use kaspa_consensus_core::tx::{
     PopulatedTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
 use kaspa_txscript::caches::Cache;
-use kaspa_txscript::{opcodes::codes::*, pay_to_script_hash_script, script_builder::ScriptBuilder, EngineFlags, TxScriptEngine};
+use kaspa_txscript::engine_context::EngineContext;
+use kaspa_txscript::{EngineFlags, TxScriptEngine, opcodes::codes::*, pay_to_script_hash_script, script_builder::ScriptBuilder};
 
 // -------------------------
 // MOCK TRANSACTION CREATOR
@@ -20,7 +21,7 @@ fn make_mock_transaction(input_script: &[u8], output_script: &[u8]) -> (Transact
 
     let tx = Transaction::new(TX_VERSION, vec![dummy_input.clone()], vec![dummy_output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
 
-    let utxo_entry = UtxoEntry::new(SOMPI_PER_KASPA, input_spk, 0, false);
+    let utxo_entry = UtxoEntry::new(SOMPI_PER_KASPA, input_spk, 0, false, None);
 
     (tx, utxo_entry)
 }
@@ -59,7 +60,7 @@ fn build_redeem_script(end: i64, state: &[u8]) -> Vec<u8> {
             + 1 + state.len() // OpPushDataX + data
         } as i64).unwrap()//  + len of data
         .add_i64(end).unwrap()
-        .add_op(OpTxInputScriptSigSubStr).unwrap()
+        .add_op(OpTxInputScriptSigSubstr).unwrap()
         .add_op(OpCat).unwrap()
 
         // Duplicate and hash the extracted redeem script
@@ -125,7 +126,8 @@ fn main() {
     let reused_values = SigHashReusedValuesUnsync::new();
     let flags = EngineFlags { covenants_enabled: true };
 
-    let mut engine = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &reused_values, &sig_cache, flags);
+    let ctx = EngineContext::new(&sig_cache).with_reused(&reused_values);
+    let mut engine = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, ctx, flags);
 
     match engine.execute() {
         Ok(_) => println!("Script execution succeeded with checks!"),
