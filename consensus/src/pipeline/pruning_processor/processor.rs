@@ -8,6 +8,7 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
+            dagknight::DagknightStore,
             ghostdag::{CompactGhostdagData, GhostdagStoreReader},
             headers::HeaderStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
@@ -486,6 +487,17 @@ impl PruningProcessor {
                 self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();
                 self.acceptance_data_store.delete_batch(&mut batch, current).unwrap();
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
+
+                // TODO[DK]: Revisit pruning for DagKnight data
+                // Prune the records rooted at this block (may be 0).
+                // TODO[DK]: this can impact DK calls rooted at the current block in the case where the conflict genesis
+                // is already pruned but a new block (obviously should fail) would try to create a conflict.
+                if let Some(dagknight_store) = &self.dagknight_store {
+                    let dk_deleted = dagknight_store.delete_rooted_range(&mut batch, current).unwrap();
+                    if dk_deleted > 0 {
+                        trace!("[PRUNE::DK] Root: {} | Count: {}", current, dk_deleted);
+                    }
+                }
 
                 if let Some(&affiliated_proof_level) = keep_relations.get(&current) {
                     if statuses_write.get(current).optional().unwrap().is_some_and(|s| s.is_valid()) {
