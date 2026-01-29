@@ -17,6 +17,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
+use tokio::sync::watch;
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
@@ -139,6 +140,15 @@ pub struct KaspaApi {
 impl KaspaApi {
     /// Create a new Kaspa API client
     pub async fn new(address: String, _block_wait_time: Duration, coinbase_tag_suffix: Option<String>) -> Result<Arc<Self>> {
+        Self::new_with_shutdown(address, _block_wait_time, coinbase_tag_suffix, None).await
+    }
+
+    pub async fn new_with_shutdown(
+        address: String,
+        _block_wait_time: Duration,
+        coinbase_tag_suffix: Option<String>,
+        shutdown_rx: Option<watch::Receiver<bool>>,
+    ) -> Result<Arc<Self>> {
         info!("Connecting to Kaspa node at {}", address);
 
         // GrpcClient requires explicit "grpc://" prefix for connection
@@ -150,9 +160,13 @@ impl KaspaApi {
         debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Address:"), &grpc_address);
         debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Protocol:"), "gRPC (via RPC client wrapper)");
 
-        // Connect to Kaspa node with grpc:// prefix, using extended request timeout and reconnection support
-        let client = Arc::new(
-            GrpcClient::connect_with_args(
+        let mut attempt: u64 = 0;
+        let mut backoff_ms: u64 = 250;
+        let mut shutdown_rx = shutdown_rx;
+
+        let client = loop {
+            attempt += 1;
+            let connect_fut = GrpcClient::connect_with_args(
                 NotificationMode::Direct,
                 grpc_address.clone(),
                 None,
@@ -161,13 +175,49 @@ impl KaspaApi {
                 false,
                 Some(500_000),
                 Default::default(),
-            )
-            .await
-            .context("Failed to connect to Kaspa node")?,
-        );
+            );
+
+            let res = if let Some(rx) = shutdown_rx.as_mut() {
+                tokio::select! {
+                    _ = rx.wait_for(|v| *v) => {
+                        return Err(anyhow::anyhow!("shutdown requested"));
+                    }
+                    res = connect_fut => res,
+                }
+            } else {
+                connect_fut.await
+            };
+
+            match res {
+                Ok(client) => break Arc::new(client),
+                Err(e) => {
+                    let backoff = Duration::from_millis(backoff_ms);
+                    warn!(
+                        "failed to connect to kaspa node at {} (attempt {}): {}, retrying in {:.2}s",
+                        grpc_address,
+                        attempt,
+                        e,
+                        backoff.as_secs_f64()
+                    );
+
+                    if let Some(rx) = shutdown_rx.as_mut() {
+                        tokio::select! {
+                            _ = rx.wait_for(|v| *v) => {
+                                return Err(anyhow::anyhow!("shutdown requested"));
+                            }
+                            _ = sleep(backoff) => {}
+                        }
+                    } else {
+                        sleep(backoff).await;
+                    }
+
+                    backoff_ms = (backoff_ms.saturating_mul(2)).min(5_000);
+                }
+            }
+        };
 
         // Log successful connection (detailed logs moved to debug)
-        debug!("{} {}", LogColors::api("[API]"), LogColors::block("✓ RPC Connection Established Successfully"));
+        debug!("{} {}", LogColors::api("[API]"), LogColors::block("RPC Connection Established Successfully"));
         debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Connected to:"), &grpc_address);
         debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Connection Type:"), "gRPC (via RPC client wrapper)");
 
@@ -175,10 +225,49 @@ impl KaspaApi {
         client.start(None).await;
 
         // Subscribe to block template notifications
-        client
-            .start_notify(ListenerId::default(), NewBlockTemplateScope {}.into())
-            .await
-            .context("Failed to subscribe to block template notifications")?;
+        // Some nodes may take time to accept notification subscriptions; retry until it succeeds.
+        let mut attempt: u64 = 0;
+        let mut backoff_ms: u64 = 250;
+        loop {
+            attempt += 1;
+            let notify_fut = client.start_notify(ListenerId::default(), NewBlockTemplateScope {}.into());
+
+            let res = if let Some(rx) = shutdown_rx.as_mut() {
+                tokio::select! {
+                    _ = rx.wait_for(|v| *v) => {
+                        return Err(anyhow::anyhow!("shutdown requested"));
+                    }
+                    res = notify_fut => res,
+                }
+            } else {
+                notify_fut.await
+            };
+
+            match res {
+                Ok(_) => break,
+                Err(e) => {
+                    let backoff = Duration::from_millis(backoff_ms);
+                    warn!(
+                        "failed to subscribe to block template notifications (attempt {}): {}, retrying in {:.2}s",
+                        attempt,
+                        e,
+                        backoff.as_secs_f64()
+                    );
+
+                    if let Some(rx) = shutdown_rx.as_mut() {
+                        tokio::select! {
+                            _ = rx.wait_for(|v| *v) => {
+                                return Err(anyhow::anyhow!("shutdown requested"));
+                            }
+                            _ = sleep(backoff) => {}
+                        }
+                    } else {
+                        sleep(backoff).await;
+                    }
+                    backoff_ms = (backoff_ms.saturating_mul(2)).min(5_000);
+                }
+            }
+        }
 
         // Start receiving notifications
         let notification_rx = {
@@ -196,9 +285,6 @@ impl KaspaApi {
 
         let coinbase_tag = build_coinbase_tag_bytes(coinbase_tag_suffix.as_deref());
         let api = Arc::new(Self { client, notification_rx, connected: Arc::new(Mutex::new(true)), coinbase_tag });
-
-        // Wait for node to sync
-        api.wait_for_sync(true).await?;
 
         // Start network stats thread
         let api_clone = Arc::clone(&api);
@@ -337,7 +423,7 @@ impl KaspaApi {
         debug!(
             "{} {}",
             LogColors::api("[API]"),
-            LogColors::api(&format!("✓ ===== ATTEMPTING BLOCK SUBMISSION TO KASPA NODE ===== Hash: {}", block_hash))
+            LogColors::api(&format!("===== ATTEMPTING BLOCK SUBMISSION TO KASPA NODE ===== Hash: {}", block_hash))
         );
         debug!("{} {}", LogColors::api("[API]"), LogColors::label("Block Details:"));
         debug!("{} {} {}", LogColors::api("[API]"), LogColors::label("  - Hash:"), block_hash);
@@ -366,6 +452,33 @@ impl KaspaApi {
 
         match &result {
             Ok(response) => {
+                // IMPORTANT: The RPC call can succeed while the node still rejects the block.
+                // Only treat SubmitBlockReport::Success as accepted.
+                if !response.report.is_success() {
+                    let now = Instant::now();
+                    let mut guard = BLOCK_SUBMIT_GUARD.lock();
+                    guard.remove(&block_hash, now);
+
+                    warn!(
+                        "{} {}",
+                        LogColors::api("[API]"),
+                        LogColors::validation(&format!("===== BLOCK REJECTED BY KASPA NODE ===== Hash: {}", block_hash))
+                    );
+                    warn!(
+                        "{} {} {}",
+                        LogColors::api("[API]"),
+                        LogColors::label("REJECTION REASON:"),
+                        format!("{:?}", response.report)
+                    );
+                    warn!(
+                        "{} {} {}",
+                        LogColors::api("[API]"),
+                        LogColors::label("  - Blue Score:"),
+                        format!("{}, Timestamp: {}, Nonce: {:x}", blue_score, timestamp, nonce)
+                    );
+                    return Err(anyhow::anyhow!("Block rejected by node: {:?}", response.report));
+                }
+
                 // Keep block accepted message at info (important operational event)
                 info!(
                     "{} {}",
@@ -409,7 +522,7 @@ impl KaspaApi {
                             info!(
                                 "{} {} {}",
                                 LogColors::api("[API]"),
-                                LogColors::block("✓ Block appears in tip hashes (good sign for propagation)"),
+                                LogColors::block("Block appears in tip hashes (good sign for propagation)"),
                                 format!("Hash: {}", block_hash_clone)
                             );
                         } else {
@@ -417,7 +530,7 @@ impl KaspaApi {
                             info!(
                                 "{} {} {}",
                                 LogColors::api("[API]"),
-                                LogColors::label("ℹ Block not yet in tip hashes (may still propagate)"),
+                                LogColors::label("Block not yet in tip hashes (may still propagate)"),
                                 format!("Hash: {}", block_hash_clone)
                             );
                             info!(
@@ -503,7 +616,11 @@ impl KaspaApi {
                     }
                 }
                 Err(e) => {
-                    warn!("failed to get sync status: {}, retrying...", e);
+                    if verbose {
+                        warn!("failed to get sync status: {}, retrying...", e);
+                    } else {
+                        debug!("failed to get sync status: {}, retrying...", e);
+                    }
                 }
             }
 
@@ -511,6 +628,53 @@ impl KaspaApi {
                 warn!("Kaspa is not synced, waiting for sync before starting bridge");
             }
             sleep(Duration::from_secs(10)).await;
+        }
+
+        Ok(())
+    }
+
+    pub async fn wait_for_sync_with_shutdown(&self, verbose: bool, mut shutdown_rx: watch::Receiver<bool>) -> Result<()> {
+        if verbose {
+            debug!("checking kaspad sync state");
+        }
+
+        loop {
+            let sync_fut = self.client.get_sync_status();
+            let sync_res = tokio::select! {
+                _ = shutdown_rx.wait_for(|v| *v) => {
+                    return Err(anyhow::anyhow!("shutdown requested"));
+                }
+                res = sync_fut => res,
+            };
+
+            match sync_res {
+                Ok(is_synced) => {
+                    if is_synced {
+                        if verbose {
+                            debug!("kaspad synced, starting server");
+                        }
+                        break;
+                    }
+                }
+                Err(e) => {
+                    if verbose {
+                        warn!("failed to get sync status: {}, retrying...", e);
+                    } else {
+                        debug!("failed to get sync status: {}, retrying...", e);
+                    }
+                }
+            }
+
+            if verbose {
+                warn!("Kaspa is not synced, waiting for sync before starting bridge");
+            }
+
+            tokio::select! {
+                _ = shutdown_rx.wait_for(|v| *v) => {
+                    return Err(anyhow::anyhow!("shutdown requested"));
+                }
+                _ = sleep(Duration::from_secs(10)) => {}
+            }
         }
 
         Ok(())
@@ -714,6 +878,69 @@ impl KaspaApi {
                         }
                     }
                     // Ticker timeout - manually check for new blocks
+                    _ = ticker.tick() => {
+                        block_cb();
+                    }
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    pub async fn start_block_template_listener_with_shutdown<F>(
+        self: Arc<Self>,
+        block_wait_time: Duration,
+        mut shutdown_rx: watch::Receiver<bool>,
+        mut block_cb: F,
+    ) -> Result<()>
+    where
+        F: FnMut() + Send + 'static,
+    {
+        let mut rx = self.notification_rx.lock().take().ok_or_else(|| anyhow::anyhow!("Notification receiver already taken"))?;
+
+        let api_clone = Arc::clone(&self);
+        tokio::spawn(async move {
+            let mut restart_channel = true;
+            let mut ticker = tokio::time::interval(block_wait_time);
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+            loop {
+                if *shutdown_rx.borrow() {
+                    break;
+                }
+
+                if let Err(e) = api_clone.wait_for_sync(false).await {
+                    error!("error checking kaspad sync state, attempting reconnect: {}", e);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    restart_channel = true;
+                }
+
+                if restart_channel {
+                    restart_channel = false;
+                }
+
+                tokio::select! {
+                    _ = shutdown_rx.changed() => {
+                        if *shutdown_rx.borrow() {
+                            break;
+                        }
+                    }
+                    notification_result = rx.recv() => {
+                        match notification_result {
+                            Some(Notification::NewBlockTemplate(_)) => {
+                                while rx.try_recv().is_ok() {}
+                                block_cb();
+                                ticker = tokio::time::interval(block_wait_time);
+                                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                            }
+                            Some(_) => {}
+                            None => {
+                                warn!("Block template notification channel closed");
+                                break;
+                            }
+                        }
+                    }
                     _ = ticker.tick() => {
                         block_cb();
                     }

@@ -408,4 +408,4 @@ jobs:
           # Run build script for musl toolchain
           source musl-toolchain/build.sh
           # Build for musl
-          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-musl
+          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --bin stratum-bridge --release --target x86_64-unknown-linux-musl

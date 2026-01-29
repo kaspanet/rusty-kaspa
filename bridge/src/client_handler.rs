@@ -155,6 +155,19 @@ impl ClientHandler {
         }
     }
 
+    pub fn disconnect_all(&self) {
+        let clients = {
+            let guard = self.clients.lock();
+            guard.values().cloned().collect::<Vec<_>>()
+        };
+
+        for client in clients {
+            client.disconnect();
+        }
+
+        self.clients.lock().clear();
+    }
+
     /// Send an immediate job to a specific client (for use after authorization)
     /// This ensures IceRiver and other ASICs get a job immediately, not waiting for polling
     pub async fn send_immediate_job_to_client<T: KaspaApiTrait + Send + Sync + ?Sized + 'static>(

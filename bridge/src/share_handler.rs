@@ -7,6 +7,9 @@ use crate::{
     prom::*,
     stratum_context::StratumContext,
 };
+
+#[cfg(feature = "rkstratum_cpu_miner")]
+use crate::rkstratum_cpu_miner::InternalMinerMetrics;
 use kaspa_consensus_core::block::Block;
 // kaspa_pow used inline for PoW validation
 use num_bigint::BigUint;
@@ -19,6 +22,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
+use tokio::sync::watch;
 use tracing::{debug, error, info, warn};
 
 #[allow(dead_code)]
@@ -107,7 +111,16 @@ struct StatsPrinterEntry {
 }
 
 static STATS_PRINTER_REGISTRY: Lazy<Mutex<Vec<StatsPrinterEntry>>> = Lazy::new(|| Mutex::new(Vec::new()));
-static STATS_PRINTER_STARTED: AtomicBool = AtomicBool::new(false);
+pub static STATS_PRINTER_STARTED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(feature = "rkstratum_cpu_miner")]
+pub static RKSTRATUM_CPU_MINER_METRICS: Lazy<parking_lot::Mutex<Option<Arc<InternalMinerMetrics>>>> =
+    Lazy::new(|| parking_lot::Mutex::new(None));
+
+#[cfg(feature = "rkstratum_cpu_miner")]
+pub fn set_rkstratum_cpu_miner_metrics(metrics: Arc<InternalMinerMetrics>) {
+    *RKSTRATUM_CPU_MINER_METRICS.lock() = Some(metrics);
+}
 
 #[derive(Clone)]
 pub struct WorkStats {
@@ -291,8 +304,10 @@ impl ShareHandler {
         debug!("{} [SUBMIT] Retrieved MiningState - counter: {}, stored IDs: {:?}", prefix, current_counter, stored_ids);
 
         // Validate submit
-        // According to stratum protocol: params[0] = address.name, params[1] = jobid, params[2] = nonce
-        // We get the address from authorize, but we can optionally validate params[0] if present
+        // Different miners use different parameter layouts:
+        // - ASIC-style (3 params): [address.name, job_id, nonce]
+        // - EthereumStratum-style (5 params, e.g. lolMiner): [address.name, job_id, extranonce2, ntime, nonce]
+        // We get the address from authorize, but we can optionally validate params[0] if present.
         if event.params.len() < 3 {
             error!("{} [SUBMIT] ERROR: Expected at least 3 params, got {}", prefix, event.params.len());
             let wallet_addr = ctx.wallet_addr.lock().clone();
@@ -303,7 +318,7 @@ impl ShareHandler {
         let prefix = self.log_prefix();
         debug!("{} [SUBMIT] Params[0] (address/identity): {:?}", prefix, event.params.first());
         debug!("{} [SUBMIT] Params[1] (job_id): {:?}", prefix, event.params.get(1));
-        debug!("{} [SUBMIT] Params[2] (nonce): {:?}", prefix, event.params.get(2));
+        debug!("{} [SUBMIT] Params[2] (nonce-ish): {:?}", prefix, event.params.get(2));
 
         // Optionally validate params[0] (address.name) if present
         // Some miners send it, others don't - we get address from authorize anyway
@@ -388,7 +403,11 @@ impl ShareHandler {
             }
         };
 
-        let nonce_str = event.params[2].as_str().ok_or("nonce must be a string")?;
+        // Choose nonce param index based on miner param layout.
+        // - 3 params: nonce is params[2]
+        // - 5+ params: nonce is params[4] for EthereumStratum-style miners (and generally last param)
+        let nonce_param_idx = if event.params.len() >= 5 { 4 } else { 2 };
+        let nonce_str = event.params[nonce_param_idx].as_str().ok_or("nonce must be a string")?;
         debug!("[SUBMIT] Raw nonce string: '{}'", nonce_str);
 
         let nonce_str = nonce_str.replace("0x", "");
@@ -525,7 +544,7 @@ impl ShareHandler {
                 format!("timestamp={}, nonce=0x{:x}, bits=0x{:08x}", header_clone.timestamp, header_clone.nonce, header_clone.bits)
             );
 
-            // Use kaspa_pow::State for proper PoW validation
+            // Use kaspa_pow::State for PoW validation against the header's compact bits target.
             use kaspa_pow::State as PowState;
             let pow_state = PowState::new(&header_clone);
             let (check_passed, pow_value_uint256) = pow_state.check_pow(nonce_val);
@@ -540,13 +559,15 @@ impl ShareHandler {
                 format!("check_passed={}, pow_value={:x}", check_passed, pow_value)
             );
 
-            // Calculate network target from header.bits
+            // Calculate network target from header.bits (debug/diagnostic only).
             use crate::hasher::calculate_target;
             let network_target = calculate_target(header_clone.bits as u64);
 
             // Check if pow_value meets network target (lower hash is better)
             let meets_network_target = pow_value <= network_target;
-            pow_passed = meets_network_target;
+            // IMPORTANT: Use kaspa_pow's own compact-target handling as the source of truth.
+            // This avoids any potential mismatch in our BigUint conversion/comparison path.
+            pow_passed = check_passed;
 
             let pow_value_bytes = pow_value.to_bytes_be();
             let network_target_bytes = network_target.to_bytes_be();
@@ -554,7 +575,8 @@ impl ShareHandler {
             debug!("[SUBMIT] Target comparison:");
             debug!("[SUBMIT]   - pow_value: {:x} ({} bytes)", pow_value, pow_value_bytes.len());
             debug!("[SUBMIT]   - network_target: {:x} ({} bytes)", network_target, network_target_bytes.len());
-            debug!("[SUBMIT]   - meets_network_target: {}", meets_network_target);
+            debug!("[SUBMIT]   - meets_network_target(BigUint): {}", meets_network_target);
+            debug!("[SUBMIT]   - check_passed(kaspa_pow): {}", check_passed);
 
             debug!(
                 "[SUBMIT] PoW check result: passed={}, pow_value={:x}, network_target={:x}, header.bits={}",
@@ -625,24 +647,20 @@ impl ShareHandler {
                 let worker_name = ctx.worker_name.lock().clone();
                 let prefix = self.log_prefix();
 
-                info!("{} {}", prefix, LogColors::block("===== BLOCK FOUND! ===== PoW passed network target"));
                 info!(
+                    "{} {} {}",
+                    prefix,
+                    LogColors::block("===== BLOCK FOUND! ====="),
+                    format!("Worker: {}, Wallet: {}, Nonce: {:x}", worker_name, wallet_addr, nonce_val)
+                );
+                debug!(
                     "{} {} {} {}",
                     prefix,
                     LogColors::block("[BLOCK]"),
                     LogColors::label("ACCEPTANCE REASON:"),
-                    format!(
-                        "pow_value ({:x}) <= network_target ({:x}) - Block meets network difficulty requirement",
-                        pow_value, network_target
-                    )
+                    format!("pow_value ({:x}) <= network_target ({:x})", pow_value, network_target)
                 );
-                info!(
-                    "{} {} {} {}",
-                    prefix,
-                    LogColors::block("[BLOCK]"),
-                    LogColors::label("Worker:"),
-                    format!("{}, Wallet: {}, Nonce: {:x}, Pow Value: {:x}", worker_name, wallet_addr, nonce_val, pow_value)
-                );
+                debug!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Pow Value:"), format!("{:x}", pow_value));
 
                 // Log block details before creating the block (to avoid borrow issues)
                 let header_bits = header_clone.bits;
@@ -696,7 +714,7 @@ impl ShareHandler {
                     warn!(
                         "{} {} {}",
                         LogColors::block("[BLOCK]"),
-                        LogColors::error("⚠ Timestamp is old:"),
+                        LogColors::error("Timestamp is old:"),
                         format!("{} seconds old - block template may be stale", timestamp_age_sec)
                     );
                 }
@@ -713,11 +731,10 @@ impl ShareHandler {
                 let block_hash = header::hash(&block.header).to_string();
 
                 // Log prominent "Block Found" message with hash
-                info!("{} {}", prefix, LogColors::block(&format!("🎉 BLOCK FOUND! Hash: {}", block_hash)));
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Hash:"), block_hash);
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Wallet:"), wallet_addr);
-                info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Nonce:"), format!("{:x}", nonce_val));
+                info!("{} {} {}", prefix, LogColors::block("BLOCK FOUND!"), format!("Hash: {}", block_hash));
+                debug!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
+                debug!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Wallet:"), wallet_addr);
+                debug!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Nonce:"), format!("{:x}", nonce_val));
 
                 // Log block submission details before submission (moved to debug level)
                 debug!("{} {}", LogColors::block("[BLOCK]"), LogColors::block("=== SUBMITTING BLOCK TO NODE ==="));
@@ -753,20 +770,34 @@ impl ShareHandler {
                 let block_submit_result = kaspa_api.submit_block(block.clone()).await;
 
                 match block_submit_result {
-                    Ok(_response) => {
+                    Ok(response) => {
+                        if !response.report.is_success() {
+                            let prefix = self.log_prefix();
+                            warn!("{} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("Block rejected by node"));
+                            warn!(
+                                "{} {} {} {}",
+                                prefix,
+                                LogColors::block("[BLOCK]"),
+                                LogColors::label("REJECTION REASON:"),
+                                format!("{:?}", response.report)
+                            );
+                            invalid_share = true;
+                            break;
+                        }
+
                         let prefix = self.log_prefix();
                         // Block accepted - log after submit to get it submitted faster
                         info!(
                             "{} {} {}",
                             prefix,
                             LogColors::block("[BLOCK]"),
-                            LogColors::block(&format!("✓ Block submitted successfully! Hash: {}", block_hash))
+                            LogColors::block(&format!("Block submitted successfully! Hash: {}", block_hash))
                         );
                         info!(
                             "{} {} {}",
                             prefix,
                             LogColors::block("[BLOCK]"),
-                            LogColors::block(&format!("🎉🎉🎉 BLOCK ACCEPTED BY NODE! 🎉🎉🎉 Hash: {}", block_hash))
+                            LogColors::block(&format!("BLOCK ACCEPTED BY NODE! Hash: {}", block_hash))
                         );
                         info!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("  - Worker:"), worker_name);
                         info!(
@@ -805,7 +836,7 @@ impl ShareHandler {
                                             instance_id,
                                             LogColors::block("[BLOCK]"),
                                             LogColors::block(&format!(
-                                                "✓ Block confirmed BLUE in DAG! Hash: {}",
+                                                "Block confirmed BLUE in DAG! Hash: {}",
                                                 block_hash_for_confirm
                                             ))
                                         );
@@ -826,7 +857,7 @@ impl ShareHandler {
                                 instance_id,
                                 LogColors::block("[BLOCK]"),
                                 LogColors::label(&format!(
-                                    "ℹ Block not confirmed blue after {} attempts (not counted as Blocks). Hash: {}",
+                                    "Block not confirmed blue after {} attempts (not counted as Blocks). Hash: {}",
                                     BLOCK_CONFIRM_MAX_ATTEMPTS, block_hash_for_confirm
                                 ))
                             );
@@ -843,7 +874,7 @@ impl ShareHandler {
                         // Only check for "ErrDuplicateBlock" (not "duplicate" or "stale")
                         // Block submission failed
                         let error_str = e.to_string();
-                        error!("{} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("✗ Block submission FAILED"));
+                        error!("{} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("Block submission FAILED"));
                         error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Worker:"), worker_name);
                         error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::label("Blockhash:"), block_hash);
                         error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("Error:"), error_str);
@@ -959,7 +990,7 @@ impl ShareHandler {
                 let worker_name = ctx.worker_name.lock().clone();
                 debug!(
                     "{} {} {}",
-                    LogColors::validation("✗ INVALID SHARE (too high)"),
+                    LogColors::validation("INVALID SHARE (too high)"),
                     LogColors::label("worker:"),
                     format!(
                         "{}, nonce: {:x}, pow_value: {:x}, pool_target: {:x}, pow_ge_pool_target: true",
@@ -998,7 +1029,7 @@ impl ShareHandler {
                 let worker_name = ctx.worker_name.lock().clone();
                 debug!(
                     "{} {} {}",
-                    LogColors::validation("✓ VALID SHARE"),
+                    LogColors::validation("VALID SHARE"),
                     LogColors::label("worker:"),
                     format!(
                         "{}, nonce: {:x}, pow_value: {:x}, pool_target: {:x}, pow_lt_pool_target: true",
@@ -1125,25 +1156,60 @@ impl ShareHandler {
     }
 
     pub fn start_prune_stats_thread(&self) {
+        self.start_prune_stats_thread_impl(None);
+    }
+
+    pub fn start_prune_stats_thread_with_shutdown(&self, shutdown_rx: watch::Receiver<bool>) {
+        self.start_prune_stats_thread_impl(Some(shutdown_rx));
+    }
+
+    fn start_prune_stats_thread_impl(&self, mut shutdown_rx: Option<watch::Receiver<bool>>) {
         let stats = Arc::clone(&self.stats);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(STATS_PRUNE_INTERVAL);
             loop {
-                interval.tick().await;
-                let mut stats_map = stats.lock();
-                let now = Instant::now();
-                stats_map.retain(|_, v| {
-                    let last_share = *v.last_share.lock();
-                    let shares = *v.shares_found.lock();
-                    (shares > 0 || now.duration_since(v.start_time) < Duration::from_secs(180))
-                        && now.duration_since(last_share) < Duration::from_secs(600)
-                });
-                // Note: Pruning is silent, no logs needed
+                if let Some(ref mut rx) = shutdown_rx {
+                    tokio::select! {
+                        _ = rx.changed() => {
+                            if *rx.borrow() {
+                                break;
+                            }
+                        }
+                        _ = interval.tick() => {
+                            let mut stats_map = stats.lock();
+                            let now = Instant::now();
+                            stats_map.retain(|_, v| {
+                                let last_share = *v.last_share.lock();
+                                let shares = *v.shares_found.lock();
+                                (shares > 0 || now.duration_since(v.start_time) < Duration::from_secs(180))
+                                    && now.duration_since(last_share) < Duration::from_secs(600)
+                            });
+                        }
+                    }
+                } else {
+                    interval.tick().await;
+                    let mut stats_map = stats.lock();
+                    let now = Instant::now();
+                    stats_map.retain(|_, v| {
+                        let last_share = *v.last_share.lock();
+                        let shares = *v.shares_found.lock();
+                        (shares > 0 || now.duration_since(v.start_time) < Duration::from_secs(180))
+                            && now.duration_since(last_share) < Duration::from_secs(600)
+                    });
+                }
             }
         });
     }
 
     pub fn start_print_stats_thread(&self, target_spm: u32) {
+        self.start_print_stats_thread_impl(target_spm, None);
+    }
+
+    pub fn start_print_stats_thread_with_shutdown(&self, target_spm: u32, shutdown_rx: watch::Receiver<bool>) {
+        self.start_print_stats_thread_impl(target_spm, Some(shutdown_rx));
+    }
+
+    fn start_print_stats_thread_impl(&self, target_spm: u32, shutdown_rx: Option<watch::Receiver<bool>>) {
         let target_spm = if target_spm == 0 { 20.0 } else { target_spm as f64 };
         let instance_id = self.instance_id.clone();
         let inst_short = {
@@ -1169,6 +1235,7 @@ impl ShareHandler {
             return;
         }
 
+        let mut shutdown_rx = shutdown_rx;
         tokio::spawn(async move {
             fn trunc<'a>(s: &'a str, max: usize) -> Cow<'a, str> {
                 if s.len() <= max { Cow::Borrowed(s) } else { Cow::Owned(s.chars().take(max).collect()) }
@@ -1216,8 +1283,25 @@ impl ShareHandler {
             }
 
             let mut interval = tokio::time::interval(STATS_PRINT_INTERVAL);
+            // Internal miner hashrate is based on hashes/sec (not Stratum shares), so we keep a
+            // last-sample snapshot to compute a stable, accurate rate (matching the dashboard).
+            #[cfg(feature = "rkstratum_cpu_miner")]
+            let mut last_internal_hashes: Option<u64> = None;
+            #[cfg(feature = "rkstratum_cpu_miner")]
+            let mut last_internal_sample = Instant::now();
             loop {
-                interval.tick().await;
+                if let Some(ref mut rx) = shutdown_rx {
+                    tokio::select! {
+                        _ = rx.changed() => {
+                            if *rx.borrow() {
+                                break;
+                            }
+                        }
+                        _ = interval.tick() => {}
+                    }
+                } else {
+                    interval.tick().await;
+                }
 
                 let node_status = {
                     let s = NODE_STATUS.lock();
@@ -1372,6 +1456,58 @@ impl ShareHandler {
 
                 out.push(sep.clone());
 
+                // If present, we also fold the feature-gated internal miner into the TOTAL row.
+                // Note: Internal CPU mining doesn't produce Stratum shares; we treat accepted/submitted blocks
+                // as the closest analogue for the Acc/Stl columns (same as the InternalCPU row does).
+                let internal_totals: Option<(f64, i64, i64, i64, i64)> = {
+                    // Feature-gated internal miner row
+                    #[cfg(feature = "rkstratum_cpu_miner")]
+                    {
+                        let mut internal_totals: Option<(f64, i64, i64, i64, i64)> = None; // (ghs, acc, stl, inv, blocks)
+                        if let Some(metrics) = RKSTRATUM_CPU_MINER_METRICS.lock().as_ref() {
+                            let hashes = metrics.hashes_tried.load(Ordering::Relaxed);
+                            let submitted = metrics.blocks_submitted.load(Ordering::Relaxed);
+                            let accepted = metrics.blocks_accepted.load(Ordering::Relaxed);
+                            let dt = now.duration_since(last_internal_sample).as_secs_f64().max(0.000_001);
+                            let dh = last_internal_hashes.map(|h| hashes.saturating_sub(h)).unwrap_or(0);
+                            last_internal_hashes = Some(hashes);
+                            last_internal_sample = now;
+
+                            // Hashrate as GH/s (format_hashrate expects GH/s)
+                            let hashrate_ghs = (dh as f64 / dt) / 1e9;
+                            internal_totals =
+                                Some((hashrate_ghs, accepted as i64, submitted.saturating_sub(accepted) as i64, 0, accepted as i64));
+                            let internal_line = format!(
+                                "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
+                                "InternalCPU",
+                                "-",
+                                format_hashrate(hashrate_ghs),
+                                "-",
+                                "-",
+                                "-",
+                                format!("{}/{}/{}", accepted, submitted.saturating_sub(accepted), 0),
+                                accepted,
+                                format_uptime(now.duration_since(start))
+                            );
+                            out.push(internal_line);
+                            out.push(sep.clone());
+                        }
+                        internal_totals
+                    }
+                    #[cfg(not(feature = "rkstratum_cpu_miner"))]
+                    {
+                        None
+                    }
+                };
+
+                if let Some((ghs, acc, stl, inv, blocks)) = internal_totals {
+                    total_rate += ghs;
+                    total_shares += acc;
+                    total_stales += stl;
+                    total_invalids += inv;
+                    total_blocks += blocks;
+                }
+
                 let overall_spm = if total_uptime_mins > 0.0 { (total_shares as f64) / total_uptime_mins } else { 0.0 };
                 let total_spm_tgt = match total_target {
                     Some(t) => format!("{:>4.1}/{:<4.1}", overall_spm, t),
@@ -1398,11 +1534,28 @@ impl ShareHandler {
     }
 
     pub fn start_vardiff_thread(&self, _expected_share_rate: u32, _log_stats: bool, _clamp: bool) {
+        self.start_vardiff_thread_impl(_expected_share_rate, _log_stats, _clamp, None);
+    }
+
+    pub fn start_vardiff_thread_with_shutdown(
+        &self,
+        expected_share_rate: u32,
+        log_stats: bool,
+        clamp: bool,
+        shutdown_rx: watch::Receiver<bool>,
+    ) {
+        self.start_vardiff_thread_impl(expected_share_rate, log_stats, clamp, Some(shutdown_rx));
+    }
+
+    fn start_vardiff_thread_impl(
+        &self,
+        expected_share_rate: u32,
+        log_stats: bool,
+        clamp: bool,
+        mut shutdown_rx: Option<watch::Receiver<bool>>,
+    ) {
         let stats = Arc::clone(&self.stats);
         let prefix = self.log_prefix();
-        let expected_share_rate = _expected_share_rate;
-        let log_stats = _log_stats;
-        let clamp = _clamp;
 
         tokio::spawn(async move {
             let expected_spm = expected_share_rate.max(1) as f64;
@@ -1421,7 +1574,18 @@ impl ShareHandler {
             }
 
             loop {
-                interval.tick().await;
+                if let Some(ref mut rx) = shutdown_rx {
+                    tokio::select! {
+                        _ = rx.changed() => {
+                            if *rx.borrow() {
+                                break;
+                            }
+                        }
+                        _ = interval.tick() => {}
+                    }
+                } else {
+                    interval.tick().await;
+                }
 
                 let mut stats_map = stats.lock();
                 let now = Instant::now();
