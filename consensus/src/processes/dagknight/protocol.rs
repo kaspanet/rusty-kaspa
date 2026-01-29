@@ -1,12 +1,12 @@
 use std::{
     cmp::{Ordering, Reverse},
-    collections::{BinaryHeap, VecDeque},
+    collections::BinaryHeap,
     sync::Arc,
 };
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    BlockHashMap, BlockHashSet, BlueWorkType, HashKTypeMap, HashMapCustomHasher, KType,
+    BlockHashMap, BlockHashSet, HashKTypeMap, HashMapCustomHasher, KType,
     blockhash::{self, BlockHashes},
 };
 use kaspa_core::debug;
@@ -148,14 +148,11 @@ impl<
                 continue;
             }
 
-            // This is the total work of all the blocks for the entire conflict zone
-            let zone_work = self.calc_conflict_zone_work(conflict_genesis, &curr_subgroup);
-
             // Pick a "winner" among these subgroups
             let (winning_conflict_genesis, winning_subgroup) = group_map
                 .iter()
                 .map(|(curr_conflict_genesis, subgroup)| {
-                    let rank_value = self.rank(conflict_genesis, subgroup, zone_work, &curr_subgroup);
+                    let rank_value = self.rank(conflict_genesis, subgroup, &curr_subgroup);
                     (rank_value, curr_conflict_genesis, subgroup)
                 })
                 .min_by(|(a, _, _), (b, _, _)| a.cmp(b))
@@ -226,7 +223,7 @@ impl<
     ///    1.1 For each unsuccessful step along the way, move the lower bound k up as well
     ///    1.2 Also exits if lkg_k is a max
     /// 2. Binary search between lower bound k and lkg_k
-    fn rank(&self, conflict_genesis: Hash, subgroup: &[Hash], zone_work: BlueWorkType, all_tips: &[Hash]) -> RankValue {
+    fn rank(&self, conflict_genesis: Hash, subgroup: &[Hash], all_tips: &[Hash]) -> RankValue {
         // for k in 0, 1, ..., infinity:
         // tie breaking is assumed to be by comparing selected_parent
         let mut selected_parent = None;
@@ -246,7 +243,7 @@ impl<
         while !found_lkg && lkg_k != u16::MAX {
             steps += 1;
             debug!("Finding upper bound k = {}", lkg_k);
-            let curr_selected_parent = self.select_parent_from_k_colouring(conflict_genesis, subgroup, zone_work, all_tips, lkg_k);
+            let curr_selected_parent = self.select_parent_from_k_colouring(conflict_genesis, subgroup, all_tips, lkg_k);
 
             if curr_selected_parent.is_some() {
                 debug!("Found a valid sp at upper bound k = {}", lkg_k);
@@ -265,8 +262,7 @@ impl<
             steps += 1;
             let k_to_check = lower_k + ((lkg_k - lower_k) / 2);
 
-            let curr_selected_parent =
-                self.select_parent_from_k_colouring(conflict_genesis, subgroup, zone_work, all_tips, k_to_check);
+            let curr_selected_parent = self.select_parent_from_k_colouring(conflict_genesis, subgroup, all_tips, k_to_check);
             let sp_found = curr_selected_parent.is_some();
 
             if sp_found {
@@ -290,69 +286,55 @@ impl<
         &self,
         conflict_genesis: Hash,
         subgroup: &[Hash],
-        zone_work: BlueWorkType,
         all_tips: &[Hash],
         k_to_check: KType,
     ) -> Option<SortableBlock> {
         let conflict_zone_manager = self.fill_conflict_zone_data(conflict_genesis, all_tips, k_to_check);
 
-        subgroup
-            .iter()
-            .filter_map(|&tip| {
-                // TODO[DK]: Use the representatives here
-                let tip_gd = conflict_zone_manager.get_data(tip).unwrap();
-                let selected_tip_data = SortableBlock { hash: tip, blue_work: tip_gd.blue_work };
+        // selected a parent in this subgroup => Conditioned upon virtual agreeing with this subgroup
+        let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup.iter().copied());
+        let virtual_gd = conflict_zone_manager.k_colouring(all_tips, k_to_check, Some(subgroup_virtual_sp));
 
-                // Add deficit logic here => sqrt(k) * work_of_some_block
-                // TODO[DK]: Right now deficit logic uses conflict genesis. Maybe there's a better value to use like an average.
-                // Figure it out
-                let deficit_work_basis = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
-                let deficit = Uint192::from_u64(k_to_check.isqrt() as u64) * deficit_work_basis;
-                if selected_tip_data.blue_work + deficit >= zone_work / 2 {
-                    // Michael: here is where cascade voting eventually belongs
-                    // With this "k" value, our selected parent covers at least half the total region's work (minus some deficit)
-                    Some(selected_tip_data)
+        // Add deficit logic here => sqrt(k) * work_of_some_block
+        // TODO[DK]: Right now deficit logic uses conflict genesis. Maybe there's a better value to use like an average.
+        // Figure it out
+        let deficit_work_basis = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());
+        let deficit = Uint192::from_u64(k_to_check.isqrt() as u64) * deficit_work_basis;
+
+        let blue_block_work = virtual_gd.blue_work;
+        let mut gray_block_work = Uint192::ZERO;
+        let mut red_block_work = Uint192::ZERO;
+        let next_chain_ancestor_of_subgroup = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
+
+        // TODO[DK]: Iterate through the VSPC red mergeset to determine red/gray work
+        let mut curr_gd = Arc::new(virtual_gd);
+
+        while curr_gd.selected_parent != conflict_genesis {
+            for &red_block in curr_gd.mergeset_reds.iter() {
+                let red_block_bits = self.headers_store.get_bits(red_block).unwrap();
+                let red_work = calc_work(red_block_bits);
+
+                if self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
+                    gray_block_work = gray_block_work + red_work;
                 } else {
-                    None
+                    red_block_work = red_block_work + red_work;
                 }
-            })
-            .max()
-    }
-
-    /// Goes through all the blocks in the conflict zone and sums up all their work (not blue work)
-    fn calc_conflict_zone_work(&self, conflict_genesis: Hash, subgroup: &[Hash]) -> Uint192 {
-        let mut queue = VecDeque::new();
-        let mut visited = BlockHashSet::new();
-
-        let mut zone_work = Uint192::ZERO;
-
-        queue.push_back(conflict_genesis);
-
-        let relations_reader = self.relations_store.read().clone();
-
-        while !queue.is_empty() {
-            let curr = queue.pop_front().unwrap();
-
-            if !self.reachability_service.is_dag_ancestor_of_any(curr, &mut subgroup.iter().copied()) {
-                continue;
             }
 
-            if visited.contains(&curr) {
-                continue;
-            }
-
-            visited.insert(curr);
-
-            if curr != self.genesis_hash {
-                zone_work = zone_work + calc_work(self.headers_store.get_bits(curr).unwrap());
-            }
-
-            for child in relations_reader.get_children(curr).unwrap().read().iter().copied() {
-                queue.push_back(child);
-            }
+            curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
         }
 
-        zone_work
+        debug!(
+            "k = {} | blue work = {} | gray work = {} | red work = {} | deficit = {}",
+            k_to_check, blue_block_work, gray_block_work, red_block_work, deficit
+        );
+        if blue_block_work + deficit > red_block_work {
+            // Michael: here is where cascade voting eventually belongs
+            // With this "k" value, our selected parent covers at least half the total region's work (minus some deficit)
+            Some(SortableBlock { hash: subgroup_virtual_sp, blue_work: blue_block_work })
+        } else {
+            None
+        }
     }
 
     // Calculates the rank of the subgroup over the region: <root, tips>
