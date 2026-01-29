@@ -20,9 +20,7 @@ const TRANSACTION_ID_SIZE: usize = mem::size_of::<TransactionId>(); // 32
 const BLUE_SCORE_SIZE: usize = mem::size_of::<u64>(); // 8
 const BLUE_SCORE_STORE_KEY_LEN: usize = BLUE_SCORE_SIZE + TRANSACTION_ID_SIZE; // 40
 
-/// Together defines the iterator that is expected for this store, and approprate reindexing.
-
-/// Type alias for the tuple expected by blue score ref iterator
+/// Type alias for the tuple expected by [`BlueScoreRefIter`] iterator
 pub type BlueScoreRefTuple = (u64, TransactionId); // (blue_score, ref_type, txid)
 
 /// Iterator over [`BlueScoreRefTuple`] the type expected to be supplied to the store
@@ -162,6 +160,12 @@ pub trait TxIndexAcceptingBlueScoreRefReader {
         blue_score_range: impl RangeBounds<u64>,
         limit: Option<usize>, // if some, Will stop after limit is reached
     ) -> StoreResult<BlueScoreRefDataResIter<impl Iterator<Item = BlueScoreAcceptingRefData>>>;
+    /// Retrives all remeaining blue score refs, at a specific blue score defined from an explicit blue score ref data point.
+    /// required for pagination over blue score boundaries.
+    fn get_remaining_blue_score_refs(
+        &self,
+        blue_score_ref_data: BlueScoreAcceptingRefData,
+    ) -> StoreResult<BlueScoreRefDataResIter<impl Iterator<Item = BlueScoreAcceptingRefData>>>;
     fn get_lowest_blue_score_ref(&self) -> StoreResult<Option<BlueScoreAcceptingRefData>>;
 }
 
@@ -219,6 +223,30 @@ impl TxIndexAcceptingBlueScoreRefReader for DbTxIndexAcceptingBlueScoreRefStore 
         ))
     }
 
+    fn get_remaining_blue_score_refs(
+        &self,
+        blue_score_ref_data: BlueScoreAcceptingRefData,
+    ) -> StoreResult<BlueScoreRefDataResIter<impl Iterator<Item = BlueScoreAcceptingRefData>>> {
+        Ok(BlueScoreRefDataResIter(
+            self.access
+                .seek_iterator(
+                    None,
+                    Some(
+                        BlueScoreRefKey::new_minimized()
+                            .with_txid(blue_score_ref_data.tx_id)
+                            .with_blue_score(blue_score_ref_data.accepting_blue_score),
+                    ),
+                    Some(BlueScoreRefKey::new_maximized().with_blue_score(blue_score_ref_data.accepting_blue_score)),
+                    usize::MAX,
+                    true, // We already know about start point
+                )
+                .map(|res| {
+                    let (key, _) = res.unwrap();
+                    BlueScoreRefKey::from(key).into()
+                }),
+        ))
+    }
+
     fn get_lowest_blue_score_ref(&self) -> StoreResult<Option<BlueScoreAcceptingRefData>> {
         Ok(self.access.iterator().next().map(|res| BlueScoreAcceptingRefData::from(BlueScoreRefKey::from(res.unwrap().0))))
     }
@@ -229,8 +257,9 @@ impl TxIndexAcceptingBlueScoreRefStore for DbTxIndexAcceptingBlueScoreRefStore {
     where
         I: Iterator<Item = BlueScoreRefTuple>,
     {
-        let mut kv_iter =
-            to_add_data.into_iter().map(|(blue_score, txid)| (BlueScoreRefKey::new_minimized().with_blue_score(blue_score).with_txid(txid), ()));
+        let mut kv_iter = to_add_data
+            .into_iter()
+            .map(|(blue_score, txid)| (BlueScoreRefKey::new_minimized().with_blue_score(blue_score).with_txid(txid), ()));
         self.access.write_many_without_cache(writer, &mut kv_iter)
     }
 

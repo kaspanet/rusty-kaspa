@@ -68,7 +68,8 @@ message KaspadRequest {
     GetUtxoReturnAddressRequestMessage getUtxoReturnAddressRequest = 1112;
     GetVirtualChainFromBlockV2RequestMessage getVirtualChainFromBlockV2Request = 1114;
     GetTransactionRequestMessage getTransactionRequest = 1116;
-    GetTransactionsByBlueScoreRequestMessage getTransactionsByBlueScoreRequest = 1118;
+    GetTransactionsByAcceptingBlueScoreRequestMessage getTransactionsByAcceptingBlueScoreRequest = 1118;
+    GetTransactionsByIncludingDaaScoreRequestMessage getTransactionsByIncludingDaaScoreRequest = 1120;
   }
 }
 
@@ -137,7 +138,8 @@ message KaspadResponse {
     GetUtxoReturnAddressResponseMessage getUtxoReturnAddressResponse = 1113;
     GetVirtualChainFromBlockV2ResponseMessage getVirtualChainFromBlockV2Response = 1115;
     GetTransactionResponseMessage getTransactionResponse = 1117;
-    GetTransactionsByBlueScoreResponseMessage getTransactionsByBlueScoreResponse = 1119;
+    GetTransactionsByAcceptingBlueScoreResponseMessage getTransactionsByAcceptingBlueScoreResponse = 1119;
+    GetTransactionsByIncludingDaaScoreResponseMessage getTransactionsByIncludingDaaScoreResponse = 1121;
   }
 }
 

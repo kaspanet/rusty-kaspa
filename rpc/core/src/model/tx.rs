@@ -1,9 +1,12 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Address;
-use kaspa_consensus_core::{acceptance_data::MergesetIndexType, tx::{
-    ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
-    UtxoEntry,
-}};
+use kaspa_consensus_core::{
+    acceptance_data::MergesetIndexType,
+    tx::{
+        ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
+        UtxoEntry,
+    },
+};
 use kaspa_txindex::model::transactions::{TxAcceptanceData, TxInclusionData};
 use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
 use serde::{Deserialize, Serialize};
@@ -552,5 +555,3 @@ impl Deserializer for RpcTransactionData {
         Ok(Self { transaction_id, transactions, inclusion_data, acceptance_data, conf_count })
     }
 }
-
-

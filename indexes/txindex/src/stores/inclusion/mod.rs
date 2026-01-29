@@ -1,10 +1,10 @@
-mod blue_scores;
+mod daa_scores;
 pub mod tips;
 mod transactions;
 
-pub use blue_scores::{
-    BlueScoreRefDataResIter, BlueScoreRefIter, BlueScoreRefKey, BlueScoreRefTuple, DbTxIndexIncludingBlueScoreRefStore,
-    TxIndexIncludingBlueScoreRefReader, TxIndexIncludingBlueScoreRefStore,
+pub use daa_scores::{
+    DaaScoreRefDataResIter, DaaScoreRefIter, DaaScoreRefKey, DaaScoreRefTuple, DbTxIndexIncludingDaaScoreRefStore,
+    TxIndexIncludingDaaScoreRefReader, TxIndexIncludingDaaScoreRefStore,
 };
 pub use tips::{DbTxIndexTipsStore, TxIndexTipsStore, TxIndexTipsStoreReader};
 pub use transactions::{

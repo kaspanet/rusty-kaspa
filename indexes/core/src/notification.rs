@@ -1,12 +1,16 @@
 use crate::indexed_utxos::{UtxoChanges, UtxoSetByScriptPublicKey};
 use derive_more::Display;
-use kaspa_consensus_notify::notification::{BlockAddedNotification, VirtualChainChangedNotification, PruningPointUtxoSetOverrideNotification};
+use kaspa_consensus_notify::notification::{
+    BlockAddedNotification, PruningPointUtxoSetOverrideNotification, VirtualChainChangedNotification,
+};
 use kaspa_notify::{
     events::EventType,
     full_featured,
-    notification::{Notification as NotificationTrait},
+    notification::Notification as NotificationTrait,
     subscription::{
-        Subscription, context::SubscriptionContext, single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription}
+        context::SubscriptionContext,
+        single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
+        Subscription,
     },
 };
 use std::{collections::HashMap, sync::Arc};

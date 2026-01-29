@@ -1,15 +1,32 @@
 use std::{
     fmt::Display,
-    sync::{atomic::AtomicBool, Arc, Weak},
+    sync::{Arc, Weak},
     time::Duration,
 };
 
+use crate::{
+    api::TxIndexApi,
+    errors::TxIndexResult,
+    model::{
+        bluescore_refs::{BlueScoreAcceptingRefData, DaaScoreIncludingRefData},
+        transactions::{TxAcceptanceData, TxInclusionData},
+    },
+    reindexer::{
+        block_reindexer,
+        mergeset_reindexer::{self},
+    },
+    stores::{
+        pruning_sync::{PruningData, ToPruneStore},
+        store_manager::Store,
+    },
+    IDENT,
+};
 use itertools::Itertools;
 use kaspa_consensus_core::{
     acceptance_data::{AcceptanceData, MergesetIndexType},
     block::Block,
     tx::TransactionId,
-    BlockHashSet, Hash, HashMapCustomHasher,
+    BlockHashSet, Hash,
 };
 use kaspa_consensus_notify::notification::{
     BlockAddedNotification, RetentionRootChangedNotification, VirtualChainChangedNotification,
@@ -18,21 +35,7 @@ use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{debug, info};
 use kaspa_database::prelude::DB;
 use parking_lot::RwLock;
-
-use crate::{
-    api::TxIndexApi,
-    errors::TxIndexResult,
-    model::{
-        bluescore_refs::{BlueScoreAcceptingRefData, BlueScoreIncludingRefData},
-        transactions::{TxAcceptanceData, TxInclusionData},
-    },
-    reindexer::{
-        block_reindexer,
-        mergeset_reindexer::{self},
-    },
-    stores::store_manager::Store,
-    IDENT,
-};
+use tokio::sync::Mutex as AsyncMutex;
 
 const RESYNC_ACCEPTANCE_DATA_CHUNK_SIZE: u64 = 2048;
 const RESYNC_INCLUSION_DATA_CHUNK_SIZE: u64 = 2048;
@@ -41,7 +44,7 @@ pub const PRUNING_WAIT_INTERVAL: Duration = Duration::from_millis(15);
 
 pub struct TxIndex {
     consensus_manager: Arc<ConsensusManager>,
-    is_pruning: Arc<AtomicBool>,
+    pruning_lock: Arc<AsyncMutex<()>>,
     store: Store,
 }
 
@@ -49,7 +52,7 @@ impl TxIndex {
     pub fn new(consensus_manager: Arc<ConsensusManager>, db: Arc<DB>) -> TxIndexResult<Arc<RwLock<Self>>> {
         debug!("[{}]Creating new TxIndex", IDENT);
         let mut txindex =
-            Self { consensus_manager: consensus_manager.clone(), is_pruning: Arc::new(AtomicBool::new(false)), store: Store::new(db) };
+            Self { consensus_manager: consensus_manager.clone(), pruning_lock: Arc::new(AsyncMutex::new(())), store: Store::new(db) };
         if !txindex.is_synced()? {
             info!("[{}] TxIndex is not synced, starting resync", IDENT);
             txindex.resync_all_from_scratch()?;
@@ -88,11 +91,10 @@ impl TxIndexApi for TxIndex {
         &mut self,
         virtual_chain_changed_notification: VirtualChainChangedNotification,
     ) -> TxIndexResult<()> {
-        if virtual_chain_changed_notification.added_chain_block_hashes.is_empty() || virtual_chain_changed_notification.added_chain_blocks_acceptance_data.is_empty() {
-            debug!(
-                "[{}] Skipping virtual chain changed notification with no added or removed blocks",
-                self
-            );
+        if virtual_chain_changed_notification.added_chain_block_hashes.is_empty()
+            || virtual_chain_changed_notification.added_chain_blocks_acceptance_data.is_empty()
+        {
+            debug!("[{}] Skipping virtual chain changed notification with no added or removed blocks", self);
             return Ok(());
         }
         debug!(
@@ -113,9 +115,10 @@ impl TxIndexApi for TxIndex {
             "[{}] Updating via retention root changed to root: {} with blue score: {}",
             self, retention_root_changed_notification.retention_root, retention_root_changed_notification.retention_root_blue_score
         );
-        Ok(self.store.set_retention_root(
+        Ok(self.store.update_to_new_retention_root(
             retention_root_changed_notification.retention_root,
             retention_root_changed_notification.retention_root_blue_score,
+            retention_root_changed_notification.retention_root_daa_score,
         )?)
     }
 
@@ -125,9 +128,10 @@ impl TxIndexApi for TxIndex {
         from: u64, // inclusive
         to: u64,   // inclusive
         limit: Option<usize>,
-    ) -> TxIndexResult<Vec<BlueScoreIncludingRefData>> {
+        limit_to_blue_score_boundry: bool,
+    ) -> TxIndexResult<Vec<DaaScoreIncludingRefData>> {
         debug!("[{}] Getting transaction inclusion data by blue score range: {} to {}", self, from, to);
-        Ok(self.store.get_transaction_inclusion_data_by_blue_score_range(from..=to, limit)?)
+        Ok(self.store.get_transaction_inclusion_data_by_blue_score_range(from..=to, limit, limit_to_blue_score_boundry)?)
     }
     /// Ranges are inclusive
     fn get_transaction_acceptance_data_by_blue_score_range(
@@ -135,15 +139,16 @@ impl TxIndexApi for TxIndex {
         from: u64, // inclusive
         to: u64,   // inclusive
         limit: Option<usize>,
+        limit_to_blue_score_boundry: bool,
     ) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>> {
         debug!("[{}] Getting transaction acceptance data by blue score range: {} to {}", self, from, to);
-        Ok(self.store.get_transaction_acceptance_data_by_blue_score_range(from..=to, limit)?)
+        Ok(self.store.get_transaction_acceptance_data_by_blue_score_range(from..=to, limit, limit_to_blue_score_boundry)?)
     }
 
     fn get_sink_with_blue_score(&self) -> TxIndexResult<(Hash, u64)> {
         debug!("[{}] Getting sink with blue score", IDENT);
         Ok(self.store.get_sink_with_blue_score()?.unwrap())
-        }
+    }
 
     fn is_acceptance_data_synced(&self) -> TxIndexResult<bool> {
         debug!("[{}] Checking if acceptance data is synced", IDENT);
@@ -174,15 +179,21 @@ impl TxIndexApi for TxIndex {
         let session = futures::executor::block_on(consensus.session_blocking());
 
         let consensus_retention_root = session.get_retention_period_root();
-        let consensus_retention_root_blue_score = session.get_header(consensus_retention_root)?.blue_score;
+        let consensus_retention_root_header = session.get_header(consensus_retention_root)?;
+        let consensus_retention_root_blue_score = consensus_retention_root_header.blue_score;
+        let consensus_retention_root_daa_score = consensus_retention_root_header.daa_score;
         let txindex_retention_root = self.store.get_retention_root()?;
         let txindex_retention_root_blue_score = self.store.get_retention_root_blue_score()?;
+        let txindex_retention_root_daa_score = self.store.get_retention_root_daa_score()?;
         let txindex_next_to_prune_blue_score = self.store.get_next_to_prune_blue_score()?;
+        let txindex_next_to_prune_daa_score = self.store.get_next_to_prune_daa_score()?;
 
         Ok(txindex_retention_root.is_some_and(|trr| {
             trr == consensus_retention_root
                 && txindex_retention_root_blue_score.is_some_and(|trrb| trrb == consensus_retention_root_blue_score)
+                && txindex_retention_root_daa_score.is_some_and(|trrd| trrd == consensus_retention_root_daa_score)
                 && txindex_next_to_prune_blue_score.is_some_and(|tnp| tnp == consensus_retention_root_blue_score)
+                && txindex_next_to_prune_daa_score.is_some_and(|tnp| tnp == consensus_retention_root_daa_score)
         }))
     }
 
@@ -195,14 +206,6 @@ impl TxIndexApi for TxIndex {
             self.is_retention_synced()?,
         );
         Ok(self.is_acceptance_data_synced()? && self.is_inclusion_data_synced()? && self.is_retention_synced()?)
-    }
-
-    fn is_pruning(&self) -> bool {
-        self.is_pruning.load(std::sync::atomic::Ordering::SeqCst)
-    }
-
-    fn toggle_pruning_active(&self, active: bool) {
-        self.is_pruning.store(active, std::sync::atomic::Ordering::SeqCst);
     }
 
     fn resync_all_from_scratch(&mut self) -> TxIndexResult<()> {
@@ -254,7 +257,12 @@ impl TxIndexApi for TxIndex {
         let consensus_sink = session.get_sink();
         let consensus_sink_blue_score = session.get_header(consensus_sink)?.blue_score;
         self.store.set_sink(consensus_sink, consensus_sink_blue_score)?;
-        info!("[{}] Resynced acceptance data completed: {} chunks processed in {:.2} seconds", IDENT, chunks_processed, start_ts.elapsed().as_secs_f64());
+        info!(
+            "[{}] Resynced acceptance data completed: {} chunks processed in {:.2} seconds",
+            IDENT,
+            chunks_processed,
+            start_ts.elapsed().as_secs_f64()
+        );
         Ok(())
     }
 
@@ -289,23 +297,53 @@ impl TxIndexApi for TxIndex {
         let consensus_tips = session.get_tips().into_iter().collect::<BlockHashSet>();
         self.store.init_tips(consensus_tips)?;
 
-        info!("[{}] Resynced inclusion data completed: {} chunks processed in {:.2} seconds", IDENT, chunks_processed, start_ts.elapsed().as_secs_f64());
+        info!(
+            "[{}] Resynced inclusion data completed: {} chunks processed in {:.2} seconds",
+            IDENT,
+            chunks_processed,
+            start_ts.elapsed().as_secs_f64()
+        );
         Ok(())
     }
 
-    fn prune_on_the_fly(&mut self) -> TxIndexResult<bool> {
-        debug!("[{}] Pruning TxIndex on the fly", IDENT);
-        let txindex_retention_root_blue_score = self.store.get_retention_root_blue_score()?.unwrap();
-        let mut next_to_prune_blue_score = self.store.get_next_to_prune_blue_score()?.unwrap();
-        let mut is_store_empty = false;
+    fn get_pruning_lock(&self) -> Arc<AsyncMutex<()>> {
+        self.pruning_lock.clone()
+    }
 
-        (next_to_prune_blue_score, is_store_empty) = self.store.prune_from_blue_score(
-            next_to_prune_blue_score,
-            txindex_retention_root_blue_score,
-            Some(PRUNING_CHUNK_SIZE as usize),
-        )?;
+    fn prune_batch(&mut self) -> TxIndexResult<bool> {
+        debug!("[{}] Pruning TxIndex", IDENT);
 
-        Ok(next_to_prune_blue_score == txindex_retention_root_blue_score || is_store_empty)
+        match self.store.get_next_to_prune_store()?.unwrap() {
+            ToPruneStore::AcceptanceData => {
+                let txindex_retention_root_blue_score = self.store.get_retention_root_blue_score()?.unwrap();
+                let next_to_prune_blue_score = self.store.get_next_to_prune_blue_score()?.unwrap();
+                self.store.prune_acceptance_data_from_blue_score(
+                    next_to_prune_blue_score,
+                    txindex_retention_root_blue_score,
+                    Some(PRUNING_CHUNK_SIZE as usize),
+                )?;
+                if self.store.is_inclusion_pruning_done()? {
+                    self.store.set_next_to_prune_store(ToPruneStore::AcceptanceData)?;
+                } else {
+                    self.store.set_next_to_prune_store(ToPruneStore::InclusionData)?;
+                }
+            }
+            ToPruneStore::InclusionData => {
+                let txindex_retention_root_daa_score = self.store.get_retention_root_daa_score()?.unwrap();
+                let next_to_prune_daa_score = self.store.get_next_to_prune_daa_score()?.unwrap();
+                self.store.prune_inclusion_data_from_daa_score(
+                    next_to_prune_daa_score,
+                    txindex_retention_root_daa_score,
+                    Some(PRUNING_CHUNK_SIZE as usize),
+                )?;
+                if self.store.is_acceptance_pruning_done()? {
+                    self.store.set_next_to_prune_store(ToPruneStore::InclusionData)?;
+                } else {
+                    self.store.set_next_to_prune_store(ToPruneStore::AcceptanceData)?;
+                }
+            }
+        }
+        Ok(self.store.is_acceptance_pruning_done()? && self.store.is_inclusion_pruning_done()?)
     }
 
     fn resync_retention_data_from_scratch(&mut self) -> TxIndexResult<()> {
@@ -314,47 +352,40 @@ impl TxIndexApi for TxIndex {
         let session = futures::executor::block_on(consensus.session_blocking());
 
         let consensus_retention_root = session.get_retention_period_root();
-        let consensus_retention_root_blue_score = session.get_header(consensus_retention_root).unwrap().blue_score;
+        let consensus_retention_root_header = session.get_header(consensus_retention_root).unwrap();
+        let consensus_retention_root_blue_score = consensus_retention_root_header.blue_score;
+        let consensus_retention_root_daa_score = consensus_retention_root_header.daa_score;
         let txindex_retention_root = self.store.get_retention_root()?;
 
         if txindex_retention_root.is_none() || txindex_retention_root.is_some_and(|trr| trr != consensus_retention_root) {
-            self.store.set_retention_root(consensus_retention_root, consensus_retention_root_blue_score).unwrap();
-            self.store.set_next_to_prune_blue_score(0u64)?;
+            self.store.set_new_pruning_data(PruningData::new(
+                consensus_retention_root,
+                consensus_retention_root_blue_score,
+                consensus_retention_root_daa_score,
+                0u64,
+                0u64,
+                ToPruneStore::AcceptanceData,
+            ))?;
         }
 
-        let mut next_to_prune_blue_score = self.store.get_next_to_prune_blue_score().unwrap().unwrap_or(u64::MIN);
-
-        // Sanity check, this should always hold true, unless txindex tail end pruned beyond the retention root somehow.
-        assert!(next_to_prune_blue_score <= consensus_retention_root_blue_score);
-
-        let mut chunks_processed = 0;
         let mut start_ts = std::time::Instant::now();
-        let mut is_store_empty = false;
-        if self.is_pruning() {
-            info!("[{}] TxIndex is already pruning, skipping resync retention data", IDENT);
-            return Ok(());
-        };
-        self.toggle_pruning_active(true);
-        while (next_to_prune_blue_score < consensus_retention_root_blue_score) || is_store_empty {
-            debug!("[{}] Pruning TxIndex up to blue score: {}/{}, store: {}", IDENT, next_to_prune_blue_score, consensus_retention_root_blue_score, is_store_empty);
-            (next_to_prune_blue_score, is_store_empty) = self.store.prune_from_blue_score(
-                next_to_prune_blue_score,
-                consensus_retention_root_blue_score,
-                Some(PRUNING_CHUNK_SIZE as usize),
-            )?;
-
+        let mut chunks_processed = 0;
+        // Prune in batches until done
+        while !self.prune_batch()? {
             chunks_processed += 1;
             if start_ts.elapsed() >= Duration::from_secs(5) {
                 info!(
-                    "[{}] Pruning processed: {}, {:.2} items/sec",
+                    "[{}] Pruned: {}, {:.2} items/sec",
                     IDENT,
                     chunks_processed * PRUNING_CHUNK_SIZE,
                     (chunks_processed * PRUNING_CHUNK_SIZE) as f64 / start_ts.elapsed().as_secs_f64(),
                 );
                 start_ts = std::time::Instant::now();
             }
+            continue;
         }
-        info!("[{}] Pruning completed: {} chunks processed, in {:.2} seconds", IDENT, chunks_processed, start_ts.elapsed().as_secs_f64());
+
+        info!("[{}] Pruning completed", IDENT,);
         Ok(())
     }
 }

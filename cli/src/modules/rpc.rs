@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::imports::*;
 use convert_case::{Case, Casing};
 use kaspa_rpc_core::api::ops::RpcApiOps;
@@ -310,6 +312,65 @@ impl Rpc {
                         },
                     )
                     .await;
+
+                self.println(&ctx, result);
+            }
+            RpcApiOps::GetTransaction => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Missing transaction id argument"));
+                }
+                let transaction_id = argv.remove(0);
+                let transaction_id = RpcHash::from_str(transaction_id.as_str())?;
+                let include_unaccepted = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
+                let include_transactions = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
+                let include_inclusion_data = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
+                let include_acceptance_data = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
+                let include_conf_count = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
+                let include_verbose_data = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
+                let result = rpc
+                    .get_transaction_call(
+                        None,
+                        GetTransactionRequest {
+                            transaction_id,
+                            include_unaccepted,
+                            include_transactions,
+                            include_inclusion_data,
+                            include_acceptance_data,
+                            include_conf_count,
+                            include_verbose_data,
+                        },
+                    )
+                    .await?;
+                self.println(&ctx, result);
+            }
+            RpcApiOps::GetTransactionsByAcceptingBlueScore => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Please specify at least one accepting_blue_score"));
+                }
+                let from_blue_score = argv.remove(0).parse::<u64>()?;
+                let to_blue_score = argv.remove(0).parse::<u64>()?;
+                let limit = argv.remove(0).parse::<u64>().unwrap_or(u64::MAX);
+
+                let result = rpc
+                    .get_transactions_by_accepting_blue_score_call(
+                        None,
+                        GetTransactionsByAcceptingBlueScoreRequest { from_blue_score, to_blue_score, limit },
+                    )
+                    .await?;
+
+                self.println(&ctx, result);
+            }
+            RpcApiOps::GetTransactionsByIncludingDaaScore => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Please specify at least one including_daa_score"));
+                }
+                let from_daa_score = argv.remove(0).parse::<u64>()?;
+                let to_daa_score = argv.remove(0).parse::<u64>()?;
+                let limit = argv.remove(0).parse::<u64>().unwrap_or(u64::MAX);
+
+                let result = rpc
+                    .get_transactions_by_including_daa_score_call(None, GetTransactionsByIncludingDaaScoreRequest { from_daa_score, to_daa_score, limit })
+                    .await?;
 
                 self.println(&ctx, result);
             }

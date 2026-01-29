@@ -184,15 +184,15 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 #[derive(Debug, Clone)]
 pub struct NewBlockTemplateNotification {}
 
-
 #[derive(Debug, Clone)]
 pub struct RetentionRootChangedNotification {
     pub retention_root: Hash,
     pub retention_root_blue_score: u64,
+    pub retention_root_daa_score: u64,
 }
 
 impl RetentionRootChangedNotification {
-    pub fn new(retention_root: Hash, retention_root_blue_score: u64) -> Self {
-        Self { retention_root, retention_root_blue_score }
+    pub fn new(retention_root: Hash, retention_root_blue_score: u64, retention_root_daa_score: u64) -> Self {
+        Self { retention_root, retention_root_blue_score, retention_root_daa_score }
     }
 }

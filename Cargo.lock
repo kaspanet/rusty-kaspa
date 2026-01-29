@@ -3298,6 +3298,7 @@ dependencies = [
  "rocksdb",
  "serde",
  "thiserror 1.0.64",
+ "tokio",
 ]
 
 [[package]]

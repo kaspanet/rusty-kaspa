@@ -537,7 +537,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockV2Response>, prot
 from!(item: &kaspa_rpc_core::GetTransactionRequest, protowire::GetTransactionRequestMessage, {
     Self {
         transaction_id: item.transaction_id.to_string(),
-        query_unaccepted: item.query_unaccepted,
+        include_unaccepted: item.include_unaccepted,
         include_transactions: item.include_transactions,
         include_inclusion_data: item.include_inclusion_data,
         include_acceptance_data: item.include_acceptance_data,
@@ -548,27 +548,40 @@ from!(item: &kaspa_rpc_core::GetTransactionRequest, protowire::GetTransactionReq
 
 from!(item: RpcResult<&kaspa_rpc_core::GetTransactionResponse>, protowire::GetTransactionResponseMessage, {
     Self {
-        transaction_data: Some((&item.transaction_data).into()),
+        transaction_data: item.transaction_data.as_ref().map(|x| x.into()),
         error: None,
     }
 });
 
-from!(item: &kaspa_rpc_core::GetTransactionsByBlueScoreRequest, protowire::GetTransactionsByBlueScoreRequestMessage, {
+from!(item: &kaspa_rpc_core::GetTransactionsByAcceptingBlueScoreRequest, protowire::GetTransactionsByAcceptingBlueScoreRequestMessage, {
     Self {
         from_blue_score: item.from_blue_score,
         to_blue_score: item.to_blue_score,
-        query_unaccepted: item.query_unaccepted,
-        include_transactions: item.include_transactions,
-        include_inclusion_data: item.include_inclusion_data,
-        include_acceptance_data: item.include_acceptance_data,
-        include_conf_count: item.include_conf_count,
-        include_verbose_data: item.include_verbose_data,
+        limit: item.limit,
     }
 });
 
-from!(item: RpcResult<&kaspa_rpc_core::GetTransactionsByBlueScoreResponse>, protowire::GetTransactionsByBlueScoreResponseMessage, {
+from!(item: RpcResult<&kaspa_rpc_core::GetTransactionsByAcceptingBlueScoreResponse>, protowire::GetTransactionsByAcceptingBlueScoreResponseMessage, {
     Self {
-        transactions_data: item.transactions_data.iter().map(|x| x.into()).collect(),
+        transaction_ids : item.transaction_ids.iter().map(|x| x.to_string()).collect(),
+        accepting_blue_scores : item.accepting_blue_scores.clone(),
+        confirmation_counts : item.confirmation_counts.clone(),
+        error: None,
+    }
+});
+
+from!(item: &kaspa_rpc_core::GetTransactionsByIncludingDaaScoreRequest, protowire::GetTransactionsByIncludingDaaScoreRequestMessage, {
+    Self {
+        from_daa_score: item.from_daa_score,
+        to_daa_score: item.to_daa_score,
+        limit: item.limit
+    }
+});
+
+from!(item: RpcResult<&kaspa_rpc_core::GetTransactionsByIncludingDaaScoreResponse>, protowire::GetTransactionsByIncludingDaaScoreResponseMessage, {
+    Self {
+        transaction_ids : item.transaction_ids.iter().map(|x| x.to_string()).collect(),
+        including_daa_scores : item.including_daa_scores.clone(),
         error: None,
     }
 });
@@ -845,7 +858,7 @@ try_from!(item: &protowire::GetVirtualChainFromBlockV2ResponseMessage, RpcResult
 try_from!(item: &protowire::GetTransactionRequestMessage, kaspa_rpc_core::GetTransactionRequest, {
     Self {
         transaction_id: kaspa_rpc_core::RpcTransactionId::from_str(&item.transaction_id)?,
-        query_unaccepted: item.query_unaccepted,
+        include_unaccepted: item.include_unaccepted,
         include_transactions: item.include_transactions,
         include_inclusion_data: item.include_inclusion_data,
         include_acceptance_data: item.include_acceptance_data,
@@ -856,29 +869,38 @@ try_from!(item: &protowire::GetTransactionRequestMessage, kaspa_rpc_core::GetTra
 
 try_from!(item: &protowire::GetTransactionResponseMessage, RpcResult<kaspa_rpc_core::GetTransactionResponse>, {
     Self {
-        transaction_data: match item.transaction_data {
-            Some(ref data) => data.try_into()?,
-            None => return Err(RpcError::MissingRpcFieldError("GetTransactionResponseMessage".to_string(), "transaction_data".to_string())),
-        },
+        transaction_data: item.transaction_data.as_ref().map(|x| x.try_into()).transpose()?
     }
 });
 
-try_from!(item: &protowire::GetTransactionsByBlueScoreRequestMessage, kaspa_rpc_core::GetTransactionsByBlueScoreRequest, {
+try_from!(item: &protowire::GetTransactionsByAcceptingBlueScoreRequestMessage, kaspa_rpc_core::GetTransactionsByAcceptingBlueScoreRequest, {
     Self {
         from_blue_score: item.from_blue_score,
         to_blue_score: item.to_blue_score,
-        query_unaccepted: item.query_unaccepted,
-        include_transactions: item.include_transactions,
-        include_inclusion_data: item.include_inclusion_data,
-        include_acceptance_data: item.include_acceptance_data,
-        include_conf_count: item.include_conf_count,
-        include_verbose_data: item.include_verbose_data,
+        limit: item.limit
     }
 });
 
-try_from!(item: &protowire::GetTransactionsByBlueScoreResponseMessage, RpcResult<kaspa_rpc_core::GetTransactionsByBlueScoreResponse>, {
+try_from!(item: &protowire::GetTransactionsByAcceptingBlueScoreResponseMessage, RpcResult<kaspa_rpc_core::GetTransactionsByAcceptingBlueScoreResponse>, {
     Self {
-        transactions_data: item.transactions_data.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
+        transaction_ids: item.transaction_ids.iter().map(|x| kaspa_rpc_core::RpcTransactionId::from_str(x)).collect::<Result<Vec<_>, _>>()?,
+        accepting_blue_scores: item.accepting_blue_scores.clone(),
+        confirmation_counts: item.confirmation_counts.clone(),
+    }
+});
+
+try_from!(item: &protowire::GetTransactionsByIncludingDaaScoreRequestMessage, kaspa_rpc_core::GetTransactionsByIncludingDaaScoreRequest, {
+    Self {
+        from_daa_score: item.from_daa_score,
+        to_daa_score: item.to_daa_score,
+        limit: item.limit
+    }
+});
+
+try_from!(item: &protowire::GetTransactionsByIncludingDaaScoreResponseMessage, RpcResult<kaspa_rpc_core::GetTransactionsByIncludingDaaScoreResponse>, {
+    Self {
+        transaction_ids: item.transaction_ids.iter().map(|x| kaspa_rpc_core::RpcTransactionId::from_str(x)).collect::<Result<Vec<_>, _>>()?,
+        including_daa_scores: item.including_daa_scores.clone(),
     }
 });
 

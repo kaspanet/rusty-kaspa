@@ -387,11 +387,19 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_transactions_by_blue_score_call(
+    async fn get_transactions_by_accepting_blue_score_call(
         &self,
         _connection: Option<&DynRpcConnection>,
-        _request: GetTransactionsByBlueScoreRequest,
-    ) -> RpcResult<GetTransactionsByBlueScoreResponse> {
+        _request: GetTransactionsByAcceptingBlueScoreRequest,
+    ) -> RpcResult<GetTransactionsByAcceptingBlueScoreResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_transactions_by_including_daa_score_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetTransactionsByIncludingDaaScoreRequest,
+    ) -> RpcResult<GetTransactionsByIncludingDaaScoreResponse> {
         Err(RpcError::NotImplemented)
     }
 

@@ -66,14 +66,14 @@ use kaspa_rpc_core::{
     notify::connection::ChannelConnection,
     Notification, RpcError, RpcResult,
 };
-use kaspa_txindex::api::{TxIndexApi, TxIndexProxy};
+use kaspa_txindex::api::TxIndexProxy;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::expiring_cache::ExpiringCache;
 use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
-use std::cell::{LazyCell, OnceCell};
+use std::ops::Deref;
 use std::time::Duration;
 use std::{
     collections::HashMap,
@@ -1324,29 +1324,133 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetTransactionResponse> {
         if self.config.txindex != 1 {
             return Err(RpcError::NoTxIndex);
+        }
+
+        let require_inclusion_data = request.include_inclusion_data || request.include_transactions;
+        let require_acceptance_data =
+            request.include_acceptance_data || request.include_conf_count || (require_inclusion_data && !request.include_unaccepted);
+
+        if !require_acceptance_data && !require_inclusion_data {
+            // The request does not require any data
+            return Ok(GetTransactionResponse::new(None));
+        };
+        let consensus = self.consensus_manager.consensus().session().await;
+
+        // We scope the txindex read lock to only the data gathering phase, to avoid holding beyond async await points
+        let (accepted_transaction_data, sink_hash, sink_blue_score, included_transaction_data) = {
+            let txindex = &*self.txindex.as_ref().unwrap().deref().read();
+
+            let (accepted_transaction_data, sink_hash, sink_blue_score) = if require_acceptance_data {
+                // We require acceptance data
+                let acceptance_data = txindex.get_accepted_transaction_data(request.transaction_id)?;
+                let (sink_hash, sink_blue_score) = txindex.get_sink_with_blue_score()?;
+                (acceptance_data, Some(sink_hash), Some(sink_blue_score))
+            } else {
+                (vec![], None, None)
+            };
+
+            let included_transaction_data = if require_inclusion_data {
+                // We require inclusion data
+                txindex.get_included_transaction_data(request.transaction_id)?
+            } else {
+                vec![]
+            };
+
+            (accepted_transaction_data, sink_hash, sink_blue_score, included_transaction_data)
         };
 
-        let need_acceptance_data = request.include_acceptance_data || request.include_conf_count;
-        let need_inclusion_data = (request.include_inclusion_data && !request.query_unaccepted) || request.include_transactions;
-        let require_sink = need_acceptance_data;
-        let require_sink_blue_score = need_acceptance_data;
-        // to do
-        todo!();
+        let transaction_data = self
+            .consensus_converter
+            .get_transaction_data(
+                &consensus,
+                request.transaction_id,
+                sink_hash,
+                sink_blue_score,
+                accepted_transaction_data,
+                included_transaction_data,
+                request.include_unaccepted,
+                request.include_transactions,
+                request.include_inclusion_data,
+                request.include_acceptance_data,
+                request.include_conf_count,
+                request.include_verbose_data,
+            )
+            .await?;
+        Ok(GetTransactionResponse::new(Some(transaction_data)))
     }
 
-    async fn get_transactions_by_blue_score_call(
+    async fn get_transactions_by_accepting_blue_score_call(
         &self,
         _connection: Option<&DynRpcConnection>,
-        request: GetTransactionsByBlueScoreRequest,
-    ) -> RpcResult<GetTransactionsByBlueScoreResponse> {
+        request: GetTransactionsByAcceptingBlueScoreRequest,
+    ) -> RpcResult<GetTransactionsByAcceptingBlueScoreResponse> {
         if self.config.txindex != 1 {
             return Err(RpcError::NoTxIndex);
         };
-        let session = self.consensus_manager.consensus().session().await;
-        let txindex = self.txindex.as_ref().unwrap();
+        let consensus = self.consensus_manager.consensus().session().await;
 
-        // to do
-        todo!();
+        // We scope the txindex read lock to only the data gathering phase, to avoid holding beyond async await points
+        let (transaction_ids, acceptance_data, sink_hash, sink_blue_score) = {
+            let txindex = &*self.txindex.as_ref().unwrap().deref().read();
+            let tx_refs = txindex.get_transaction_acceptance_data_by_blue_score_range(
+                request.from_blue_score,
+                request.to_blue_score,
+                if request.limit == 0 { None } else { Some(request.limit.try_into()?) },
+                true,
+            )?;
+            let mut transactions_ids = Vec::with_capacity(tx_refs.len());
+            let mut acceptance_data = Vec::with_capacity(tx_refs.len());
+            for tx_ref in tx_refs {
+                transactions_ids.push(tx_ref.tx_id);
+                let txs = txindex.get_accepted_transaction_data(tx_ref.tx_id)?;
+                acceptance_data.push(txs);
+            }
+            let (sink_hash, sink_blue_score) = txindex.get_sink_with_blue_score()?;
+            (transactions_ids, acceptance_data, sink_hash, sink_blue_score)
+        };
+
+        let mut transaction_id_res = Vec::new();
+        let mut accepting_blue_scores = Vec::new();
+        let mut confirmation_counts = Vec::new();
+
+        for (tx_id, accepted_data) in transaction_ids.iter().zip(acceptance_data.into_iter()) {
+            let canonical_data =
+                self.consensus_converter.find_canonical_accepted_acceptance_data(&consensus, sink_hash, &accepted_data).await?;
+            if let Some(canonical_data) = canonical_data {
+                transaction_id_res.push(*tx_id);
+                accepting_blue_scores.push(canonical_data.accepting_block_blue_score);
+                let conf_count = sink_blue_score.saturating_sub(canonical_data.accepting_block_blue_score);
+                confirmation_counts.push(conf_count);
+            };
+        }
+
+        Ok(GetTransactionsByAcceptingBlueScoreResponse::new(transaction_id_res, accepting_blue_scores, confirmation_counts))
+    }
+
+    async fn get_transactions_by_including_daa_score_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetTransactionsByIncludingDaaScoreRequest,
+    ) -> RpcResult<GetTransactionsByIncludingDaaScoreResponse> {
+        if self.config.txindex != 1 {
+            return Err(RpcError::NoTxIndex);
+        };
+        let _consensus = self.consensus_manager.consensus().session().await;
+
+        // We scope the txindex read lock to only the data gathering phase, to avoid holding beyond async await points
+        let tx_refs = {
+            let txindex = &*self.txindex.as_ref().unwrap().deref().read();
+            txindex.get_transaction_inclusion_data_by_blue_score_range(
+                request.from_daa_score,
+                request.to_daa_score,
+                if request.limit == 0 { None } else { Some(request.limit.try_into()?) },
+                true,
+            )?
+        };
+
+        let (tx_ids, daa_scores): (Vec<_>, Vec<_>) =
+            tx_refs.into_iter().map(|tx_ref| (tx_ref.tx_id, tx_ref.including_daa_score)).unzip();
+        Ok(GetTransactionsByIncludingDaaScoreResponse::new(tx_ids, daa_scores))
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

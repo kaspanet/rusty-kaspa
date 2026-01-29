@@ -90,7 +90,8 @@ pub enum KaspadPayloadOps {
     GetUtxoReturnAddress,
     GetVirtualChainFromBlockV2,
     GetTransaction,
-    GetTransactionsByBlueScore,
+    GetTransactionsByAcceptingBlueScore,
+    GetTransactionsByIncludingDaaScore,
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,

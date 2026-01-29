@@ -1,8 +1,4 @@
-use crate::{
-    cache::CachePolicy,
-    db::DB,
-    errors::StoreError,
-};
+use crate::{cache::CachePolicy, db::DB, errors::StoreError};
 
 use super::prelude::{Cache, DbKey, DbWriter};
 use kaspa_utils::mem_size::MemSizeEstimator;

@@ -5,7 +5,7 @@ use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::params::SIMNET_GENESIS;
 use kaspa_consensus_core::{constants::MAX_SOMPI, header::Header, subnets::SubnetworkId, tx::Transaction};
-use kaspa_core::{assert_match, info};
+use kaspa_core::{assert, assert_match, info};
 use kaspa_grpc_core::ops::KaspadPayloadOps;
 use kaspa_hashes::Hash;
 use kaspa_notify::{
@@ -711,18 +711,58 @@ async fn sanity_test() {
             KaspadPayloadOps::GetTransaction => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let result = rpc_client.get_transaction_call(None, GetTransactionRequest {transaction_id: 0.into(), query_unaccepted: true, include_transactions: true, include_inclusion_data: true, include_acceptance_data: true, include_conf_count: true, include_verbose_data: true }).await;
+                    let result = rpc_client
+                        .get_transaction_call(
+                            None,
+                            GetTransactionRequest {
+                                transaction_id: 0.into(),
+                                include_unaccepted: true,
+                                include_transactions: true,
+                                include_inclusion_data: true,
+                                include_acceptance_data: true,
+                                include_conf_count: true,
+                                include_verbose_data: true,
+                            },
+                        )
+                        .await
+                        .unwrap();
                     // Test Get Transaction:
                     assert!(result.is_err());
                 })
             }
 
-            KaspadPayloadOps::GetTransactionsByBlueScore => {
+            KaspadPayloadOps::GetTransactionsByAcceptingBlueScore => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let result = rpc_client.get_transactions_by_blue_score_call(None, GetTransactionsByBlueScoreRequest { from_blue_score: u64::MIN, to_blue_score: u64::MAX, query_unaccepted: true, include_transactions: true, include_inclusion_data: true, include_acceptance_data: true, include_conf_count: true, include_verbose_data: true }).await;
+                    let result = rpc_client
+                        .get_transactions_by_accepting_blue_score_call(
+                            None,
+                            GetTransactionsByAcceptingBlueScoreRequest {
+                                from_blue_score: u64::MIN,
+                                to_blue_score: u64::MAX,
+                                limit: 0,
+                            },
+                        )
+                        .await;
                     // Test Get Transactions By Blue Score:
-                    assert!(result.is_err());
+                    assert!(result.unwrap().transaction_ids.is_empty());
+                    assert!(result.unwrap().accepting_blue_scores.is_empty());
+                    assert!(result.unwrap().confirmation_counts.is_empty());
+                })
+            }
+
+            KaspadPayloadOps::GetTransactionsByIncludingDaaScore => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let result = rpc_client
+                        .get_transactions_by_including_daa_score_call(
+                            None,
+                            GetTransactionsByIncludingDaaScoreRequest { from_daa_score: u64::MIN, to_daa_score: u64::MAX, limit: 0 },
+                        )
+                        .await;
+                    // Test Get Transactions By Including DAA Score:
+                    assert!(result.unwrap().transaction_ids.is_empty());
+                    assert!(result.unwrap().including_daa_scores.is_empty());
                 })
             }
 

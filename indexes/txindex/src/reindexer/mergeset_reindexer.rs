@@ -1,4 +1,3 @@
-
 use crate::stores::acceptance::{BlueScoreRefIter, BlueScoreRefTuple, TxAcceptedIter, TxAcceptedTuple};
 use kaspa_consensus_core::acceptance_data::MergesetBlockAcceptanceData;
 use kaspa_consensus_core::acceptance_data::MergesetIndexType;

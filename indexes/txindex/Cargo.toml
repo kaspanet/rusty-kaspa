@@ -19,6 +19,7 @@ kaspa-hashes.workspace = true
 kaspa-index-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-utils.workspace = true
+tokio.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 rocksdb.workspace = true

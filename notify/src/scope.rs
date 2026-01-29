@@ -64,7 +64,6 @@ impl Serializer for Scope {
 }
 
 impl Deserializer for Scope {
-
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         load!(Scope, reader)

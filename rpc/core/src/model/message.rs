@@ -311,13 +311,22 @@ impl Deserializer for GetInfoResponse {
                 is_synced,
                 has_notify_command,
                 has_message_id,
-            })
+            });
         };
         let is_synced = load!(bool, reader)?;
         let has_notify_command = load!(bool, reader)?;
         let has_message_id = load!(bool, reader)?;
 
-        Ok(Self { p2p_id, mempool_size, server_version, is_utxo_indexed, is_tx_indexed: false, is_synced, has_notify_command, has_message_id })
+        Ok(Self {
+            p2p_id,
+            mempool_size,
+            server_version,
+            is_utxo_indexed,
+            is_tx_indexed: false,
+            is_synced,
+            has_notify_command,
+            has_message_id,
+        })
     }
 }
 
@@ -2826,7 +2835,7 @@ impl Deserializer for GetVirtualChainFromBlockV2Response {
 #[serde(rename_all = "camelCase")]
 pub struct GetTransactionRequest {
     pub transaction_id: RpcTransactionId,
-    pub query_unaccepted: bool,
+    pub include_unaccepted: bool,
     pub include_transactions: bool,
     pub include_inclusion_data: bool,
     pub include_acceptance_data: bool,
@@ -2837,15 +2846,16 @@ pub struct GetTransactionRequest {
 impl GetTransactionRequest {
     pub fn new(
         transaction_id: RpcTransactionId,
-        query_unaccepted: bool,
+        include_unaccepted: bool,
         include_transactions: bool,
         include_inclusion_data: bool,
         include_acceptance_data: bool,
         include_conf_count: bool,
-        include_verbose_data: bool) -> Self {
+        include_verbose_data: bool,
+    ) -> Self {
         Self {
             transaction_id,
-            query_unaccepted,
+            include_unaccepted,
             include_transactions,
             include_inclusion_data,
             include_acceptance_data,
@@ -2859,7 +2869,7 @@ impl Serializer for GetTransactionRequest {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
         store!(RpcTransactionId, &self.transaction_id, writer)?;
-        store!(bool, &self.query_unaccepted, writer)?;
+        store!(bool, &self.include_unaccepted, writer)?;
         store!(bool, &self.include_transactions, writer)?;
         store!(bool, &self.include_inclusion_data, writer)?;
         store!(bool, &self.include_acceptance_data, writer)?;
@@ -2873,7 +2883,7 @@ impl Deserializer for GetTransactionRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let transaction_id = load!(RpcTransactionId, reader)?;
-        let query_unaccepted = load!(bool, reader)?;
+        let include_unaccepted = load!(bool, reader)?;
         let include_transactions = load!(bool, reader)?;
         let include_inclusion_data = load!(bool, reader)?;
         let include_acceptance_data = load!(bool, reader)?;
@@ -2881,7 +2891,7 @@ impl Deserializer for GetTransactionRequest {
         let include_verbose_data = load!(bool, reader)?;
         Ok(Self {
             transaction_id,
-            query_unaccepted,
+            include_unaccepted,
             include_transactions,
             include_inclusion_data,
             include_acceptance_data,
@@ -2893,24 +2903,20 @@ impl Deserializer for GetTransactionRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetTransactionResponse{
-    pub transaction_data: RpcTransactionData,
+pub struct GetTransactionResponse {
+    pub transaction_data: Option<RpcTransactionData>,
 }
 
 impl GetTransactionResponse {
-    pub fn new(
-        transaction_data: RpcTransactionData,
-    ) -> Self {
-        Self {
-            transaction_data,
-        }
+    pub fn new(transaction_data: Option<RpcTransactionData>) -> Self {
+        Self { transaction_data }
     }
 }
 
 impl Serializer for GetTransactionResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        serialize!(RpcTransactionData, &self.transaction_data, writer)?;
+        serialize!(Option<RpcTransactionData>, &self.transaction_data, writer)?;
         Ok(())
     }
 }
@@ -2918,117 +2924,141 @@ impl Serializer for GetTransactionResponse {
 impl Deserializer for GetTransactionResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let transaction_data = deserialize!(RpcTransactionData, reader)?;
-        Ok(Self { transaction_data } )
+        let transaction_data = deserialize!(Option<RpcTransactionData>, reader)?;
+        Ok(Self { transaction_data })
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetTransactionsByBlueScoreRequest {
+pub struct GetTransactionsByAcceptingBlueScoreRequest {
     pub from_blue_score: u64,
     pub to_blue_score: u64,
-    pub query_unaccepted: bool,
-    pub include_transactions: bool,
-    pub include_inclusion_data: bool,
-    pub include_acceptance_data: bool,
-    pub include_conf_count: bool,
-    pub include_verbose_data: bool,
+    pub limit: u64,
 }
 
-impl GetTransactionsByBlueScoreRequest {
-    pub fn new(
-        from_blue_score: u64,
-        to_blue_score: u64,
-        query_unaccepted: bool,
-        include_transactions: bool,
-        include_inclusion_data: bool,
-        include_acceptance_data: bool,
-        include_conf_count: bool,
-        include_verbose_data: bool,
-    ) -> Self {
-        Self {
-            from_blue_score,
-            to_blue_score,
-            query_unaccepted,
-            include_transactions,
-            include_inclusion_data,
-            include_acceptance_data,
-            include_conf_count,
-            include_verbose_data,
-        }
+impl GetTransactionsByAcceptingBlueScoreRequest {
+    pub fn new(from_blue_score: u64, to_blue_score: u64, limit: u64) -> Self {
+        Self { from_blue_score, to_blue_score, limit }
     }
 }
 
-impl Serializer for GetTransactionsByBlueScoreRequest {
+impl Serializer for GetTransactionsByAcceptingBlueScoreRequest {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
         store!(u64, &self.from_blue_score, writer)?;
         store!(u64, &self.to_blue_score, writer)?;
-        store!(bool, &self.query_unaccepted, writer)?;
-        store!(bool, &self.include_transactions, writer)?;
-        store!(bool, &self.include_inclusion_data, writer)?;
-        store!(bool, &self.include_acceptance_data, writer)?;
-        store!(bool, &self.include_conf_count, writer)?;
-        store!(bool, &self.include_verbose_data, writer)?;
+        store!(u64, &self.limit, writer)?;
         Ok(())
     }
 }
 
-impl Deserializer for GetTransactionsByBlueScoreRequest {
+impl Deserializer for GetTransactionsByAcceptingBlueScoreRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let from_blue_score = load!(u64, reader)?;
         let to_blue_score = load!(u64, reader)?;
-        let query_unaccepted = load!(bool, reader)?;
-        let include_transactions = load!(bool, reader)?;
-        let include_inclusion_data = load!(bool, reader)?;
-        let include_acceptance_data = load!(bool, reader)?;
-        let include_conf_count = load!(bool, reader)?;
-        let include_verbose_data = load!(bool, reader)?;
-        Ok(Self {
-            from_blue_score,
-            to_blue_score,
-            query_unaccepted,
-            include_transactions,
-            include_inclusion_data,
-            include_acceptance_data,
-            include_conf_count,
-            include_verbose_data,
-        })
+        let limit = load!(u64, reader)?;
+        Ok(Self { from_blue_score, to_blue_score, limit })
     }
 }
-
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetTransactionsByBlueScoreResponse {
-    pub transactions_data: Vec<RpcTransactionData>,
+pub struct GetTransactionsByAcceptingBlueScoreResponse {
+    pub transaction_ids: Vec<RpcTransactionId>,
+    pub accepting_blue_scores: Vec<u64>,
+    pub confirmation_counts: Vec<u64>,
 }
 
-impl GetTransactionsByBlueScoreResponse {
-    pub fn new(
-        transactions_data: Vec<RpcTransactionData>,
-    ) -> Self {
-        Self {
-            transactions_data,
-        }
+impl GetTransactionsByAcceptingBlueScoreResponse {
+    pub fn new(transaction_ids: Vec<RpcTransactionId>, accepting_blue_scores: Vec<u64>, confirmation_counts: Vec<u64>) -> Self {
+        Self { transaction_ids, accepting_blue_scores, confirmation_counts }
     }
 }
 
-impl Serializer for GetTransactionsByBlueScoreResponse {
+impl Serializer for GetTransactionsByAcceptingBlueScoreResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        serialize!(Vec<RpcTransactionData>, &self.transactions_data, writer)?;
+        store!(Vec<RpcTransactionId>, &self.transaction_ids, writer)?;
+        store!(Vec<u64>, &self.accepting_blue_scores, writer)?;
+        store!(Vec<u64>, &self.confirmation_counts, writer)?;
         Ok(())
     }
 }
 
-impl Deserializer for GetTransactionsByBlueScoreResponse {
+impl Deserializer for GetTransactionsByAcceptingBlueScoreResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let transactions_data = deserialize!(Vec<RpcTransactionData>, reader)?;
-        Ok(Self { transactions_data } )
+        let transaction_ids = load!(Vec<RpcTransactionId>, reader)?;
+        let accepting_blue_scores = load!(Vec<u64>, reader)?;
+        let confirmation_counts = load!(Vec<u64>, reader)?;
+        Ok(Self { transaction_ids, accepting_blue_scores, confirmation_counts })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTransactionsByIncludingDaaScoreRequest {
+    pub from_daa_score: u64,
+    pub to_daa_score: u64,
+    pub limit: u64,
+}
+
+impl GetTransactionsByIncludingDaaScoreRequest {
+    pub fn new(from_daa_score: u64, to_daa_score: u64, limit: u64) -> Self {
+        Self { from_daa_score, to_daa_score, limit }
+    }
+}
+
+impl Serializer for GetTransactionsByIncludingDaaScoreRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.from_daa_score, writer)?;
+        store!(u64, &self.to_daa_score, writer)?;
+        store!(u64, &self.limit, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetTransactionsByIncludingDaaScoreRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let from_daa_score = load!(u64, reader)?;
+        let to_daa_score = load!(u64, reader)?;
+        let limit = load!(u64, reader)?;
+        Ok(Self { from_daa_score, to_daa_score, limit })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTransactionsByIncludingDaaScoreResponse {
+    pub transaction_ids: Vec<RpcTransactionId>,
+    pub including_daa_scores: Vec<u64>,
+}
+
+impl GetTransactionsByIncludingDaaScoreResponse {
+    pub fn new(transaction_ids: Vec<RpcTransactionId>, including_daa_scores: Vec<u64>) -> Self {
+        Self { transaction_ids, including_daa_scores }
+    }
+}
+
+impl Serializer for GetTransactionsByIncludingDaaScoreResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcTransactionId>, &self.transaction_ids, writer)?;
+        store!(Vec<u64>, &self.including_daa_scores, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetTransactionsByIncludingDaaScoreResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transaction_ids = load!(Vec<RpcTransactionId>, reader)?;
+        let including_daa_scores = load!(Vec<u64>, reader)?;
+        Ok(Self { transaction_ids, including_daa_scores })
     }
 }
 

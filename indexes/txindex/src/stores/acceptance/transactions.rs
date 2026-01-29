@@ -1,9 +1,7 @@
 use crate::model::transactions::TxAcceptanceData;
 
 use kaspa_consensus_core::{acceptance_data::MergesetIndexType, tx::TransactionId, Hash};
-use kaspa_database::prelude::{
-    CachePolicy, CachedDbAccess, DbWriter, DirectDbWriter, StoreResult, DB,
-};
+use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DbWriter, DirectDbWriter, StoreResult, DB};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use std::mem;
@@ -16,7 +14,6 @@ pub const TRANSACTION_ID_SIZE: usize = mem::size_of::<TransactionId>(); // 32
 pub const HASH_SIZE: usize = mem::size_of::<Hash>(); // 32
 pub const BLUE_SCORE_SIZE: usize = mem::size_of::<u64>(); // 8
 pub const TRANSACTION_STORE_KEY_LEN: usize = TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE; // 72
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct AcceptedTransactionStoreKey(pub [u8; TRANSACTION_STORE_KEY_LEN]);
@@ -46,7 +43,8 @@ impl AcceptedTransactionStoreKey {
 
     #[inline(always)]
     pub fn with_block_hash(mut self, hash: Hash) -> Self {
-        self.0[TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE].copy_from_slice(&hash.as_bytes());
+        self.0[TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE]
+            .copy_from_slice(&hash.as_bytes());
         self
     }
 
@@ -59,7 +57,6 @@ impl AcceptedTransactionStoreKey {
     pub fn block_hash(&self) -> Hash {
         Hash::from_slice(&self.0[TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE])
     }
-
 }
 
 impl Default for AcceptedTransactionStoreKey {
@@ -80,11 +77,7 @@ impl From<Box<[u8]>> for AcceptedTransactionStoreKey {
 impl From<(AcceptedTransactionStoreKey, MergesetIndexType)> for TxAcceptanceData {
     #[inline(always)]
     fn from(item: (AcceptedTransactionStoreKey, MergesetIndexType)) -> Self {
-        TxAcceptanceData {
-            blue_score: item.0.blue_score(),
-            block_hash: item.0.block_hash(),
-            mergeset_index: item.1,
-        }
+        TxAcceptanceData { blue_score: item.0.blue_score(), block_hash: item.0.block_hash(), mergeset_index: item.1 }
     }
 }
 
@@ -200,7 +193,9 @@ impl TxIndexAcceptedTransactionsStore for DbTxIndexAcceptedTransactionsStore {
     where
         I: Iterator<Item = TxAcceptedTuple>,
     {
-        let kv_iter = to_add.into_iter().map(|(a, b, c, d)| (AcceptedTransactionStoreKey::default().with_txid(a).with_blue_score(b).with_block_hash(c), d));
+        let kv_iter = to_add
+            .into_iter()
+            .map(|(a, b, c, d)| (AcceptedTransactionStoreKey::default().with_txid(a).with_blue_score(b).with_block_hash(c), d));
 
         self.access.write_many_without_cache(writer, &mut kv_iter.into_iter())
     }

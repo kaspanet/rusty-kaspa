@@ -19,7 +19,7 @@ use kaspa_notify::{address::tracker::Tracker, subscription::context::Subscriptio
 use kaspa_p2p_lib::Hub;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_rpc_service::service::RpcCoreService;
-use kaspa_txindex::{TxIndex, api::TxIndexProxy};
+use kaspa_txindex::{api::TxIndexProxy, TxIndex};
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::git;
 use kaspa_utils::networking::ContextualNetAddress;
@@ -284,7 +284,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     let network = args.network();
     let mut fd_remaining = fd_total_budget;
     let (utxo_files_limit, tx_files_limit) = match (args.utxoindex, args.txindex) {
-        (false, 0) => {(0i32, 0i32)},
+        (false, 0) => (0i32, 0i32),
         (true, 0) => {
             let utxo_files_limit = fd_remaining / 10;
             fd_remaining -= utxo_files_limit;
@@ -304,7 +304,10 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
             (utxo_files_limit, txindex_files_limit)
         }
         _ => {
-            println!("Invalid txindex value: {}. Valid values are 0 (disabled) and 1 (enabled for inclusion and acceptance).", args.txindex);
+            println!(
+                "Invalid txindex value: {}. Valid values are 0 (disabled) and 1 (enabled for inclusion and acceptance).",
+                args.txindex
+            );
             exit(1);
         }
     };

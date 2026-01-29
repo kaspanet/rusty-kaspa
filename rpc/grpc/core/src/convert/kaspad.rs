@@ -66,7 +66,8 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(GetUtxoReturnAddress);
     impl_into_kaspad_request!(GetVirtualChainFromBlockV2);
     impl_into_kaspad_request!(GetTransaction);
-    impl_into_kaspad_request!(GetTransactionsByBlueScore);
+    impl_into_kaspad_request!(GetTransactionsByAcceptingBlueScore);
+    impl_into_kaspad_request!(GetTransactionsByIncludingDaaScore);
 
     impl_into_kaspad_request!(NotifyBlockAdded);
     impl_into_kaspad_request!(NotifyNewBlockTemplate);
@@ -207,7 +208,8 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_response!(GetUtxoReturnAddress);
     impl_into_kaspad_response!(GetVirtualChainFromBlockV2);
     impl_into_kaspad_response!(GetTransaction);
-    impl_into_kaspad_response!(GetTransactionsByBlueScore);
+    impl_into_kaspad_response!(GetTransactionsByAcceptingBlueScore);
+    impl_into_kaspad_response!(GetTransactionsByIncludingDaaScore);
 
     impl_into_kaspad_notify_response!(NotifyBlockAdded);
     impl_into_kaspad_notify_response!(NotifyNewBlockTemplate);

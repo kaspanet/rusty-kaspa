@@ -13,7 +13,7 @@ use kaspa_notify::{
     notification::Notification as NotificationTrait,
     notifier::DynNotify,
 };
-use kaspa_txindex::{PRUNING_WAIT_INTERVAL, api::TxIndexProxy};
+use kaspa_txindex::{api::TxIndexProxy, PRUNING_WAIT_INTERVAL};
 use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::sync::{
@@ -157,7 +157,7 @@ impl Processor {
             txindex.async_update_via_retention_root_changed(notification).await?;
             let self_clone = Arc::clone(self);
             // We prune in a separate task, to not block the processing of other notifications.
-            tokio::spawn(async move { self_clone.prune_txindex().await });
+            tokio::task::spawn_blocking(async move || self_clone.prune_txindex().await);
             return Ok(());
         };
         Err(IndexError::NotSupported(EventType::RetentionRootChanged))
@@ -166,14 +166,13 @@ impl Processor {
     async fn prune_txindex(self: &Arc<Self>) -> IndexResult<()> {
         trace!("[Index processor] pruning txindex on the fly");
         if let Some(txindex) = self.txindex.clone() {
-            if !txindex.clone().async_is_pruning().await {
-                txindex.clone().async_toggle_pruning_active(true).await;
-                let mut is_fully_pruned = false;
-                while !is_fully_pruned || self.collect_shutdown.trigger.is_triggered() {
-                    is_fully_pruned = txindex.clone().async_prune_on_the_fly().await?;
-                    tokio::time::sleep(PRUNING_WAIT_INTERVAL).await;
-                }
-                txindex.clone().async_toggle_pruning_active(false).await;
+            let pruning_lock = txindex.async_get_pruning_lock().await;
+            // wait on lock, in case another task is already pruning (unlikely but done for good measure).
+            let _pruning_guard = pruning_lock.lock().await;
+            let mut is_fully_pruned = false;
+            while !is_fully_pruned || self.collect_shutdown.trigger.is_triggered() {
+                is_fully_pruned = txindex.clone().async_prune_batch().await?;
+                tokio::time::sleep(PRUNING_WAIT_INTERVAL).await; // sleep as to not be too greedy on the txindex rw lock.
             }
             return Ok(());
         };
@@ -388,11 +387,7 @@ mod tests {
                     received_notification.removed_chain_block_hashes.as_ref(),
                     test_virtual_chain_changed_notification.removed_chain_block_hashes.as_ref()
                 );
-                for (i, received_acceptance_data) in received_notification
-                    .added_chain_blocks_acceptance_data
-                    .iter()
-                    .enumerate()
-                {
+                for (i, received_acceptance_data) in received_notification.added_chain_blocks_acceptance_data.iter().enumerate() {
                     let test_acceptance_data = &test_virtual_chain_changed_notification.added_chain_blocks_acceptance_data[i];
                     assert_eq!(received_acceptance_data.len(), test_acceptance_data.len());
                     for (j, received_mbad) in received_acceptance_data.iter().enumerate() {

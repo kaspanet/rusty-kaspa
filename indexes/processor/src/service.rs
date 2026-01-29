@@ -11,8 +11,10 @@ use kaspa_notify::{
     connection::ChannelType,
     events::EventType,
     listener::ListenerLifespan,
-    scope::{BlockAddedScope, PruningPointUtxoSetOverrideScope, RetentionRootChangedScope, UtxosChangedScope, VirtualChainChangedScope},
-    subscription::{MutationPolicies, UtxosChangedMutationPolicy, context::SubscriptionContext},
+    scope::{
+        BlockAddedScope, PruningPointUtxoSetOverrideScope, RetentionRootChangedScope, UtxosChangedScope, VirtualChainChangedScope,
+    },
+    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
 };
 use kaspa_txindex::api::TxIndexProxy;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
@@ -57,12 +59,13 @@ impl IndexService {
                 EventType::VirtualChainChanged,
                 EventType::BlockAdded,
                 EventType::RetentionRootChanged,
-            ].as_ref().into(),
+            ]
+            .as_ref()
+            .into(),
         };
 
         let collector = Arc::new(Processor::new(utxoindex.clone(), txindex.clone(), consensus_notify_channel.receiver()));
-        let notifier =
-            Arc::new(IndexNotifier::new(INDEX_SERVICE, events, vec![collector], vec![], subscription_context, 1, policies));
+        let notifier = Arc::new(IndexNotifier::new(INDEX_SERVICE, events, vec![collector], vec![], subscription_context, 1, policies));
 
         // Manually subscribe to index-processor related event types
         if utxoindex.is_some() {

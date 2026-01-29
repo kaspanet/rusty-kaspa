@@ -35,7 +35,10 @@ use kaspa_consensus_core::{
     trusted::ExternalGhostdagData,
     BlockHashMap, BlockHashSet, BlockLevel,
 };
-use kaspa_consensus_notify::{notification::{Notification, RetentionRootChangedNotification}, root::ConsensusNotificationRoot};
+use kaspa_consensus_notify::{
+    notification::{Notification, RetentionRootChangedNotification},
+    root::ConsensusNotificationRoot,
+};
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, trace, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExt, DB};
@@ -120,7 +123,7 @@ impl PruningProcessor {
             pruning_lock,
             config,
             is_consensus_exiting,
-            notification_root
+            notification_root,
         }
     }
 
@@ -233,8 +236,16 @@ impl PruningProcessor {
 
             self.db.write(batch).unwrap();
             if self.notification_root.has_subscription(EventType::RetentionRootChanged) {
-                self.notification_root.notify(Notification::RetentionRootChanged(RetentionRootChangedNotification::new(retention_period_root, self.headers_store.get_blue_score(retention_period_root).unwrap())))
-                .unwrap();
+                self.notification_root
+                    .notify(Notification::RetentionRootChanged({
+                        let compact_header = self.headers_store.get_compact_header_data(adjusted_retention_period_root).unwrap();
+                        RetentionRootChangedNotification::new(
+                            adjusted_retention_period_root,
+                            compact_header.blue_score,
+                            compact_header.daa_score,
+                        )
+                    }))
+                    .unwrap();
             };
             drop(pruning_point_write);
 

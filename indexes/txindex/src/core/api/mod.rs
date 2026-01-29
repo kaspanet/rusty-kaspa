@@ -1,15 +1,19 @@
 use std::{fmt::Debug, sync::Arc};
 
 use kaspa_consensus_core::tx::TransactionId;
-use kaspa_consensus_notify::notification::{BlockAddedNotification, RetentionRootChangedNotification, VirtualChainChangedNotification};
+use kaspa_consensus_notify::notification::{
+    BlockAddedNotification, RetentionRootChangedNotification, VirtualChainChangedNotification,
+};
 use kaspa_consensusmanager::spawn_blocking;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
+use std::ops::Deref;
+use tokio::sync::Mutex as AsyncMutex;
 
 use crate::{
     errors::TxIndexResult,
     model::{
-        bluescore_refs::{BlueScoreAcceptingRefData, BlueScoreIncludingRefData},
+        bluescore_refs::{BlueScoreAcceptingRefData, DaaScoreIncludingRefData},
         transactions::{TxAcceptanceData, TxInclusionData},
     },
 };
@@ -18,8 +22,20 @@ use crate::{
 pub trait TxIndexApi: Send + Sync + Debug {
     fn get_accepted_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxAcceptanceData>>;
     fn get_included_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxInclusionData>>;
-    fn get_transaction_inclusion_data_by_blue_score_range(&self, from: u64, to: u64, limit: Option<usize>) -> TxIndexResult<Vec<BlueScoreIncludingRefData>>;
-    fn get_transaction_acceptance_data_by_blue_score_range(&self, from: u64, to: u64, limit: Option<usize>) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>>;
+    fn get_transaction_inclusion_data_by_blue_score_range(
+        &self,
+        from: u64,
+        to: u64,
+        limit: Option<usize>,
+        limit_to_blue_score_boundry: bool,
+    ) -> TxIndexResult<Vec<DaaScoreIncludingRefData>>;
+    fn get_transaction_acceptance_data_by_blue_score_range(
+        &self,
+        from: u64,
+        to: u64,
+        limit: Option<usize>,
+        limit_to_blue_score_boundry: bool,
+    ) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>>;
 
     fn get_sink_with_blue_score(&self) -> TxIndexResult<(Hash, u64)>;
 
@@ -43,9 +59,8 @@ pub trait TxIndexApi: Send + Sync + Debug {
         retention_root_changed_notification: RetentionRootChangedNotification,
     ) -> TxIndexResult<()>;
 
-    fn prune_on_the_fly(&mut self) -> TxIndexResult<bool>;
-    fn is_pruning(&self) -> bool;
-    fn toggle_pruning_active(&self, active: bool);
+    fn prune_batch(&mut self) -> TxIndexResult<bool>;
+    fn get_pruning_lock(&self) -> Arc<AsyncMutex<()>>;
 }
 
 /// Async proxy for the TxIndex
@@ -67,8 +82,18 @@ impl TxIndexProxy {
         spawn_blocking(move || self.inner.read().get_included_transaction_data(txid)).await.unwrap()
     }
 
-    pub async fn async_get_transaction_inclusion_data_by_blue_score_range(self, from: u64, to: u64, limit: Option<usize>) -> TxIndexResult<Vec<BlueScoreIncludingRefData>> {
-        spawn_blocking(move || self.inner.read().get_transaction_inclusion_data_by_blue_score_range(from, to, limit)).await.unwrap()
+    pub async fn async_get_transaction_inclusion_data_by_blue_score_range(
+        self,
+        from: u64,
+        to: u64,
+        limit: Option<usize>,
+        limit_to_blue_score_boundry: bool,
+    ) -> TxIndexResult<Vec<DaaScoreIncludingRefData>> {
+        spawn_blocking(move || {
+            self.inner.read().get_transaction_inclusion_data_by_blue_score_range(from, to, limit, limit_to_blue_score_boundry)
+        })
+        .await
+        .unwrap()
     }
 
     pub async fn async_get_transaction_acceptance_data_by_blue_score_range(
@@ -76,8 +101,13 @@ impl TxIndexProxy {
         from: u64,
         to: u64,
         limit: Option<usize>,
+        limit_to_blue_score_boundry: bool,
     ) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>> {
-        spawn_blocking(move || self.inner.read().get_transaction_acceptance_data_by_blue_score_range(from, to, limit)).await.unwrap()
+        spawn_blocking(move || {
+            self.inner.read().get_transaction_acceptance_data_by_blue_score_range(from, to, limit, limit_to_blue_score_boundry)
+        })
+        .await
+        .unwrap()
     }
 
     pub async fn async_get_sink_with_blue_score(self) -> TxIndexResult<(Hash, u64)> {
@@ -99,17 +129,25 @@ impl TxIndexProxy {
         self,
         retention_root_changed_notification: RetentionRootChangedNotification,
     ) -> TxIndexResult<()> {
-        spawn_blocking(move || self.inner.write().update_via_retention_root_changed(retention_root_changed_notification)).await.unwrap()
+        spawn_blocking(move || self.inner.write().update_via_retention_root_changed(retention_root_changed_notification))
+            .await
+            .unwrap()
     }
 
-    pub async fn async_prune_on_the_fly(self) -> TxIndexResult<bool> {
-        spawn_blocking(move || self.inner.write().prune_on_the_fly()).await.unwrap()
+    pub async fn async_prune_batch(self) -> TxIndexResult<bool> {
+        spawn_blocking(move || self.inner.write().prune_batch()).await.unwrap()
     }
 
-    pub async fn async_is_pruning(self) -> bool {
-        spawn_blocking(move || self.inner.read().is_pruning()).await.unwrap()
+    pub async fn async_get_pruning_lock(&self) -> Arc<AsyncMutex<()>> {
+        let inner = self.inner.clone();
+        spawn_blocking(move || inner.read().get_pruning_lock()).await.unwrap()
     }
-    pub async fn async_toggle_pruning_active(self, active: bool) {
-        spawn_blocking(move || self.inner.write().toggle_pruning_active(active)).await.unwrap()
+}
+
+impl Deref for TxIndexProxy {
+    type Target = RwLock<dyn TxIndexApi>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }

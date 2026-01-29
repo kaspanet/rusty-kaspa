@@ -85,7 +85,7 @@ pub enum DatabaseStorePrefixes {
     TxIndexSink = 200,
     // - inclusion -
     TransactionInclusionData = 203,
-    IncludingBlueScoreRefs = 204,
+    IncludingDaaScoreRefs = 204,
     TxIndexTips = 205,
     // - pruning sync -
     PruningData = 208,
