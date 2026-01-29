@@ -53,7 +53,10 @@
       </div>
       <div class="bg-surface-2 rounded-lg px-4 py-2 border border-card min-w-0">
         <div class="text-gray-400 text-xs">Active Workers</div>
-        <div id="activeWorkers" class="text-base font-semibold tabular-nums leading-tight truncate">-</div>
+        <div class="flex items-baseline gap-2">
+          <div id="activeWorkers" class="text-base font-semibold tabular-nums leading-tight truncate">-</div>
+          <div id="totalWorkerHashrate" class="text-xs text-gray-400 tabular-nums truncate"></div>
+        </div>
       </div>
       <div class="bg-surface-2 rounded-lg px-4 py-2 border border-card min-w-0">
         <div class="text-gray-400 text-xs">Network Hashrate</div>
@@ -109,6 +112,7 @@
               </span>
             </div>
             <div class="flex justify-between"><span class="text-gray-400">Last Update</span><span id="lastUpdated">-</span></div>
+            <div class="flex justify-between"><span class="text-gray-400">Bridge Uptime</span><span id="bridgeUptime">-</span></div>
           </div>
           </div>
           <div class="mt-4 flex gap-3">
@@ -241,7 +245,7 @@
         <div data-collapsible-body="workers">
           <div class="sm:hidden text-xs text-gray-400 mb-2">Tip: swipe sideways to see all columns, or tap a row to view full details.</div>
           <div class="table-wrap" data-workers-table>
-            <table class="min-w-[1040px] w-max text-sm">
+            <table class="min-w-[1200px] w-max text-sm">
               <colgroup>
                 <col style="width: 6.5rem;" />
                 <col style="width: 9rem;" />
@@ -251,6 +255,8 @@
                 <col style="width: 4.5rem;" />
                 <col style="width: 4.5rem;" />
                 <col style="width: 4.5rem;" />
+                <col style="width: 5rem;" />
+                <col style="width: 8rem;" />
               </colgroup>
               <thead class="text-gray-400">
                 <tr class="border-b border-card">
@@ -262,6 +268,8 @@
                   <th class="text-left py-2 pr-3">Stale</th>
                   <th class="text-left py-2 pr-3">Invalid</th>
                   <th class="text-left py-2 pr-3">Blocks</th>
+                  <th class="text-left py-2 pr-3">Status</th>
+                  <th class="text-left py-2 pr-3">Last Seen</th>
                 </tr>
               </thead>
               <tbody id="workersBody" class="text-gray-200"></tbody>
