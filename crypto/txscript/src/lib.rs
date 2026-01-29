@@ -117,6 +117,14 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
     flags: EngineFlags,
 }
 
+/// Captures the engine stacks after execution
+pub struct ExecutionStacks {
+    /// data stack snapshot
+    pub dstack: Vec<Vec<u8>>,
+    /// alt stack snapshot
+    pub astack: Vec<Vec<u8>>,
+}
+
 fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     script: &[u8],
 ) -> impl Iterator<Item = Result<DynOpcodeImplementation<T, Reused>, TxScriptError>> + '_ {
@@ -400,7 +408,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         script_result
     }
 
-    pub fn execute(&mut self) -> Result<(), TxScriptError> {
+    fn execute_inner(&mut self) -> Result<(), TxScriptError> {
         let (scripts, is_p2sh) = match &self.script_source {
             ScriptSource::TxInput { input, utxo_entry, is_p2sh, .. } => {
                 if utxo_entry.script_public_key.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
@@ -446,9 +454,19 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             let script = self.dstack.pop()?;
             self.execute_script(script.as_slice(), false)?
         }
+        Ok(())
+    }
 
+    pub fn execute(&mut self) -> Result<(), TxScriptError> {
+        self.execute_inner()?;
         self.check_error_condition(true)?;
         Ok(())
+    }
+
+    /// Executes the scripts without the final error condition checks and returns both stacks in raw vector form.
+    pub fn execute_and_return_stacks(mut self) -> Result<ExecutionStacks, TxScriptError> {
+        self.execute_inner()?;
+        Ok(ExecutionStacks { dstack: self.dstack.into(), astack: self.astack.into() })
     }
 
     // check_error_condition is called whenever we finish a chunk of the scripts
