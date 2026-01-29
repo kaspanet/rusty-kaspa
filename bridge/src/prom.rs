@@ -75,6 +75,9 @@ static WORKER_START_TIME: OnceLock<GaugeVec> = OnceLock::new();
 /// Key: "instance:worker:wallet", Value: Instant of last activity
 static WORKER_LAST_ACTIVITY: OnceLock<parking_lot::Mutex<HashMap<String, Instant>>> = OnceLock::new();
 
+/// Bridge start time - tracks when the bridge started (for uptime calculation)
+static BRIDGE_START_TIME: OnceLock<Instant> = OnceLock::new();
+
 // ---------------------------
 // Internal CPU miner metrics (feature-gated)
 // ---------------------------
@@ -93,6 +96,8 @@ static INTERNAL_CPU_RECENT_BLOCKS: OnceLock<parking_lot::Mutex<VecDeque<Internal
 
 /// Initialize Prometheus metrics
 pub fn init_metrics() {
+    // Record bridge start time for uptime calculation
+    BRIDGE_START_TIME.get_or_init(Instant::now);
     SHARE_COUNTER.get_or_init(|| {
         register_counter_vec!("ks_valid_share_counter", "Number of shares found by worker over time", WORKER_LABELS).unwrap()
     });
@@ -776,6 +781,8 @@ struct StatsResponse {
     internalCpu: Option<InternalCpuStats>,
     blocks: Vec<BlockInfo>,
     workers: Vec<WorkerInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bridgeUptime: Option<u64>, // Bridge uptime in seconds
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -799,6 +806,10 @@ struct WorkerInfo {
     stale: u64,
     invalid: u64,
     blocks: u64,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "lastSeen")]
+    last_seen: Option<u64>, // Unix timestamp in seconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<String>, // "online", "offline", or "idle"
 }
 
 /// Get stats as JSON (optionally filtered to a single instance id)
@@ -823,6 +834,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         internalCpu: None,
         blocks: Vec::new(),
         workers: Vec::new(),
+        bridgeUptime: None,
     };
 
     let mut worker_stats: HashMap<String, WorkerInfo> = HashMap::new();
@@ -992,6 +1004,8 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                         stale: 0,
                         invalid: 0,
                         blocks: 0,
+                        last_seen: None,
+                        status: None,
                     });
                     // Aggregate across multiple time series for the same (instance,worker,wallet)
                     entry.blocks = entry.blocks.saturating_add(count);
@@ -1031,6 +1045,8 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                         stale: 0,
                         invalid: 0,
                         blocks: 0,
+                        last_seen: None,
+                        status: None,
                     });
                 }
             }
@@ -1065,6 +1081,8 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                         stale: 0,
                         invalid: 0,
                         blocks: 0,
+                        last_seen: None,
+                        status: None,
                     });
                     entry.shares = entry.shares.saturating_add(count);
                     stats.totalShares = stats.totalShares.saturating_add(count);
@@ -1103,6 +1121,8 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                         stale: 0,
                         invalid: 0,
                         blocks: 0,
+                        last_seen: None,
+                        status: None,
                     });
 
                     if share_type == "stale" {
@@ -1153,6 +1173,8 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                         stale: 0,
                         invalid: 0,
                         blocks: 0,
+                        last_seen: None,
+                        status: None,
                     });
                 }
             }
@@ -1186,19 +1208,32 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
 
     // Filter out inactive workers (no activity in the last 5 minutes)
     const WORKER_INACTIVITY_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
+    const WORKER_IDLE_THRESHOLD: Duration = Duration::from_secs(60); // 1 minute for idle status
     let now = Instant::now();
     let activity_map = WORKER_LAST_ACTIVITY.get_or_init(|| parking_lot::Mutex::new(HashMap::new()));
+    let current_time_secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
 
     // Clean up old entries and filter active workers
     let mut active_workers: Vec<WorkerInfo> = Vec::new();
     {
         let mut activity = activity_map.lock();
-        for (key, worker) in worker_stats.into_iter() {
+        for (key, mut worker) in worker_stats.into_iter() {
             // Check if worker has been active recently
             if let Some(&last_activity) = activity.get(&key) {
                 // Check if duration is valid (handles clock adjustments)
                 if let Some(duration) = now.checked_duration_since(last_activity) {
                     if duration <= WORKER_INACTIVITY_TIMEOUT {
+                        // Calculate last seen timestamp
+                        let last_seen_secs = current_time_secs.saturating_sub(duration.as_secs());
+                        worker.last_seen = Some(last_seen_secs);
+
+                        // Determine status based on last activity
+                        if duration <= WORKER_IDLE_THRESHOLD {
+                            worker.status = Some("online".to_string());
+                        } else {
+                            worker.status = Some("idle".to_string());
+                        }
+
                         active_workers.push(worker);
                     } else {
                         // Remove stale entries (no activity for > 5 minutes)
@@ -1208,6 +1243,8 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                     // Clock went backwards or instant is in the future - treat as active
                     // Update to current time to prevent issues
                     activity.insert(key.clone(), now);
+                    worker.last_seen = Some(current_time_secs);
+                    worker.status = Some("online".to_string());
                     active_workers.push(worker);
                 }
             } else {
@@ -1215,14 +1252,15 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                 // since the last stats collection. If they have shares, they might be disconnected.
                 // Only include them if they have very recent activity (check worker start time)
                 if let Some(&start_time_secs) = worker_start_times.get(&key) {
-                    let current_time_secs =
-                        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as f64;
-                    let elapsed_secs = current_time_secs - start_time_secs;
+                    let start_time_secs_u64 = start_time_secs as u64;
+                    let elapsed_secs = current_time_secs.saturating_sub(start_time_secs_u64);
                     // If worker started less than 1 minute ago and has shares, they might be active
                     // Otherwise, assume they're disconnected
-                    if elapsed_secs < 60.0 && worker.shares > 0 {
+                    if elapsed_secs < 60 && worker.shares > 0 {
                         // Very new worker - give them a chance
                         activity.insert(key.clone(), now);
+                        worker.last_seen = Some(current_time_secs);
+                        worker.status = Some("online".to_string());
                         active_workers.push(worker);
                     }
                     // Otherwise, don't include them (they're likely disconnected)
@@ -1280,6 +1318,12 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
 
     // Sort workers by blocks (most blocks first)
     stats.workers.sort_by(|a, b| b.blocks.cmp(&a.blocks));
+
+    // Calculate bridge uptime
+    if let Some(&start_time) = BRIDGE_START_TIME.get() {
+        let uptime_secs = now.duration_since(start_time).as_secs();
+        stats.bridgeUptime = Some(uptime_secs);
+    }
 
     stats
 }

@@ -132,6 +132,73 @@ function formatUnixSeconds(ts) {
   }
 }
 
+function formatUptime(seconds) {
+  const s = Number(seconds);
+  if (!Number.isFinite(s) || s < 0) return '-';
+  
+  const days = Math.floor(s / 86400);
+  const hours = Math.floor((s % 86400) / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const secs = Math.floor(s % 60);
+  
+  if (days > 0) {
+    return `${days}d ${hours}h ${minutes}m`;
+  } else if (hours > 0) {
+    return `${hours}h ${minutes}m ${secs}s`;
+  } else if (minutes > 0) {
+    return `${minutes}m ${secs}s`;
+  } else {
+    return `${secs}s`;
+  }
+}
+
+function formatRelativeTime(timestamp) {
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts) || ts <= 0) return '-';
+  
+  const now = Math.floor(Date.now() / 1000);
+  const diff = now - ts;
+  
+  if (diff < 60) {
+    return `${diff}s ago`;
+  } else if (diff < 3600) {
+    const mins = Math.floor(diff / 60);
+    return `${mins}m ago`;
+  } else if (diff < 86400) {
+    const hours = Math.floor(diff / 3600);
+    return `${hours}h ago`;
+  } else {
+    const days = Math.floor(diff / 86400);
+    return `${days}d ago`;
+  }
+}
+
+function getStatusColor(status) {
+  switch (status?.toLowerCase()) {
+    case 'online':
+      return 'text-green-400';
+    case 'idle':
+      return 'text-yellow-400';
+    case 'offline':
+      return 'text-red-400';
+    default:
+      return 'text-gray-400';
+  }
+}
+
+function getStatusBgColor(status) {
+  switch (status?.toLowerCase()) {
+    case 'online':
+      return 'bg-green-500';
+    case 'idle':
+      return 'bg-yellow-500';
+    case 'offline':
+      return 'bg-red-500';
+    default:
+      return 'bg-gray-500';
+  }
+}
+
 function formatServerTime(date, isMobile = false) {
   if (!date || !(date instanceof Date)) return '-';
   try {
@@ -732,7 +799,24 @@ async function refresh() {
     document.getElementById('totalBlocks').textContent = mergedStats.totalBlocks;
     document.getElementById('totalShares').textContent = mergedStats.totalShares;
     document.getElementById('activeWorkers').textContent = mergedStats.activeWorkers;
+    
+    // Calculate and display total worker hashrate
+    const totalWorkerHashrateHs = (mergedStats.workers || []).reduce((sum, w) => sum + ((w.hashrate || 0) * 1e9), 0);
+    const totalWorkerHashrateEl = document.getElementById('totalWorkerHashrate');
+    if (totalWorkerHashrateEl && totalWorkerHashrateHs > 0) {
+      totalWorkerHashrateEl.textContent = `(${formatHashrateHs(totalWorkerHashrateHs)})`;
+    } else if (totalWorkerHashrateEl) {
+      totalWorkerHashrateEl.textContent = '';
+    }
+    
     document.getElementById('networkHashrate').textContent = formatHashrateHs(mergedStats.networkHashrate);
+    
+    // Display bridge uptime
+    if (mergedStats.bridgeUptime != null) {
+      setText('bridgeUptime', formatUptime(mergedStats.bridgeUptime));
+    } else {
+      setText('bridgeUptime', '-');
+    }
     document.getElementById('networkDifficulty').textContent = formatDifficulty(mergedStats.networkDifficulty);
     document.getElementById('networkBlockCount').textContent = mergedStats.networkBlockCount ?? '-';
 
@@ -871,6 +955,10 @@ async function refresh() {
         <td class="py-1.5 pr-3">${w.stale ?? '-'}</td>
         <td class="py-1.5 pr-3">${w.invalid ?? '-'}</td>
         <td class="py-1.5 pr-3">${w.blocks ?? '-'}</td>
+        <td class="py-1.5 pr-3">
+          ${w.status ? `<span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full ${getStatusBgColor(w.status)}"></span><span class="${getStatusColor(w.status)} capitalize">${escapeHtmlAttr(w.status)}</span></span>` : '-'}
+        </td>
+        <td class="py-1.5 pr-3" title="${w.lastSeen ? formatUnixSeconds(w.lastSeen) : ''}">${w.lastSeen ? formatRelativeTime(w.lastSeen) : '-'}</td>
       `;
       workersBody.appendChild(tr);
     });
@@ -888,6 +976,13 @@ async function refresh() {
       document.getElementById('instances').textContent = cached.status.instances ?? '-';
       document.getElementById('web').textContent = cached.status.web_bind ?? '-';
       setLastUpdated(cached.updatedMs, true);
+      
+      // Display bridge uptime from cached stats
+      if (cached.stats.bridgeUptime != null) {
+        setText('bridgeUptime', formatUptime(cached.stats.bridgeUptime));
+      } else {
+        setText('bridgeUptime', '-');
+      }
 
       document.getElementById('totalBlocks').textContent = displayTotalBlocksFromStats(cached.stats);
       document.getElementById('totalShares').textContent = cached.stats.totalShares;
@@ -1031,6 +1126,10 @@ async function refresh() {
           <td class="py-1.5 pr-3">${w.stale ?? '-'}</td>
           <td class="py-1.5 pr-3">${w.invalid ?? '-'}</td>
           <td class="py-1.5 pr-3">${w.blocks ?? '-'}</td>
+          <td class="py-1.5 pr-3">
+            ${w.status ? `<span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full ${getStatusBgColor(w.status)}"></span><span class="${getStatusColor(w.status)} capitalize">${escapeHtmlAttr(w.status)}</span></span>` : '-'}
+          </td>
+          <td class="py-1.5 pr-3" title="${w.lastSeen ? formatUnixSeconds(w.lastSeen) : ''}">${w.lastSeen ? formatRelativeTime(w.lastSeen) : '-'}</td>
         `;
         workersBody.appendChild(tr);
       });
@@ -1261,6 +1360,13 @@ setInterval(() => {
   document.getElementById('instances').textContent = cached.status.instances ?? '-';
   document.getElementById('web').textContent = cached.status.web_bind ?? '-';
   setLastUpdated(cached.updatedMs, true);
+  
+  // Display bridge uptime from cached stats
+  if (cached.stats.bridgeUptime != null) {
+    setText('bridgeUptime', formatUptime(cached.stats.bridgeUptime));
+  } else {
+    setText('bridgeUptime', '-');
+  }
 
   document.getElementById('totalBlocks').textContent = displayTotalBlocksFromStats(cached.stats);
   document.getElementById('totalShares').textContent = cached.stats.totalShares;
@@ -1362,6 +1468,10 @@ setInterval(() => {
       <td class="py-1.5 pr-3">${w.stale ?? '-'}</td>
       <td class="py-1.5 pr-3">${w.invalid ?? '-'}</td>
       <td class="py-1.5 pr-3">${w.blocks ?? '-'}</td>
+      <td class="py-1.5 pr-3">
+        ${w.status ? `<span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full ${getStatusBgColor(w.status)}"></span><span class="${getStatusColor(w.status)} capitalize">${escapeHtmlAttr(w.status)}</span></span>` : '-'}
+      </td>
+      <td class="py-1.5 pr-3" title="${w.lastSeen ? formatUnixSeconds(w.lastSeen) : ''}">${w.lastSeen ? formatRelativeTime(w.lastSeen) : '-'}</td>
     `;
     workersBody.appendChild(tr);
   });
