@@ -117,10 +117,12 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
     flags: EngineFlags,
 }
 
-/// Captures the VM stacks after execution without consuming the engine.
+/// Captures the engine stacks after execution
 pub struct ExecutionStacks {
-    pub dstack: Vec<Vec<u8>>, // data stack snapshot
-    pub astack: Vec<Vec<u8>>, // alt stack snapshot
+    /// data stack snapshot
+    pub dstack: Vec<Vec<u8>>,
+    /// alt stack snapshot
+    pub astack: Vec<Vec<u8>>,
 }
 
 fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
@@ -461,11 +463,10 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         Ok(())
     }
 
-    /// Executes the scripts without the final error condition checks and returns clones of
-    /// both stacks in raw vector form.
-    pub fn execute_and_return_stacks(&mut self) -> Result<ExecutionStacks, TxScriptError> {
+    /// Executes the scripts without the final error condition checks and returns both stacks in raw vector form.
+    pub fn execute_and_return_stacks(mut self) -> Result<ExecutionStacks, TxScriptError> {
         self.execute_inner()?;
-        Ok(ExecutionStacks { dstack: self.dstack.clone().into(), astack: self.astack.clone().into() })
+        Ok(ExecutionStacks { dstack: self.dstack.into(), astack: self.astack.into() })
     }
 
     // check_error_condition is called whenever we finish a chunk of the scripts
