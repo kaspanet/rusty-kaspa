@@ -5310,12 +5310,18 @@ dependencies = [
 name = "zk-covenant-inline-host"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "ark-bn254",
+ "ark-groth16",
+ "ark-serialize",
+ "bincode",
  "borsh",
  "bytemuck",
  "faster-hex 0.10.0",
  "kaspa-consensus-core",
  "kaspa-hashes",
  "kaspa-txscript",
+ "risc0-groth16",
  "risc0-zkvm",
  "tracing-subscriber 0.3.22",
  "zk-covenant-inline-core",

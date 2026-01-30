@@ -363,3 +363,9 @@ strip = false
 [workspace.lints.clippy]
 empty_docs = "allow"
 uninlined_format_args = "allow"
+
+#[patch.crates-io]
+#risc0-zkp = { path = "../../risc0/risc0/zkp"}
+#risc0-circuit-recursion = { path = "../../risc0/risc0/circuit/recursion"}
+#risc0-core = { path = "../../risc0/risc0/core"}
+#risc0-binfmt = { path = "../../risc0/risc0/binfmt"}

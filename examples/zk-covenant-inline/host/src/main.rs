@@ -1,14 +1,18 @@
+use crate::g16::seal_to_compressed_proof;
+use kaspa_consensus_core::tx::CovenantBinding;
 use kaspa_consensus_core::{
     constants::{SOMPI_PER_KASPA, TX_VERSION},
     hashing::sighash::SigHashReusedValuesUnsync,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
+use kaspa_hashes::Hash;
 use kaspa_txscript::{
     caches::Cache,
+    covenants::CovenantsContext,
     opcodes::codes::{
-        OpAdd, OpBlake2b, OpCat, OpData32, OpDup, OpEqual, OpEqualVerify, OpSHA256, OpSwap, OpTxInputIndex, OpTxInputScriptSigLen,
-        OpTxInputScriptSigSubstr, OpTxOutputSpk, OpTxPayloadSubstr, OpZkPrecompile,
+        OpAdd, OpBlake2b, OpCat, OpCovOutCount, OpData32, OpDup, OpEqual, OpEqualVerify, OpInputCovenantId, OpSHA256, OpSwap, OpTrue,
+        OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpk, OpTxPayloadSubstr, OpVerify, OpZkPrecompile,
     },
     pay_to_script_hash_script,
     script_builder::ScriptBuilder,
@@ -20,14 +24,14 @@ use std::time::Instant;
 use zk_covenant_inline_core::{Action, PublicInput, State, VersionedActionRaw};
 use zk_covenant_inline_methods::{ZK_COVENANT_INLINE_GUEST_ELF, ZK_COVENANT_INLINE_GUEST_ID};
 
+mod g16;
+
 fn main() {
-    // Initialize tracing. In order to view logs, run `RUST_LOG=info cargo run`
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env()).init();
 
-    // --- Build the transaction for the guest and for verification ---
     let state = State::default();
     let prev_state_hash = state.hash();
-    let action = Action::Fib(5); // Example action
+    let action = Action::Fib(5);
     let new_state = {
         let mut state = State::default();
         state.add_new_result(action, 5);
@@ -39,37 +43,34 @@ fn main() {
     let public_input =
         PublicInput { prev_state_hash, versioned_action_raw: VersionedActionRaw { action_version: 0, action_raw: action_bytes } };
 
-    let env = ExecutorEnv::builder()
-        .write_slice(core::slice::from_ref(&public_input))
-        .write_slice(core::slice::from_ref(&state))
-        .build()
-        .unwrap();
+    let env = || {
+        ExecutorEnv::builder()
+            .write_slice(core::slice::from_ref(&public_input))
+            .write_slice(core::slice::from_ref(&state))
+            .build()
+            .unwrap()
+    };
 
-    // Obtain the default prover.
     let prover = default_prover();
 
+    // --- Succinct (STARK) proof ---
     let now = Instant::now();
-    let prove_info = prover.prove_with_opts(env, ZK_COVENANT_INLINE_GUEST_ELF, &ProverOpts::succinct()).unwrap();
-    println!("Proving took {} ms", now.elapsed().as_millis());
+    let succinct_prove_info = prover.prove_with_opts(env(), ZK_COVENANT_INLINE_GUEST_ELF, &ProverOpts::succinct()).unwrap();
+    println!("Succinct proving took {} ms", now.elapsed().as_millis());
 
-    // extract the receipt.
-    let receipt = prove_info.receipt;
-    let journal_digest = receipt.journal.digest();
-    let receipt_inner = receipt.inner.succinct().unwrap();
+    let succinct_receipt = succinct_prove_info.receipt;
+    succinct_receipt.verify(ZK_COVENANT_INLINE_GUEST_ID).unwrap();
 
-    // Extract committed data from journal
-    let journal_bytes = &receipt.journal.bytes;
-    println!("Journal bytes: {}", faster_hex::hex_string(journal_bytes));
-
-    let committed_public_input: zk_covenant_inline_core::PublicInput =
-        *bytemuck::from_bytes(&journal_bytes[..size_of::<PublicInput>()]);
+    // Extract committed data from journal (shared between both proofs)
+    let journal_bytes = &succinct_receipt.journal.bytes;
+    let committed_public_input: PublicInput = *bytemuck::from_bytes(&journal_bytes[..size_of::<PublicInput>()]);
     assert_eq!(public_input, committed_public_input);
+
     let new_state_hash_from_journal: &[u8] = &journal_bytes[size_of::<PublicInput>()..size_of::<PublicInput>() + 32];
     let new_state_hash = new_state.hash();
     assert_eq!(new_state_hash_from_journal, bytemuck::bytes_of(&new_state_hash));
-    // println!("New state hash: {}", faster_hex::hex_string(new_state_hash_from_journal));
-    // println!("Old state hash: {}", faster_hex::hex_string(bytemuck::bytes_of(&prev_state_hash)));
 
+    let journal_digest = succinct_receipt.journal.digest();
     let expected_digest = {
         let mut pre_image = [0u8; 68];
         pre_image[..size_of::<PublicInput>()].copy_from_slice(bytemuck::bytes_of(&public_input));
@@ -78,6 +79,10 @@ fn main() {
     };
     assert_eq!(journal_digest, expected_digest);
 
+    succinct_receipt.verify(ZK_COVENANT_INLINE_GUEST_ID).unwrap();
+
+    // --- Verify STARK (succinct) on-chain ---
+    let receipt_inner = succinct_receipt.inner.succinct().unwrap();
     let script_precompile_inner = SuccinctReceipt {
         seal: receipt_inner.seal.clone(),
         control_id: receipt_inner.control_id,
@@ -90,40 +95,56 @@ fn main() {
         ),
     };
 
-    receipt.verify(ZK_COVENANT_INLINE_GUEST_ID).unwrap();
+    let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_INLINE_GUEST_ID);
+    let computed_len = build_redeem_script(public_input.prev_state_hash, 76, &program_id, ZkTag::R0Succinct).len() as i64;
 
-    // Build redeem scripts using 32-byte hashes
-    let computed_len = build_redeem_script(public_input.prev_state_hash, 76).len() as i64;
-
-    let input_redeem_script = build_redeem_script(public_input.prev_state_hash, computed_len);
-    let input_spk = pay_to_script_hash_script(&input_redeem_script);
-    let output_redeem_script = build_redeem_script(new_state_hash, computed_len);
-    let output_spk = pay_to_script_hash_script(&output_redeem_script);
-    assert_eq!(computed_len as usize, output_redeem_script.len());
-    assert_eq!(computed_len as usize, input_redeem_script.len());
-
-    // println!("Output redeem script: {}", faster_hex::hex_string(&output_redeem_script));
-    // println!("output spk: {}", faster_hex::hex_string(&output_spk.to_bytes()));
+    let input_redeem_script = build_redeem_script(public_input.prev_state_hash, computed_len, &program_id, ZkTag::R0Succinct);
+    let output_redeem_script = build_redeem_script(new_state_hash, computed_len, &program_id, ZkTag::R0Succinct);
 
     let payload = bytemuck::bytes_of(&public_input)[..size_of::<VersionedActionRaw>()].to_vec();
-    let (mut tx, _, utxo_entry) = make_mock_transaction(0, input_spk, output_spk, payload);
+    let (mut tx, _, utxo_entry) = make_mock_transaction(
+        0,
+        pay_to_script_hash_script(&input_redeem_script),
+        pay_to_script_hash_script(&output_redeem_script),
+        payload.clone(),
+    );
 
-    // --- Update the sig_script with the real proof and verify on-chain ---
-    let final_sig_script = ScriptBuilder::new()
-        .add_data(&borsh::to_vec(&script_precompile_inner).unwrap())
-        .unwrap()
-        .add_data(bytemuck::cast_slice(ZK_COVENANT_INLINE_GUEST_ID.as_slice()))
-        .unwrap()
-        .add_data(new_state_hash_from_journal)
-        .unwrap()
-        .add_data(&input_redeem_script)
-        .unwrap()
-        .drain();
-
+    let proof_bytes = borsh::to_vec(&script_precompile_inner).unwrap();
+    let final_sig_script = build_final_signature_script(&proof_bytes, new_state_hash_from_journal, &input_redeem_script);
     tx.inputs[0].signature_script = final_sig_script;
 
-    verify_zk_succinct(&tx, &utxo_entry);
-    println!("ZK proof verified successfully on-chain!");
+    verify_tx(&tx, &utxo_entry);
+    println!("STARK (succinct) proof verified successfully on-chain!");
+
+    // --- Groth16 proof ---
+    let now = Instant::now();
+    let groth16_prove_info = prover.prove_with_opts(env(), ZK_COVENANT_INLINE_GUEST_ELF, &ProverOpts::groth16()).unwrap();
+    println!("Groth16 proving took {} ms", now.elapsed().as_millis());
+
+    let groth16_receipt = groth16_prove_info.receipt;
+    groth16_receipt.verify(ZK_COVENANT_INLINE_GUEST_ID).unwrap();
+
+    let groth16_inner = groth16_receipt.inner.groth16().unwrap();
+    let seal = &groth16_inner.seal;
+    let compressed_proof = seal_to_compressed_proof(seal);
+
+    let computed_len_g16 = build_redeem_script(public_input.prev_state_hash, 1011, &program_id, ZkTag::Groth16).len() as i64;
+    let input_redeem_g16 = build_redeem_script(public_input.prev_state_hash, computed_len_g16, &program_id, ZkTag::Groth16);
+    let output_redeem_g16 = build_redeem_script(new_state_hash, computed_len_g16, &program_id, ZkTag::Groth16);
+
+    let (mut tx_g16, _, utxo_entry_g16) =
+        make_mock_transaction(0, pay_to_script_hash_script(&input_redeem_g16), pay_to_script_hash_script(&output_redeem_g16), payload);
+
+    let final_sig_script_g16 = build_final_signature_script(&compressed_proof, new_state_hash_from_journal, &input_redeem_g16);
+    tx_g16.inputs[0].signature_script = final_sig_script_g16;
+
+    verify_tx(&tx_g16, &utxo_entry_g16);
+    println!("Groth16 proof verified successfully on-chain!");
+}
+
+// Unified final signature script builder (used by both STARK and Groth16)
+fn build_final_signature_script(proof: &[u8], new_state_hash: &[u8], redeem_script: &[u8]) -> Vec<u8> {
+    ScriptBuilder::new().add_data(proof).unwrap().add_data(new_state_hash).unwrap().add_data(redeem_script).unwrap().drain()
 }
 
 fn make_mock_transaction(
@@ -135,7 +156,12 @@ fn make_mock_transaction(
     let dummy_prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
     let dummy_tx_input = TransactionInput::new(dummy_prev_out, vec![], 10, u8::MAX);
 
-    let dummy_tx_out = TransactionOutput::new(SOMPI_PER_KASPA, output_spk);
+    let cov_id = Hash::from_bytes([0xFF; _]);
+    let dummy_tx_out = TransactionOutput::with_covenant(
+        SOMPI_PER_KASPA,
+        output_spk,
+        Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+    );
 
     let tx = Transaction::new(
         TX_VERSION + 1,
@@ -146,256 +172,187 @@ fn make_mock_transaction(
         0,
         payload,
     );
-    let utxo_entry = UtxoEntry::new(0, input_spk, 0, false, None);
+    let utxo_entry = UtxoEntry::new(0, input_spk, 0, false, Some(cov_id));
     (tx, dummy_tx_input, utxo_entry)
 }
 
-fn verify_zk_succinct(tx: &Transaction, utxo_entry: &UtxoEntry) {
+fn verify_tx(tx: &Transaction, utxo_entry: &UtxoEntry) {
     let sig_cache = Cache::new(10_000);
     let reused_values = SigHashReusedValuesUnsync::new();
     let flags = EngineFlags { covenants_enabled: true };
 
     let populated = PopulatedTransaction::new(tx, vec![utxo_entry.clone()]);
-    let ctx = EngineCtx::new(&sig_cache).with_reused(&reused_values);
+    let covenant_ctx = CovenantsContext::from_tx(&populated).unwrap();
+    let ctx = EngineCtx::new(&sig_cache).with_reused(&reused_values).with_covenants_ctx(&covenant_ctx);
     let mut vm = TxScriptEngine::from_transaction_input(&populated, &tx.inputs[0], 0, utxo_entry, ctx, flags);
     vm.execute().unwrap();
 }
 
-fn build_redeem_script(old_state_hash: [u32; 8], redeem_script_len: i64) -> Vec<u8> {
+fn build_redeem_script(old_state_hash: [u32; 8], redeem_script_len: i64, program_id: &[u8; 32], zk_tag: ZkTag) -> Vec<u8> {
     let mut builder = ScriptBuilder::new();
 
-    // Prepare old and new states on the stack
+    // Expects on sig_script stack: [proof, new_state_hash]
     add_state_preparation(&mut builder, old_state_hash).unwrap();
+    // Stack: [proof, old_state_hash, new_state_hash, new_state_hash]
 
-    // Stack: [proof, program_id, old_state_hash, new_state_hash, new_state_hash]
-
-    // Build the prefix for the new redeem script (OpData32 || new_state_hash)
     add_new_redeem_prefix(&mut builder).unwrap();
+    // Stack: [proof, old_state_hash, new_state_hash, (OpData32 || new_state_hash)]
 
-    // Stack: [proof, program_id, old_state_hash, new_state_hash, (OpData32 || new_state_hash)]
-
-    // Extract the suffix from sig_script and concatenate to form the new redeem script
     add_suffix_extraction_and_cat(&mut builder, redeem_script_len).unwrap();
+    // Stack: [proof, old_state_hash, new_state_hash, new_redeem_script]
 
-    // Stack: [proof, program_id, old_state_hash, new_state_hash, new_redeem_script]
-
-    // Hash the new redeem script and build the expected SPK bytes
     add_hash_and_build_spk(&mut builder).unwrap();
+    // Stack: [proof, old_state_hash, new_state_hash, constructed_spk]
 
-    // Stack: [proof, program_id, old_state_hash, new_state_hash, constructed_spk]
-
-    // Verify the constructed SPK matches the actual output SPK
     add_verify_output_spk(&mut builder).unwrap();
+    // Stack: [proof, old_state_hash, new_state_hash]
 
-    // Stack: [proof, program_id, old_state_hash, new_state_hash]
-
-    // Construct the preimage for the journal hash (versioned_action_raw || old_state_hash || new_state_hash)
     add_construct_journal_preimage(&mut builder).unwrap();
+    // Stack: [proof,  preimage]
 
-    // Stack: [proof, program_id, preimage]
-
-    // Hash the preimage to get the journal hash
     add_hash_to_journal(&mut builder).unwrap();
+    // Stack: [proof, journal_hash]
 
-    // Stack: [proof, program_id, journal_hash]
-
-    // Swap journal_hash and program_id for ZK verification order
-    add_swap_for_zk(&mut builder).unwrap();
-
+    // Hardcode program_id in redeem script (no longer in sig_script)
+    builder.add_data(program_id).unwrap();
     // Stack: [proof, journal_hash, program_id]
 
-    // Perform ZK verification using the proof, journal_hash, program_id, and tag
-    add_zk_verification(&mut builder).unwrap();
+    match zk_tag {
+        ZkTag::R0Succinct => {
+            // Push succinct ZK tag and verify
+            builder.add_data(&[ZkTag::R0Succinct as u8]).unwrap();
+            // Stack: [proof, journal_hash, program_id, ZkTag::R0Succinct]
 
-    // Stack: [] (assuming OpZkPrecompile consumes the items and leaves nothing or true; but since it verifies, likely leaves nothing)
-
-    // Verify that the current input index is 0 (ensuring single-input tx or specific input)
+            builder.add_op(OpZkPrecompile).unwrap();
+            // Stack: [true]
+            builder.add_op(OpVerify).unwrap();
+            // Stack: []
+        }
+        ZkTag::Groth16 => {
+            g16::apply_to_builder(&mut builder).unwrap();
+            // Stack: []
+        }
+    }
     add_verify_input_index_zero(&mut builder).unwrap();
+    // Stack: []
 
-    // Stack: [] (OpEqualVerify consumes and verifies)
+    add_verify_covenant_single_output(&mut builder).unwrap();
 
+    builder.add_op(OpTrue).unwrap();
+    // Stack: [true]
     builder.drain()
 }
 
-/// Prepares the old and new state hashes on the stack by pushing the old state hash, swapping, and duplicating the new state hash.
+// ===== Shared helpers with stack comments =====
+
+/// Pushes old_state_hash, swaps with new_state_hash, duplicates new_state_hash.
 ///
-/// Expects on stack: [proof, program_id, new_state_hash]
-///
-/// Leaves on stack: [proof, program_id, old_state_hash, new_state_hash, new_state_hash]
+/// Expects on stack: [..., new_state_hash]
+/// Leaves on stack:  [..., old_state_hash, new_state_hash, new_state_hash]
 fn add_state_preparation(
     builder: &mut ScriptBuilder,
     old_state_hash: [u32; 8],
 ) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Push the old state hash (prev_state_hash) onto the stack
     builder.add_data(bytemuck::bytes_of(&old_state_hash))?;
-    // Swap the top two items: new_state_hash and old_state_hash
     builder.add_op(OpSwap)?;
-    // Duplicate the new_state_hash (now on top)
     builder.add_op(OpDup)
 }
 
-/// Builds the prefix for the new redeem script by concatenating OpData32 with a duplicated new_state_hash.
+/// Builds prefix (OpData32 || new_state_hash) for the new redeem script.
 ///
-/// Expects on stack: [..., old_state_hash, new_state_hash, new_state_hash]
-///
-/// Leaves on stack: [..., old_state_hash, new_state_hash, (OpData32 || new_state_hash)]
+/// Expects on stack: [..., new_state_hash, new_state_hash]
+/// Leaves on stack:  [..., new_state_hash, (OpData32 || new_state_hash)]
 fn add_new_redeem_prefix(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Push OpData32 (for pushing 32-byte state hash in the new redeem script)
     builder.add_data(&[OpData32])?;
-    // Swap to bring one new_state_hash to top
     builder.add_op(OpSwap)?;
-    // Concatenate: OpData32 || new_state_hash
     builder.add_op(OpCat)
 }
 
-/// Extracts the redeem script suffix from the signature script and concatenates it with the prefix to form the new redeem script.
+/// Extracts redeem script suffix from sig_script and concatenates with prefix.
 ///
-/// The suffix is extracted using a computed offset to skip the old state hash push in the current redeem script.
-///
-/// Expects on stack: [..., (OpData32 || new_state_hash)] (prefix on top)
-///
-/// Leaves on stack: [..., new_redeem_script]
+/// Expects on stack: [..., (OpData32 || new_state_hash)]
+/// Leaves on stack:  [..., new_redeem_script]
 fn add_suffix_extraction_and_cat(
     builder: &mut ScriptBuilder,
     redeem_script_len: i64,
 ) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Compute offset: sig_script_len + (-redeem_script_len + 33) to point after old_state_hash push
     builder.add_op(OpTxInputIndex)?;
     builder.add_op(OpTxInputIndex)?;
     builder.add_op(OpTxInputScriptSigLen)?;
-    builder.add_i64(-redeem_script_len + 33)?; // -redeem script + OpData32 + 32 bytes
+    builder.add_i64(-redeem_script_len + 33)?;
     builder.add_op(OpAdd)?;
-
-    // Push end: sig_script_len
     builder.add_op(OpTxInputIndex)?;
     builder.add_op(OpTxInputScriptSigLen)?;
-
-    // Extract substring: sig_script[offset..end] = suffix
     builder.add_op(OpTxInputScriptSigSubstr)?;
-
-    // Concatenate prefix || suffix to form new_redeem_script
     builder.add_op(OpCat)
 }
 
-/// Hashes the new redeem script and constructs the expected ScriptPublicKey (SPK) bytes for verification.
+/// Hashes the new redeem script and builds the expected SPK bytes.
 ///
-/// The SPK is built as: version (2 bytes) || OpBlake2b || OpData32 || hash || OpEqual
+/// SPK = version(2) || OpBlake2b || OpData32 || hash || OpEqual
 ///
 /// Expects on stack: [..., new_redeem_script]
-///
-/// Leaves on stack: [..., constructed_spk]
+/// Leaves on stack:  [..., constructed_spk]
 fn add_hash_and_build_spk(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Hash the new redeem script using Blake2b
     builder.add_op(OpBlake2b)?;
-
-    // Push prefix: version (little-endian) || OpBlake2b || OpData32
     let mut data = [0u8; 4];
     data[0..2].copy_from_slice(&TX_VERSION.to_le_bytes());
     data[2] = OpBlake2b;
     data[3] = OpData32;
     builder.add_data(&data)?;
-
-    // Swap to bring hash to top
     builder.add_op(OpSwap)?;
-
-    // Concatenate: prefix || hash
     builder.add_op(OpCat)?;
-
-    // Push OpEqual
     builder.add_data(&[OpEqual])?;
-
-    // Concatenate: (prefix || hash) || OpEqual = constructed_spk
     builder.add_op(OpCat)
 }
 
-/// Verifies that the constructed SPK matches the actual output SPK at index 0.
+/// Verifies constructed SPK matches the actual output SPK at index 0.
 ///
 /// Expects on stack: [..., constructed_spk]
-///
-/// Leaves on stack: [...] (consumes constructed_spk and output_spk after verification)
+/// Leaves on stack:  [...]
 fn add_verify_output_spk(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Push input index (0)
     builder.add_op(OpTxInputIndex)?;
-
-    // Push output SPK at index 0
     builder.add_op(OpTxOutputSpk)?;
-
-    // Verify equality and consume both items
     builder.add_op(OpEqualVerify)
 }
 
-/// Constructs the preimage for the journal hash by concatenating versioned_action_raw || old_state_hash || new_state_hash.
+/// Constructs preimage = versioned_action_raw || old_state_hash || new_state_hash.
 ///
 /// Expects on stack: [..., old_state_hash, new_state_hash]
-///
-/// Leaves on stack: [..., preimage] where preimage = versioned_action_raw || old_state_hash || new_state_hash
+/// Leaves on stack:  [..., preimage]
 fn add_construct_journal_preimage(
     builder: &mut ScriptBuilder,
 ) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Concatenate old_state_hash || new_state_hash
     builder.add_op(OpCat)?;
-
-    // Push start (0) and end (4) for payload substr
     builder.add_i64(0)?;
     builder.add_i64(size_of::<VersionedActionRaw>() as i64)?;
-
-    // Extract versioned_action_raw = tx.payload[0..4]
     builder.add_op(OpTxPayloadSubstr)?;
-
-    // Concatenate versioned_action_raw || (old_state_hash || new_state_hash)
     builder.add_op(OpSwap)?;
     builder.add_op(OpCat)
 }
 
-/// Hashes the preimage to compute the journal hash using SHA256.
+/// Hashes preimage with SHA256 to get journal_hash.
 ///
 /// Expects on stack: [..., preimage]
-///
-/// Leaves on stack: [..., journal_hash]
+/// Leaves on stack:  [..., journal_hash]
 fn add_hash_to_journal(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Hash the preimage with SHA256 to get the journal commitment
     builder.add_op(OpSHA256)
 }
 
-/// Swaps the journal_hash and program_id to prepare the stack for ZK verification.
+/// Verifies current input index is 0.
 ///
-/// Expects on stack: [..., program_id, journal_hash]
-///
-/// Leaves on stack: [..., journal_hash, program_id]
-fn add_swap_for_zk(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Swap the top two items
-    builder.add_op(OpSwap)
-}
-
-/// Adds the ZK tag and opcode to perform the ZK precompile verification.
-///
-/// Assumes OpZkPrecompile consumes [proof (bottom), journal_hash, program_id, tag (top)] and verifies the proof.
-///
-/// Expects on stack: [proof, journal_hash, program_id]
-///
-/// Leaves on stack: [] (after verification; assumes success leaves nothing or implicit true)
-fn add_zk_verification(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Push the ZK tag for RISC0 succinct proof
-    builder.add_data(&[ZkTag::R0Succinct as u8])?;
-
-    // Execute the ZK precompile opcode to verify the proof
-    builder.add_op(OpZkPrecompile)
-}
-
-/// Verifies that the current input index is 0 (e.g., to enforce single-input or specific input constraints).
-///
-/// Expects on stack: []
-///
-/// Leaves on stack: [] (after verification)
+/// Expects on stack: [true] (or any truthy value from prior verification)
+/// Leaves on stack:  []
 fn add_verify_input_index_zero(
     builder: &mut ScriptBuilder,
 ) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Push current input index
     builder.add_op(OpTxInputIndex)?;
-
-    // Push 0
     builder.add_i64(0)?;
-
-    // Verify equality
     builder.add_op(OpEqualVerify)
+}
+
+fn add_verify_covenant_single_output(
+    builder: &mut ScriptBuilder,
+) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+    builder.add_op(OpTxInputIndex)?.add_op(OpInputCovenantId)?.add_op(OpCovOutCount)?.add_i64(1)?.add_op(OpEqualVerify)
 }
