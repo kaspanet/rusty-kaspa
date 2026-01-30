@@ -597,11 +597,12 @@ function renderDonutChart(containerId, legendId, items, emptyMessage) {
   legend.innerHTML = items.map((it, idx) => {
     const v = Number(it.value) || 0;
     const pct = ((v / total) * 100).toFixed(1);
+    const label = escapeHtmlAttr(it.label ?? '');
     return `
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-3 min-w-0">
           <span class="inline-block w-3 h-3 rounded" style="background:${colors[idx]}"></span>
-          <span class="truncate" title="${it.label}">${it.label}</span>
+          <span class="truncate" title="${label}">${label}</span>
         </div>
         <div class="text-gray-300">${v} <span class="text-gray-500">(${pct}%)</span></div>
       </div>

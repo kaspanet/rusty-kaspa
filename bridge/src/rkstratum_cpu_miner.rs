@@ -62,12 +62,19 @@ impl SharedWork {
         self.cv.notify_all();
     }
 
-    fn wait_for_update(&self, last_seen: u64) -> (u64, Option<Work>) {
+    fn wait_for_update(&self, last_seen: u64, shutdown_flag: &AtomicBool) -> (u64, Option<Work>) {
         let mut slot = self.slot.lock();
-        while slot.version == last_seen {
+        while slot.version == last_seen && !shutdown_flag.load(Ordering::Acquire) {
             self.cv.wait(&mut slot);
         }
+        if shutdown_flag.load(Ordering::Acquire) && slot.version == last_seen {
+            return (last_seen, None);
+        }
         (slot.version, slot.work.as_ref().map(|w| Work { id: w.id, block: w.block.clone(), pow_state: Arc::clone(&w.pow_state) }))
+    }
+
+    fn notify_all(&self) {
+        self.cv.notify_all();
     }
 }
 
@@ -84,12 +91,16 @@ pub fn spawn_internal_cpu_miner(
         return Err(anyhow::anyhow!("internal mining address is required when internal cpu miner is enabled"));
     }
 
+    let work = Arc::new(SharedWork::new());
+
     let shutdown_flag = Arc::new(AtomicBool::new(false));
     let shutdown_flag_threads = Arc::clone(&shutdown_flag);
+    let work_shutdown = Arc::clone(&work);
     tokio::spawn(async move {
         let mut rx = shutdown_rx;
         let _ = rx.wait_for(|v| *v).await;
         shutdown_flag_threads.store(true, Ordering::Release);
+        work_shutdown.notify_all();
     });
 
     let metrics = Arc::new(InternalMinerMetrics::default());
@@ -154,7 +165,6 @@ pub fn spawn_internal_cpu_miner(
         }
     });
 
-    let work = Arc::new(SharedWork::new());
     let work_publisher = Arc::clone(&work);
     let kaspa_api_templates = Arc::clone(&kaspa_api);
     let mining_address = cfg.mining_address.clone();
@@ -208,7 +218,7 @@ pub fn spawn_internal_cpu_miner(
                     break;
                 }
 
-                let (ver, maybe_work) = work.wait_for_update(last_version);
+                let (ver, maybe_work) = work.wait_for_update(last_version, &shutdown_flag);
                 last_version = ver;
 
                 let Some(w) = maybe_work else {
