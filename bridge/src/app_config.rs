@@ -6,15 +6,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Instance-specific configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
 pub struct InstanceConfig {
     #[serde(deserialize_with = "deserialize_port")]
     pub stratum_port: String,
     pub min_share_diff: u32,
-    #[serde(deserialize_with = "deserialize_optional_port")]
+    #[serde(default, deserialize_with = "deserialize_optional_port")]
     pub prom_port: Option<String>, // Optional per-instance prom port
     pub log_to_file: Option<bool>, // Optional per-instance logging
-    #[serde(deserialize_with = "deserialize_optional_duration_ms", serialize_with = "serialize_optional_duration_ms")]
+    #[serde(default, deserialize_with = "deserialize_optional_duration_ms", serialize_with = "serialize_optional_duration_ms")]
     pub block_wait_time: Option<Duration>,
     pub extranonce_size: Option<u8>,
     // Instance-specific settings that can override global defaults
@@ -52,6 +51,13 @@ pub struct BridgeConfig {
     pub instances: Vec<InstanceConfig>,
 }
 
+#[derive(Serialize)]
+struct BridgeConfigYaml<'a> {
+    #[serde(flatten)]
+    global: &'a GlobalConfig,
+    instances: &'a [InstanceConfig],
+}
+
 // Custom deserializers
 
 /// Deserialize a port string and normalize it
@@ -68,7 +74,10 @@ fn deserialize_optional_port<'de, D>(deserializer: D) -> Result<Option<String>, 
 where
     D: Deserializer<'de>,
 {
-    Ok(Option::<String>::deserialize(deserializer)?.map(|s| normalize_port(&s)))
+    Ok(Option::<String>::deserialize(deserializer)?.and_then(|s| {
+        let normalized = normalize_port(&s);
+        if normalized.is_empty() { None } else { Some(normalized) }
+    }))
 }
 
 /// Deserialize a duration from milliseconds (supports both int and float)
@@ -268,5 +277,10 @@ impl BridgeConfig {
         }
 
         Ok(BridgeConfig { global: raw.global, instances })
+    }
+
+    pub(crate) fn to_yaml(&self) -> Result<String, serde_yaml::Error> {
+        let yaml = BridgeConfigYaml { global: &self.global, instances: &self.instances };
+        serde_yaml::to_string(&yaml)
     }
 }
