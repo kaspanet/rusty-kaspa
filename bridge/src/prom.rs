@@ -93,6 +93,8 @@ static INTERNAL_CPU_HASHRATE_GHS: OnceLock<Gauge> = OnceLock::new();
 static INTERNAL_CPU_MINING_ADDRESS: OnceLock<String> = OnceLock::new();
 #[cfg(feature = "rkstratum_cpu_miner")]
 static INTERNAL_CPU_RECENT_BLOCKS: OnceLock<parking_lot::Mutex<VecDeque<InternalCpuBlock>>> = OnceLock::new();
+#[cfg(feature = "rkstratum_cpu_miner")]
+const INTERNAL_CPU_RECENT_BLOCKS_LIMIT: usize = 256;
 
 /// Initialize Prometheus metrics
 pub fn init_metrics() {
@@ -258,7 +260,9 @@ pub fn record_internal_cpu_recent_block(hash: String, nonce: u64, bluescore: u64
 
     let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
 
-    let mut q = INTERNAL_CPU_RECENT_BLOCKS.get_or_init(|| parking_lot::Mutex::new(VecDeque::with_capacity(256))).lock();
+    let mut q = INTERNAL_CPU_RECENT_BLOCKS
+        .get_or_init(|| parking_lot::Mutex::new(VecDeque::with_capacity(INTERNAL_CPU_RECENT_BLOCKS_LIMIT)))
+        .lock();
 
     // De-dupe by hash
     if q.iter().any(|b| b.hash == hash) {
@@ -266,6 +270,9 @@ pub fn record_internal_cpu_recent_block(hash: String, nonce: u64, bluescore: u64
     }
 
     q.push_front(InternalCpuBlock { timestamp_unix: ts, bluescore, nonce, hash });
+    if q.len() > INTERNAL_CPU_RECENT_BLOCKS_LIMIT {
+        q.truncate(INTERNAL_CPU_RECENT_BLOCKS_LIMIT);
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -812,6 +819,27 @@ struct WorkerInfo {
     status: Option<String>, // "online", "offline", or "idle"
 }
 
+fn parse_worker_labels(labels: &[prometheus::proto::LabelPair]) -> (String, String, String) {
+    let mut instance = String::new();
+    let mut worker = String::new();
+    let mut wallet = String::new();
+
+    for label in labels {
+        match label.get_name() {
+            "instance" => instance = label.get_value().to_string(),
+            "worker" => worker = label.get_value().to_string(),
+            "wallet" => wallet = label.get_value().to_string(),
+            _ => {}
+        }
+    }
+
+    (instance, worker, wallet)
+}
+
+fn new_worker_info(instance: String, worker: String, wallet: String) -> WorkerInfo {
+    WorkerInfo { instance, worker, wallet, hashrate: 0.0, shares: 0, stale: 0, invalid: 0, blocks: 0, last_seen: None, status: None }
+}
+
 /// Get stats as JSON (optionally filtered to a single instance id)
 async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     use prometheus::gather;
@@ -978,35 +1006,12 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         // Parse block counter
         if name == "ks_blocks_mined" {
             for metric in family.get_metric() {
-                let labels = metric.get_label();
-                let mut instance = String::new();
-                let mut worker_key = String::new();
-                let mut wallet = String::new();
-
-                for label in labels {
-                    match label.get_name() {
-                        "instance" => instance = label.get_value().to_string(),
-                        "worker" => worker_key = label.get_value().to_string(),
-                        "wallet" => wallet = label.get_value().to_string(),
-                        _ => {}
-                    }
-                }
+                let (instance, worker_key, wallet) = parse_worker_labels(metric.get_label());
 
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
                     let count = metric.get_counter().get_value() as u64;
-                    let entry = worker_stats.entry(key.clone()).or_insert_with(|| WorkerInfo {
-                        instance,
-                        worker: worker_key,
-                        wallet,
-                        hashrate: 0.0,
-                        shares: 0,
-                        stale: 0,
-                        invalid: 0,
-                        blocks: 0,
-                        last_seen: None,
-                        status: None,
-                    });
+                    let entry = worker_stats.entry(key.clone()).or_insert_with(|| new_worker_info(instance, worker_key, wallet));
                     // Aggregate across multiple time series for the same (instance,worker,wallet)
                     entry.blocks = entry.blocks.saturating_add(count);
                 }
@@ -1016,19 +1021,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         // Parse share diff counter (for hashrate calculation)
         if name == "ks_valid_share_diff_counter" {
             for metric in family.get_metric() {
-                let labels = metric.get_label();
-                let mut instance = String::new();
-                let mut worker_key = String::new();
-                let mut wallet = String::new();
-
-                for label in labels {
-                    match label.get_name() {
-                        "instance" => instance = label.get_value().to_string(),
-                        "worker" => worker_key = label.get_value().to_string(),
-                        "wallet" => wallet = label.get_value().to_string(),
-                        _ => {}
-                    }
-                }
+                let (instance, worker_key, wallet) = parse_worker_labels(metric.get_label());
 
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
@@ -1036,18 +1029,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                     // Store hash value for hashrate calculation (aggregate across label variants)
                     *worker_hash_values.entry(key.clone()).or_insert(0.0) += total_hash_value;
                     // Ensure worker exists in stats
-                    worker_stats.entry(key.clone()).or_insert_with(|| WorkerInfo {
-                        instance,
-                        worker: worker_key,
-                        wallet,
-                        hashrate: 0.0,
-                        shares: 0,
-                        stale: 0,
-                        invalid: 0,
-                        blocks: 0,
-                        last_seen: None,
-                        status: None,
-                    });
+                    worker_stats.entry(key.clone()).or_insert_with(|| new_worker_info(instance, worker_key, wallet));
                 }
             }
         }
@@ -1055,35 +1037,12 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         // Parse share counter
         if name == "ks_valid_share_counter" {
             for metric in family.get_metric() {
-                let labels = metric.get_label();
-                let mut instance = String::new();
-                let mut worker_key = String::new();
-                let mut wallet = String::new();
-
-                for label in labels {
-                    match label.get_name() {
-                        "instance" => instance = label.get_value().to_string(),
-                        "worker" => worker_key = label.get_value().to_string(),
-                        "wallet" => wallet = label.get_value().to_string(),
-                        _ => {}
-                    }
-                }
+                let (instance, worker_key, wallet) = parse_worker_labels(metric.get_label());
 
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
                     let count = metric.get_counter().get_value() as u64;
-                    let entry = worker_stats.entry(key.clone()).or_insert_with(|| WorkerInfo {
-                        instance,
-                        worker: worker_key,
-                        wallet,
-                        hashrate: 0.0,
-                        shares: 0,
-                        stale: 0,
-                        invalid: 0,
-                        blocks: 0,
-                        last_seen: None,
-                        status: None,
-                    });
+                    let entry = worker_stats.entry(key.clone()).or_insert_with(|| new_worker_info(instance, worker_key, wallet));
                     entry.shares = entry.shares.saturating_add(count);
                     stats.totalShares = stats.totalShares.saturating_add(count);
                 }
@@ -1093,37 +1052,20 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         // Parse invalid share counter
         if name == "ks_invalid_share_counter" {
             for metric in family.get_metric() {
-                let labels = metric.get_label();
-                let mut instance = String::new();
-                let mut worker_key = String::new();
-                let mut wallet = String::new();
                 let mut share_type = String::new();
 
+                let labels = metric.get_label();
+                let (instance, worker_key, wallet) = parse_worker_labels(labels);
                 for label in labels {
-                    match label.get_name() {
-                        "instance" => instance = label.get_value().to_string(),
-                        "worker" => worker_key = label.get_value().to_string(),
-                        "wallet" => wallet = label.get_value().to_string(),
-                        "type" => share_type = label.get_value().to_string(),
-                        _ => {}
+                    if label.get_name() == "type" {
+                        share_type = label.get_value().to_string();
                     }
                 }
 
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
                     let count = metric.get_counter().get_value() as u64;
-                    let worker = worker_stats.entry(key.clone()).or_insert_with(|| WorkerInfo {
-                        instance,
-                        worker: worker_key,
-                        wallet,
-                        hashrate: 0.0,
-                        shares: 0,
-                        stale: 0,
-                        invalid: 0,
-                        blocks: 0,
-                        last_seen: None,
-                        status: None,
-                    });
+                    let worker = worker_stats.entry(key.clone()).or_insert_with(|| new_worker_info(instance, worker_key, wallet));
 
                     if share_type == "stale" {
                         worker.stale = worker.stale.saturating_add(count);
@@ -1137,19 +1079,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         // Parse worker start time
         if name == "ks_worker_start_time" {
             for metric in family.get_metric() {
-                let labels = metric.get_label();
-                let mut instance = String::new();
-                let mut worker_key = String::new();
-                let mut wallet = String::new();
-
-                for label in labels {
-                    match label.get_name() {
-                        "instance" => instance = label.get_value().to_string(),
-                        "worker" => worker_key = label.get_value().to_string(),
-                        "wallet" => wallet = label.get_value().to_string(),
-                        _ => {}
-                    }
-                }
+                let (instance, worker_key, wallet) = parse_worker_labels(metric.get_label());
 
                 if !worker_key.is_empty() {
                     let key = format!("{}:{}:{}", instance, worker_key, wallet);
@@ -1164,18 +1094,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                         })
                         .or_insert(start_time_secs);
                     // Ensure worker exists in stats
-                    worker_stats.entry(key.clone()).or_insert_with(|| WorkerInfo {
-                        instance,
-                        worker: worker_key,
-                        wallet,
-                        hashrate: 0.0,
-                        shares: 0,
-                        stale: 0,
-                        invalid: 0,
-                        blocks: 0,
-                        last_seen: None,
-                        status: None,
-                    });
+                    worker_stats.entry(key.clone()).or_insert_with(|| new_worker_info(instance, worker_key, wallet));
                 }
             }
         }
@@ -1446,13 +1365,18 @@ async fn update_config_from_json(json_body: &str) -> Result<(), Box<dyn std::err
         instance.min_share_diff = diff as u32;
     }
     if let Some(port) = updates.get("prom_port").and_then(|v| v.as_str()) {
-        instance.prom_port = Some(crate::net_utils::normalize_port(port));
+        let normalized = crate::net_utils::normalize_port(port);
+        if normalized.is_empty() {
+            instance.prom_port = None;
+        } else {
+            instance.prom_port = Some(normalized);
+        }
     } else if updates.get("prom_port").map(|v| v.is_null()).unwrap_or(false) {
         instance.prom_port = None;
     }
 
-    // Convert back to YAML using serde_yaml
-    let yaml_content = serde_yaml::to_string(&config).map_err(|e| format!("Failed to serialize config to YAML: {}", e))?;
+    // Convert back to YAML with flattened global fields
+    let yaml_content = config.to_yaml().map_err(|e| format!("Failed to serialize config to YAML: {}", e))?;
 
     // Write to file
     fs::write(config_path, yaml_content)?;
@@ -1476,4 +1400,78 @@ pub async fn start_prom_server(port: &str, instance_id: &str) -> Result<(), Box<
 
     tracing::debug!("Hosting prom stats on {}/metrics", addr);
     serve_http_loop(listener, HttpMode::Instance { instance_id, web_bind: addr_str }).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use tokio::io::AsyncReadExt;
+
+    async fn send_request(mode: HttpMode, request: &str) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let request = request.to_string();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            handle_http_request(stream, &request, &mode).await.unwrap();
+        });
+
+        let mut client = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut buf = Vec::new();
+        client.read_to_end(&mut buf).await.unwrap();
+        server.await.unwrap();
+        String::from_utf8_lossy(&buf).to_string()
+    }
+
+    fn temp_config_path() -> PathBuf {
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+        std::env::temp_dir().join(format!("rkstratum_config_test_{}_{}.yaml", std::process::id(), nanos))
+    }
+
+    #[tokio::test]
+    async fn test_http_routing_and_config_write() {
+        let config_path = temp_config_path();
+        set_web_config_path(config_path.clone());
+        std::fs::write(
+            &config_path,
+            r#"
+kaspad_address: "127.0.0.1:16110"
+stratum_port: ":5555"
+min_share_diff: 8192
+"#,
+        )
+        .unwrap();
+
+        set_web_status_config("127.0.0.1:16110".to_string(), 2);
+
+        let mode = HttpMode::Instance { instance_id: "0".to_string(), web_bind: "127.0.0.1:0".to_string() };
+
+        let status_resp = send_request(mode.clone(), "GET /api/status HTTP/1.1\r\n\r\n").await;
+        assert!(status_resp.contains("200 OK"));
+        assert!(status_resp.contains("\"kaspad_address\""));
+        assert!(status_resp.contains("\"instances\":2"));
+
+        let stats_resp = send_request(mode.clone(), "GET /api/stats HTTP/1.1\r\n\r\n").await;
+        assert!(stats_resp.contains("200 OK"));
+        assert!(stats_resp.contains("application/json"));
+
+        let config_resp = send_request(mode.clone(), "GET /api/config HTTP/1.1\r\n\r\n").await;
+        assert!(config_resp.contains("200 OK"));
+        assert!(config_resp.contains("\"kaspad_address\""));
+
+        // SAFETY: test-only env change scoped to this process; no concurrent mutation expected.
+        unsafe {
+            std::env::set_var("RKSTRATUM_ALLOW_CONFIG_WRITE", "1");
+        }
+        let json_body = r#"{"kaspad_address":"127.0.0.2:16110","stratum_port":":5556","min_share_diff":4096}"#;
+        let post_req = format!("POST /api/config HTTP/1.1\r\nContent-Length: {}\r\n\r\n{}", json_body.len(), json_body);
+        let post_resp = send_request(mode, &post_req).await;
+        assert!(post_resp.contains("\"success\": true"));
+
+        let saved = std::fs::read_to_string(&config_path).unwrap();
+        assert!(!saved.contains("global:"));
+        assert!(saved.contains("instances:"));
+    }
 }

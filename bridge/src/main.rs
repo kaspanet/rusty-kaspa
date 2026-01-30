@@ -202,7 +202,8 @@ async fn main() -> Result<(), anyhow::Error> {
     // This is best-effort and does not affect any mining logic.
     prom::set_web_status_config(config.global.kaspad_address.clone(), config.instances.len());
     // Point the web config endpoint at the actual config file path the bridge is using.
-    prom::set_web_config_path(requested_config.clone());
+    let loaded_config_path = CONFIG_LOADED_FROM.get().and_then(|p| p.as_ref()).cloned().unwrap_or_else(|| requested_config.clone());
+    prom::set_web_config_path(loaded_config_path);
 
     // Initialize tracing with WARN level by default (less verbose)
     // Can be overridden with RUST_LOG environment variable (e.g., RUST_LOG=info,debug)
@@ -221,7 +222,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // to ensure logs are flushed to the file
     // Store it in a OnceLock to prevent it from being dropped
     static FILE_GUARD: std::sync::OnceLock<tracing_appender::non_blocking::WorkerGuard> = std::sync::OnceLock::new();
-    if let Some(guard) = tracing_setup::init_tracing(&config, filter, false) {
+    if let Some(guard) = tracing_setup::init_tracing(&config, filter, node_mode == NodeMode::Inprocess) {
         let _ = FILE_GUARD.set(guard);
     }
 
@@ -232,6 +233,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut inprocess_node: Option<InProcessNode> = None;
     if node_mode == NodeMode::Inprocess {
         let mut node_args: Vec<String> = cli.kaspad_args;
+
+        if cli.testnet && !node_args.iter().any(|arg| arg == "--testnet") {
+            node_args.push("--testnet".to_string());
+        }
 
         // Add appdir if not provided in kaspad_args
         if !node_args.iter().any(|arg| arg.starts_with("--appdir")) {
