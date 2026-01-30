@@ -83,6 +83,22 @@ fn test_parse_bool_in_instance_spec() {
 
 #[cfg(test)]
 #[test]
+fn test_parse_instance_spec_rejects_empty_port() {
+    let result = parse_instance_spec("port=,diff=1", None);
+    assert!(result.is_err());
+}
+
+#[cfg(test)]
+#[test]
+fn test_parse_instance_spec_empty_prom_port_is_none() {
+    let result = parse_instance_spec("port=5555,prom=,diff=1", None);
+    assert!(result.is_ok());
+    let instance = result.unwrap();
+    assert!(instance.prom_port.is_none());
+}
+
+#[cfg(test)]
+#[test]
 fn test_config_single_instance_mode() {
     let yaml = r#"
 kaspad_address: "127.0.0.1:16110"
