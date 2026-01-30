@@ -102,6 +102,22 @@ print_stats: true
 
 #[cfg(test)]
 #[test]
+fn test_config_single_instance_defaults_when_missing_fields() {
+    let yaml = r#"
+kaspad_address: "127.0.0.1:16110"
+print_stats: true
+"#;
+
+    let config = BridgeConfig::from_yaml(yaml);
+    assert!(config.is_ok());
+    let config = config.unwrap();
+    assert_eq!(config.instances.len(), 1);
+    assert_eq!(config.instances[0].stratum_port, ":5555");
+    assert_eq!(config.instances[0].min_share_diff, 8192);
+}
+
+#[cfg(test)]
+#[test]
 fn test_config_multi_instance_mode() {
     let yaml = r#"
 kaspad_address: "127.0.0.1:16110"
@@ -250,14 +266,36 @@ instances:
   - stratum_port: ":5555"
 "#;
 
+    assert!(BridgeConfig::from_yaml(yaml_missing_port).is_err());
+    assert!(BridgeConfig::from_yaml(yaml_missing_diff).is_err());
+}
+
+#[cfg(test)]
+#[test]
+fn test_config_single_instance_missing_fields_use_defaults() {
     let yaml_single_missing_diff = r#"
 kaspad_address: "127.0.0.1:16110"
 stratum_port: ":5555"
 "#;
 
-    assert!(BridgeConfig::from_yaml(yaml_missing_port).is_err());
-    assert!(BridgeConfig::from_yaml(yaml_missing_diff).is_err());
-    assert!(BridgeConfig::from_yaml(yaml_single_missing_diff).is_err());
+    let yaml_single_missing_port = r#"
+kaspad_address: "127.0.0.1:16110"
+min_share_diff: 1024
+"#;
+
+    let config_missing_diff = BridgeConfig::from_yaml(yaml_single_missing_diff);
+    assert!(config_missing_diff.is_ok());
+    let config_missing_diff = config_missing_diff.unwrap();
+    assert_eq!(config_missing_diff.instances.len(), 1);
+    assert_eq!(config_missing_diff.instances[0].stratum_port, ":5555");
+    assert_eq!(config_missing_diff.instances[0].min_share_diff, 8192);
+
+    let config_missing_port = BridgeConfig::from_yaml(yaml_single_missing_port);
+    assert!(config_missing_port.is_ok());
+    let config_missing_port = config_missing_port.unwrap();
+    assert_eq!(config_missing_port.instances.len(), 1);
+    assert_eq!(config_missing_port.instances[0].stratum_port, ":5555");
+    assert_eq!(config_missing_port.instances[0].min_share_diff, 1024);
 }
 
 #[cfg(test)]

@@ -253,17 +253,17 @@ impl BridgeConfig {
             instances
         } else {
             // Single-instance mode (backward compatible)
-            if raw.stratum_port.is_none() || raw.min_share_diff.is_none() {
-                return Err(anyhow::anyhow!("Single-instance mode requires 'stratum_port' and 'min_share_diff'"));
-            }
-
-            let instance = InstanceConfig {
-                stratum_port: raw.stratum_port.unwrap(),
-                min_share_diff: raw.min_share_diff.unwrap(),
+            let mut instance = InstanceConfig {
                 prom_port: raw.prom_port,
                 log_to_file: Some(raw.global.log_to_file), // Use global default
                 ..InstanceConfig::default()
             };
+            if let Some(stratum_port) = raw.stratum_port {
+                instance.stratum_port = stratum_port;
+            }
+            if let Some(min_share_diff) = raw.min_share_diff {
+                instance.min_share_diff = min_share_diff;
+            }
 
             vec![instance]
         };

@@ -856,10 +856,10 @@ async function refresh() {
         <td class="py-1.5 pr-3" title="${b.timestamp || ''}">${formatUnixSeconds(b.timestamp)}</td>
         <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.instance || '')}">${b.instance || '-'}</td>
         <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.bluescore || '')}">${b.bluescore || '-'}</td>
-        <td class="py-1.5 pr-3" title="${escapeHtmlAttr(workerDisplay)}">${workerDisplay}</td>
+        <td class="py-1.5 pr-3" title="${escapeHtmlAttr(workerDisplay)}">${escapeHtmlAttr(workerDisplay)}</td>
         <td class="py-1.5 pr-3">
           <div class="flex items-center gap-2 min-w-0">
-            <span class="min-w-0 truncate" title="${b.wallet || ''}">${b.wallet || '-'}</span>
+            <span class="min-w-0 truncate" title="${escapeHtmlAttr(b.wallet || '')}">${escapeHtmlAttr(b.wallet || '-')}</span>
             ${b.wallet ? `<button type="button" class="bg-surface-1 border border-card px-2 py-0.5 rounded text-xs hover:border-kaspa-primary shrink-0" data-copy-text="${escapeHtmlAttr(b.wallet)}">Copy</button>` : ''}
           </div>
         </td>
@@ -1027,13 +1027,13 @@ async function refresh() {
           <td class="py-1.5 pr-3" title="${b.timestamp || ''}">${formatUnixSeconds(b.timestamp)}</td>
           <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.instance || '')}">${b.instance || '-'}</td>
           <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.bluescore || '')}">${b.bluescore || '-'}</td>
-        <td class="py-1.5 pr-3" title="${escapeHtmlAttr(workerDisplay)}">${workerDisplay}</td>
-          <td class="py-1.5 pr-3">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="min-w-0 truncate" title="${b.wallet || ''}">${b.wallet || '-'}</span>
+        <td class="py-1.5 pr-3" title="${escapeHtmlAttr(workerDisplay)}">${escapeHtmlAttr(workerDisplay)}</td>
+        <td class="py-1.5 pr-3">
+          <div class="flex items-center gap-2 min-w-0">
+              <span class="min-w-0 truncate" title="${escapeHtmlAttr(b.wallet || '')}">${escapeHtmlAttr(b.wallet || '-')}</span>
               ${b.wallet ? `<button type="button" class="bg-surface-1 border border-card px-2 py-0.5 rounded text-xs hover:border-kaspa-primary shrink-0" data-copy-text="${escapeHtmlAttr(b.wallet)}">Copy</button>` : ''}
-            </div>
-          </td>
+          </div>
+        </td>
           <td class="py-1.5 pr-3 font-mono" title="${escapeHtmlAttr(nonceInfo.title)}">${nonceInfo.display || '-'}</td>
           <td class="py-1.5 pr-3">
             <div class="flex items-center gap-2 min-w-0">
@@ -1091,10 +1091,10 @@ async function refresh() {
         tr.setAttribute('data-row-index', '-1');
         tr.innerHTML = `
           <td class="py-1.5 pr-3">-</td>
-          <td class="py-1.5 pr-3">${displayWorkerName('InternalCPU')}</td>
+          <td class="py-1.5 pr-3">${escapeHtmlAttr(displayWorkerName('InternalCPU'))}</td>
           <td class="py-1.5 pr-3">
             <div class="flex items-center gap-2 min-w-0">
-              <span class="min-w-0 truncate" title="${escapeHtmlAttr(wallet)}">${wallet || '-'}</span>
+              <span class="min-w-0 truncate" title="${escapeHtmlAttr(wallet)}">${escapeHtmlAttr(wallet || '-')}</span>
               ${wallet ? `<button type="button" class="bg-surface-1 border border-card px-2 py-0.5 rounded text-xs hover:border-kaspa-primary shrink-0" data-copy-text="${escapeHtmlAttr(wallet)}">Copy</button>` : ''}
             </div>
           </td>
@@ -1114,10 +1114,10 @@ async function refresh() {
         tr.setAttribute('data-row-index', String(idx));
         tr.innerHTML = `
           <td class="py-1.5 pr-3" title="${escapeHtmlAttr(w.instance || '')}">${w.instance || '-'}</td>
-          <td class="py-1.5 pr-3" title="${escapeHtmlAttr(displayWorkerName(w.worker))}">${displayWorkerName(w.worker)}</td>
+          <td class="py-1.5 pr-3" title="${escapeHtmlAttr(displayWorkerName(w.worker))}">${escapeHtmlAttr(displayWorkerName(w.worker))}</td>
           <td class="py-1.5 pr-3">
             <div class="flex items-center gap-2 min-w-0">
-              <span class="min-w-0 truncate" title="${w.wallet || ''}">${w.wallet || '-'}</span>
+              <span class="min-w-0 truncate" title="${escapeHtmlAttr(w.wallet || '')}">${escapeHtmlAttr(w.wallet || '-')}</span>
               ${w.wallet ? `<button type="button" class="bg-surface-1 border border-card px-2 py-0.5 rounded text-xs hover:border-kaspa-primary shrink-0" data-copy-text="${escapeHtmlAttr(w.wallet)}">Copy</button>` : ''}
             </div>
           </td>
@@ -1398,10 +1398,10 @@ setInterval(() => {
       <td class="py-1.5 pr-3" title="${b.timestamp || ''}">${formatUnixSeconds(b.timestamp)}</td>
       <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.instance || '')}">${b.instance || '-'}</td>
       <td class="py-1.5 pr-3" title="${escapeHtmlAttr(b.bluescore || '')}">${b.bluescore || '-'}</td>
-      <td class="py-1.5 pr-3" title="${escapeHtmlAttr(workerDisplay)}">${workerDisplay}</td>
+      <td class="py-1.5 pr-3" title="${escapeHtmlAttr(workerDisplay)}">${escapeHtmlAttr(workerDisplay)}</td>
       <td class="py-1.5 pr-3">
         <div class="flex items-center gap-2 min-w-0">
-          <span class="min-w-0 truncate" title="${b.wallet || ''}">${b.wallet || '-'}</span>
+          <span class="min-w-0 truncate" title="${escapeHtmlAttr(b.wallet || '')}">${escapeHtmlAttr(b.wallet || '-')}</span>
           ${b.wallet ? `<button type="button" class="bg-surface-1 border border-card px-2 py-0.5 rounded text-xs hover:border-kaspa-primary shrink-0" data-copy-text="${escapeHtmlAttr(b.wallet)}">Copy</button>` : ''}
         </div>
       </td>
@@ -1456,10 +1456,10 @@ setInterval(() => {
     const workerDisplay = displayWorkerName(w.worker);
     tr.innerHTML = `
       <td class="py-1.5 pr-3" title="${escapeHtmlAttr(w.instance || '')}">${w.instance || '-'}</td>
-      <td class="py-1.5 pr-3" title="${escapeHtmlAttr(workerDisplay)}">${workerDisplay || '-'}</td>
+      <td class="py-1.5 pr-3" title="${escapeHtmlAttr(workerDisplay)}">${escapeHtmlAttr(workerDisplay || '-')}</td>
       <td class="py-1.5 pr-3">
         <div class="flex items-center gap-2 min-w-0">
-          <span class="min-w-0 truncate" title="${w.wallet || ''}">${w.wallet || '-'}</span>
+          <span class="min-w-0 truncate" title="${escapeHtmlAttr(w.wallet || '')}">${escapeHtmlAttr(w.wallet || '-')}</span>
           ${w.wallet ? `<button type="button" class="bg-surface-1 border border-card px-2 py-0.5 rounded text-xs hover:border-kaspa-primary shrink-0" data-copy-text="${String(w.wallet).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;')}">Copy</button>` : ''}
         </div>
       </td>
