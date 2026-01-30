@@ -2,6 +2,8 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use ipnet::IpNet;
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
+use std::net::ToSocketAddrs;
 use std::{
     fmt::Display,
     net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -312,7 +314,43 @@ impl FromStr for ContextualNetAddress {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match SocketAddr::from_str(s) {
             Ok(socket) => Ok(Self::new(socket.ip().into(), Some(socket.port()))),
-            Err(_) => Ok(Self::new(IpAddress::from_str(s)?, None)),
+            Err(_) => {
+                if let Ok(ip) = IpAddress::from_str(s) {
+                    return Ok(Self::new(ip, None));
+                }
+
+                // Support resolving hostnames (e.g. example.com or example.com:16111)
+                // NOTE: DNS resolution is not available for wasm targets.
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let (host, port) = if let Some(colon) = s.rfind(':') {
+                        // If it looks like a raw IPv6 without brackets, SocketAddr parsing would have
+                        // already succeeded (with port) or IpAddress parsing would have succeeded (without port).
+                        let (h, p) = s.split_at(colon);
+                        let p = &p[1..];
+                        if !h.is_empty() && !p.is_empty() {
+                            if let Ok(port) = p.parse::<u16>() { (h, Some(port)) } else { (s, None) }
+                        } else {
+                            (s, None)
+                        }
+                    } else {
+                        (s, None)
+                    };
+
+                    let port_for_lookup = port.unwrap_or(0);
+                    let mut iter = (host, port_for_lookup).to_socket_addrs().map_err(|_| "invalid".parse::<IpAddr>().unwrap_err())?;
+                    if let Some(resolved) = iter.next() {
+                        return Ok(Self::new(resolved.ip().into(), port));
+                    }
+
+                    Err("invalid".parse::<IpAddr>().unwrap_err())
+                }
+
+                #[cfg(target_arch = "wasm32")]
+                {
+                    Err("invalid".parse::<IpAddr>().unwrap_err())
+                }
+            }
         }
     }
 }
@@ -461,6 +499,14 @@ mod tests {
         let net_addr = ContextualNetAddress::new(addr, port);
         let s = serde_json::to_string(&net_addr).unwrap();
         assert_eq!(s, r#"{"ip":"127.0.0.1","port":1234}"#);
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn test_contextual_address_from_str_hostname_with_port() {
+        let addr = ContextualNetAddress::from_str("localhost:16111").unwrap();
+        assert_eq!(addr.port, Some(16111));
+        assert!(addr.ip.0.is_loopback());
     }
 
     #[test]
