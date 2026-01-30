@@ -118,6 +118,24 @@ print_stats: true
 
 #[cfg(test)]
 #[test]
+fn test_config_single_instance_log_to_file_uses_global() {
+    let yaml = r#"
+kaspad_address: "127.0.0.1:16110"
+stratum_port: ":5555"
+min_share_diff: 8192
+log_to_file: false
+"#;
+
+    let config = BridgeConfig::from_yaml(yaml);
+    assert!(config.is_ok());
+    let config = config.unwrap();
+    assert!(!config.global.log_to_file);
+    assert_eq!(config.instances.len(), 1);
+    assert!(config.instances[0].log_to_file.is_none());
+}
+
+#[cfg(test)]
+#[test]
 fn test_config_multi_instance_mode() {
     let yaml = r#"
 kaspad_address: "127.0.0.1:16110"

@@ -253,11 +253,7 @@ impl BridgeConfig {
             instances
         } else {
             // Single-instance mode (backward compatible)
-            let mut instance = InstanceConfig {
-                prom_port: raw.prom_port,
-                log_to_file: Some(raw.global.log_to_file), // Use global default
-                ..InstanceConfig::default()
-            };
+            let mut instance = InstanceConfig { prom_port: raw.prom_port, ..InstanceConfig::default() };
             if let Some(stratum_port) = raw.stratum_port {
                 instance.stratum_port = stratum_port;
             }

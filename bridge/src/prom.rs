@@ -93,6 +93,8 @@ static INTERNAL_CPU_HASHRATE_GHS: OnceLock<Gauge> = OnceLock::new();
 static INTERNAL_CPU_MINING_ADDRESS: OnceLock<String> = OnceLock::new();
 #[cfg(feature = "rkstratum_cpu_miner")]
 static INTERNAL_CPU_RECENT_BLOCKS: OnceLock<parking_lot::Mutex<VecDeque<InternalCpuBlock>>> = OnceLock::new();
+#[cfg(feature = "rkstratum_cpu_miner")]
+const INTERNAL_CPU_RECENT_BLOCKS_LIMIT: usize = 256;
 
 /// Initialize Prometheus metrics
 pub fn init_metrics() {
@@ -258,7 +260,9 @@ pub fn record_internal_cpu_recent_block(hash: String, nonce: u64, bluescore: u64
 
     let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
 
-    let mut q = INTERNAL_CPU_RECENT_BLOCKS.get_or_init(|| parking_lot::Mutex::new(VecDeque::with_capacity(256))).lock();
+    let mut q = INTERNAL_CPU_RECENT_BLOCKS
+        .get_or_init(|| parking_lot::Mutex::new(VecDeque::with_capacity(INTERNAL_CPU_RECENT_BLOCKS_LIMIT)))
+        .lock();
 
     // De-dupe by hash
     if q.iter().any(|b| b.hash == hash) {
@@ -266,6 +270,9 @@ pub fn record_internal_cpu_recent_block(hash: String, nonce: u64, bluescore: u64
     }
 
     q.push_front(InternalCpuBlock { timestamp_unix: ts, bluescore, nonce, hash });
+    if q.len() > INTERNAL_CPU_RECENT_BLOCKS_LIMIT {
+        q.truncate(INTERNAL_CPU_RECENT_BLOCKS_LIMIT);
+    }
 }
 
 #[derive(Clone, Debug)]
