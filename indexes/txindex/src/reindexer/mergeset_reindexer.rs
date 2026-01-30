@@ -28,21 +28,22 @@ pub fn reindex_virtual_changed_notification<'a>(
 ) -> ReindexedVirtualChangedState<impl Iterator<Item = TxAcceptedTuple> + 'a, impl Iterator<Item = BlueScoreRefTuple> + 'a> {
     ReindexedVirtualChangedState {
         sink_hash: *notification.added_chain_block_hashes.last().unwrap(),
-        sink_blue_score: notification
-            .added_chain_blocks_acceptance_data
-            .last()
-            .and_then(|data| data.last())
-            .map(|mbad| mbad.accepting_blue_score)
-            .unwrap(),
+        sink_blue_score: *notification.added_accepting_blue_scores.last().unwrap(),
         reindexed_mergeset_state: notification
             .added_chain_block_hashes
             .iter()
             .zip(notification.added_chain_blocks_acceptance_data.iter())
+            .zip(notification.added_accepting_blue_scores.iter())
             .enumerate()
-            .flat_map(|(mergeset_index, (accepting_hash, added_acceptance_vec))| {
-                added_acceptance_vec
-                    .iter()
-                    .map(move |mbad| reindex_mergeset_acceptance_data(accepting_hash, mergeset_index as MergesetIndexType, mbad))
+            .flat_map(|(mergeset_index, ((accepting_hash, added_acceptance_vec), added_accepting_blue_score))| {
+                added_acceptance_vec.iter().map(move |mbad| {
+                    reindex_mergeset_acceptance_data(
+                        accepting_hash,
+                        *added_accepting_blue_score,
+                        mergeset_index as MergesetIndexType,
+                        mbad,
+                    )
+                })
             })
             .collect(),
     }
@@ -50,17 +51,19 @@ pub fn reindex_virtual_changed_notification<'a>(
 
 pub fn reindex_mergeset_acceptance_data<'a>(
     accepting_block_hash: &'a Hash,
+    accepting_blue_score: u64,
     mergeset_index: MergesetIndexType,
     mergeset_block_acceptance: &'a MergesetBlockAcceptanceData,
 ) -> ReindexedMergesetState<impl Iterator<Item = TxAcceptedTuple> + 'a, impl Iterator<Item = BlueScoreRefTuple> + 'a> {
-    let txs_iter = mergeset_block_acceptance.accepted_transactions.iter().map(move |accepted_tx_entry| {
-        (accepted_tx_entry.transaction_id, mergeset_block_acceptance.accepting_blue_score, *accepting_block_hash, mergeset_index)
-    });
+    let txs_iter = mergeset_block_acceptance
+        .accepted_transactions
+        .iter()
+        .map(move |accepted_tx_entry| (accepted_tx_entry.transaction_id, accepting_blue_score, *accepting_block_hash, mergeset_index));
 
     let blue_score_refs_iter = mergeset_block_acceptance
         .accepted_transactions
         .iter()
-        .map(move |accepted_tx_entry| (mergeset_block_acceptance.accepting_blue_score, accepted_tx_entry.transaction_id));
+        .map(move |accepted_tx_entry| (accepting_blue_score, accepted_tx_entry.transaction_id));
 
     ReindexedMergesetState { tx_iter: TxAcceptedIter::new(txs_iter), blue_score_ref_iter: BlueScoreRefIter::new(blue_score_refs_iter) }
 }

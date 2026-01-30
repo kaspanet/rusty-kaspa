@@ -404,7 +404,7 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_transactions_by_blue_score_call(
+    async fn get_transactions_by_accepting_blue_score_call(
         &self,
         _connection: Option<&DynRpcConnection>,
         _request: GetTransactionsByAcceptingBlueScoreRequest,

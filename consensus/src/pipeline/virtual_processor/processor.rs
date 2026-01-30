@@ -78,7 +78,7 @@ use kaspa_core::{debug, info, time::unix_now, trace, warn};
 use kaspa_database::prelude::{StoreError, StoreResultExt, StoreResultUnitExt};
 use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::MuHash;
-use kaspa_notify::{events::EventType, notifier::Notify};
+use kaspa_notify::{events::EventType, notifier::Notify, subscription::single};
 use once_cell::unsync::Lazy;
 
 use super::{
@@ -359,13 +359,31 @@ impl VirtualStateProcessor {
             .expect("expecting an open unbounded channel");
         if self.notification_root.has_subscription(EventType::VirtualChainChanged) {
             // check for subscriptions before the heavy lifting
-            let added_chain_blocks_acceptance_data =
-                chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
+            let (include_accepted_transaction_ids, include_accepting_blue_scores) = self
+                .notification_root
+                .with_subscription_as::<single::VirtualChainChangedSubscription, _, _>(EventType::VirtualChainChanged, |s| {
+                    (s.include_accepted_transaction_ids(), s.include_accepting_blue_scores())
+                })
+                .unwrap_or((false, false));
+
+            let added_chain_blocks_acceptance_data = if include_accepted_transaction_ids {
+                Arc::new(chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec())
+            } else {
+                Arc::new(Vec::new())
+            };
+
+            let added_accepting_blue_scores = if include_accepting_blue_scores {
+                Arc::new(chain_path.added.iter().copied().map(|added| self.headers_store.get_blue_score(added).unwrap()).collect_vec())
+            } else {
+                Arc::new(Vec::new())
+            };
+
             self.notification_root
                 .notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
                     chain_path.added.into(),
                     chain_path.removed.into(),
-                    Arc::new(added_chain_blocks_acceptance_data),
+                    added_chain_blocks_acceptance_data,
+                    added_accepting_blue_scores,
                 )))
                 .expect("expecting an open unbounded channel");
         }

@@ -151,9 +151,6 @@ impl VirtualStateProcessor {
 
             ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
                 block_hash: merged_block,
-                // For review: is this really the right blue score, (i.e. virtual vs selected parent).
-                accepting_blue_score: ctx.ghostdag_data.blue_score,
-                // For the selected parent, we prepend the coinbase tx
                 accepted_transactions: is_selected_parent
                     .then_some(AcceptedTxEntry { transaction_id: validated_coinbase_id, index_within_block: 0 })
                     .into_iter()

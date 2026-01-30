@@ -369,7 +369,10 @@ impl Rpc {
                 let limit = argv.remove(0).parse::<u64>().unwrap_or(u64::MAX);
 
                 let result = rpc
-                    .get_transactions_by_including_daa_score_call(None, GetTransactionsByIncludingDaaScoreRequest { from_daa_score, to_daa_score, limit })
+                    .get_transactions_by_including_daa_score_call(
+                        None,
+                        GetTransactionsByIncludingDaaScoreRequest { from_daa_score, to_daa_score, limit },
+                    )
                     .await?;
 
                 self.println(&ctx, result);

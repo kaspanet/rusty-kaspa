@@ -180,10 +180,14 @@ where
                             for (subscription, encoding_set) in plan[event].iter() {
                                 // ... by subscription scope
                                 if let Some(applied_notification) = notification.apply_subscription(&**subscription, &context) {
+                                    // Log what the applied notification looks like for this subscription
+                                    trace!("[{}] applied notification {:?} for subscription {:?}", self, applied_notification, subscription);
                                     for (encoding, connection_set) in encoding_set.iter() {
                                         // ... by message encoding
                                         let message = C::into_message(&applied_notification, encoding);
                                         for (id, connection) in connection_set.iter() {
+                                            // Log per-listener applied notification before sending
+                                            trace!("[{}] sending applied notification {:?} to listener {id}", self, applied_notification);
                                             // ... to listeners connections
                                             match connection.send(message.clone()).await {
                                                 Ok(_) => {

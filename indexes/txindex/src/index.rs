@@ -232,17 +232,29 @@ impl TxIndexApi for TxIndex {
             debug!("[{}] Resyncing acceptance data chunk: {}", IDENT, chunks_processed + 1);
             // split chunk into hashes and acceptance data
             let (hashes, acceptance_data): (Vec<Hash>, Vec<Arc<AcceptanceData>>) = chunk.unzip();
+
+            // Prefetch blue scores so we don't capture or move `session` into iterator closures
+            let blue_scores: Vec<u64> = hashes.iter().map(|h| session.get_header(*h).unwrap().blue_score).collect();
+
             let reindexed_virtual_changed_state = acceptance_data
                 .iter()
                 .zip(hashes.iter())
+                .zip(blue_scores.iter())
                 .enumerate()
-                .flat_map(|(mergeset_index, (mad, hash))| {
-                    mad.iter().map(move |mbad| {
-                        mergeset_reindexer::reindex_mergeset_acceptance_data(hash, mergeset_index as MergesetIndexType, mbad)
+                .flat_map(move |(merged_index, ((acceptance_data_arc, hash), blue_score))| {
+                    acceptance_data_arc.iter().map(move |mbad| {
+                        mergeset_reindexer::reindex_mergeset_acceptance_data(
+                            hash,
+                            *blue_score,
+                            merged_index as MergesetIndexType,
+                            mbad,
+                        )
                     })
                 })
-                .collect();
+                .collect::<Vec<_>>();
+
             self.store.update_with_reindexed_mergeset_states(reindexed_virtual_changed_state)?;
+
             chunks_processed += 1;
             if start_ts.elapsed() >= Duration::from_secs(5) {
                 info!(
@@ -276,7 +288,6 @@ impl TxIndexApi for TxIndex {
         let mut start_ts = std::time::Instant::now();
         for chunk in &block_iterator.into_iter().chunks(RESYNC_INCLUSION_DATA_CHUNK_SIZE as usize) {
             debug!("[{}] Resyncing inclusion data chunk: {}", IDENT, chunks_processed + 1);
-            // collect blocks
             let blocks: Vec<Block> =
                 chunk.map(|(hash, transactions)| Block::from_arcs(session.get_header(hash).unwrap(), transactions)).collect();
             let reindexed_block_body_states =

@@ -13,7 +13,6 @@ pub type AcceptanceData = Vec<MergesetBlockAcceptanceData>;
 /// Holds a merged block with its accepted transactions
 pub struct MergesetBlockAcceptanceData {
     pub block_hash: Hash,
-    pub accepting_blue_score: u64,
     pub accepted_transactions: Vec<AcceptedTxEntry>,
 }
 

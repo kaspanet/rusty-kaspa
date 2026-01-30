@@ -359,8 +359,7 @@ mod tests {
                 (0..5)
                     .map(|accepting_index| {
                         Arc::new(vec![MergesetBlockAcceptanceData {
-                            block_hash: added_chain_blocks[accepting_index as usize].clone(),
-                            accepting_blue_score: accepting_index * 2,
+                            block_hash: added_chain_blocks[accepting_index as usize],
                             accepted_transactions: (0..3)
                                 .map(|tx_index| AcceptedTxEntry {
                                     transaction_id: generate_random_transaction(rng, 2, 2).id(),
@@ -371,6 +370,7 @@ mod tests {
                     })
                     .collect::<Vec<_>>(),
             ),
+            Arc::new([0, 1, 2, 3, 4].to_vec()),
         );
         pipeline
             .consensus_sender
@@ -393,7 +393,6 @@ mod tests {
                     for (j, received_mbad) in received_acceptance_data.iter().enumerate() {
                         let test_mbad = &test_acceptance_data[j];
                         assert_eq!(received_mbad.block_hash, test_mbad.block_hash);
-                        assert_eq!(received_mbad.accepting_blue_score, test_mbad.accepting_blue_score);
                         assert_eq!(received_mbad.accepted_transactions.len(), test_mbad.accepted_transactions.len());
                         for (k, received_ate) in received_mbad.accepted_transactions.iter().enumerate() {
                             let test_ate = &test_mbad.accepted_transactions[k];
@@ -402,6 +401,10 @@ mod tests {
                         }
                     }
                 }
+                assert_eq!(
+                    received_notification.added_accepting_blue_scores.as_ref(),
+                    test_virtual_chain_changed_notification.added_accepting_blue_scores.as_ref()
+                );
             }
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }

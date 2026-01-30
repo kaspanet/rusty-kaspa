@@ -62,6 +62,28 @@ where
     pub fn has_subscription(&self, event: EventType) -> bool {
         self.inner.has_subscription(event)
     }
+
+    /// Tries to downcast the root's subscription for `event` to `T` and, if successful,
+    /// calls `f` with a reference to the downcasted subscription. Returns `Some` with the
+    /// closure's result, otherwise `None`.
+    pub fn with_subscription_as<T, F, R>(&self, event: EventType, f: F) -> Option<R>
+    where
+        T: 'static,
+        F: FnOnce(&T) -> R,
+    {
+        let subscription = &self.inner.subscriptions.read()[event];
+        (**subscription).as_any().downcast_ref::<T>().map(|s| f(s))
+    }
+
+    /// Returns whether the root's active `VirtualChainChanged` subscription (if any)
+    /// requests the included payload fields: (include_accepted_transaction_ids, include_accepting_blue_scores).
+    pub fn virtual_chain_changed_scope_flags(&self) -> (bool, bool) {
+        self.with_subscription_as::<crate::subscription::single::VirtualChainChangedSubscription, _, _>(
+            EventType::VirtualChainChanged,
+            |s| (s.include_accepted_transaction_ids(), s.include_accepting_blue_scores()),
+        )
+        .unwrap_or((false, false))
+    }
 }
 
 impl<N> Notify<N> for Root<N>

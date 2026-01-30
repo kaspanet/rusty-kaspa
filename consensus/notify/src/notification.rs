@@ -19,7 +19,7 @@ pub enum Notification {
     #[display(fmt = "BlockAdded notification: block hash {}", "_0.block.header.hash")]
     BlockAdded(BlockAddedNotification),
 
-    #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.added_chain_blocks_acceptance_data.len()")]
+    #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions, {} accepting blue scores", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.added_chain_blocks_acceptance_data.len()", "_0.added_accepting_blue_scores.len()")]
     VirtualChainChanged(VirtualChainChangedNotification),
 
     #[display(fmt = "FinalityConflict notification: violating block hash {}", "_0.violating_block_hash")]
@@ -65,13 +65,20 @@ impl NotificationTrait for Notification {
                 // If the subscription excludes accepted transaction ids and the notification includes some
                 // then we must re-create the object and drop the ids, otherwise we can clone it as is.
                 if let Notification::VirtualChainChanged(ref payload) = self {
-                    if !subscription.include_accepted_transaction_ids() && !payload.added_chain_blocks_acceptance_data.is_empty() {
-                        return Some(Notification::VirtualChainChanged(VirtualChainChangedNotification {
-                            removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
-                            added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
-                            added_chain_blocks_acceptance_data: Arc::new(vec![]),
-                        }));
-                    }
+                    return Some(Notification::VirtualChainChanged(VirtualChainChangedNotification {
+                        removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
+                        added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
+                        added_chain_blocks_acceptance_data: if !subscription.include_accepted_transaction_ids() {
+                            Arc::new(Vec::new())
+                        } else {
+                            payload.added_chain_blocks_acceptance_data.clone()
+                        },
+                        added_accepting_blue_scores: if !subscription.include_accepting_blue_scores() {
+                            Arc::new(Vec::new())
+                        } else {
+                            payload.added_accepting_blue_scores.clone()
+                        },
+                    }));
                 }
                 Some(self.clone())
             }
@@ -110,14 +117,16 @@ pub struct VirtualChainChangedNotification {
     pub added_chain_block_hashes: Arc<Vec<Hash>>,
     pub removed_chain_block_hashes: Arc<Vec<Hash>>,
     pub added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
+    pub added_accepting_blue_scores: Arc<Vec<u64>>,
 }
 impl VirtualChainChangedNotification {
     pub fn new(
         added_chain_block_hashes: Arc<Vec<Hash>>,
         removed_chain_block_hashes: Arc<Vec<Hash>>,
         added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
+        added_accepting_blue_scores: Arc<Vec<u64>>,
     ) -> Self {
-        Self { added_chain_block_hashes, removed_chain_block_hashes, added_chain_blocks_acceptance_data }
+        Self { added_chain_block_hashes, removed_chain_block_hashes, added_chain_blocks_acceptance_data, added_accepting_blue_scores }
     }
 }
 

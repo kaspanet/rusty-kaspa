@@ -649,26 +649,43 @@ pub mod test_helpers {
     }
 
     pub fn virtual_chain_changed_test_steps(listener_id: ListenerId) -> Vec<Step> {
-        fn m(command: Command, include_accepted_transaction_ids: bool) -> Option<Mutation> {
+        fn m(command: Command, include_accepted_transaction_ids: bool, include_accepting_blue_scores: bool) -> Option<Mutation> {
             Some(Mutation {
                 command,
-                scope: Scope::VirtualChainChanged(VirtualChainChangedScope::new(include_accepted_transaction_ids)),
+                scope: Scope::VirtualChainChanged(VirtualChainChangedScope::new(
+                    include_accepted_transaction_ids,
+                    include_accepting_blue_scores,
+                )),
             })
         }
-        let s = |command: Command, include_accepted_transaction_ids: bool| -> Option<SubscriptionMessage> {
+        let s = |command: Command,
+                 include_accepted_transaction_ids: bool,
+                 include_accepting_blue_scores: bool|
+         -> Option<SubscriptionMessage> {
             Some(SubscriptionMessage {
                 listener_id,
                 mutation: Mutation {
                     command,
-                    scope: Scope::VirtualChainChanged(VirtualChainChangedScope::new(include_accepted_transaction_ids)),
+                    scope: Scope::VirtualChainChanged(VirtualChainChangedScope::new(
+                        include_accepted_transaction_ids,
+                        include_accepting_blue_scores,
+                    )),
                 },
             })
         };
-        fn n(accepted_transaction_ids: Option<u64>) -> TestNotification {
-            TestNotification::VirtualChainChanged(VirtualChainChangedNotification { data: 0, accepted_transaction_ids })
+        fn n(accepted_transaction_ids: Option<u64>, accepting_blue_scores: Option<u64>) -> TestNotification {
+            TestNotification::VirtualChainChanged(VirtualChainChangedNotification {
+                data: 0,
+                accepted_transaction_ids,
+                accepting_blue_scores,
+            })
         }
-        fn e(accepted_transaction_ids: Option<u64>) -> Option<TestNotification> {
-            Some(TestNotification::VirtualChainChanged(VirtualChainChangedNotification { data: 0, accepted_transaction_ids }))
+        fn e(accepted_transaction_ids: Option<u64>, accepting_blue_scores: Option<u64>) -> Option<TestNotification> {
+            Some(TestNotification::VirtualChainChanged(VirtualChainChangedNotification {
+                data: 0,
+                accepted_transaction_ids,
+                accepting_blue_scores,
+            }))
         }
 
         set_steps_data(vec![
@@ -676,43 +693,108 @@ pub mod test_helpers {
                 name: "do nothing",
                 mutations: vec![],
                 expected_subscriptions: vec![],
-                notification: n(None),
+                notification: n(None, None),
                 expected_notifications: vec![None, None],
             },
             Step {
                 name: "L0+ on",
-                mutations: vec![m(Command::Start, true), None],
-                expected_subscriptions: vec![s(Command::Start, true), None],
-                notification: n(Some(21)),
-                expected_notifications: vec![e(Some(21)), None],
+                mutations: vec![m(Command::Start, true, false), None],
+                expected_subscriptions: vec![s(Command::Start, true, false), None],
+                notification: n(Some(21), None),
+                expected_notifications: vec![e(Some(21), None), None],
             },
             Step {
                 name: "L0+ & L1- on",
-                mutations: vec![None, m(Command::Start, false)],
+                mutations: vec![None, m(Command::Start, false, false)],
                 expected_subscriptions: vec![None, None],
-                notification: n(Some(42)),
-                expected_notifications: vec![e(Some(42)), e(None)],
+                notification: n(Some(42), None),
+                expected_notifications: vec![e(Some(42), None), e(None, None)],
             },
             Step {
                 name: "L0- & L1+ on",
-                mutations: vec![m(Command::Start, false), m(Command::Start, true)],
-                expected_subscriptions: vec![s(Command::Start, false), s(Command::Start, true)],
-                notification: n(Some(63)),
-                expected_notifications: vec![e(None), e(Some(63))],
+                mutations: vec![m(Command::Start, false, false), m(Command::Start, true, false)],
+                expected_subscriptions: vec![s(Command::Start, false, false), s(Command::Start, true, false)],
+                notification: n(Some(63), None),
+                expected_notifications: vec![e(None, None), e(Some(63), None)],
             },
             Step {
                 name: "L1+ on",
-                mutations: vec![m(Command::Stop, false), None],
+                mutations: vec![m(Command::Stop, false, false), None],
                 expected_subscriptions: vec![None, None],
-                notification: n(Some(84)),
-                expected_notifications: vec![None, e(Some(84))],
+                notification: n(Some(84), None),
+                expected_notifications: vec![None, e(Some(84), None)],
             },
             Step {
                 name: "all off",
-                mutations: vec![None, m(Command::Stop, true)],
-                expected_subscriptions: vec![None, s(Command::Stop, true)],
-                notification: n(Some(21)),
+                mutations: vec![None, m(Command::Stop, true, false)],
+                expected_subscriptions: vec![None, s(Command::Stop, true, false)],
+                notification: n(Some(21), None),
                 expected_notifications: vec![None, None],
+            },
+        ])
+    }
+
+    pub fn virtual_chain_changed_blue_test_steps(listener_id: ListenerId) -> Vec<Step> {
+        fn m(command: Command, include_accepted_transaction_ids: bool, include_accepting_blue_scores: bool) -> Option<Mutation> {
+            Some(Mutation {
+                command,
+                scope: Scope::VirtualChainChanged(VirtualChainChangedScope::new(
+                    include_accepted_transaction_ids,
+                    include_accepting_blue_scores,
+                )),
+            })
+        }
+        let s = |command: Command,
+                 include_accepted_transaction_ids: bool,
+                 include_accepting_blue_scores: bool|
+         -> Option<SubscriptionMessage> {
+            Some(SubscriptionMessage {
+                listener_id,
+                mutation: Mutation {
+                    command,
+                    scope: Scope::VirtualChainChanged(VirtualChainChangedScope::new(
+                        include_accepted_transaction_ids,
+                        include_accepting_blue_scores,
+                    )),
+                },
+            })
+        };
+        fn n(accepted_transaction_ids: Option<u64>, accepting_blue_scores: Option<u64>) -> TestNotification {
+            TestNotification::VirtualChainChanged(VirtualChainChangedNotification {
+                data: 0,
+                accepted_transaction_ids,
+                accepting_blue_scores,
+            })
+        }
+        fn e(accepted_transaction_ids: Option<u64>, accepting_blue_scores: Option<u64>) -> Option<TestNotification> {
+            Some(TestNotification::VirtualChainChanged(VirtualChainChangedNotification {
+                data: 0,
+                accepted_transaction_ids,
+                accepting_blue_scores,
+            }))
+        }
+
+        set_steps_data(vec![
+            Step {
+                name: "do nothing",
+                mutations: vec![],
+                expected_subscriptions: vec![],
+                notification: n(None, None),
+                expected_notifications: vec![None],
+            },
+            Step {
+                name: "L0+ on (blue)",
+                mutations: vec![m(Command::Start, true, true)],
+                expected_subscriptions: vec![s(Command::Start, true, true)],
+                notification: n(None, Some(42)),
+                expected_notifications: vec![e(None, Some(42))],
+            },
+            Step {
+                name: "L0 off (blue)",
+                mutations: vec![m(Command::Stop, true, true)],
+                expected_subscriptions: vec![s(Command::Stop, true, true)],
+                notification: n(None, None),
+                expected_notifications: vec![None],
             },
         ])
     }
@@ -995,6 +1077,14 @@ mod tests {
     async fn test_virtual_chain_changed() {
         kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
         let test = Test::new("VirtualChainChanged broadcast", 2, virtual_chain_changed_test_steps(SUBSCRIPTION_MANAGER_ID));
+        test.run().await;
+    }
+
+    #[tokio::test]
+    async fn test_virtual_chain_changed_blue() {
+        kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
+        let test =
+            Test::new("VirtualChainChanged broadcast (blue)", 1, virtual_chain_changed_blue_test_steps(SUBSCRIPTION_MANAGER_ID));
         test.run().await;
     }
 

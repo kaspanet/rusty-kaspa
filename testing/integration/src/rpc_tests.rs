@@ -711,7 +711,7 @@ async fn sanity_test() {
             KaspadPayloadOps::GetTransaction => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let result = rpc_client
+                    let response = rpc_client
                         .get_transaction_call(
                             None,
                             GetTransactionRequest {
@@ -724,17 +724,16 @@ async fn sanity_test() {
                                 include_verbose_data: true,
                             },
                         )
-                        .await
-                        .unwrap();
+                        .await;
                     // Test Get Transaction:
-                    assert!(result.is_err());
+                    assert!(response.is_err());
                 })
             }
 
             KaspadPayloadOps::GetTransactionsByAcceptingBlueScore => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let result = rpc_client
+                    let response = rpc_client
                         .get_transactions_by_accepting_blue_score_call(
                             None,
                             GetTransactionsByAcceptingBlueScoreRequest {
@@ -745,24 +744,24 @@ async fn sanity_test() {
                         )
                         .await;
                     // Test Get Transactions By Blue Score:
-                    assert!(result.unwrap().transaction_ids.is_empty());
-                    assert!(result.unwrap().accepting_blue_scores.is_empty());
-                    assert!(result.unwrap().confirmation_counts.is_empty());
+                    assert!(response.clone().unwrap().transaction_ids.is_empty());
+                    assert!(response.clone().unwrap().accepting_blue_scores.is_empty());
+                    assert!(response.clone().unwrap().confirmation_counts.is_empty());
                 })
             }
 
             KaspadPayloadOps::GetTransactionsByIncludingDaaScore => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let result = rpc_client
+                    let response = rpc_client
                         .get_transactions_by_including_daa_score_call(
                             None,
                             GetTransactionsByIncludingDaaScoreRequest { from_daa_score: u64::MIN, to_daa_score: u64::MAX, limit: 0 },
                         )
                         .await;
                     // Test Get Transactions By Including DAA Score:
-                    assert!(result.unwrap().transaction_ids.is_empty());
-                    assert!(result.unwrap().including_daa_scores.is_empty());
+                    assert!(response.clone().unwrap().transaction_ids.is_empty());
+                    assert!(response.clone().unwrap().including_daa_scores.is_empty());
                 })
             }
 
@@ -822,7 +821,11 @@ async fn sanity_test() {
                 let id = listener_id;
                 tst!(op, {
                     rpc_client
-                        .start_notify(id, VirtualChainChangedScope { include_accepted_transaction_ids: false }.into())
+                        .start_notify(
+                            id,
+                            VirtualChainChangedScope { include_accepted_transaction_ids: false, include_accepting_blue_scores: false }
+                                .into(),
+                        )
                         .await
                         .unwrap();
                 })

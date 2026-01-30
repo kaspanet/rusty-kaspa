@@ -157,6 +157,7 @@ impl ConsensusConverter {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn get_transaction_data(
         &self,
         consensus: &ConsensusProxy,
