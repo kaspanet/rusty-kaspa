@@ -43,11 +43,16 @@ pub(crate) fn parse_instance_spec(spec: &str, default_min_share_diff: Option<u32
 
         match k.to_ascii_lowercase().as_str() {
             "port" | "stratum" | "stratum_port" => {
-                instance.stratum_port = normalize_port(v);
+                let normalized = normalize_port(v);
+                if normalized.is_empty() {
+                    return Err(anyhow::anyhow!("instance port is empty in '{spec}'"));
+                }
+                instance.stratum_port = normalized;
                 has_port = true;
             }
             "prom" | "prom_port" => {
-                instance.prom_port = Some(normalize_port(v));
+                let normalized = normalize_port(v);
+                instance.prom_port = if normalized.is_empty() { None } else { Some(normalized) };
             }
             "diff" | "min_share_diff" => {
                 instance.min_share_diff = v.parse::<u32>().map_err(|e| anyhow::anyhow!("invalid min_share_diff '{v}': {e}"))?;

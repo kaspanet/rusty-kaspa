@@ -377,7 +377,9 @@ pub(crate) fn init_tracing(
     // In inprocess mode, the embedded node primarily uses the `log` crate (via kaspa_core::* macros).
     // Forward those events into our tracing subscriber so users can see node startup/performance logs.
     if inprocess_mode {
-        let _ = inprocess_mode;
+        if let Err(e) = tracing_log::LogTracer::init() {
+            eprintln!("Failed to initialize log tracer: {}", e);
+        }
     }
 
     file_guard

@@ -83,6 +83,22 @@ fn test_parse_bool_in_instance_spec() {
 
 #[cfg(test)]
 #[test]
+fn test_parse_instance_spec_rejects_empty_port() {
+    let result = parse_instance_spec("port=,diff=1", None);
+    assert!(result.is_err());
+}
+
+#[cfg(test)]
+#[test]
+fn test_parse_instance_spec_empty_prom_port_is_none() {
+    let result = parse_instance_spec("port=5555,prom=,diff=1", None);
+    assert!(result.is_ok());
+    let instance = result.unwrap();
+    assert!(instance.prom_port.is_none());
+}
+
+#[cfg(test)]
+#[test]
 fn test_config_single_instance_mode() {
     let yaml = r#"
 kaspad_address: "127.0.0.1:16110"
@@ -98,6 +114,40 @@ print_stats: true
     assert_eq!(config.instances[0].stratum_port, ":5555");
     assert_eq!(config.instances[0].min_share_diff, 8192);
     assert_eq!(config.global.kaspad_address, "127.0.0.1:16110");
+}
+
+#[cfg(test)]
+#[test]
+fn test_config_single_instance_defaults_when_missing_fields() {
+    let yaml = r#"
+kaspad_address: "127.0.0.1:16110"
+print_stats: true
+"#;
+
+    let config = BridgeConfig::from_yaml(yaml);
+    assert!(config.is_ok());
+    let config = config.unwrap();
+    assert_eq!(config.instances.len(), 1);
+    assert_eq!(config.instances[0].stratum_port, ":5555");
+    assert_eq!(config.instances[0].min_share_diff, 8192);
+}
+
+#[cfg(test)]
+#[test]
+fn test_config_single_instance_log_to_file_uses_global() {
+    let yaml = r#"
+kaspad_address: "127.0.0.1:16110"
+stratum_port: ":5555"
+min_share_diff: 8192
+log_to_file: false
+"#;
+
+    let config = BridgeConfig::from_yaml(yaml);
+    assert!(config.is_ok());
+    let config = config.unwrap();
+    assert!(!config.global.log_to_file);
+    assert_eq!(config.instances.len(), 1);
+    assert!(config.instances[0].log_to_file.is_none());
 }
 
 #[cfg(test)]
@@ -233,4 +283,67 @@ instances:
     assert_eq!(config2.instances[0].var_diff, Some(true));
     assert_eq!(config2.instances[0].var_diff_stats, Some(true));
     assert_eq!(config2.instances[1].var_diff, None); // Should inherit from global
+}
+
+#[cfg(test)]
+#[test]
+fn test_config_missing_instance_fields_error() {
+    let yaml_missing_port = r#"
+kaspad_address: "127.0.0.1:16110"
+instances:
+  - min_share_diff: 8192
+"#;
+
+    let yaml_missing_diff = r#"
+kaspad_address: "127.0.0.1:16110"
+instances:
+  - stratum_port: ":5555"
+"#;
+
+    assert!(BridgeConfig::from_yaml(yaml_missing_port).is_err());
+    assert!(BridgeConfig::from_yaml(yaml_missing_diff).is_err());
+}
+
+#[cfg(test)]
+#[test]
+fn test_config_single_instance_missing_fields_use_defaults() {
+    let yaml_single_missing_diff = r#"
+kaspad_address: "127.0.0.1:16110"
+stratum_port: ":5555"
+"#;
+
+    let yaml_single_missing_port = r#"
+kaspad_address: "127.0.0.1:16110"
+min_share_diff: 1024
+"#;
+
+    let config_missing_diff = BridgeConfig::from_yaml(yaml_single_missing_diff);
+    assert!(config_missing_diff.is_ok());
+    let config_missing_diff = config_missing_diff.unwrap();
+    assert_eq!(config_missing_diff.instances.len(), 1);
+    assert_eq!(config_missing_diff.instances[0].stratum_port, ":5555");
+    assert_eq!(config_missing_diff.instances[0].min_share_diff, 8192);
+
+    let config_missing_port = BridgeConfig::from_yaml(yaml_single_missing_port);
+    assert!(config_missing_port.is_ok());
+    let config_missing_port = config_missing_port.unwrap();
+    assert_eq!(config_missing_port.instances.len(), 1);
+    assert_eq!(config_missing_port.instances[0].stratum_port, ":5555");
+    assert_eq!(config_missing_port.instances[0].min_share_diff, 1024);
+}
+
+#[cfg(test)]
+#[test]
+fn test_config_empty_web_dashboard_port_kept_empty() {
+    let yaml = r#"
+kaspad_address: "127.0.0.1:16110"
+stratum_port: ":5555"
+min_share_diff: 8192
+web_dashboard_port: ""
+"#;
+
+    let config = BridgeConfig::from_yaml(yaml);
+    assert!(config.is_ok());
+    let config = config.unwrap();
+    assert_eq!(config.global.web_dashboard_port, "");
 }
