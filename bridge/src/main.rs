@@ -221,7 +221,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // to ensure logs are flushed to the file
     // Store it in a OnceLock to prevent it from being dropped
     static FILE_GUARD: std::sync::OnceLock<tracing_appender::non_blocking::WorkerGuard> = std::sync::OnceLock::new();
-    if let Some(guard) = tracing_setup::init_tracing(&config, filter, false) {
+    if let Some(guard) = tracing_setup::init_tracing(&config, filter, node_mode == NodeMode::Inprocess) {
         let _ = FILE_GUARD.set(guard);
     }
 
@@ -232,6 +232,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut inprocess_node: Option<InProcessNode> = None;
     if node_mode == NodeMode::Inprocess {
         let mut node_args: Vec<String> = cli.kaspad_args;
+
+        if cli.testnet && !node_args.iter().any(|arg| arg == "--testnet") {
+            node_args.push("--testnet".to_string());
+        }
 
         // Add appdir if not provided in kaspad_args
         if !node_args.iter().any(|arg| arg.starts_with("--appdir")) {
