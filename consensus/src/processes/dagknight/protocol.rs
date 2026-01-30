@@ -21,7 +21,7 @@ use crate::{
         stores::{
             children::ChildrenStore,
             dagknight::{DagknightStore, DagknightStoreReader},
-            ghostdag::{GhostdagData, GhostdagStoreReader},
+            ghostdag::GhostdagData,
             headers::HeaderStoreReader,
             reachability::{MemoryReachabilityStore, ReachabilityStore, ReachabilityStoreReader},
             relations::{MemoryRelationsStore, RelationsStore, RelationsStoreReader},
@@ -87,26 +87,23 @@ use crate::{
 #[derive(Clone)]
 pub struct DagknightExecutor<
     C: DagknightStore + DagknightStoreReader,
-    O: GhostdagStoreReader,
-    D: HeaderStoreReader + 'static,
-    E: RelationsStoreReader + Clone,
+    O: HeaderStoreReader + 'static,
+    D: RelationsStoreReader + Clone,
     R: ReachabilityStoreReader + Clone,
 > {
     pub genesis_hash: Hash,
     pub dagknight_store: Arc<C>,
-    pub ghostdag_store: Arc<O>,
-    pub headers_store: Arc<D>,
-    pub relations_store: Arc<RwLock<E>>,
+    pub headers_store: Arc<O>,
+    pub relations_store: Arc<RwLock<D>>,
     pub reachability_service: MTReachabilityService<R>,
 }
 
 impl<
     C: DagknightStore + DagknightStoreReader,
-    O: GhostdagStoreReader,
-    D: HeaderStoreReader,
-    E: RelationsStoreReader + Clone,
+    O: HeaderStoreReader + 'static,
+    D: RelationsStoreReader + Clone,
     R: ReachabilityStoreReader + Clone,
-> DagknightExecutor<C, O, D, E, R>
+> DagknightExecutor<C, O, D, R>
 {
     pub fn dagknight(&self, parents: &[Hash]) -> Hash {
         /*
@@ -343,7 +340,7 @@ impl<
     // tips = all tips in this conflict. part of which is the subgroup
     //
     // Returns the conflict zone manager which gives access to the coloring data of the conflict zone
-    fn fill_conflict_zone_data(&self, root: Hash, tips: &[Hash], ghostdag_k: KType) -> ConflictZoneManager<C, E, R, D> {
+    fn fill_conflict_zone_data(&self, root: Hash, tips: &[Hash], ghostdag_k: KType) -> ConflictZoneManager<C, O, D, R> {
         let reachability_service = self.reachability_service.clone();
         let relations_store = self.relations_store.read();
         let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), root);
@@ -351,9 +348,9 @@ impl<
             ghostdag_k,
             root,
             self.dagknight_store.clone(),
+            self.headers_store.clone(),
             relations_service.clone(),
             reachability_service.clone(),
-            self.headers_store.clone(),
         );
 
         // Note there is no need to initialize origin since we have a single root
@@ -703,7 +700,7 @@ mod tests {
     use parking_lot::lock_api::RwLock;
 
     use super::*;
-    use crate::model::stores::ghostdag::GhostdagStore;
+    use crate::model::stores::ghostdag::{GhostdagStore, GhostdagStoreReader};
     use crate::model::stores::headers::MemoryHeaderStore;
     use crate::processes::ghostdag::protocol::GhostdagManager;
     use crate::processes::reachability::tests::r#gen::generate_complex_dag;
@@ -794,7 +791,6 @@ mod tests {
         let dk_executor = DagknightExecutor {
             genesis_hash,
             dagknight_store: dagknight_store.clone(),
-            ghostdag_store: topology_ghostdag_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
@@ -998,7 +994,6 @@ mod tests {
         let dk_executor = DagknightExecutor {
             genesis_hash,
             dagknight_store: dagknight_store.clone(),
-            ghostdag_store: topology_ghostdag_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),

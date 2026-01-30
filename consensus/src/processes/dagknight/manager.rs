@@ -33,29 +33,29 @@ use crate::{
 // be more in line with what the paper needs
 // Renamed from ghostdag_customized to k_colouring
 pub struct ConflictZoneManager<
-    S: DagknightStore + DagknightStoreReader,
-    Q: RelationsStoreReader,
+    C: DagknightStore + DagknightStoreReader,
+    O: HeaderStoreReader,
+    D: RelationsStoreReader,
     R: ReachabilityStoreReader + Clone,
-    T: HeaderStoreReader,
 > {
     k: KType,
     root: Hash,
-    dagknight_store: Arc<S>,
-    relations_store: FutureIntersectRelations<Q, MTReachabilityService<R>>,
+    dagknight_store: Arc<C>,
+    headers_store: Arc<O>,
+    relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
     reachability_service: MTReachabilityService<R>,
-    headers_store: Arc<T>,
 }
 
-impl<S: DagknightStore + DagknightStoreReader, Q: RelationsStoreReader, R: ReachabilityStoreReader + Clone, T: HeaderStoreReader>
-    ConflictZoneManager<S, Q, R, T>
+impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityStoreReader + Clone>
+    ConflictZoneManager<C, O, D, R>
 {
     pub fn new(
         k: KType,
         root: Hash,
-        dagknight_store: Arc<S>,
-        relations_store: FutureIntersectRelations<Q, MTReachabilityService<R>>,
+        dagknight_store: Arc<C>,
+        headers_store: Arc<O>,
+        relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
         reachability_service: MTReachabilityService<R>,
-        headers_store: Arc<T>,
     ) -> Self {
         Self { k, root, dagknight_store, headers_store, reachability_service, relations_store }
     }
