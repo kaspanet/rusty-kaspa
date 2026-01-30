@@ -234,3 +234,44 @@ instances:
     assert_eq!(config2.instances[0].var_diff_stats, Some(true));
     assert_eq!(config2.instances[1].var_diff, None); // Should inherit from global
 }
+
+#[cfg(test)]
+#[test]
+fn test_config_missing_instance_fields_error() {
+    let yaml_missing_port = r#"
+kaspad_address: "127.0.0.1:16110"
+instances:
+  - min_share_diff: 8192
+"#;
+
+    let yaml_missing_diff = r#"
+kaspad_address: "127.0.0.1:16110"
+instances:
+  - stratum_port: ":5555"
+"#;
+
+    let yaml_single_missing_diff = r#"
+kaspad_address: "127.0.0.1:16110"
+stratum_port: ":5555"
+"#;
+
+    assert!(BridgeConfig::from_yaml(yaml_missing_port).is_err());
+    assert!(BridgeConfig::from_yaml(yaml_missing_diff).is_err());
+    assert!(BridgeConfig::from_yaml(yaml_single_missing_diff).is_err());
+}
+
+#[cfg(test)]
+#[test]
+fn test_config_empty_web_dashboard_port_kept_empty() {
+    let yaml = r#"
+kaspad_address: "127.0.0.1:16110"
+stratum_port: ":5555"
+min_share_diff: 8192
+web_dashboard_port: ""
+"#;
+
+    let config = BridgeConfig::from_yaml(yaml);
+    assert!(config.is_ok());
+    let config = config.unwrap();
+    assert_eq!(config.global.web_dashboard_port, "");
+}
