@@ -51,7 +51,7 @@ pub type DbPruningPointManager = PruningPointManager<
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore, DbHeadersStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 pub type DbDagknightExecutor =
-    DagknightExecutor<DbDagknightStore, DbGhostdagStore, DbHeadersStore, MTRelationsService<DbRelationsStore>, DbReachabilityStore>;
+    DagknightExecutor<DbDagknightStore, DbHeadersStore, MTRelationsService<DbRelationsStore>, DbReachabilityStore>;
 
 pub struct ConsensusServices {
     // Underlying storage
@@ -131,7 +131,6 @@ impl ConsensusServices {
         let dagknight_executor = storage.dagknight_store.as_ref().map(|dagknight_store| DagknightExecutor {
             genesis_hash: params.genesis.hash,
             dagknight_store: dagknight_store.clone(),
-            ghostdag_store: storage.ghostdag_store.clone(),
             headers_store: storage.headers_store.clone(),
             relations_store: Arc::new(RwLock::new(relations_service.clone())),
             reachability_service: reachability_service.clone(),
