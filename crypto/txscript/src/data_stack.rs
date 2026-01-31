@@ -56,14 +56,16 @@ impl<const LEN: usize> From<SizedEncodeInt<LEN>> for i64 {
     }
 }
 
+pub type StackEntry = Vec<u8>;
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct Stack {
-    inner: Vec<Vec<u8>>,
+    inner: Vec<StackEntry>,
     covenants_enabled: bool,
 }
 
 impl Deref for Stack {
-    type Target = Vec<Vec<u8>>;
+    type Target = Vec<StackEntry>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
@@ -71,7 +73,7 @@ impl Deref for Stack {
 }
 
 impl Index<usize> for Stack {
-    type Output = Vec<u8>;
+    type Output = StackEntry;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.inner[index]
@@ -79,13 +81,13 @@ impl Index<usize> for Stack {
 }
 
 #[cfg(test)]
-impl From<Vec<Vec<u8>>> for Stack {
-    fn from(inner: Vec<Vec<u8>>) -> Self {
+impl From<Vec<StackEntry>> for Stack {
+    fn from(inner: Vec<StackEntry>) -> Self {
         Self { inner, covenants_enabled: false }
     }
 }
 
-impl From<Stack> for Vec<Vec<u8>> {
+impl From<Stack> for Vec<StackEntry> {
     fn from(stack: Stack) -> Self {
         stack.inner
     }
@@ -181,7 +183,7 @@ fn deserialize_i64(v: &[u8], enforce_minimal: bool) -> Result<i64, TxScriptError
     }
 }
 
-impl OpcodeData<i64> for Vec<u8> {
+impl OpcodeData<i64> for StackEntry {
     #[inline]
     fn deserialize(&self, enforce_minimal: bool) -> Result<i64, TxScriptError> {
         OpcodeData::<SizedEncodeInt<8>>::deserialize(self, enforce_minimal).map(i64::from)
@@ -193,7 +195,7 @@ impl OpcodeData<i64> for Vec<u8> {
     }
 }
 
-impl OpcodeData<i32> for Vec<u8> {
+impl OpcodeData<i32> for StackEntry {
     #[inline]
     fn deserialize(&self, enforce_minimal: bool) -> Result<i32, TxScriptError> {
         OpcodeData::<SizedEncodeInt<4>>::deserialize(self, enforce_minimal).map(|v| v.try_into().expect("number is within i32 range"))
@@ -205,7 +207,7 @@ impl OpcodeData<i32> for Vec<u8> {
     }
 }
 
-impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for Vec<u8> {
+impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for StackEntry {
     #[inline]
     fn deserialize(&self, enforce_minimal: bool) -> Result<SizedEncodeInt<LEN>, TxScriptError> {
         match self.len() > LEN {
@@ -229,7 +231,7 @@ impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for Vec<u8> {
     }
 }
 
-impl OpcodeData<bool> for Vec<u8> {
+impl OpcodeData<bool> for StackEntry {
     #[inline]
     fn deserialize(&self, _enforce_minimal: bool) -> Result<bool, TxScriptError> {
         if self.is_empty() {
@@ -249,7 +251,7 @@ impl OpcodeData<bool> for Vec<u8> {
     }
 }
 
-impl OpcodeData<Hash> for Vec<u8> {
+impl OpcodeData<Hash> for StackEntry {
     #[inline]
     fn deserialize(&self, _: bool) -> Result<Hash, TxScriptError> {
         Hash::try_from_slice(self).map_err(|_| TxScriptError::InvalidLengthOfBlockHash(self.len()))
@@ -262,7 +264,7 @@ impl OpcodeData<Hash> for Vec<u8> {
 }
 
 impl Stack {
-    pub(crate) fn new(inner: Vec<Vec<u8>>, covenants_enabled: bool) -> Self {
+    pub(crate) fn new(inner: Vec<StackEntry>, covenants_enabled: bool) -> Self {
         Self { inner, covenants_enabled }
     }
 
@@ -271,7 +273,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn insert(&mut self, index: usize, element: Vec<u8>) -> Result<(), TxScriptError> {
+    pub fn insert(&mut self, index: usize, element: StackEntry) -> Result<(), TxScriptError> {
         if element.len() > self.max_element_size() {
             return Err(TxScriptError::ElementTooBig(element.len(), self.max_element_size()));
         }
@@ -280,7 +282,7 @@ impl Stack {
     }
 
     #[cfg(test)]
-    pub(crate) fn inner(&self) -> &[Vec<u8>] {
+    pub(crate) fn inner(&self) -> &[StackEntry] {
         &self.inner
     }
 
@@ -303,7 +305,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_raw<const SIZE: usize>(&mut self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
+    pub fn pop_raw<const SIZE: usize>(&mut self) -> Result<[StackEntry; SIZE], TxScriptError> {
         if self.len() < SIZE {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
@@ -311,7 +313,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn peek_raw<const SIZE: usize>(&self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
+    pub fn peek_raw<const SIZE: usize>(&self) -> Result<[StackEntry; SIZE], TxScriptError> {
         if self.len() < SIZE {
             return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
@@ -365,7 +367,7 @@ impl Stack {
     pub fn rot_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= 3 * SIZE {
             true => {
-                let drained = self.inner.drain(self.len() - 3 * SIZE..self.len() - 2 * SIZE).collect::<Vec<Vec<u8>>>();
+                let drained = self.inner.drain(self.len() - 3 * SIZE..self.len() - 2 * SIZE).collect::<Vec<StackEntry>>();
                 self.inner.extend(drained);
                 Ok(())
             }
@@ -377,7 +379,7 @@ impl Stack {
     pub fn swap_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= 2 * SIZE {
             true => {
-                let drained = self.inner.drain(self.len() - 2 * SIZE..self.len() - SIZE).collect::<Vec<Vec<u8>>>();
+                let drained = self.inner.drain(self.len() - 2 * SIZE..self.len() - SIZE).collect::<Vec<StackEntry>>();
                 self.inner.extend(drained);
                 Ok(())
             }
@@ -389,15 +391,15 @@ impl Stack {
         self.inner.clear()
     }
 
-    pub fn pop(&mut self) -> Result<Vec<u8>, TxScriptError> {
+    pub fn pop(&mut self) -> Result<StackEntry, TxScriptError> {
         self.inner.pop().ok_or(TxScriptError::EmptyStack)
     }
 
-    pub fn split_off(&mut self, at: usize) -> Vec<Vec<u8>> {
+    pub fn split_off(&mut self, at: usize) -> Vec<StackEntry> {
         self.inner.split_off(at)
     }
 
-    pub fn push(&mut self, item: Vec<u8>) -> Result<(), TxScriptError> {
+    pub fn push(&mut self, item: StackEntry) -> Result<(), TxScriptError> {
         if item.len() > self.max_element_size() {
             return Err(TxScriptError::ElementTooBig(item.len(), self.max_element_size()));
         }
@@ -405,7 +407,7 @@ impl Stack {
         Ok(())
     }
 
-    pub fn remove(&mut self, index: usize) -> Vec<u8> {
+    pub fn remove(&mut self, index: usize) -> StackEntry {
         self.inner.remove(index)
     }
 }
