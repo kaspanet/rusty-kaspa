@@ -136,7 +136,7 @@ fn sanitize_json_input(input: &str) -> String {
 pub fn unmarshal_event(input: &str) -> Result<JsonRpcEvent, serde_json::Error> {
     // Check if sanitization is needed
     let needs_sanitization = input.chars().any(|c| c.is_control() && c != '\n' && c != '\r');
-    
+
     if needs_sanitization {
         let sanitized = sanitize_json_input(input);
         // Try parsing sanitized version
