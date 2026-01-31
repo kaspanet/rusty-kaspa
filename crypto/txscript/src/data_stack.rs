@@ -1,4 +1,4 @@
-use crate::{TxScriptError, MAX_SCRIPT_ELEMENT_SIZE};
+use crate::{MAX_SCRIPT_ELEMENT_SIZE, TxScriptError};
 use core::fmt::Debug;
 use core::iter;
 use kaspa_hashes::Hash;
@@ -269,11 +269,7 @@ impl Stack {
     }
 
     fn max_element_size(&self) -> usize {
-        if self.covenants_enabled {
-            MAX_SCRIPT_ELEMENT_SIZE
-        } else {
-            usize::MAX
-        }
+        if self.covenants_enabled { MAX_SCRIPT_ELEMENT_SIZE } else { usize::MAX }
     }
 
     #[inline]
@@ -419,7 +415,7 @@ impl Stack {
 #[cfg(test)]
 mod tests {
     use super::OpcodeData;
-    use crate::data_stack::{serialize_i64, SizedEncodeInt};
+    use crate::data_stack::{SizedEncodeInt, serialize_i64};
     use kaspa_txscript_errors::{SerializationError, TxScriptError};
 
     // TestScriptNumBytes
