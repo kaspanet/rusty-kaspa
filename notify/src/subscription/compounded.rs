@@ -8,7 +8,7 @@ use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix};
 use kaspa_utils::flattened_slice::PayloadPrefixFilter;
 use radix_trie::TrieCommon;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -118,14 +118,18 @@ impl Compounded for BlockAddedSubscription {
                         // Add specific prefixes
                         let added = RefCell::new(PayloadPrefixFilter::new());
                         for prefix in scope.payload_prefixes.as_holder().iter() {
+                            let add = Cell::new(true);
                             self.prefix_counters.map_with_default(
                                 prefix.to_vec(),
                                 |v| {
                                     *v += 1;
-                                    added.borrow_mut().add_slice(prefix);
+                                    add.set(false);
                                 },
                                 1,
                             );
+                            if add.get() {
+                                added.borrow_mut().add_slice(prefix);
+                            }
                         }
                         let added = added.into_inner();
                         if !added.is_empty() && self.all == 0 {
@@ -415,7 +419,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::redundant_clone)]
     fn test_overall_compounding() {
         let none = || Box::new(OverallSubscription::new(EventType::BlockAdded));
         let add = || Mutation::new(Command::Start, Scope::BlockAdded(BlockAddedScope::default()));
@@ -440,7 +443,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::redundant_clone)]
     fn test_block_added_compounding() {
         let p0: Vec<u8> = vec![0xAA, 0xBB];
         let p1: Vec<u8> = vec![0xCC, 0xDD];
@@ -489,7 +491,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::redundant_clone)]
     fn test_virtual_chain_changed_compounding() {
         fn m(command: Command, include_accepted_transaction_ids: bool) -> Mutation {
             Mutation { command, scope: Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }) }
@@ -532,7 +533,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::redundant_clone)]
     fn test_utxos_changed_compounding() {
         kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
         let a_stock = get_3_addresses(true);

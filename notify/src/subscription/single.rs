@@ -211,18 +211,17 @@ pub struct BlockAddedSubscription {
 
 impl BlockAddedSubscription {
     pub fn new(state: BlockAddedState, listener_id: ListenerId) -> Self {
+        let subscription_count = BLOCK_ADDED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1;
         let data = RwLock::new(BlockAddedSubscriptionData::new(state));
         let subscription = Self { data, listener_id };
-        trace!(
-            "BlockAddedSubscription: {} in total (new {})",
-            BLOCK_ADDED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
-            subscription
-        );
+        trace!("BlockAddedSubscription: {} in total (new {})", subscription_count, subscription);
         subscription
     }
 
     #[cfg(test)]
     pub fn with_prefixes(active: bool, prefixes: Vec<Vec<u8>>, listener_id: ListenerId) -> Self {
+        _ = BLOCK_ADDED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1;
+
         let filter = PayloadPrefixFilter::from_prefixes(prefixes);
         let state = match (active, filter.is_empty()) {
             (false, _) => BlockAddedState::None,
@@ -257,11 +256,8 @@ impl BlockAddedSubscription {
 impl Clone for BlockAddedSubscription {
     fn clone(&self) -> Self {
         let subscription = Self { data: RwLock::new(self.data().clone()), listener_id: self.listener_id };
-        trace!(
-            "BlockAddedSubscription: {} in total (clone {})",
-            BLOCK_ADDED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
-            subscription
-        );
+        let subscription_count = BLOCK_ADDED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1;
+        trace!("BlockAddedSubscription: {} in total (clone {})", subscription_count, subscription);
         subscription
     }
 }
@@ -274,7 +270,8 @@ impl Display for BlockAddedSubscription {
 
 impl Drop for BlockAddedSubscription {
     fn drop(&mut self) {
-        trace!("BlockAddedSubscription: {} in total (drop {})", BLOCK_ADDED_SUBSCRIPTIONS.fetch_sub(1, Ordering::SeqCst) - 1, self);
+        let subscription_count = BLOCK_ADDED_SUBSCRIPTIONS.fetch_sub(1, Ordering::SeqCst) - 1;
+        trace!("BlockAddedSubscription: {} in total (drop {})", subscription_count, self);
     }
 }
 
