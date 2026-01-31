@@ -3,7 +3,7 @@ use crate::{
     error::Result,
     events::EventType,
     listener::ListenerId,
-    scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
+    scope::{BlockAddedScope, Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::{
         BroadcastingSingle, Command, DynSubscription, Mutation, MutationOutcome, MutationPolicies, Single, Subscription,
         UtxosChangedMutationPolicy, context::SubscriptionContext,
@@ -70,6 +70,325 @@ impl Subscription for OverallSubscription {
 
     fn scope(&self, _context: &SubscriptionContext) -> Scope {
         self.event_type.into()
+    }
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// BlockAdded subscription
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+static BLOCK_ADDED_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BlockAddedMutation {
+    None,
+    Remove,
+    Add,
+    All,
+}
+
+impl From<(Command, &BlockAddedScope)> for BlockAddedMutation {
+    fn from((command, scope): (Command, &BlockAddedScope)) -> Self {
+        match (command, scope.payload_prefixes.is_empty()) {
+            (Command::Stop, true) => Self::None,
+            (Command::Stop, false) => Self::Remove,
+            (Command::Start, false) => Self::Add,
+            (Command::Start, true) => Self::All,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+pub enum BlockAddedState {
+    /// Inactive
+    #[default]
+    None,
+    /// Active on a set of selected payload prefixes
+    Selected,
+    /// Active on all (no filtering)
+    All,
+}
+
+impl BlockAddedState {
+    pub fn active(&self) -> bool {
+        !matches!(self, BlockAddedState::None)
+    }
+}
+
+impl Display for BlockAddedState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BlockAddedState::None => write!(f, "none"),
+            BlockAddedState::Selected => write!(f, "selected"),
+            BlockAddedState::All => write!(f, "all"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BlockAddedSubscriptionData {
+    state: BlockAddedState,
+    payload_prefixes: Vec<Vec<u8>>,
+}
+
+impl BlockAddedSubscriptionData {
+    fn new(state: BlockAddedState) -> Self {
+        Self { state, payload_prefixes: Vec::new() }
+    }
+
+    #[inline(always)]
+    pub fn update_state(&mut self, new_state: BlockAddedState) {
+        self.state = new_state;
+    }
+
+    pub fn to_all(&self) -> bool {
+        matches!(self.state, BlockAddedState::All)
+    }
+
+    pub fn contains_prefix(&self, payload: &[u8]) -> bool {
+        self.payload_prefixes.iter().any(|prefix| payload.starts_with(prefix))
+    }
+
+    pub fn add_prefixes(&mut self, prefixes: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+        let mut added = Vec::new();
+        for prefix in prefixes {
+            if !self.payload_prefixes.contains(&prefix) {
+                self.payload_prefixes.push(prefix.clone());
+                added.push(prefix);
+            }
+        }
+        added
+    }
+
+    pub fn remove_prefixes(&mut self, prefixes: &[Vec<u8>]) -> Vec<Vec<u8>> {
+        let mut removed = Vec::new();
+        for prefix in prefixes {
+            if let Some(pos) = self.payload_prefixes.iter().position(|p| p == prefix) {
+                self.payload_prefixes.remove(pos);
+                removed.push(prefix.clone());
+            }
+        }
+        removed
+    }
+
+    pub fn clear_prefixes(&mut self) -> Vec<Vec<u8>> {
+        std::mem::take(&mut self.payload_prefixes)
+    }
+
+    pub fn prefixes(&self) -> &[Vec<u8>] {
+        &self.payload_prefixes
+    }
+}
+
+impl Display for BlockAddedSubscriptionData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.state {
+            BlockAddedState::None | BlockAddedState::All => write!(f, "{}", self.state),
+            BlockAddedState::Selected => write!(f, "{}({})", self.state, self.payload_prefixes.len()),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct BlockAddedSubscription {
+    data: RwLock<BlockAddedSubscriptionData>,
+    listener_id: ListenerId,
+}
+
+impl BlockAddedSubscription {
+    pub fn new(state: BlockAddedState, listener_id: ListenerId) -> Self {
+        let data = RwLock::new(BlockAddedSubscriptionData::new(state));
+        let subscription = Self { data, listener_id };
+        trace!(
+            "BlockAddedSubscription: {} in total (new {})",
+            BLOCK_ADDED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
+            subscription
+        );
+        subscription
+    }
+
+    #[cfg(test)]
+    pub fn with_prefixes(active: bool, prefixes: Vec<Vec<u8>>, listener_id: ListenerId) -> Self {
+        let state = match (active, prefixes.is_empty()) {
+            (false, _) => BlockAddedState::None,
+            (true, false) => BlockAddedState::Selected,
+            (true, true) => BlockAddedState::All,
+        };
+        let subscription = Self::new(state, listener_id);
+        if !prefixes.is_empty() {
+            subscription.data_mut().add_prefixes(prefixes);
+        }
+        subscription
+    }
+
+    pub fn data(&self) -> RwLockReadGuard<'_, BlockAddedSubscriptionData> {
+        self.data.read()
+    }
+
+    pub fn data_mut(&self) -> RwLockWriteGuard<'_, BlockAddedSubscriptionData> {
+        self.data.write()
+    }
+
+    #[inline(always)]
+    pub fn state(&self) -> BlockAddedState {
+        self.data().state
+    }
+
+    pub fn to_all(&self) -> bool {
+        matches!(self.data().state, BlockAddedState::All)
+    }
+}
+
+impl Clone for BlockAddedSubscription {
+    fn clone(&self) -> Self {
+        let subscription = Self { data: RwLock::new(self.data().clone()), listener_id: self.listener_id };
+        trace!(
+            "BlockAddedSubscription: {} in total (clone {})",
+            BLOCK_ADDED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
+            subscription
+        );
+        subscription
+    }
+}
+
+impl Display for BlockAddedSubscription {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.data())
+    }
+}
+
+impl Drop for BlockAddedSubscription {
+    fn drop(&mut self) {
+        trace!(
+            "BlockAddedSubscription: {} in total (drop {})",
+            BLOCK_ADDED_SUBSCRIPTIONS.fetch_sub(1, Ordering::SeqCst) - 1,
+            self
+        );
+    }
+}
+
+impl PartialEq for BlockAddedSubscription {
+    fn eq(&self, other: &Self) -> bool {
+        self.listener_id == other.listener_id
+    }
+}
+impl Eq for BlockAddedSubscription {}
+
+impl Hash for BlockAddedSubscription {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.listener_id.hash(state);
+    }
+}
+
+impl Single for BlockAddedSubscription {
+    fn apply_mutation(
+        &self,
+        current: &Arc<dyn Single>,
+        mutation: Mutation,
+        _policies: MutationPolicies,
+        _context: &SubscriptionContext,
+    ) -> Result<MutationOutcome> {
+        assert_eq!(self.event_type(), mutation.event_type());
+        let outcome = if let Scope::BlockAdded(scope) = mutation.scope {
+            let mut data = self.data_mut();
+            let state = data.state;
+            let mutation_type = BlockAddedMutation::from((mutation.command, &scope));
+            match (state, mutation_type) {
+                (BlockAddedState::None, BlockAddedMutation::None | BlockAddedMutation::Remove) => {
+                    MutationOutcome::new()
+                }
+                (BlockAddedState::None, BlockAddedMutation::Add) => {
+                    let added = data.add_prefixes(scope.payload_prefixes.clone());
+                    data.update_state(BlockAddedState::Selected);
+                    let mutations = vec![Mutation::new(mutation.command, BlockAddedScope::new(added).into())];
+                    MutationOutcome::with_mutated(current.clone(), mutations)
+                }
+                (BlockAddedState::None, BlockAddedMutation::All) => {
+                    data.update_state(BlockAddedState::All);
+                    let mutations = vec![Mutation::new(mutation.command, BlockAddedScope::default().into())];
+                    MutationOutcome::with_mutated(current.clone(), mutations)
+                }
+                (BlockAddedState::Selected, BlockAddedMutation::None) => {
+                    data.update_state(BlockAddedState::None);
+                    let removed = data.clear_prefixes();
+                    assert!(!removed.is_empty(), "state Selected implies non-empty prefix set");
+                    let mutations = vec![Mutation::new(Command::Stop, BlockAddedScope::new(removed).into())];
+                    MutationOutcome::with_mutated(current.clone(), mutations)
+                }
+                (BlockAddedState::Selected, BlockAddedMutation::Remove) => {
+                    let removed = data.remove_prefixes(&scope.payload_prefixes);
+                    match (removed.is_empty(), data.payload_prefixes.is_empty()) {
+                        (false, false) => {
+                            let mutations = vec![Mutation::new(Command::Stop, BlockAddedScope::new(removed).into())];
+                            MutationOutcome::with_mutations(mutations)
+                        }
+                        (false, true) => {
+                            data.update_state(BlockAddedState::None);
+                            let mutations = vec![Mutation::new(Command::Stop, BlockAddedScope::new(removed).into())];
+                            MutationOutcome::with_mutated(current.clone(), mutations)
+                        }
+                        (true, _) => MutationOutcome::new(),
+                    }
+                }
+                (BlockAddedState::Selected, BlockAddedMutation::Add) => {
+                    let added = data.add_prefixes(scope.payload_prefixes);
+                    match added.is_empty() {
+                        false => {
+                            let mutations = vec![Mutation::new(Command::Start, BlockAddedScope::new(added).into())];
+                            MutationOutcome::with_mutations(mutations)
+                        }
+                        true => MutationOutcome::new(),
+                    }
+                }
+                (BlockAddedState::Selected, BlockAddedMutation::All) => {
+                    let removed = data.clear_prefixes();
+                    assert!(!removed.is_empty(), "state Selected implies non-empty prefix set");
+                    data.update_state(BlockAddedState::All);
+                    let mutations = vec![
+                        Mutation::new(Command::Stop, BlockAddedScope::new(removed).into()),
+                        Mutation::new(Command::Start, BlockAddedScope::default().into()),
+                    ];
+                    MutationOutcome::with_mutated(current.clone(), mutations)
+                }
+                (BlockAddedState::All, BlockAddedMutation::None) => {
+                    data.update_state(BlockAddedState::None);
+                    let mutations = vec![Mutation::new(Command::Stop, BlockAddedScope::default().into())];
+                    MutationOutcome::with_mutated(current.clone(), mutations)
+                }
+                (BlockAddedState::All, BlockAddedMutation::Remove) => {
+                    MutationOutcome::new()
+                }
+                (BlockAddedState::All, BlockAddedMutation::Add) => {
+                    let added = data.add_prefixes(scope.payload_prefixes);
+                    data.update_state(BlockAddedState::Selected);
+                    let mutations = vec![
+                        Mutation::new(Command::Start, BlockAddedScope::new(added).into()),
+                        Mutation::new(Command::Stop, BlockAddedScope::default().into()),
+                    ];
+                    MutationOutcome::with_mutated(current.clone(), mutations)
+                }
+                (BlockAddedState::All, BlockAddedMutation::All) => {
+                    MutationOutcome::new()
+                }
+            }
+        } else {
+            MutationOutcome::new()
+        };
+        Ok(outcome)
+    }
+}
+
+impl Subscription for BlockAddedSubscription {
+    fn event_type(&self) -> EventType {
+        EventType::BlockAdded
+    }
+
+    fn active(&self) -> bool {
+        self.state().active()
+    }
+
+    fn scope(&self, _context: &SubscriptionContext) -> Scope {
+        BlockAddedScope::new(self.data().prefixes().to_vec()).into()
     }
 }
 
@@ -570,6 +889,13 @@ impl Subscription for UtxosChangedSubscription {
 impl BroadcastingSingle for DynSubscription {
     fn broadcasting(self, context: &SubscriptionContext) -> DynSubscription {
         match self.event_type() {
+            EventType::BlockAdded => {
+                let block_added_subscription = self.as_any().downcast_ref::<BlockAddedSubscription>().unwrap();
+                match block_added_subscription.to_all() {
+                    true => context.block_added_subscription_to_all.clone(),
+                    false => self,
+                }
+            }
             EventType::UtxosChanged => {
                 let utxos_changed_subscription = self.as_any().downcast_ref::<UtxosChangedSubscription>().unwrap();
                 match utxos_changed_subscription.to_all() {
@@ -767,7 +1093,7 @@ mod tests {
             Arc::new(OverallSubscription { event_type: EventType::BlockAdded, active })
         }
         fn m(command: Command) -> Mutation {
-            Mutation { command, scope: Scope::BlockAdded(BlockAddedScope {}) }
+            Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::default()) }
         }
 
         // Subscriptions
@@ -807,6 +1133,127 @@ mod tests {
                 mutation: stop_all(),
                 new_state: none(),
                 outcome: MutationOutcome::with_mutated(none(), vec![stop_all()]),
+            },
+        ]);
+        tests.run(&context)
+    }
+
+    #[test]
+    fn test_block_added_mutation() {
+        let context = SubscriptionContext::new();
+
+        let p0: Vec<u8> = vec![0xAA, 0xBB];
+        let p1: Vec<u8> = vec![0xCC, 0xDD];
+
+        let s = |active: bool, prefixes: &[Vec<u8>]| -> DynSubscription {
+            Arc::new(BlockAddedSubscription::with_prefixes(
+                active,
+                prefixes.to_vec(),
+                MutationTests::LISTENER_ID,
+            ))
+        };
+        let m = |command: Command, prefixes: &[Vec<u8>]| -> Mutation {
+            Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::new(prefixes.to_vec())) }
+        };
+
+        // Subscriptions
+        let none = || s(false, &[]);
+        let selected_0 = || s(true, &[p0.clone()]);
+        let selected_01 = || s(true, &[p0.clone(), p1.clone()]);
+        let all = || s(true, &[]);
+
+        // Mutations
+        let start_all = || m(Command::Start, &[]);
+        let stop_all = || m(Command::Stop, &[]);
+        let start_0 = || m(Command::Start, &[p0.clone()]);
+        let start_1 = || m(Command::Start, &[p1.clone()]);
+        let stop_0 = || m(Command::Stop, &[p0.clone()]);
+        let stop_01 = || m(Command::Stop, &[p0.clone(), p1.clone()]);
+
+        let tests = MutationTests::new(vec![
+            MutationTest {
+                name: "BlockAdded None to All",
+                state: none(),
+                mutation: start_all(),
+                new_state: all(),
+                outcome: MutationOutcome::with_mutated(all(), vec![start_all()]),
+            },
+            MutationTest {
+                name: "BlockAdded None to Selected(p0)",
+                state: none(),
+                mutation: start_0(),
+                new_state: selected_0(),
+                outcome: MutationOutcome::with_mutated(selected_0(), vec![start_0()]),
+            },
+            MutationTest {
+                name: "BlockAdded None to None (stop)",
+                state: none(),
+                mutation: stop_0(),
+                new_state: none(),
+                outcome: MutationOutcome::new(),
+            },
+            MutationTest {
+                name: "BlockAdded Selected(p0) + add p1 => Selected(p0,p1)",
+                state: selected_0(),
+                mutation: start_1(),
+                new_state: selected_01(),
+                outcome: MutationOutcome::with_mutations(vec![m(Command::Start, &[p1.clone()])]),
+            },
+            MutationTest {
+                name: "BlockAdded Selected(p0,p1) + remove p0 => Selected(p1) (mutations only)",
+                state: selected_01(),
+                mutation: stop_0(),
+                new_state: s(true, &[p1.clone()]),
+                outcome: MutationOutcome::with_mutations(vec![m(Command::Stop, &[p0.clone()])]),
+            },
+            MutationTest {
+                name: "BlockAdded Selected(p0) + stop all => None",
+                state: selected_0(),
+                mutation: stop_all(),
+                new_state: none(),
+                outcome: MutationOutcome::with_mutated(none(), vec![m(Command::Stop, &[p0.clone()])]),
+            },
+            MutationTest {
+                name: "BlockAdded Selected(p0,p1) + stop all => None",
+                state: selected_01(),
+                mutation: stop_all(),
+                new_state: none(),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_01()]),
+            },
+            MutationTest {
+                name: "BlockAdded Selected(p0) + start all => All",
+                state: selected_0(),
+                mutation: start_all(),
+                new_state: all(),
+                outcome: MutationOutcome::with_mutated(all(), vec![m(Command::Stop, &[p0.clone()]), start_all()]),
+            },
+            MutationTest {
+                name: "BlockAdded All to All",
+                state: all(),
+                mutation: start_all(),
+                new_state: all(),
+                outcome: MutationOutcome::new(),
+            },
+            MutationTest {
+                name: "BlockAdded All + remove => no change",
+                state: all(),
+                mutation: stop_0(),
+                new_state: all(),
+                outcome: MutationOutcome::new(),
+            },
+            MutationTest {
+                name: "BlockAdded All to None",
+                state: all(),
+                mutation: stop_all(),
+                new_state: none(),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_all()]),
+            },
+            MutationTest {
+                name: "BlockAdded All + add(p0) => Selected(p0)",
+                state: all(),
+                mutation: start_0(),
+                new_state: selected_0(),
+                outcome: MutationOutcome::with_mutated(selected_0(), vec![start_0(), stop_all()]),
             },
         ]);
         tests.run(&context)

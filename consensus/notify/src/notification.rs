@@ -8,7 +8,7 @@ use kaspa_notify::{
     subscription::{
         Subscription,
         context::SubscriptionContext,
-        single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
+        single::{BlockAddedSubscription, OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
     },
 };
 use std::sync::Arc;
@@ -47,6 +47,18 @@ pub enum Notification {
 
 impl NotificationTrait for Notification {
     fn apply_overall_subscription(&self, subscription: &OverallSubscription, _context: &SubscriptionContext) -> Option<Self> {
+        match subscription.active() {
+            true => Some(self.clone()),
+            false => None,
+        }
+    }
+
+    fn apply_block_added_subscription(
+        &self,
+        subscription: &BlockAddedSubscription,
+        _context: &SubscriptionContext,
+    ) -> Option<Self> {
+        // No effort to filter at consensus level. Filtering happens at RPC level.
         match subscription.active() {
             true => Some(self.clone()),
             false => None,

@@ -69,20 +69,64 @@ impl Deserializer for Scope {
     }
 }
 
-#[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-pub struct BlockAddedScope {}
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct BlockAddedScope {
+    pub payload_prefixes: Vec<Vec<u8>>,
+}
+
+impl BlockAddedScope {
+    pub fn new(payload_prefixes: Vec<Vec<u8>>) -> Self {
+        Self { payload_prefixes }
+    }
+}
+
+impl std::fmt::Display for BlockAddedScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let prefixes = match self.payload_prefixes.len() {
+            0 => "all".to_string(),
+            1 => "1 prefix".to_string(),
+            n => format!("{} prefixes", n),
+        };
+        write!(f, "BlockAddedScope ({})", prefixes)
+    }
+}
+
+impl PartialEq for BlockAddedScope {
+    fn eq(&self, other: &Self) -> bool {
+        self.payload_prefixes.len() == other.payload_prefixes.len()
+            && self.payload_prefixes.iter().all(|x| other.payload_prefixes.contains(x))
+    }
+}
+
+impl Eq for BlockAddedScope {}
 
 impl Serializer for BlockAddedScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
+        store!(u32, &(self.payload_prefixes.len() as u32), writer)?;
+        for prefix in &self.payload_prefixes {
+            store!(u32, &(prefix.len() as u32), writer)?;
+            writer.write_all(prefix)?;
+        }
         Ok(())
     }
 }
 
 impl Deserializer for BlockAddedScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
-        Ok(Self {})
+        let version = load!(u16, reader)?;
+        if version < 2 {
+            return Ok(Self::default());
+        }
+        let count = load!(u32, reader)? as usize;
+        let mut payload_prefixes = Vec::with_capacity(count);
+        for _ in 0..count {
+            let len = load!(u32, reader)? as usize;
+            let mut buf = vec![0u8; len];
+            reader.read_exact(&mut buf)?;
+            payload_prefixes.push(buf);
+        }
+        Ok(Self { payload_prefixes })
     }
 }
 

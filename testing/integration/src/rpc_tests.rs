@@ -16,6 +16,7 @@ use kaspa_notify::{
     },
 };
 use kaspa_rpc_core::{Notification, api::rpc::RpcApi, model::*};
+use kaspa_grpc_client::GrpcClient;
 use kaspa_utils::{fd_budget, networking::ContextualNetAddress};
 use kaspad_lib::args::Args;
 use tokio::task::JoinHandle;
@@ -712,7 +713,7 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 let id = listener_id;
                 tst!(op, {
-                    rpc_client.start_notify(id, BlockAddedScope {}.into()).await.unwrap();
+                    rpc_client.start_notify(id, BlockAddedScope::default().into()).await.unwrap();
                 })
             }
 
@@ -801,5 +802,292 @@ async fn sanity_test() {
     //
     client.disconnect().await.unwrap();
     drop(client);
+    daemon.shutdown();
+}
+
+/// Test BlockAdded subscription with payload prefix filtering using real transactions.
+///
+/// Sets up a simnet node, mines blocks to reach coinbase maturity, then submits
+/// transactions with known payloads and verifies that prefix filtering works:
+/// 1. Default scope (empty prefixes) → all transactions arrive
+/// 2. Matching prefix → only transactions with that prefix arrive
+/// 3. Non-matching prefix → block arrives with empty transaction list
+///
+/// `cargo test --release --package kaspa-testing-integration --lib -- rpc_tests::block_added_payload_filter_test`
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn block_added_payload_filter_test() {
+    use crate::common::utils::fetch_spendable_utxos;
+    use kaspa_consensus::params::SIMNET_PARAMS;
+    use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
+    use rand::thread_rng;
+
+    kaspa_core::log::try_init_logger("info");
+    kaspa_core::panic::configure_panic();
+
+    let args = Args {
+        simnet: true,
+        disable_upnp: true,
+        enable_unsynced_mining: true,
+        block_template_cache_lifetime: Some(0),
+        utxoindex: true,
+        unsafe_rpc: true,
+        ..Default::default()
+    };
+
+    let total_fd_limit = 10;
+    let mut daemon = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client = daemon.start().await;
+
+    // Set up miner key/address
+    let (miner_sk, miner_pk) = secp256k1::generate_keypair(&mut thread_rng());
+    let miner_address =
+        Address::new(Prefix::Simnet, Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
+    let miner_schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &miner_sk);
+
+    // Subscribe to VirtualDaaScoreChanged to track block processing
+    let (sender, event_receiver) = async_channel::unbounded();
+    rpc_client.start(Some(Arc::new(crate::common::client_notify::ChannelNotify::new(sender)))).await;
+    rpc_client
+        .start_notify(Default::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {}))
+        .await
+        .unwrap();
+
+    // Mine blocks until coinbase maturity so we have spendable UTXOs
+    let coinbase_maturity = SIMNET_PARAMS.coinbase_maturity();
+    let initial_blocks = coinbase_maturity + 10; // extra blocks so UTXOs are mature
+    for i in 0..initial_blocks {
+        let template = rpc_client.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client.submit_block(template.block, false).await.unwrap();
+        while let Ok(notification) = match tokio::time::timeout(Duration::from_secs(5), event_receiver.recv()).await {
+            Ok(res) => res,
+            Err(elapsed) => panic!("expected virtual event before {}", elapsed),
+        } {
+            match notification {
+                Notification::VirtualDaaScoreChanged(msg) if msg.virtual_daa_score == i + 1 => break,
+                Notification::VirtualDaaScoreChanged(msg) if msg.virtual_daa_score > i + 1 => {
+                    panic!("DAA score too high")
+                }
+                _ => {}
+            }
+        }
+    }
+    info!("BlockAdded filter test: mined {} initial blocks for coinbase maturity", initial_blocks);
+
+    // Get spendable UTXOs
+    let utxos = fetch_spendable_utxos(&rpc_client, miner_address.clone(), coinbase_maturity).await;
+    assert!(utxos.len() >= 6, "need at least 6 spendable UTXOs, got {}", utxos.len());
+    info!("BlockAdded filter test: have {} spendable UTXOs", utxos.len());
+
+    // Define payload prefixes for testing
+    let prefix_a = vec![0xAA, 0xBB];
+    let prefix_b = vec![0xCC, 0xDD];
+    let payload_a = vec![0xAA, 0xBB, 0x01, 0x02, 0x03]; // starts with prefix_a
+    let payload_b = vec![0xCC, 0xDD, 0x04, 0x05, 0x06]; // starts with prefix_b
+
+    // Helper: submit a tx with a given payload, wait for it to enter mempool
+    async fn submit_tx_with_payload(
+        client: &GrpcClient,
+        schnorr_key: secp256k1::Keypair,
+        utxo: (TransactionOutpoint, UtxoEntry),
+        address: &Address,
+        payload: Vec<u8>,
+    ) -> kaspa_consensus_core::tx::TransactionId {
+        use crate::common::utils::{generate_tx_with_payload, required_fee, wait_for};
+        let amount = utxo.1.amount - required_fee(1, 1);
+        let tx = generate_tx_with_payload(schnorr_key, &[utxo], amount, 1, address, payload);
+        let tx_id = tx.id();
+        client.submit_transaction((&tx).into(), false).await.unwrap();
+        let check = client.clone();
+        wait_for(
+            50,
+            40,
+            move || {
+                let c = check.clone();
+                Box::pin(async move { c.get_mempool_entry(tx_id, false, false).await.is_ok() })
+            },
+            "transaction was not added to the mempool",
+        )
+        .await;
+        tx_id
+    }
+
+    // A blank address for mining rewards we don't care about
+    let blank_address = Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]);
+
+    // ===== Test 1: Default scope (no filter) - all transactions should arrive =====
+    info!("BlockAdded filter test: Test 1 - default scope (all transactions)");
+    let mut listening_client = crate::common::client::ListeningClient::connect(&daemon).await;
+    listening_client.start_notify(BlockAddedScope::default().into()).await.unwrap();
+    listening_client.start_notify(VirtualDaaScoreChangedScope {}.into()).await.unwrap();
+
+    // Submit two transactions with different payloads
+    let tx_id_a1 = submit_tx_with_payload(&rpc_client, miner_schnorr_key, utxos[0].clone(), &miner_address, payload_a.clone()).await;
+    let tx_id_b1 = submit_tx_with_payload(&rpc_client, miner_schnorr_key, utxos[1].clone(), &miner_address, payload_b.clone()).await;
+    info!("BlockAdded filter test: submitted tx_a ({}) and tx_b ({})", tx_id_a1, tx_id_b1);
+
+    // Mine a block containing both transactions
+    crate::common::utils::mine_block(blank_address.clone(), &rpc_client, std::slice::from_ref(&listening_client)).await;
+
+    // Drain the block_added notification we just got from mine_block and check it
+    // mine_block already consumed the notification, so let's redo without the helper
+    // Actually mine_block consumed the notification. Let's stop and re-approach.
+    // We need to receive the notification ourselves. Let's not use mine_block.
+
+    // Actually, mine_block already receives from the listener and asserts. Let's just verify
+    // the transaction count by getting the block directly.
+    let dag_info = rpc_client.get_block_dag_info().await.unwrap();
+    let sink_block = rpc_client.get_block(dag_info.sink, true).await.unwrap();
+    // The block should contain coinbase + our 2 txs = 3 transactions
+    assert!(
+        sink_block.transactions.len() >= 3,
+        "Test 1: default scope block should contain at least 3 transactions (coinbase + 2 user txs), got {}",
+        sink_block.transactions.len()
+    );
+    info!("BlockAdded filter test: Test 1 passed - block has {} transactions", sink_block.transactions.len());
+
+    // ===== Test 2: Subscribe with prefix_a - only matching txs should arrive =====
+    info!("BlockAdded filter test: Test 2 - subscribe with prefix_a filter");
+    listening_client.stop_notify(BlockAddedScope::default().into()).await.unwrap();
+    listening_client.block_added_listener().unwrap().drain();
+    listening_client.start_notify(BlockAddedScope::new(vec![prefix_a.clone()]).into()).await.unwrap();
+
+    // Submit two transactions: one matching prefix_a, one matching prefix_b
+    let tx_id_a2 = submit_tx_with_payload(&rpc_client, miner_schnorr_key, utxos[2].clone(), &miner_address, payload_a.clone()).await;
+    let tx_id_b2 = submit_tx_with_payload(&rpc_client, miner_schnorr_key, utxos[3].clone(), &miner_address, payload_b.clone()).await;
+    info!("BlockAdded filter test: submitted tx_a ({}) and tx_b ({})", tx_id_a2, tx_id_b2);
+
+    // Mine a block
+    let template = rpc_client.get_block_template(blank_address.clone(), vec![]).await.unwrap();
+    let expected_header: Header = (&template.block.header).try_into().unwrap();
+    let expected_hash = expected_header.hash;
+    rpc_client.submit_block(template.block, false).await.unwrap();
+
+    // Wait for the block notification
+    let notification = tokio::time::timeout(
+        Duration::from_secs(5),
+        listening_client.block_added_listener().unwrap().receiver.recv(),
+    )
+    .await
+    .expect("timed out waiting for BlockAdded with prefix_a filter")
+    .unwrap();
+
+    match &notification {
+        Notification::BlockAdded(msg) => {
+            assert_eq!(msg.block.header.hash, expected_hash);
+            // Should only contain transactions whose payload starts with prefix_a
+            // The coinbase tx has a different payload format, so it won't match prefix_a
+            // Only our tx_a should be present
+            for tx in &msg.block.transactions {
+                assert!(
+                    tx.payload.starts_with(&prefix_a),
+                    "Test 2: all transactions should match prefix_a, but found payload {:?}",
+                    &tx.payload[..tx.payload.len().min(10)]
+                );
+            }
+            assert_eq!(
+                msg.block.transactions.len(),
+                1,
+                "Test 2: should have exactly 1 transaction matching prefix_a"
+            );
+            info!("BlockAdded filter test: Test 2 passed - received {} filtered transactions", msg.block.transactions.len());
+        }
+        _ => panic!("expected BlockAdded notification"),
+    }
+
+    // Wait for DAA score to advance so mine_block state is consistent
+    loop {
+        match tokio::time::timeout(Duration::from_secs(2), listening_client.virtual_daa_score_changed_listener().unwrap().receiver.recv()).await {
+            Ok(Ok(Notification::VirtualDaaScoreChanged(_))) => break,
+            _ => break,
+        }
+    }
+
+    // ===== Test 3: Subscribe with non-matching prefix - empty transaction list =====
+    info!("BlockAdded filter test: Test 3 - subscribe with non-matching prefix");
+    let non_matching_prefix = vec![0xFF, 0xFE, 0xFD];
+    listening_client.stop_notify(BlockAddedScope::new(vec![prefix_a.clone()]).into()).await.unwrap();
+    listening_client.block_added_listener().unwrap().drain();
+    listening_client.start_notify(BlockAddedScope::new(vec![non_matching_prefix.clone()]).into()).await.unwrap();
+
+    // Submit a transaction with prefix_a (won't match our filter)
+    let _tx_id_a3 = submit_tx_with_payload(&rpc_client, miner_schnorr_key, utxos[4].clone(), &miner_address, payload_a.clone()).await;
+
+    // Mine a block
+    let template = rpc_client.get_block_template(blank_address.clone(), vec![]).await.unwrap();
+    let expected_header: Header = (&template.block.header).try_into().unwrap();
+    let expected_hash = expected_header.hash;
+    rpc_client.submit_block(template.block, false).await.unwrap();
+
+    let notification = tokio::time::timeout(
+        Duration::from_secs(5),
+        listening_client.block_added_listener().unwrap().receiver.recv(),
+    )
+    .await
+    .expect("timed out waiting for BlockAdded with non-matching prefix")
+    .unwrap();
+
+    match notification {
+        Notification::BlockAdded(msg) => {
+            assert_eq!(msg.block.header.hash, expected_hash);
+            assert!(
+                msg.block.transactions.is_empty(),
+                "Test 3: non-matching prefix should yield empty transactions, got {}",
+                msg.block.transactions.len()
+            );
+            info!("BlockAdded filter test: Test 3 passed - block arrived with 0 transactions (correctly filtered)");
+        }
+        _ => panic!("expected BlockAdded notification"),
+    }
+
+    // ===== Test 4: Subscribe with multiple prefixes - both matching txs arrive =====
+    info!("BlockAdded filter test: Test 4 - subscribe with both prefix_a and prefix_b");
+    listening_client.stop_notify(BlockAddedScope::new(vec![non_matching_prefix]).into()).await.unwrap();
+    listening_client.block_added_listener().unwrap().drain();
+    listening_client.start_notify(BlockAddedScope::new(vec![prefix_a.clone(), prefix_b.clone()]).into()).await.unwrap();
+
+    // Submit one tx with each prefix
+    let _tx_id_a4 = submit_tx_with_payload(&rpc_client, miner_schnorr_key, utxos[5].clone(), &miner_address, payload_a.clone()).await;
+    let _tx_id_b4 = submit_tx_with_payload(&rpc_client, miner_schnorr_key, utxos[6].clone(), &miner_address, payload_b.clone()).await;
+
+    // Mine a block
+    let template = rpc_client.get_block_template(blank_address.clone(), vec![]).await.unwrap();
+    let expected_header: Header = (&template.block.header).try_into().unwrap();
+    let expected_hash = expected_header.hash;
+    rpc_client.submit_block(template.block, false).await.unwrap();
+
+    let notification = tokio::time::timeout(
+        Duration::from_secs(5),
+        listening_client.block_added_listener().unwrap().receiver.recv(),
+    )
+    .await
+    .expect("timed out waiting for BlockAdded with both prefixes")
+    .unwrap();
+
+    match notification {
+        Notification::BlockAdded(msg) => {
+            assert_eq!(msg.block.header.hash, expected_hash);
+            // Should contain exactly the 2 user txs (coinbase won't match either prefix)
+            assert_eq!(
+                msg.block.transactions.len(),
+                2,
+                "Test 4: should have 2 transactions matching prefix_a or prefix_b, got {}",
+                msg.block.transactions.len()
+            );
+            for tx in &msg.block.transactions {
+                assert!(
+                    tx.payload.starts_with(&prefix_a) || tx.payload.starts_with(&prefix_b),
+                    "Test 4: transaction payload should match one of the prefixes, got {:?}",
+                    &tx.payload[..tx.payload.len().min(10)]
+                );
+            }
+            info!("BlockAdded filter test: Test 4 passed - received 2 transactions matching both prefixes");
+        }
+        _ => panic!("expected BlockAdded notification"),
+    }
+
+    // --- Cleanup ---
+    drop(listening_client);
+    rpc_client.disconnect().await.unwrap();
+    drop(rpc_client);
     daemon.shutdown();
 }

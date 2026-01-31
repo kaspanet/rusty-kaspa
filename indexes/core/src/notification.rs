@@ -7,7 +7,7 @@ use kaspa_notify::{
     subscription::{
         Subscription,
         context::SubscriptionContext,
-        single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
+        single::{BlockAddedSubscription, OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
     },
 };
 use std::{collections::HashMap, sync::Arc};
@@ -29,6 +29,14 @@ impl NotificationTrait for Notification {
             true => Some(self.clone()),
             false => None,
         }
+    }
+
+    fn apply_block_added_subscription(
+        &self,
+        _subscription: &BlockAddedSubscription,
+        _context: &SubscriptionContext,
+    ) -> Option<Self> {
+        Some(self.clone())
     }
 
     fn apply_virtual_chain_changed_subscription(
