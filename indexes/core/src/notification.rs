@@ -31,11 +31,7 @@ impl NotificationTrait for Notification {
         }
     }
 
-    fn apply_block_added_subscription(
-        &self,
-        _subscription: &BlockAddedSubscription,
-        _context: &SubscriptionContext,
-    ) -> Option<Self> {
+    fn apply_block_added_subscription(&self, _subscription: &BlockAddedSubscription, _context: &SubscriptionContext) -> Option<Self> {
         Some(self.clone())
     }
 
