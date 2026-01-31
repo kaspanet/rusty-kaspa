@@ -1,12 +1,16 @@
 mod builder;
 pub use builder::*;
 
+/// Type alias: a `PayloadPrefixFilter` is just a `FlattenedSliceBuilder`.
+pub type PayloadPrefixFilter = FlattenedSliceBuilder;
+
 /// A holder for flattened byte data that can be sliced according to provided lengths.
 ///
 /// This structure represents a flattened collection of byte slices that were
 /// concatenated together, along with the original lengths of each slice.
 /// It provides a cursor-like interface to iterate over the original slices
 /// without allocating new memory.
+#[derive(Eq, PartialEq)]
 pub struct FlattenedSliceHolder<'a> {
     /// The flattened byte data containing all slices concatenated together
     flattened_data: &'a [u8],

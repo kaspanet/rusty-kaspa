@@ -10,7 +10,7 @@ use crate::api::connection::DynRpcConnection;
 use crate::{RpcResult, model::*, notify::connection::ChannelConnection};
 use async_trait::async_trait;
 use downcast::{AnySync, downcast_sync};
-use kaspa_notify::{listener::ListenerId, scope::Scope, subscription::Command};
+use kaspa_notify::{listener::ListenerId, payload_prefix_filter::RpcPayloadPrefixFilter, scope::Scope, subscription::Command};
 use std::sync::Arc;
 
 pub const MAX_SAFE_WINDOW_SIZE: u32 = 10_000;
@@ -231,16 +231,9 @@ pub trait RpcApi: Sync + Send + AnySync {
         &self,
         hash: RpcHash,
         include_transactions: bool,
-        tx_payload_prefixes_flattened: Vec<u8>,
-        tx_payload_prefixes_lengths: Vec<u32>,
+        tx_payload_prefixes: RpcPayloadPrefixFilter,
     ) -> RpcResult<RpcBlock> {
-        Ok(self
-            .get_block_call(
-                None,
-                GetBlockRequest::new(hash, include_transactions, tx_payload_prefixes_flattened, tx_payload_prefixes_lengths),
-            )
-            .await?
-            .block)
+        Ok(self.get_block_call(None, GetBlockRequest::new(hash, include_transactions, tx_payload_prefixes)).await?.block)
     }
     async fn get_block_call(&self, connection: Option<&DynRpcConnection>, request: GetBlockRequest) -> RpcResult<GetBlockResponse>;
 
@@ -279,20 +272,9 @@ pub trait RpcApi: Sync + Send + AnySync {
         low_hash: Option<RpcHash>,
         include_blocks: bool,
         include_transactions: bool,
-        tx_payload_prefixes_flattened: Vec<u8>,
-        tx_payload_prefixes_lengths: Vec<u32>,
+        tx_payload_prefixes: RpcPayloadPrefixFilter,
     ) -> RpcResult<GetBlocksResponse> {
-        self.get_blocks_call(
-            None,
-            GetBlocksRequest::new(
-                low_hash,
-                include_blocks,
-                include_transactions,
-                tx_payload_prefixes_flattened,
-                tx_payload_prefixes_lengths,
-            ),
-        )
-        .await
+        self.get_blocks_call(None, GetBlocksRequest::new(low_hash, include_blocks, include_transactions, tx_payload_prefixes)).await
     }
     async fn get_blocks_call(&self, connection: Option<&DynRpcConnection>, request: GetBlocksRequest) -> RpcResult<GetBlocksResponse>;
 

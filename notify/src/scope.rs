@@ -1,4 +1,6 @@
 use super::events::EventType;
+use crate::payload_prefix_filter::RpcPayloadPrefixFilter;
+use kaspa_utils::flattened_slice::PayloadPrefixFilter;
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
 use kaspa_addresses::Address;
@@ -71,30 +73,34 @@ impl Deserializer for Scope {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct BlockAddedScope {
-    pub payload_prefixes: Vec<Vec<u8>>,
+    pub payload_prefixes: RpcPayloadPrefixFilter,
 }
 
 impl BlockAddedScope {
-    pub fn new(payload_prefixes: Vec<Vec<u8>>) -> Self {
+    pub fn new(payload_prefixes: RpcPayloadPrefixFilter) -> Self {
         Self { payload_prefixes }
+    }
+
+    /// Convenience constructor from `Vec<Vec<u8>>`.
+    pub fn from_prefixes(prefixes: Vec<Vec<u8>>) -> Self {
+        Self { payload_prefixes: RpcPayloadPrefixFilter::from_prefixes(prefixes) }
+    }
+
+    /// Constructor from a `PayloadPrefixFilter` directly.
+    pub fn from_filter(filter: PayloadPrefixFilter) -> Self {
+        Self { payload_prefixes: RpcPayloadPrefixFilter::from(filter) }
     }
 }
 
 impl std::fmt::Display for BlockAddedScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let prefixes = match self.payload_prefixes.len() {
-            0 => "all".to_string(),
-            1 => "1 prefix".to_string(),
-            n => format!("{} prefixes", n),
-        };
-        write!(f, "BlockAddedScope ({})", prefixes)
+        write!(f, "BlockAddedScope ({})", self.payload_prefixes)
     }
 }
 
 impl PartialEq for BlockAddedScope {
     fn eq(&self, other: &Self) -> bool {
-        self.payload_prefixes.len() == other.payload_prefixes.len()
-            && self.payload_prefixes.iter().all(|x| other.payload_prefixes.contains(x))
+        self.payload_prefixes == other.payload_prefixes
     }
 }
 
@@ -103,8 +109,9 @@ impl Eq for BlockAddedScope {}
 impl Serializer for BlockAddedScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &2, writer)?;
-        store!(u32, &(self.payload_prefixes.len() as u32), writer)?;
-        for prefix in &self.payload_prefixes {
+        let holder = self.payload_prefixes.as_holder();
+        store!(u32, &(holder.slice_count() as u32), writer)?;
+        for prefix in holder.iter() {
             store!(u32, &(prefix.len() as u32), writer)?;
             writer.write_all(prefix)?;
         }
@@ -126,7 +133,7 @@ impl Deserializer for BlockAddedScope {
             reader.read_exact(&mut buf)?;
             payload_prefixes.push(buf);
         }
-        Ok(Self { payload_prefixes })
+        Ok(Self { payload_prefixes: RpcPayloadPrefixFilter::from_prefixes(payload_prefixes) })
     }
 }
 

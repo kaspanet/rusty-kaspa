@@ -68,7 +68,7 @@ use kaspa_rpc_core::{
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::expiring_cache::ExpiringCache;
-use kaspa_utils::flattened_slice::FlattenedSliceHolder;
+
 use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
@@ -425,7 +425,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                     &block,
                     request.include_transactions,
                     request.include_transactions,
-                    FlattenedSliceHolder::new(&request.tx_payload_prefixes_flattened, &request.tx_payload_prefixes_lengths),
+                    request.tx_payload_prefixes.as_holder(),
                 )
                 .await?,
         })
@@ -487,10 +487,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                         &block,
                         request.include_transactions,
                         request.include_transactions,
-                        FlattenedSliceHolder::new(
-                            request.tx_payload_prefixes_flattened.as_slice(),
-                            request.tx_payload_prefixes_lengths.as_slice(),
-                        ),
+                        request.tx_payload_prefixes.as_holder(),
                     )
                     .await?;
                 blocks.push(rpc_block)

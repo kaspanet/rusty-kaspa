@@ -92,7 +92,7 @@ impl Compounded for BlockAddedSubscription {
                     } else {
                         // Add specific prefixes
                         let mut added = Vec::new();
-                        for prefix in scope.payload_prefixes {
+                        for prefix in scope.payload_prefixes.as_holder().iter().map(|s| s.to_vec()) {
                             let counter = self.prefix_counters.entry(prefix.clone()).or_insert(0);
                             *counter += 1;
                             if *counter == 1 {
@@ -100,7 +100,7 @@ impl Compounded for BlockAddedSubscription {
                             }
                         }
                         if !added.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(Command::Start, BlockAddedScope::new(added).into()));
+                            return Some(Mutation::new(Command::Start, BlockAddedScope::from_prefixes(added).into()));
                         }
                     }
                 }
@@ -108,7 +108,7 @@ impl Compounded for BlockAddedSubscription {
                     if !scope.payload_prefixes.is_empty() {
                         // Remove specific prefixes
                         let mut removed = Vec::new();
-                        for prefix in scope.payload_prefixes {
+                        for prefix in scope.payload_prefixes.as_holder().iter().map(|s| s.to_vec()) {
                             if let Some(counter) = self.prefix_counters.get_mut(&prefix) {
                                 assert!(*counter > 0);
                                 *counter -= 1;
@@ -119,7 +119,7 @@ impl Compounded for BlockAddedSubscription {
                             }
                         }
                         if !removed.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(Command::Stop, BlockAddedScope::new(removed).into()));
+                            return Some(Mutation::new(Command::Stop, BlockAddedScope::from_prefixes(removed).into()));
                         }
                     } else {
                         // Remove All
@@ -128,7 +128,7 @@ impl Compounded for BlockAddedSubscription {
                         if self.all == 0 {
                             let active = self.active_prefixes();
                             if !active.is_empty() {
-                                return Some(Mutation::new(Command::Start, BlockAddedScope::new(active).into()));
+                                return Some(Mutation::new(Command::Start, BlockAddedScope::from_prefixes(active).into()));
                             } else {
                                 return Some(Mutation::new(Command::Stop, BlockAddedScope::default().into()));
                             }
@@ -153,7 +153,7 @@ impl Subscription for BlockAddedSubscription {
 
     fn scope(&self, _context: &SubscriptionContext) -> Scope {
         let prefixes = if self.all > 0 { vec![] } else { self.active_prefixes() };
-        Scope::BlockAdded(BlockAddedScope::new(prefixes))
+        Scope::BlockAdded(BlockAddedScope::from_prefixes(prefixes))
     }
 }
 
@@ -418,7 +418,7 @@ mod tests {
         let p1: Vec<u8> = vec![0xCC, 0xDD];
 
         let m = |command: Command, prefixes: &[Vec<u8>]| -> Mutation {
-            Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::new(prefixes.to_vec())) }
+            Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::from_prefixes(prefixes.to_vec())) }
         };
         let none = Box::<BlockAddedSubscription>::default;
         let add_all = || m(Command::Start, &[]);

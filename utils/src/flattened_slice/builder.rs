@@ -5,7 +5,7 @@ use super::FlattenedSliceHolder;
 /// This builder allows you to incrementally add byte slices, which are stored
 /// in a flattened format internally. Once built, it can provide a
 /// `FlattenedSliceHolder` for efficient iteration over the original slices.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlattenedSliceBuilder {
     /// The flattened byte data containing all slices concatenated together
     flattened_data: Vec<u8>,
@@ -141,6 +141,45 @@ impl FlattenedSliceBuilder {
 
     pub fn into_inner(self) -> (Vec<u8>, Vec<u32>) {
         (self.flattened_data, self.slice_lengths)
+    }
+
+    /// Creates a builder from raw flattened data and slice lengths.
+    pub fn from_raw(flattened_data: Vec<u8>, slice_lengths: Vec<u32>) -> Self {
+        Self { flattened_data, slice_lengths }
+    }
+
+    /// Creates a builder from a `Vec<Vec<u8>>` of prefixes.
+    pub fn from_prefixes(prefixes: Vec<Vec<u8>>) -> Self {
+        Self::from_prefixes_ref(&prefixes)
+    }
+
+    /// Creates a builder from a slice of prefixes.
+    pub fn from_prefixes_ref(prefixes: &[Vec<u8>]) -> Self {
+        let mut builder = Self::new();
+        for prefix in prefixes {
+            builder.add_slice(prefix);
+        }
+        builder
+    }
+
+    /// Checks if any stored prefix matches the beginning of `payload`.
+    pub fn contains_prefix(&self, payload: &[u8]) -> bool {
+        self.as_holder().iter().any(|prefix| payload.starts_with(prefix))
+    }
+
+    /// Returns the number of slices.
+    pub fn len(&self) -> usize {
+        self.as_holder().slice_count()
+    }
+
+    /// Returns a reference to the flattened byte data.
+    pub fn flattened_data(&self) -> &[u8] {
+        &self.flattened_data
+    }
+
+    /// Returns a reference to the slice lengths.
+    pub fn slice_lengths(&self) -> &[u32] {
+        &self.slice_lengths
     }
 }
 

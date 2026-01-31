@@ -217,12 +217,7 @@ async fn sanity_test() {
                     let result = rpc_client
                         .get_block_call(
                             None,
-                            GetBlockRequest {
-                                hash: 0.into(),
-                                include_transactions: false,
-                                tx_payload_prefixes_flattened: vec![],
-                                tx_payload_prefixes_lengths: vec![],
-                            },
+                            GetBlockRequest { hash: 0.into(), include_transactions: false, tx_payload_prefixes: Default::default() },
                         )
                         .await;
                     assert!(result.is_err());
@@ -233,8 +228,7 @@ async fn sanity_test() {
                             GetBlockRequest {
                                 hash: SIMNET_GENESIS.hash,
                                 include_transactions: false,
-                                tx_payload_prefixes_flattened: vec![],
-                                tx_payload_prefixes_lengths: vec![],
+                                tx_payload_prefixes: Default::default(),
                             },
                         )
                         .await
@@ -253,8 +247,7 @@ async fn sanity_test() {
                                 include_blocks: true,
                                 include_transactions: false,
                                 low_hash: None,
-                                tx_payload_prefixes_flattened: vec![],
-                                tx_payload_prefixes_lengths: vec![],
+                                tx_payload_prefixes: Default::default(),
                             },
                         )
                         .await
@@ -958,7 +951,7 @@ async fn block_added_payload_filter_test() {
     // Actually, mine_block already receives from the listener and asserts. Let's just verify
     // the transaction count by getting the block directly.
     let dag_info = rpc_client.get_block_dag_info().await.unwrap();
-    let sink_block = rpc_client.get_block(dag_info.sink, true).await.unwrap();
+    let sink_block = rpc_client.get_block(dag_info.sink, true, Default::default()).await.unwrap();
     // The block should contain coinbase + our 2 txs = 3 transactions
     assert!(
         sink_block.transactions.len() >= 3,
@@ -971,7 +964,7 @@ async fn block_added_payload_filter_test() {
     info!("BlockAdded filter test: Test 2 - subscribe with prefix_a filter");
     listening_client.stop_notify(BlockAddedScope::default().into()).await.unwrap();
     listening_client.block_added_listener().unwrap().drain();
-    listening_client.start_notify(BlockAddedScope::new(vec![prefix_a.clone()]).into()).await.unwrap();
+    listening_client.start_notify(BlockAddedScope::from_prefixes(vec![prefix_a.clone()]).into()).await.unwrap();
 
     // Submit two transactions: one matching prefix_a, one matching prefix_b
     let tx_id_a2 = submit_tx_with_payload(&rpc_client, miner_schnorr_key, utxos[2].clone(), &miner_address, payload_a.clone()).await;
@@ -1017,9 +1010,9 @@ async fn block_added_payload_filter_test() {
     // ===== Test 3: Subscribe with non-matching prefix - empty transaction list =====
     info!("BlockAdded filter test: Test 3 - subscribe with non-matching prefix");
     let non_matching_prefix = vec![0xFF, 0xFE, 0xFD];
-    listening_client.stop_notify(BlockAddedScope::new(vec![prefix_a.clone()]).into()).await.unwrap();
+    listening_client.stop_notify(BlockAddedScope::from_prefixes(vec![prefix_a.clone()]).into()).await.unwrap();
     listening_client.block_added_listener().unwrap().drain();
-    listening_client.start_notify(BlockAddedScope::new(vec![non_matching_prefix.clone()]).into()).await.unwrap();
+    listening_client.start_notify(BlockAddedScope::from_prefixes(vec![non_matching_prefix.clone()]).into()).await.unwrap();
 
     // Submit a transaction with prefix_a (won't match our filter)
     let _tx_id_a3 = submit_tx_with_payload(&rpc_client, miner_schnorr_key, utxos[4].clone(), &miner_address, payload_a.clone()).await;
@@ -1050,9 +1043,9 @@ async fn block_added_payload_filter_test() {
 
     // ===== Test 4: Subscribe with multiple prefixes - both matching txs arrive =====
     info!("BlockAdded filter test: Test 4 - subscribe with both prefix_a and prefix_b");
-    listening_client.stop_notify(BlockAddedScope::new(vec![non_matching_prefix]).into()).await.unwrap();
+    listening_client.stop_notify(BlockAddedScope::from_prefixes(vec![non_matching_prefix]).into()).await.unwrap();
     listening_client.block_added_listener().unwrap().drain();
-    listening_client.start_notify(BlockAddedScope::new(vec![prefix_a.clone(), prefix_b.clone()]).into()).await.unwrap();
+    listening_client.start_notify(BlockAddedScope::from_prefixes(vec![prefix_a.clone(), prefix_b.clone()]).into()).await.unwrap();
 
     // Submit one tx with each prefix
     let _tx_id_a4 = submit_tx_with_payload(&rpc_client, miner_schnorr_key, utxos[5].clone(), &miner_address, payload_a.clone()).await;

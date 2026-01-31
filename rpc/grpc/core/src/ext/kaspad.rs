@@ -22,7 +22,7 @@ impl kaspad_request::Payload {
         match scope {
             Scope::BlockAdded(scope) => kaspad_request::Payload::NotifyBlockAddedRequest(NotifyBlockAddedRequestMessage {
                 command: command.into(),
-                payload_prefixes: scope.payload_prefixes.clone(),
+                payload_prefixes: scope.payload_prefixes.to_vec(),
             }),
             Scope::NewBlockTemplate(_) => {
                 kaspad_request::Payload::NotifyNewBlockTemplateRequest(NotifyNewBlockTemplateRequestMessage {

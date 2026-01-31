@@ -2,6 +2,7 @@ use crate::model::*;
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_consensus_core::api::stats::BlockCount;
 use kaspa_core::debug;
+use kaspa_notify::payload_prefix_filter::RpcPayloadPrefixFilter;
 use kaspa_notify::subscription::{Command, context::SubscriptionContext, single::UtxosChangedSubscription};
 use kaspa_utils::hex::ToHex;
 use serde::{Deserialize, Serialize};
@@ -192,17 +193,11 @@ pub struct GetBlockRequest {
     /// Whether to include transaction data in the response
     pub include_transactions: bool,
 
-    pub tx_payload_prefixes_flattened: Vec<u8>,
-    pub tx_payload_prefixes_lengths: Vec<u32>,
+    pub tx_payload_prefixes: RpcPayloadPrefixFilter,
 }
 impl GetBlockRequest {
-    pub fn new(
-        hash: RpcHash,
-        include_transactions: bool,
-        tx_payload_prefixes_flattened: Vec<u8>,
-        tx_payload_prefixes_lengths: Vec<u32>,
-    ) -> Self {
-        Self { hash, include_transactions, tx_payload_prefixes_flattened, tx_payload_prefixes_lengths }
+    pub fn new(hash: RpcHash, include_transactions: bool, tx_payload_prefixes: RpcPayloadPrefixFilter) -> Self {
+        Self { hash, include_transactions, tx_payload_prefixes }
     }
 }
 
@@ -211,8 +206,8 @@ impl Serializer for GetBlockRequest {
         store!(u16, &2, writer)?;
         store!(RpcHash, &self.hash, writer)?;
         store!(bool, &self.include_transactions, writer)?;
-        store!(Vec<u8>, &self.tx_payload_prefixes_flattened, writer)?;
-        store!(Vec<u32>, &self.tx_payload_prefixes_lengths, writer)?;
+        store!(Vec<u8>, &self.tx_payload_prefixes.flattened_data().to_vec(), writer)?;
+        store!(Vec<u32>, &self.tx_payload_prefixes.slice_lengths().to_vec(), writer)?;
 
         Ok(())
     }
@@ -223,14 +218,14 @@ impl Deserializer for GetBlockRequest {
         let version = load!(u16, reader)?;
         let hash = load!(RpcHash, reader)?;
         let include_transactions = load!(bool, reader)?;
-        let (tx_payload_prefixes_flattened, tx_payload_prefixes_lengths) = if version == 1 {
-            (vec![], vec![])
+        let tx_payload_prefixes = if version == 1 {
+            RpcPayloadPrefixFilter::default()
         } else {
-            let tx_payload_prefixes_flattened = load!(Vec<u8>, reader)?;
-            let tx_payload_prefixes_lengths = load!(Vec<u32>, reader)?;
-            (tx_payload_prefixes_flattened, tx_payload_prefixes_lengths)
+            let flattened_data = load!(Vec<u8>, reader)?;
+            let slice_lengths = load!(Vec<u32>, reader)?;
+            RpcPayloadPrefixFilter::new(flattened_data, slice_lengths)
         };
-        Ok(Self { hash, include_transactions, tx_payload_prefixes_flattened, tx_payload_prefixes_lengths })
+        Ok(Self { hash, include_transactions, tx_payload_prefixes })
     }
 }
 
@@ -953,8 +948,7 @@ pub struct GetBlocksRequest {
     pub low_hash: Option<RpcHash>,
     pub include_blocks: bool,
     pub include_transactions: bool,
-    pub tx_payload_prefixes_flattened: Vec<u8>,
-    pub tx_payload_prefixes_lengths: Vec<u32>,
+    pub tx_payload_prefixes: RpcPayloadPrefixFilter,
 }
 
 impl GetBlocksRequest {
@@ -962,10 +956,9 @@ impl GetBlocksRequest {
         low_hash: Option<RpcHash>,
         include_blocks: bool,
         include_transactions: bool,
-        tx_payload_prefixes_flattened: Vec<u8>,
-        tx_payload_prefixes_lengths: Vec<u32>,
+        tx_payload_prefixes: RpcPayloadPrefixFilter,
     ) -> Self {
-        Self { low_hash, include_blocks, include_transactions, tx_payload_prefixes_flattened, tx_payload_prefixes_lengths }
+        Self { low_hash, include_blocks, include_transactions, tx_payload_prefixes }
     }
 }
 
@@ -975,8 +968,8 @@ impl Serializer for GetBlocksRequest {
         store!(Option<RpcHash>, &self.low_hash, writer)?;
         store!(bool, &self.include_blocks, writer)?;
         store!(bool, &self.include_transactions, writer)?;
-        store!(Vec<u8>, &self.tx_payload_prefixes_flattened, writer)?;
-        store!(Vec<u32>, &self.tx_payload_prefixes_lengths, writer)?;
+        store!(Vec<u8>, &self.tx_payload_prefixes.flattened_data().to_vec(), writer)?;
+        store!(Vec<u32>, &self.tx_payload_prefixes.slice_lengths().to_vec(), writer)?;
 
         Ok(())
     }
@@ -988,14 +981,14 @@ impl Deserializer for GetBlocksRequest {
         let low_hash = load!(Option<RpcHash>, reader)?;
         let include_blocks = load!(bool, reader)?;
         let include_transactions = load!(bool, reader)?;
-        let (tx_payload_prefixes_flattened, tx_payload_prefixes_lengths) = if version == 1 {
-            (vec![], vec![])
+        let tx_payload_prefixes = if version == 1 {
+            RpcPayloadPrefixFilter::default()
         } else {
-            let tx_payload_prefixes_flattened = load!(Vec<u8>, reader)?;
-            let tx_payload_prefixes_lengths = load!(Vec<u32>, reader)?;
-            (tx_payload_prefixes_flattened, tx_payload_prefixes_lengths)
+            let flattened_data = load!(Vec<u8>, reader)?;
+            let slice_lengths = load!(Vec<u32>, reader)?;
+            RpcPayloadPrefixFilter::new(flattened_data, slice_lengths)
         };
-        Ok(Self { low_hash, include_blocks, include_transactions, tx_payload_prefixes_flattened, tx_payload_prefixes_lengths })
+        Ok(Self { low_hash, include_blocks, include_transactions, tx_payload_prefixes })
     }
 }
 
@@ -2850,14 +2843,14 @@ impl Deserializer for GetVirtualChainFromBlockV2Response {
 #[serde(rename_all = "camelCase")]
 pub struct NotifyBlockAddedRequest {
     pub command: Command,
-    pub payload_prefixes: Vec<Vec<u8>>,
+    pub payload_prefixes: RpcPayloadPrefixFilter,
 }
 impl NotifyBlockAddedRequest {
     pub fn new(command: Command) -> Self {
-        Self { command, payload_prefixes: vec![] }
+        Self { command, payload_prefixes: RpcPayloadPrefixFilter::default() }
     }
 
-    pub fn with_payload_prefixes(command: Command, payload_prefixes: Vec<Vec<u8>>) -> Self {
+    pub fn with_payload_prefixes(command: Command, payload_prefixes: RpcPayloadPrefixFilter) -> Self {
         Self { command, payload_prefixes }
     }
 }
@@ -2866,8 +2859,9 @@ impl Serializer for NotifyBlockAddedRequest {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &2, writer)?;
         store!(Command, &self.command, writer)?;
-        store!(u32, &(self.payload_prefixes.len() as u32), writer)?;
-        for prefix in &self.payload_prefixes {
+        let holder = self.payload_prefixes.as_holder();
+        store!(u32, &(holder.slice_count() as u32), writer)?;
+        for prefix in holder.iter() {
             store!(u32, &(prefix.len() as u32), writer)?;
             writer.write_all(prefix)?;
         }
@@ -2888,9 +2882,9 @@ impl Deserializer for NotifyBlockAddedRequest {
                 reader.read_exact(&mut buf)?;
                 prefixes.push(buf);
             }
-            prefixes
+            RpcPayloadPrefixFilter::from_prefixes(prefixes)
         } else {
-            vec![]
+            RpcPayloadPrefixFilter::default()
         };
         Ok(Self { command, payload_prefixes })
     }

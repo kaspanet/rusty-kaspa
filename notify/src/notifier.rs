@@ -819,12 +819,12 @@ pub mod test_helpers {
         let p1: Vec<u8> = vec![0xCC, 0xDD];
 
         let m = |command: Command, prefixes: &[Vec<u8>]| {
-            Some(Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::new(prefixes.to_vec())) })
+            Some(Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::from_prefixes(prefixes.to_vec())) })
         };
         let s = |command: Command, prefixes: &[Vec<u8>]| {
             Some(SubscriptionMessage {
                 listener_id,
-                mutation: Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::new(prefixes.to_vec())) },
+                mutation: Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::from_prefixes(prefixes.to_vec())) },
             })
         };
         let n = |payloads: &[Vec<u8>]| TestNotification::BlockAdded(BlockAddedNotification { data: 0, payloads: payloads.to_vec() });

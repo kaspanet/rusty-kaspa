@@ -126,13 +126,8 @@ impl Rpc {
                         builder.add_slice(&prefix_bts);
                     }
                 };
-                let (tx_payload_prefixes_flattened, tx_payload_prefixes_lengths) = builder.into_inner();
-                let result = rpc
-                    .get_block_call(
-                        None,
-                        GetBlockRequest { hash, include_transactions, tx_payload_prefixes_lengths, tx_payload_prefixes_flattened },
-                    )
-                    .await?;
+                let tx_payload_prefixes = kaspa_rpc_core::RpcPayloadPrefixFilter::from(builder);
+                let result = rpc.get_block_call(None, GetBlockRequest { hash, include_transactions, tx_payload_prefixes }).await?;
                 self.println(&ctx, result);
             }
             // RpcApiOps::GetSubnetwork => {

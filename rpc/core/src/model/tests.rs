@@ -657,12 +657,7 @@ mod mockery {
 
     impl Mock for GetBlockRequest {
         fn mock() -> Self {
-            GetBlockRequest {
-                hash: mock(),
-                include_transactions: true,
-                tx_payload_prefixes_flattened: vec![],
-                tx_payload_prefixes_lengths: vec![],
-            }
+            GetBlockRequest { hash: mock(), include_transactions: true, tx_payload_prefixes: Default::default() }
         }
     }
 
@@ -880,8 +875,7 @@ mod mockery {
                 low_hash: mock(),
                 include_blocks: mock(),
                 include_transactions: mock(),
-                tx_payload_prefixes_flattened: vec![],
-                tx_payload_prefixes_lengths: vec![],
+                tx_payload_prefixes: Default::default(),
             }
         }
     }
