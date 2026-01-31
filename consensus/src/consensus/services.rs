@@ -91,13 +91,14 @@ impl ConsensusServices {
         let reachability_service = MTReachabilityService::new(storage.reachability_store.clone());
         let dag_traversal_manager = DagTraversalManager::new(
             params.genesis.hash,
-            storage.ghostdag_store.clone(),
+            storage.coloring_ghostdag_store.clone(),
             relations_service.clone(),
             reachability_service.clone(),
         );
         let window_manager = SampledWindowManager::new(
             &params.genesis,
             storage.ghostdag_store.clone(),
+            storage.coloring_ghostdag_store.clone(),
             storage.headers_store.clone(),
             storage.daa_excluded_store.clone(),
             storage.block_window_cache_for_difficulty.clone(),
@@ -116,7 +117,7 @@ impl ConsensusServices {
             params.genesis.hash,
             storage.depth_store.clone(),
             reachability_service.clone(),
-            storage.ghostdag_store.clone(),
+            storage.coloring_ghostdag_store.clone(),
             storage.headers_store.clone(),
         );
         let ghostdag_manager = GhostdagManager::new(
@@ -213,7 +214,7 @@ impl ConsensusServices {
             params.mergeset_size_limit(),
             reachability_service.clone(),
             dag_traversal_manager.clone(),
-            storage.ghostdag_store.clone(),
+            storage.coloring_ghostdag_store.clone(),
             storage.selected_chain_store.clone(),
             storage.headers_selected_tip_store.clone(),
             storage.pruning_point_store.clone(),

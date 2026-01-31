@@ -91,7 +91,8 @@ pub struct PruningProofManager {
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
     reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
-    ghostdag_store: Arc<DbGhostdagStore>,
+    topology_ghostdag_store: Arc<DbGhostdagStore>,
+    coloring_ghostdag_store: Arc<DbGhostdagStore>,
     relations_store: Arc<RwLock<DbRelationsStore>>,
     pruning_point_store: Arc<RwLock<DbPruningStore>>,
     past_pruning_points_store: Arc<DbPastPruningPointsStore>,
@@ -145,7 +146,8 @@ impl PruningProofManager {
             reachability_store: storage.reachability_store.clone(),
             reachability_relations_store: storage.reachability_relations_store.clone(),
             reachability_service,
-            ghostdag_store: storage.ghostdag_store.clone(),
+            topology_ghostdag_store: storage.ghostdag_store.clone(),
+            coloring_ghostdag_store: storage.coloring_ghostdag_store.clone(),
             relations_store: storage.relations_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
             _pruning_meta_stores: storage.pruning_meta_stores.clone(),
@@ -235,7 +237,7 @@ impl PruningProofManager {
         let mut current = hash;
         for _ in 0..=ghostdag_k {
             hashes.push(current);
-            let Some(parent) = self.ghostdag_store.get_selected_parent(current).optional().unwrap() else {
+            let Some(parent) = self.coloring_ghostdag_store.get_selected_parent(current).optional().unwrap() else {
                 break;
             };
             if parent == self.genesis_hash || parent == blockhash::ORIGIN {
@@ -266,7 +268,7 @@ impl PruningProofManager {
         // PRUNE SAFETY: called either via consensus under the prune guard or by the pruning processor (hence no pruning in parallel)
 
         for anticone_block in anticone.iter().copied() {
-            let ghostdag = self.ghostdag_store.get_data(anticone_block).unwrap();
+            let ghostdag = self.coloring_ghostdag_store.get_data(anticone_block).unwrap();
             let window = self.window_manager.block_window(&ghostdag, WindowType::DifficultyWindow).unwrap();
             let cover = self.window_manager.consecutive_cover_for_window(ghostdag, &window);
 
@@ -274,7 +276,7 @@ impl PruningProofManager {
                 if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {
                     e.insert(TrustedHeader {
                         header: self.headers_store.get_header(hash).unwrap(),
-                        ghostdag: (&*self.ghostdag_store.get_data(hash).unwrap()).into(),
+                        ghostdag: (&*self.coloring_ghostdag_store.get_data(hash).unwrap()).into(),
                     });
                 }
             }
@@ -282,7 +284,7 @@ impl PruningProofManager {
             let ghostdag_chain = self.get_ghostdag_chain_k_depth(anticone_block, ghostdag_k);
             for hash in ghostdag_chain {
                 if let Entry::Vacant(e) = ghostdag_blocks.entry(hash) {
-                    let ghostdag = self.ghostdag_store.get_data(hash).unwrap();
+                    let ghostdag = self.coloring_ghostdag_store.get_data(hash).unwrap();
                     e.insert((&*ghostdag).into());
 
                     // We fill `ghostdag_blocks` only for kaspad-go legacy reasons, but the real set we
@@ -314,7 +316,7 @@ impl PruningProofManager {
                 if header.blue_work < min_blue_work {
                     continue;
                 }
-                let ghostdag = (&*self.ghostdag_store.get_data(current).unwrap()).into();
+                let ghostdag = (&*self.coloring_ghostdag_store.get_data(current).unwrap()).into();
                 e.insert(TrustedHeader { header, ghostdag });
             }
 

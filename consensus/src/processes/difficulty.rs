@@ -213,12 +213,12 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
         (self.internal_calc_daa_score(ghostdag_data, &mergeset_non_daa), mergeset_non_daa)
     }
 
-    pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap, ghostdag_data: &GhostdagData) -> u32 {
+    pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap, coloring_ghostdag_data: &GhostdagData) -> u32 {
         let mut difficulty_blocks = self.get_difficulty_blocks(window);
 
         // Until there are enough blocks for a valid calculation the difficulty should remain constant.
         if difficulty_blocks.len() < self.min_difficulty_window_size {
-            let selected_parent = ghostdag_data.selected_parent;
+            let selected_parent = coloring_ghostdag_data.selected_parent;
             if selected_parent == self.genesis_hash {
                 return self.genesis_bits;
             }
