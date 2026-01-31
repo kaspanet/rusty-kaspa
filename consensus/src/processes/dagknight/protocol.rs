@@ -10,7 +10,7 @@ use kaspa_consensus_core::{
     blockhash::{self, BlockHashes},
 };
 use kaspa_core::debug;
-use kaspa_database::prelude::StoreResultExt;
+use kaspa_database::prelude::StoreResultUnitExt;
 use kaspa_hashes::Hash;
 use kaspa_math::Uint192;
 use parking_lot::RwLock;
@@ -367,6 +367,7 @@ impl<
                         HashKTypeMap::new(BlockHashMap::new()),
                     )),
                 )
+                .idempotent()
                 .unwrap();
         }
 
@@ -420,7 +421,7 @@ impl<
                 let selected_parent = conflict_manager.find_selected_parent(agreeing_parents.iter().copied());
                 let current_gd = conflict_manager.k_colouring(parents, ghostdag_k, Some(selected_parent));
 
-                conflict_manager.insert(current_hash, Arc::new(current_gd)).optional().unwrap();
+                conflict_manager.insert(current_hash, Arc::new(current_gd)).idempotent().unwrap();
             }
 
             for child in relations_service.get_children(current_hash).unwrap().read().iter().copied() {
