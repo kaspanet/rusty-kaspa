@@ -62,7 +62,7 @@ pub const MAX_PUB_KEYS_PER_MUTLTISIG: i32 = 20;
 // Note that this includes OP_RESERVED which counts as a push operation.
 pub const NO_COST_OPCODE: u8 = 0x60;
 
-type DynOpcodeImplementation<Tx, Reused> = Box<dyn OpCodeImplementation<Tx, Reused>>;
+pub type DynOpcodeImplementation<Tx, Reused> = Box<dyn OpCodeImplementation<Tx, Reused>>;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 enum Signature {
@@ -125,7 +125,7 @@ pub struct ExecutionStacks {
     pub astack: Vec<Vec<u8>>,
 }
 
-fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+pub fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     script: &[u8],
 ) -> impl Iterator<Item = Result<DynOpcodeImplementation<T, Reused>, TxScriptError>> + '_ {
     script.iter().batching(|it| deserialize_next_opcode(it))
@@ -285,6 +285,16 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         self.runtime_sig_op_counter.used_sig_ops()
     }
 
+    /// Returns a read-only view of the data stack.
+    pub fn dstack(&self) -> &[Vec<u8>] {
+        &self.dstack
+    }
+
+    /// Returns a read-only view of the alt stack.
+    pub fn astack(&self) -> &[Vec<u8>] {
+        &self.astack
+    }
+
     /// Creates a new Script Engine for validating transaction input.
     ///
     /// # Arguments
@@ -350,7 +360,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         self.cond_stack.is_empty() || *self.cond_stack.last().expect("Checked not empty") == OpCond::True
     }
 
-    fn execute_opcode(&mut self, opcode: DynOpcodeImplementation<T, Reused>) -> Result<(), TxScriptError> {
+    pub fn execute_opcode(&mut self, opcode: DynOpcodeImplementation<T, Reused>) -> Result<(), TxScriptError> {
         // Different from kaspad: Illegal and disabled opcode are checked on execute instead
         // Note that this includes OP_RESERVED which counts as a push operation.
         if !opcode.is_push_opcode() {
