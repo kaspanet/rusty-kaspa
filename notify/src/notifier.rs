@@ -531,7 +531,6 @@ where
 
 // #[cfg(test)]
 pub mod test_helpers {
-    use std::slice::from_ref;
     use super::*;
     use crate::{
         address::test_helpers::get_3_addresses,
@@ -543,6 +542,7 @@ pub mod test_helpers {
         subscriber::test_helpers::SubscriptionMessage,
     };
     use async_channel::Sender;
+    use std::slice::from_ref;
     use std::time::Duration;
 
     pub const SYNC_MAX_DELAY: Duration = Duration::from_secs(2);
@@ -601,7 +601,10 @@ pub mod test_helpers {
             Some(Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::default()) })
         }
         let s = |command: Command| -> Option<SubscriptionMessage> {
-            Some(SubscriptionMessage { listener_id, mutation: Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::default()) } })
+            Some(SubscriptionMessage {
+                listener_id,
+                mutation: Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::default()) },
+            })
         };
         fn n() -> TestNotification {
             TestNotification::BlockAdded(BlockAddedNotification::default())
@@ -824,12 +827,9 @@ pub mod test_helpers {
                 mutation: Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::new(prefixes.to_vec())) },
             })
         };
-        let n = |payloads: &[Vec<u8>]| {
-            TestNotification::BlockAdded(BlockAddedNotification { data: 0, payloads: payloads.to_vec() })
-        };
-        let e = |payloads: &[Vec<u8>]| {
-            Some(TestNotification::BlockAdded(BlockAddedNotification { data: 0, payloads: payloads.to_vec() }))
-        };
+        let n = |payloads: &[Vec<u8>]| TestNotification::BlockAdded(BlockAddedNotification { data: 0, payloads: payloads.to_vec() });
+        let e =
+            |payloads: &[Vec<u8>]| Some(TestNotification::BlockAdded(BlockAddedNotification { data: 0, payloads: payloads.to_vec() }));
 
         set_steps_data(vec![
             Step {
@@ -851,21 +851,21 @@ pub mod test_helpers {
                 mutations: vec![None, m(Command::Start, &[])],
                 expected_subscriptions: vec![None, s(Command::Start, &[])],
                 notification: n(&[p0.clone(), p1.clone()]),
-                expected_notifications: vec![e(&[p0.clone()]), e(&[p0.clone(), p1.clone()])],
+                expected_notifications: vec![e(std::slice::from_ref(&p0)), e(&[p0.clone(), p1.clone()])],
             },
             Step {
                 name: "L0[p0] - notification with no matching prefix => empty payloads",
                 mutations: vec![None, m(Command::Stop, &[])],
                 // When "all" goes away, compounded reveals the remaining prefix subscription
-                expected_subscriptions: vec![None, s(Command::Start, &[p0.clone()])],
-                notification: n(&[p1.clone()]),
+                expected_subscriptions: vec![None, s(Command::Start, std::slice::from_ref(&p0))],
+                notification: n(std::slice::from_ref(&p1)),
                 expected_notifications: vec![e(&[]), None],
             },
             Step {
                 name: "all off",
                 mutations: vec![m(Command::Stop, &[]), None],
-                expected_subscriptions: vec![s(Command::Stop, &[p0.clone()]), None],
-                notification: n(&[p0.clone()]),
+                expected_subscriptions: vec![s(Command::Stop, std::slice::from_ref(&p0)), None],
+                notification: n(std::slice::from_ref(&p0)),
                 expected_notifications: vec![None, None],
             },
         ])

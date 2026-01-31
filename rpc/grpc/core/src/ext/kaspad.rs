@@ -20,12 +20,10 @@ impl KaspadRequest {
 impl kaspad_request::Payload {
     pub fn from_notification_type(scope: &Scope, command: Command) -> Self {
         match scope {
-            Scope::BlockAdded(scope) => {
-                kaspad_request::Payload::NotifyBlockAddedRequest(NotifyBlockAddedRequestMessage {
-                    command: command.into(),
-                    payload_prefixes: scope.payload_prefixes.clone(),
-                })
-            }
+            Scope::BlockAdded(scope) => kaspad_request::Payload::NotifyBlockAddedRequest(NotifyBlockAddedRequestMessage {
+                command: command.into(),
+                payload_prefixes: scope.payload_prefixes.clone(),
+            }),
             Scope::NewBlockTemplate(_) => {
                 kaspad_request::Payload::NotifyNewBlockTemplateRequest(NotifyNewBlockTemplateRequestMessage {
                     command: command.into(),

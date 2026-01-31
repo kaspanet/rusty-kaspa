@@ -12,9 +12,7 @@ impl ArrayBuilder {
         EventArray::from_fn(|i| {
             let event_type = EventType::try_from(i).unwrap();
             let subscription: DynSubscription = match event_type {
-                EventType::BlockAdded => {
-                    Arc::new(single::BlockAddedSubscription::new(single::BlockAddedState::None, listener_id))
-                }
+                EventType::BlockAdded => Arc::new(single::BlockAddedSubscription::new(single::BlockAddedState::None, listener_id)),
                 EventType::VirtualChainChanged => Arc::<single::VirtualChainChangedSubscription>::default(),
                 EventType::UtxosChanged => Arc::new(single::UtxosChangedSubscription::with_capacity(
                     single::UtxosChangedState::None,

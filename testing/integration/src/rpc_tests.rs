@@ -6,6 +6,7 @@ use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::params::SIMNET_GENESIS;
 use kaspa_consensus_core::{constants::MAX_SOMPI, header::Header, subnets::SubnetworkId, tx::Transaction};
 use kaspa_core::{assert_match, info};
+use kaspa_grpc_client::GrpcClient;
 use kaspa_grpc_core::ops::KaspadPayloadOps;
 use kaspa_hashes::Hash;
 use kaspa_notify::{
@@ -16,7 +17,6 @@ use kaspa_notify::{
     },
 };
 use kaspa_rpc_core::{Notification, api::rpc::RpcApi, model::*};
-use kaspa_grpc_client::GrpcClient;
 use kaspa_utils::{fd_budget, networking::ContextualNetAddress};
 use kaspad_lib::args::Args;
 use tokio::task::JoinHandle;
@@ -840,17 +840,13 @@ async fn block_added_payload_filter_test() {
 
     // Set up miner key/address
     let (miner_sk, miner_pk) = secp256k1::generate_keypair(&mut thread_rng());
-    let miner_address =
-        Address::new(Prefix::Simnet, Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
+    let miner_address = Address::new(Prefix::Simnet, Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
     let miner_schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &miner_sk);
 
     // Subscribe to VirtualDaaScoreChanged to track block processing
     let (sender, event_receiver) = async_channel::unbounded();
     rpc_client.start(Some(Arc::new(crate::common::client_notify::ChannelNotify::new(sender)))).await;
-    rpc_client
-        .start_notify(Default::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {}))
-        .await
-        .unwrap();
+    rpc_client.start_notify(Default::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await.unwrap();
 
     // Mine blocks until coinbase maturity so we have spendable UTXOs
     let coinbase_maturity = SIMNET_PARAMS.coinbase_maturity();
@@ -963,13 +959,10 @@ async fn block_added_payload_filter_test() {
     rpc_client.submit_block(template.block, false).await.unwrap();
 
     // Wait for the block notification
-    let notification = tokio::time::timeout(
-        Duration::from_secs(5),
-        listening_client.block_added_listener().unwrap().receiver.recv(),
-    )
-    .await
-    .expect("timed out waiting for BlockAdded with prefix_a filter")
-    .unwrap();
+    let notification = tokio::time::timeout(Duration::from_secs(5), listening_client.block_added_listener().unwrap().receiver.recv())
+        .await
+        .expect("timed out waiting for BlockAdded with prefix_a filter")
+        .unwrap();
 
     match &notification {
         Notification::BlockAdded(msg) => {
@@ -984,23 +977,16 @@ async fn block_added_payload_filter_test() {
                     &tx.payload[..tx.payload.len().min(10)]
                 );
             }
-            assert_eq!(
-                msg.block.transactions.len(),
-                1,
-                "Test 2: should have exactly 1 transaction matching prefix_a"
-            );
+            assert_eq!(msg.block.transactions.len(), 1, "Test 2: should have exactly 1 transaction matching prefix_a");
             info!("BlockAdded filter test: Test 2 passed - received {} filtered transactions", msg.block.transactions.len());
         }
         _ => panic!("expected BlockAdded notification"),
     }
 
     // Wait for DAA score to advance so mine_block state is consistent
-    loop {
-        match tokio::time::timeout(Duration::from_secs(2), listening_client.virtual_daa_score_changed_listener().unwrap().receiver.recv()).await {
-            Ok(Ok(Notification::VirtualDaaScoreChanged(_))) => break,
-            _ => break,
-        }
-    }
+    let _ =
+        tokio::time::timeout(Duration::from_secs(2), listening_client.virtual_daa_score_changed_listener().unwrap().receiver.recv())
+            .await;
 
     // ===== Test 3: Subscribe with non-matching prefix - empty transaction list =====
     info!("BlockAdded filter test: Test 3 - subscribe with non-matching prefix");
@@ -1018,13 +1004,10 @@ async fn block_added_payload_filter_test() {
     let expected_hash = expected_header.hash;
     rpc_client.submit_block(template.block, false).await.unwrap();
 
-    let notification = tokio::time::timeout(
-        Duration::from_secs(5),
-        listening_client.block_added_listener().unwrap().receiver.recv(),
-    )
-    .await
-    .expect("timed out waiting for BlockAdded with non-matching prefix")
-    .unwrap();
+    let notification = tokio::time::timeout(Duration::from_secs(5), listening_client.block_added_listener().unwrap().receiver.recv())
+        .await
+        .expect("timed out waiting for BlockAdded with non-matching prefix")
+        .unwrap();
 
     match notification {
         Notification::BlockAdded(msg) => {
@@ -1055,13 +1038,10 @@ async fn block_added_payload_filter_test() {
     let expected_hash = expected_header.hash;
     rpc_client.submit_block(template.block, false).await.unwrap();
 
-    let notification = tokio::time::timeout(
-        Duration::from_secs(5),
-        listening_client.block_added_listener().unwrap().receiver.recv(),
-    )
-    .await
-    .expect("timed out waiting for BlockAdded with both prefixes")
-    .unwrap();
+    let notification = tokio::time::timeout(Duration::from_secs(5), listening_client.block_added_listener().unwrap().receiver.recv())
+        .await
+        .expect("timed out waiting for BlockAdded with both prefixes")
+        .unwrap();
 
     match notification {
         Notification::BlockAdded(msg) => {

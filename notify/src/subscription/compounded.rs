@@ -423,10 +423,10 @@ mod tests {
         let none = Box::<BlockAddedSubscription>::default;
         let add_all = || m(Command::Start, &[]);
         let remove_all = || m(Command::Stop, &[]);
-        let add_0 = || m(Command::Start, &[p0.clone()]);
-        let add_1 = || m(Command::Start, &[p1.clone()]);
-        let remove_0 = || m(Command::Stop, &[p0.clone()]);
-        let remove_1 = || m(Command::Stop, &[p1.clone()]);
+        let add_0 = || m(Command::Start, std::slice::from_ref(&p0));
+        let add_1 = || m(Command::Start, std::slice::from_ref(&p1));
+        let remove_0 = || m(Command::Stop, std::slice::from_ref(&p0));
+        let remove_1 = || m(Command::Stop, std::slice::from_ref(&p1));
 
         let test = Test {
             name: "BlockAdded compounding",

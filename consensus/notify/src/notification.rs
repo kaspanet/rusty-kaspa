@@ -53,11 +53,7 @@ impl NotificationTrait for Notification {
         }
     }
 
-    fn apply_block_added_subscription(
-        &self,
-        subscription: &BlockAddedSubscription,
-        _context: &SubscriptionContext,
-    ) -> Option<Self> {
+    fn apply_block_added_subscription(&self, subscription: &BlockAddedSubscription, _context: &SubscriptionContext) -> Option<Self> {
         // No effort to filter at consensus level. Filtering happens at RPC level.
         match subscription.active() {
             true => Some(self.clone()),

@@ -76,23 +76,14 @@ impl NotificationTrait for Notification {
         }
     }
 
-    fn apply_block_added_subscription(
-        &self,
-        subscription: &BlockAddedSubscription,
-        _context: &SubscriptionContext,
-    ) -> Option<Self> {
+    fn apply_block_added_subscription(&self, subscription: &BlockAddedSubscription, _context: &SubscriptionContext) -> Option<Self> {
         match subscription.active() {
             true => {
                 if let Notification::BlockAdded(payload) = self {
                     let data = subscription.data();
                     if !data.to_all() {
-                        let filtered_txs: Vec<_> = payload
-                            .block
-                            .transactions
-                            .iter()
-                            .filter(|tx| data.contains_prefix(&tx.payload))
-                            .cloned()
-                            .collect();
+                        let filtered_txs: Vec<_> =
+                            payload.block.transactions.iter().filter(|tx| data.contains_prefix(&tx.payload)).cloned().collect();
                         return Some(Notification::BlockAdded(BlockAddedNotification {
                             block: Arc::new(crate::model::block::RpcBlock {
                                 header: payload.block.header.clone(),
