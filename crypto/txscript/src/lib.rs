@@ -19,18 +19,18 @@ use std::ops::Deref;
 
 use crate::caches::Cache;
 use crate::covenants::CovenantsContext;
-use crate::data_stack::Stack;
-use crate::opcodes::{OpCodeImplementation, deserialize_next_opcode};
+use crate::data_stack::{Stack, StackEntry};
+use crate::opcodes::{deserialize_next_opcode, OpCodeImplementation};
 use itertools::Itertools;
 use kaspa_consensus_core::hashing::sighash::{
-    SigHashReusedValues, SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash,
+    calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues, SigHashReusedValuesUnsync,
 };
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_txscript_errors::TxScriptError;
 use log::trace;
 use opcodes::codes::OpReturn;
-use opcodes::{OpCond, codes, to_small_int};
+use opcodes::{codes, to_small_int, OpCond};
 use script_class::ScriptClass;
 
 pub mod prelude {
@@ -120,9 +120,15 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
 /// Captures the engine stacks after execution
 pub struct ExecutionStacks {
     /// data stack snapshot
-    pub dstack: Vec<Vec<u8>>,
+    pub dstack: Vec<StackEntry>,
     /// alt stack snapshot
-    pub astack: Vec<Vec<u8>>,
+    pub astack: Vec<StackEntry>,
+}
+
+/// A read-only view of the execution stacks
+pub struct ExecutionStacksView<'a> {
+    pub dstack: &'a [StackEntry],
+    pub astack: &'a [StackEntry],
 }
 
 pub fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
@@ -285,14 +291,9 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         self.runtime_sig_op_counter.used_sig_ops()
     }
 
-    /// Returns a read-only view of the data stack.
-    pub fn dstack(&self) -> &[Vec<u8>] {
-        &self.dstack
-    }
-
-    /// Returns a read-only view of the alt stack.
-    pub fn astack(&self) -> &[Vec<u8>] {
-        &self.astack
+    /// Returns a read-only view of the execution stacks
+    pub fn stacks(&self) -> ExecutionStacksView<'_> {
+        ExecutionStacksView { dstack: &self.dstack, astack: &self.astack }
     }
 
     /// Creates a new Script Engine for validating transaction input.
