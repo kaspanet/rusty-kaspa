@@ -130,7 +130,9 @@ impl PruningProofManager {
                     blues_anticone_sizes: calculated_gd.blues_anticone_sizes,
                 }
             };
-            self.ghostdag_store.insert(header.hash, Arc::new(gd)).unwrap();
+            let arc_gd = Arc::new(gd);
+            self.coloring_ghostdag_store.insert(header.hash, arc_gd.clone()).unwrap();
+            self.topology_ghostdag_store.insert(header.hash, arc_gd).unwrap();
 
             ancestors.insert(header.hash);
         }

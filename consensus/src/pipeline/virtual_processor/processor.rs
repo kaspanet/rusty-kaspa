@@ -548,10 +548,12 @@ impl VirtualStateProcessor {
         let mut ctx = UtxoProcessingContext::new((&virtual_coloring_ghostdag_data).into(), selected_parent_multiset);
 
         // Calc virtual DAA score, difficulty bits and past median time
-        let virtual_daa_window = self.window_manager.block_daa_window(&virtual_topology_ghostdag_data)?;
-        // TODO[DK]: should this be topology or coloring ghostdag data?
-        let virtual_bits = self.window_manager.calculate_difficulty_bits(&virtual_topology_ghostdag_data, &virtual_daa_window);
-        let virtual_past_median_time = self.window_manager.calc_past_median_time(&virtual_topology_ghostdag_data)?.0;
+        // TODO[DK]: GD data here only uses the selected parent
+        let virtual_daa_window = self.window_manager.block_daa_window(&virtual_coloring_ghostdag_data)?;
+        // TODO[DK]: GD data here only uses the selected parent
+        let virtual_bits = self.window_manager.calculate_difficulty_bits(&virtual_coloring_ghostdag_data, &virtual_daa_window);
+        // TODO[DK]: GD data here only uses the selected parent
+        let virtual_past_median_time = self.window_manager.calc_past_median_time(&virtual_coloring_ghostdag_data)?.0;
 
         // Calc virtual UTXO state relative to selected parent
         self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_window.daa_score);

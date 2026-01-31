@@ -73,7 +73,8 @@ pub struct SampledWindowManager<
     W: DaaStoreReader,
 > {
     genesis_hash: Hash,
-    ghostdag_store: Arc<T>,
+    topology_ghostdag_store: Arc<T>,
+    coloring_ghostdag_store: Arc<T>,
     headers_store: Arc<V>,
     _daa_store: Arc<W>,
     block_window_cache_for_difficulty: Arc<U>,
@@ -93,7 +94,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         genesis: &GenesisBlock,
-        ghostdag_store: Arc<T>,
+        topology_ghostdag_store: Arc<T>,
+        coloring_ghostdag_store: Arc<T>,
         headers_store: Arc<V>,
         daa_store: Arc<W>,
         block_window_cache_for_difficulty: Arc<U>,
@@ -108,7 +110,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
     ) -> Self {
         let difficulty_manager = SampledDifficultyManager::new(
             headers_store.clone(),
-            ghostdag_store.clone(),
+            topology_ghostdag_store.clone(),
             genesis.hash,
             genesis.bits,
             max_difficulty_target,
@@ -120,7 +122,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         let past_median_time_manager = SampledPastMedianTimeManager::new(headers_store.clone(), genesis.timestamp);
         Self {
             genesis_hash: genesis.hash,
-            ghostdag_store,
+            topology_ghostdag_store,
+            coloring_ghostdag_store,
             headers_store,
             _daa_store: daa_store,
             block_window_cache_for_difficulty,
@@ -137,23 +140,23 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
 
     fn build_block_window(
         &self,
-        ghostdag_data: &GhostdagData,
+        coloring_ghostdag_data: &GhostdagData,
         window_type: WindowType,
         mut mergeset_non_daa_inserter: impl FnMut(Hash),
     ) -> Result<Arc<BlockWindowHeap>, RuleError> {
-        let window_size = self.window_size(ghostdag_data, window_type);
-        let sample_rate = self.sample_rate(ghostdag_data, window_type);
+        let window_size = self.window_size(coloring_ghostdag_data, window_type);
+        let sample_rate = self.sample_rate(coloring_ghostdag_data, window_type);
 
         // First, we handle all edge cases
         if window_size == 0 {
             return Ok(Arc::new(BlockWindowHeap::new()));
         }
-        if ghostdag_data.selected_parent == self.genesis_hash {
+        if coloring_ghostdag_data.selected_parent == self.genesis_hash {
             // Special case: Genesis does not enter the DAA window due to having a fixed timestamp
             mergeset_non_daa_inserter(self.genesis_hash);
             return Ok(Arc::new(BlockWindowHeap::new()));
         }
-        if ghostdag_data.selected_parent.is_origin() {
+        if coloring_ghostdag_data.selected_parent.is_origin() {
             return Err(RuleError::InsufficientDaaWindowSize(0));
         }
 
@@ -163,14 +166,14 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             WindowType::VaryingWindow(_) => None,
         };
 
-        let selected_parent_blue_work = self.ghostdag_store.get_blue_work(ghostdag_data.selected_parent).unwrap();
+        let selected_parent_blue_work = self.topology_ghostdag_store.get_blue_work(coloring_ghostdag_data.selected_parent).unwrap();
 
         // Try to initialize the window from the cache directly
         if let Some(res) = self.try_init_from_cache(
             window_size,
             sample_rate,
             &cache,
-            ghostdag_data,
+            coloring_ghostdag_data,
             selected_parent_blue_work,
             Some(&mut mergeset_non_daa_inserter),
         ) {
@@ -182,19 +185,19 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         self.push_mergeset(
             &mut &mut window_heap,
             sample_rate,
-            ghostdag_data,
+            coloring_ghostdag_data,
             selected_parent_blue_work,
             Some(&mut mergeset_non_daa_inserter),
         );
 
-        let mut current_ghostdag = self.ghostdag_store.get_data(ghostdag_data.selected_parent).unwrap();
+        let mut current_coloring_ghostdag = self.coloring_ghostdag_store.get_data(coloring_ghostdag_data.selected_parent).unwrap();
 
         // Note: no need to check for cache here, as we already tried to initialize from the passed ghostdag's selected parent cache in `self.try_init_from_cache`
 
         // Walk down the chain until we cross the window boundaries.
         loop {
             // check if we may exit early.
-            if current_ghostdag.selected_parent.is_origin() {
+            if current_coloring_ghostdag.selected_parent.is_origin() {
                 // Reaching origin means there's no more data, so we expect the window to already be full, otherwise we err.
                 // This error can happen only during an IBD from pruning proof when processing the first headers in the pruning point's
                 // future, and means that the syncer did not provide sufficient trusted information for proper validation
@@ -203,28 +206,37 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
                 } else {
                     return Err(RuleError::InsufficientDaaWindowSize(window_heap.binary_heap.len()));
                 }
-            } else if current_ghostdag.selected_parent == self.genesis_hash {
+            } else if current_coloring_ghostdag.selected_parent == self.genesis_hash {
                 break;
             }
 
-            let parent_ghostdag = self.ghostdag_store.get_data(current_ghostdag.selected_parent).unwrap();
+            // Needed for blue_work
+            let parent_topology_ghostdag = self.topology_ghostdag_store.get_data(current_coloring_ghostdag.selected_parent).unwrap();
+            // Needed for selected parent
+            let parent_coloring_ghostdag = self.coloring_ghostdag_store.get_data(current_coloring_ghostdag.selected_parent).unwrap();
 
             // No need to further iterate since past of selected parent has only lower blue work
-            if !window_heap.can_push(current_ghostdag.selected_parent, parent_ghostdag.blue_work) {
+            if !window_heap.can_push(current_coloring_ghostdag.selected_parent, parent_topology_ghostdag.blue_work) {
                 break;
             }
 
             // push the current mergeset into the window
-            self.push_mergeset(&mut &mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work, None::<fn(Hash)>);
+            self.push_mergeset(
+                &mut &mut window_heap,
+                sample_rate,
+                &current_coloring_ghostdag,
+                parent_topology_ghostdag.blue_work,
+                None::<fn(Hash)>,
+            );
 
             // see if we can inherit and merge with the selected parent cache
-            if self.try_merge_with_selected_parent_cache(&mut window_heap, &cache, &current_ghostdag.selected_parent) {
+            if self.try_merge_with_selected_parent_cache(&mut window_heap, &cache, &current_coloring_ghostdag.selected_parent) {
                 // if successful, we may break out of the loop, with the window already filled.
                 break;
             };
 
             // update the current ghostdag to the parent ghostdag, and continue the loop.
-            current_ghostdag = parent_ghostdag;
+            current_coloring_ghostdag = parent_coloring_ghostdag;
         }
 
         Ok(Arc::new(window_heap.binary_heap))
@@ -296,18 +308,18 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
     fn sampled_mergeset_iterator<'a>(
         &'a self,
         sample_rate: u64,
-        ghostdag_data: &'a GhostdagData,
+        coloring_ghostdag_data: &'a GhostdagData,
         selected_parent_blue_work: BlueWorkType,
     ) -> impl Iterator<Item = SampledBlock> + 'a {
-        let selected_parent_block = SortableBlock::new(ghostdag_data.selected_parent, selected_parent_blue_work);
-        let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
-        let blue_score_threshold = self.difficulty_manager.lowest_daa_blue_score(ghostdag_data);
+        let selected_parent_block = SortableBlock::new(coloring_ghostdag_data.selected_parent, selected_parent_blue_work);
+        let selected_parent_daa_score = self.headers_store.get_daa_score(coloring_ghostdag_data.selected_parent).unwrap();
+        let blue_score_threshold = self.difficulty_manager.lowest_daa_blue_score(coloring_ghostdag_data);
         let mut index: u64 = 0;
 
         once(selected_parent_block)
-            .chain(ghostdag_data.descending_mergeset_without_selected_parent(self.ghostdag_store.deref()))
+            .chain(coloring_ghostdag_data.descending_mergeset_without_selected_parent(self.topology_ghostdag_store.deref()))
             .filter_map(move |block| {
-                let blue_score = self.ghostdag_store.get_blue_score(block.hash).unwrap();
+                let blue_score = self.coloring_ghostdag_store.get_blue_score(block.hash).unwrap();
                 if blue_score < blue_score_threshold {
                     Some(SampledBlock::NonDaa(block.hash))
                 } else {
@@ -325,13 +337,15 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
 impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter, V: HeaderStoreReader, W: DaaStoreReader> WindowManager
     for SampledWindowManager<T, U, V, W>
 {
-    fn block_window(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError> {
-        self.build_block_window(ghostdag_data, window_type, |_| {})
+    fn block_window(&self, coloring_ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError> {
+        self.build_block_window(coloring_ghostdag_data, window_type, |_| {})
     }
 
-    fn calc_daa_window(&self, ghostdag_data: &GhostdagData, window: Arc<BlockWindowHeap>) -> DaaWindow {
-        let (daa_score, mergeset_non_daa) =
-            self.difficulty_manager.calc_daa_score_and_mergeset_non_daa_blocks(ghostdag_data, self.ghostdag_store.deref());
+    fn calc_daa_window(&self, coloring_ghostdag_data: &GhostdagData, window: Arc<BlockWindowHeap>) -> DaaWindow {
+        // GD use is for blue_score
+        let (daa_score, mergeset_non_daa) = self
+            .difficulty_manager
+            .calc_daa_score_and_mergeset_non_daa_blocks(coloring_ghostdag_data, self.coloring_ghostdag_store.deref()); // store use is for blue_score
         DaaWindow::new(window, daa_score, mergeset_non_daa)
     }
 
@@ -358,11 +372,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         if let Some(window) = self.block_window_cache_for_past_median_time.get(&hash) {
             let past_median_time = self
                 .past_median_time_manager
-                .calc_past_median_time(&window, self.ghostdag_store.get_selected_parent(hash).unwrap())?;
+                .calc_past_median_time(&window, self.coloring_ghostdag_store.get_selected_parent(hash).unwrap())?;
             Ok(past_median_time)
         } else {
-            let ghostdag_data = self.ghostdag_store.get_data(hash).unwrap();
-            let (past_median_time, window) = self.calc_past_median_time(&ghostdag_data)?;
+            let coloring_ghostdag_data = self.coloring_ghostdag_store.get_data(hash).unwrap();
+            let (past_median_time, window) = self.calc_past_median_time(&coloring_ghostdag_data)?;
             self.block_window_cache_for_past_median_time.insert(hash, window);
             Ok(past_median_time)
         }
@@ -413,13 +427,13 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
                     // since it is required for checking whether the block was activated (when building the
                     // window by the syncee or when rebuilding following pruning)
                     // TODO (relaxed): remove this once most of the network upgrades from crescendo version
-                    cover.insert(self.ghostdag_store.get_selected_parent(merged).unwrap());
+                    cover.insert(self.coloring_ghostdag_store.get_selected_parent(merged).unwrap());
                 }
             }
             if unvisited.is_empty() {
                 break;
             }
-            ghostdag = self.ghostdag_store.get_data(ghostdag.selected_parent).unwrap();
+            ghostdag = self.coloring_ghostdag_store.get_data(ghostdag.selected_parent).unwrap();
         }
         cover.remove(&ORIGIN); // remove origin just in case it was inserted as a selected parent of some block/s
         cover.into_iter().collect()

@@ -16,7 +16,7 @@ use kaspa_hashes::Hash;
 #[derive(Clone)]
 pub struct DagTraversalManager<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> {
     genesis_hash: Hash,
-    ghostdag_store: Arc<T>,
+    coloring_ghostdag_store: Arc<T>,
     relations_store: V,
     reachability_service: MTReachabilityService<U>,
 }
@@ -24,11 +24,11 @@ pub struct DagTraversalManager<T: GhostdagStoreReader, U: ReachabilityStoreReade
 impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> DagTraversalManager<T, U, V> {
     pub fn new(
         genesis_hash: Hash,
-        ghostdag_store: Arc<T>,
+        coloring_ghostdag_store: Arc<T>,
         relations_store: V,
         reachability_service: MTReachabilityService<U>,
     ) -> Self {
-        Self { genesis_hash, ghostdag_store, relations_store, reachability_service }
+        Self { genesis_hash, coloring_ghostdag_store, relations_store, reachability_service }
     }
 
     pub fn calculate_chain_path(&self, from: Hash, to: Hash, chain_path_added_limit: Option<usize>) -> ChainPath {
@@ -136,7 +136,7 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
     }
 
     pub fn lowest_chain_block_above_or_equal_to_blue_score(&self, high: Hash, blue_score: u64) -> Hash {
-        let high_gd = self.ghostdag_store.get_compact_data(high).unwrap();
+        let high_gd = self.coloring_ghostdag_store.get_compact_data(high).unwrap();
         assert!(high_gd.blue_score >= blue_score);
 
         let mut current = high;
@@ -144,7 +144,7 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
 
         while current != self.genesis_hash {
             assert!(!current.is_origin(), "there's no such known block");
-            let selected_parent_gd = self.ghostdag_store.get_compact_data(current_gd.selected_parent).unwrap();
+            let selected_parent_gd = self.coloring_ghostdag_store.get_compact_data(current_gd.selected_parent).unwrap();
             if selected_parent_gd.blue_score < blue_score {
                 break;
             }
