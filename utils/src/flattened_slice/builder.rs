@@ -189,6 +189,14 @@ impl Default for FlattenedSliceBuilder {
     }
 }
 
+impl<'a> FromIterator<&'a [u8]> for FlattenedSliceBuilder {
+    fn from_iter<T: IntoIterator<Item = &'a [u8]>>(iter: T) -> Self {
+        let mut builder = Self::new();
+        builder.add_slices(iter);
+        builder
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

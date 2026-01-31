@@ -6,7 +6,10 @@ use crate::{
 };
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix};
-use std::collections::HashMap;
+use kaspa_utils::flattened_slice::PayloadPrefixFilter;
+use radix_trie::TrieCommon;
+use std::cell::RefCell;
+use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OverallSubscription {
@@ -61,19 +64,41 @@ impl Subscription for OverallSubscription {
 // BlockAdded compounded subscription
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+#[repr(transparent)]
+#[derive(Clone, Default, Debug, PartialEq)]
+pub struct PrefixCounters(radix_trie::Trie<Vec<u8>, usize>);
+impl Eq for PrefixCounters {}
+
+impl Deref for PrefixCounters {
+    type Target = radix_trie::Trie<Vec<u8>, usize>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for PrefixCounters {
+    fn deref_mut(&mut self) -> &mut <Self as Deref>::Target {
+        &mut self.0
+    }
+}
+
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct BlockAddedSubscription {
     all: usize,
-    prefix_counters: HashMap<Vec<u8>, usize>,
+    prefix_counters: PrefixCounters,
 }
 
 impl BlockAddedSubscription {
     pub fn new() -> Self {
-        Self { all: 0, prefix_counters: HashMap::new() }
+        Self { all: 0, prefix_counters: PrefixCounters::default() }
     }
 
-    fn active_prefixes(&self) -> Vec<Vec<u8>> {
-        self.prefix_counters.iter().filter(|&(_, count)| *count > 0).map(|(k, _)| k.clone()).collect()
+    fn active_prefixes(&self) -> impl Iterator<Item = &[u8]> + '_ {
+        self.prefix_counters.iter().filter(|&(_, count)| *count > 0).map(|(k, _)| k.as_slice())
+    }
+
+    fn active_prefixes_is_empty(&self) -> bool {
+        self.prefix_counters.is_empty()
     }
 }
 
@@ -91,47 +116,51 @@ impl Compounded for BlockAddedSubscription {
                         }
                     } else {
                         // Add specific prefixes
-                        let mut added = Vec::new();
-                        for prefix in scope.payload_prefixes.as_holder().iter().map(|s| s.to_vec()) {
-                            let counter = self.prefix_counters.entry(prefix.clone()).or_insert(0);
-                            *counter += 1;
-                            if *counter == 1 {
-                                added.push(prefix);
-                            }
+                        let added = RefCell::new(PayloadPrefixFilter::new());
+                        for prefix in scope.payload_prefixes.as_holder().iter() {
+                            self.prefix_counters.map_with_default(
+                                prefix.to_vec(),
+                                |v| {
+                                    *v += 1;
+                                    added.borrow_mut().add_slice(prefix);
+                                },
+                                1,
+                            );
                         }
+                        let added = added.into_inner();
                         if !added.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(Command::Start, BlockAddedScope::from_prefixes(added).into()));
+                            return Some(Mutation::new(Command::Start, BlockAddedScope::from_filter(added).into()));
                         }
                     }
                 }
                 Command::Stop => {
                     if !scope.payload_prefixes.is_empty() {
                         // Remove specific prefixes
-                        let mut removed = Vec::new();
-                        for prefix in scope.payload_prefixes.as_holder().iter().map(|s| s.to_vec()) {
-                            if let Some(counter) = self.prefix_counters.get_mut(&prefix) {
+                        let mut removed = PayloadPrefixFilter::new();
+                        for prefix in scope.payload_prefixes.as_holder().iter() {
+                            if let Some(counter) = self.prefix_counters.get_mut(prefix) {
                                 assert!(*counter > 0);
                                 *counter -= 1;
                                 if *counter == 0 {
-                                    self.prefix_counters.remove(&prefix);
-                                    removed.push(prefix);
+                                    self.prefix_counters.remove(prefix);
+                                    removed.add_slice(prefix);
                                 }
                             }
                         }
                         if !removed.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(Command::Stop, BlockAddedScope::from_prefixes(removed).into()));
+                            return Some(Mutation::new(Command::Stop, BlockAddedScope::from_filter(removed).into()));
                         }
                     } else {
                         // Remove All
                         assert!(self.all > 0);
                         self.all -= 1;
                         if self.all == 0 {
-                            let active = self.active_prefixes();
-                            if !active.is_empty() {
-                                return Some(Mutation::new(Command::Start, BlockAddedScope::from_prefixes(active).into()));
+                            let is_empty = self.active_prefixes_is_empty();
+                            return if !is_empty {
+                                Some(Mutation::new(Command::Start, BlockAddedScope::from_iter(self.active_prefixes()).into()))
                             } else {
-                                return Some(Mutation::new(Command::Stop, BlockAddedScope::default().into()));
-                            }
+                                Some(Mutation::new(Command::Stop, BlockAddedScope::default().into()))
+                            };
                         }
                     }
                 }
@@ -152,8 +181,7 @@ impl Subscription for BlockAddedSubscription {
     }
 
     fn scope(&self, _context: &SubscriptionContext) -> Scope {
-        let prefixes = if self.all > 0 { vec![] } else { self.active_prefixes() };
-        Scope::BlockAdded(BlockAddedScope::from_prefixes(prefixes))
+        Scope::BlockAdded(if self.all > 0 { BlockAddedScope::default() } else { BlockAddedScope::from_iter(self.active_prefixes()) })
     }
 }
 

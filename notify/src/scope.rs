@@ -1,9 +1,9 @@
 use super::events::EventType;
 use crate::payload_prefix_filter::RpcPayloadPrefixFilter;
-use kaspa_utils::flattened_slice::PayloadPrefixFilter;
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
 use kaspa_addresses::Address;
+use kaspa_utils::flattened_slice::PayloadPrefixFilter;
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
 
@@ -89,6 +89,11 @@ impl BlockAddedScope {
     /// Constructor from a `PayloadPrefixFilter` directly.
     pub fn from_filter(filter: PayloadPrefixFilter) -> Self {
         Self { payload_prefixes: RpcPayloadPrefixFilter::from(filter) }
+    }
+}
+impl<'a> FromIterator<&'a [u8]> for BlockAddedScope {
+    fn from_iter<T: IntoIterator<Item = &'a [u8]>>(iter: T) -> Self {
+        BlockAddedScope { payload_prefixes: RpcPayloadPrefixFilter::from_iter(iter) }
     }
 }
 

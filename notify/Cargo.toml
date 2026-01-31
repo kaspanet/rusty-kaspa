@@ -26,6 +26,7 @@ kaspa-txscript-errors.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 log.workspace = true
+radix_trie.workspace = true
 parking_lot.workspace = true
 paste.workspace = true
 rand.workspace = true
