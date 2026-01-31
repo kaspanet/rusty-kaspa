@@ -171,7 +171,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetBlockResponse>, protowire::GetBlockRes
 });
 
 from!(item: &kaspa_rpc_core::NotifyBlockAddedRequest, protowire::NotifyBlockAddedRequestMessage, {
-    Self { command: item.command.into() }
+    Self { command: item.command.into(), payload_prefixes: item.payload_prefixes.clone() }
 });
 from!(RpcResult<&kaspa_rpc_core::NotifyBlockAddedResponse>, protowire::NotifyBlockAddedResponseMessage);
 
@@ -653,7 +653,7 @@ try_from!(item: &protowire::GetBlockResponseMessage, RpcResult<kaspa_rpc_core::G
 });
 
 try_from!(item: &protowire::NotifyBlockAddedRequestMessage, kaspa_rpc_core::NotifyBlockAddedRequest, {
-    Self { command: item.command.into() }
+    Self { command: item.command.into(), payload_prefixes: item.payload_prefixes.clone() }
 });
 try_from!(&protowire::NotifyBlockAddedResponseMessage, RpcResult<kaspa_rpc_core::NotifyBlockAddedResponse>);
 

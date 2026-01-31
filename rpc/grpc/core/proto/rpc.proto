@@ -188,6 +188,7 @@ message GetBlockTemplateResponseMessage {
 // See: BlockAddedNotificationMessage
 message NotifyBlockAddedRequestMessage {
   RpcNotifyCommand command = 101;
+  repeated bytes payload_prefixes = 102;
 }
 
 message NotifyBlockAddedResponseMessage {

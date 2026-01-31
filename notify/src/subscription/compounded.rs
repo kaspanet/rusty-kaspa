@@ -1,11 +1,12 @@
 use crate::{
     address::{error::Result, tracker::Counters},
     events::EventType,
-    scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
+    scope::{BlockAddedScope, Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::{Command, Compounded, Mutation, Subscription, context::SubscriptionContext},
 };
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OverallSubscription {
@@ -53,6 +54,106 @@ impl Subscription for OverallSubscription {
 
     fn scope(&self, _context: &SubscriptionContext) -> Scope {
         self.event_type.into()
+    }
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// BlockAdded compounded subscription
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+pub struct BlockAddedSubscription {
+    all: usize,
+    prefix_counters: HashMap<Vec<u8>, usize>,
+}
+
+impl BlockAddedSubscription {
+    pub fn new() -> Self {
+        Self { all: 0, prefix_counters: HashMap::new() }
+    }
+
+    fn active_prefixes(&self) -> Vec<Vec<u8>> {
+        self.prefix_counters.iter().filter(|&(_, count)| *count > 0).map(|(k, _)| k.clone()).collect()
+    }
+}
+
+impl Compounded for BlockAddedSubscription {
+    fn compound(&mut self, mutation: Mutation, _context: &SubscriptionContext) -> Option<Mutation> {
+        assert_eq!(self.event_type(), mutation.event_type());
+        if let Scope::BlockAdded(scope) = mutation.scope {
+            match mutation.command {
+                Command::Start => {
+                    if scope.payload_prefixes.is_empty() {
+                        // Add All
+                        self.all += 1;
+                        if self.all == 1 {
+                            return Some(Mutation::new(Command::Start, BlockAddedScope::default().into()));
+                        }
+                    } else {
+                        // Add specific prefixes
+                        let mut added = Vec::new();
+                        for prefix in scope.payload_prefixes {
+                            let counter = self.prefix_counters.entry(prefix.clone()).or_insert(0);
+                            *counter += 1;
+                            if *counter == 1 {
+                                added.push(prefix);
+                            }
+                        }
+                        if !added.is_empty() && self.all == 0 {
+                            return Some(Mutation::new(Command::Start, BlockAddedScope::new(added).into()));
+                        }
+                    }
+                }
+                Command::Stop => {
+                    if !scope.payload_prefixes.is_empty() {
+                        // Remove specific prefixes
+                        let mut removed = Vec::new();
+                        for prefix in scope.payload_prefixes {
+                            if let Some(counter) = self.prefix_counters.get_mut(&prefix) {
+                                assert!(*counter > 0);
+                                *counter -= 1;
+                                if *counter == 0 {
+                                    self.prefix_counters.remove(&prefix);
+                                    removed.push(prefix);
+                                }
+                            }
+                        }
+                        if !removed.is_empty() && self.all == 0 {
+                            return Some(Mutation::new(Command::Stop, BlockAddedScope::new(removed).into()));
+                        }
+                    } else {
+                        // Remove All
+                        assert!(self.all > 0);
+                        self.all -= 1;
+                        if self.all == 0 {
+                            let active = self.active_prefixes();
+                            if !active.is_empty() {
+                                return Some(Mutation::new(Command::Start, BlockAddedScope::new(active).into()));
+                            } else {
+                                return Some(Mutation::new(Command::Stop, BlockAddedScope::default().into()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
+impl Subscription for BlockAddedSubscription {
+    #[inline(always)]
+    fn event_type(&self) -> EventType {
+        EventType::BlockAdded
+    }
+
+    fn active(&self) -> bool {
+        self.all > 0 || !self.prefix_counters.is_empty()
+    }
+
+    fn scope(&self, _context: &SubscriptionContext) -> Scope {
+        let prefixes = if self.all > 0 { vec![] } else { self.active_prefixes() };
+        Scope::BlockAdded(BlockAddedScope::new(prefixes))
     }
 }
 
@@ -289,8 +390,8 @@ mod tests {
     #[allow(clippy::redundant_clone)]
     fn test_overall_compounding() {
         let none = || Box::new(OverallSubscription::new(EventType::BlockAdded));
-        let add = || Mutation::new(Command::Start, Scope::BlockAdded(BlockAddedScope {}));
-        let remove = || Mutation::new(Command::Stop, Scope::BlockAdded(BlockAddedScope {}));
+        let add = || Mutation::new(Command::Start, Scope::BlockAdded(BlockAddedScope::default()));
+        let remove = || Mutation::new(Command::Stop, Scope::BlockAdded(BlockAddedScope::default()));
         let test = Test {
             name: "OverallSubscription 0 to 2 to 0",
             context: SubscriptionContext::new(),
@@ -308,6 +409,55 @@ mod tests {
         // Removing once more must panic
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove(), &test.context)));
         assert!(result.is_err(), "{}: trying to remove when counter is zero must panic", test.name);
+    }
+
+    #[test]
+    #[allow(clippy::redundant_clone)]
+    fn test_block_added_compounding() {
+        let p0: Vec<u8> = vec![0xAA, 0xBB];
+        let p1: Vec<u8> = vec![0xCC, 0xDD];
+
+        let m = |command: Command, prefixes: &[Vec<u8>]| -> Mutation {
+            Mutation { command, scope: Scope::BlockAdded(BlockAddedScope::new(prefixes.to_vec())) }
+        };
+        let none = Box::<BlockAddedSubscription>::default;
+        let add_all = || m(Command::Start, &[]);
+        let remove_all = || m(Command::Stop, &[]);
+        let add_0 = || m(Command::Start, &[p0.clone()]);
+        let add_1 = || m(Command::Start, &[p1.clone()]);
+        let remove_0 = || m(Command::Stop, &[p0.clone()]);
+        let remove_1 = || m(Command::Stop, &[p1.clone()]);
+
+        let test = Test {
+            name: "BlockAdded compounding",
+            context: SubscriptionContext::new(),
+            initial_state: none(),
+            steps: vec![
+                Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
+                Step { name: "add all 2", mutation: add_all(), result: None },
+                Step { name: "remove all 2", mutation: remove_all(), result: None },
+                Step { name: "remove all 1", mutation: remove_all(), result: Some(remove_all()) },
+                Step { name: "add p0 1", mutation: add_0(), result: Some(add_0()) },
+                Step { name: "add p0 2", mutation: add_0(), result: None },
+                Step { name: "add p1 1", mutation: add_1(), result: Some(add_1()) },
+                Step { name: "remove p0 2", mutation: remove_0(), result: None },
+                Step { name: "remove p1 1", mutation: remove_1(), result: Some(remove_1()) },
+                Step { name: "remove p0 1", mutation: remove_0(), result: Some(remove_0()) },
+                // Interleaved all and prefix set
+                Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
+                Step { name: "add p0, masked by all", mutation: add_0(), result: None },
+                Step { name: "remove all 1, revealing p0", mutation: remove_all(), result: Some(add_0()) },
+                Step { name: "add all 1, masking p0", mutation: add_all(), result: Some(add_all()) },
+                Step { name: "remove p0, masked by all", mutation: remove_0(), result: None },
+                Step { name: "remove all 1", mutation: remove_all(), result: Some(remove_all()) },
+            ],
+            final_state: none(),
+        };
+        let mut state = test.run();
+
+        // Removing once more must panic
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all(), &test.context)));
+        assert!(result.is_err(), "{}: trying to remove all when counter is zero must panic", test.name);
     }
 
     #[test]

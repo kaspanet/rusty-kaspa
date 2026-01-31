@@ -2850,26 +2850,49 @@ impl Deserializer for GetVirtualChainFromBlockV2Response {
 #[serde(rename_all = "camelCase")]
 pub struct NotifyBlockAddedRequest {
     pub command: Command,
+    pub payload_prefixes: Vec<Vec<u8>>,
 }
 impl NotifyBlockAddedRequest {
     pub fn new(command: Command) -> Self {
-        Self { command }
+        Self { command, payload_prefixes: vec![] }
+    }
+
+    pub fn with_payload_prefixes(command: Command, payload_prefixes: Vec<Vec<u8>>) -> Self {
+        Self { command, payload_prefixes }
     }
 }
 
 impl Serializer for NotifyBlockAddedRequest {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         store!(Command, &self.command, writer)?;
+        store!(u32, &(self.payload_prefixes.len() as u32), writer)?;
+        for prefix in &self.payload_prefixes {
+            store!(u32, &(prefix.len() as u32), writer)?;
+            writer.write_all(prefix)?;
+        }
         Ok(())
     }
 }
 
 impl Deserializer for NotifyBlockAddedRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let version = load!(u16, reader)?;
         let command = load!(Command, reader)?;
-        Ok(Self { command })
+        let payload_prefixes = if version >= 2 {
+            let count = load!(u32, reader)? as usize;
+            let mut prefixes = Vec::with_capacity(count);
+            for _ in 0..count {
+                let len = load!(u32, reader)? as usize;
+                let mut buf = vec![0u8; len];
+                reader.read_exact(&mut buf)?;
+                prefixes.push(buf);
+            }
+            prefixes
+        } else {
+            vec![]
+        };
+        Ok(Self { command, payload_prefixes })
     }
 }
 

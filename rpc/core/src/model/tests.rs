@@ -1308,7 +1308,7 @@ mod mockery {
 
     impl Mock for NotifyBlockAddedRequest {
         fn mock() -> Self {
-            NotifyBlockAddedRequest { command: Command::Start }
+            NotifyBlockAddedRequest::new(Command::Start)
         }
     }
 
