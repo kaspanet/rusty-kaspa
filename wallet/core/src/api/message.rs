@@ -870,3 +870,27 @@ pub struct AccountsCommitRevealRequest {
 pub struct AccountsCommitRevealResponse {
     pub transaction_ids: Vec<TransactionId>,
 }
+
+/// Request to export transaction history as CSV.
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionsExportCsvRequest {
+    pub account_id: AccountId,
+    pub network_id: NetworkId,
+    /// Optional filter for transaction types (None = all types)
+    pub filter: Option<Vec<TransactionKind>>,
+    /// Optional start date filter (Unix timestamp in milliseconds)
+    pub start_date: Option<u64>,
+    /// Optional end date filter (Unix timestamp in milliseconds)
+    pub end_date: Option<u64>,
+}
+
+/// Response containing CSV export data.
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionsExportCsvResponse {
+    /// Complete CSV content including header row
+    pub csv_content: String,
+    /// Number of transactions exported
+    pub transaction_count: usize,
+}
