@@ -146,21 +146,46 @@ impl<
             }
 
             // Pick a "winner" among these subgroups
-            let (winning_conflict_genesis, winning_subgroup) = group_map
-                .iter()
-                .map(|(curr_conflict_genesis, subgroup)| {
-                    let rank_value = self.rank(conflict_genesis, subgroup, &curr_subgroup);
-                    (rank_value, curr_conflict_genesis, subgroup)
-                })
-                .min_by(|(a, _, _), (b, _, _)| a.cmp(b))
-                .map(|(rank, conflict_genesis, subgroup)| {
-                    debug!("Winning rank value: k = {} | sp = {:#?}", rank.k, rank.selected_parent.hash);
-                    (*conflict_genesis, subgroup)
-                })
-                .unwrap();
+            let winning_subgroup = {
+                let mut best_rank_value = None;
+                let mut best_subgroup = None;
+
+                // TODO[DK]: Process groups from highest blue score first to improve chances of getting the best group
+                // on the first try
+                let filtered_group_iter = group_map.iter().sorted_by(|a, b| {
+                    // Prioritize groups by higher blue score (descending), then by hash (ascending)
+                    let a_score = self.headers_store.get_header(a.1[0]).unwrap().blue_score;
+                    let b_score = self.headers_store.get_header(b.1[0]).unwrap().blue_score;
+                    // higher blue score first
+                    b_score.cmp(&a_score).then_with(|| a.0.cmp(b.0))
+                });
+
+                for (curr_conflict_genesis, subgroup) in filtered_group_iter {
+                    debug!("Subgroup under conflict genesis {:#?} has members: {:#?}", curr_conflict_genesis, subgroup);
+                    let rank_value = self.rank(conflict_genesis, subgroup, &curr_subgroup, &best_rank_value);
+
+                    if let Some(inner_best_rank) = &best_rank_value {
+                        match rank_value.cmp(inner_best_rank) {
+                            Ordering::Less => {
+                                // Tie breaking by hash
+                                best_rank_value = Some(rank_value);
+                                best_subgroup = Some(subgroup);
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        best_rank_value = Some(rank_value);
+                        best_subgroup = Some(subgroup);
+                    }
+                }
+
+                // This will always be Some since curr_subgroup.len() > 1 and thus there is at least one subgroup
+                best_subgroup.unwrap()
+            };
 
             curr_subgroup = winning_subgroup.to_vec();
-            conflict_genesis = winning_conflict_genesis;
+            // Skip to the top-most new common chain ancestor:
+            conflict_genesis = self.common_chain_ancestor(winning_subgroup);
         }
         assert_eq!(1, curr_subgroup.len(), "Expected dagknight to have only a single parent at the end");
 
@@ -220,7 +245,7 @@ impl<
     ///    1.1 For each unsuccessful step along the way, move the lower bound k up as well
     ///    1.2 Also exits if lkg_k is a max
     /// 2. Binary search between lower bound k and lkg_k
-    fn rank(&self, conflict_genesis: Hash, subgroup: &[Hash], all_tips: &[Hash]) -> RankValue {
+    fn rank(&self, conflict_genesis: Hash, subgroup: &[Hash], all_tips: &[Hash], best_rank_value: &Option<RankValue>) -> RankValue {
         // for k in 0, 1, ..., infinity:
         // tie breaking is assumed to be by comparing selected_parent
         let mut selected_parent = None;
@@ -238,6 +263,13 @@ impl<
         let mut steps = 0;
 
         while !found_lkg && lkg_k != u16::MAX {
+            if let Some(best_rank) = &best_rank_value {
+                if lower_k > best_rank.k {
+                    debug!("Aborting upper bound search since lkg_k = {} > best known k = {}", lkg_k, best_rank.k);
+                    // TODO[DK]: sortable block value doesn't matter. Do something about making this cleaner
+                    return RankValue { k: u16::MAX, selected_parent: SortableBlock { hash: subgroup[0], blue_work: 0.into() } };
+                }
+            }
             steps += 1;
             debug!("Finding upper bound k = {}", lkg_k);
             let curr_selected_parent = self.select_parent_from_k_colouring(conflict_genesis, subgroup, all_tips, lkg_k);
@@ -256,6 +288,13 @@ impl<
         }
 
         while lower_k < lkg_k {
+            if let Some(best_rank) = &best_rank_value {
+                if lower_k > best_rank.k {
+                    debug!("Aborting lower bound search since lower_k = {} > best known k = {}", lower_k, best_rank.k);
+                    // TODO[DK]: sortable block value doesn't matter. Do something about making this cleaner
+                    return RankValue { k: u16::MAX, selected_parent: SortableBlock { hash: subgroup[0], blue_work: 0.into() } };
+                }
+            }
             steps += 1;
             let k_to_check = lower_k + ((lkg_k - lower_k) / 2);
 
