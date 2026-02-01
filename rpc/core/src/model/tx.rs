@@ -440,7 +440,7 @@ pub struct RpcTransactionInclusionData {
     /// The hash of the block that includes the transaction
     pub including_block_hash: RpcHash,
     /// This is the blue score of the block that includes the transaction
-    pub including_blue_score: u64,
+    pub including_daa_score: u64,
     /// The index within the block that this transaction occupies
     pub index_within_block: TransactionIndexType,
 }
@@ -449,7 +449,7 @@ impl From<TxInclusionData> for RpcTransactionInclusionData {
     fn from(data: TxInclusionData) -> Self {
         Self {
             including_block_hash: data.block_hash,
-            including_blue_score: data.blue_score,
+            including_daa_score: data.daa_score,
             index_within_block: data.index_within_block,
         }
     }
@@ -459,7 +459,7 @@ impl Serializer for RpcTransactionInclusionData {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u8, &1, writer)?;
         store!(RpcHash, &self.including_block_hash, writer)?;
-        store!(u64, &self.including_blue_score, writer)?;
+        store!(u64, &self.including_daa_score, writer)?;
         store!(TransactionIndexType, &self.index_within_block, writer)?;
 
         Ok(())
@@ -470,10 +470,10 @@ impl Deserializer for RpcTransactionInclusionData {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
         let including_block_hash = load!(RpcHash, reader)?;
-        let including_blue_score = load!(u64, reader)?;
+        let including_daa_score = load!(u64, reader)?;
         let index_within_block = load!(TransactionIndexType, reader)?;
 
-        Ok(Self { including_blue_score, including_block_hash, index_within_block })
+        Ok(Self { including_daa_score, including_block_hash, index_within_block })
     }
 }
 
@@ -483,18 +483,14 @@ pub struct RpcTransactionAcceptanceData {
     /// The hash of the block that accepted the transaction
     pub accepting_block_hash: RpcHash,
     /// The blue score of the block that accepted the transaction
-    pub accepting_block_blue_score: u64,
+    pub accepting_blue_score: u64,
     /// The index of the including block within the mergeset of the accepting block
     pub mergeset_index: MergesetIndexType,
 }
 
 impl From<TxAcceptanceData> for RpcTransactionAcceptanceData {
     fn from(data: TxAcceptanceData) -> Self {
-        Self {
-            accepting_block_hash: data.block_hash,
-            accepting_block_blue_score: data.blue_score,
-            mergeset_index: data.mergeset_index,
-        }
+        Self { accepting_block_hash: data.block_hash, accepting_blue_score: data.blue_score, mergeset_index: data.mergeset_index }
     }
 }
 
@@ -502,7 +498,7 @@ impl Serializer for RpcTransactionAcceptanceData {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u8, &1, writer)?;
         store!(RpcHash, &self.accepting_block_hash, writer)?;
-        store!(u64, &self.accepting_block_blue_score, writer)?;
+        store!(u64, &self.accepting_blue_score, writer)?;
         store!(MergesetIndexType, &self.mergeset_index, writer)?;
 
         Ok(())
@@ -513,10 +509,10 @@ impl Deserializer for RpcTransactionAcceptanceData {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
         let accepting_block_hash = load!(RpcHash, reader)?;
-        let accepting_block_blue_score = load!(u64, reader)?;
+        let accepting_blue_score = load!(u64, reader)?;
         let mergeset_index = load!(MergesetIndexType, reader)?;
 
-        Ok(Self { accepting_block_hash, accepting_block_blue_score, mergeset_index })
+        Ok(Self { accepting_block_hash, accepting_blue_score, mergeset_index })
     }
 }
 

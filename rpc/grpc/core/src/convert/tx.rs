@@ -181,7 +181,7 @@ from!(item: &kaspa_rpc_core::RpcUtxosByAddressesEntry, protowire::RpcUtxosByAddr
 from!(item: &kaspa_rpc_core::RpcTransactionInclusionData, protowire::RpcTransactionInclusionData, {
     Self {
         including_block_hash: item.including_block_hash.to_string(),
-        including_blue_score: item.including_blue_score,
+        including_daa_score: item.including_daa_score,
         index_within_block: item.index_within_block,
     }
 });
@@ -189,7 +189,7 @@ from!(item: &kaspa_rpc_core::RpcTransactionInclusionData, protowire::RpcTransact
 from!(item: &kaspa_rpc_core::RpcTransactionAcceptanceData, protowire::RpcTransactionAcceptanceData, {
     Self {
         accepting_block_hash: item.accepting_block_hash.to_string(),
-        accepting_block_blue_score: item.accepting_block_blue_score,
+        accepting_blue_score: item.accepting_blue_score,
         mergeset_index: item.mergeset_index.into(),
     }
 });
@@ -440,7 +440,7 @@ try_from!(item: &protowire::RpcUtxosByAddressesEntry, kaspa_rpc_core::RpcUtxosBy
 try_from!(item: &protowire::RpcTransactionInclusionData, kaspa_rpc_core::RpcTransactionInclusionData, {
     Self {
         including_block_hash: RpcHash::from_str(&item.including_block_hash)?,
-        including_blue_score: item.including_blue_score,
+        including_daa_score: item.including_daa_score,
         index_within_block: item.index_within_block,
     }
 });
@@ -448,7 +448,7 @@ try_from!(item: &protowire::RpcTransactionInclusionData, kaspa_rpc_core::RpcTran
 try_from!(item: &protowire::RpcTransactionAcceptanceData, kaspa_rpc_core::RpcTransactionAcceptanceData, {
     Self {
         accepting_block_hash: RpcHash::from_str(&item.accepting_block_hash)?,
-        accepting_block_blue_score: item.accepting_block_blue_score,
+        accepting_blue_score: item.accepting_blue_score,
         mergeset_index: item.mergeset_index.try_into()?,
     }
 });

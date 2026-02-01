@@ -320,7 +320,7 @@ impl Rpc {
                     return Err(Error::custom("Missing transaction id argument"));
                 }
                 let transaction_id = argv.remove(0);
-                let transaction_id = RpcHash::from_str(transaction_id.as_str())?;
+                let transaction_id = transaction_id.as_str().parse::<TransactionId>()?;
                 let include_unaccepted = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
                 let include_transactions = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
                 let include_inclusion_data = argv.remove(0).parse::<bool>().ok().unwrap_or_default();

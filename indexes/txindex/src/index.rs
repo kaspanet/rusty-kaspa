@@ -123,15 +123,15 @@ impl TxIndexApi for TxIndex {
     }
 
     /// Ranges are inclusive
-    fn get_transaction_inclusion_data_by_blue_score_range(
+    fn get_transaction_inclusion_data_by_daa_score_range(
         &self,
         from: u64, // inclusive
         to: u64,   // inclusive
         limit: Option<usize>,
-        limit_to_blue_score_boundry: bool,
+        limit_to_score_boundary: bool,
     ) -> TxIndexResult<Vec<DaaScoreIncludingRefData>> {
-        debug!("[{}] Getting transaction inclusion data by blue score range: {} to {}", self, from, to);
-        Ok(self.store.get_transaction_inclusion_data_by_blue_score_range(from..=to, limit, limit_to_blue_score_boundry)?)
+        debug!("[{}] Getting transaction inclusion data by daa score range: {} to {}", self, from, to);
+        Ok(self.store.get_transaction_inclusion_data_by_daa_score_range(from..=to, limit, limit_to_score_boundary)?)
     }
     /// Ranges are inclusive
     fn get_transaction_acceptance_data_by_blue_score_range(
@@ -139,15 +139,25 @@ impl TxIndexApi for TxIndex {
         from: u64, // inclusive
         to: u64,   // inclusive
         limit: Option<usize>,
-        limit_to_blue_score_boundry: bool,
+        limit_to_score_boundary: bool,
     ) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>> {
         debug!("[{}] Getting transaction acceptance data by blue score range: {} to {}", self, from, to);
-        Ok(self.store.get_transaction_acceptance_data_by_blue_score_range(from..=to, limit, limit_to_blue_score_boundry)?)
+        Ok(self.store.get_transaction_acceptance_data_by_blue_score_range(from..=to, limit, limit_to_score_boundary)?)
     }
 
     fn get_sink_with_blue_score(&self) -> TxIndexResult<(Hash, u64)> {
         debug!("[{}] Getting sink with blue score", IDENT);
         Ok(self.store.get_sink_with_blue_score()?.unwrap())
+    }
+
+    fn get_tips(&self) -> TxIndexResult<Option<Arc<BlockHashSet>>> {
+        debug!("[{}] Getting tips", IDENT);
+        Ok(self.store.get_tips()?)
+    }
+
+    fn get_retention_root(&self) -> TxIndexResult<Option<Hash>> {
+        debug!("[{}] Getting retention root", IDENT);
+        Ok(self.store.get_retention_root()?)
     }
 
     fn is_acceptance_data_synced(&self) -> TxIndexResult<bool> {
@@ -324,6 +334,8 @@ impl TxIndexApi for TxIndex {
     fn prune_batch(&mut self) -> TxIndexResult<bool> {
         debug!("[{}] Pruning TxIndex", IDENT);
 
+        // We prune by alternating between acceptance data and inclusion data, staying with one if the other is done
+        // until both are done, this allows us to interleave pruning and only do one scan per prune batch.
         match self.store.get_next_to_prune_store()?.unwrap() {
             ToPruneStore::AcceptanceData => {
                 let txindex_retention_root_blue_score = self.store.get_retention_root_blue_score()?.unwrap();

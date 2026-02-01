@@ -361,9 +361,8 @@ impl VirtualStateProcessor {
             // check for subscriptions before the heavy lifting
             let (include_accepted_transaction_ids, include_accepting_blue_scores) = self
                 .notification_root
-                .with_subscription_as::<single::VirtualChainChangedSubscription, _, _>(EventType::VirtualChainChanged, |s| {
-                    (s.include_accepted_transaction_ids(), s.include_accepting_blue_scores())
-                })
+                .get_subscription_as::<single::VirtualChainChangedSubscription>(EventType::VirtualChainChanged)
+                .map(|s| (s.include_accepted_transaction_ids(), s.include_accepting_blue_scores()))
                 .unwrap_or((false, false));
 
             let added_chain_blocks_acceptance_data = if include_accepted_transaction_ids {

@@ -34,9 +34,8 @@ pub fn reindex_virtual_changed_notification<'a>(
             .iter()
             .zip(notification.added_chain_blocks_acceptance_data.iter())
             .zip(notification.added_accepting_blue_scores.iter())
-            .enumerate()
-            .flat_map(|(mergeset_index, ((accepting_hash, added_acceptance_vec), added_accepting_blue_score))| {
-                added_acceptance_vec.iter().map(move |mbad| {
+            .flat_map(|((accepting_hash, added_acceptance_vec), added_accepting_blue_score)| {
+                added_acceptance_vec.iter().enumerate().map(move |(mergeset_index, mbad)| {
                     reindex_mergeset_acceptance_data(
                         accepting_hash,
                         *added_accepting_blue_score,

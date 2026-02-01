@@ -69,11 +69,6 @@ impl VirtualChainChangedSubscription {
     }
 
     #[inline(always)]
-    fn count(&self, accepted_tx: bool, blue: bool) -> usize {
-        self.counts[Self::idx(accepted_tx)][Self::idx(blue)]
-    }
-
-    #[inline(always)]
     fn inc(&mut self, accepted_tx: bool, blue: bool) -> usize {
         let c = &mut self.counts[Self::idx(accepted_tx)][Self::idx(blue)];
         *c += 1;

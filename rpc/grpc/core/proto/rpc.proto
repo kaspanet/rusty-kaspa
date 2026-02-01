@@ -137,13 +137,13 @@ message RpcTransactionData {
 
 message RpcTransactionInclusionData {
   string includingBlockHash = 1; // the block that includes the transaction
-  uint64 includingBlueScore = 2; // the blue score of that block
+  uint64 includingDaaScore = 2; // the blue score of that block
   uint32 indexWithinBlock = 3; // the index of the transaction within that block
 }
 
 message RpcTransactionAcceptanceData {
   string acceptingBlockHash = 1; // the block that accepted the transaction
-  uint64 acceptingBlockBlueScore = 2; // the blue score of that block
+  uint64 acceptingBlueScore = 2; // the blue score of that block
   uint32 mergesetIndex = 3; // the index of the including block within the mergeset of the accepting block
 }
 

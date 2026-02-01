@@ -1,6 +1,7 @@
 use std::{fmt::Debug, sync::Arc};
 
 use kaspa_consensus_core::tx::TransactionId;
+use kaspa_consensus_core::BlockHashSet;
 use kaspa_consensus_notify::notification::{
     BlockAddedNotification, RetentionRootChangedNotification, VirtualChainChangedNotification,
 };
@@ -22,22 +23,24 @@ use crate::{
 pub trait TxIndexApi: Send + Sync + Debug {
     fn get_accepted_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxAcceptanceData>>;
     fn get_included_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxInclusionData>>;
-    fn get_transaction_inclusion_data_by_blue_score_range(
+    fn get_transaction_inclusion_data_by_daa_score_range(
         &self,
         from: u64,
         to: u64,
         limit: Option<usize>,
-        limit_to_blue_score_boundry: bool,
+        limit_to_score_boundary: bool,
     ) -> TxIndexResult<Vec<DaaScoreIncludingRefData>>;
     fn get_transaction_acceptance_data_by_blue_score_range(
         &self,
         from: u64,
         to: u64,
         limit: Option<usize>,
-        limit_to_blue_score_boundry: bool,
+        limit_to_score_boundary: bool,
     ) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>>;
 
     fn get_sink_with_blue_score(&self) -> TxIndexResult<(Hash, u64)>;
+    fn get_tips(&self) -> TxIndexResult<Option<Arc<BlockHashSet>>>;
+    fn get_retention_root(&self) -> TxIndexResult<Option<Hash>>;
 
     fn is_synced(&self) -> TxIndexResult<bool>;
     fn is_acceptance_data_synced(&self) -> TxIndexResult<bool>;
@@ -87,10 +90,10 @@ impl TxIndexProxy {
         from: u64,
         to: u64,
         limit: Option<usize>,
-        limit_to_blue_score_boundry: bool,
+        limit_to_score_boundary: bool,
     ) -> TxIndexResult<Vec<DaaScoreIncludingRefData>> {
         spawn_blocking(move || {
-            self.inner.read().get_transaction_inclusion_data_by_blue_score_range(from, to, limit, limit_to_blue_score_boundry)
+            self.inner.read().get_transaction_inclusion_data_by_daa_score_range(from, to, limit, limit_to_score_boundary)
         })
         .await
         .unwrap()
@@ -101,10 +104,10 @@ impl TxIndexProxy {
         from: u64,
         to: u64,
         limit: Option<usize>,
-        limit_to_blue_score_boundry: bool,
+        limit_to_score_boundary: bool,
     ) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>> {
         spawn_blocking(move || {
-            self.inner.read().get_transaction_acceptance_data_by_blue_score_range(from, to, limit, limit_to_blue_score_boundry)
+            self.inner.read().get_transaction_acceptance_data_by_blue_score_range(from, to, limit, limit_to_score_boundary)
         })
         .await
         .unwrap()
@@ -112,6 +115,14 @@ impl TxIndexProxy {
 
     pub async fn async_get_sink_with_blue_score(self) -> TxIndexResult<(Hash, u64)> {
         spawn_blocking(move || self.inner.read().get_sink_with_blue_score()).await.unwrap()
+    }
+
+    pub async fn async_get_tips(self) -> TxIndexResult<Option<Arc<BlockHashSet>>> {
+        spawn_blocking(move || self.inner.read().get_tips()).await.unwrap()
+    }
+
+    pub async fn get_retention_root(self) -> TxIndexResult<Option<Hash>> {
+        spawn_blocking(move || self.inner.read().get_retention_root()).await.unwrap()
     }
 
     pub async fn async_update_via_block_added(self, block_added_notification: BlockAddedNotification) -> TxIndexResult<()> {

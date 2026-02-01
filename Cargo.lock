@@ -3254,6 +3254,7 @@ dependencies = [
  "kaspa-pow",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
+ "kaspa-txindex",
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",

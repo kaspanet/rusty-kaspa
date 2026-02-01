@@ -1,3 +1,4 @@
+use core::panic;
 use std::{str::FromStr, sync::Arc, time::Duration, u64};
 
 use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
@@ -49,6 +50,7 @@ async fn sanity_test() {
         enable_unsynced_mining: true,
         block_template_cache_lifetime: Some(0),
         utxoindex: true,
+        txindex: 1,
         unsafe_rpc: true,
         ..Default::default()
     };
@@ -726,7 +728,13 @@ async fn sanity_test() {
                         )
                         .await;
                     // Test Get Transaction:
-                    assert!(response.is_err());
+                    assert!(response.is_ok_and(|res| res.transaction_data.is_some_and(|d| {
+                        d.acceptance_data.is_none()
+                            && d.inclusion_data.is_empty()
+                            && d.conf_count.is_none()
+                            && d.transaction_id == 0.into()
+                            && d.transactions.is_empty()
+                    })));
                 })
             }
 
@@ -759,9 +767,12 @@ async fn sanity_test() {
                             GetTransactionsByIncludingDaaScoreRequest { from_daa_score: u64::MIN, to_daa_score: u64::MAX, limit: 0 },
                         )
                         .await;
-                    // Test Get Transactions By Including DAA Score:
-                    assert!(response.clone().unwrap().transaction_ids.is_empty());
-                    assert!(response.clone().unwrap().including_daa_scores.is_empty());
+                    // We only expect genesis transactions here
+                    let genesis_transactions = SIMNET_GENESIS.build_genesis_transactions();
+                    assert_eq!(response.clone().unwrap().transaction_ids.len(), genesis_transactions.len());
+                    assert_eq!(response.clone().unwrap().transaction_ids[0], genesis_transactions[0].id());
+                    assert_eq!(response.clone().unwrap().including_daa_scores.len(), 1);
+                    assert_eq!(response.clone().unwrap().including_daa_scores[0], SIMNET_GENESIS.daa_score);
                 })
             }
 

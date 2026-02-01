@@ -110,7 +110,7 @@ impl Store {
         }
     }
 
-    pub fn get_transaction_inclusion_data_by_blue_score_range(
+    pub fn get_transaction_inclusion_data_by_daa_score_range(
         &self,
         range: impl RangeBounds<u64>,
         limit: Option<usize>,
@@ -210,7 +210,7 @@ impl Store {
         let mut batch = WriteBatch::default();
         let mut writer = BatchDbWriter::new(&mut batch);
 
-        self.update_reindexed_mergeset_states_with_writer(&mut writer, state.reindexed_mergeset_state, true)?;
+        self.update_reindexed_mergeset_states_with_writer(&mut writer, state.reindexed_mergeset_state)?;
         self.sink_store.set_sink(&mut writer, state.sink_hash, state.sink_blue_score)?;
 
         self.commit_batch(batch)?;
@@ -229,7 +229,7 @@ impl Store {
         let mut batch = WriteBatch::default();
         let mut writer = BatchDbWriter::new(&mut batch);
 
-        self.update_reindexed_mergeset_states_with_writer(&mut writer, states, false)?;
+        self.update_reindexed_mergeset_states_with_writer(&mut writer, states)?;
 
         self.commit_batch(batch)?;
 
@@ -240,32 +240,14 @@ impl Store {
         &mut self,
         mut writer: &mut impl DbWriter,
         states: Vec<ReindexedMergesetState<TxIter, BlueScoreIter>>,
-        skip_idempotent: bool,
     ) -> StoreResult<()>
     where
         TxIter: Iterator<Item = TxAcceptedTuple>,
         BlueScoreIter: Iterator<Item = AcceptingBlueScoreTuple>,
     {
         for state in states.into_iter() {
-            if skip_idempotent {
-                // if this coinbase is already present, we may skip the this write for this mergeset state
-                // this indicates that this mergeset, and those below it, were already processed in some prior update.
-                let mut tx_iter = state.tx_iter;
-                let mut peekable = tx_iter.by_ref().peekable();
-                let next_coinbase_key =
-                    peekable.peek().map(|(txid, blue_score, accepting_block_hash, _)| (*txid, *blue_score, *accepting_block_hash));
-                if let Some((txid, blue_score, accepting_block_hash)) = next_coinbase_key {
-                    if self.accepted_transactions_store.has(txid, blue_score, accepting_block_hash)? {
-                        trace!("Skipping mergeset state update since first accepted transaction is already present: txid={}, blue_score={}, accepting_block={}", txid, blue_score, accepting_block_hash);
-                        continue;
-                    }
-                }
-                self.accepted_transactions_store.add_accepted_transaction_data(&mut writer, tx_iter)?;
-                self.accepting_bluescore_refs_store.add_blue_score_refs(&mut writer, state.blue_score_ref_iter)?;
-            } else {
-                self.accepted_transactions_store.add_accepted_transaction_data(&mut writer, state.tx_iter)?;
-                self.accepting_bluescore_refs_store.add_blue_score_refs(&mut writer, state.blue_score_ref_iter)?;
-            }
+            self.accepted_transactions_store.add_accepted_transaction_data(&mut writer, state.tx_iter)?;
+            self.accepting_bluescore_refs_store.add_blue_score_refs(&mut writer, state.blue_score_ref_iter)?;
         }
         Ok(())
     }
@@ -280,21 +262,18 @@ impl Store {
         let mut batch = WriteBatch::default();
         let mut writer = BatchDbWriter::new(&mut batch);
 
-        let mut last_pruned_daa_score = 0u64;
+        let mut next_to_prune_daa_score = 0u64;
         let mut is_inclusion_store_empty = true;
 
         for data in self.including_daascore_refs_store.get_daa_score_refs(from_daa_score..=u64::MAX, limit)? {
             is_inclusion_store_empty = false;
-            if last_pruned_daa_score != data.including_daa_score {
-                last_pruned_daa_score = data.including_daa_score;
-                if data.including_daa_score >= max_daa_score {
-                    break;
-                }
+            next_to_prune_daa_score = data.including_daa_score;
+            if data.including_daa_score >= max_daa_score {
+                next_to_prune_daa_score = data.including_daa_score;
+                break;
             };
             self.included_transactions_store.remove_transaction_inclusion_data(&mut writer, data.tx_id, data.including_daa_score)?;
         }
-
-        let next_to_prune_daa_score = last_pruned_daa_score + 1;
 
         self.pruning_sync_store.set_new_next_to_prune_daa_score(&mut writer, next_to_prune_daa_score)?;
 
@@ -315,21 +294,18 @@ impl Store {
         let mut batch = WriteBatch::default();
         let mut writer = BatchDbWriter::new(&mut batch);
 
-        let mut last_pruned_blue_score = 0u64;
+        let mut next_to_prune_blue_score = 0u64;
         let mut is_acceptance_store_empty = true;
 
         for data in self.accepting_bluescore_refs_store.get_blue_score_refs(from_blue_score..=u64::MAX, limit)? {
             is_acceptance_store_empty = false;
-            if last_pruned_blue_score != data.accepting_blue_score {
-                last_pruned_blue_score = data.accepting_blue_score;
-                if data.accepting_blue_score >= max_blue_score {
-                    break;
-                }
+            next_to_prune_blue_score = data.accepting_blue_score;
+            if data.accepting_blue_score >= max_blue_score {
+                next_to_prune_blue_score = data.accepting_blue_score;
+                break;
             };
             self.accepted_transactions_store.remove_transaction_acceptance_data(&mut writer, data.tx_id, data.accepting_blue_score)?;
         }
-
-        let next_to_prune_blue_score = last_pruned_blue_score + 1;
 
         self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, next_to_prune_blue_score)?;
 

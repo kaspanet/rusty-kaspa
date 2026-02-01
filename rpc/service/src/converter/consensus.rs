@@ -235,7 +235,7 @@ impl ConsensusConverter {
             let acceptance_data = accepted_transaction_data.as_ref().unwrap();
             acceptance_data
                 .as_ref()
-                .map(|acceptance_data| sink_blue_score.unwrap().saturating_sub(acceptance_data.accepting_block_blue_score))
+                .map(|acceptance_data| sink_blue_score.unwrap().saturating_sub(acceptance_data.accepting_blue_score))
         } else {
             None
         };

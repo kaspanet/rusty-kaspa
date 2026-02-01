@@ -216,20 +216,6 @@ mod tests {
     };
     use rand::Rng;
 
-    fn random_txid() -> TransactionId {
-        let mut rng = rand::thread_rng();
-        let mut bytes = [0u8; 32];
-        rng.fill(&mut bytes);
-        TransactionId::from_slice(&bytes)
-    }
-
-    fn random_hash() -> Hash {
-        let mut rng = rand::thread_rng();
-        let mut bytes = [0u8; 32];
-        rng.fill(&mut bytes);
-        Hash::from_slice(&bytes)
-    }
-
     #[test]
     fn test_transaction_store_value_inclusion_roundtrip() {
         let value: MergesetIndexType = 42;
@@ -241,9 +227,9 @@ mod tests {
 
     #[test]
     fn test_transaction_store_key_inclusion_conversion() {
-        let txid = random_txid();
-        let blue_score = 987654321u64;
-        let block_hash = random_hash();
+        let txid = TransactionId::from_u64_word(1);
+        let blue_score = 1;
+        let block_hash = Hash::from_u64_word(2);
         let key = AcceptedTransactionStoreKey::default().with_txid(txid).with_blue_score(blue_score).with_block_hash(block_hash);
         let mergeset_index = 42 as MergesetIndexType;
         let tx_acceptance_data: TxAcceptanceData = (key.clone(), mergeset_index).into();
@@ -257,14 +243,14 @@ mod tests {
         let (_txindex_db_lt, txindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
 
         let mut store = DbTxIndexAcceptedTransactionsStore::new(Arc::clone(&txindex_db), CachePolicy::Empty);
-        let txid1 = random_txid();
-        let txid2 = random_txid();
-        let block_hash1 = random_hash();
-        let block_hash2 = random_hash();
+        let txid1 = TransactionId::from_u64_word(1);
+        let txid2 = TransactionId::from_u64_word(2);
+        let block_hash1 = Hash::from_u64_word(3);
+        let block_hash2 = Hash::from_u64_word(4);
         let blue_score1 = 100u64;
         let blue_score2 = 200u64;
-        let mergeset_index1 = 1u16 as MergesetIndexType;
-        let mergeset_index2 = 2u16 as MergesetIndexType;
+        let mergeset_index1 = 1 as MergesetIndexType;
+        let mergeset_index2 = 2 as MergesetIndexType;
 
         // Add included transaction data
         let mut batch = WriteBatch::new();

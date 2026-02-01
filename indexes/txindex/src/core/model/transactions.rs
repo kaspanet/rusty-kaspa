@@ -1,16 +1,16 @@
 use kaspa_consensus_core::{acceptance_data::MergesetIndexType, tx::TransactionIndexType, Hash};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TxInclusionData {
     /// The hash of the block that includes the transaction
     pub block_hash: Hash,
     /// This is the blue score of the block that includes the transaction
-    pub blue_score: u64,
+    pub daa_score: u64,
     /// The index within the block that this transaction occupies
     pub index_within_block: TransactionIndexType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TxAcceptanceData {
     /// The hash of the block that accepted the transaction
     pub block_hash: Hash,

@@ -1418,8 +1418,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 self.consensus_converter.find_canonical_accepted_acceptance_data(&consensus, sink_hash, &accepted_data).await?;
             if let Some(canonical_data) = canonical_data {
                 transaction_id_res.push(*tx_id);
-                accepting_blue_scores.push(canonical_data.accepting_block_blue_score);
-                let conf_count = sink_blue_score.saturating_sub(canonical_data.accepting_block_blue_score);
+                accepting_blue_scores.push(canonical_data.accepting_blue_score);
+                let conf_count = sink_blue_score.saturating_sub(canonical_data.accepting_blue_score);
                 confirmation_counts.push(conf_count);
             };
         }
@@ -1440,7 +1440,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         // We scope the txindex read lock to only the data gathering phase, to avoid holding beyond async await points
         let tx_refs = {
             let txindex = &*self.txindex.as_ref().unwrap().deref().read();
-            txindex.get_transaction_inclusion_data_by_blue_score_range(
+            txindex.get_transaction_inclusion_data_by_daa_score_range(
                 request.from_daa_score,
                 request.to_daa_score,
                 if request.limit == 0 { None } else { Some(request.limit.try_into()?) },
