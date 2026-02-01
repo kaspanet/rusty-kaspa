@@ -659,7 +659,7 @@ impl WalletApi for super::Wallet {
         self: Arc<Self>,
         request: TransactionsExportCsvRequest,
     ) -> Result<TransactionsExportCsvResponse> {
-        let TransactionsExportCsvRequest { account_id, network_id, filter, start_date, end_date } = request;
+        let TransactionsExportCsvRequest { account_id, network_id: _, filter, start_date, end_date } = request;
 
         let guard = self.guard();
         let guard = guard.lock().await;
