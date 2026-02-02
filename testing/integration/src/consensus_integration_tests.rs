@@ -45,7 +45,7 @@ use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::Hash;
 use kaspa_rpc_core::RpcHeader;
-use kaspa_txindex::model::transactions::{TxAcceptanceData, TxInclusionData};
+use kaspa_txindex::model::{TxAcceptanceData, TxInclusionData};
 use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
