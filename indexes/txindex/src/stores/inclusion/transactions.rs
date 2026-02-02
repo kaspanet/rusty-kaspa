@@ -62,11 +62,6 @@ impl IncludedTransactionStoreKey {
     }
 
     #[inline(always)]
-    pub fn txid(&self) -> TransactionId {
-        TransactionId::from_slice(&self.0[0..TRANSACTION_ID_SIZE])
-    }
-
-    #[inline(always)]
     pub fn into_tx_inclusion_data(self, index_within_block: TransactionIndexType) -> TxInclusionData {
         TxInclusionData { block_hash: self.block_hash(), daa_score: self.daa_score(), index_within_block }
     }

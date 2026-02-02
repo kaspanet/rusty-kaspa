@@ -29,7 +29,7 @@ use kaspa_rpc_core::{
     RpcTransactionOutputVerboseDataVerbosity, RpcTransactionOutputVerbosity, RpcTransactionVerboseData,
     RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerboseDataVerbosity, RpcUtxoEntryVerbosity,
 };
-use kaspa_txindex::model::transactions::{TxAcceptanceData, TxInclusionData};
+use kaspa_index_core::indexed_transactions::{TxAcceptanceData, TxInclusionData};
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 /// Conversion of consensus_core to rpc_core structures
