@@ -50,11 +50,17 @@ impl TryFrom<protowire::VersionMessage> for Version {
             protocol_version: msg.protocol_version,
             services: msg.services,
             timestamp: msg.timestamp as u64,
-            address: if msg.address.is_none() { None } else { Some(msg.address.unwrap().try_into()?) },
+            address: match msg.address {
+                Some(addr) => Some(addr.try_into()?),
+                None => None,
+            },
             id: PeerId::from_slice(&msg.id)?,
             user_agent: msg.user_agent.clone(),
             disable_relay_tx: msg.disable_relay_tx,
-            subnetwork_id: if msg.subnetwork_id.is_none() { None } else { Some(msg.subnetwork_id.unwrap().try_into()?) },
+            subnetwork_id: match msg.subnetwork_id {
+                Some(sid) => Some(sid.try_into()?),
+                None => None,
+            },
             network: msg.network.clone(),
         })
     }

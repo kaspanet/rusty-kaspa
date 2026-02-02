@@ -393,26 +393,27 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         fs::create_dir_all(txindex_db_dir.as_path()).unwrap();
     }
 
-    if !args.archival && args.retention_period_days.is_some() {
-        let retention_period_days = args.retention_period_days.unwrap();
-        // Look only at post-fork values (which are the worst-case)
-        let finality_depth = config.finality_depth();
-        let target_time_per_block = config.target_time_per_block(); // in ms
+    if !args.archival {
+        if let Some(retention_period_days) = args.retention_period_days {
+            // Look only at post-fork values (which are the worst-case)
+            let finality_depth = config.finality_depth();
+            let target_time_per_block = config.target_time_per_block(); // in ms
 
-        let retention_period_milliseconds = (retention_period_days * 24.0 * 60.0 * 60.0 * 1000.0).ceil() as u64;
-        if MINIMUM_RETENTION_PERIOD_DAYS <= retention_period_days {
-            let total_blocks = retention_period_milliseconds / target_time_per_block;
-            // This worst case usage only considers block space. It does not account for usage of
-            // other stores (reachability, block status, mempool, etc.)
-            let worst_case_usage =
-                ((total_blocks + finality_depth) * (config.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR)) as f64 / ONE_GIGABYTE;
+            let retention_period_milliseconds = (retention_period_days * 24.0 * 60.0 * 60.0 * 1000.0).ceil() as u64;
+            if MINIMUM_RETENTION_PERIOD_DAYS <= retention_period_days {
+                let total_blocks = retention_period_milliseconds / target_time_per_block;
+                // This worst case usage only considers block space. It does not account for usage of
+                // other stores (reachability, block status, mempool, etc.)
+                let worst_case_usage =
+                    ((total_blocks + finality_depth) * (config.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR)) as f64 / ONE_GIGABYTE;
 
-            info!(
-                "Retention period is set to {} days. Disk usage may be up to {:.2} GB for block space required for this period.",
-                retention_period_days, worst_case_usage
-            );
-        } else {
-            panic!("Retention period ({}) must be at least {} days", retention_period_days, MINIMUM_RETENTION_PERIOD_DAYS);
+                info!(
+                    "Retention period is set to {} days. Disk usage may be up to {:.2} GB for block space required for this period.",
+                    retention_period_days, worst_case_usage
+                );
+            } else {
+                panic!("Retention period ({}) must be at least {} days", retention_period_days, MINIMUM_RETENTION_PERIOD_DAYS);
+            }
         }
     }
 
