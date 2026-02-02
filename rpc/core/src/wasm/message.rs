@@ -1574,6 +1574,48 @@ try_from! ( args: SubmitTransactionResponse, ISubmitTransactionResponse, {
     Ok(to_value(&args)?.into())
 });
 
+declare! {
+    IGetTransactionRequest,
+    r#"
+    /**
+     * Get transaction request.
+     *
+     * @category Node RPC
+     */
+    export interface IGetTransactionRequest {
+        transactionId: HexString;
+        includeUnaccepted?: boolean;
+        includeTransactions?: boolean;
+        includeInclusionData?: boolean;
+        includeAcceptanceData?: boolean;
+        includeConfCount?: boolean;
+        includeVerboseData?: boolean;
+    }
+    "#,
+}
+
+try_from! ( args: IGetTransactionRequest, GetTransactionRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetTransactionResponse,
+    r#"
+    /**
+     * Get transaction response.
+     *
+     * @category Node RPC
+     */
+    export interface IGetTransactionResponse {
+        transactionData?: ITransactionData;
+    }
+    "#,
+}
+
+try_from! ( args: GetTransactionResponse, IGetTransactionResponse, {
+    Ok(to_value(&args)?.into())
+});
+
 // ---
 
 declare! {

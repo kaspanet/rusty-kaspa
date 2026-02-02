@@ -53,6 +53,41 @@ export interface ITransactionVerboseData {
     blockHash : HexString;
     blockTime : bigint;
 }
+
+/**
+ * Transaction data returned by GetTransaction.
+ *
+ * @category Node RPC
+ */
+export interface ITransactionData {
+    transactionId: HexString;
+    transactions: ITransaction[];
+    inclusionData: ITransactionInclusionData[];
+    acceptanceData?: ITransactionAcceptanceData;
+    confCount?: bigint;
+}
+
+/**
+ * Transaction inclusion data
+ *
+ * @category Node RPC
+ */
+export interface ITransactionInclusionData {
+    includingBlockHash: HexString;
+    includingDaaScore: bigint;
+    indexWithinBlock: number;
+}
+
+/**
+ * Transaction acceptance data
+ *
+ * @category Node RPC
+ */
+export interface ITransactionAcceptanceData {
+    acceptingBlockHash: HexString;
+    acceptingBlueScore: bigint;
+    mergesetIndex: number;
+}
 "#;
 
 #[wasm_bindgen]
