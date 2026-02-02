@@ -7,7 +7,7 @@ use kaspa_consensus_core::{
         UtxoEntry,
     },
 };
-use kaspa_txindex::model::transactions::{TxAcceptanceData, TxInclusionData};
+use kaspa_index_core::indexed_transactions::{TxAcceptanceData, TxInclusionData};
 use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;

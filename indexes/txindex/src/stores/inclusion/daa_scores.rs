@@ -1,4 +1,4 @@
-use crate::model::bluescore_refs::DaaScoreIncludingRefData;
+use crate::model::score_refs::DaaScoreIncludingRefData;
 
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_database::{

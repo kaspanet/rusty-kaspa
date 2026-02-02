@@ -14,8 +14,8 @@ use tokio::sync::Mutex as AsyncMutex;
 use crate::{
     errors::TxIndexResult,
     model::{
-        bluescore_refs::{BlueScoreAcceptingRefData, DaaScoreIncludingRefData},
-        transactions::{TxAcceptanceData, TxInclusionData},
+        score_refs::{BlueScoreAcceptingRefData, DaaScoreIncludingRefData},
+        {TxAcceptanceData, TxInclusionData},
     },
 };
 

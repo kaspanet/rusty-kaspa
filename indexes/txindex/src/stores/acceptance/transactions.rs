@@ -1,4 +1,4 @@
-use crate::model::transactions::TxAcceptanceData;
+use crate::model::TxAcceptanceData;
 
 use kaspa_consensus_core::{Hash, acceptance_data::MergesetIndexType, tx::TransactionId};
 use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DB, DbWriter, DirectDbWriter, StoreResult};
@@ -57,6 +57,11 @@ impl AcceptedTransactionStoreKey {
     pub fn block_hash(&self) -> Hash {
         Hash::from_slice(&self.0[TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE])
     }
+
+    #[inline(always)]
+    pub fn into_tx_acceptance_data(self, mergeset_index: MergesetIndexType) -> TxAcceptanceData {
+        TxAcceptanceData { blue_score: self.blue_score(), block_hash: self.block_hash(), mergeset_index }
+    }
 }
 
 impl Default for AcceptedTransactionStoreKey {
@@ -71,13 +76,6 @@ impl From<Box<[u8]>> for AcceptedTransactionStoreKey {
     fn from(data: Box<[u8]>) -> Self {
         let array: [u8; TRANSACTION_STORE_KEY_LEN] = (&*data).try_into().expect("slice with incorrect length");
         Self(array)
-    }
-}
-
-impl From<(AcceptedTransactionStoreKey, MergesetIndexType)> for TxAcceptanceData {
-    #[inline(always)]
-    fn from(item: (AcceptedTransactionStoreKey, MergesetIndexType)) -> Self {
-        TxAcceptanceData { blue_score: item.0.blue_score(), block_hash: item.0.block_hash(), mergeset_index: item.1 }
     }
 }
 
@@ -161,7 +159,7 @@ impl TxIndexAcceptedTransactionsStoreReader for DbTxIndexAcceptedTransactionsSto
             )
             .map(|res| {
                 let (key, mergeset_index) = res.unwrap();
-                Ok((AcceptedTransactionStoreKey::from(key), mergeset_index).into())
+                Ok(AcceptedTransactionStoreKey::from(key).into_tx_acceptance_data(mergeset_index))
             })
             .collect()
     }
@@ -231,7 +229,7 @@ mod tests {
         let block_hash = Hash::from_u64_word(2);
         let key = AcceptedTransactionStoreKey::default().with_txid(txid).with_blue_score(blue_score).with_block_hash(block_hash);
         let mergeset_index = 42 as MergesetIndexType;
-        let tx_acceptance_data: TxAcceptanceData = (key.clone(), mergeset_index).into();
+        let tx_acceptance_data = key.into_tx_acceptance_data(mergeset_index);
         assert_eq!(tx_acceptance_data.blue_score, blue_score);
         assert_eq!(tx_acceptance_data.block_hash, block_hash);
         assert_eq!(tx_acceptance_data.mergeset_index, mergeset_index);

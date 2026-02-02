@@ -1,4 +1,4 @@
-use crate::model::transactions::TxInclusionData;
+use crate::model::TxInclusionData;
 
 use kaspa_consensus_core::{
     Hash,
@@ -65,24 +65,17 @@ impl IncludedTransactionStoreKey {
     pub fn txid(&self) -> TransactionId {
         TransactionId::from_slice(&self.0[0..TRANSACTION_ID_SIZE])
     }
+
+    #[inline(always)]
+    pub fn into_tx_inclusion_data(self, index_within_block: TransactionIndexType) -> TxInclusionData {
+        TxInclusionData { block_hash: self.block_hash(), daa_score: self.daa_score(), index_within_block }
+    }
 }
 
 impl Default for IncludedTransactionStoreKey {
     #[inline(always)]
     fn default() -> Self {
         Self([0u8; TRANSACTION_STORE_KEY_LEN])
-    }
-}
-
-impl From<(IncludedTransactionStoreKey, TransactionIndexType)> for TxInclusionData {
-    #[inline(always)]
-    fn from(item: (IncludedTransactionStoreKey, TransactionIndexType)) -> Self {
-        let (key, index_within_block) = item;
-        let bytes = &key.0;
-        let daa_score = u64::from_be_bytes(bytes[TRANSACTION_ID_SIZE..TRANSACTION_ID_SIZE + DAA_SCORE_SIZE].try_into().unwrap());
-        let block_hash =
-            Hash::from_slice(&bytes[TRANSACTION_ID_SIZE + DAA_SCORE_SIZE..TRANSACTION_ID_SIZE + DAA_SCORE_SIZE + HASH_SIZE]);
-        Self { daa_score, block_hash, index_within_block }
     }
 }
 
@@ -173,7 +166,7 @@ impl TxIndexIncludedTransactionsStoreReader for DbTxIndexIncludedTransactionsSto
             )
             .map(|res| {
                 let (key, index_within_block) = res.unwrap();
-                Ok((IncludedTransactionStoreKey::from(key), index_within_block).into())
+                Ok(IncludedTransactionStoreKey::from(key).into_tx_inclusion_data(index_within_block))
             })
             .collect()
     }
@@ -234,7 +227,7 @@ mod tests {
         let block_hash = Hash::from_u64_word(2);
         let key = IncludedTransactionStoreKey::default().with_txid(txid).with_daa_score(daa_score).with_block_hash(block_hash);
         let index_within_block = 42 as TransactionIndexType;
-        let tx_inclusion_data: TxInclusionData = (key.clone(), index_within_block).into();
+        let tx_inclusion_data = key.into_tx_inclusion_data(index_within_block);
         assert_eq!(tx_inclusion_data.daa_score, daa_score);
         assert_eq!(tx_inclusion_data.block_hash, block_hash);
         assert_eq!(tx_inclusion_data.index_within_block, index_within_block);

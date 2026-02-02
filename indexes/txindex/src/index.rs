@@ -9,8 +9,8 @@ use crate::{
     api::TxIndexApi,
     errors::TxIndexResult,
     model::{
-        bluescore_refs::{BlueScoreAcceptingRefData, DaaScoreIncludingRefData},
-        transactions::{TxAcceptanceData, TxInclusionData},
+        score_refs::{BlueScoreAcceptingRefData, DaaScoreIncludingRefData},
+        {TxAcceptanceData, TxInclusionData},
     },
     reindexer::{
         block_reindexer,
