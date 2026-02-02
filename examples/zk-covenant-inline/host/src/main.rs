@@ -1,4 +1,5 @@
-use crate::g16::seal_to_compressed_proof;
+use crate::covenant::InlineCovenant;
+use crate::risc0_g16::{seal_to_compressed_proof, Risc0Groth16Verify};
 use kaspa_consensus_core::tx::CovenantBinding;
 use kaspa_consensus_core::{
     constants::{SOMPI_PER_KASPA, TX_VERSION},
@@ -10,10 +11,7 @@ use kaspa_hashes::Hash;
 use kaspa_txscript::{
     caches::Cache,
     covenants::CovenantsContext,
-    opcodes::codes::{
-        OpAdd, OpBlake2b, OpCat, OpCovOutCount, OpData32, OpDup, OpEqual, OpEqualVerify, OpInputCovenantId, OpSHA256, OpSwap, OpTrue,
-        OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpk, OpTxPayloadSubstr, OpVerify, OpZkPrecompile,
-    },
+    opcodes::codes::{OpTrue, OpVerify, OpZkPrecompile},
     pay_to_script_hash_script,
     script_builder::ScriptBuilder,
     zk_precompiles::{risc0::merkle::MerkleProof, risc0::rcpt::SuccinctReceipt, tags::ZkTag},
@@ -24,7 +22,9 @@ use std::time::Instant;
 use zk_covenant_inline_core::{Action, PublicInput, State, VersionedActionRaw};
 use zk_covenant_inline_methods::{ZK_COVENANT_INLINE_GUEST_ELF, ZK_COVENANT_INLINE_GUEST_ID};
 
-mod g16;
+mod covenant;
+mod risc0_g16;
+mod script_ext;
 
 fn main() {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env()).init();
@@ -192,25 +192,25 @@ fn build_redeem_script(old_state_hash: [u32; 8], redeem_script_len: i64, program
     let mut builder = ScriptBuilder::new();
 
     // Expects on sig_script stack: [proof, new_state_hash]
-    add_state_preparation(&mut builder, old_state_hash).unwrap();
+    builder.push_old_state_and_dup_new(old_state_hash).unwrap();
     // Stack: [proof, old_state_hash, new_state_hash, new_state_hash]
 
-    add_new_redeem_prefix(&mut builder).unwrap();
+    builder.build_next_redeem_prefix().unwrap();
     // Stack: [proof, old_state_hash, new_state_hash, (OpData32 || new_state_hash)]
 
-    add_suffix_extraction_and_cat(&mut builder, redeem_script_len).unwrap();
+    builder.extract_redeem_suffix_and_concat(redeem_script_len).unwrap();
     // Stack: [proof, old_state_hash, new_state_hash, new_redeem_script]
 
-    add_hash_and_build_spk(&mut builder).unwrap();
+    builder.hash_redeem_to_spk().unwrap();
     // Stack: [proof, old_state_hash, new_state_hash, constructed_spk]
 
-    add_verify_output_spk(&mut builder).unwrap();
+    builder.verify_output_spk().unwrap();
     // Stack: [proof, old_state_hash, new_state_hash]
 
-    add_construct_journal_preimage(&mut builder).unwrap();
+    builder.build_journal_preimage().unwrap();
     // Stack: [proof,  preimage]
 
-    add_hash_to_journal(&mut builder).unwrap();
+    builder.hash_journal().unwrap();
     // Stack: [proof, journal_hash]
 
     // Hardcode program_id in redeem script (no longer in sig_script)
@@ -229,130 +229,17 @@ fn build_redeem_script(old_state_hash: [u32; 8], redeem_script_len: i64, program
             // Stack: []
         }
         ZkTag::Groth16 => {
-            g16::apply_to_builder(&mut builder).unwrap();
+            builder.verify_risc0_groth16().unwrap();
             // Stack: []
         }
     }
-    add_verify_input_index_zero(&mut builder).unwrap();
+    builder.verify_input_index_zero().unwrap();
     // Stack: []
 
-    add_verify_covenant_single_output(&mut builder).unwrap();
+    builder.verify_covenant_single_output().unwrap();
 
     builder.add_op(OpTrue).unwrap();
     // Stack: [true]
     builder.drain()
 }
 
-// ===== Shared helpers with stack comments =====
-
-/// Pushes old_state_hash, swaps with new_state_hash, duplicates new_state_hash.
-///
-/// Expects on stack: [..., new_state_hash]
-/// Leaves on stack:  [..., old_state_hash, new_state_hash, new_state_hash]
-fn add_state_preparation(
-    builder: &mut ScriptBuilder,
-    old_state_hash: [u32; 8],
-) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    builder.add_data(bytemuck::bytes_of(&old_state_hash))?;
-    builder.add_op(OpSwap)?;
-    builder.add_op(OpDup)
-}
-
-/// Builds prefix (OpData32 || new_state_hash) for the new redeem script.
-///
-/// Expects on stack: [..., new_state_hash, new_state_hash]
-/// Leaves on stack:  [..., new_state_hash, (OpData32 || new_state_hash)]
-fn add_new_redeem_prefix(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    builder.add_data(&[OpData32])?;
-    builder.add_op(OpSwap)?;
-    builder.add_op(OpCat)
-}
-
-/// Extracts redeem script suffix from sig_script and concatenates with prefix.
-///
-/// Expects on stack: [..., (OpData32 || new_state_hash)]
-/// Leaves on stack:  [..., new_redeem_script]
-fn add_suffix_extraction_and_cat(
-    builder: &mut ScriptBuilder,
-    redeem_script_len: i64,
-) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    builder.add_op(OpTxInputIndex)?;
-    builder.add_op(OpTxInputIndex)?;
-    builder.add_op(OpTxInputScriptSigLen)?;
-    builder.add_i64(-redeem_script_len + 33)?;
-    builder.add_op(OpAdd)?;
-    builder.add_op(OpTxInputIndex)?;
-    builder.add_op(OpTxInputScriptSigLen)?;
-    builder.add_op(OpTxInputScriptSigSubstr)?;
-    builder.add_op(OpCat)
-}
-
-/// Hashes the new redeem script and builds the expected SPK bytes.
-///
-/// SPK = version(2) || OpBlake2b || OpData32 || hash || OpEqual
-///
-/// Expects on stack: [..., new_redeem_script]
-/// Leaves on stack:  [..., constructed_spk]
-fn add_hash_and_build_spk(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    builder.add_op(OpBlake2b)?;
-    let mut data = [0u8; 4];
-    data[0..2].copy_from_slice(&TX_VERSION.to_le_bytes());
-    data[2] = OpBlake2b;
-    data[3] = OpData32;
-    builder.add_data(&data)?;
-    builder.add_op(OpSwap)?;
-    builder.add_op(OpCat)?;
-    builder.add_data(&[OpEqual])?;
-    builder.add_op(OpCat)
-}
-
-/// Verifies constructed SPK matches the actual output SPK at index 0.
-///
-/// Expects on stack: [..., constructed_spk]
-/// Leaves on stack:  [...]
-fn add_verify_output_spk(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    builder.add_op(OpTxInputIndex)?;
-    builder.add_op(OpTxOutputSpk)?;
-    builder.add_op(OpEqualVerify)
-}
-
-/// Constructs preimage = versioned_action_raw || old_state_hash || new_state_hash.
-///
-/// Expects on stack: [..., old_state_hash, new_state_hash]
-/// Leaves on stack:  [..., preimage]
-fn add_construct_journal_preimage(
-    builder: &mut ScriptBuilder,
-) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    builder.add_op(OpCat)?;
-    builder.add_i64(0)?;
-    builder.add_i64(size_of::<VersionedActionRaw>() as i64)?;
-    builder.add_op(OpTxPayloadSubstr)?;
-    builder.add_op(OpSwap)?;
-    builder.add_op(OpCat)
-}
-
-/// Hashes preimage with SHA256 to get journal_hash.
-///
-/// Expects on stack: [..., preimage]
-/// Leaves on stack:  [..., journal_hash]
-fn add_hash_to_journal(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    builder.add_op(OpSHA256)
-}
-
-/// Verifies current input index is 0.
-///
-/// Expects on stack: [true] (or any truthy value from prior verification)
-/// Leaves on stack:  []
-fn add_verify_input_index_zero(
-    builder: &mut ScriptBuilder,
-) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    builder.add_op(OpTxInputIndex)?;
-    builder.add_i64(0)?;
-    builder.add_op(OpEqualVerify)
-}
-
-fn add_verify_covenant_single_output(
-    builder: &mut ScriptBuilder,
-) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    builder.add_op(OpTxInputIndex)?.add_op(OpInputCovenantId)?.add_op(OpCovOutCount)?.add_i64(1)?.add_op(OpEqualVerify)
-}

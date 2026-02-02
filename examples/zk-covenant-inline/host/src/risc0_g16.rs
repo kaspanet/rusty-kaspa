@@ -2,9 +2,9 @@ use anyhow::anyhow;
 use ark_bn254::{Bn254, G1Affine, G2Affine};
 use ark_groth16::{Proof, VerifyingKey};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use crate::script_ext::ScriptBuilderExt;
 use kaspa_txscript::opcodes::codes::{
-    Op2Dup, OpCat, OpDiv, OpDup, OpFromAltStack, OpMul, OpRot, OpSHA256, OpSize, OpSubstr, OpSwap, OpToAltStack, OpVerify,
-    OpZkPrecompile,
+    OpCat, OpFromAltStack, OpRot, OpSHA256, OpSwap, OpToAltStack, OpVerify, OpZkPrecompile,
 };
 use kaspa_txscript::script_builder::ScriptBuilder;
 use risc0_groth16::Seal;
@@ -12,50 +12,93 @@ use risc0_zkvm::{Digest, Groth16ReceiptVerifierParameters};
 
 pub const PUBLIC_INPUT_COUNT: usize = 5;
 
-/// Expects on stack: [compressed_proof, journal_hash, program_id]
-/// Computes receipt_claim from program_id and journal_hash, builds the full
-/// Groth16 verification stack using proof from the stack, and verifies.
-///
-/// Stack layout for OpZkPrecompile (Groth16 tag 0x20), bottom to top:
-///   [id_bn254_fr, c1_padded, c0_padded, a1, a0, 5, proof, vk, 0x20]
-pub fn apply_to_builder(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    let (a0, a1) = control_root_split();
+pub trait Risc0Groth16Verify {
+    /// Expects on stack: [compressed_proof, journal_hash, program_id]
+    /// Computes receipt_claim from program_id and journal_hash, builds the full
+    /// Groth16 verification stack using proof from the stack, and verifies.
+    ///
+    /// Stack layout for OpZkPrecompile (Groth16 tag 0x20), bottom to top:
+    ///   [id_bn254_fr, c1_padded, c0_padded, a1, a0, 5, proof, vk, 0x20]
+    fn verify_risc0_groth16(&mut self) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder>;
 
-    // Stack: [proof, journal_hash, program_id]
+    /// Expects [journal_hash, program_id] on stack. Computes receipt_claim hash using opcodes.
+    /// Equivalent to `receipt_claim(journal_hash, image_id)` but done on-stack.
+    fn compute_receipt_claim(&mut self) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder>;
+}
 
-    // Move proof to alt stack
-    builder.add_op(OpRot)?; // [journal_hash, program_id, proof]
-    builder.add_op(OpToAltStack)?; // [journal_hash, program_id], alt: [proof]
+impl Risc0Groth16Verify for ScriptBuilder {
+    fn verify_risc0_groth16(&mut self) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+        let (a0, a1) = control_root_split();
 
-    // Compute receipt_claim from program_id and journal_hash (consumes both)
-    receipt_claim_to_builder(builder)?; // [receipt_claim_hash], alt: [proof]
+        // Stack: [proof, journal_hash, program_id]
 
-    // The groth16 precompile pops inputs and builds the vector in pop order.
-    // risc0 expects public inputs as [a0, a1, c0, c1, id_bn254_fr].
-    // So we must push in reverse: id at bottom, a0 on top.
+        // Move proof to alt stack
+        self.add_op(OpRot)?; // [journal_hash, program_id, proof]
+        self.add_op(OpToAltStack)?; // [journal_hash, program_id], alt: [proof]
 
-    builder.add_op(OpToAltStack)?; // [], alt: [proof, claim]
-    builder.add_data(id_bn254_fr_uncompressed().as_ref())?; // [id]
-    builder.add_op(OpFromAltStack)?; // [id, claim], alt: [proof]
-    split_at_mid(builder)?; // [id, claim_left, claim_right]
+        // Compute receipt_claim from program_id and journal_hash (consumes both)
+        self.compute_receipt_claim()?; // [receipt_claim_hash], alt: [proof]
 
-    // Pad claim_right (on top)
-    builder.add_data(&[0; 16])?;
-    builder.add_op(OpCat)?; // [id, claim_left, c1_padded]
-                            // Pad claim_left
-    builder.add_op(OpSwap)?; // [id, c1_padded, claim_left]
-    builder.add_data(&[0; 16])?;
-    builder.add_op(OpCat)?; // [id, c1_padded, c0_padded]
-                            // Push control root halves
-    builder.add_data(&a1)?; // [id, c1, c0, a1]
-    builder.add_data(&a0)?; // [id, c1, c0, a1, a0]
-    builder.add_u16(PUBLIC_INPUT_COUNT as u16)?; // [..., 5]
-                                                 // Bring proof from alt stack
-    builder.add_op(OpFromAltStack)?; // [..., 5, proof], alt: []
-    builder.add_data(&verifying_key_compressed())?; // [..., 5, proof, vk]
-    builder.add_data(&[0x20u8])?; // [..., 5, proof, vk, 0x20]
-    builder.add_op(OpZkPrecompile)?; // [true]
-    builder.add_op(OpVerify) // []
+        // The groth16 precompile pops inputs and builds the vector in pop order.
+        // risc0 expects public inputs as [a0, a1, c0, c1, id_bn254_fr].
+        // So we must push in reverse: id at bottom, a0 on top.
+
+        self.add_op(OpToAltStack)?; // [], alt: [proof, claim]
+        self.add_data(id_bn254_fr_uncompressed().as_ref())?; // [id]
+        self.add_op(OpFromAltStack)?; // [id, claim], alt: [proof]
+        self.split_at_mid()?; // [id, claim_left, claim_right]
+
+        // Pad claim_right (on top)
+        self.add_data(&[0; 16])?;
+        self.add_op(OpCat)?; // [id, claim_left, c1_padded]
+                              // Pad claim_left
+        self.add_op(OpSwap)?; // [id, c1_padded, claim_left]
+        self.add_data(&[0; 16])?;
+        self.add_op(OpCat)?; // [id, c1_padded, c0_padded]
+                              // Push control root halves
+        self.add_data(&a1)?; // [id, c1, c0, a1]
+        self.add_data(&a0)?; // [id, c1, c0, a1, a0]
+        self.add_u16(PUBLIC_INPUT_COUNT as u16)?; // [..., 5]
+                                                   // Bring proof from alt stack
+        self.add_op(OpFromAltStack)?; // [..., 5, proof], alt: []
+        self.add_data(&verifying_key_compressed())?; // [..., 5, proof, vk]
+        self.add_data(&[0x20u8])?; // [..., 5, proof, vk, 0x20]
+        self.add_op(OpZkPrecompile)?; // [true]
+        self.add_op(OpVerify) // []
+    }
+
+    fn compute_receipt_claim(&mut self) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
+        // Stack: [journal_hash, program_id]
+
+        // --- Compute output_digest = SHA256(OUTPUT_TAG || journal_hash || zeros32 || 2u16_le) ---
+
+        self
+            .add_op(OpToAltStack)? // [journal_hash], alt: [program_id]
+            .add_data(&OUTPUT_TAG_DIGEST)?          // [journal_hash, OUTPUT_TAG], alt: [program_id]
+            .add_op(OpSwap)?                        // [OUTPUT_TAG, journal_hash], alt: [program_id]
+            .add_op(OpCat)?                         // [OUTPUT_TAG || journal_hash]  (64 bytes), alt: [program_id]
+            .add_data(&[0u8; 32])?                  // [OUTPUT_TAG || journal_hash, zeros32], alt: [program_id]
+            .add_op(OpCat)?                         // [OUTPUT_TAG || journal_hash || zeros32]  (96 bytes), alt: [program_id]
+            .add_data(&2u16.to_le_bytes())?         // [..., 0x0200], alt: [program_id]
+            .add_op(OpCat)?                         // [98-byte output preimage], alt: [program_id]
+            .add_op(OpSHA256)?                      // [output_digest], alt: [program_id]
+
+        // --- Compute receipt_claim = SHA256(TAG || input || image_id || POST || output_digest || trailer) ---
+
+            .add_data(&RECEIPT_CLAIM_TAG_DIGEST)?   // [output_digest, TAG], alt: [program_id]
+            .add_data(&[0u8; 32])?             // [output_digest, TAG, input(zeros)], alt: [program_id]
+            .add_op(OpCat)?                         // [output_digest, TAG || input]  (64 bytes), alt: [program_id]
+
+            .add_op(OpFromAltStack)?                   // [output_digest, TAG || input, image_id]
+            .add_op(OpCat)?                         // [output_digest, TAG || input || image_id]  (96 bytes)
+            .add_data(&POST_DIGEST)?                // [output_digest, TAG || input || image_id, POST]
+            .add_op(OpCat)?                         // [output_digest, TAG || input || image_id || POST]  (128 bytes)
+            .add_op(OpSwap)?                        // [TAG || input || image_id || POST, output_digest]
+            .add_op(OpCat)?                         // [TAG || ... || POST || output_digest]  (160 bytes)
+            .add_data(&[0u8, 0, 0, 0, 0, 0, 0, 0, 4, 0])?  // [..., trailer(exit_codes + len)]
+            .add_op(OpCat)?                         // [170-byte receipt_claim preimage]
+            .add_op(OpSHA256) // [receipt_claim_hash]
+    }
 }
 
 /// Converts a risc0 Groth16 seal to compressed arkworks proof bytes.
@@ -82,29 +125,6 @@ fn id_bn254_fr_uncompressed() -> impl AsRef<[u8]> {
     Groth16ReceiptVerifierParameters::default().bn254_control_id
 }
 
-fn split_at_mid(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // todo it may use split opcode natively
-
-    builder
-        .add_op(OpSize)?// [[1,2,3,4,5,6], 6 ]
-        .add_i64(2)?// [[1,2,3,4,5,6], 6, 2 ]
-        .add_op(OpDiv)?// [[1,2,3,4,5,6], 3 ]
-        .add_op(Op2Dup)?  // [[1,2,3,4,5,6], 3, [1,2,3,4,5,6], 3 ]
-
-        .add_i64(0)?// [[1,2,3,4,5,6], 3, [1,2,3,4,5,6], 3, 0 ]
-        .add_op(OpSwap)?
-        .add_op(OpSubstr)?  // [[1,2,3,4,5,6], 3, [1,2,3]]
-        .add_op(OpRot)? // [3, [1,2,3], [1,2,3,4,5,6]]
-        .add_op(OpRot)? // [[1,2,3], [1,2,3,4,5,6], 3]
-
-        .add_op(OpDup)? // [[1,2,3], [1,2,3,4,5,6], 3, 3]
-        .add_i64(2)? // [[1,2,3], [1,2,3,4,5,6], 3, 3, 2]
-        .add_op(OpMul)? // [[1,2,3], [1,2,3,4,5,6], 6, 3]
-        .add_op(OpSubstr)?  // [[1,2,3], [4,5,6]]
-    ;
-
-    Ok(builder)
-}
 
 fn control_root_split() -> ([u8; 32], [u8; 32]) {
     let id = Groth16ReceiptVerifierParameters::default().control_root;
@@ -151,40 +171,6 @@ pub(crate) fn g2_from_bytes(elem: &[Vec<Vec<u8>>]) -> Result<G2Affine, anyhow::E
     G2Affine::deserialize_uncompressed(&*g2_affine).map_err(|err| anyhow!(err))
 }
 
-/// Expects [journal_hash, program_id] on stack. Computes receipt_claim hash using opcodes.
-/// Equivalent to `receipt_claim(journal_hash, image_id)` but done on-stack.
-fn receipt_claim_to_builder(builder: &mut ScriptBuilder) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
-    // Stack: [journal_hash, program_id]
-
-    // --- Compute output_digest = SHA256(OUTPUT_TAG || journal_hash || zeros32 || 2u16_le) ---
-
-    builder
-        .add_op(OpToAltStack)? // [journal_hash], alt: [program_id]
-        .add_data(&OUTPUT_TAG_DIGEST)?          // [journal_hash, OUTPUT_TAG], alt: [program_id]
-        .add_op(OpSwap)?                        // [OUTPUT_TAG, journal_hash], alt: [program_id]
-        .add_op(OpCat)?                         // [OUTPUT_TAG || journal_hash]  (64 bytes), alt: [program_id]
-        .add_data(&[0u8; 32])?                  // [OUTPUT_TAG || journal_hash, zeros32], alt: [program_id]
-        .add_op(OpCat)?                         // [OUTPUT_TAG || journal_hash || zeros32]  (96 bytes), alt: [program_id]
-        .add_data(&2u16.to_le_bytes())?         // [..., 0x0200], alt: [program_id]
-        .add_op(OpCat)?                         // [98-byte output preimage], alt: [program_id]
-        .add_op(OpSHA256)?                      // [output_digest], alt: [program_id]
-
-    // --- Compute receipt_claim = SHA256(TAG || input || image_id || POST || output_digest || trailer) ---
-
-        .add_data(&RECEIPT_CLAIM_TAG_DIGEST)?   // [output_digest, TAG], alt: [program_id]
-        .add_data(&[0u8; 32])?             // [output_digest, TAG, input(zeros)], alt: [program_id]
-        .add_op(OpCat)?                         // [output_digest, TAG || input]  (64 bytes), alt: [program_id]
-
-        .add_op(OpFromAltStack)?                   // [output_digest, TAG || input, image_id]
-        .add_op(OpCat)?                         // [output_digest, TAG || input || image_id]  (96 bytes)
-        .add_data(&POST_DIGEST)?                // [output_digest, TAG || input || image_id, POST]
-        .add_op(OpCat)?                         // [output_digest, TAG || input || image_id || POST]  (128 bytes)
-        .add_op(OpSwap)?                        // [TAG || input || image_id || POST, output_digest]
-        .add_op(OpCat)?                         // [TAG || ... || POST || output_digest]  (160 bytes)
-        .add_data(&[0u8, 0, 0, 0, 0, 0, 0, 0, 4, 0])?  // [..., trailer(exit_codes + len)]
-        .add_op(OpCat)?                         // [170-byte receipt_claim preimage]
-        .add_op(OpSHA256) // [receipt_claim_hash]
-}
 
 const POST_DIGEST: [u8; 32] = [
     163, 172, 194, 113, 23, 65, 137, 150, 52, 11, 132, 229, 169, 15, 62, 244, 196, 157, 34, 199, 158, 68, 170, 216, 34, 236, 156, 49,
@@ -204,6 +190,7 @@ const RECEIPT_CLAIM_TAG_DIGEST: [u8; 32] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::script_ext::ScriptBuilderExt;
     use kaspa_consensus_core::{
         hashing::sighash::SigHashReusedValuesUnsync,
         tx::{Transaction, TransactionInput, UtxoEntry, VerifiableTransaction},
@@ -318,7 +305,7 @@ mod tests {
         let mut builder = ScriptBuilder::new();
         builder.add_data(&journal_hash)?.add_data(&image_id)?;
 
-        let script = receipt_claim_to_builder(&mut builder)?.add_data(&expected)?.add_op(OpEqual)?.drain();
+        let script = builder.compute_receipt_claim()?.add_data(&expected)?.add_op(OpEqual)?.drain();
 
         let mut engine: TxScriptEngine<VerifiableTransactionMock, _> =
             TxScriptEngine::from_script(&script, &reused_values, &sig_cache, EngineFlags { covenants_enabled: true });
@@ -334,7 +321,7 @@ mod tests {
         let mut builder = ScriptBuilder::new();
         builder.add_data(&[1, 2, 3, 4, 5, 6])?;
 
-        let script = split_at_mid(&mut builder)?
+        let script = builder.split_at_mid()?
             .add_data(&[4, 5, 6])?
             .add_op(OpEqualVerify)?
             .add_data(&[1, 2, 3])
