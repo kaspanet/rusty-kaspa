@@ -71,6 +71,9 @@ static NETWORK_BLOCK_COUNT: OnceLock<Gauge> = OnceLock::new();
 /// Worker start time gauge (Unix timestamp in seconds)
 static WORKER_START_TIME: OnceLock<GaugeVec> = OnceLock::new();
 
+/// Worker current difficulty gauge (current mining difficulty assigned to worker)
+static WORKER_CURRENT_DIFFICULTY: OnceLock<GaugeVec> = OnceLock::new();
+
 /// Worker last activity time - tracks when each worker last submitted a share
 /// Key: "instance:worker:wallet", Value: Instant of last activity
 static WORKER_LAST_ACTIVITY: OnceLock<parking_lot::Mutex<HashMap<String, Instant>>> = OnceLock::new();
@@ -169,6 +172,10 @@ pub fn init_metrics() {
 
     WORKER_START_TIME.get_or_init(|| {
         register_gauge_vec!("ks_worker_start_time", "Unix timestamp (seconds) when worker first connected", WORKER_LABELS).unwrap()
+    });
+
+    WORKER_CURRENT_DIFFICULTY.get_or_init(|| {
+        register_gauge_vec!("ks_worker_current_difficulty", "Current mining difficulty assigned to worker", WORKER_LABELS).unwrap()
     });
 
     // Internal CPU miner metrics (no labels; there is only one internal miner per process)
@@ -761,6 +768,17 @@ pub fn init_worker_counters(worker: &WorkerContext) {
         let start_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as f64;
         gauge.with_label_values(&worker.labels()).set(start_time);
     }
+    // Initialize worker difficulty to 0 (will be updated when difficulty is set)
+    if let Some(gauge) = WORKER_CURRENT_DIFFICULTY.get() {
+        gauge.with_label_values(&worker.labels()).set(0.0);
+    }
+}
+
+/// Update the current mining difficulty for a worker
+pub fn update_worker_difficulty(worker: &WorkerContext, difficulty: f64) {
+    if let Some(gauge) = WORKER_CURRENT_DIFFICULTY.get() {
+        gauge.with_label_values(&worker.labels()).set(difficulty);
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -817,6 +835,10 @@ struct WorkerInfo {
     last_seen: Option<u64>, // Unix timestamp in seconds
     #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<String>, // "online", "offline", or "idle"
+    #[serde(skip_serializing_if = "Option::is_none", rename = "currentDifficulty")]
+    current_difficulty: Option<f64>, // Current mining difficulty assigned to this worker
+    #[serde(skip_serializing_if = "Option::is_none", rename = "sessionUptime")]
+    session_uptime: Option<u64>, // Session uptime in seconds (time since last connection)
 }
 
 fn parse_worker_labels(labels: &[prometheus::proto::LabelPair]) -> (String, String, String) {
@@ -837,7 +859,20 @@ fn parse_worker_labels(labels: &[prometheus::proto::LabelPair]) -> (String, Stri
 }
 
 fn new_worker_info(instance: String, worker: String, wallet: String) -> WorkerInfo {
-    WorkerInfo { instance, worker, wallet, hashrate: 0.0, shares: 0, stale: 0, invalid: 0, blocks: 0, last_seen: None, status: None }
+    WorkerInfo {
+        instance,
+        worker,
+        wallet,
+        hashrate: 0.0,
+        shares: 0,
+        stale: 0,
+        invalid: 0,
+        blocks: 0,
+        last_seen: None,
+        status: None,
+        current_difficulty: None,
+        session_uptime: None,
+    }
 }
 
 /// Get stats as JSON (optionally filtered to a single instance id)
@@ -868,6 +903,7 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     let mut worker_stats: HashMap<String, WorkerInfo> = HashMap::new();
     let mut worker_hash_values: HashMap<String, f64> = HashMap::new(); // Store hash values for hashrate calculation
     let mut worker_start_times: HashMap<String, f64> = HashMap::new(); // Store start times for hashrate calculation
+    let mut worker_difficulties: HashMap<String, f64> = HashMap::new(); // Store current difficulty for each worker
     let mut block_set: HashSet<String> = HashSet::new();
 
     // Parse global network gauges from the unfiltered set.
@@ -1098,6 +1134,24 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                 }
             }
         }
+
+        // Parse worker current difficulty
+        if name == "ks_worker_current_difficulty" {
+            for metric in family.get_metric() {
+                let (instance, worker_key, wallet) = parse_worker_labels(metric.get_label());
+
+                if !worker_key.is_empty() {
+                    let key = format!("{}:{}:{}", instance, worker_key, wallet);
+                    let difficulty = metric.get_gauge().get_value();
+                    // Use the most recent difficulty value (if multiple label variants exist)
+                    if difficulty > 0.0 {
+                        worker_difficulties.insert(key.clone(), difficulty);
+                    }
+                    // Ensure worker exists in stats
+                    worker_stats.entry(key.clone()).or_insert_with(|| new_worker_info(instance, worker_key, wallet));
+                }
+            }
+        }
     }
 
     // Calculate hashrate for workers using share_diff_counter and start_time
@@ -1137,6 +1191,22 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     {
         let mut activity = activity_map.lock();
         for (key, mut worker) in worker_stats.into_iter() {
+            // Populate difficulty and session uptime from collected metrics
+            if let Some(&difficulty) = worker_difficulties.get(&key) {
+                if difficulty > 0.0 {
+                    worker.current_difficulty = Some(difficulty);
+                }
+            }
+
+            // Calculate session uptime from start time
+            if let Some(&start_time_secs) = worker_start_times.get(&key) {
+                if start_time_secs > 0.0 {
+                    let start_time_u64 = start_time_secs as u64;
+                    let session_uptime_secs = current_time_secs.saturating_sub(start_time_u64);
+                    worker.session_uptime = Some(session_uptime_secs);
+                }
+            }
+
             // Check if worker has been active recently
             if let Some(&last_activity) = activity.get(&key) {
                 // Check if duration is valid (handles clock adjustments)

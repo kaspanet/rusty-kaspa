@@ -929,10 +929,14 @@ async function refresh() {
           </div>
         </td>
         <td class="py-1.5 pr-3">${formatHashrateHs(hashrateHs)}</td>
+        <td class="py-1.5 pr-3">-</td>
         <td class="py-1.5 pr-3">${shares}</td>
         <td class="py-1.5 pr-3">${stale}</td>
         <td class="py-1.5 pr-3">${invalid}</td>
         <td class="py-1.5 pr-3">${Number(icpu.blocksAccepted) || 0}</td>
+        <td class="py-1.5 pr-3">-</td>
+        <td class="py-1.5 pr-3">-</td>
+        <td class="py-1.5 pr-3">-</td>
       `;
       workersBody.appendChild(tr);
     }
@@ -952,6 +956,7 @@ async function refresh() {
           </div>
         </td>
         <td class="py-1.5 pr-3">${formatHashrateHs((w.hashrate || 0) * 1e9)}</td>
+        <td class="py-1.5 pr-3">${w.currentDifficulty != null ? formatDifficulty(w.currentDifficulty) : '-'}</td>
         <td class="py-1.5 pr-3">${w.shares ?? '-'}</td>
         <td class="py-1.5 pr-3">${w.stale ?? '-'}</td>
         <td class="py-1.5 pr-3">${w.invalid ?? '-'}</td>
@@ -960,6 +965,7 @@ async function refresh() {
           ${w.status ? `<span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full ${getStatusBgColor(w.status)}"></span><span class="${getStatusColor(w.status)} capitalize">${escapeHtmlAttr(w.status)}</span></span>` : '-'}
         </td>
         <td class="py-1.5 pr-3" title="${w.lastSeen ? formatUnixSeconds(w.lastSeen) : ''}">${w.lastSeen ? formatRelativeTime(w.lastSeen) : '-'}</td>
+        <td class="py-1.5 pr-3">${w.sessionUptime != null ? formatUptime(w.sessionUptime) : '-'}</td>
       `;
       workersBody.appendChild(tr);
     });
@@ -1100,10 +1106,14 @@ async function refresh() {
             </div>
           </td>
           <td class="py-1.5 pr-3">${formatHashrateHs(hashrateHs)}</td>
+          <td class="py-1.5 pr-3">-</td>
           <td class="py-1.5 pr-3">${shares}</td>
           <td class="py-1.5 pr-3">${stale}</td>
           <td class="py-1.5 pr-3">${invalid}</td>
           <td class="py-1.5 pr-3">${Number(icpu.blocksAccepted) || 0}</td>
+          <td class="py-1.5 pr-3">-</td>
+          <td class="py-1.5 pr-3">-</td>
+          <td class="py-1.5 pr-3">-</td>
         `;
         workersBody.appendChild(tr);
       }
@@ -1123,6 +1133,7 @@ async function refresh() {
             </div>
           </td>
           <td class="py-1.5 pr-3">${formatHashrateHs((w.hashrate || 0) * 1e9)}</td>
+          <td class="py-1.5 pr-3">${w.currentDifficulty != null ? formatDifficulty(w.currentDifficulty) : '-'}</td>
           <td class="py-1.5 pr-3">${w.shares ?? '-'}</td>
           <td class="py-1.5 pr-3">${w.stale ?? '-'}</td>
           <td class="py-1.5 pr-3">${w.invalid ?? '-'}</td>
@@ -1131,6 +1142,7 @@ async function refresh() {
             ${w.status ? `<span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full ${getStatusBgColor(w.status)}"></span><span class="${getStatusColor(w.status)} capitalize">${escapeHtmlAttr(w.status)}</span></span>` : '-'}
           </td>
           <td class="py-1.5 pr-3" title="${w.lastSeen ? formatUnixSeconds(w.lastSeen) : ''}">${w.lastSeen ? formatRelativeTime(w.lastSeen) : '-'}</td>
+          <td class="py-1.5 pr-3">${w.sessionUptime != null ? formatUptime(w.sessionUptime) : '-'}</td>
         `;
         workersBody.appendChild(tr);
       });
@@ -1212,6 +1224,8 @@ document.addEventListener('click', async (e) => {
       { label: 'Worker', value: workerDisplay, copyValue: workerDisplay },
       { label: 'Wallet', value: w.wallet || '-', copyValue: w.wallet || '' },
       { label: 'Hashrate', value: formatHashrateHs((w.hashrate || 0) * 1e9), copyValue: String((w.hashrate || 0) * 1e9) },
+      { label: 'Current Difficulty', value: w.currentDifficulty != null ? formatDifficulty(w.currentDifficulty) : '-', copyValue: w.currentDifficulty != null ? String(w.currentDifficulty) : '' },
+      { label: 'Session Uptime', value: w.sessionUptime != null ? formatUptime(w.sessionUptime) : '-', copyValue: w.sessionUptime != null ? String(w.sessionUptime) : '' },
       { label: 'Shares', value: w.shares ?? '-', copyValue: w.shares ?? '' },
       { label: 'Stale', value: w.stale ?? '-', copyValue: w.stale ?? '' },
       { label: 'Invalid', value: w.invalid ?? '-', copyValue: w.invalid ?? '' },
@@ -1237,12 +1251,14 @@ document.addEventListener('click', async (e) => {
 
 document.getElementById('downloadWorkersCsv').addEventListener('click', () => {
   const rows = [
-    ['instance','worker','wallet','hashrate_ghs','shares','stale','invalid','blocks'],
+    ['instance','worker','wallet','hashrate_ghs','current_difficulty','session_uptime_secs','shares','stale','invalid','blocks'],
     ...lastFilteredWorkers.map(w => [
       w.instance ?? '',
       w.worker ?? '',
       w.wallet ?? '',
       ((Number(w.hashrate) || 0)).toFixed(6),
+      w.currentDifficulty != null ? String(w.currentDifficulty) : '',
+      w.sessionUptime != null ? String(w.sessionUptime) : '',
       w.shares ?? '',
       w.stale ?? '',
       w.invalid ?? '',
