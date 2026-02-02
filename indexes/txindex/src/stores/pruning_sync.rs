@@ -198,7 +198,6 @@ mod tests {
         prelude::{BatchDbWriter, ConnBuilder, WriteBatch},
     };
     use kaspa_hashes::Hash;
-    
 
     #[test]
     fn test_pruning_sync_store() {

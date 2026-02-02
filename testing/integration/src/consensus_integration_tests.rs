@@ -7,7 +7,7 @@ use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
 use kaspa_consensus::consensus::test_consensus::{TestConsensus, TestConsensusFactory};
-use kaspa_consensus::model::stores::acceptance_data::{AcceptanceDataStore, AcceptanceDataStoreReader};
+use kaspa_consensus::model::stores::acceptance_data::AcceptanceDataStoreReader;
 use kaspa_consensus::model::stores::block_transactions::{
     BlockTransactionsStore, BlockTransactionsStoreReader, DbBlockTransactionsStore,
 };
@@ -21,7 +21,6 @@ use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus::processes::window::{WindowManager, WindowType};
-use kaspa_consensus_core::acceptance_data::{AcceptanceData, MergesetIndexType};
 use kaspa_consensus_core::api::args::TransactionValidationArgs;
 use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi};
 use kaspa_consensus_core::block::Block;
@@ -59,7 +58,7 @@ use kaspa_consensus_core::muhash::MuHashExtensions;
 use kaspa_core::core::Core;
 use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
-use kaspa_core::{assert, assert_match, info};
+use kaspa_core::{assert_match, info};
 use kaspa_database::create_temp_db;
 use kaspa_database::prelude::{CachePolicy, ConnBuilder};
 use kaspa_index_processor::service::IndexService;
