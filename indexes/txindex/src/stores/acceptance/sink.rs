@@ -59,10 +59,10 @@ mod tests {
     use super::*;
     use kaspa_database::{
         create_temp_db,
-        prelude::{BatchDbWriter, ConnBuilder, DB, StoreError, WriteBatch},
+        prelude::{BatchDbWriter, ConnBuilder, WriteBatch},
     };
     use kaspa_hashes::Hash;
-    use std::sync::Arc;
+    
 
     #[test]
     fn test_txindex_sink_store() {

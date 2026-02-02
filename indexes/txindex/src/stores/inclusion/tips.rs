@@ -112,7 +112,7 @@ mod tests {
         let tips = store.get_tips().unwrap();
         assert_eq!(tips.as_ref().unwrap().len(), 2);
         assert!(tips.as_ref().unwrap().contains(&tip1));
-        assert!(tips.as_ref().unwrap().contains(&initial_tips.iter().next().unwrap()));
+        assert!(tips.as_ref().unwrap().contains(initial_tips.iter().next().unwrap()));
 
         // Set 2 tips
         let tip2 = Hash::from_slice(&[2u8; 32]);
@@ -126,7 +126,7 @@ mod tests {
         assert!(tips.as_ref().unwrap().contains(&tip1));
         assert!(tips.as_ref().unwrap().contains(&tip2));
         assert!(tips.as_ref().unwrap().contains(&tip3));
-        assert!(tips.as_ref().unwrap().contains(&initial_tips.iter().next().unwrap()));
+        assert!(tips.as_ref().unwrap().contains(initial_tips.iter().next().unwrap()));
 
         // Remove 2 tips
         let mut write_batch = WriteBatch::new();
@@ -136,7 +136,7 @@ mod tests {
         let tips = store.get_tips().unwrap();
         assert_eq!(tips.as_ref().unwrap().len(), 2);
         assert!(tips.as_ref().unwrap().contains(&tip3));
-        assert!(tips.as_ref().unwrap().contains(&initial_tips.iter().next().unwrap()));
+        assert!(tips.as_ref().unwrap().contains(initial_tips.iter().next().unwrap()));
 
         // Delete all tips
         store.delete_all().unwrap();

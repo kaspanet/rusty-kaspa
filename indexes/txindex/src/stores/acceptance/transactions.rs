@@ -209,12 +209,12 @@ impl TxIndexAcceptedTransactionsStore for DbTxIndexAcceptedTransactionsStore {
 mod tests {
     use super::*;
     use bincode;
-    use kaspa_consensus::model::stores::acceptance_data::DbAcceptanceDataStore;
+    
     use kaspa_database::{
         create_temp_db,
         prelude::{BatchDbWriter, ConnBuilder, WriteBatch},
     };
-    use rand::Rng;
+    
 
     #[test]
     fn test_transaction_store_value_inclusion_roundtrip() {

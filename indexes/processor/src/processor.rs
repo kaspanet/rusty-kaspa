@@ -213,7 +213,7 @@ mod tests {
     use kaspa_database::prelude::ConnBuilder;
     use kaspa_database::utils::DbLifetime;
     use kaspa_notify::notifier::test_helpers::NotifyMock;
-    use kaspa_txindex::{TxIndex, api::TxIndexApi};
+    use kaspa_txindex::TxIndex;
     use kaspa_utxoindex::UtxoIndex;
     use rand::{SeedableRng, rngs::SmallRng};
     use std::sync::Arc;

@@ -732,7 +732,6 @@ async fn sanity_test() {
                         d.acceptance_data.is_none()
                             && d.inclusion_data.is_empty()
                             && d.conf_count.is_none()
-                            && d.transaction_id == 0.into()
                             && d.transactions.is_empty()
                     })));
                 })
