@@ -2,7 +2,7 @@ use crate::model::bluescore_refs::BlueScoreAcceptingRefData;
 
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_database::{
-    prelude::{CachePolicy, CachedDbAccess, DbWriter, DirectDbWriter, StoreResult, DB},
+    prelude::{CachePolicy, CachedDbAccess, DB, DbWriter, DirectDbWriter, StoreResult},
     registry::DatabaseStorePrefixes,
 };
 

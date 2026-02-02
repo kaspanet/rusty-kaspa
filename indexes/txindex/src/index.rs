@@ -5,6 +5,7 @@ use std::{
 };
 
 use crate::{
+    IDENT,
     api::TxIndexApi,
     errors::TxIndexResult,
     model::{
@@ -19,14 +20,13 @@ use crate::{
         pruning_sync::{PruningData, ToPruneStore},
         store_manager::Store,
     },
-    IDENT,
 };
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashSet, Hash,
     acceptance_data::{AcceptanceData, MergesetIndexType},
     block::Block,
     tx::TransactionId,
-    BlockHashSet, Hash,
 };
 use kaspa_consensus_notify::notification::{
     BlockAddedNotification, RetentionRootChangedNotification, VirtualChainChangedNotification,

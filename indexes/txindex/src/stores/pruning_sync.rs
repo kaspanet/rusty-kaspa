@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use kaspa_consensus_core::Hash;
 use kaspa_database::{
-    prelude::{CachedDbItem, DbWriter, DirectDbWriter, StoreResult, StoreResultExt, DB},
+    prelude::{CachedDbItem, DB, DbWriter, DirectDbWriter, StoreResult, StoreResultExt},
     registry::DatabaseStorePrefixes,
 };
 use kaspa_utils::mem_size::MemSizeEstimator;
@@ -129,20 +129,12 @@ impl PruningSyncStoreReader for DbPruningSyncStore {
 
     fn is_acceptance_pruning_done(&self) -> StoreResult<bool> {
         let data = self.get_pruning_data()?;
-        if let Some(data) = data {
-            Ok(data.next_to_prune_blue_score >= data.retention_root_blue_score)
-        } else {
-            Ok(false)
-        }
+        if let Some(data) = data { Ok(data.next_to_prune_blue_score >= data.retention_root_blue_score) } else { Ok(false) }
     }
 
     fn is_inclusion_pruning_done(&self) -> StoreResult<bool> {
         let data = self.get_pruning_data()?;
-        if let Some(data) = data {
-            Ok(data.next_to_prune_daa_score >= data.retention_root_daa_score)
-        } else {
-            Ok(false)
-        }
+        if let Some(data) = data { Ok(data.next_to_prune_daa_score >= data.retention_root_daa_score) } else { Ok(false) }
     }
 }
 
@@ -203,7 +195,7 @@ mod tests {
     use super::*;
     use kaspa_database::{
         create_temp_db,
-        prelude::{BatchDbWriter, ConnBuilder, StoreError, WriteBatch, DB},
+        prelude::{BatchDbWriter, ConnBuilder, DB, StoreError, WriteBatch},
     };
     use kaspa_hashes::Hash;
     use std::sync::Arc;

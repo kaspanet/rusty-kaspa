@@ -1,4 +1,4 @@
-use kaspa_consensus_core::{acceptance_data::MergesetIndexType, tx::TransactionIndexType, Hash};
+use kaspa_consensus_core::{Hash, acceptance_data::MergesetIndexType, tx::TransactionIndexType};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TxInclusionData {

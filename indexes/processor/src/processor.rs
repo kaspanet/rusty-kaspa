@@ -13,7 +13,7 @@ use kaspa_notify::{
     notification::Notification as NotificationTrait,
     notifier::DynNotify,
 };
-use kaspa_txindex::{api::TxIndexProxy, PRUNING_WAIT_INTERVAL};
+use kaspa_txindex::{PRUNING_WAIT_INTERVAL, api::TxIndexProxy};
 use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::sync::{
@@ -213,7 +213,7 @@ mod tests {
     use kaspa_database::prelude::ConnBuilder;
     use kaspa_database::utils::DbLifetime;
     use kaspa_notify::notifier::test_helpers::NotifyMock;
-    use kaspa_txindex::{api::TxIndexApi, TxIndex};
+    use kaspa_txindex::{TxIndex, api::TxIndexApi};
     use kaspa_utxoindex::UtxoIndex;
     use rand::{SeedableRng, rngs::SmallRng};
     use std::sync::Arc;

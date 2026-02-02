@@ -130,7 +130,7 @@ pub mod test_helpers {
         ) -> Option<Self> {
             match subscription.active() {
                 true => {
-                    if let TestNotification::VirtualChainChanged(ref payload) = self {
+                    if let TestNotification::VirtualChainChanged(payload) = self {
                         // Filter out fields that the subscription does not request
                         let accepted =
                             if subscription.include_accepted_transaction_ids() { payload.accepted_transaction_ids } else { None };

@@ -1,7 +1,7 @@
 use crate::stores::inclusion::{DaaScoreRefIter, DaaScoreRefTuple, TxInclusionIter, TxInclusionTuple};
+use kaspa_consensus_core::Hash;
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::tx::TransactionIndexType;
-use kaspa_consensus_core::Hash;
 use kaspa_consensus_notify::notification::BlockAddedNotification;
 
 pub struct ReindexedBlockAddedState<TxIter, DaaScoreIter>

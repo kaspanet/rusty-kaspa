@@ -1,10 +1,10 @@
 use crate::model::transactions::TxInclusionData;
 
 use kaspa_consensus_core::{
-    tx::{TransactionId, TransactionIndexType},
     Hash,
+    tx::{TransactionId, TransactionIndexType},
 };
-use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DbWriter, DirectDbWriter, StoreResult, DB};
+use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DB, DbWriter, DirectDbWriter, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use std::mem;

@@ -1,8 +1,8 @@
 use std::{ops::RangeBounds, sync::Arc};
 
-use kaspa_consensus_core::{tx::TransactionId, BlockHashSet, Hash};
+use kaspa_consensus_core::{BlockHashSet, Hash, tx::TransactionId};
 use kaspa_core::trace;
-use kaspa_database::prelude::{BatchDbWriter, CachePolicy, DbWriter, StoreResult, WriteBatch, DB};
+use kaspa_database::prelude::{BatchDbWriter, CachePolicy, DB, DbWriter, StoreResult, WriteBatch};
 
 use crate::{
     model::{
@@ -14,19 +14,19 @@ use crate::{
         mergeset_reindexer::{ReindexedMergesetState, ReindexedVirtualChangedState},
     },
     stores::{
+        TxIndexIncludingDaaScoreRefReader as _, TxIndexIncludingDaaScoreRefStore,
         acceptance::{
-            sink::{DbTxIndexSinkStore, TxIndexSinkStore, TxIndexSinkStoreReader},
             BlueScoreRefTuple as AcceptingBlueScoreTuple, DbTxIndexAcceptedTransactionsStore, DbTxIndexAcceptingBlueScoreRefStore,
             TxAcceptedTuple, TxIndexAcceptedTransactionsStore, TxIndexAcceptedTransactionsStoreReader,
             TxIndexAcceptingBlueScoreRefReader, TxIndexAcceptingBlueScoreRefStore,
+            sink::{DbTxIndexSinkStore, TxIndexSinkStore, TxIndexSinkStoreReader},
         },
         inclusion::{
-            tips::{DbTxIndexTipsStore, TxIndexTipsStore, TxIndexTipsStoreReader},
             DaaScoreRefTuple as IncludingDaaScoreTuple, DbTxIndexIncludedTransactionsStore, DbTxIndexIncludingDaaScoreRefStore,
             TxInclusionTuple, TxIndexIncludedTransactionsStore, TxIndexIncludedTransactionsStoreReader,
+            tips::{DbTxIndexTipsStore, TxIndexTipsStore, TxIndexTipsStoreReader},
         },
         pruning_sync::{DbPruningSyncStore, PruningData, PruningSyncStore, PruningSyncStoreReader, ToPruneStore},
-        TxIndexIncludingDaaScoreRefReader as _, TxIndexIncludingDaaScoreRefStore,
     },
 };
 

@@ -1,7 +1,7 @@
 use crate::model::transactions::TxAcceptanceData;
 
-use kaspa_consensus_core::{acceptance_data::MergesetIndexType, tx::TransactionId, Hash};
-use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DbWriter, DirectDbWriter, StoreResult, DB};
+use kaspa_consensus_core::{Hash, acceptance_data::MergesetIndexType, tx::TransactionId};
+use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DB, DbWriter, DirectDbWriter, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use std::mem;

@@ -14,7 +14,7 @@ use kaspa_notify::{
     scope::{
         BlockAddedScope, PruningPointUtxoSetOverrideScope, RetentionRootChangedScope, UtxosChangedScope, VirtualChainChangedScope,
     },
-    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
+    subscription::{MutationPolicies, UtxosChangedMutationPolicy, context::SubscriptionContext},
 };
 use kaspa_txindex::api::TxIndexProxy;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};

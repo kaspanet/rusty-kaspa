@@ -194,10 +194,12 @@ impl ConsensusConverter {
                     let inner = inner.clone().unwrap();
                     let mbad = &consensus.clone().async_get_block_acceptance_data(inner.accepting_block_hash).await?
                         [inner.mergeset_index as usize];
-                    included_transaction_data = vec![included_transaction_data
-                        .into_iter()
-                        .find(|x| x.including_block_hash == mbad.block_hash)
-                        .ok_or(RpcError::TransactionNotFound(transaction_id))?];
+                    included_transaction_data = vec![
+                        included_transaction_data
+                            .into_iter()
+                            .find(|x| x.including_block_hash == mbad.block_hash)
+                            .ok_or(RpcError::TransactionNotFound(transaction_id))?,
+                    ];
                 } else {
                     included_transaction_data = vec![];
                 }

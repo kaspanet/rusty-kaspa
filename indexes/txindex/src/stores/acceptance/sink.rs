@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use kaspa_consensus_core::Hash;
 use kaspa_database::{
-    prelude::{CachedDbItem, DbWriter, StoreResult, StoreResultExt, DB},
+    prelude::{CachedDbItem, DB, DbWriter, StoreResult, StoreResultExt},
     registry::DatabaseStorePrefixes,
 };
 use serde::{Deserialize, Serialize};
@@ -59,7 +59,7 @@ mod tests {
     use super::*;
     use kaspa_database::{
         create_temp_db,
-        prelude::{BatchDbWriter, ConnBuilder, StoreError, WriteBatch, DB},
+        prelude::{BatchDbWriter, ConnBuilder, DB, StoreError, WriteBatch},
     };
     use kaspa_hashes::Hash;
     use std::sync::Arc;

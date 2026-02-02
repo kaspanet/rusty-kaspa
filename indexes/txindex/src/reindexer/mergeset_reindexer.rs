@@ -1,7 +1,7 @@
 use crate::stores::acceptance::{BlueScoreRefIter, BlueScoreRefTuple, TxAcceptedIter, TxAcceptedTuple};
+use kaspa_consensus_core::Hash;
 use kaspa_consensus_core::acceptance_data::MergesetBlockAcceptanceData;
 use kaspa_consensus_core::acceptance_data::MergesetIndexType;
-use kaspa_consensus_core::Hash;
 use kaspa_consensus_notify::notification::VirtualChainChangedNotification;
 
 pub struct ReindexedVirtualChangedState<TxIter, BlueScoreIter>

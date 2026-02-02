@@ -1,7 +1,7 @@
 use std::{fmt::Debug, sync::Arc};
 
-use kaspa_consensus_core::tx::TransactionId;
 use kaspa_consensus_core::BlockHashSet;
+use kaspa_consensus_core::tx::TransactionId;
 use kaspa_consensus_notify::notification::{
     BlockAddedNotification, RetentionRootChangedNotification, VirtualChainChangedNotification,
 };
