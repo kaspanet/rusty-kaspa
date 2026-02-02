@@ -16,6 +16,7 @@ pub struct EngineContext<'a, Reused> {
 
 impl<'a, Reused> EngineContext<'a, Reused> {
     /// Attach a covenants context to an existing engine context.
+    #[inline]
     pub fn with_covenants_ctx(mut self, covenants_ctx: &'a CovenantsContext) -> Self {
         self.covenants_ctx = covenants_ctx;
         self
@@ -47,7 +48,12 @@ impl<'a> EngineContext<'a, MissingReusedValues> {
     /// Upgrade the context by binding concrete sig-hash reused values (one-way).
     #[inline]
     pub fn with_reused<New: SigHashReusedValues>(self, reused_values: &'a New) -> EngineContext<'a, New> {
-        EngineContext { reused_values, sig_cache: self.sig_cache, covenants_ctx: self.covenants_ctx, seq_commit_accessor: None }
+        EngineContext {
+            reused_values,
+            sig_cache: self.sig_cache,
+            covenants_ctx: self.covenants_ctx,
+            seq_commit_accessor: self.seq_commit_accessor,
+        }
     }
 }
 
