@@ -16,9 +16,9 @@ use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
-use kaspa_consensus::params::{ForkActivation, OverrideParams, DEVNET_PARAMS, MAINNET_PARAMS};
-use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
+use kaspa_consensus::params::{DEVNET_PARAMS, ForkActivation, MAINNET_PARAMS, OverrideParams};
 use kaspa_consensus::pipeline::ProcessingCounters;
+use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus::processes::window::{WindowManager, WindowType};
 use kaspa_consensus_core::acceptance_data::{AcceptanceData, MergesetIndexType};
@@ -71,10 +71,10 @@ use kaspa_txindex::TxIndex;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_txscript::opcodes::codes::OpTrue;
 use kaspa_txscript::script_builder::ScriptBuilderResult;
-use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
+use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use serde::{Deserialize, Serialize};
-use std::cmp::{max, Ordering};
+use std::cmp::{Ordering, max};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
@@ -691,7 +691,7 @@ async fn goref_tx_small_concurrent_test() {
     json_test("testdata/dags_for_json_tests/goref-1060-tx-265-blocks", true).await
 }
 
-fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
+fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> + 'static {
     let file = common::open_file(path);
     let decoder = GzDecoder::new(file);
     BufReader::new(decoder).lines().map(|line| line.unwrap())
@@ -1866,7 +1866,7 @@ async fn runtime_sig_op_counting_test() {
 async fn sighash_type_commitment_test() {
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::hashing::sighash_type::{
-        SigHashType, SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE,
+        SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE, SigHashType,
     };
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
     use kaspa_txscript::opcodes::codes::*;

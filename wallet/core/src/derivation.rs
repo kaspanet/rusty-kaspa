@@ -9,8 +9,8 @@ pub use kaspa_wallet_keys::derivation::traits::*;
 use kaspa_wallet_keys::publickey::{PublicKey, PublicKeyArrayT, PublicKeyT};
 pub use kaspa_wallet_keys::types::*;
 
-use crate::account::create_private_keys;
 use crate::account::AccountKind;
+use crate::account::create_private_keys;
 use crate::error::Error;
 use crate::imports::*;
 use crate::result::Result;

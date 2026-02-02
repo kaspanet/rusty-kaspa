@@ -12,7 +12,7 @@ use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
 use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::scope::{BlockAddedScope, UtxosChangedScope, VirtualDaaScoreChangedScope};
-use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcTransactionId};
+use kaspa_rpc_core::{Notification, RpcTransactionId, api::rpc::RpcApi};
 use kaspa_txscript::pay_to_address_script;
 use kaspad_lib::args::Args;
 use rand::thread_rng;

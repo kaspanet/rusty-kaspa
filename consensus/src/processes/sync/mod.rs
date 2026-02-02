@@ -39,14 +39,14 @@ pub struct SyncManager<
 }
 
 impl<
-        S: RelationsStoreReader,
-        T: ReachabilityStoreReader,
-        U: GhostdagStoreReader,
-        V: SelectedChainStoreReader,
-        W: HeadersSelectedTipStoreReader,
-        X: PruningStoreReader,
-        Y: StatusesStoreReader,
-    > SyncManager<S, T, U, V, W, X, Y>
+    S: RelationsStoreReader,
+    T: ReachabilityStoreReader,
+    U: GhostdagStoreReader,
+    V: SelectedChainStoreReader,
+    W: HeadersSelectedTipStoreReader,
+    X: PruningStoreReader,
+    Y: StatusesStoreReader,
+> SyncManager<S, T, U, V, W, X, Y>
 {
     pub fn new(
         mergeset_size_limit: u64,

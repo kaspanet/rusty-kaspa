@@ -6,9 +6,9 @@ use kaspa_notify::{
     full_featured,
     notification::Notification as NotificationTrait,
     subscription::{
+        Subscription,
         context::SubscriptionContext,
         single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
-        Subscription,
     },
 };
 use std::sync::Arc;

@@ -6,7 +6,7 @@ use crate::{error::Error, node::NodeDescriptor};
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_notify::{
     listener::ListenerLifespan,
-    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
+    subscription::{MutationPolicies, UtxosChangedMutationPolicy, context::SubscriptionContext},
 };
 use kaspa_rpc_core::{
     api::ctl::RpcCtl,

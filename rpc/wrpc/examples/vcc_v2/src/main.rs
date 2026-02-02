@@ -1,13 +1,13 @@
 // Example of VCCv2 endpoint
 
 use kaspa_addresses::Address;
-use kaspa_rpc_core::{api::rpc::RpcApi, RpcDataVerbosityLevel, RpcHash, RpcOptionalTransaction};
+use kaspa_rpc_core::{RpcDataVerbosityLevel, RpcHash, RpcOptionalTransaction, api::rpc::RpcApi};
 use kaspa_wrpc_client::{
+    KaspaRpcClient, WrpcEncoding,
     client::{ConnectOptions, ConnectStrategy},
     prelude::NetworkId,
     prelude::NetworkType,
     result::Result,
-    KaspaRpcClient, WrpcEncoding,
 };
 use std::time::Duration;
 use std::{collections::HashSet, process::ExitCode};

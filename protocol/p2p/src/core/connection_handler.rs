@@ -1,7 +1,7 @@
 use crate::common::ProtocolError;
 use crate::core::hub::HubEvent;
 use crate::pb::{
-    p2p_client::P2pClient as ProtoP2pClient, p2p_server::P2p as ProtoP2p, p2p_server::P2pServer as ProtoP2pServer, KaspadMessage,
+    KaspadMessage, p2p_client::P2pClient as ProtoP2pClient, p2p_server::P2p as ProtoP2p, p2p_server::P2pServer as ProtoP2pServer,
 };
 use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
@@ -16,10 +16,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
-use tokio::sync::mpsc::{channel as mpsc_channel, Sender as MpscSender};
-use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
-use tokio_stream::wrappers::ReceiverStream;
+use tokio::sync::mpsc::{Sender as MpscSender, channel as mpsc_channel};
+use tokio::sync::oneshot::{Sender as OneshotSender, channel as oneshot_channel};
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::transport::{Error as TonicError, Server as TonicServer};
 use tonic::{Request, Response, Status as TonicStatus, Streaming};
 

@@ -13,7 +13,7 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Prefix;
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::str::FromStr;
@@ -324,11 +324,7 @@ impl FromStr for NetworkId {
 
 impl Display for NetworkId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if let Some(suffix) = self.suffix {
-            write!(f, "{}-{}", self.network_type, suffix)
-        } else {
-            write!(f, "{}", self.network_type)
-        }
+        if let Some(suffix) = self.suffix { write!(f, "{}-{}", self.network_type, suffix) } else { write!(f, "{}", self.network_type) }
     }
 }
 
