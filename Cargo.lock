@@ -8171,6 +8171,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-covenant-rollup-core"
+version = "1.1.0-rc.2"
+dependencies = [
+ "blake3",
+ "bytemuck",
+ "kaspa-hashes",
+ "kaspa-merkle",
+ "sha2",
+]
+
+[[package]]
 name = "zmij"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,21 @@
+[package]
+name = "zk-covenant-rollup-core"
+rust-version.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+include.workspace = true
+
+[dependencies]
+bytemuck = { workspace = true, features = ["derive"]}
+sha2 = { version = "=0.10.9", default-features = false }
+blake3 = { workspace = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+kaspa-hashes.workspace = true
+kaspa-merkle.workspace = true

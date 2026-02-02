@@ -1,0 +1,26 @@
+[package]
+name = "zk-covenant-rollup-host"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+kaspa-consensus-core = { path = "../../../consensus/core" }
+kaspa-txscript = { path = "../../../crypto/txscript" }
+kaspa-hashes = { path = "../../../crypto/hashes" }
+kaspa-merkle = { path = "../../../crypto/merkle" }
+
+borsh = { version = "1.6.0"}
+bytemuck = "1.24.0"
+faster-hex = { version = "0.10.0" }
+risc0-zkvm = { version = "3.0.4", default-features = true, features = [] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zk-covenant-rollup-methods = { path = "../methods" }
+zk-covenant-rollup-core = { path = "../core" }
+
+
+#uncomment for debug
+#[patch.crates-io]
+#risc0-zkvm = { path = "../../../../../risc0/risc0/zkvm" }
+#risc0-zkp = { path = "../../../../../risc0/risc0/zkp"}

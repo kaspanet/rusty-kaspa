@@ -64,6 +64,7 @@ members = [
     "utils/alloc",
 
     "examples/zk-covenant-inline/core",
+    "examples/zk-covenant-rollup/core",
 ]
 
 [workspace.package]
