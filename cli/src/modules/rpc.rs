@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use crate::imports::*;
 use convert_case::{Case, Casing};
 use kaspa_rpc_core::api::ops::RpcApiOps;

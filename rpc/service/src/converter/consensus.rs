@@ -190,19 +190,16 @@ impl ConsensusConverter {
             let mut included_transaction_data: Vec<RpcTransactionInclusionData> =
                 included_transaction_data.into_iter().map(RpcTransactionInclusionData::from).collect();
             if !include_unaccepted {
-                if accepted_transaction_data.is_none() {
-                    included_transaction_data = vec![];
-                } else {
-                    let mbad = &consensus
-                        .clone()
-                        .async_get_block_acceptance_data(
-                            accepted_transaction_data.as_ref().unwrap().clone().unwrap().accepting_block_hash,
-                        )
-                        .await?[accepted_transaction_data.as_ref().unwrap().clone().unwrap().mergeset_index as usize];
+                if let Some(inner) = accepted_transaction_data.as_ref() {
+                    let inner = inner.clone().unwrap();
+                    let mbad = &consensus.clone().async_get_block_acceptance_data(inner.accepting_block_hash).await?
+                        [inner.mergeset_index as usize];
                     included_transaction_data = vec![included_transaction_data
                         .into_iter()
                         .find(|x| x.including_block_hash == mbad.block_hash)
                         .ok_or(RpcError::TransactionNotFound(transaction_id))?];
+                } else {
+                    included_transaction_data = vec![];
                 }
             };
             included_transaction_data
@@ -232,16 +229,16 @@ impl ConsensusConverter {
         };
 
         let conf_count = if include_conf_count {
-            let acceptance_data = accepted_transaction_data.as_ref().unwrap();
-            acceptance_data
-                .as_ref()
-                .map(|acceptance_data| sink_blue_score.unwrap().saturating_sub(acceptance_data.accepting_blue_score))
+            if let Some(inner) = accepted_transaction_data.as_ref() {
+                inner.as_ref().map(|acceptance_data| sink_blue_score.unwrap().saturating_sub(acceptance_data.accepting_blue_score))
+            } else {
+                None
+            }
         } else {
             None
         };
 
         Ok(RpcTransactionData {
-            transaction_id,
             transactions,
             inclusion_data: included_transaction_data,
             acceptance_data: accepted_transaction_data.flatten(),

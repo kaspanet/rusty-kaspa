@@ -196,7 +196,6 @@ from!(item: &kaspa_rpc_core::RpcTransactionAcceptanceData, protowire::RpcTransac
 
 from!(item: &kaspa_rpc_core::RpcTransactionData, protowire::RpcTransactionData, {
     Self {
-        transaction_id: item.transaction_id.to_string(),
         transactions: item.transactions.iter().map(protowire::RpcTransaction::from).collect(),
         inclusion_data: item.inclusion_data.iter().map(protowire::RpcTransactionInclusionData::from).collect(),
         acceptance_data: item.acceptance_data.as_ref().map(protowire::RpcTransactionAcceptanceData::from),
@@ -455,7 +454,6 @@ try_from!(item: &protowire::RpcTransactionAcceptanceData, kaspa_rpc_core::RpcTra
 
 try_from!(item: &protowire::RpcTransactionData, kaspa_rpc_core::RpcTransactionData, {
     Self {
-        transaction_id: RpcHash::from_str(&item.transaction_id)?,
         transactions: item.transactions.iter().map(kaspa_rpc_core::RpcTransaction::try_from).collect::<RpcResult<Vec<kaspa_rpc_core::RpcTransaction>>>()?,
         inclusion_data: item.inclusion_data.iter().map(kaspa_rpc_core::RpcTransactionInclusionData::try_from).collect::<RpcResult<Vec<kaspa_rpc_core::RpcTransactionInclusionData>>>()?,
         acceptance_data: item.acceptance_data.as_ref().map(kaspa_rpc_core::RpcTransactionAcceptanceData::try_from).transpose()?,

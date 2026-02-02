@@ -128,7 +128,6 @@ message RpcTransactionOutputVerboseData {
 }
 
 message RpcTransactionData {
-  string transactionId = 1;
   repeated RpcTransaction Transactions = 2;
   repeated RpcTransactionInclusionData inclusionData = 3;
   optional RpcTransactionAcceptanceData acceptanceData = 4;
