@@ -1468,13 +1468,21 @@ impl ShareHandler {
                             let hashes = metrics.hashes_tried.load(Ordering::Relaxed);
                             let submitted = metrics.blocks_submitted.load(Ordering::Relaxed);
                             let accepted = metrics.blocks_accepted.load(Ordering::Relaxed);
-                            let dt = now.duration_since(last_internal_sample).as_secs_f64().max(0.000_001);
-                            let dh = last_internal_hashes.map(|h| hashes.saturating_sub(h)).unwrap_or(0);
+
+                            // Calculate hashrate based on hash delta
+                            let hashrate_ghs = if let Some(last_hashes) = last_internal_hashes {
+                                let dt = now.duration_since(last_internal_sample).as_secs_f64().max(0.000_001);
+                                let dh = hashes.saturating_sub(last_hashes);
+                                // Hashrate as GH/s (format_hashrate expects GH/s)
+                                (dh as f64 / dt) / 1e9
+                            } else {
+                                // First iteration: initialize but show 0 hashrate
+                                0.0
+                            };
+
+                            // Update tracking variables for next iteration
                             last_internal_hashes = Some(hashes);
                             last_internal_sample = now;
-
-                            // Hashrate as GH/s (format_hashrate expects GH/s)
-                            let hashrate_ghs = (dh as f64 / dt) / 1e9;
                             internal_totals =
                                 Some((hashrate_ghs, accepted as i64, submitted.saturating_sub(accepted) as i64, 0, accepted as i64));
                             let internal_line = format!(
