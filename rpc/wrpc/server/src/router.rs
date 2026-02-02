@@ -71,8 +71,6 @@ impl Router {
                 GetVirtualChainFromBlock,
                 GetVirtualChainFromBlockV2,
                 GetTransaction,
-                GetTransactionsByAcceptingBlueScore,
-                GetTransactionsByIncludingDaaScore,
                 ResolveFinalityConflict,
                 Shutdown,
                 SubmitBlock,

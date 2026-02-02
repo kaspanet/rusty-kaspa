@@ -84,8 +84,7 @@ impl Factory {
                 GetUtxoReturnAddress,
                 GetVirtualChainFromBlockV2,
                 GetTransaction,
-                GetTransactionsByAcceptingBlueScore,
-                GetTransactionsByIncludingDaaScore,
+                
                 NotifyBlockAdded,
                 NotifyNewBlockTemplate,
                 NotifyFinalityConflict,

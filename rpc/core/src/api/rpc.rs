@@ -529,45 +529,6 @@ pub trait RpcApi: Sync + Send + AnySync {
         connection: Option<&DynRpcConnection>,
         request: GetTransactionRequest,
     ) -> RpcResult<GetTransactionResponse>;
-
-    async fn get_transactions_by_accepting_blue_score(
-        &self,
-        from_blue_score: u64,
-        to_blue_score: u64,
-        limit: u64,
-    ) -> RpcResult<GetTransactionsByAcceptingBlueScoreResponse> {
-        self.get_transactions_by_accepting_blue_score_call(
-            None,
-            GetTransactionsByAcceptingBlueScoreRequest { from_blue_score, to_blue_score, limit },
-        )
-        .await
-    }
-
-    async fn get_transactions_by_accepting_blue_score_call(
-        &self,
-        connection: Option<&DynRpcConnection>,
-        request: GetTransactionsByAcceptingBlueScoreRequest,
-    ) -> RpcResult<GetTransactionsByAcceptingBlueScoreResponse>;
-
-    async fn get_transactions_by_including_daa_score(
-        &self,
-        from_daa_score: u64,
-        to_daa_score: u64,
-        limit: u64,
-    ) -> RpcResult<GetTransactionsByIncludingDaaScoreResponse> {
-        self.get_transactions_by_including_daa_score_call(
-            None,
-            GetTransactionsByIncludingDaaScoreRequest { from_daa_score, to_daa_score, limit },
-        )
-        .await
-    }
-
-    async fn get_transactions_by_including_daa_score_call(
-        &self,
-        connection: Option<&DynRpcConnection>,
-        request: GetTransactionsByIncludingDaaScoreRequest,
-    ) -> RpcResult<GetTransactionsByIncludingDaaScoreResponse>;
-
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

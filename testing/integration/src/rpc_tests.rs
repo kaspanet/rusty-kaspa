@@ -738,44 +738,6 @@ async fn sanity_test() {
                 })
             }
 
-            KaspadPayloadOps::GetTransactionsByAcceptingBlueScore => {
-                let rpc_client = client.clone();
-                tst!(op, {
-                    let response = rpc_client
-                        .get_transactions_by_accepting_blue_score_call(
-                            None,
-                            GetTransactionsByAcceptingBlueScoreRequest {
-                                from_blue_score: u64::MIN,
-                                to_blue_score: u64::MAX,
-                                limit: 0,
-                            },
-                        )
-                        .await;
-                    // Test Get Transactions By Blue Score:
-                    assert!(response.clone().unwrap().transaction_ids.is_empty());
-                    assert!(response.clone().unwrap().accepting_blue_scores.is_empty());
-                    assert!(response.clone().unwrap().confirmation_counts.is_empty());
-                })
-            }
-
-            KaspadPayloadOps::GetTransactionsByIncludingDaaScore => {
-                let rpc_client = client.clone();
-                tst!(op, {
-                    let response = rpc_client
-                        .get_transactions_by_including_daa_score_call(
-                            None,
-                            GetTransactionsByIncludingDaaScoreRequest { from_daa_score: u64::MIN, to_daa_score: u64::MAX, limit: 0 },
-                        )
-                        .await;
-                    // We only expect genesis transactions here
-                    let genesis_transactions = SIMNET_GENESIS.build_genesis_transactions();
-                    assert_eq!(response.clone().unwrap().transaction_ids.len(), genesis_transactions.len());
-                    assert_eq!(response.clone().unwrap().transaction_ids[0], genesis_transactions[0].id());
-                    assert_eq!(response.clone().unwrap().including_daa_scores.len(), 1);
-                    assert_eq!(response.clone().unwrap().including_daa_scores[0], SIMNET_GENESIS.daa_score);
-                })
-            }
-
             KaspadPayloadOps::NotifyBlockAdded => {
                 let rpc_client = client.clone();
                 let id = listener_id;

@@ -553,39 +553,6 @@ from!(item: RpcResult<&kaspa_rpc_core::GetTransactionResponse>, protowire::GetTr
     }
 });
 
-from!(item: &kaspa_rpc_core::GetTransactionsByAcceptingBlueScoreRequest, protowire::GetTransactionsByAcceptingBlueScoreRequestMessage, {
-    Self {
-        from_blue_score: item.from_blue_score,
-        to_blue_score: item.to_blue_score,
-        limit: item.limit,
-    }
-});
-
-from!(item: RpcResult<&kaspa_rpc_core::GetTransactionsByAcceptingBlueScoreResponse>, protowire::GetTransactionsByAcceptingBlueScoreResponseMessage, {
-    Self {
-        transaction_ids : item.transaction_ids.iter().map(|x| x.to_string()).collect(),
-        accepting_blue_scores : item.accepting_blue_scores.clone(),
-        confirmation_counts : item.confirmation_counts.clone(),
-        error: None,
-    }
-});
-
-from!(item: &kaspa_rpc_core::GetTransactionsByIncludingDaaScoreRequest, protowire::GetTransactionsByIncludingDaaScoreRequestMessage, {
-    Self {
-        from_daa_score: item.from_daa_score,
-        to_daa_score: item.to_daa_score,
-        limit: item.limit
-    }
-});
-
-from!(item: RpcResult<&kaspa_rpc_core::GetTransactionsByIncludingDaaScoreResponse>, protowire::GetTransactionsByIncludingDaaScoreResponseMessage, {
-    Self {
-        transaction_ids : item.transaction_ids.iter().map(|x| x.to_string()).collect(),
-        including_daa_scores : item.including_daa_scores.clone(),
-        error: None,
-    }
-});
-
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
 });
@@ -870,37 +837,6 @@ try_from!(item: &protowire::GetTransactionRequestMessage, kaspa_rpc_core::GetTra
 try_from!(item: &protowire::GetTransactionResponseMessage, RpcResult<kaspa_rpc_core::GetTransactionResponse>, {
     Self {
         transaction_data: item.transaction_data.as_ref().map(|x| x.try_into()).transpose()?
-    }
-});
-
-try_from!(item: &protowire::GetTransactionsByAcceptingBlueScoreRequestMessage, kaspa_rpc_core::GetTransactionsByAcceptingBlueScoreRequest, {
-    Self {
-        from_blue_score: item.from_blue_score,
-        to_blue_score: item.to_blue_score,
-        limit: item.limit
-    }
-});
-
-try_from!(item: &protowire::GetTransactionsByAcceptingBlueScoreResponseMessage, RpcResult<kaspa_rpc_core::GetTransactionsByAcceptingBlueScoreResponse>, {
-    Self {
-        transaction_ids: item.transaction_ids.iter().map(|x| kaspa_rpc_core::RpcTransactionId::from_str(x)).collect::<Result<Vec<_>, _>>()?,
-        accepting_blue_scores: item.accepting_blue_scores.clone(),
-        confirmation_counts: item.confirmation_counts.clone(),
-    }
-});
-
-try_from!(item: &protowire::GetTransactionsByIncludingDaaScoreRequestMessage, kaspa_rpc_core::GetTransactionsByIncludingDaaScoreRequest, {
-    Self {
-        from_daa_score: item.from_daa_score,
-        to_daa_score: item.to_daa_score,
-        limit: item.limit
-    }
-});
-
-try_from!(item: &protowire::GetTransactionsByIncludingDaaScoreResponseMessage, RpcResult<kaspa_rpc_core::GetTransactionsByIncludingDaaScoreResponse>, {
-    Self {
-        transaction_ids: item.transaction_ids.iter().map(|x| kaspa_rpc_core::RpcTransactionId::from_str(x)).collect::<Result<Vec<_>, _>>()?,
-        including_daa_scores: item.including_daa_scores.clone(),
     }
 });
 

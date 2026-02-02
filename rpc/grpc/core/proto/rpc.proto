@@ -1124,42 +1124,6 @@ message GetTransactionResponseMessage {
   RPCError error = 1000;
 }
 
-message GetTransactionsByAcceptingBlueScoreRequestMessage {
-  /// Inclusive
-  uint64 fromBlueScore = 1;
-  /// Inclusive
-  uint64 toBlueScore = 2;
-  /// sets a soft limit to the number of returned transactions, 0 means no limit.
-  /// note: the limit respects blue score boundaries,
-  /// i.e. it is guaranteed that when the limit is reached, all remaining transactions with the same accepting blue score are also returned.
-  uint64 limit = 3;
-}
-
-message GetTransactionsByAcceptingBlueScoreResponseMessage {
-  repeated string transactionIds = 1;
-  repeated uint64 acceptingBlueScores = 2;
-  repeated uint64 confirmationCounts = 3;
-
-  RPCError error = 1000;
-}
-
-message GetTransactionsByIncludingDaaScoreRequestMessage {
-  /// Inclusive
-  uint64 fromDaaScore = 1;
-  /// Inclusive
-  uint64 toDaaScore = 2;
-  /// sets a soft limit to the number of returned transactions, 0 means no limit.
-  /// note: the limit respects daa score boundaries,
-  /// i.e. it is guaranteed that when the limit is reached, all remaining transactions with the same including daa score are also returned.
-  uint64 limit = 3;
-}
-
-message GetTransactionsByIncludingDaaScoreResponseMessage {
-  repeated string transactionIds = 1;
-  repeated uint64 includingDaaScores = 2;
-
-  RPCError error = 1000;
-}
 
 message GetCurrentBlockColorRequestMessage {
   string hash = 1;

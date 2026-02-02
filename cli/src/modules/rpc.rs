@@ -343,40 +343,6 @@ impl Rpc {
                     .await?;
                 self.println(&ctx, result);
             }
-            RpcApiOps::GetTransactionsByAcceptingBlueScore => {
-                if argv.is_empty() {
-                    return Err(Error::custom("Please specify at least one accepting_blue_score"));
-                }
-                let from_blue_score = argv.remove(0).parse::<u64>()?;
-                let to_blue_score = argv.remove(0).parse::<u64>()?;
-                let limit = argv.remove(0).parse::<u64>().unwrap_or(u64::MAX);
-
-                let result = rpc
-                    .get_transactions_by_accepting_blue_score_call(
-                        None,
-                        GetTransactionsByAcceptingBlueScoreRequest { from_blue_score, to_blue_score, limit },
-                    )
-                    .await?;
-
-                self.println(&ctx, result);
-            }
-            RpcApiOps::GetTransactionsByIncludingDaaScore => {
-                if argv.is_empty() {
-                    return Err(Error::custom("Please specify at least one including_daa_score"));
-                }
-                let from_daa_score = argv.remove(0).parse::<u64>()?;
-                let to_daa_score = argv.remove(0).parse::<u64>()?;
-                let limit = argv.remove(0).parse::<u64>().unwrap_or(u64::MAX);
-
-                let result = rpc
-                    .get_transactions_by_including_daa_score_call(
-                        None,
-                        GetTransactionsByIncludingDaaScoreRequest { from_daa_score, to_daa_score, limit },
-                    )
-                    .await?;
-
-                self.println(&ctx, result);
-            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

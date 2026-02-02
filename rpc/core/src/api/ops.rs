@@ -142,10 +142,6 @@ pub enum RpcApiOps {
     GetVirtualChainFromBlockV2 = 151,
     /// Get Transaction by its ID
     GetTransaction = 152,
-    /// Get Transactions By Accepting Blue Score range
-    GetTransactionsByAcceptingBlueScore = 153,
-    /// Get Transactions By Including DAA Score range
-    GetTransactionsByIncludingDaaScore = 154,
 }
 
 impl RpcApiOps {
