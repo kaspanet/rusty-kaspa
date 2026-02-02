@@ -1344,8 +1344,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
             let (accepted_transaction_data, sink_hash, sink_blue_score) = if require_acceptance_data {
                 // We require acceptance data
-                let acceptance_data = txindex.get_accepted_transaction_data(request.transaction_id)?;
-                let (sink_hash, sink_blue_score) = txindex.get_sink_with_blue_score()?;
+                let acceptance_data = txindex
+                    .get_accepted_transaction_data(request.transaction_id)
+                    .map_err(|e| RpcError::TxIndexError(e.to_string()))?;
+                let (sink_hash, sink_blue_score) =
+                    txindex.get_sink_with_blue_score().map_err(|e| RpcError::TxIndexError(e.to_string()))?;
                 (acceptance_data, Some(sink_hash), Some(sink_blue_score))
             } else {
                 (vec![], None, None)
@@ -1353,7 +1356,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
             let included_transaction_data = if require_inclusion_data {
                 // We require inclusion data
-                txindex.get_included_transaction_data(request.transaction_id)?
+                txindex.get_included_transaction_data(request.transaction_id).map_err(|e| RpcError::TxIndexError(e.to_string()))?
             } else {
                 vec![]
             };

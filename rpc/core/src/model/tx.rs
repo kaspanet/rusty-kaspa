@@ -7,7 +7,6 @@ use kaspa_consensus_core::{
         UtxoEntry,
     },
 };
-use kaspa_index_core::indexed_transactions::{TxAcceptanceData, TxInclusionData};
 use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
@@ -445,16 +444,6 @@ pub struct RpcTransactionInclusionData {
     pub index_within_block: TransactionIndexType,
 }
 
-impl From<TxInclusionData> for RpcTransactionInclusionData {
-    fn from(data: TxInclusionData) -> Self {
-        Self {
-            including_block_hash: data.block_hash,
-            including_daa_score: data.daa_score,
-            index_within_block: data.index_within_block,
-        }
-    }
-}
-
 impl Serializer for RpcTransactionInclusionData {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u8, &1, writer)?;
@@ -486,12 +475,6 @@ pub struct RpcTransactionAcceptanceData {
     pub accepting_blue_score: u64,
     /// The index of the including block within the mergeset of the accepting block
     pub mergeset_index: MergesetIndexType,
-}
-
-impl From<TxAcceptanceData> for RpcTransactionAcceptanceData {
-    fn from(data: TxAcceptanceData) -> Self {
-        Self { accepting_block_hash: data.block_hash, accepting_blue_score: data.blue_score, mergeset_index: data.mergeset_index }
-    }
 }
 
 impl Serializer for RpcTransactionAcceptanceData {
