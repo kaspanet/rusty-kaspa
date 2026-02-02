@@ -245,17 +245,19 @@
         <div data-collapsible-body="workers">
           <div class="sm:hidden text-xs text-gray-400 mb-2">Tip: swipe sideways to see all columns, or tap a row to view full details.</div>
           <div class="table-wrap" data-workers-table>
-            <table class="min-w-[1200px] w-max text-sm">
+            <table class="min-w-[1400px] w-max text-sm">
               <colgroup>
                 <col style="width: 6.5rem;" />
                 <col style="width: 9rem;" />
                 <col />
                 <col style="width: 9rem;" />
+                <col style="width: 7rem;" />
                 <col style="width: 4.5rem;" />
                 <col style="width: 4.5rem;" />
                 <col style="width: 4.5rem;" />
                 <col style="width: 4.5rem;" />
                 <col style="width: 5rem;" />
+                <col style="width: 8rem;" />
                 <col style="width: 8rem;" />
               </colgroup>
               <thead class="text-gray-400">
@@ -264,12 +266,14 @@
                   <th class="text-left py-2 pr-3">Worker</th>
                   <th class="text-left py-2 pr-3">Wallet</th>
                   <th class="text-left py-2 pr-3">Hashrate (GH/s)</th>
+                  <th class="text-left py-2 pr-3">Difficulty</th>
                   <th class="text-left py-2 pr-3">Shares</th>
                   <th class="text-left py-2 pr-3">Stale</th>
                   <th class="text-left py-2 pr-3">Invalid</th>
                   <th class="text-left py-2 pr-3">Blocks</th>
                   <th class="text-left py-2 pr-3">Status</th>
                   <th class="text-left py-2 pr-3">Last Seen</th>
+                  <th class="text-left py-2 pr-3">Session Uptime</th>
                 </tr>
               </thead>
               <tbody id="workersBody" class="text-gray-200"></tbody>
