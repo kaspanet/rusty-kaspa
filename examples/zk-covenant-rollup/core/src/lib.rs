@@ -25,7 +25,15 @@ impl PublicInput {
     }
 }
 
-pub const ACTION_TX_ID_PREFIX: u32 = u32::from_le_bytes(*b"ACTN");
+/// Single byte prefix for action transaction IDs (0x41 = 'A')
+/// Using a single byte makes it ~256x easier to find valid nonces for testing
+pub const ACTION_TX_ID_PREFIX: u8 = b'A';
+
+/// Check if a tx_id represents an action transaction (first byte matches prefix)
+#[inline]
+pub fn is_action_tx_id(tx_id: &[u32; 8]) -> bool {
+    (tx_id[0] as u8) == ACTION_TX_ID_PREFIX
+}
 
 pub fn payload_digest(payload: &[u32]) -> [u32; 8] {
     const DOMAIN_SEP: &[u8] = b"PayloadDigest";

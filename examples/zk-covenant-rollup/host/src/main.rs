@@ -1,6 +1,6 @@
 mod covenant;
 
-use std::{collections::HashMap, iter, time::Instant};
+use std::{collections::HashMap, time::Instant};
 
 use crate::covenant::RollupCovenant;
 use kaspa_consensus_core::{
@@ -25,8 +25,149 @@ use kaspa_txscript::{
     EngineFlags, TxScriptEngine,
 };
 use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts};
-use zk_covenant_rollup_core::{state::State, PublicInput};
+use zk_covenant_rollup_core::{
+    action::{Action, VersionedActionRaw},
+    is_action_tx_id, payload_digest,
+    seq_commit::seq_commitment_leaf,
+    state::State,
+    tx_id_v1, PublicInput, ACTION_TX_ID_PREFIX,
+};
 use zk_covenant_rollup_methods::{ZK_COVENANT_ROLLUP_GUEST_ELF, ZK_COVENANT_ROLLUP_GUEST_ID};
+
+/// Represents a mock transaction to be included in a block
+#[derive(Clone, Debug)]
+enum MockTx {
+    /// Version 0 tx: just a raw tx_id (no payload processing)
+    V0 { tx_id: [u32; 8] },
+    /// Version 1+ tx: has payload and rest_digest
+    V1 { version: u16, payload: VersionedActionRaw, rest_digest: [u32; 8] },
+}
+
+impl MockTx {
+    fn version(&self) -> u16 {
+        match self {
+            MockTx::V0 { .. } => 0,
+            MockTx::V1 { version, .. } => *version,
+        }
+    }
+
+    fn tx_id(&self) -> [u32; 8] {
+        match self {
+            MockTx::V0 { tx_id } => *tx_id,
+            MockTx::V1 { payload, rest_digest, .. } => {
+                let payload_words = payload.as_words();
+                let payload_digest = payload_digest(payload_words);
+                tx_id_v1(&payload_digest, rest_digest)
+            }
+        }
+    }
+
+    fn is_valid_action(&self) -> bool {
+        match self {
+            MockTx::V0 { .. } => false,
+            MockTx::V1 { payload, .. } => {
+                let tx_id = self.tx_id();
+                if !is_action_tx_id(&tx_id) {
+                    return false;
+                }
+                Action::try_from(payload.action_raw).is_ok()
+            }
+        }
+    }
+
+    /// Write to executor env in the format expected by guest
+    fn write_to_env(&self, builder: &mut risc0_zkvm::ExecutorEnvBuilder<'_>) {
+        let version = self.version() as u32;
+        builder.write_slice(&version.to_le_bytes());
+
+        match self {
+            MockTx::V0 { tx_id } => {
+                let bytes: &[u8] = bytemuck::cast_slice(tx_id);
+                builder.write_slice(bytes);
+            }
+            MockTx::V1 { payload, rest_digest, .. } => {
+                let payload_bytes: &[u8] = bytemuck::cast_slice(payload.as_words());
+                builder.write_slice(payload_bytes);
+                let rest_bytes: &[u8] = bytemuck::cast_slice(rest_digest);
+                builder.write_slice(rest_bytes);
+            }
+        }
+    }
+}
+
+/// Find a nonce that makes the tx_id start with ACTION_TX_ID_PREFIX (single byte)
+fn find_action_tx_nonce(action: Action, action_version: u16, rest_digest: [u32; 8]) -> VersionedActionRaw {
+    let (discriminator, value) = action.split();
+    for nonce in 0u32.. {
+        let payload = VersionedActionRaw { action_version, action_raw: [discriminator, value], nonce };
+        let payload_words = payload.as_words();
+        let pd = payload_digest(payload_words);
+        let tx_id = tx_id_v1(&pd, &rest_digest);
+        if is_action_tx_id(&tx_id) {
+            println!("Found action tx nonce: {} (iterations: {})", nonce, nonce + 1);
+            return payload;
+        }
+    }
+    unreachable!()
+}
+
+/// Create mock transactions for testing
+fn create_mock_block_txs(block_index: u32) -> Vec<MockTx> {
+    let mut txs = Vec::new();
+
+    // Type 1: Regular tx (version 0, random txid that doesn't start with ACTN)
+    let mut regular_tx_id = [0u32; 8];
+    regular_tx_id[0] = 0xDEADBEEF; // Definitely not ACTN
+    regular_tx_id[1] = block_index;
+    regular_tx_id[2] = 0x11111111;
+    txs.push(MockTx::V0 { tx_id: regular_tx_id });
+    println!("Block {}: Added regular tx (v0, non-ACTN prefix)", block_index);
+
+    // Type 2a: Version 0 tx with txid that happens to start with action prefix byte
+    // (Guest only checks action prefix for version > 0, so this won't be processed as action)
+    let mut fake_actn_v0 = [0u32; 8];
+    fake_actn_v0[0] = ACTION_TX_ID_PREFIX as u32; // First byte matches action prefix
+    fake_actn_v0[1] = block_index;
+    fake_actn_v0[2] = 0x22222222;
+    txs.push(MockTx::V0 { tx_id: fake_actn_v0 });
+    println!("Block {}: Added fake action tx (v0 with action prefix - not processed)", block_index);
+
+    // Type 2b: Version 1 tx with action prefix but INVALID action discriminator
+    // We need to brute-force a nonce that gives action prefix with invalid action
+    let invalid_rest_digest = [block_index, 0x33333333, 0, 0, 0, 0, 0, 0];
+    for nonce in 0u32.. {
+        let payload = VersionedActionRaw {
+            action_version: 1,
+            action_raw: [255, 0], // Invalid discriminator (only 0 and 1 are valid)
+            nonce,
+        };
+        let payload_words = payload.as_words();
+        let pd = payload_digest(payload_words);
+        let tx_id = tx_id_v1(&pd, &invalid_rest_digest);
+        if is_action_tx_id(&tx_id) {
+            txs.push(MockTx::V1 { version: 1, payload, rest_digest: invalid_rest_digest });
+            println!("Block {}: Added invalid action tx (v1, action prefix, bad discriminator, nonce={})", block_index, nonce);
+            break;
+        }
+    }
+
+    // Type 3: Valid action tx - different actions per block
+    let action = match block_index % 3 {
+        0 => Action::Fib(10),      // Fib(10) = 55
+        1 => Action::Factorial(5), // 5! = 120
+        _ => Action::Fib(15),      // Fib(15) = 610
+    };
+    let rest_digest = [block_index, 0x44444444, 0, 0, 0, 0, 0, 0];
+    let payload = find_action_tx_nonce(action, 1, rest_digest);
+    let tx_id = {
+        let pd = payload_digest(payload.as_words());
+        tx_id_v1(&pd, &rest_digest)
+    };
+    println!("Block {}: Added valid action tx {:?}, tx_id[0]=0x{:08X}", block_index, action, tx_id[0]);
+    txs.push(MockTx::V1 { version: 1, payload, rest_digest });
+
+    txs
+}
 
 struct MockSeqCommitAccessor(HashMap<Hash, Hash>);
 
@@ -43,28 +184,66 @@ impl SeqCommitAccessor for MockSeqCommitAccessor {
 fn main() {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env()).init();
 
-    // --- State doesn't change (no action txs) ---
-    let state = State::default();
+    // --- Initial state ---
+    let mut state = State::default();
     let prev_state_hash = state.hash();
-    let new_state_hash = prev_state_hash; // no actions → state unchanged
+    println!("Initial state hash: {}", faster_hex::hex_string(bytemuck::bytes_of(&prev_state_hash)));
 
-    // --- Build chain of 3 empty blocks, compute seq_commitment chain ---
-    let prev_seq_commitment_hash = calc_accepted_id_merkle_root(Hash::default(), iter::empty());
+    // --- Build chain of 3 blocks with txs, compute seq_commitment chain ---
+    let prev_seq_commitment_hash = calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
     let prev_seq_commitment = from_bytes(prev_seq_commitment_hash.as_bytes());
+    println!("Initial seq_commitment: {}", faster_hex::hex_string(bytemuck::bytes_of(&prev_seq_commitment)));
 
     let chain_len = 3u32;
     let block_hashes: Vec<Hash> = (1..=chain_len).map(|i| Hash::from_u64_word(i as u64)).collect();
 
+    // Create mock transactions for each block
+    println!("\n=== Creating mock transactions ===");
+    let block_txs: Vec<Vec<MockTx>> = (0..chain_len).map(create_mock_block_txs).collect();
+
+    // Compute seq_commitment chain and update state
     let mut seq_commit = prev_seq_commitment_hash;
     let mut accessor_map = HashMap::new();
-    for &block_hash in &block_hashes {
-        seq_commit = calc_accepted_id_merkle_root(seq_commit, iter::empty());
-        accessor_map.insert(block_hash, seq_commit);
+
+    for (block_idx, (block_hash, txs)) in block_hashes.iter().zip(block_txs.iter()).enumerate() {
+        // Compute tx leaf digests for merkle tree
+        let tx_digests: Vec<Hash> = txs
+            .iter()
+            .map(|tx| {
+                let tx_id = tx.tx_id();
+                let version = tx.version();
+                let leaf = seq_commitment_leaf(&tx_id, version);
+                Hash::from_bytes(bytemuck::cast_slice(&leaf).try_into().unwrap())
+            })
+            .collect();
+
+        // Update seq_commitment
+        seq_commit = calc_accepted_id_merkle_root(seq_commit, tx_digests.into_iter());
+        accessor_map.insert(*block_hash, seq_commit);
+        println!("Block {} (hash={:?}): seq_commit = {:?}", block_idx, block_hash, seq_commit);
+
+        // Update state with valid actions
+        for tx in txs {
+            if tx.is_valid_action() {
+                if let MockTx::V1 { payload, .. } = tx {
+                    if let Ok(action) = Action::try_from(payload.action_raw) {
+                        let output = action.execute();
+                        state.add_new_result(action, output);
+                        println!("  Executed action {:?} -> output={}", action, output);
+                    }
+                }
+            }
+        }
     }
 
     let block_prove_to = *block_hashes.last().unwrap();
     let new_seq_commitment_hash = seq_commit;
     let new_seq_commitment = from_bytes(new_seq_commitment_hash.as_bytes());
+
+    // Compute new state hash after all actions
+    let new_state_hash = state.hash();
+    println!("Final state hash: {}", faster_hex::hex_string(bytemuck::bytes_of(&new_state_hash)));
+    println!("Final seq_commitment: {}", faster_hex::hex_string(bytemuck::bytes_of(&new_seq_commitment)));
 
     let public_input = PublicInput { prev_state_hash, prev_seq_commitment };
 
@@ -76,14 +255,20 @@ fn main() {
     journal_preimage[96..128].copy_from_slice(bytemuck::bytes_of(&new_seq_commitment));
 
     // --- Prove with RISC0 ---
+    println!("\n=== Building RISC0 executor environment ===");
     let mut binding = ExecutorEnv::builder();
+    let initial_state = State::default(); // Guest receives initial state
     let builder = binding
         .write_slice(core::slice::from_ref(&public_input))
-        .write_slice(core::slice::from_ref(&state))
+        .write_slice(initial_state.as_word_slice())
         .write_slice(&chain_len.to_le_bytes());
-    for _ in 0..chain_len {
-        let tx_count = 0u32;
+
+    for txs in &block_txs {
+        let tx_count = txs.len() as u32;
         builder.write_slice(&tx_count.to_le_bytes());
+        for tx in txs {
+            tx.write_to_env(builder);
+        }
     }
 
     let env = builder.build().unwrap();
@@ -114,6 +299,8 @@ fn main() {
     assert_eq!(journal_preimage.as_slice(), journal_bytes);
     assert_eq!(journal_preimage.as_slice().digest(), receipt.journal.digest());
 
+    receipt.verify(ZK_COVENANT_ROLLUP_GUEST_ID).unwrap();
+
     let receipt_inner = receipt.inner.succinct().unwrap();
     let script_precompile_inner = SuccinctReceipt {
         seal: receipt_inner.seal.clone(),
@@ -126,8 +313,6 @@ fn main() {
             receipt_inner.control_inclusion_proof.digests.clone(),
         ),
     };
-
-    receipt.verify(ZK_COVENANT_ROLLUP_GUEST_ID).unwrap();
 
     // --- Build redeem scripts ---
     let program_id: &[u8] = bytemuck::cast_slice(ZK_COVENANT_ROLLUP_GUEST_ID.as_slice());

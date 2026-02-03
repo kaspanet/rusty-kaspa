@@ -6,7 +6,7 @@ use risc0_zkvm::{
     guest::env,
     serde::{WordRead, WordWrite},
 };
-use zk_covenant_rollup_core::{action::{Action, VersionedActionRaw}, payload_digest, seq_commit::{calc_accepted_id_merkle_root, seq_commitment_leaf, StreamingMerkleBuilder}, state::State, tx_id_v1, PublicInput, ACTION_TX_ID_PREFIX};
+use zk_covenant_rollup_core::{action::{Action, VersionedActionRaw}, is_action_tx_id, payload_digest, seq_commit::{calc_accepted_id_merkle_root, seq_commitment_leaf, StreamingMerkleBuilder}, state::State, tx_id_v1, PublicInput};
 
 risc0_zkvm::guest::entry!(main);
 
@@ -51,7 +51,7 @@ pub fn main() {
                 let payload_digest = payload_digest(&payload);
                 let tx_id = tx_id_v1(&payload_digest, &rest_digest);
 
-                if tx_id.starts_with(&[ACTION_TX_ID_PREFIX]) {
+                if is_action_tx_id(&tx_id) {
                     let versioned_action_raw = VersionedActionRaw::from_words(payload);
                     if let Ok(action) = Action::try_from(versioned_action_raw.action_raw) {
                         let output = action.execute();
