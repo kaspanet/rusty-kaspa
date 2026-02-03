@@ -1342,7 +1342,10 @@ impl ShareHandler {
                     total_shares += *overall.shares_found.lock();
                     total_stales += *overall.stale_shares.lock();
                     total_invalids += *overall.invalid_shares.lock();
-                    total_blocks += *overall.blocks_found.lock();
+                    // Note: We don't use overall.blocks_found here because it includes blocks
+                    // from workers that may have been pruned from stats_map. Instead, we sum
+                    // blocks from individual workers below to ensure the TOTAL matches what's
+                    // displayed in individual worker rows.
 
                     let stats_map = stats.lock();
                     for (_, v) in stats_map.iter() {
@@ -1360,6 +1363,11 @@ impl ShareHandler {
                         let invalids = *v.invalid_shares.lock();
                         let blocks = *v.blocks_found.lock();
                         let min_diff = *v.min_diff.lock();
+
+                        // Sum blocks from individual workers for accurate TOTAL row
+                        // This ensures the total matches what's displayed in worker rows,
+                        // even if some workers with blocks were pruned from stats_map
+                        total_blocks += blocks;
 
                         let spm = if elapsed > 0.0 { (shares as f64) / (elapsed / 60.0) } else { 0.0 };
                         let trend = if spm > *target_spm * 1.2 {
