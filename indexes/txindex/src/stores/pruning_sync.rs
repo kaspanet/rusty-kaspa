@@ -195,8 +195,9 @@ mod tests {
     use super::*;
     use kaspa_database::{
         create_temp_db,
-        prelude::{BatchDbWriter, ConnBuilder, WriteBatch},
+        prelude::{BatchDbWriter, ConnBuilder},
     };
+    use rocksdb::WriteBatch;
     use kaspa_hashes::Hash;
 
     #[test]

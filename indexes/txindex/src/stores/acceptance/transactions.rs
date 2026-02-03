@@ -30,8 +30,8 @@ impl AcceptedTransactionStoreKey {
     }
 
     #[inline(always)]
-    pub fn with_txid(mut self, txid: TransactionId) -> Self {
-        self.0[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
+    pub fn with_transaction_id(mut self, transaction_id: TransactionId) -> Self {
+        self.0[0..TRANSACTION_ID_SIZE].copy_from_slice(&transaction_id.as_bytes());
         self
     }
 
@@ -49,18 +49,18 @@ impl AcceptedTransactionStoreKey {
     }
 
     #[inline(always)]
-    pub fn blue_score(&self) -> u64 {
+    pub fn extract_blue_score(&self) -> u64 {
         u64::from_be_bytes(self.0[TRANSACTION_ID_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE].try_into().unwrap())
     }
 
     #[inline(always)]
-    pub fn block_hash(&self) -> Hash {
+    pub fn extract_block_hash(&self) -> Hash {
         Hash::from_slice(&self.0[TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE..TRANSACTION_ID_SIZE + BLUE_SCORE_SIZE + HASH_SIZE])
     }
 
     #[inline(always)]
     pub fn into_tx_acceptance_data(self, mergeset_index: MergesetIndexType) -> TxAcceptanceData {
-        TxAcceptanceData { blue_score: self.blue_score(), block_hash: self.block_hash(), mergeset_index }
+        TxAcceptanceData { blue_score: self.extract_blue_score(), block_hash: self.extract_block_hash(), mergeset_index }
     }
 }
 
@@ -114,15 +114,15 @@ where
 // -- Store Traits ---
 
 pub trait TxIndexAcceptedTransactionsStoreReader {
-    fn get_transaction_acceptance_data(&self, txid: TransactionId) -> StoreResult<Vec<TxAcceptanceData>>;
-    fn has(&self, tx_id: TransactionId, blue_score: u64, accepting_block: Hash) -> StoreResult<bool>;
+    fn get_transaction_acceptance_data(&self, transaction_id: TransactionId) -> StoreResult<Vec<TxAcceptanceData>>;
+    fn has(&self, transaction_id: TransactionId, blue_score: u64, accepting_block: Hash) -> StoreResult<bool>;
 }
 
 pub trait TxIndexAcceptedTransactionsStore: TxIndexAcceptedTransactionsStoreReader {
     fn remove_transaction_acceptance_data(
         &mut self,
         writer: &mut impl DbWriter,
-        txid: TransactionId,
+        transaction_id: TransactionId,
         blue_score: u64,
     ) -> StoreResult<()>;
     fn add_accepted_transaction_data<I>(&mut self, writer: &mut impl DbWriter, to_add: TxAcceptedIter<I>) -> StoreResult<()>
@@ -148,12 +148,12 @@ impl DbTxIndexAcceptedTransactionsStore {
 }
 
 impl TxIndexAcceptedTransactionsStoreReader for DbTxIndexAcceptedTransactionsStore {
-    fn get_transaction_acceptance_data(&self, txid: TransactionId) -> StoreResult<Vec<TxAcceptanceData>> {
+    fn get_transaction_acceptance_data(&self, transaction_id: TransactionId) -> StoreResult<Vec<TxAcceptanceData>> {
         self.access
             .seek_iterator(
                 None,
-                Some(AcceptedTransactionStoreKey::new_minimized().with_txid(txid)),
-                Some(AcceptedTransactionStoreKey::new_maximized().with_txid(txid)),
+                Some(AcceptedTransactionStoreKey::new_minimized().with_transaction_id(transaction_id)),
+                Some(AcceptedTransactionStoreKey::new_maximized().with_transaction_id(transaction_id)),
                 usize::MAX,
                 false,
             )
@@ -164,8 +164,11 @@ impl TxIndexAcceptedTransactionsStoreReader for DbTxIndexAcceptedTransactionsSto
             .collect()
     }
 
-    fn has(&self, tx_id: TransactionId, blue_score: u64, accepting_block: Hash) -> StoreResult<bool> {
-        let key = AcceptedTransactionStoreKey::default().with_txid(tx_id).with_blue_score(blue_score).with_block_hash(accepting_block);
+    fn has(&self, transaction_id: TransactionId, blue_score: u64, accepting_block: Hash) -> StoreResult<bool> {
+        let key = AcceptedTransactionStoreKey::default()
+            .with_transaction_id(transaction_id)
+            .with_blue_score(blue_score)
+            .with_block_hash(accepting_block);
         self.access.has(key)
     }
 }
@@ -174,26 +177,29 @@ impl TxIndexAcceptedTransactionsStore for DbTxIndexAcceptedTransactionsStore {
     fn remove_transaction_acceptance_data(
         &mut self,
         writer: &mut impl DbWriter,
-        txid: TransactionId,
+        transaction_id: TransactionId,
         blue_score: u64,
     ) -> StoreResult<()> {
         self.access.delete_range(
             writer,
-            AcceptedTransactionStoreKey::new_minimized().with_txid(txid).with_blue_score(blue_score),
-            AcceptedTransactionStoreKey::new_maximized().with_txid(txid).with_blue_score(blue_score),
+            AcceptedTransactionStoreKey::new_minimized().with_transaction_id(transaction_id).with_blue_score(blue_score),
+            AcceptedTransactionStoreKey::new_maximized().with_transaction_id(transaction_id).with_blue_score(blue_score),
         )
     }
 
-    /// Returns the amount of successfully added entries
-    /// Note: if skip_on_first_idempotent, this call stops before the first idempotent write,
-    /// As such this method expects the iterator to be sorted by (txid, blue_score, block_hash) in strict virtual chain changed descending order.
     fn add_accepted_transaction_data<I>(&mut self, writer: &mut impl DbWriter, to_add: TxAcceptedIter<I>) -> StoreResult<()>
     where
         I: Iterator<Item = TxAcceptedTuple>,
     {
-        let kv_iter = to_add
-            .into_iter()
-            .map(|(a, b, c, d)| (AcceptedTransactionStoreKey::default().with_txid(a).with_blue_score(b).with_block_hash(c), d));
+        let kv_iter = to_add.into_iter().map(|(transaction_id, blue_score, block_hash, mergeset_index)| {
+            (
+                AcceptedTransactionStoreKey::default()
+                    .with_transaction_id(transaction_id)
+                    .with_blue_score(blue_score)
+                    .with_block_hash(block_hash),
+                mergeset_index,
+            )
+        });
 
         self.access.write_many_without_cache(writer, &mut kv_iter.into_iter())
     }
@@ -210,8 +216,9 @@ mod tests {
 
     use kaspa_database::{
         create_temp_db,
-        prelude::{BatchDbWriter, ConnBuilder, WriteBatch},
+        prelude::{BatchDbWriter, ConnBuilder},
     };
+    use rocksdb::WriteBatch;
 
     #[test]
     fn test_transaction_store_value_inclusion_roundtrip() {
@@ -224,10 +231,13 @@ mod tests {
 
     #[test]
     fn test_transaction_store_key_inclusion_conversion() {
-        let txid = TransactionId::from_u64_word(1);
+        let transaction_id = TransactionId::from_u64_word(1);
         let blue_score = 1;
         let block_hash = Hash::from_u64_word(2);
-        let key = AcceptedTransactionStoreKey::default().with_txid(txid).with_blue_score(blue_score).with_block_hash(block_hash);
+        let key = AcceptedTransactionStoreKey::default()
+            .with_transaction_id(transaction_id)
+            .with_blue_score(blue_score)
+            .with_block_hash(block_hash);
         let mergeset_index = 42 as MergesetIndexType;
         let tx_acceptance_data = key.into_tx_acceptance_data(mergeset_index);
         assert_eq!(tx_acceptance_data.blue_score, blue_score);
@@ -240,8 +250,8 @@ mod tests {
         let (_txindex_db_lt, txindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
 
         let mut store = DbTxIndexAcceptedTransactionsStore::new(Arc::clone(&txindex_db), CachePolicy::Empty);
-        let txid1 = TransactionId::from_u64_word(1);
-        let txid2 = TransactionId::from_u64_word(2);
+        let transaction_id1 = TransactionId::from_u64_word(1);
+        let transaction_id2 = TransactionId::from_u64_word(2);
         let block_hash1 = Hash::from_u64_word(3);
         let block_hash2 = Hash::from_u64_word(4);
         let blue_score1 = 100u64;
@@ -257,9 +267,9 @@ mod tests {
                 &mut writer,
                 TxAcceptedIter(
                     vec![
-                        (txid1, blue_score1, block_hash1, mergeset_index1),
-                        (txid1, blue_score2, block_hash2, mergeset_index2),
-                        (txid2, blue_score1, block_hash1, mergeset_index1),
+                        (transaction_id1, blue_score1, block_hash1, mergeset_index1),
+                        (transaction_id1, blue_score2, block_hash2, mergeset_index2),
+                        (transaction_id2, blue_score1, block_hash1, mergeset_index1),
                     ]
                     .into_iter(),
                 ),
@@ -267,44 +277,44 @@ mod tests {
             .unwrap();
         txindex_db.write(batch).unwrap();
 
-        // Retrieve included transaction data for txid1
-        let inclusions_txid1 = store.get_transaction_acceptance_data(txid1).unwrap();
-        assert_eq!(inclusions_txid1.len(), 2);
-        assert!(inclusions_txid1.contains(&TxAcceptanceData {
+        // Retrieve included transaction data for transaction_id1
+        let inclusions_transaction_id1 = store.get_transaction_acceptance_data(transaction_id1).unwrap();
+        assert_eq!(inclusions_transaction_id1.len(), 2);
+        assert!(inclusions_transaction_id1.contains(&TxAcceptanceData {
             blue_score: blue_score1,
             block_hash: block_hash1,
             mergeset_index: mergeset_index1,
         }));
 
-        assert!(inclusions_txid1.contains(&TxAcceptanceData {
+        assert!(inclusions_transaction_id1.contains(&TxAcceptanceData {
             blue_score: blue_score2,
             block_hash: block_hash2,
             mergeset_index: mergeset_index2,
         }));
 
-        // Retrieve included transaction data for txid2
-        let inclusions_txid2 = store.get_transaction_acceptance_data(txid2).unwrap();
-        assert_eq!(inclusions_txid2.len(), 1);
+        // Retrieve included transaction data for transaction_id2
+        let inclusions_transaction_id2 = store.get_transaction_acceptance_data(transaction_id2).unwrap();
+        assert_eq!(inclusions_transaction_id2.len(), 1);
         assert_eq!(
-            inclusions_txid2[0],
+            inclusions_transaction_id2[0],
             TxAcceptanceData { blue_score: blue_score1, block_hash: block_hash1, mergeset_index: mergeset_index1 }
         );
 
         let mut batch = WriteBatch::default();
         let mut writer = BatchDbWriter::new(&mut batch);
         // Test removal and clean up
-        store.remove_transaction_acceptance_data(&mut writer, txid1, blue_score1).unwrap();
+        store.remove_transaction_acceptance_data(&mut writer, transaction_id1, blue_score1).unwrap();
         txindex_db.write(batch).unwrap();
-        assert!(store.get_transaction_acceptance_data(txid1).is_ok_and(|val| val.len() == 1
+        assert!(store.get_transaction_acceptance_data(transaction_id1).is_ok_and(|val| val.len() == 1
             && val[0] == TxAcceptanceData { blue_score: blue_score2, block_hash: block_hash2, mergeset_index: mergeset_index2 }));
         let mut batch = WriteBatch::default();
         let mut writer = BatchDbWriter::new(&mut batch);
-        store.remove_transaction_acceptance_data(&mut writer, txid1, blue_score2).unwrap();
+        store.remove_transaction_acceptance_data(&mut writer, transaction_id1, blue_score2).unwrap();
         txindex_db.write(batch).unwrap();
-        let res = store.get_transaction_acceptance_data(txid1);
+        let res = store.get_transaction_acceptance_data(transaction_id1);
         println!("{:?}", res);
-        assert!(store.get_transaction_acceptance_data(txid1).is_ok_and(|val| val.is_empty()));
+        assert!(store.get_transaction_acceptance_data(transaction_id1).is_ok_and(|val| val.is_empty()));
         store.delete_all().unwrap();
-        assert!(store.get_transaction_acceptance_data(txid2).is_ok_and(|val| val.is_empty()));
+        assert!(store.get_transaction_acceptance_data(transaction_id2).is_ok_and(|val| val.is_empty()));
     }
 }

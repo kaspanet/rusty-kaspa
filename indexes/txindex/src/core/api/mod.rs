@@ -19,38 +19,21 @@ use crate::{
     },
 };
 
-///TxIndex API targeted at retrieval calls.
-pub trait TxIndexApi: Send + Sync + Debug {
-    fn get_accepted_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxAcceptanceData>>;
-    fn get_included_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxInclusionData>>;
-    fn get_transaction_inclusion_data_by_daa_score_range(
-        &self,
-        from: u64,
-        to: u64,
-        limit: Option<usize>,
-        limit_to_score_boundary: bool,
-    ) -> TxIndexResult<Vec<DaaScoreIncludingRefData>>;
-    fn get_transaction_acceptance_data_by_blue_score_range(
-        &self,
-        from: u64,
-        to: u64,
-        limit: Option<usize>,
-        limit_to_score_boundary: bool,
-    ) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>>;
+/// TxIndex Test API
+pub trait TxIndexTestAPI: TxIndexApi {
+    fn get_all_transaction_acceptance_refs(&self) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>>;
 
-    fn get_sink_with_blue_score(&self) -> TxIndexResult<(Hash, u64)>;
+    fn get_all_transaction_inclusion_refs(&self) -> TxIndexResult<Vec<DaaScoreIncludingRefData>>;
+
     fn get_tips(&self) -> TxIndexResult<Option<Arc<BlockHashSet>>>;
     fn get_retention_root(&self) -> TxIndexResult<Option<Hash>>;
+}
 
-    fn is_synced(&self) -> TxIndexResult<bool>;
-    fn is_acceptance_data_synced(&self) -> TxIndexResult<bool>;
-    fn is_inclusion_data_synced(&self) -> TxIndexResult<bool>;
-    fn is_retention_synced(&self) -> TxIndexResult<bool>;
-
-    fn resync_all_from_scratch(&mut self) -> TxIndexResult<()>;
-    fn resync_acceptance_data_from_scratch(&mut self) -> TxIndexResult<()>;
-    fn resync_inclusion_data_from_scratch(&mut self) -> TxIndexResult<()>;
-    fn resync_retention_data_from_scratch(&mut self) -> TxIndexResult<()>;
+///TxIndex API
+pub trait TxIndexApi: Send + Sync + Debug {
+    fn get_accepted_transaction_data(&self, transaction_id: TransactionId) -> TxIndexResult<Vec<TxAcceptanceData>>;
+    fn get_included_transaction_data(&self, transaction_id: TransactionId) -> TxIndexResult<Vec<TxInclusionData>>;
+    fn get_sink_with_blue_score(&self) -> TxIndexResult<(Hash, u64)>;
 
     fn update_via_block_added(&mut self, block_added_notification: BlockAddedNotification) -> TxIndexResult<()>;
     fn update_via_virtual_chain_changed(
@@ -66,63 +49,21 @@ pub trait TxIndexApi: Send + Sync + Debug {
     fn get_pruning_lock(&self) -> Arc<AsyncMutex<()>>;
 }
 
-/// Async proxy for the TxIndex
-#[derive(Debug, Clone)]
-pub struct TxIndexProxy {
-    inner: Arc<RwLock<dyn TxIndexApi>>,
-}
-
 impl TxIndexProxy {
     pub fn new(inner: Arc<RwLock<dyn TxIndexApi>>) -> Self {
         Self { inner }
     }
 
-    pub async fn async_get_accepted_transaction_data(self, txid: TransactionId) -> TxIndexResult<Vec<TxAcceptanceData>> {
-        spawn_blocking(move || self.inner.read().get_accepted_transaction_data(txid)).await.unwrap()
+    pub async fn async_get_accepted_transaction_data(self, transaction_id: TransactionId) -> TxIndexResult<Vec<TxAcceptanceData>> {
+        spawn_blocking(move || self.inner.read().get_accepted_transaction_data(transaction_id)).await.unwrap()
     }
 
-    pub async fn async_get_included_transaction_data(self, txid: TransactionId) -> TxIndexResult<Vec<TxInclusionData>> {
-        spawn_blocking(move || self.inner.read().get_included_transaction_data(txid)).await.unwrap()
-    }
-
-    pub async fn async_get_transaction_inclusion_data_by_blue_score_range(
-        self,
-        from: u64,
-        to: u64,
-        limit: Option<usize>,
-        limit_to_score_boundary: bool,
-    ) -> TxIndexResult<Vec<DaaScoreIncludingRefData>> {
-        spawn_blocking(move || {
-            self.inner.read().get_transaction_inclusion_data_by_daa_score_range(from, to, limit, limit_to_score_boundary)
-        })
-        .await
-        .unwrap()
-    }
-
-    pub async fn async_get_transaction_acceptance_data_by_blue_score_range(
-        self,
-        from: u64,
-        to: u64,
-        limit: Option<usize>,
-        limit_to_score_boundary: bool,
-    ) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>> {
-        spawn_blocking(move || {
-            self.inner.read().get_transaction_acceptance_data_by_blue_score_range(from, to, limit, limit_to_score_boundary)
-        })
-        .await
-        .unwrap()
+    pub async fn async_get_included_transaction_data(self, transaction_id: TransactionId) -> TxIndexResult<Vec<TxInclusionData>> {
+        spawn_blocking(move || self.inner.read().get_included_transaction_data(transaction_id)).await.unwrap()
     }
 
     pub async fn async_get_sink_with_blue_score(self) -> TxIndexResult<(Hash, u64)> {
         spawn_blocking(move || self.inner.read().get_sink_with_blue_score()).await.unwrap()
-    }
-
-    pub async fn async_get_tips(self) -> TxIndexResult<Option<Arc<BlockHashSet>>> {
-        spawn_blocking(move || self.inner.read().get_tips()).await.unwrap()
-    }
-
-    pub async fn get_retention_root(self) -> TxIndexResult<Option<Hash>> {
-        spawn_blocking(move || self.inner.read().get_retention_root()).await.unwrap()
     }
 
     pub async fn async_update_via_block_added(self, block_added_notification: BlockAddedNotification) -> TxIndexResult<()> {
@@ -153,6 +94,12 @@ impl TxIndexProxy {
         let inner = self.inner.clone();
         spawn_blocking(move || inner.read().get_pruning_lock()).await.unwrap()
     }
+}
+
+/// Async proxy for the TxIndex
+#[derive(Debug, Clone)]
+pub struct TxIndexProxy {
+    inner: Arc<RwLock<dyn TxIndexApi>>,
 }
 
 impl Deref for TxIndexProxy {

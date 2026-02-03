@@ -2,7 +2,8 @@ use std::{ops::RangeBounds, sync::Arc};
 
 use kaspa_consensus_core::{BlockHashSet, Hash, tx::TransactionId};
 use kaspa_core::trace;
-use kaspa_database::prelude::{BatchDbWriter, CachePolicy, DB, DbWriter, StoreResult, WriteBatch};
+use kaspa_database::prelude::{BatchDbWriter, CachePolicy, DB, DbWriter, StoreResult};
+use rocksdb::WriteBatch;
 
 use crate::{
     model::{
@@ -85,46 +86,12 @@ impl Store {
         self.pruning_sync_store.get_next_to_prune_daa_score()
     }
 
-    pub fn get_included_transaction_data(&self, tx_id: TransactionId) -> StoreResult<Vec<TxInclusionData>> {
-        self.included_transactions_store.get_transaction_inclusion_data(tx_id)
+    pub fn get_included_transaction_data(&self, transaction_id: TransactionId) -> StoreResult<Vec<TxInclusionData>> {
+        self.included_transactions_store.get_transaction_inclusion_data(transaction_id)
     }
 
-    pub fn get_accepted_transaction_data(&self, tx_id: TransactionId) -> StoreResult<Vec<TxAcceptanceData>> {
-        self.accepted_transactions_store.get_transaction_acceptance_data(tx_id)
-    }
-
-    pub fn get_transaction_acceptance_data_by_blue_score_range(
-        &self,
-        range: impl RangeBounds<u64>,
-        limit: Option<usize>,
-        limit_to_blue_score_boundry: bool,
-    ) -> StoreResult<Vec<BlueScoreAcceptingRefData>> {
-        if !limit_to_blue_score_boundry {
-            return Ok(self.accepting_bluescore_refs_store.get_blue_score_refs(range, limit)?.collect());
-        } else {
-            let mut res = self.accepting_bluescore_refs_store.get_blue_score_refs(range, limit)?.collect::<Vec<_>>();
-            if let Some(last) = res.last() {
-                res.extend(self.accepting_bluescore_refs_store.get_remaining_blue_score_refs(last.clone())?);
-            };
-            Ok(res)
-        }
-    }
-
-    pub fn get_transaction_inclusion_data_by_daa_score_range(
-        &self,
-        range: impl RangeBounds<u64>,
-        limit: Option<usize>,
-        limit_to_blue_score_boundry: bool,
-    ) -> StoreResult<Vec<DaaScoreIncludingRefData>> {
-        if !limit_to_blue_score_boundry {
-            return Ok(self.including_daascore_refs_store.get_daa_score_refs(range, limit)?.collect());
-        } else {
-            let mut res = self.including_daascore_refs_store.get_daa_score_refs(range, limit)?.collect::<Vec<_>>();
-            if let Some(last) = res.last() {
-                res.extend(self.including_daascore_refs_store.get_remaining_daa_score_refs(last.clone())?);
-            };
-            Ok(res)
-        }
+    pub fn get_accepted_transaction_data(&self, transaction_id: TransactionId) -> StoreResult<Vec<TxAcceptanceData>> {
+        self.accepted_transactions_store.get_transaction_acceptance_data(transaction_id)
     }
 
     pub fn get_next_to_prune_store(&self) -> StoreResult<Option<ToPruneStore>> {
@@ -133,16 +100,31 @@ impl Store {
 
     pub fn is_inclusion_pruning_done(&self) -> StoreResult<bool> {
         Ok(
-            self.pruning_sync_store.is_inclusion_pruning_done()?
-                || self.including_daascore_refs_store.get_lowest_daa_score_ref()?.is_none(), // in cases where store is empty.
+            self.pruning_sync_store.is_inclusion_pruning_done()? || self.including_daascore_refs_store.is_empty()?, // in cases where store is empty, we also consider pruning to be "done"
         )
     }
 
     pub fn is_acceptance_pruning_done(&self) -> StoreResult<bool> {
         Ok(
-            self.pruning_sync_store.is_acceptance_pruning_done()?
-                || self.accepting_bluescore_refs_store.get_lowest_blue_score_ref()?.is_none(), // in cases where store is empty.
+            self.pruning_sync_store.is_acceptance_pruning_done()? || self.accepting_bluescore_refs_store.is_empty()?, // in cases where store is empty, we also consider pruning to be "done"
         )
+    }
+
+    // --- scan ops ---
+    pub fn scan_blue_score_range(
+        &self,
+        range: impl RangeBounds<u64>,
+        limit: Option<usize>,
+    ) -> StoreResult<Vec<BlueScoreAcceptingRefData>> {
+        Ok(self.accepting_bluescore_refs_store.get_blue_score_refs(range, limit)?.collect())
+    }
+
+    pub fn scan_daa_score_range(
+        &self,
+        range: impl RangeBounds<u64>,
+        limit: Option<usize>,
+    ) -> StoreResult<Vec<DaaScoreIncludingRefData>> {
+        Ok(self.including_daascore_refs_store.get_daa_score_refs(range, limit)?.collect())
     }
 
     // -- updaters --
@@ -252,6 +234,25 @@ impl Store {
         Ok(())
     }
 
+    pub fn update_to_new_retention_root(
+        &mut self,
+        retention_root: Hash,
+        retention_root_blue_score: u64,
+        retention_root_daa_score: u64,
+    ) -> StoreResult<()> {
+        let mut batch = WriteBatch::default();
+        let mut writer = BatchDbWriter::new(&mut batch);
+        self.pruning_sync_store.update_to_new_retention_root(
+            &mut writer,
+            retention_root,
+            retention_root_blue_score,
+            retention_root_daa_score,
+        )?;
+
+        self.commit_batch(batch)
+    }
+
+    /// -- prune ops --
     pub fn prune_inclusion_data_from_daa_score(
         &mut self,
         from_daa_score: u64,
@@ -265,14 +266,14 @@ impl Store {
         let mut next_to_prune_daa_score = 0u64;
         let mut is_inclusion_store_empty = true;
 
-        for data in self.including_daascore_refs_store.get_daa_score_refs(from_daa_score..=u64::MAX, limit)? {
+        for data in self.scan_daa_score_range(from_daa_score..=u64::MAX, limit)? {
             is_inclusion_store_empty = false;
-            next_to_prune_daa_score = data.including_daa_score;
-            if data.including_daa_score >= max_daa_score {
-                next_to_prune_daa_score = data.including_daa_score;
+            next_to_prune_daa_score = data.daa_score;
+            if data.daa_score >= max_daa_score {
+                next_to_prune_daa_score = data.daa_score;
                 break;
             };
-            self.included_transactions_store.remove_transaction_inclusion_data(&mut writer, data.tx_id, data.including_daa_score)?;
+            self.included_transactions_store.remove_transaction_inclusion_data(&mut writer, data.transaction_id, data.daa_score)?;
         }
 
         self.pruning_sync_store.set_new_next_to_prune_daa_score(&mut writer, next_to_prune_daa_score)?;
@@ -297,14 +298,14 @@ impl Store {
         let mut next_to_prune_blue_score = 0u64;
         let mut is_acceptance_store_empty = true;
 
-        for data in self.accepting_bluescore_refs_store.get_blue_score_refs(from_blue_score..=u64::MAX, limit)? {
+        for data in self.scan_blue_score_range(from_blue_score..=u64::MAX, limit)? {
             is_acceptance_store_empty = false;
-            next_to_prune_blue_score = data.accepting_blue_score;
-            if data.accepting_blue_score >= max_blue_score {
-                next_to_prune_blue_score = data.accepting_blue_score;
+            next_to_prune_blue_score = data.blue_score;
+            if data.blue_score >= max_blue_score {
+                next_to_prune_blue_score = data.blue_score;
                 break;
             };
-            self.accepted_transactions_store.remove_transaction_acceptance_data(&mut writer, data.tx_id, data.accepting_blue_score)?;
+            self.accepted_transactions_store.remove_transaction_acceptance_data(&mut writer, data.transaction_id, data.blue_score)?;
         }
 
         self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, next_to_prune_blue_score)?;
@@ -316,6 +317,7 @@ impl Store {
         Ok(is_done)
     }
 
+    // -- set / init
     pub fn set_sink(&mut self, sink: Hash, blue_score: u64) -> StoreResult<()> {
         let mut batch = WriteBatch::default();
         let mut writer = BatchDbWriter::new(&mut batch);
@@ -336,24 +338,6 @@ impl Store {
         let mut batch = WriteBatch::default();
         let mut writer = BatchDbWriter::new(&mut batch);
         self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, blue_score)?;
-
-        self.commit_batch(batch)
-    }
-
-    pub fn update_to_new_retention_root(
-        &mut self,
-        retention_root: Hash,
-        retention_root_blue_score: u64,
-        retention_root_daa_score: u64,
-    ) -> StoreResult<()> {
-        let mut batch = WriteBatch::default();
-        let mut writer = BatchDbWriter::new(&mut batch);
-        self.pruning_sync_store.update_to_new_retention_root(
-            &mut writer,
-            retention_root,
-            retention_root_blue_score,
-            retention_root_daa_score,
-        )?;
 
         self.commit_batch(batch)
     }

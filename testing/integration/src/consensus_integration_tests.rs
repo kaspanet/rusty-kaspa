@@ -66,7 +66,7 @@ use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_txindex::TxIndex;
-use kaspa_txindex::api::{TxIndexApi, TxIndexProxy};
+use kaspa_txindex::api::{TxIndexApi, TxIndexProxy, TxIndexTestAPI};
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_txscript::opcodes::codes::OpTrue;
 use kaspa_txscript::script_builder::ScriptBuilderResult;
@@ -832,7 +832,6 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
         tc.import_pruning_point_utxo_set(pruning_point.unwrap(), multiset).unwrap();
         utxoindex.write().resync().unwrap();
-        txindex.write().resync_all_from_scratch().unwrap();
         // TODO: Add consensus validation that the pruning point is actually the right block according to the rules (in pruning depth etc).
     }
 
@@ -866,7 +865,6 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
     core.shutdown();
     core.join(joins);
-    txindex.write().resync_all_from_scratch().unwrap();
 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(tc.body_tips().iter().copied().any(|h| tc.block_status(h) == BlockStatus::StatusUTXOValid));
@@ -903,14 +901,13 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let consensus_retention_root_daa_score = tc.headers_store.get_daa_score(consensus_retention_root).unwrap();
     assert_eq!(txindex_retention_root, consensus_retention_root);
 
-    let txindex_accepted_tx_refs =
-        txindex.read().get_transaction_acceptance_data_by_blue_score_range(0, u64::MAX, None, false).unwrap();
+    let txindex_accepted_tx_refs = txindex.read().get_all_transaction_acceptance_refs().unwrap();
 
     let mut txindex_tx_acceptance_data = HashMap::new();
     for tx_ref in &txindex_accepted_tx_refs {
-        let acceptance_data_list = txindex.read().get_accepted_transaction_data(tx_ref.tx_id).unwrap();
+        let acceptance_data_list = txindex.read().get_accepted_transaction_data(tx_ref.transaction_id).unwrap();
         for tad in acceptance_data_list {
-            match txindex_tx_acceptance_data.entry(tx_ref.tx_id) {
+            match txindex_tx_acceptance_data.entry(tx_ref.transaction_id) {
                 std::collections::hash_map::Entry::Vacant(e) => {
                     let new_hashset: HashSet<TxAcceptanceData> = HashSet::from_iter(vec![tad]);
                     e.insert(new_hashset);
@@ -953,12 +950,12 @@ async fn json_test(file_path: &str, concurrency: bool) {
     assert_eq!(txindex_tx_acceptance_data, consensus_tx_acceptance_data);
     drop(txindex_tx_acceptance_data);
     drop(consensus_tx_acceptance_data);
-    let txindex_included_tx_refs = txindex.read().get_transaction_inclusion_data_by_daa_score_range(0, u64::MAX, None, false).unwrap();
+    let txindex_included_tx_refs = txindex.read().get_all_transaction_inclusion_refs().unwrap();
     let mut txindex_tx_inclusion_data = HashMap::new();
     for tx_ref in &txindex_included_tx_refs {
-        let inclusion_data_list = txindex.read().get_included_transaction_data(tx_ref.tx_id).unwrap();
+        let inclusion_data_list = txindex.read().get_included_transaction_data(tx_ref.transaction_id).unwrap();
         for tid in inclusion_data_list {
-            match txindex_tx_inclusion_data.entry(tx_ref.tx_id) {
+            match txindex_tx_inclusion_data.entry(tx_ref.transaction_id) {
                 std::collections::hash_map::Entry::Vacant(e) => {
                     let new_hashset: HashSet<TxInclusionData> = HashSet::from_iter(vec![tid]);
                     e.insert(new_hashset);

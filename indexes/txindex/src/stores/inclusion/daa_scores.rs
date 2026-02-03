@@ -21,7 +21,7 @@ const DAA_SCORE_SIZE: usize = mem::size_of::<u64>(); // 8
 const DAA_SCORE_STORE_KEY_LEN: usize = DAA_SCORE_SIZE + TRANSACTION_ID_SIZE; // 40
 
 /// Type alias for the tuple expected by [`DaaScoreRefIter`]iterator
-pub type DaaScoreRefTuple = (u64, TransactionId); // (daa_score, ref_type, txid)
+pub type DaaScoreRefTuple = (u64, TransactionId); // (daa_score, transaction_id)
 
 /// Iterator over [`DaaScoreRefTuple`] the type expected to be supplied to the store
 pub struct DaaScoreRefIter<I>(I);
@@ -74,7 +74,6 @@ where
     }
 }
 
-// TODO (Relaxed): Consider using a KeyBuilder pattern for this more complex key
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DaaScoreRefKey(pub [u8; DAA_SCORE_STORE_KEY_LEN]);
 
@@ -107,18 +106,18 @@ impl DaaScoreRefKey {
     }
 
     #[inline(always)]
-    pub fn with_txid(mut self, txid: TransactionId) -> Self {
-        self.0[DAA_SCORE_SIZE..DAA_SCORE_SIZE + TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
+    pub fn with_transaction_id(mut self, transaction_id: TransactionId) -> Self {
+        self.0[DAA_SCORE_SIZE..DAA_SCORE_SIZE + TRANSACTION_ID_SIZE].copy_from_slice(&transaction_id.as_bytes());
         self
     }
 
     #[inline(always)]
-    pub fn get_daa_score(&self) -> u64 {
+    pub fn extract_daa_score(&self) -> u64 {
         u64::from_be_bytes(self.0[0..DAA_SCORE_SIZE].try_into().unwrap())
     }
 
     #[inline(always)]
-    pub fn get_txid(&self) -> TransactionId {
+    pub fn extract_transaction_id(&self) -> TransactionId {
         TransactionId::from_slice(&self.0[DAA_SCORE_SIZE..DAA_SCORE_SIZE + TRANSACTION_ID_SIZE])
     }
 }
@@ -126,7 +125,7 @@ impl DaaScoreRefKey {
 impl From<DaaScoreRefKey> for DaaScoreIncludingRefData {
     #[inline(always)]
     fn from(key: DaaScoreRefKey) -> Self {
-        DaaScoreIncludingRefData { including_daa_score: key.get_daa_score(), tx_id: key.get_txid() }
+        DaaScoreIncludingRefData { daa_score: key.extract_daa_score(), transaction_id: key.extract_transaction_id() }
     }
 }
 
@@ -161,19 +160,15 @@ pub trait TxIndexIncludingDaaScoreRefReader {
         limit: Option<usize>, // if some, Will stop after limit is reached
     ) -> StoreResult<DaaScoreRefDataResIter<impl Iterator<Item = DaaScoreIncludingRefData>>>;
 
-    /// Retrieves all remaining daa score refs at a specific daa score defined from an explicit daa score ref data point.
-    /// Required for pagination over daa score boundaries.
-    fn get_remaining_daa_score_refs(
-        &self,
-        daa_score_ref_data: DaaScoreIncludingRefData,
-    ) -> StoreResult<DaaScoreRefDataResIter<impl Iterator<Item = DaaScoreIncludingRefData>>>;
-    fn get_lowest_daa_score_ref(&self) -> StoreResult<Option<DaaScoreIncludingRefData>>;
+    fn is_empty(&self) -> StoreResult<bool> {
+        Ok(self.get_daa_score_refs(0u64..=u64::MAX, Some(1))?.next().is_none())
+    }
 }
 
 pub trait TxIndexIncludingDaaScoreRefStore: TxIndexIncludingDaaScoreRefReader {
     fn add_daa_score_refs<I>(&mut self, writer: &mut impl DbWriter, to_add_data: DaaScoreRefIter<I>) -> StoreResult<()>
     where
-        I: Iterator<Item = DaaScoreRefTuple>; // (daa_score, store_ident, txid)
+        I: Iterator<Item = DaaScoreRefTuple>; // DaaScoreRefTuple = (daa_score, transaction_id)
     fn remove_daa_score_refs(&mut self, writer: &mut impl DbWriter, to_remove_daa_score_range: Range<u64>) -> StoreResult<()>;
     fn delete_all(&mut self) -> StoreResult<()>;
 }
@@ -224,34 +219,6 @@ impl TxIndexIncludingDaaScoreRefReader for DbTxIndexIncludingDaaScoreRefStore {
                 }),
         ))
     }
-
-    fn get_remaining_daa_score_refs(
-        &self,
-        daa_score_ref_data: DaaScoreIncludingRefData,
-    ) -> StoreResult<DaaScoreRefDataResIter<impl Iterator<Item = DaaScoreIncludingRefData>>> {
-        Ok(DaaScoreRefDataResIter(
-            self.access
-                .seek_iterator(
-                    None,
-                    Some(
-                        DaaScoreRefKey::new_minimized()
-                            .with_txid(daa_score_ref_data.tx_id)
-                            .with_daa_score(daa_score_ref_data.including_daa_score),
-                    ),
-                    Some(DaaScoreRefKey::new_maximized().with_daa_score(daa_score_ref_data.including_daa_score)),
-                    usize::MAX,
-                    true, // We already know about start point
-                )
-                .map(|res| {
-                    let (key, _) = res.unwrap();
-                    DaaScoreRefKey::from(key).into()
-                }),
-        ))
-    }
-
-    fn get_lowest_daa_score_ref(&self) -> StoreResult<Option<DaaScoreIncludingRefData>> {
-        Ok(self.access.iterator().next().map(|res| DaaScoreIncludingRefData::from(DaaScoreRefKey::from(res.unwrap().0))))
-    }
 }
 
 impl TxIndexIncludingDaaScoreRefStore for DbTxIndexIncludingDaaScoreRefStore {
@@ -259,9 +226,9 @@ impl TxIndexIncludingDaaScoreRefStore for DbTxIndexIncludingDaaScoreRefStore {
     where
         I: Iterator<Item = DaaScoreRefTuple>,
     {
-        let mut kv_iter = to_add_data
-            .into_iter()
-            .map(|(daa_score, txid)| (DaaScoreRefKey::new_minimized().with_daa_score(daa_score).with_txid(txid), ()));
+        let mut kv_iter = to_add_data.into_iter().map(|(daa_score, transaction_id)| {
+            (DaaScoreRefKey::new_minimized().with_daa_score(daa_score).with_transaction_id(transaction_id), ())
+        });
         self.access.write_many_without_cache(writer, &mut kv_iter)
     }
 
@@ -286,25 +253,18 @@ mod tests {
     use bincode;
     use kaspa_database::{
         create_temp_db,
-        prelude::{BatchDbWriter, CachePolicy, ConnBuilder, WriteBatch},
+        prelude::{BatchDbWriter, CachePolicy, ConnBuilder},
     };
-    use rand::Rng;
-
-    fn random_txid() -> TransactionId {
-        let mut rng = rand::thread_rng();
-        let mut bytes = [0u8; 32];
-        rng.fill(&mut bytes);
-        TransactionId::from_slice(&bytes)
-    }
+    use rocksdb::WriteBatch;
 
     #[test]
     fn test_daa_score_refs_key_roundtrip() {
         let daa_score = 123456789u64;
-        let txid = random_txid();
-        let key = DaaScoreRefKey::new_minimized().with_daa_score(daa_score).with_txid(txid);
+        let transaction_id = TransactionId::from_u64_word(1u64);
+        let key = DaaScoreRefKey::new_minimized().with_daa_score(daa_score).with_transaction_id(transaction_id);
         let daa_score_ref_data = DaaScoreIncludingRefData::from(key.clone());
-        assert_eq!(daa_score, daa_score_ref_data.including_daa_score);
-        assert_eq!(txid, daa_score_ref_data.tx_id);
+        assert_eq!(daa_score, daa_score_ref_data.daa_score);
+        assert_eq!(transaction_id, daa_score_ref_data.transaction_id);
     }
 
     #[test]
@@ -321,7 +281,7 @@ mod tests {
         let mut store = DbTxIndexIncludingDaaScoreRefStore::new(Arc::clone(&txindex_db), CachePolicy::Empty);
 
         // Add some test data (only inclusion refs)
-        let to_add = vec![(100u64, random_txid()), (250u64, random_txid())];
+        let to_add = vec![(100u64, TransactionId::from_u64_word(1u64)), (250u64, TransactionId::from_u64_word(2u64))];
         let to_add_clone = to_add.clone();
 
         let mut write_batch = WriteBatch::new();
@@ -332,10 +292,10 @@ mod tests {
         // Test retrieval
         let results = store.get_daa_score_refs(100u64..300u64, None).unwrap().collect::<Vec<DaaScoreIncludingRefData>>();
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].including_daa_score, to_add[0].0);
-        assert_eq!(results[0].tx_id, to_add[0].1);
-        assert_eq!(results[1].including_daa_score, to_add[1].0);
-        assert_eq!(results[1].tx_id, to_add[1].1);
+        assert_eq!(results[0].daa_score, to_add[0].0);
+        assert_eq!(results[0].transaction_id, to_add[0].1);
+        assert_eq!(results[1].daa_score, to_add[1].0);
+        assert_eq!(results[1].transaction_id, to_add[1].1);
 
         // Clean up test
         let mut write_batch = WriteBatch::new();

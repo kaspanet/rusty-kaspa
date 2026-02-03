@@ -21,7 +21,7 @@ const BLUE_SCORE_SIZE: usize = mem::size_of::<u64>(); // 8
 const BLUE_SCORE_STORE_KEY_LEN: usize = BLUE_SCORE_SIZE + TRANSACTION_ID_SIZE; // 40
 
 /// Type alias for the tuple expected by [`BlueScoreRefIter`] iterator
-pub type BlueScoreRefTuple = (u64, TransactionId); // (blue_score, ref_type, txid)
+pub type BlueScoreRefTuple = (u64, TransactionId); // (blue_score, transaction_id)
 
 /// Iterator over [`BlueScoreRefTuple`] the type expected to be supplied to the store
 pub struct BlueScoreRefIter<I>(I);
@@ -74,7 +74,6 @@ where
     }
 }
 
-// TODO (Relaxed): Consider using a KeyBuilder pattern for this more complex key
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BlueScoreRefKey(pub [u8; BLUE_SCORE_STORE_KEY_LEN]);
 
@@ -107,18 +106,18 @@ impl BlueScoreRefKey {
     }
 
     #[inline(always)]
-    pub fn with_txid(mut self, txid: TransactionId) -> Self {
-        self.0[BLUE_SCORE_SIZE..BLUE_SCORE_SIZE + TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
+    pub fn with_transaction_id(mut self, transaction_id: TransactionId) -> Self {
+        self.0[BLUE_SCORE_SIZE..BLUE_SCORE_SIZE + TRANSACTION_ID_SIZE].copy_from_slice(&transaction_id.as_bytes());
         self
     }
 
     #[inline(always)]
-    pub fn get_blue_score(&self) -> u64 {
+    pub fn extract_blue_score(&self) -> u64 {
         u64::from_be_bytes(self.0[0..BLUE_SCORE_SIZE].try_into().unwrap())
     }
 
     #[inline(always)]
-    pub fn get_txid(&self) -> TransactionId {
+    pub fn extract_transaction_id(&self) -> TransactionId {
         TransactionId::from_slice(&self.0[BLUE_SCORE_SIZE..BLUE_SCORE_SIZE + TRANSACTION_ID_SIZE])
     }
 }
@@ -126,7 +125,7 @@ impl BlueScoreRefKey {
 impl From<BlueScoreRefKey> for BlueScoreAcceptingRefData {
     #[inline(always)]
     fn from(key: BlueScoreRefKey) -> Self {
-        BlueScoreAcceptingRefData { accepting_blue_score: key.get_blue_score(), tx_id: key.get_txid() }
+        BlueScoreAcceptingRefData { blue_score: key.extract_blue_score(), transaction_id: key.extract_transaction_id() }
     }
 }
 
@@ -160,19 +159,16 @@ pub trait TxIndexAcceptingBlueScoreRefReader {
         blue_score_range: impl RangeBounds<u64>,
         limit: Option<usize>, // if some, Will stop after limit is reached
     ) -> StoreResult<BlueScoreRefDataResIter<impl Iterator<Item = BlueScoreAcceptingRefData>>>;
-    /// Retrives all remeaining blue score refs, at a specific blue score defined from an explicit blue score ref data point.
-    /// required for pagination over blue score boundaries.
-    fn get_remaining_blue_score_refs(
-        &self,
-        blue_score_ref_data: BlueScoreAcceptingRefData,
-    ) -> StoreResult<BlueScoreRefDataResIter<impl Iterator<Item = BlueScoreAcceptingRefData>>>;
-    fn get_lowest_blue_score_ref(&self) -> StoreResult<Option<BlueScoreAcceptingRefData>>;
+
+    fn is_empty(&self) -> StoreResult<bool> {
+        Ok(self.get_blue_score_refs(0u64..=u64::MAX, Some(1))?.next().is_none())
+    }
 }
 
 pub trait TxIndexAcceptingBlueScoreRefStore: TxIndexAcceptingBlueScoreRefReader {
     fn add_blue_score_refs<I>(&mut self, writer: &mut impl DbWriter, to_add_data: BlueScoreRefIter<I>) -> StoreResult<()>
     where
-        I: Iterator<Item = BlueScoreRefTuple>; // (blue_score, store_ident, txid)
+        I: Iterator<Item = BlueScoreRefTuple>; // BlueScoreRefTuple = (blue_score, transaction_id)
     fn remove_blue_score_refs(&mut self, writer: &mut impl DbWriter, to_remove_blue_score_range: Range<u64>) -> StoreResult<()>;
     fn delete_all(&mut self) -> StoreResult<()>;
 }
@@ -222,34 +218,6 @@ impl TxIndexAcceptingBlueScoreRefReader for DbTxIndexAcceptingBlueScoreRefStore 
                 }),
         ))
     }
-
-    fn get_remaining_blue_score_refs(
-        &self,
-        blue_score_ref_data: BlueScoreAcceptingRefData,
-    ) -> StoreResult<BlueScoreRefDataResIter<impl Iterator<Item = BlueScoreAcceptingRefData>>> {
-        Ok(BlueScoreRefDataResIter(
-            self.access
-                .seek_iterator(
-                    None,
-                    Some(
-                        BlueScoreRefKey::new_minimized()
-                            .with_txid(blue_score_ref_data.tx_id)
-                            .with_blue_score(blue_score_ref_data.accepting_blue_score),
-                    ),
-                    Some(BlueScoreRefKey::new_maximized().with_blue_score(blue_score_ref_data.accepting_blue_score)),
-                    usize::MAX,
-                    true, // We already know about start point
-                )
-                .map(|res| {
-                    let (key, _) = res.unwrap();
-                    BlueScoreRefKey::from(key).into()
-                }),
-        ))
-    }
-
-    fn get_lowest_blue_score_ref(&self) -> StoreResult<Option<BlueScoreAcceptingRefData>> {
-        Ok(self.access.iterator().next().map(|res| BlueScoreAcceptingRefData::from(BlueScoreRefKey::from(res.unwrap().0))))
-    }
 }
 
 impl TxIndexAcceptingBlueScoreRefStore for DbTxIndexAcceptingBlueScoreRefStore {
@@ -257,9 +225,9 @@ impl TxIndexAcceptingBlueScoreRefStore for DbTxIndexAcceptingBlueScoreRefStore {
     where
         I: Iterator<Item = BlueScoreRefTuple>,
     {
-        let mut kv_iter = to_add_data
-            .into_iter()
-            .map(|(blue_score, txid)| (BlueScoreRefKey::new_minimized().with_blue_score(blue_score).with_txid(txid), ()));
+        let mut kv_iter = to_add_data.into_iter().map(|(blue_score, transaction_id)| {
+            (BlueScoreRefKey::new_minimized().with_blue_score(blue_score).with_transaction_id(transaction_id), ())
+        });
         self.access.write_many_without_cache(writer, &mut kv_iter)
     }
 
@@ -284,25 +252,18 @@ mod tests {
     use bincode;
     use kaspa_database::{
         create_temp_db,
-        prelude::{BatchDbWriter, CachePolicy, ConnBuilder, WriteBatch},
+        prelude::{BatchDbWriter, CachePolicy, ConnBuilder},
     };
-    use rand::Rng;
-
-    fn random_txid() -> TransactionId {
-        let mut rng = rand::thread_rng();
-        let mut bytes = [0u8; 32];
-        rng.fill(&mut bytes);
-        TransactionId::from_slice(&bytes)
-    }
+    use rocksdb::WriteBatch;
 
     #[test]
     fn test_blue_score_refs_key_roundtrip() {
         let blue_score = 123456789u64;
-        let txid = random_txid();
-        let key = BlueScoreRefKey::new_minimized().with_blue_score(blue_score).with_txid(txid);
+        let transaction_id = TransactionId::from_u64_word(1u64);
+        let key = BlueScoreRefKey::new_minimized().with_blue_score(blue_score).with_transaction_id(transaction_id);
         let blue_score_ref_data = BlueScoreAcceptingRefData::from(key.clone());
-        assert_eq!(blue_score, blue_score_ref_data.accepting_blue_score);
-        assert_eq!(txid, blue_score_ref_data.tx_id);
+        assert_eq!(blue_score, blue_score_ref_data.blue_score);
+        assert_eq!(transaction_id, blue_score_ref_data.transaction_id);
     }
 
     #[test]
@@ -319,7 +280,7 @@ mod tests {
         let mut store = DbTxIndexAcceptingBlueScoreRefStore::new(Arc::clone(&txindex_db), CachePolicy::Empty);
 
         // Add some test data (only acceptance refs)
-        let to_add = vec![(100u64, random_txid()), (250u64, random_txid())];
+        let to_add = vec![(100u64, TransactionId::from_u64_word(1u64)), (250u64, TransactionId::from_u64_word(2u64))];
         let to_add_clone = to_add.clone();
 
         let mut write_batch = WriteBatch::new();
@@ -330,10 +291,10 @@ mod tests {
         // Test retrieval
         let results = store.get_blue_score_refs(100u64..300u64, None).unwrap().collect::<Vec<BlueScoreAcceptingRefData>>();
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].accepting_blue_score, to_add[0].0);
-        assert_eq!(results[0].tx_id, to_add[0].1);
-        assert_eq!(results[1].accepting_blue_score, to_add[1].0);
-        assert_eq!(results[1].tx_id, to_add[1].1);
+        assert_eq!(results[0].blue_score, to_add[0].0);
+        assert_eq!(results[0].transaction_id, to_add[0].1);
+        assert_eq!(results[1].blue_score, to_add[1].0);
+        assert_eq!(results[1].transaction_id, to_add[1].1);
 
         // Clean up test
         let mut write_batch = WriteBatch::new();

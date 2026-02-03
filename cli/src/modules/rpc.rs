@@ -317,8 +317,7 @@ impl Rpc {
                 if argv.is_empty() {
                     return Err(Error::custom("Missing transaction id argument"));
                 }
-                let transaction_id = argv.remove(0);
-                let transaction_id = transaction_id.as_str().parse::<TransactionId>()?;
+                let transaction_id = argv.remove(0).parse::<TransactionId>()?;
                 let include_unaccepted = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
                 let include_transactions = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
                 let include_inclusion_data = argv.remove(0).parse::<bool>().ok().unwrap_or_default();

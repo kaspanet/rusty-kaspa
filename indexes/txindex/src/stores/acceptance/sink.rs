@@ -59,9 +59,10 @@ mod tests {
     use super::*;
     use kaspa_database::{
         create_temp_db,
-        prelude::{BatchDbWriter, ConnBuilder, WriteBatch},
+        prelude::{BatchDbWriter, ConnBuilder},
     };
     use kaspa_hashes::Hash;
+    use rocksdb::WriteBatch;
 
     #[test]
     fn test_txindex_sink_store() {

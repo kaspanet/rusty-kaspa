@@ -33,8 +33,8 @@ impl IncludedTransactionStoreKey {
     }
 
     #[inline(always)]
-    pub fn with_txid(mut self, txid: TransactionId) -> Self {
-        self.0[0..TRANSACTION_ID_SIZE].copy_from_slice(&txid.as_bytes());
+    pub fn with_transaction_id(mut self, transaction_id: TransactionId) -> Self {
+        self.0[0..TRANSACTION_ID_SIZE].copy_from_slice(&transaction_id.as_bytes());
         self
     }
 
@@ -116,14 +116,14 @@ where
 
 /// -- Store Traits ---
 pub trait TxIndexIncludedTransactionsStoreReader {
-    fn get_transaction_inclusion_data(&self, txid: TransactionId) -> StoreResult<Vec<TxInclusionData>>;
+    fn get_transaction_inclusion_data(&self, transaction_id: TransactionId) -> StoreResult<Vec<TxInclusionData>>;
 }
 
 pub trait TxIndexIncludedTransactionsStore: TxIndexIncludedTransactionsStoreReader {
     fn remove_transaction_inclusion_data(
         &mut self,
         writer: &mut impl DbWriter,
-        txid: TransactionId,
+        transaction_id: TransactionId,
         daa_score: u64,
     ) -> StoreResult<()>;
     fn add_included_transaction_data<I>(&mut self, writer: &mut impl DbWriter, to_add: TxInclusionIter<I>) -> StoreResult<()>
@@ -150,12 +150,12 @@ impl DbTxIndexIncludedTransactionsStore {
 }
 
 impl TxIndexIncludedTransactionsStoreReader for DbTxIndexIncludedTransactionsStore {
-    fn get_transaction_inclusion_data(&self, txid: TransactionId) -> StoreResult<Vec<TxInclusionData>> {
+    fn get_transaction_inclusion_data(&self, transaction_id: TransactionId) -> StoreResult<Vec<TxInclusionData>> {
         self.access
             .seek_iterator(
                 None,
-                Some(IncludedTransactionStoreKey::new_minimized().with_txid(txid)),
-                Some(IncludedTransactionStoreKey::new_maximized().with_txid(txid)),
+                Some(IncludedTransactionStoreKey::new_minimized().with_transaction_id(transaction_id)),
+                Some(IncludedTransactionStoreKey::new_maximized().with_transaction_id(transaction_id)),
                 usize::MAX,
                 false,
             )
@@ -171,13 +171,13 @@ impl TxIndexIncludedTransactionsStore for DbTxIndexIncludedTransactionsStore {
     fn remove_transaction_inclusion_data(
         &mut self,
         writer: &mut impl DbWriter,
-        txid: TransactionId,
+        transaction_id: TransactionId,
         daa_score: u64,
     ) -> StoreResult<()> {
         self.access.delete_range(
             writer,
-            IncludedTransactionStoreKey::new_minimized().with_txid(txid).with_daa_score(daa_score),
-            IncludedTransactionStoreKey::new_maximized().with_txid(txid).with_daa_score(daa_score),
+            IncludedTransactionStoreKey::new_minimized().with_transaction_id(transaction_id).with_daa_score(daa_score),
+            IncludedTransactionStoreKey::new_maximized().with_transaction_id(transaction_id).with_daa_score(daa_score),
         )
     }
 
@@ -185,8 +185,15 @@ impl TxIndexIncludedTransactionsStore for DbTxIndexIncludedTransactionsStore {
     where
         I: Iterator<Item = TxInclusionTuple>,
     {
-        let kv_iter =
-            to_add.map(|(a, b, c, d)| (IncludedTransactionStoreKey::default().with_txid(a).with_daa_score(b).with_block_hash(c), d));
+        let kv_iter = to_add.map(|(transaction_id, daa_score, block_hash, index_within_block)| {
+            (
+                IncludedTransactionStoreKey::default()
+                    .with_transaction_id(transaction_id)
+                    .with_daa_score(daa_score)
+                    .with_block_hash(block_hash),
+                index_within_block,
+            )
+        });
 
         self.access.write_many_without_cache(writer, &mut kv_iter.into_iter())
     }
@@ -203,8 +210,9 @@ mod tests {
     use bincode;
     use kaspa_database::{
         create_temp_db,
-        prelude::{BatchDbWriter, ConnBuilder, WriteBatch},
+        prelude::{BatchDbWriter, ConnBuilder},
     };
+    use rocksdb::WriteBatch;
 
     #[test]
     fn test_transaction_store_value_inclusion_roundtrip() {
@@ -217,10 +225,13 @@ mod tests {
 
     #[test]
     fn test_transaction_store_key_inclusion_conversion() {
-        let txid = TransactionId::from_u64_word(1);
+        let transaction_id = TransactionId::from_u64_word(1);
         let daa_score = 987654321u64;
         let block_hash = Hash::from_u64_word(2);
-        let key = IncludedTransactionStoreKey::default().with_txid(txid).with_daa_score(daa_score).with_block_hash(block_hash);
+        let key = IncludedTransactionStoreKey::default()
+            .with_transaction_id(transaction_id)
+            .with_daa_score(daa_score)
+            .with_block_hash(block_hash);
         let index_within_block = 42 as TransactionIndexType;
         let tx_inclusion_data = key.into_tx_inclusion_data(index_within_block);
         assert_eq!(tx_inclusion_data.daa_score, daa_score);
@@ -233,8 +244,8 @@ mod tests {
         let (_txindex_db_lt, txindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
 
         let mut store = DbTxIndexIncludedTransactionsStore::new(Arc::clone(&txindex_db), CachePolicy::Empty);
-        let txid1 = TransactionId::from_u64_word(1);
-        let txid2 = TransactionId::from_u64_word(2);
+        let transaction_id1 = TransactionId::from_u64_word(1);
+        let transaction_id2 = TransactionId::from_u64_word(2);
         let block_hash1 = Hash::from_u64_word(3);
         let block_hash2 = Hash::from_u64_word(4);
         let daa_score1 = 100u64;
@@ -250,9 +261,9 @@ mod tests {
                 &mut writer,
                 TxInclusionIter(
                     vec![
-                        (txid1, daa_score1, block_hash1, index_within_block1),
-                        (txid1, daa_score2, block_hash2, index_within_block2),
-                        (txid2, daa_score1, block_hash1, index_within_block1),
+                        (transaction_id1, daa_score1, block_hash1, index_within_block1),
+                        (transaction_id1, daa_score2, block_hash2, index_within_block2),
+                        (transaction_id2, daa_score1, block_hash1, index_within_block1),
                     ]
                     .into_iter(),
                 ),
@@ -260,44 +271,44 @@ mod tests {
             .unwrap();
         txindex_db.write(write_batch).unwrap();
 
-        // Retrieve included transaction data for txid1
-        let inclusions_txid1 = store.get_transaction_inclusion_data(txid1).unwrap();
-        assert_eq!(inclusions_txid1.len(), 2);
-        assert!(inclusions_txid1.contains(&TxInclusionData {
+        // Retrieve included transaction data for transaction_id1
+        let inclusions_transaction_id1 = store.get_transaction_inclusion_data(transaction_id1).unwrap();
+        assert_eq!(inclusions_transaction_id1.len(), 2);
+        assert!(inclusions_transaction_id1.contains(&TxInclusionData {
             daa_score: daa_score1,
             block_hash: block_hash1,
             index_within_block: index_within_block1,
         }));
 
-        assert!(inclusions_txid1.contains(&TxInclusionData {
+        assert!(inclusions_transaction_id1.contains(&TxInclusionData {
             daa_score: daa_score2,
             block_hash: block_hash2,
             index_within_block: index_within_block2,
         }));
 
-        // Retrieve included transaction data for txid2
-        let inclusions_txid2 = store.get_transaction_inclusion_data(txid2).unwrap();
-        assert_eq!(inclusions_txid2.len(), 1);
+        // Retrieve included transaction data for transaction_id2
+        let inclusions_transaction_id2 = store.get_transaction_inclusion_data(transaction_id2).unwrap();
+        assert_eq!(inclusions_transaction_id2.len(), 1);
         assert_eq!(
-            inclusions_txid2[0],
+            inclusions_transaction_id2[0],
             TxInclusionData { daa_score: daa_score1, block_hash: block_hash1, index_within_block: index_within_block1 }
         );
 
         // Test removal and clean up
         let mut write_batch = WriteBatch::new();
         let mut writer = BatchDbWriter::new(&mut write_batch);
-        store.remove_transaction_inclusion_data(&mut writer, txid1, daa_score1).unwrap();
+        store.remove_transaction_inclusion_data(&mut writer, transaction_id1, daa_score1).unwrap();
         txindex_db.write(write_batch).unwrap();
-        assert!(store.get_transaction_inclusion_data(txid1).is_ok_and(|val| val.len() == 1
+        assert!(store.get_transaction_inclusion_data(transaction_id1).is_ok_and(|val| val.len() == 1
             && val[0] == TxInclusionData { daa_score: daa_score2, block_hash: block_hash2, index_within_block: index_within_block2 }));
         let mut write_batch = WriteBatch::new();
         let mut writer = BatchDbWriter::new(&mut write_batch);
-        store.remove_transaction_inclusion_data(&mut writer, txid1, daa_score2).unwrap();
+        store.remove_transaction_inclusion_data(&mut writer, transaction_id1, daa_score2).unwrap();
         txindex_db.write(write_batch).unwrap();
-        let res = store.get_transaction_inclusion_data(txid1);
+        let res = store.get_transaction_inclusion_data(transaction_id1);
         println!("{:?}", res);
-        assert!(store.get_transaction_inclusion_data(txid1).is_ok_and(|val| val.is_empty()));
+        assert!(store.get_transaction_inclusion_data(transaction_id1).is_ok_and(|val| val.is_empty()));
         store.delete_all().unwrap();
-        assert!(store.get_transaction_inclusion_data(txid2).is_ok_and(|val| val.is_empty()));
+        assert!(store.get_transaction_inclusion_data(transaction_id2).is_ok_and(|val| val.is_empty()));
     }
 }

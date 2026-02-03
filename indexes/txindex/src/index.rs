@@ -6,11 +6,11 @@ use std::{
 
 use crate::{
     IDENT,
-    api::TxIndexApi,
+    api::{TxIndexApi, TxIndexTestAPI},
     errors::TxIndexResult,
     model::{
+        TxAcceptanceData, TxInclusionData,
         score_refs::{BlueScoreAcceptingRefData, DaaScoreIncludingRefData},
-        {TxAcceptanceData, TxInclusionData},
     },
     reindexer::{
         block_reindexer,
@@ -22,12 +22,7 @@ use crate::{
     },
 };
 use itertools::Itertools;
-use kaspa_consensus_core::{
-    BlockHashSet, Hash,
-    acceptance_data::{AcceptanceData, MergesetIndexType},
-    block::Block,
-    tx::TransactionId,
-};
+use kaspa_consensus_core::{BlockHashSet, Hash, acceptance_data::AcceptanceData, block::Block, tx::TransactionId};
 use kaspa_consensus_notify::notification::{
     BlockAddedNotification, RetentionRootChangedNotification, VirtualChainChangedNotification,
 };
@@ -63,101 +58,29 @@ impl TxIndex {
         consensus_manager.register_consensus_reset_handler(Arc::new(TxIndexConsensusResetHandler::new(Arc::downgrade(&txindex))));
         Ok(txindex)
     }
-}
 
-impl TxIndexApi for TxIndex {
-    fn get_accepted_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxAcceptanceData>> {
-        debug!("[{}] Getting accepted transaction data for txid: {}", IDENT, txid);
-        Ok(self.store.get_accepted_transaction_data(txid)?)
+    fn is_synced(&self) -> TxIndexResult<bool> {
+        debug!(
+            "[{}] Checking if TxIndex is synced: acceptance data synced: {}, inclusion data synced: {}, retention synced: {}",
+            IDENT,
+            self.is_acceptance_data_synced()?,
+            self.is_inclusion_data_synced()?,
+            self.is_retention_synced()?,
+        );
+        Ok(self.is_acceptance_data_synced()? && self.is_inclusion_data_synced()? && self.is_retention_synced()?)
     }
 
-    fn get_included_transaction_data(&self, txid: TransactionId) -> TxIndexResult<Vec<TxInclusionData>> {
-        debug!("[{}] Getting included transaction data for txid: {}", IDENT, txid);
-        Ok(self.store.get_included_transaction_data(txid)?)
-    }
-
-    fn update_via_block_added(&mut self, block_added_notification: BlockAddedNotification) -> TxIndexResult<()> {
-        debug!("[{}] Updating via block added notification: {:?}", IDENT, block_added_notification.block.hash());
-
-        if block_added_notification.block.is_header_only() || block_added_notification.block.transactions.is_empty() {
-            debug!("[{}] Skipping header-only block: {}", self, block_added_notification.block.hash());
-            return Ok(());
+    fn resync_all_from_scratch(&mut self) -> TxIndexResult<()> {
+        if !self.is_acceptance_data_synced()? {
+            self.resync_acceptance_data_from_scratch()?;
         };
-        let reindexed_block_added_state = block_reindexer::reindex_block_added_notification(&block_added_notification);
-        Ok(self.store.update_via_reindexed_block_added_state(reindexed_block_added_state)?)
-    }
-
-    fn update_via_virtual_chain_changed(
-        &mut self,
-        virtual_chain_changed_notification: VirtualChainChangedNotification,
-    ) -> TxIndexResult<()> {
-        if virtual_chain_changed_notification.added_chain_block_hashes.is_empty()
-            || virtual_chain_changed_notification.added_chain_blocks_acceptance_data.is_empty()
-        {
-            debug!("[{}] Skipping virtual chain changed notification with no added or removed blocks", self);
-            return Ok(());
-        }
-        debug!(
-            "[{}] Updating via virtual chain changed notification with sink: {:?}",
-            self,
-            virtual_chain_changed_notification.added_chain_block_hashes.last().unwrap()
-        );
-        let reindexerd_virtual_changed_state =
-            mergeset_reindexer::reindex_virtual_changed_notification(&virtual_chain_changed_notification);
-        Ok(self.store.update_via_reindexed_virtual_chain_changed_state(reindexerd_virtual_changed_state)?)
-    }
-
-    fn update_via_retention_root_changed(
-        &mut self,
-        retention_root_changed_notification: RetentionRootChangedNotification,
-    ) -> TxIndexResult<()> {
-        debug!(
-            "[{}] Updating via retention root changed to root: {} with blue score: {}",
-            self, retention_root_changed_notification.retention_root, retention_root_changed_notification.retention_root_blue_score
-        );
-        Ok(self.store.update_to_new_retention_root(
-            retention_root_changed_notification.retention_root,
-            retention_root_changed_notification.retention_root_blue_score,
-            retention_root_changed_notification.retention_root_daa_score,
-        )?)
-    }
-
-    /// Ranges are inclusive
-    fn get_transaction_inclusion_data_by_daa_score_range(
-        &self,
-        from: u64, // inclusive
-        to: u64,   // inclusive
-        limit: Option<usize>,
-        limit_to_score_boundary: bool,
-    ) -> TxIndexResult<Vec<DaaScoreIncludingRefData>> {
-        debug!("[{}] Getting transaction inclusion data by daa score range: {} to {}", self, from, to);
-        Ok(self.store.get_transaction_inclusion_data_by_daa_score_range(from..=to, limit, limit_to_score_boundary)?)
-    }
-    /// Ranges are inclusive
-    fn get_transaction_acceptance_data_by_blue_score_range(
-        &self,
-        from: u64, // inclusive
-        to: u64,   // inclusive
-        limit: Option<usize>,
-        limit_to_score_boundary: bool,
-    ) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>> {
-        debug!("[{}] Getting transaction acceptance data by blue score range: {} to {}", self, from, to);
-        Ok(self.store.get_transaction_acceptance_data_by_blue_score_range(from..=to, limit, limit_to_score_boundary)?)
-    }
-
-    fn get_sink_with_blue_score(&self) -> TxIndexResult<(Hash, u64)> {
-        debug!("[{}] Getting sink with blue score", IDENT);
-        Ok(self.store.get_sink_with_blue_score()?.unwrap())
-    }
-
-    fn get_tips(&self) -> TxIndexResult<Option<Arc<BlockHashSet>>> {
-        debug!("[{}] Getting tips", IDENT);
-        Ok(self.store.get_tips()?)
-    }
-
-    fn get_retention_root(&self) -> TxIndexResult<Option<Hash>> {
-        debug!("[{}] Getting retention root", IDENT);
-        Ok(self.store.get_retention_root()?)
+        if !self.is_inclusion_data_synced()? {
+            self.resync_inclusion_data_from_scratch()?;
+        };
+        if !self.is_retention_synced()? {
+            self.resync_retention_data_from_scratch()?;
+        };
+        Ok(())
     }
 
     fn is_acceptance_data_synced(&self) -> TxIndexResult<bool> {
@@ -207,30 +130,6 @@ impl TxIndexApi for TxIndex {
         }))
     }
 
-    fn is_synced(&self) -> TxIndexResult<bool> {
-        debug!(
-            "[{}] Checking if TxIndex is synced: acceptance data synced: {}, inclusion data synced: {}, retention synced: {}",
-            IDENT,
-            self.is_acceptance_data_synced()?,
-            self.is_inclusion_data_synced()?,
-            self.is_retention_synced()?,
-        );
-        Ok(self.is_acceptance_data_synced()? && self.is_inclusion_data_synced()? && self.is_retention_synced()?)
-    }
-
-    fn resync_all_from_scratch(&mut self) -> TxIndexResult<()> {
-        if !self.is_acceptance_data_synced()? {
-            self.resync_acceptance_data_from_scratch()?;
-        };
-        if !self.is_inclusion_data_synced()? {
-            self.resync_inclusion_data_from_scratch()?;
-        };
-        if !self.is_retention_synced()? {
-            self.resync_retention_data_from_scratch()?;
-        };
-        Ok(())
-    }
-
     fn resync_acceptance_data_from_scratch(&mut self) -> TxIndexResult<()> {
         info!("[{}] Resyncing acceptance data from scratch", IDENT);
         let consensus = self.consensus_manager.consensus();
@@ -246,24 +145,13 @@ impl TxIndexApi for TxIndex {
             // Prefetch blue scores so we don't capture or move `session` into iterator closures
             let blue_scores: Vec<u64> = hashes.iter().map(|h| session.get_header(*h).unwrap().blue_score).collect();
 
-            let reindexed_virtual_changed_state = acceptance_data
-                .iter()
-                .zip(hashes.iter())
-                .zip(blue_scores.iter())
-                .enumerate()
-                .flat_map(move |(merged_index, ((acceptance_data_arc, hash), blue_score))| {
-                    acceptance_data_arc.iter().map(move |mbad| {
-                        mergeset_reindexer::reindex_mergeset_acceptance_data(
-                            hash,
-                            *blue_score,
-                            merged_index as MergesetIndexType,
-                            mbad,
-                        )
-                    })
-                })
-                .collect::<Vec<_>>();
+            let reindexed_virtual_changed_state = mergeset_reindexer::reindex_mergeset_acceptance_data_many(
+                hashes.as_slice(),
+                blue_scores.as_slice(),
+                acceptance_data.as_slice(),
+            );
 
-            self.store.update_with_reindexed_mergeset_states(reindexed_virtual_changed_state)?;
+            self.store.update_with_reindexed_mergeset_states(reindexed_virtual_changed_state.collect())?;
 
             chunks_processed += 1;
             if start_ts.elapsed() >= Duration::from_secs(5) {
@@ -327,48 +215,6 @@ impl TxIndexApi for TxIndex {
         Ok(())
     }
 
-    fn get_pruning_lock(&self) -> Arc<AsyncMutex<()>> {
-        self.pruning_lock.clone()
-    }
-
-    fn prune_batch(&mut self) -> TxIndexResult<bool> {
-        debug!("[{}] Pruning TxIndex", IDENT);
-
-        // We prune by alternating between acceptance data and inclusion data, staying with one if the other is done
-        // until both are done, this allows us to interleave pruning and only do one scan per prune batch.
-        match self.store.get_next_to_prune_store()?.unwrap() {
-            ToPruneStore::AcceptanceData => {
-                let txindex_retention_root_blue_score = self.store.get_retention_root_blue_score()?.unwrap();
-                let next_to_prune_blue_score = self.store.get_next_to_prune_blue_score()?.unwrap();
-                self.store.prune_acceptance_data_from_blue_score(
-                    next_to_prune_blue_score,
-                    txindex_retention_root_blue_score,
-                    Some(PRUNING_CHUNK_SIZE as usize),
-                )?;
-                if self.store.is_inclusion_pruning_done()? {
-                    self.store.set_next_to_prune_store(ToPruneStore::AcceptanceData)?;
-                } else {
-                    self.store.set_next_to_prune_store(ToPruneStore::InclusionData)?;
-                }
-            }
-            ToPruneStore::InclusionData => {
-                let txindex_retention_root_daa_score = self.store.get_retention_root_daa_score()?.unwrap();
-                let next_to_prune_daa_score = self.store.get_next_to_prune_daa_score()?.unwrap();
-                self.store.prune_inclusion_data_from_daa_score(
-                    next_to_prune_daa_score,
-                    txindex_retention_root_daa_score,
-                    Some(PRUNING_CHUNK_SIZE as usize),
-                )?;
-                if self.store.is_acceptance_pruning_done()? {
-                    self.store.set_next_to_prune_store(ToPruneStore::InclusionData)?;
-                } else {
-                    self.store.set_next_to_prune_store(ToPruneStore::AcceptanceData)?;
-                }
-            }
-        }
-        Ok(self.store.is_acceptance_pruning_done()? && self.store.is_inclusion_pruning_done()?)
-    }
-
     fn resync_retention_data_from_scratch(&mut self) -> TxIndexResult<()> {
         info!("[{}] Pruning TxIndex", IDENT);
         let consensus = self.consensus_manager.consensus();
@@ -410,6 +256,129 @@ impl TxIndexApi for TxIndex {
 
         info!("[{}] Pruning completed", IDENT,);
         Ok(())
+    }
+}
+
+impl TxIndexApi for TxIndex {
+    fn get_accepted_transaction_data(&self, transaction_id: TransactionId) -> TxIndexResult<Vec<TxAcceptanceData>> {
+        debug!("[{}] Getting accepted transaction data for transaction_id: {}", IDENT, transaction_id);
+        Ok(self.store.get_accepted_transaction_data(transaction_id)?)
+    }
+
+    fn get_included_transaction_data(&self, transaction_id: TransactionId) -> TxIndexResult<Vec<TxInclusionData>> {
+        debug!("[{}] Getting included transaction data for transaction_id: {}", IDENT, transaction_id);
+        Ok(self.store.get_included_transaction_data(transaction_id)?)
+    }
+
+    fn update_via_block_added(&mut self, block_added_notification: BlockAddedNotification) -> TxIndexResult<()> {
+        debug!("[{}] Updating via block added notification: {:?}", IDENT, block_added_notification.block.hash());
+
+        if block_added_notification.block.is_header_only() || block_added_notification.block.transactions.is_empty() {
+            debug!("[{}] Skipping header-only block: {}", self, block_added_notification.block.hash());
+            return Ok(());
+        };
+        let reindexed_block_added_state = block_reindexer::reindex_block_added_notification(&block_added_notification);
+        Ok(self.store.update_via_reindexed_block_added_state(reindexed_block_added_state)?)
+    }
+
+    fn update_via_virtual_chain_changed(
+        &mut self,
+        virtual_chain_changed_notification: VirtualChainChangedNotification,
+    ) -> TxIndexResult<()> {
+        if virtual_chain_changed_notification.added_chain_block_hashes.is_empty()
+            || virtual_chain_changed_notification.added_chain_blocks_acceptance_data.is_empty()
+        {
+            debug!("[{}] Skipping virtual chain changed notification with no added or removed blocks", self);
+            return Ok(());
+        }
+        debug!(
+            "[{}] Updating via virtual chain changed notification with sink: {:?}",
+            self,
+            virtual_chain_changed_notification.added_chain_block_hashes.last().unwrap()
+        );
+        let reindexerd_virtual_changed_state =
+            mergeset_reindexer::reindex_virtual_changed_notification(&virtual_chain_changed_notification);
+        Ok(self.store.update_via_reindexed_virtual_chain_changed_state(reindexerd_virtual_changed_state)?)
+    }
+
+    fn update_via_retention_root_changed(
+        &mut self,
+        retention_root_changed_notification: RetentionRootChangedNotification,
+    ) -> TxIndexResult<()> {
+        debug!(
+            "[{}] Updating via retention root changed to root: {} with blue score: {}",
+            self, retention_root_changed_notification.retention_root, retention_root_changed_notification.retention_root_blue_score
+        );
+        Ok(self.store.update_to_new_retention_root(
+            retention_root_changed_notification.retention_root,
+            retention_root_changed_notification.retention_root_blue_score,
+            retention_root_changed_notification.retention_root_daa_score,
+        )?)
+    }
+
+    fn get_sink_with_blue_score(&self) -> TxIndexResult<(Hash, u64)> {
+        debug!("[{}] Getting sink with blue score", IDENT);
+        Ok(self.store.get_sink_with_blue_score()?.unwrap())
+    }
+
+    fn get_pruning_lock(&self) -> Arc<AsyncMutex<()>> {
+        self.pruning_lock.clone()
+    }
+
+    fn prune_batch(&mut self) -> TxIndexResult<bool> {
+        debug!("[{}] Pruning TxIndex", IDENT);
+
+        // We prune by alternating between acceptance data and inclusion data, staying with one if the other is done
+        // until both are done, this allows us to interleave pruning and only do one scan per prune batch.
+        match self.store.get_next_to_prune_store()?.unwrap() {
+            ToPruneStore::AcceptanceData => {
+                let txindex_retention_root_blue_score = self.store.get_retention_root_blue_score()?.unwrap();
+                let next_to_prune_blue_score = self.store.get_next_to_prune_blue_score()?.unwrap();
+                self.store.prune_acceptance_data_from_blue_score(
+                    next_to_prune_blue_score,
+                    txindex_retention_root_blue_score,
+                    Some(PRUNING_CHUNK_SIZE as usize),
+                )?;
+                if self.store.is_inclusion_pruning_done()? {
+                    self.store.set_next_to_prune_store(ToPruneStore::AcceptanceData)?;
+                } else {
+                    self.store.set_next_to_prune_store(ToPruneStore::InclusionData)?;
+                }
+            }
+            ToPruneStore::InclusionData => {
+                let txindex_retention_root_daa_score = self.store.get_retention_root_daa_score()?.unwrap();
+                let next_to_prune_daa_score = self.store.get_next_to_prune_daa_score()?.unwrap();
+                self.store.prune_inclusion_data_from_daa_score(
+                    next_to_prune_daa_score,
+                    txindex_retention_root_daa_score,
+                    Some(PRUNING_CHUNK_SIZE as usize),
+                )?;
+                if self.store.is_acceptance_pruning_done()? {
+                    self.store.set_next_to_prune_store(ToPruneStore::InclusionData)?;
+                } else {
+                    self.store.set_next_to_prune_store(ToPruneStore::AcceptanceData)?;
+                }
+            }
+        }
+        Ok(self.store.is_acceptance_pruning_done()? && self.store.is_inclusion_pruning_done()?)
+    }
+}
+
+impl TxIndexTestAPI for TxIndex {
+    fn get_all_transaction_acceptance_refs(&self) -> TxIndexResult<Vec<BlueScoreAcceptingRefData>> {
+        Ok(self.store.scan_blue_score_range(0u64..=u64::MAX, None)?)
+    }
+
+    fn get_all_transaction_inclusion_refs(&self) -> TxIndexResult<Vec<DaaScoreIncludingRefData>> {
+        Ok(self.store.scan_daa_score_range(0u64..=u64::MAX, None)?)
+    }
+
+    fn get_tips(&self) -> TxIndexResult<Option<Arc<BlockHashSet>>> {
+        Ok(self.store.get_tips()?)
+    }
+
+    fn get_retention_root(&self) -> TxIndexResult<Option<Hash>> {
+        Ok(self.store.get_retention_root()?)
     }
 }
 
