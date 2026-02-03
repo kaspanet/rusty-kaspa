@@ -1,11 +1,9 @@
+use crate::script_ext::ScriptBuilderExt;
 use anyhow::anyhow;
 use ark_bn254::{Bn254, G1Affine, G2Affine};
 use ark_groth16::{Proof, VerifyingKey};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use crate::script_ext::ScriptBuilderExt;
-use kaspa_txscript::opcodes::codes::{
-    OpCat, OpFromAltStack, OpRot, OpSHA256, OpSwap, OpToAltStack, OpVerify, OpZkPrecompile,
-};
+use kaspa_txscript::opcodes::codes::{OpCat, OpFromAltStack, OpRot, OpSHA256, OpSwap, OpToAltStack, OpVerify, OpZkPrecompile};
 use kaspa_txscript::script_builder::ScriptBuilder;
 use risc0_groth16::Seal;
 use risc0_zkvm::{Digest, Groth16ReceiptVerifierParameters};
@@ -55,8 +53,7 @@ impl Risc0Groth16Verify for ScriptBuilder {
 
     fn compute_receipt_claim(&mut self) -> kaspa_txscript::script_builder::ScriptBuilderResult<&mut ScriptBuilder> {
         // Stack: [journal_hash, program_id]
-        self
-            .add_op(OpToAltStack)?
+        self.add_op(OpToAltStack)?
             .add_data(&OUTPUT_TAG_DIGEST)?
             .add_op(OpSwap)?
             .add_op(OpCat)?
@@ -65,7 +62,6 @@ impl Risc0Groth16Verify for ScriptBuilder {
             .add_data(&2u16.to_le_bytes())?
             .add_op(OpCat)?
             .add_op(OpSHA256)?
-
             .add_data(&RECEIPT_CLAIM_TAG_DIGEST)?
             .add_data(&[0u8; 32])?
             .add_op(OpCat)?
@@ -84,11 +80,8 @@ impl Risc0Groth16Verify for ScriptBuilder {
 /// Converts a risc0 Groth16 seal to compressed arkworks proof bytes.
 pub fn seal_to_compressed_proof(seal: &[u8]) -> Vec<u8> {
     let seal = Seal::decode(seal).unwrap();
-    let proof = Proof::<Bn254> {
-        a: g1_from_bytes(&seal.a).unwrap(),
-        b: g2_from_bytes(&seal.b).unwrap(),
-        c: g1_from_bytes(&seal.c).unwrap(),
-    };
+    let proof =
+        Proof::<Bn254> { a: g1_from_bytes(&seal.a).unwrap(), b: g2_from_bytes(&seal.b).unwrap(), c: g1_from_bytes(&seal.c).unwrap() };
     let mut proof_compressed = Vec::new();
     proof.serialize_compressed(&mut proof_compressed).unwrap();
     proof_compressed
@@ -136,7 +129,8 @@ fn g2_from_bytes(elem: &[Vec<Vec<u8>>]) -> Result<G2Affine, anyhow::Error> {
         return Err(anyhow!("Malformed G2 field element"));
     }
     let g2_affine: Vec<u8> = elem[0][1]
-        .iter().rev()
+        .iter()
+        .rev()
         .chain(elem[0][0].iter().rev())
         .chain(elem[1][1].iter().rev())
         .chain(elem[1][0].iter().rev())
@@ -146,16 +140,16 @@ fn g2_from_bytes(elem: &[Vec<Vec<u8>>]) -> Result<G2Affine, anyhow::Error> {
 }
 
 const POST_DIGEST: [u8; 32] = [
-    163, 172, 194, 113, 23, 65, 137, 150, 52, 11, 132, 229, 169, 15, 62, 244, 196, 157, 34, 199,
-    158, 68, 170, 216, 34, 236, 156, 49, 62, 30, 184, 226,
+    163, 172, 194, 113, 23, 65, 137, 150, 52, 11, 132, 229, 169, 15, 62, 244, 196, 157, 34, 199, 158, 68, 170, 216, 34, 236, 156, 49,
+    62, 30, 184, 226,
 ];
 
 const OUTPUT_TAG_DIGEST: [u8; 32] = [
-    119, 234, 254, 179, 102, 167, 139, 71, 116, 125, 224, 215, 187, 23, 98, 132, 8, 95, 245, 86,
-    72, 135, 0, 154, 91, 230, 61, 163, 45, 53, 89, 212,
+    119, 234, 254, 179, 102, 167, 139, 71, 116, 125, 224, 215, 187, 23, 98, 132, 8, 95, 245, 86, 72, 135, 0, 154, 91, 230, 61, 163,
+    45, 53, 89, 212,
 ];
 
 const RECEIPT_CLAIM_TAG_DIGEST: [u8; 32] = [
-    203, 31, 239, 205, 31, 45, 154, 100, 151, 92, 187, 191, 110, 22, 30, 41, 20, 67, 75, 12, 187,
-    153, 96, 184, 77, 245, 215, 23, 232, 107, 72, 175,
+    203, 31, 239, 205, 31, 45, 154, 100, 151, 92, 187, 191, 110, 22, 30, 41, 20, 67, 75, 12, 187, 153, 96, 184, 77, 245, 215, 23, 232,
+    107, 72, 175,
 ];

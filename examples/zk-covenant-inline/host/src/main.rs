@@ -242,4 +242,3 @@ fn build_redeem_script(old_state_hash: [u32; 8], redeem_script_len: i64, program
     // Stack: [true]
     builder.drain()
 }
-

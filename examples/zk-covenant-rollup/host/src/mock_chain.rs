@@ -31,9 +31,7 @@ pub struct MockChain {
 /// Build a mock chain with the given number of blocks
 pub fn build_mock_chain(chain_len: u32, initial_seq_commit: Hash, mut state: State) -> MockChain {
     let block_hashes: Vec<Hash> = (1..=chain_len).map(|i| Hash::from_u64_word(i as u64)).collect();
-    let block_txs: Vec<Vec<MockTx>> = (0..chain_len)
-        .map(crate::mock_tx::create_mock_block_txs)
-        .collect();
+    let block_txs: Vec<Vec<MockTx>> = (0..chain_len).map(crate::mock_tx::create_mock_block_txs).collect();
 
     let mut seq_commit = initial_seq_commit;
     let mut accessor_map = HashMap::new();
@@ -77,10 +75,7 @@ pub fn build_mock_chain(chain_len: u32, initial_seq_commit: Hash, mut state: Sta
     }
 }
 
-pub fn calc_accepted_id_merkle_root(
-    prev: Hash,
-    tx_digests: impl ExactSizeIterator<Item = Hash>,
-) -> Hash {
+pub fn calc_accepted_id_merkle_root(prev: Hash, tx_digests: impl ExactSizeIterator<Item = Hash>) -> Hash {
     kaspa_merkle::merkle_hash_with_hasher(
         prev,
         kaspa_merkle::calc_merkle_root_with_hasher::<SeqCommitmentMerkleBranchHash, true>(tx_digests),

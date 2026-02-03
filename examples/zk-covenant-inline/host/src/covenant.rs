@@ -81,10 +81,7 @@ impl InlineCovenant for ScriptBuilder {
         self.add_op(OpCat)
     }
 
-    fn extract_redeem_suffix_and_concat(
-        &mut self,
-        redeem_script_len: i64,
-    ) -> Result<&mut Self, Self::Error> {
+    fn extract_redeem_suffix_and_concat(&mut self, redeem_script_len: i64) -> Result<&mut Self, Self::Error> {
         self.add_op(OpTxInputIndex)?;
         self.add_op(OpTxInputIndex)?;
         self.add_op(OpTxInputScriptSigLen)?;
@@ -135,10 +132,6 @@ impl InlineCovenant for ScriptBuilder {
     }
 
     fn verify_covenant_single_output(&mut self) -> Result<&mut Self, Self::Error> {
-        self.add_op(OpTxInputIndex)?
-            .add_op(OpInputCovenantId)?
-            .add_op(OpCovOutCount)?
-            .add_i64(1)?
-            .add_op(OpEqualVerify)
+        self.add_op(OpTxInputIndex)?.add_op(OpInputCovenantId)?.add_op(OpCovOutCount)?.add_i64(1)?.add_op(OpEqualVerify)
     }
 }

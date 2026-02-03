@@ -1,11 +1,9 @@
+use crate::script_ext::ScriptBuilderExt;
 use anyhow::anyhow;
 use ark_bn254::{Bn254, G1Affine, G2Affine};
 use ark_groth16::{Proof, VerifyingKey};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use crate::script_ext::ScriptBuilderExt;
-use kaspa_txscript::opcodes::codes::{
-    OpCat, OpFromAltStack, OpRot, OpSHA256, OpSwap, OpToAltStack, OpVerify, OpZkPrecompile,
-};
+use kaspa_txscript::opcodes::codes::{OpCat, OpFromAltStack, OpRot, OpSHA256, OpSwap, OpToAltStack, OpVerify, OpZkPrecompile};
 use kaspa_txscript::script_builder::ScriptBuilder;
 use risc0_groth16::Seal;
 use risc0_zkvm::{Digest, Groth16ReceiptVerifierParameters};
@@ -51,15 +49,15 @@ impl Risc0Groth16Verify for ScriptBuilder {
         // Pad claim_right (on top)
         self.add_data(&[0; 16])?;
         self.add_op(OpCat)?; // [id, claim_left, c1_padded]
-                              // Pad claim_left
+                             // Pad claim_left
         self.add_op(OpSwap)?; // [id, c1_padded, claim_left]
         self.add_data(&[0; 16])?;
         self.add_op(OpCat)?; // [id, c1_padded, c0_padded]
-                              // Push control root halves
+                             // Push control root halves
         self.add_data(&a1)?; // [id, c1, c0, a1]
         self.add_data(&a0)?; // [id, c1, c0, a1, a0]
         self.add_u16(PUBLIC_INPUT_COUNT as u16)?; // [..., 5]
-                                                   // Bring proof from alt stack
+                                                  // Bring proof from alt stack
         self.add_op(OpFromAltStack)?; // [..., 5, proof], alt: []
         self.add_data(&verifying_key_compressed())?; // [..., 5, proof, vk]
         self.add_data(&[0x20u8])?; // [..., 5, proof, vk, 0x20]
@@ -125,7 +123,6 @@ fn id_bn254_fr_uncompressed() -> impl AsRef<[u8]> {
     Groth16ReceiptVerifierParameters::default().bn254_control_id
 }
 
-
 fn control_root_split() -> ([u8; 32], [u8; 32]) {
     let id = Groth16ReceiptVerifierParameters::default().control_root;
     split_digest(id)
@@ -170,7 +167,6 @@ pub(crate) fn g2_from_bytes(elem: &[Vec<Vec<u8>>]) -> Result<G2Affine, anyhow::E
 
     G2Affine::deserialize_uncompressed(&*g2_affine).map_err(|err| anyhow!(err))
 }
-
 
 const POST_DIGEST: [u8; 32] = [
     163, 172, 194, 113, 23, 65, 137, 150, 52, 11, 132, 229, 169, 15, 62, 244, 196, 157, 34, 199, 158, 68, 170, 216, 34, 236, 156, 49,
@@ -321,7 +317,8 @@ mod tests {
         let mut builder = ScriptBuilder::new();
         builder.add_data(&[1, 2, 3, 4, 5, 6])?;
 
-        let script = builder.split_at_mid()?
+        let script = builder
+            .split_at_mid()?
             .add_data(&[4, 5, 6])?
             .add_op(OpEqualVerify)?
             .add_data(&[1, 2, 3])

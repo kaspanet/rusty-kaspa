@@ -10,7 +10,8 @@ use std::time::Instant;
 
 use kaspa_hashes::Hash;
 use kaspa_txscript::{
-    pay_to_script_hash_script, script_builder::ScriptBuilder,
+    pay_to_script_hash_script,
+    script_builder::ScriptBuilder,
     zk_precompiles::{risc0::merkle::MerkleProof, risc0::rcpt::SuccinctReceipt, tags::ZkTag},
 };
 use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts};
@@ -21,9 +22,7 @@ use mock_chain::{build_mock_chain, calc_accepted_id_merkle_root, from_bytes};
 use risc0_g16::seal_to_compressed_proof;
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env())
-        .init();
+    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env()).init();
 
     // Initialize state and seq_commitment
     let initial_state = State::default();
@@ -68,9 +67,7 @@ fn main() {
     // === STARK (Succinct) Proof ===
     println!("\n=== Proving with RISC0 (Succinct/STARK) ===");
     let now = Instant::now();
-    let succinct_info = prover
-        .prove_with_opts(build_env(), ZK_COVENANT_ROLLUP_GUEST_ELF, &ProverOpts::succinct())
-        .unwrap();
+    let succinct_info = prover.prove_with_opts(build_env(), ZK_COVENANT_ROLLUP_GUEST_ELF, &ProverOpts::succinct()).unwrap();
     println!("Succinct proving took {} ms", now.elapsed().as_millis());
 
     let succinct_receipt = succinct_info.receipt;
@@ -112,9 +109,7 @@ fn main() {
     // === Groth16 Proof ===
     println!("\n=== Proving with RISC0 (Groth16) ===");
     let now = Instant::now();
-    let groth16_info = prover
-        .prove_with_opts(build_env(), ZK_COVENANT_ROLLUP_GUEST_ELF, &ProverOpts::groth16())
-        .unwrap();
+    let groth16_info = prover.prove_with_opts(build_env(), ZK_COVENANT_ROLLUP_GUEST_ELF, &ProverOpts::groth16()).unwrap();
     println!("Groth16 proving took {} ms", now.elapsed().as_millis());
 
     let groth16_receipt = groth16_info.receipt;
@@ -145,12 +140,7 @@ fn main() {
     println!("\n=== All verifications passed! ===");
 }
 
-fn verify_journal(
-    journal: &[u8],
-    public_input: &PublicInput,
-    new_state_hash: &[u32; 8],
-    new_seq_commitment: &[u32; 8],
-) {
+fn verify_journal(journal: &[u8], public_input: &PublicInput, new_state_hash: &[u32; 8], new_seq_commitment: &[u32; 8]) {
     let pi_size = size_of::<PublicInput>();
     let committed_pi: PublicInput = *bytemuck::from_bytes(&journal[..pi_size]);
     assert_eq!(*public_input, committed_pi, "PublicInput mismatch");
@@ -184,34 +174,24 @@ fn verify_onchain_with_proof(
         computed_len = new_len;
     }
 
-    let input_redeem = redeem::build_redeem_script(
-        public_input.prev_state_hash,
-        public_input.prev_seq_commitment,
-        computed_len,
-        program_id,
-        zk_tag,
-    );
-    let output_redeem = redeem::build_redeem_script(
-        *new_state_hash,
-        *new_seq_commitment,
-        computed_len,
-        program_id,
-        zk_tag,
-    );
+    let input_redeem =
+        redeem::build_redeem_script(public_input.prev_state_hash, public_input.prev_seq_commitment, computed_len, program_id, zk_tag);
+    let output_redeem = redeem::build_redeem_script(*new_state_hash, *new_seq_commitment, computed_len, program_id, zk_tag);
 
     // Build transaction
-    let (mut tx, utxo) = tx::make_mock_transaction(
-        0,
-        pay_to_script_hash_script(&input_redeem),
-        pay_to_script_hash_script(&output_redeem),
-    );
+    let (mut tx, utxo) =
+        tx::make_mock_transaction(0, pay_to_script_hash_script(&input_redeem), pay_to_script_hash_script(&output_redeem));
 
     // Build sig_script: [proof, block_prove_to, new_state_hash, redeem]
     tx.inputs[0].signature_script = ScriptBuilder::new()
-        .add_data(proof_bytes).unwrap()
-        .add_data(block_prove_to.as_bytes().as_slice()).unwrap()
-        .add_data(bytemuck::bytes_of(new_state_hash)).unwrap()
-        .add_data(&input_redeem).unwrap()
+        .add_data(proof_bytes)
+        .unwrap()
+        .add_data(block_prove_to.as_bytes().as_slice())
+        .unwrap()
+        .add_data(bytemuck::bytes_of(new_state_hash))
+        .unwrap()
+        .add_data(&input_redeem)
+        .unwrap()
         .drain();
 
     tx::verify_tx(&tx, &utxo, &chain.accessor);

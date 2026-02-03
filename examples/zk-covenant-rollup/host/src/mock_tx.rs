@@ -33,9 +33,7 @@ impl MockTx {
     pub fn is_valid_action(&self) -> bool {
         match self {
             MockTx::V0 { .. } => false,
-            MockTx::V1 { payload, .. } => {
-                is_action_tx_id(&self.tx_id()) && Action::try_from(payload.action_raw).is_ok()
-            }
+            MockTx::V1 { payload, .. } => is_action_tx_id(&self.tx_id()) && Action::try_from(payload.action_raw).is_ok(),
         }
     }
 
@@ -73,14 +71,10 @@ pub fn create_mock_block_txs(block_index: u32) -> Vec<MockTx> {
     let mut txs = Vec::new();
 
     // Type 1: Regular tx (v0, non-action prefix)
-    txs.push(MockTx::V0 {
-        tx_id: [0xDEADBEEF, block_index, 0x11111111, 0, 0, 0, 0, 0],
-    });
+    txs.push(MockTx::V0 { tx_id: [0xDEADBEEF, block_index, 0x11111111, 0, 0, 0, 0, 0] });
 
     // Type 2a: v0 tx with action prefix (not processed - guest only checks v1+)
-    txs.push(MockTx::V0 {
-        tx_id: [ACTION_TX_ID_PREFIX as u32, block_index, 0x22222222, 0, 0, 0, 0, 0],
-    });
+    txs.push(MockTx::V0 { tx_id: [ACTION_TX_ID_PREFIX as u32, block_index, 0x22222222, 0, 0, 0, 0, 0] });
 
     // Type 2b: v1 tx with action prefix but invalid discriminator
     let invalid_rest = [block_index, 0x33333333, 0, 0, 0, 0, 0, 0];
@@ -102,7 +96,6 @@ pub fn create_mock_block_txs(block_index: u32) -> Vec<MockTx> {
     let payload = find_action_tx_nonce(action, 1, rest_digest);
     txs.push(MockTx::V1 { version: 1, payload, rest_digest });
 
-    println!("Block {}: {} txs (1 regular, 1 fake-action, 1 invalid-action, 1 valid {:?})",
-             block_index, txs.len(), action);
+    println!("Block {}: {} txs (1 regular, 1 fake-action, 1 invalid-action, 1 valid {:?})", block_index, txs.len(), action);
     txs
 }
