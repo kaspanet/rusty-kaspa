@@ -3,9 +3,9 @@ use kaspa_txscript::{
     script_builder::ScriptBuilder,
     zk_precompiles::tags::ZkTag,
 };
+use zk_covenant_common::{CovenantBase, Risc0Groth16Verify};
 
 use crate::covenant::RollupCovenant;
-use crate::risc0_g16::Risc0Groth16Verify;
 
 /// Build the rollup redeem script with embedded state
 pub fn build_redeem_script(

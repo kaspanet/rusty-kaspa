@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn test_verifying_key_compressed() {
-        let vk_compressed = verifying_key_compressed();
+        let _vk_compressed = verifying_key_compressed();
     }
 
     #[test]

@@ -1,10 +1,12 @@
-use kaspa_consensus_core::constants::TX_VERSION;
 use kaspa_txscript::opcodes::codes::{
-    OpAdd, OpBlake2b, OpCat, OpChainblockSeqCommit, OpCovOutCount, OpData32, OpDup, OpEqual, OpEqualVerify, OpFromAltStack,
-    OpInputCovenantId, OpSHA256, OpSwap, OpToAltStack, OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpk,
+    OpAdd, OpCat, OpChainblockSeqCommit, OpData32, OpDup, OpFromAltStack, OpSHA256, OpSwap, OpToAltStack, OpTxInputIndex,
+    OpTxInputScriptSigLen, OpTxInputScriptSigSubstr,
 };
 use kaspa_txscript::script_builder::ScriptBuilder;
 
+/// Rollup covenant specific methods.
+/// Note: hash_redeem_to_spk, verify_output_spk, verify_input_index_zero, and verify_covenant_single_output
+/// are provided by the CovenantBase trait from zk_covenant_common.
 pub trait RollupCovenant {
     type Error;
 
@@ -26,22 +28,11 @@ pub trait RollupCovenant {
     /// Leaves:  [..., new_redeem_script]
     fn extract_redeem_suffix_and_concat(&mut self, redeem_script_len: i64) -> Result<&mut Self, Self::Error>;
 
-    /// Expects: [..., new_redeem_script]
-    /// Leaves:  [..., constructed_spk]
-    fn hash_redeem_to_spk(&mut self) -> Result<&mut Self, Self::Error>;
-
-    /// Expects: [..., constructed_spk]
-    /// Leaves:  [...]
-    fn verify_output_spk(&mut self) -> Result<&mut Self, Self::Error>;
-
     /// Build journal preimage from alt stack and hash.
     ///
     /// Expects: [...], alt:[prev_state_hash, prev_seq_commitment, new_app_state_hash, new_seq_commitment]
     /// Leaves:  [..., journal_hash]
     fn build_and_hash_journal(&mut self) -> Result<&mut Self, Self::Error>;
-
-    fn verify_input_index_zero(&mut self) -> Result<&mut Self, Self::Error>;
-    fn verify_covenant_single_output(&mut self) -> Result<&mut Self, Self::Error>;
 }
 
 impl RollupCovenant for ScriptBuilder {
@@ -103,25 +94,6 @@ impl RollupCovenant for ScriptBuilder {
         self.add_op(OpCat)
     }
 
-    fn hash_redeem_to_spk(&mut self) -> Result<&mut Self, Self::Error> {
-        self.add_op(OpBlake2b)?;
-        let mut data = [0u8; 4];
-        data[0..2].copy_from_slice(&TX_VERSION.to_le_bytes());
-        data[2] = OpBlake2b;
-        data[3] = OpData32;
-        self.add_data(&data)?;
-        self.add_op(OpSwap)?;
-        self.add_op(OpCat)?;
-        self.add_data(&[OpEqual])?;
-        self.add_op(OpCat)
-    }
-
-    fn verify_output_spk(&mut self) -> Result<&mut Self, Self::Error> {
-        self.add_op(OpTxInputIndex)?;
-        self.add_op(OpTxOutputSpk)?;
-        self.add_op(OpEqualVerify)
-    }
-
     fn build_and_hash_journal(&mut self) -> Result<&mut Self, Self::Error> {
         // Alt stack (top→bottom): [new_seq_commitment, new_app_state_hash, prev_seq_commitment, prev_state_hash]
         // Need preimage: prev_state_hash || prev_seq_commitment || new_app_state_hash || new_seq_commitment
@@ -150,15 +122,5 @@ impl RollupCovenant for ScriptBuilder {
 
         self.add_op(OpSHA256)
         // Stack: [..., journal_hash]
-    }
-
-    fn verify_input_index_zero(&mut self) -> Result<&mut Self, Self::Error> {
-        self.add_op(OpTxInputIndex)?;
-        self.add_i64(0)?;
-        self.add_op(OpEqualVerify)
-    }
-
-    fn verify_covenant_single_output(&mut self) -> Result<&mut Self, Self::Error> {
-        self.add_op(OpTxInputIndex)?.add_op(OpInputCovenantId)?.add_op(OpCovOutCount)?.add_i64(1)?.add_op(OpEqualVerify)
     }
 }

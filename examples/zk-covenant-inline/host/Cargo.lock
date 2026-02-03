@@ -5299,6 +5299,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-covenant-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ark-bn254",
+ "ark-groth16",
+ "ark-serialize",
+ "bincode",
+ "kaspa-consensus-core",
+ "kaspa-txscript",
+ "risc0-groth16",
+ "risc0-zkvm",
+]
+
+[[package]]
 name = "zk-covenant-inline-core"
 version = "1.1.0-rc.2"
 dependencies = [
@@ -5310,20 +5325,15 @@ dependencies = [
 name = "zk-covenant-inline-host"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "ark-bn254",
- "ark-groth16",
- "ark-serialize",
- "bincode",
  "borsh",
  "bytemuck",
  "faster-hex 0.10.0",
  "kaspa-consensus-core",
  "kaspa-hashes",
  "kaspa-txscript",
- "risc0-groth16",
  "risc0-zkvm",
  "tracing-subscriber 0.3.22",
+ "zk-covenant-common",
  "zk-covenant-inline-core",
  "zk-covenant-inline-methods",
 ]

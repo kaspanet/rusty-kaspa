@@ -2,8 +2,6 @@ mod covenant;
 mod mock_chain;
 mod mock_tx;
 mod redeem;
-mod risc0_g16;
-mod script_ext;
 mod tx;
 
 use std::time::Instant;
@@ -19,7 +17,7 @@ use zk_covenant_rollup_core::{state::State, PublicInput};
 use zk_covenant_rollup_methods::{ZK_COVENANT_ROLLUP_GUEST_ELF, ZK_COVENANT_ROLLUP_GUEST_ID};
 
 use mock_chain::{build_mock_chain, calc_accepted_id_merkle_root, from_bytes};
-use risc0_g16::seal_to_compressed_proof;
+use zk_covenant_common::seal_to_compressed_proof;
 
 fn main() {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env()).init();

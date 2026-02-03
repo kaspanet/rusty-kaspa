@@ -1,5 +1,4 @@
 use crate::covenant::InlineCovenant;
-use crate::risc0_g16::{seal_to_compressed_proof, Risc0Groth16Verify};
 use kaspa_consensus_core::tx::CovenantBinding;
 use kaspa_consensus_core::{
     constants::{SOMPI_PER_KASPA, TX_VERSION},
@@ -19,12 +18,11 @@ use kaspa_txscript::{
 };
 use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts};
 use std::time::Instant;
+use zk_covenant_common::{seal_to_compressed_proof, CovenantBase, Risc0Groth16Verify};
 use zk_covenant_inline_core::{Action, PublicInput, State, VersionedActionRaw};
 use zk_covenant_inline_methods::{ZK_COVENANT_INLINE_GUEST_ELF, ZK_COVENANT_INLINE_GUEST_ID};
 
 mod covenant;
-mod risc0_g16;
-mod script_ext;
 
 fn main() {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env()).init();
