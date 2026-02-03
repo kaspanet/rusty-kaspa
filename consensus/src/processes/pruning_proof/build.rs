@@ -570,8 +570,7 @@ impl PruningProofManager {
 
         // Init reachability with ORIGIN and add root as its only child
         reachability::init(reachability_store.write().deref_mut()).unwrap();
-        let mut empty = std::iter::empty();
-        reachability::add_block(reachability_store.write().deref_mut(), root, ORIGIN, &mut empty).unwrap();
+        reachability::add_block(reachability_store.write().deref_mut(), root, ORIGIN, &mut [].into_iter()).unwrap();
 
         // Restrict relations to `future(root)` via level reachability
         let relations_view = FutureIntersectRelations::new(relations_store, reachability_service.clone(), root);
@@ -594,7 +593,7 @@ impl PruningProofManager {
         // Bottom-up topological traversal from `root` toward `tip`
         let mut queue: BinaryHeap<_> = Default::default();
         let mut visited = BlockHashSet::new();
-        visited.insert(root);
+        let mut count = 1; // counting root
         for child in relations_view.get_children(root).unwrap().read().iter().copied() {
             queue.push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
         }
@@ -613,6 +612,7 @@ impl PruningProofManager {
             }
 
             has_required_block |= current == required_block;
+            count += 1;
 
             let parents = relations_view.get_parents(current).unwrap();
             assert!(!parents.is_empty(), "non-root blocks must have parents");
@@ -648,7 +648,7 @@ impl PruningProofManager {
         }
 
         // Returned for sanity testing by the caller
-        (ghostdag_store, has_required_block, visited.len() as u64)
+        (ghostdag_store, has_required_block, count)
     }
 
     /// Returns the header's parents at `level` that are reachable according to the reachability service,
