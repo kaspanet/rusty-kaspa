@@ -28,9 +28,9 @@ trait DifficultyManagerExtension {
 
     #[inline]
     #[must_use]
-    fn internal_calc_daa_score(&self, ghostdag_data: &GhostdagData, mergeset_non_daa: &BlockHashSet) -> u64 {
-        let sp_daa_score = self.headers_store().get_daa_score(ghostdag_data.selected_parent).unwrap();
-        sp_daa_score + (ghostdag_data.mergeset_size() - mergeset_non_daa.len()) as u64
+    fn internal_calc_daa_score(&self, coloring_ghostdag_data: &GhostdagData, mergeset_non_daa: &BlockHashSet) -> u64 {
+        let sp_daa_score = self.headers_store().get_daa_score(coloring_ghostdag_data.selected_parent).unwrap();
+        sp_daa_score + (coloring_ghostdag_data.mergeset_size() - mergeset_non_daa.len()) as u64
     }
 
     fn get_difficulty_blocks(&self, window: &BlockWindowHeap) -> Vec<DifficultyBlock> {
@@ -191,26 +191,28 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
     /// Returns the DAA window lowest accepted blue score
     #[inline]
     #[must_use]
-    pub fn lowest_daa_blue_score(&self, ghostdag_data: &GhostdagData) -> u64 {
+    pub fn lowest_daa_blue_score(&self, coloring_ghostdag_data: &GhostdagData) -> u64 {
         let difficulty_full_window_size = self.difficulty_full_window_size();
-        ghostdag_data.blue_score.max(difficulty_full_window_size) - difficulty_full_window_size
+        coloring_ghostdag_data.blue_score.max(difficulty_full_window_size) - difficulty_full_window_size
     }
 
     #[inline]
     #[must_use]
-    pub fn calc_daa_score(&self, ghostdag_data: &GhostdagData, mergeset_non_daa: &BlockHashSet) -> u64 {
-        self.internal_calc_daa_score(ghostdag_data, mergeset_non_daa)
+    pub fn calc_daa_score(&self, coloring_ghostdag_data: &GhostdagData, mergeset_non_daa: &BlockHashSet) -> u64 {
+        self.internal_calc_daa_score(coloring_ghostdag_data, mergeset_non_daa)
     }
 
     pub fn calc_daa_score_and_mergeset_non_daa_blocks(
         &self,
-        ghostdag_data: &GhostdagData,
+        coloring_ghostdag_data: &GhostdagData,
         store: &(impl GhostdagStoreReader + ?Sized),
     ) -> (u64, BlockHashSet) {
-        let lowest_daa_blue_score = self.lowest_daa_blue_score(ghostdag_data);
-        let mergeset_non_daa: BlockHashSet =
-            ghostdag_data.unordered_mergeset().filter(|hash| store.get_blue_score(*hash).unwrap() < lowest_daa_blue_score).collect();
-        (self.internal_calc_daa_score(ghostdag_data, &mergeset_non_daa), mergeset_non_daa)
+        let lowest_daa_blue_score = self.lowest_daa_blue_score(coloring_ghostdag_data);
+        let mergeset_non_daa: BlockHashSet = coloring_ghostdag_data
+            .unordered_mergeset()
+            .filter(|hash| store.get_blue_score(*hash).unwrap() < lowest_daa_blue_score)
+            .collect();
+        (self.internal_calc_daa_score(coloring_ghostdag_data, &mergeset_non_daa), mergeset_non_daa)
     }
 
     pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap, coloring_ghostdag_data: &GhostdagData) -> u32 {

@@ -437,8 +437,12 @@ impl Consensus {
         }
     }
 
-    fn estimate_network_hashes_per_second_impl(&self, ghostdag_data: &GhostdagData, window_size: usize) -> ConsensusResult<u64> {
-        let window = match self.services.window_manager.block_window(ghostdag_data, WindowType::VaryingWindow(window_size)) {
+    fn estimate_network_hashes_per_second_impl(
+        &self,
+        coloring_ghostdag_data: &GhostdagData,
+        window_size: usize,
+    ) -> ConsensusResult<u64> {
+        let window = match self.services.window_manager.block_window(coloring_ghostdag_data, WindowType::VaryingWindow(window_size)) {
             Ok(w) => w,
             Err(RuleError::InsufficientDaaWindowSize(s)) => return Err(DifficultyError::InsufficientWindowData(s).into()),
             Err(e) => panic!("unexpected error: {e}"),
