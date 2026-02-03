@@ -11,9 +11,15 @@ kaspa-txscript = { path = "../../../crypto/txscript" }
 kaspa-hashes = { path = "../../../crypto/hashes" }
 kaspa-merkle = { path = "../../../crypto/merkle" }
 
+anyhow = "1.0.97"
+ark-bn254 = "0.5.0"
+ark-groth16 = "0.5.0"
+ark-serialize = "0.5.0"
+bincode = "1.3.3"
 borsh = { version = "1.6.0"}
 bytemuck = "1.24.0"
 faster-hex = { version = "0.10.0" }
+risc0-groth16 = { version = "3.0.3"}
 risc0-zkvm = { version = "3.0.4", default-features = true, features = [] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zk-covenant-rollup-methods = { path = "../methods" }
@@ -22,5 +28,8 @@ zk-covenant-rollup-core = { path = "../core" }
 
 #uncomment for debug
 #[patch.crates-io]
-#risc0-zkvm = { path = "../../../../../risc0/risc0/zkvm" }
 #risc0-zkp = { path = "../../../../../risc0/risc0/zkp"}
+#risc0-circuit-recursion = { path = "../../../../../risc0/risc0/circuit/recursion"}
+#risc0-core = { path = "../../../../../risc0/risc0/core"}
+#risc0-binfmt = { path = "../../../../../risc0/risc0/binfmt"}
+#risc0-groth16 = { path = "../../../../../risc0/risc0/groth16"}

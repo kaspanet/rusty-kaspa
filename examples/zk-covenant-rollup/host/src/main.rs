@@ -2,6 +2,8 @@ mod covenant;
 mod mock_chain;
 mod mock_tx;
 mod redeem;
+mod risc0_g16;
+mod script_ext;
 mod tx;
 
 use std::time::Instant;
@@ -9,13 +11,14 @@ use std::time::Instant;
 use kaspa_hashes::Hash;
 use kaspa_txscript::{
     pay_to_script_hash_script, script_builder::ScriptBuilder,
-    zk_precompiles::{risc0::merkle::MerkleProof, risc0::rcpt::SuccinctReceipt},
+    zk_precompiles::{risc0::merkle::MerkleProof, risc0::rcpt::SuccinctReceipt, tags::ZkTag},
 };
 use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts};
 use zk_covenant_rollup_core::{state::State, PublicInput};
 use zk_covenant_rollup_methods::{ZK_COVENANT_ROLLUP_GUEST_ELF, ZK_COVENANT_ROLLUP_GUEST_ID};
 
 use mock_chain::{build_mock_chain, calc_accepted_id_merkle_root, from_bytes};
+use risc0_g16::seal_to_compressed_proof;
 
 fn main() {
     tracing_subscriber::fmt()
@@ -40,46 +43,106 @@ fn main() {
     println!("\nFinal state hash: {}", faster_hex::hex_string(bytemuck::bytes_of(&new_state_hash)));
     println!("Final seq_commitment: {}", chain.final_seq_commit);
 
-    // Prove with RISC0
     let public_input = PublicInput { prev_state_hash, prev_seq_commitment };
-    let receipt = prove_rollup(&public_input, &chain);
+    let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
 
-    // Verify journal contents
-    verify_journal(&receipt.journal.bytes, &public_input, &new_state_hash, &new_seq_commitment);
-    receipt.verify(ZK_COVENANT_ROLLUP_GUEST_ID).unwrap();
-    println!("ZK proof verified!");
+    // Build executor env closure
+    let build_env = || {
+        let mut binding = ExecutorEnv::builder();
+        let builder = binding
+            .write_slice(core::slice::from_ref(&public_input))
+            .write_slice(State::default().as_word_slice())
+            .write_slice(&(chain.block_txs.len() as u32).to_le_bytes());
 
-    // On-chain verification
-    let block_prove_to = *chain.block_hashes.last().unwrap();
-    verify_onchain(&receipt, &public_input, &new_state_hash, block_prove_to, &chain);
-}
-
-fn prove_rollup(
-    public_input: &PublicInput,
-    chain: &mock_chain::MockChain,
-) -> risc0_zkvm::Receipt {
-    println!("\n=== Proving with RISC0 ===");
-    let mut binding = ExecutorEnv::builder();
-    let builder = binding
-        .write_slice(core::slice::from_ref(public_input))
-        .write_slice(State::default().as_word_slice())
-        .write_slice(&(chain.block_txs.len() as u32).to_le_bytes());
-
-    for txs in &chain.block_txs {
-        builder.write_slice(&(txs.len() as u32).to_le_bytes());
-        for tx in txs {
-            tx.write_to_env(builder);
+        for txs in &chain.block_txs {
+            builder.write_slice(&(txs.len() as u32).to_le_bytes());
+            for tx in txs {
+                tx.write_to_env(builder);
+            }
         }
+        builder.build().unwrap()
+    };
+
+    let prover = default_prover();
+
+    // === STARK (Succinct) Proof ===
+    println!("\n=== Proving with RISC0 (Succinct/STARK) ===");
+    let now = Instant::now();
+    let succinct_info = prover
+        .prove_with_opts(build_env(), ZK_COVENANT_ROLLUP_GUEST_ELF, &ProverOpts::succinct())
+        .unwrap();
+    println!("Succinct proving took {} ms", now.elapsed().as_millis());
+
+    let succinct_receipt = succinct_info.receipt;
+    verify_journal(&succinct_receipt.journal.bytes, &public_input, &new_state_hash, &new_seq_commitment);
+    succinct_receipt.verify(ZK_COVENANT_ROLLUP_GUEST_ID).unwrap();
+    println!("Succinct proof verified!");
+
+    // On-chain verification for STARK
+    let block_prove_to = *chain.block_hashes.last().unwrap();
+    if let Ok(receipt_inner) = succinct_receipt.inner.succinct() {
+        println!("\n=== On-chain STARK verification ===");
+        let script_receipt = SuccinctReceipt {
+            seal: receipt_inner.seal.clone(),
+            control_id: receipt_inner.control_id,
+            claim: receipt_inner.claim.digest(),
+            hashfn: receipt_inner.hashfn.clone(),
+            verifier_parameters: receipt_inner.verifier_parameters,
+            control_inclusion_proof: MerkleProof::new(
+                receipt_inner.control_inclusion_proof.index,
+                receipt_inner.control_inclusion_proof.digests.clone(),
+            ),
+        };
+        let proof_bytes = borsh::to_vec(&script_receipt).unwrap();
+        verify_onchain_with_proof(
+            &proof_bytes,
+            &public_input,
+            &new_state_hash,
+            &new_seq_commitment,
+            block_prove_to,
+            &chain,
+            &program_id,
+            &ZkTag::R0Succinct,
+        );
+        println!("STARK on-chain verification passed!");
+    } else {
+        println!("Skipping STARK on-chain verification (dev mode)");
     }
 
-    let env = builder.build().unwrap();
+    // === Groth16 Proof ===
+    println!("\n=== Proving with RISC0 (Groth16) ===");
     let now = Instant::now();
-    let prove_info = default_prover()
-        .prove_with_opts(env, ZK_COVENANT_ROLLUP_GUEST_ELF, &ProverOpts::succinct())
+    let groth16_info = prover
+        .prove_with_opts(build_env(), ZK_COVENANT_ROLLUP_GUEST_ELF, &ProverOpts::groth16())
         .unwrap();
-    println!("Proving took {} ms", now.elapsed().as_millis());
+    println!("Groth16 proving took {} ms", now.elapsed().as_millis());
 
-    prove_info.receipt
+    let groth16_receipt = groth16_info.receipt;
+    verify_journal(&groth16_receipt.journal.bytes, &public_input, &new_state_hash, &new_seq_commitment);
+    groth16_receipt.verify(ZK_COVENANT_ROLLUP_GUEST_ID).unwrap();
+    println!("Groth16 proof verified!");
+
+    // On-chain verification for Groth16
+    if let Ok(groth16_inner) = groth16_receipt.inner.groth16() {
+        println!("\n=== On-chain Groth16 verification ===");
+        let compressed_proof = seal_to_compressed_proof(&groth16_inner.seal);
+
+        verify_onchain_with_proof(
+            &compressed_proof,
+            &public_input,
+            &new_state_hash,
+            &new_seq_commitment,
+            block_prove_to,
+            &chain,
+            &program_id,
+            &ZkTag::Groth16,
+        );
+        println!("Groth16 on-chain verification passed!");
+    } else {
+        println!("Skipping Groth16 on-chain verification (dev mode)");
+    }
+
+    println!("\n=== All verifications passed! ===");
 }
 
 fn verify_journal(
@@ -95,69 +158,61 @@ fn verify_journal(
     assert_eq!(&journal[pi_size + 32..pi_size + 64], bytemuck::bytes_of(new_seq_commitment));
 }
 
-fn verify_onchain(
-    receipt: &risc0_zkvm::Receipt,
+fn verify_onchain_with_proof(
+    proof_bytes: &[u8],
     public_input: &PublicInput,
     new_state_hash: &[u32; 8],
+    new_seq_commitment: &[u32; 8],
     block_prove_to: Hash,
     chain: &mock_chain::MockChain,
+    program_id: &[u8; 32],
+    zk_tag: &ZkTag,
 ) {
-    let Ok(receipt_inner) = receipt.inner.succinct() else {
-        println!("Skipping on-chain verification (no succinct receipt in dev mode)");
-        return;
-    };
-
-    println!("\n=== On-chain verification ===");
-    let script_receipt = SuccinctReceipt {
-        seal: receipt_inner.seal.clone(),
-        control_id: receipt_inner.control_id,
-        claim: receipt_inner.claim.digest(),
-        hashfn: receipt_inner.hashfn.clone(),
-        verifier_parameters: receipt_inner.verifier_parameters,
-        control_inclusion_proof: MerkleProof::new(
-            receipt_inner.control_inclusion_proof.index,
-            receipt_inner.control_inclusion_proof.digests.clone(),
-        ),
-    };
-
-    let program_id: &[u8] = bytemuck::cast_slice(ZK_COVENANT_ROLLUP_GUEST_ID.as_slice());
-    let new_seq_commitment = from_bytes(chain.final_seq_commit.as_bytes());
-
-    // Build redeem scripts
-    let computed_len = redeem::build_redeem_script(
-        public_input.prev_state_hash,
-        public_input.prev_seq_commitment,
-        131,
-        program_id,
-    ).len() as i64;
+    let mut computed_len = 75;
+    loop {
+        let script = redeem::build_redeem_script(
+            public_input.prev_state_hash,
+            public_input.prev_seq_commitment,
+            computed_len,
+            program_id,
+            zk_tag,
+        );
+        let new_len = script.len() as i64;
+        if new_len == computed_len {
+            break;
+        }
+        computed_len = new_len;
+    }
 
     let input_redeem = redeem::build_redeem_script(
         public_input.prev_state_hash,
         public_input.prev_seq_commitment,
         computed_len,
         program_id,
+        zk_tag,
     );
     let output_redeem = redeem::build_redeem_script(
         *new_state_hash,
-        new_seq_commitment,
+        *new_seq_commitment,
         computed_len,
         program_id,
+        zk_tag,
     );
 
-    // Build and verify transaction
+    // Build transaction
     let (mut tx, utxo) = tx::make_mock_transaction(
         0,
         pay_to_script_hash_script(&input_redeem),
         pay_to_script_hash_script(&output_redeem),
     );
 
+    // Build sig_script: [proof, block_prove_to, new_state_hash, redeem]
     tx.inputs[0].signature_script = ScriptBuilder::new()
-        .add_data(&borsh::to_vec(&script_receipt).unwrap()).unwrap()
+        .add_data(proof_bytes).unwrap()
         .add_data(block_prove_to.as_bytes().as_slice()).unwrap()
         .add_data(bytemuck::bytes_of(new_state_hash)).unwrap()
         .add_data(&input_redeem).unwrap()
         .drain();
 
     tx::verify_tx(&tx, &utxo, &chain.accessor);
-    println!("On-chain script verification passed!");
 }
