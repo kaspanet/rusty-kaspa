@@ -18,7 +18,6 @@ use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::hash_map::Entry::{Occupied, Vacant},
-    iter::once,
     sync::Arc,
 };
 
@@ -176,24 +175,39 @@ pub struct DbReachabilityStore {
     children_access: DbReachabilitySet,                          // Tree children
     fcs_access: DbReachabilitySet,                               // Future Covering Set
     reindex_root: CachedDbItem<Hash>,
-    prefix_end: u8,
+    prefix_suffix: Vec<u8>,
 }
 
 impl DbReachabilityStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy, sets_cache_policy: CachePolicy) -> Self {
-        Self::with_prefix_end(db, cache_policy, sets_cache_policy, DatabaseStorePrefixes::Separator.into())
+        Self::with_prefix_suffix(db, cache_policy, sets_cache_policy, vec![DatabaseStorePrefixes::Separator.into()])
     }
 
     pub fn with_block_level(db: Arc<DB>, cache_policy: CachePolicy, sets_cache_policy: CachePolicy, level: BlockLevel) -> Self {
         assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
-        Self::with_prefix_end(db, cache_policy, sets_cache_policy, level)
+        Self::with_prefix_suffix(db, cache_policy, sets_cache_policy, vec![level])
     }
 
-    fn with_prefix_end(db: Arc<DB>, cache_policy: CachePolicy, sets_cache_policy: CachePolicy, prefix_end: u8) -> Self {
-        let store_prefix = DatabaseStorePrefixes::Reachability.into_iter().chain(once(prefix_end)).collect_vec();
-        let children_prefix = DatabaseStorePrefixes::ReachabilityTreeChildren.into_iter().chain(once(prefix_end)).collect_vec();
-        let fcs_prefix = DatabaseStorePrefixes::ReachabilityFutureCoveringSet.into_iter().chain(once(prefix_end)).collect_vec();
-        let reindex_root_prefix = DatabaseStorePrefixes::ReachabilityReindexRoot.into_iter().chain(once(prefix_end)).collect_vec();
+    pub fn with_block_level_retry(
+        db: Arc<DB>,
+        cache_policy: CachePolicy,
+        sets_cache_policy: CachePolicy,
+        level: BlockLevel,
+        retry: u8,
+    ) -> Self {
+        assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
+        assert_ne!(SEPARATOR, retry, "retry {} is reserved for the separator", retry);
+        Self::with_prefix_suffix(db, cache_policy, sets_cache_policy, vec![level, retry])
+    }
+
+    fn with_prefix_suffix(db: Arc<DB>, cache_policy: CachePolicy, sets_cache_policy: CachePolicy, prefix_suffix: Vec<u8>) -> Self {
+        let store_prefix = DatabaseStorePrefixes::Reachability.into_iter().chain(prefix_suffix.iter().copied()).collect_vec();
+        let children_prefix =
+            DatabaseStorePrefixes::ReachabilityTreeChildren.into_iter().chain(prefix_suffix.iter().copied()).collect_vec();
+        let fcs_prefix =
+            DatabaseStorePrefixes::ReachabilityFutureCoveringSet.into_iter().chain(prefix_suffix.iter().copied()).collect_vec();
+        let reindex_root_prefix =
+            DatabaseStorePrefixes::ReachabilityReindexRoot.into_iter().chain(prefix_suffix.iter().copied()).collect_vec();
         let access = CachedDbAccess::new(db.clone(), cache_policy, store_prefix);
         Self {
             db: db.clone(),
@@ -201,12 +215,12 @@ impl DbReachabilityStore {
             children_access: DbReachabilitySet::new(DbSetAccess::new(db.clone(), children_prefix), Cache::new(sets_cache_policy)),
             fcs_access: DbReachabilitySet::new(DbSetAccess::new(db.clone(), fcs_prefix), Cache::new(sets_cache_policy)),
             reindex_root: CachedDbItem::new(db, reindex_root_prefix),
-            prefix_end,
+            prefix_suffix,
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_policy: CachePolicy, sets_cache_policy: CachePolicy) -> Self {
-        Self::with_prefix_end(Arc::clone(&self.db), cache_policy, sets_cache_policy, self.prefix_end)
+        Self::with_prefix_suffix(Arc::clone(&self.db), cache_policy, sets_cache_policy, self.prefix_suffix.clone())
     }
 }
 
