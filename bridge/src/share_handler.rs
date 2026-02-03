@@ -1258,11 +1258,12 @@ impl ShareHandler {
             const TRND_W: usize = 4;
             const ACC_W: usize = 12;
             const BLK_W: usize = 6;
+            const TBLK_W: usize = 6;
             const TIME_W: usize = 11;
 
             fn border() -> String {
                 format!(
-                    "+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+",
+                    "+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+-{}-+",
                     "-".repeat(WORKER_W),
                     "-".repeat(INST_W),
                     "-".repeat(HASH_W),
@@ -1271,14 +1272,15 @@ impl ShareHandler {
                     "-".repeat(TRND_W),
                     "-".repeat(ACC_W),
                     "-".repeat(BLK_W),
+                    "-".repeat(TBLK_W),
                     "-".repeat(TIME_W)
                 )
             }
 
             fn header() -> String {
                 format!(
-                    "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
-                    "Worker", "Inst", "Hash", "Diff", "SPM|TGT", "Trnd", "Acc|Stl|Inv", "Blocks", "D|HR|M|S",
+                    "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TBLK_W$} | {:>TIME_W$} |",
+                    "Worker", "Inst", "Hash", "Diff", "SPM|TGT", "Trnd", "Acc|Stl|Inv", "Blocks", "Total", "D|HR|M|S",
                 )
             }
 
@@ -1326,6 +1328,7 @@ impl ShareHandler {
                 let mut total_stales: i64 = 0;
                 let mut total_invalids: i64 = 0;
                 let mut total_blocks: i64 = 0;
+                let mut total_blocks_all_time: i64 = 0;
 
                 let now = Instant::now();
                 let start = entries.iter().map(|(_, _, start, _, _)| *start).max_by_key(|t| t.elapsed()).unwrap_or_else(Instant::now);
@@ -1342,10 +1345,9 @@ impl ShareHandler {
                     total_shares += *overall.shares_found.lock();
                     total_stales += *overall.stale_shares.lock();
                     total_invalids += *overall.invalid_shares.lock();
-                    // Note: We don't use overall.blocks_found here because it includes blocks
-                    // from workers that may have been pruned from stats_map. Instead, we sum
-                    // blocks from individual workers below to ensure the TOTAL matches what's
-                    // displayed in individual worker rows.
+                    // overall.blocks_found includes blocks from all workers (even pruned ones)
+                    // Accumulate for the "Total" column (all-time blocks)
+                    total_blocks_all_time += *overall.blocks_found.lock();
 
                     let stats_map = stats.lock();
                     for (_, v) in stats_map.iter() {
@@ -1364,9 +1366,7 @@ impl ShareHandler {
                         let blocks = *v.blocks_found.lock();
                         let min_diff = *v.min_diff.lock();
 
-                        // Sum blocks from individual workers for accurate TOTAL row
-                        // This ensures the total matches what's displayed in worker rows,
-                        // even if some workers with blocks were pruned from stats_map
+                        // Sum blocks from individual workers for "Blocks" column (online workers only)
                         total_blocks += blocks;
 
                         let spm = if elapsed > 0.0 { (shares as f64) / (elapsed / 60.0) } else { 0.0 };
@@ -1382,8 +1382,9 @@ impl ShareHandler {
 
                         let spm_tgt = format!("{:>4.1}/{:<4.1}", spm, *target_spm);
 
+                        // For individual workers, "Blocks" and "Total" are the same (they're currently online)
                         let line = format!(
-                            "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
+                            "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TBLK_W$} | {:>TIME_W$} |",
                             trunc(&worker, WORKER_W),
                             inst_short,
                             format_hashrate(rate),
@@ -1392,6 +1393,7 @@ impl ShareHandler {
                             trend,
                             format!("{}/{}/{}", shares, stales, invalids),
                             blocks,
+                            blocks, // Total blocks (same as Blocks for active workers)
                             format_uptime(v.start_time.elapsed())
                         );
                         let sort_key = format!("{}:{}", inst_short, worker);
@@ -1494,7 +1496,7 @@ impl ShareHandler {
                             internal_totals =
                                 Some((hashrate_ghs, accepted as i64, submitted.saturating_sub(accepted) as i64, 0, accepted as i64));
                             let internal_line = format!(
-                                "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
+                                "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TBLK_W$} | {:>TIME_W$} |",
                                 "InternalCPU",
                                 "-",
                                 format_hashrate(hashrate_ghs),
@@ -1503,6 +1505,7 @@ impl ShareHandler {
                                 "-",
                                 format!("{}/{}/{}", accepted, submitted.saturating_sub(accepted), 0),
                                 accepted,
+                                accepted, // Total blocks (same as Blocks for InternalCPU)
                                 format_uptime(now.duration_since(start))
                             );
                             out.push(internal_line);
@@ -1531,7 +1534,7 @@ impl ShareHandler {
                 };
 
                 out.push(format!(
-                    "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TIME_W$} |",
+                    "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TBLK_W$} | {:>TIME_W$} |",
                     "TOTAL",
                     "ALL",
                     format_hashrate(total_rate),
@@ -1539,7 +1542,8 @@ impl ShareHandler {
                     total_spm_tgt,
                     "-",
                     format!("{}/{}/{}", total_shares, total_stales, total_invalids),
-                    total_blocks,
+                    total_blocks,        // Blocks from online workers only
+                    total_blocks_all_time, // Total blocks from all workers (including offline)
                     format_uptime(now.duration_since(start))
                 ));
 
