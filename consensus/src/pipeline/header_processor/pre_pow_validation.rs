@@ -24,14 +24,14 @@ impl HeaderProcessor {
     }
 
     fn check_difficulty_and_daa_score(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        let ghostdag_data = ctx.topology_ghostdag_data();
-        let daa_window = self.window_manager.block_daa_window(ghostdag_data)?;
+        let coloring_ghostdag_data = ctx.coloring_ghostdag_data();
+        let daa_window = self.window_manager.block_daa_window(coloring_ghostdag_data)?;
 
         if daa_window.daa_score != header.daa_score {
             return Err(RuleError::UnexpectedHeaderDaaScore(daa_window.daa_score, header.daa_score));
         }
 
-        let expected_bits = self.window_manager.calculate_difficulty_bits(ghostdag_data, &daa_window);
+        let expected_bits = self.window_manager.calculate_difficulty_bits(coloring_ghostdag_data, &daa_window);
         ctx.mergeset_non_daa = Some(daa_window.mergeset_non_daa);
 
         if header.bits != expected_bits {

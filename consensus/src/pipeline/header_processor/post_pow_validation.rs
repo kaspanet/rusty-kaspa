@@ -17,7 +17,7 @@ impl HeaderProcessor {
     }
 
     pub fn check_median_timestamp(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        let (past_median_time, window) = self.window_manager.calc_past_median_time(ctx.topology_ghostdag_data())?;
+        let (past_median_time, window) = self.window_manager.calc_past_median_time(ctx.coloring_ghostdag_data())?;
         ctx.block_window_for_past_median_time = Some(window);
 
         if header.timestamp <= past_median_time {
