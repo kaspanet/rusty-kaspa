@@ -326,14 +326,24 @@ impl Consensus {
         self.retention_root_database_upgrade();
         self.consensus_transitional_flags_upgrade();
 
-        // TEMP: Reset the pruning proof descriptor to an empty one to force rebuilding the pruning proof
-        self.pruning_point_store.write().del_pruning_proof_descriptor().unwrap();
+        if self.config.net == kaspa_consensus_core::network::NetworkId::with_suffix(NetworkType::Testnet, 12) {
+            // TEMP: Reset the pruning proof descriptor to an empty one to force rebuilding the pruning proof
+            self.pruning_point_store.write().del_pruning_proof_descriptor().unwrap();
 
-        kaspa_core::warn!("Genesis: {}", self.config.genesis.hash);
-        kaspa_core::warn!("Pruning point proof build started");
-        let _proof = self.services.pruning_proof_manager.get_pruning_point_proof();
-        kaspa_core::warn!("Pruning point proof build complete");
-        std::process::exit(1);
+            kaspa_core::warn!("Genesis: {}", self.config.genesis.hash);
+            kaspa_core::warn!("Pruning point proof build started");
+            let proof = self.services.pruning_proof_manager.get_pruning_point_proof();
+            kaspa_core::warn!("Pruning point proof build complete");
+            self.services
+                .pruning_proof_manager
+                .compare_proofs(&proof, &proof, 0.into(), 0.into())
+                .continue_value()
+                .unwrap()
+                .unwrap_err();
+            kaspa_core::warn!("Pruning point proof verified successfully");
+
+            std::process::exit(1);
+        }
     }
 
     fn retention_root_database_upgrade(&self) {

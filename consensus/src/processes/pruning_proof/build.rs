@@ -15,7 +15,7 @@ use kaspa_consensus_core::{
 use kaspa_core::{debug, trace};
 use kaspa_database::prelude::*;
 use kaspa_hashes::Hash;
-use kaspa_utils::{binary_heap::TopK, vec::VecExtensions};
+use kaspa_utils::binary_heap::TopK;
 use parking_lot::RwLock;
 
 use crate::{
@@ -614,8 +614,9 @@ impl PruningProofManager {
 
             has_required_block |= current == required_block;
 
-            let parents_vec = relations_view.get_parents(current).unwrap().as_ref().clone().push_if_empty(ORIGIN);
-            let parents: BlockHashes = parents_vec.into();
+            let parents = relations_view.get_parents(current).unwrap();
+            assert!(!parents.is_empty(), "non-root blocks must have parents");
+
             let ghostdag_data = Arc::new(ghostdag_manager.ghostdag(parents.as_slice()));
             ghostdag_store.insert(current, ghostdag_data.clone()).unwrap();
 
