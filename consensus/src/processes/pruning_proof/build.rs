@@ -196,6 +196,7 @@ impl PruningProofManager {
 
                 let mut headers = VecDeque::with_capacity(2 * self.pruning_proof_m as usize);
                 let mut relations_store = DbRelationsStore::new_temp(temp_db.clone(), level, 0, cache_policy, cache_policy);
+
                 let mut queue = BinaryHeap::<SortableBlock>::new();
                 let mut visited = BlockHashSet::new();
                 queue.push(SortableBlock::new(tip, get_header(tip).blue_work));
@@ -212,10 +213,10 @@ impl PruningProofManager {
 
                     let header = get_header(current);
                     let parents: BlockHashes = self.reachable_parents_at_level(level, &header).collect::<Vec<_>>().into();
-                    relations_store.insert(current, parents.clone()).unwrap();
                     for parent in parents.iter().copied() {
                         queue.push(SortableBlock::new(parent, get_header(parent).blue_work));
                     }
+                    relations_store.insert(current, parents).unwrap();
                 }
 
                 // Bottom-up traversal from root using the relations collected above
@@ -561,8 +562,7 @@ impl PruningProofManager {
         level: BlockLevel,
         ghostdag_k: KType,
     ) -> (Arc<DbGhostdagStore>, bool, u64) {
-        // TEMP
-        kaspa_core::warn!("Populating GD for root {} at level {}", root, level);
+        debug!("Populating GD for root {} at level {} (retry {})", root, level, ghostdag_factory.retries.saturating_sub(1));
 
         let ghostdag_store = ghostdag_factory.new_store();
         let reachability_store = reachability_factory.new_store();
