@@ -72,7 +72,7 @@ impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for F
             hashes
                 .iter()
                 .copied()
-                .filter(|&h| self.reachability_service.is_dag_ancestor_of_result(self.root, h).optional().unwrap().unwrap_or(false))
+                .filter(|&h| self.reachability_service.try_is_dag_ancestor_of(self.root, h).optional().unwrap().unwrap_or(false))
                 .collect_vec()
                 .into()
         })
