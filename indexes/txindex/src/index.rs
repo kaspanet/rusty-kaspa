@@ -34,7 +34,7 @@ use tokio::sync::Mutex as AsyncMutex;
 
 const RESYNC_ACCEPTANCE_DATA_CHUNK_SIZE: u64 = 2048;
 const RESYNC_INCLUSION_DATA_CHUNK_SIZE: u64 = 2048;
-const PRUNING_CHUNK_SIZE: u64 = 2048;
+pub const PRUNING_CHUNK_SIZE: u64 = 2048;
 pub const PRUNING_WAIT_INTERVAL: Duration = Duration::from_millis(15);
 
 pub struct TxIndex {

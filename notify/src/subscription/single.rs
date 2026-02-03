@@ -216,7 +216,7 @@ impl Subscription for VirtualChainChangedSubscription {
     }
 
     fn scope(&self, _context: &SubscriptionContext) -> Scope {
-        VirtualChainChangedScope::new(self.include_accepted_transaction_ids, false).into()
+        VirtualChainChangedScope::new(self.include_accepted_transaction_ids, self.include_accepting_blue_scores).into()
     }
 }
 
@@ -431,11 +431,13 @@ impl Display for UtxosChangedSubscription {
 
 impl Drop for UtxosChangedSubscription {
     fn drop(&mut self) {
-        trace!(
-            "UtxosChangedSubscription: {} in total (drop {})",
-            UTXOS_CHANGED_SUBSCRIPTIONS.fetch_sub(1, Ordering::SeqCst) - 1,
-            self
-        );
+        // Safely decrement the counter without underflowing. If the counter is
+        // already zero, leave it as zero and log accordingly.
+        let prev = UTXOS_CHANGED_SUBSCRIPTIONS
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| Some(if v == 0 { 0 } else { v - 1 }))
+            .unwrap_or(0);
+        let remaining = prev.saturating_sub(1);
+        trace!("UtxosChangedSubscription: {} in total (drop {})", remaining, self);
     }
 }
 

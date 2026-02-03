@@ -4,7 +4,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
-use kaspa_core::{debug, trace};
+use kaspa_core::{debug, info, trace};
 use kaspa_index_core::notification::{Notification, UtxosChangedNotification};
 use kaspa_notify::{
     collector::{Collector, CollectorNotificationReceiver},
@@ -13,7 +13,7 @@ use kaspa_notify::{
     notification::Notification as NotificationTrait,
     notifier::DynNotify,
 };
-use kaspa_txindex::{PRUNING_WAIT_INTERVAL, api::TxIndexProxy};
+use kaspa_txindex::{PRUNING_CHUNK_SIZE, PRUNING_WAIT_INTERVAL, api::TxIndexProxy};
 use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::sync::{
@@ -157,23 +157,36 @@ impl Processor {
             txindex.async_update_via_retention_root_changed(notification).await?;
             let self_clone = Arc::clone(self);
             // We prune in a separate task, to not block the processing of other notifications.
-            tokio::task::spawn_blocking(async move || self_clone.prune_txindex().await);
+            info!("[Index processor] spawning on-the-fly pruning task");
+            // Spawn a Tokio task that awaits the async pruning routine so it actually runs.
+            tokio::spawn(async move {
+                let _ = self_clone.prune_txindex().await;
+            });
             return Ok(());
         };
         Err(IndexError::NotSupported(EventType::RetentionRootChanged))
     }
 
     async fn prune_txindex(self: &Arc<Self>) -> IndexResult<()> {
-        trace!("[Index processor] pruning txindex on the fly");
+        info!("[Index processor] starting on-the-fly txindex pruning");
         if let Some(txindex) = self.txindex.clone() {
             let pruning_lock = txindex.async_get_pruning_lock().await;
             // wait on lock, in case another task is already pruning (unlikely but done for good measure).
             let _pruning_guard = pruning_lock.lock().await;
+            debug!("[Index processor] acquired txindex pruning lock");
             let mut is_fully_pruned = false;
-            while !is_fully_pruned || self.collect_shutdown.trigger.is_triggered() {
+            let mut i = 0usize;
+            let mut pruning_start_ts = std::time::Instant::now();
+            while !is_fully_pruned && !self.collect_shutdown.trigger.is_triggered() {
                 is_fully_pruned = txindex.clone().async_prune_batch().await?;
+                i += 1;
+                if pruning_start_ts.elapsed().as_secs() > 5 {
+                info!("[Index processor] txindex pruning - iterations: {} completed, pruned {}", i, PRUNING_CHUNK_SIZE * i as u64);
+                    pruning_start_ts = std::time::Instant::now();
+                }
                 tokio::time::sleep(PRUNING_WAIT_INTERVAL).await; // sleep as to not be too greedy on the txindex rw lock.
             }
+            info!("[Index processor] finished on-the-fly txindex pruning");
             return Ok(());
         };
         Err(IndexError::NotSupported(EventType::RetentionRootChanged))
@@ -409,6 +422,20 @@ mod tests {
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
         assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
+        pipeline.consensus_sender.close();
+        pipeline.processor.clone().join().await.expect("stopping the processor must succeed");
+    }
+
+    #[tokio::test]
+    async fn test_prune_txindex_executes() {
+        // Ensure the on-the-fly pruning routine executes and returns without error.
+        // Use a timeout so the test won't hang indefinitely if something goes wrong.
+        use std::time::Duration;
+        let pipeline = NotifyPipeline::new();
+        let res = tokio::time::timeout(Duration::from_secs(1), pipeline.processor.prune_txindex()).await;
+        assert!(res.is_ok(), "pruning timed out");
+        res.unwrap().expect("pruning must succeed");
+        // Cleanly shut down the processor so DB handles are released before the test ends.
         pipeline.consensus_sender.close();
         pipeline.processor.clone().join().await.expect("stopping the processor must succeed");
     }

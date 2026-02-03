@@ -863,6 +863,10 @@ async fn json_test(file_path: &str, concurrency: bool) {
         }
     }
 
+    // wait for txindex to potentially finish native pruning, else we might have a race condition influencing assertions.
+    let txindex_prune_guard = txindex.read().get_pruning_lock();
+    let _ = txindex_prune_guard.lock().await;
+
     core.shutdown();
     core.join(joins);
 
@@ -879,10 +883,6 @@ async fn json_test(file_path: &str, concurrency: bool) {
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
     drop(virtual_utxos);
     drop(utxoindex_utxos);
-
-    // wait for txindex to potentially finish pruning
-    let txindex_prune_guard = txindex.read().get_pruning_lock();
-    let _ = txindex_prune_guard.lock().await;
 
     let (txindex_sink, txindex_sink_blue_score) = txindex.read().get_sink_with_blue_score().unwrap();
     let consensus_sink = tc.get_sink();
