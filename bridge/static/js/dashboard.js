@@ -791,10 +791,8 @@ async function refresh() {
     loader.style.display = 'none';
     setDot('online', 'Online');
 
-    document.getElementById('kaspad').textContent = status.kaspad_address;
     document.getElementById('kaspadVersion').textContent = status.kaspad_version ?? '-';
     document.getElementById('instances').textContent = status.instances;
-    document.getElementById('web').textContent = status.web_bind;
     setLastUpdated(Date.now(), false);
 
     document.getElementById('totalBlocks').textContent = mergedStats.totalBlocks;
@@ -978,10 +976,8 @@ async function refresh() {
     setDot('offline', 'Offline');
     const cached = readCachedSnapshot();
     if (cached) {
-      document.getElementById('kaspad').textContent = cached.status.kaspad_address ?? '-';
       document.getElementById('kaspadVersion').textContent = cached.status.kaspad_version ?? '-';
       document.getElementById('instances').textContent = cached.status.instances ?? '-';
-      document.getElementById('web').textContent = cached.status.web_bind ?? '-';
       setLastUpdated(cached.updatedMs, true);
       
       // Display bridge uptime from cached stats
@@ -1372,10 +1368,8 @@ setInterval(() => {
 (function bootstrapFromCache() {
   const cached = readCachedSnapshot();
   if (!cached) return;
-  document.getElementById('kaspad').textContent = cached.status.kaspad_address ?? '-';
   document.getElementById('kaspadVersion').textContent = cached.status.kaspad_version ?? '-';
   document.getElementById('instances').textContent = cached.status.instances ?? '-';
-  document.getElementById('web').textContent = cached.status.web_bind ?? '-';
   setLastUpdated(cached.updatedMs, true);
   
   // Display bridge uptime from cached stats
