@@ -45,18 +45,18 @@ impl DaaWindow {
 }
 
 pub trait WindowManager {
-    fn block_window(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError>;
-    fn calc_daa_window(&self, ghostdag_data: &GhostdagData, window: Arc<BlockWindowHeap>) -> DaaWindow;
-    fn block_daa_window(&self, ghostdag_data: &GhostdagData) -> Result<DaaWindow, RuleError>;
-    fn calculate_difficulty_bits(&self, ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32;
-    fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError>;
+    fn block_window(&self, coloring_ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError>;
+    fn calc_daa_window(&self, coloring_ghostdag_data: &GhostdagData, window: Arc<BlockWindowHeap>) -> DaaWindow;
+    fn block_daa_window(&self, coloring_ghostdag_data: &GhostdagData) -> Result<DaaWindow, RuleError>;
+    fn calculate_difficulty_bits(&self, coloring_ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32;
+    fn calc_past_median_time(&self, coloring_ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError>;
     fn calc_past_median_time_for_known_hash(&self, hash: Hash) -> Result<u64, RuleError>;
     fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64>;
-    fn window_size(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> usize;
-    fn sample_rate(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> u64;
+    fn window_size(&self, _ghostdag_data: &GhostdagData, window_type: WindowType) -> usize;
+    fn sample_rate(&self, _ghostdag_data: &GhostdagData, window_type: WindowType) -> u64;
 
     /// Returns the full consecutive sub-DAG containing all blocks required to restore the (possibly sampled) window.
-    fn consecutive_cover_for_window(&self, ghostdag_data: Arc<GhostdagData>, window: &BlockWindowHeap) -> Vec<Hash>;
+    fn consecutive_cover_for_window(&self, coloring_ghostdag_data: Arc<GhostdagData>, window: &BlockWindowHeap) -> Vec<Hash>;
 }
 
 enum SampledBlock {
@@ -349,22 +349,22 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         DaaWindow::new(window, daa_score, mergeset_non_daa)
     }
 
-    fn block_daa_window(&self, ghostdag_data: &GhostdagData) -> Result<DaaWindow, RuleError> {
+    fn block_daa_window(&self, coloring_ghostdag_data: &GhostdagData) -> Result<DaaWindow, RuleError> {
         let mut mergeset_non_daa = BlockHashSet::default();
-        let window = self.build_block_window(ghostdag_data, WindowType::DifficultyWindow, |hash| {
+        let window = self.build_block_window(coloring_ghostdag_data, WindowType::DifficultyWindow, |hash| {
             mergeset_non_daa.insert(hash);
         })?;
-        let daa_score = self.difficulty_manager.calc_daa_score(ghostdag_data, &mergeset_non_daa);
+        let daa_score = self.difficulty_manager.calc_daa_score(coloring_ghostdag_data, &mergeset_non_daa);
         Ok(DaaWindow::new(window, daa_score, mergeset_non_daa))
     }
 
-    fn calculate_difficulty_bits(&self, ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32 {
-        self.difficulty_manager.calculate_difficulty_bits(&daa_window.window, ghostdag_data)
+    fn calculate_difficulty_bits(&self, coloring_ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32 {
+        self.difficulty_manager.calculate_difficulty_bits(&daa_window.window, coloring_ghostdag_data)
     }
 
-    fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
-        let window = self.block_window(ghostdag_data, WindowType::MedianTimeWindow)?;
-        let past_median_time = self.past_median_time_manager.calc_past_median_time(&window, ghostdag_data.selected_parent)?;
+    fn calc_past_median_time(&self, coloring_ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
+        let window = self.block_window(coloring_ghostdag_data, WindowType::MedianTimeWindow)?;
+        let past_median_time = self.past_median_time_manager.calc_past_median_time(&window, coloring_ghostdag_data.selected_parent)?;
         Ok((past_median_time, window))
     }
 
@@ -402,7 +402,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         }
     }
 
-    fn consecutive_cover_for_window(&self, mut ghostdag: Arc<GhostdagData>, window: &BlockWindowHeap) -> Vec<Hash> {
+    fn consecutive_cover_for_window(&self, mut coloring_ghostdag_data: Arc<GhostdagData>, window: &BlockWindowHeap) -> Vec<Hash> {
         // In the sampled case, the sampling logic relies on DAA indexes which can only be calculated correctly if the full
         // mergesets covering all sampled blocks are sent.
 
@@ -412,7 +412,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         // The full consecutive window covering all sampled window blocks and the full mergesets containing them
         let mut cover = BlockHashSet::with_capacity(capacity_estimate);
         while !unvisited.is_empty() {
-            assert!(!ghostdag.selected_parent.is_origin(), "unvisited still not empty");
+            assert!(!coloring_ghostdag_data.selected_parent.is_origin(), "unvisited still not empty");
             // TODO (relaxed): a possible optimization here is to iterate in the same order as
             // sampled_mergeset_iterator (descending_mergeset) and to break once all samples from
             // this mergeset are reached.
@@ -420,7 +420,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             //                           obtaining the DAA index for all sampled blocks.
             // * What's the benefit? This might exclude deeply merged blocks which in turn will help
             //                       reducing the number of trusted blocks sent to a fresh syncing peer.
-            for merged in ghostdag.unordered_mergeset() {
+            for merged in coloring_ghostdag_data.unordered_mergeset() {
                 cover.insert(merged);
                 if unvisited.remove(&merged) {
                     // [Crescendo]: for each block in the original window save its selected parent as well
@@ -433,7 +433,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             if unvisited.is_empty() {
                 break;
             }
-            ghostdag = self.coloring_ghostdag_store.get_data(ghostdag.selected_parent).unwrap();
+            coloring_ghostdag_data = self.coloring_ghostdag_store.get_data(coloring_ghostdag_data.selected_parent).unwrap();
         }
         cover.remove(&ORIGIN); // remove origin just in case it was inserted as a selected parent of some block/s
         cover.into_iter().collect()
