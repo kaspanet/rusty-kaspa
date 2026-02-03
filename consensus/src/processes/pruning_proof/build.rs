@@ -390,7 +390,6 @@ impl PruningProofManager {
                 level,
                 self.ghostdag_k,
             );
-            assert!(has_required_block, "expected root ∈ past(required)");
 
             // Realized blue depth for this root, computed from the level-specific ghostdag
             let current_level_score = ghostdag_store.get_blue_score(tip).unwrap();
@@ -404,9 +403,10 @@ impl PruningProofManager {
             }
 
             // Success:
-            // - Genesis is always acceptable
+            // - Must include the required block (the block at depth M from the next level)
+            // - If root is genesis, required-block inclusion is sufficient
             // - Otherwise require at least `2M` blue depth at this level
-            if root == self.genesis_hash || current_level_score >= 2 * self.pruning_proof_m {
+            if has_required_block && (root == self.genesis_hash || current_level_score >= 2 * self.pruning_proof_m) {
                 Some(LevelProofContext { ghostdag_store, tip, root, count })
             } else {
                 None
