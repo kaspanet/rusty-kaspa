@@ -77,13 +77,19 @@ impl SuccinctReceipt {
     /// Verify the integrity of this receipt, ensuring the claim is attested
     /// to by the seal.
     pub fn verify_integrity(&self) -> Result<(), R0Error> {
+        // Prepare the hash suites we support
         let suites: BTreeMap<String, HashSuite<risc0_zkp::field::baby_bear::BabyBear>> = BTreeMap::from([
             ("blake2b".into(), Blake2bCpuHashSuite::new_suite()),
             ("poseidon2".into(), Poseidon2HashSuite::new_suite()),
             ("sha-256".into(), Sha256HashSuite::new_suite()),
         ]);
 
+        // Retrieve the hash suite for this receipt
         let suite = suites.get(&self.hashfn).ok_or(VerificationError::InvalidHashSuite)?;
+        
+        // There are only some control roots allowed, specifying which circuits are allowed
+        // to be verified with this proof. We verify that the control id of the receipt verifies
+        // as a valid merkle proof.
         let check_code = |_, control_id: &Digest| -> Result<(), VerificationError> {
             self.control_inclusion_proof
                 .verify(control_id, &ALLOWED_CONTROL_ROOT, suite.hashfn.as_ref())
@@ -98,6 +104,7 @@ impl SuccinctReceipt {
         let output_elems: &[BabyBearElem] = bytemuck::checked::cast_slice(&self.seal[..CircuitImpl::OUTPUT_SIZE]);
         let mut seal_claim = VecDeque::new();
         for elem in output_elems {
+            // add the output field elements from the encoded globals
             seal_claim.push_back(elem.as_u32())
         }
 
@@ -112,11 +119,15 @@ impl SuccinctReceipt {
             .collect::<Vec<_>>()
             .try_into()
             .map_err(|_| VerificationError::ReceiptFormatError)?;
+
+        // Verify that the globals also only contain allowed control roots.
         if control_root != ALLOWED_CONTROL_ROOT {
             return Err(VerificationError::ControlVerificationError { control_id: control_root })?;
         }
 
         // Verify the output hash matches that data
+        // The seal claim is now reliable so we need to ensure that the computed claim is equal
+        // to what has been claimed in the receipt.
         let output_hash = read_sha_halfs(&mut seal_claim).map_err(|_| VerificationError::ReceiptFormatError)?;
         if output_hash != self.claim {
             return Err(VerificationError::JournalDigestMismatch)?;
