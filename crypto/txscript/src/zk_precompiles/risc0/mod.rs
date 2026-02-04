@@ -35,7 +35,6 @@ impl ZkPrecompile for R0SuccinctPrecompile {
         let image_id: Digest = Digest::try_from(image_id).map_err(R0Error::Digest)?;
         let journal: Digest = Digest::try_from(journal).map_err(R0Error::Digest)?;
 
-     
         // We ensure that the proof itself is valid. This checks the internal consistency of the proof.
         // Due to the binding below, we are assured that the proof corresponds to the claimed image id and journal.
         rcpt.verify_integrity()?;
@@ -44,7 +43,7 @@ impl ZkPrecompile for R0SuccinctPrecompile {
         // and then verify the integrity of the receipt. If any of these parameters would change:
         // such as claiming that this came from a different image id, or the journal is different,
         // the assertion would fail.
-        // 
+        //
         // The other case is if we were to tamper with the claim that comes from the receipt itself.
         // If we were to bypass the compute_assert_claim step, then an attacker could modify the claim in the receipt
         // to match whatever they want and just providing some arbitrary proof. This is why this step is crucial.

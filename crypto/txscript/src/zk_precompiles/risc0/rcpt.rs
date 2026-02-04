@@ -57,6 +57,10 @@ pub struct SuccinctReceipt {
 }
 
 impl SuccinctReceipt {
+    pub fn new(seal: Vec<u32>, claim: Digest, hashfn: String, control_inclusion_proof: MerkleProof) -> Self {
+        Self { seal, claim, hashfn, control_inclusion_proof }
+    }
+
     pub fn claim(&self) -> &Digest {
         &self.claim
     }
@@ -75,7 +79,7 @@ impl SuccinctReceipt {
 
         // Retrieve the hash suite for this receipt
         let suite = suites.get(&self.hashfn).ok_or(VerificationError::InvalidHashSuite)?;
-        
+
         // There are only some control roots allowed, specifying which circuits are allowed
         // to be verified with this proof. We verify that the control id of the receipt verifies
         // as a valid merkle proof.
