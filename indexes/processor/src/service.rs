@@ -78,7 +78,7 @@ impl IndexService {
         };
         if txindex.is_some() {
             consensus_notifier
-                .try_start_notify(consensus_notify_listener_id, VirtualChainChangedScope::new(true, true).into())
+                .try_start_notify(consensus_notify_listener_id, VirtualChainChangedScope::new(true, true, true).into())
                 .expect("the subscription always succeeds");
             consensus_notifier
                 .try_start_notify(consensus_notify_listener_id, BlockAddedScope::default().into())

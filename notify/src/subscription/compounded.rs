@@ -58,59 +58,41 @@ impl Subscription for OverallSubscription {
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct VirtualChainChangedSubscription {
-    // counts[include_accepted_transaction_ids as usize][include_accepting_blue_scores as usize]
-    counts: [[usize; 2]; 2],
+    accepted_tx_counts: usize,
+    blue_scores_counts: usize,
+    active: usize,
 }
 
 impl VirtualChainChangedSubscription {
     #[inline(always)]
-    fn idx(b: bool) -> usize {
-        b as usize
+    fn inc(&mut self, is_new_active: bool, accepted_tx: bool, blue: bool) {
+        if is_new_active {
+            self.active += 1;
+        }
+        if accepted_tx {
+            self.accepted_tx_counts += 1;
+        }
+        if blue {
+            self.blue_scores_counts += 1;
+        }
     }
 
     #[inline(always)]
-    fn inc(&mut self, accepted_tx: bool, blue: bool) -> usize {
-        let c = &mut self.counts[Self::idx(accepted_tx)][Self::idx(blue)];
-        *c += 1;
-        *c
+    fn dec(&mut self, is_new_deactive: bool, accepted_tx: bool, blue: bool) {
+        if is_new_deactive {
+            self.active -= 1;
+        }
+        if accepted_tx {
+            self.accepted_tx_counts -= 1;
+        }
+        if blue {
+            self.blue_scores_counts -= 1;
+        }
     }
 
-    #[inline(always)]
-    fn dec(&mut self, accepted_tx: bool, blue: bool) -> usize {
-        let c = &mut self.counts[Self::idx(accepted_tx)][Self::idx(blue)];
-        assert!(*c > 0);
-        *c -= 1;
-        *c
-    }
-
-    #[inline(always)]
-    fn any_all(&self) -> usize {
-        self.counts[1][0] + self.counts[1][1]
-    }
-
-    #[inline(always)]
-    fn any_reduced(&self) -> usize {
-        self.counts[0][0] + self.counts[0][1]
-    }
-
-    #[inline(always)]
-    fn any_all_blue(&self) -> usize {
-        self.counts[1][1]
-    }
-
-    #[inline(always)]
-    fn any_reduced_blue(&self) -> usize {
-        self.counts[0][1]
-    }
-
-    #[inline(always)]
-    pub fn include_accepted_transaction_ids(&self) -> bool {
-        self.any_all() > 0
-    }
-
-    #[inline(always)]
-    pub fn include_accepting_blue_scores(&self) -> bool {
-        (self.any_all_blue() + self.any_reduced_blue()) > 0
+    /// Returns (active_count, accepted_tx_count, blue_scores_count)
+    fn snapshot(&self) -> (usize, usize, usize) {
+        (self.active, self.accepted_tx_counts, self.blue_scores_counts)
     }
 }
 
@@ -118,104 +100,91 @@ impl Compounded for VirtualChainChangedSubscription {
     fn compound(&mut self, mutation: Mutation, _context: &SubscriptionContext) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
         if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
-            let tx_all = scope.include_accepted_transaction_ids;
-            let blue = scope.include_accepting_blue_scores;
             match mutation.command {
                 Command::Start => {
-                    let prev_any_all = self.any_all();
-                    let prev_any_reduced = self.any_reduced();
-                    let prev_all_blue = self.any_all_blue() > 0;
-                    let prev_reduced_blue = self.any_reduced_blue() > 0;
+                    // Snapshot previous totals
+                    let (prev_total_active, prev_total_accepted_txs, prev_total_blue_scores) = self.snapshot();
 
-                    self.inc(tx_all, blue);
+                    // Apply mutation to self
+                    self.inc(scope.active, scope.include_accepted_transaction_ids, scope.include_accepting_blue_scores);
 
-                    // Start logic
-                    if tx_all {
-                        // Adding an All subscription
-                        if prev_any_all == 0 {
-                            // first all - reveal all (with aggregated blue)
-                            return Some(Mutation::new(
-                                Command::Start,
-                                Scope::VirtualChainChanged(VirtualChainChangedScope::new(true, self.any_all_blue() > 0)),
-                            ));
-                        } else if !prev_all_blue && self.any_all_blue() > 0 {
-                            // all existed but blue aggregated toggled to true
-                            return Some(Mutation::new(
-                                Command::Start,
-                                Scope::VirtualChainChanged(VirtualChainChangedScope::new(true, true)),
-                            ));
-                        }
+                    // New totals
+                    let (new_total_active, new_total_accepted_txs, new_total_blue_scores) = self.snapshot();
+
+                    // Assert that at least one of the counters incremented, and incremented counters are not incremented by not more then one.
+                    assert!(
+                        (new_total_active - prev_total_active == 0 || new_total_active - prev_total_active == 1)
+                            && (new_total_accepted_txs - prev_total_accepted_txs == 0
+                                || new_total_accepted_txs - prev_total_accepted_txs == 1)
+                            && (new_total_blue_scores - prev_total_blue_scores == 0
+                                || new_total_blue_scores - prev_total_blue_scores == 1),
+                        "Invalid VirtualChainChangedSubscription state after Start mutation: prev_total_active={}, new_total_active={}, prev_total_accepted_txs={}, new_total_accepted_txs={}, prev_total_blue_scores={}, new_total_blue_scores={}",
+                        prev_total_active,
+                        new_total_active,
+                        prev_total_accepted_txs,
+                        new_total_accepted_txs,
+                        prev_total_blue_scores,
+                        new_total_blue_scores,
+                    );
+
+                    let signal_new_total_accepted_txs = new_total_accepted_txs == 1 && prev_total_accepted_txs == 0;
+                    let signal_new_total_blue_scores = new_total_blue_scores == 1 && prev_total_blue_scores == 0;
+                    let signal_new_total_active = new_total_active == 1 && prev_total_active == 0;
+
+                    if signal_new_total_active || signal_new_total_accepted_txs || signal_new_total_blue_scores {
+                        return Some(Mutation::new(
+                            Command::Start,
+                            Scope::VirtualChainChanged(VirtualChainChangedScope::new(
+                                signal_new_total_active,
+                                signal_new_total_accepted_txs,
+                                signal_new_total_blue_scores,
+                            )),
+                        ));
                     } else {
-                        // Adding a Reduced subscription
-                        if self.any_all() == 0 {
-                            if prev_any_reduced == 0 {
-                                // first reduced - reveal reduced (with aggregated blue)
-                                return Some(Mutation::new(
-                                    Command::Start,
-                                    Scope::VirtualChainChanged(VirtualChainChangedScope::new(false, self.any_reduced_blue() > 0)),
-                                ));
-                            } else if !prev_reduced_blue && self.any_reduced_blue() > 0 {
-                                // reduced existed but blue aggregated toggled to true
-                                return Some(Mutation::new(
-                                    Command::Start,
-                                    Scope::VirtualChainChanged(VirtualChainChangedScope::new(false, true)),
-                                ));
-                            }
-                        }
+                        return None;
                     }
                 }
                 Command::Stop => {
-                    let prev_any_all = self.any_all();
-                    let prev_any_reduced = self.any_reduced();
-                    let prev_all_blue = self.any_all_blue() > 0;
-                    let prev_reduced_blue = self.any_reduced_blue() > 0;
+                    // Snapshot previous totals
+                    let (prev_total_active, prev_total_accepted_txs, prev_total_blue_scores) = self.snapshot();
 
-                    if tx_all {
-                        // Remove All
-                        assert!(prev_any_all > 0);
-                        self.dec(true, blue);
-                        let new_any_all = self.any_all();
+                    // Apply mutation to self (decrement)
+                    self.dec(scope.active, scope.include_accepted_transaction_ids, scope.include_accepting_blue_scores);
 
-                        if new_any_all == 0 {
-                            if self.any_reduced() > 0 {
-                                // reveal reduced (aggregated blue)
-                                return Some(Mutation::new(
-                                    Command::Start,
-                                    Scope::VirtualChainChanged(VirtualChainChangedScope::new(false, self.any_reduced_blue() > 0)),
-                                ));
-                            } else {
-                                // stop all
-                                return Some(Mutation::new(
-                                    Command::Stop,
-                                    Scope::VirtualChainChanged(VirtualChainChangedScope::new(true, prev_all_blue)),
-                                ));
-                            }
-                        } else if prev_all_blue && self.any_all_blue() == 0 {
-                            // blue toggled from true to false while all still present
-                            return Some(Mutation::new(
-                                Command::Stop,
-                                Scope::VirtualChainChanged(VirtualChainChangedScope::new(true, true)),
-                            ));
-                        }
+                    // New totals after decrement
+                    let (new_total_active, new_total_accepted_txs, new_total_blue_scores) = self.snapshot();
+
+                    // Assert that at least one of the counters decremented, and decremented counters are not decremented by more then one.
+                    assert!(
+                        (prev_total_active - new_total_active == 0 || prev_total_active - new_total_active == 1)
+                            && (prev_total_accepted_txs - new_total_accepted_txs == 0
+                                || prev_total_accepted_txs - new_total_accepted_txs == 1)
+                            && (prev_total_blue_scores - new_total_blue_scores == 0
+                                || prev_total_blue_scores - new_total_blue_scores == 1),
+                        "Invalid VirtualChainChangedSubscription state after Stop mutation: prev_total_active={}, new_total_active={}, prev_total_accepted_txs={}, new_total_accepted_txs={}, prev_total_blue_scores={}, new_total_blue_scores={}",
+                        prev_total_active,
+                        new_total_active,
+                        prev_total_accepted_txs,
+                        new_total_accepted_txs,
+                        prev_total_blue_scores,
+                        new_total_blue_scores,
+                    );
+
+                    let signal_depleted_total_accepted_txs = new_total_accepted_txs == 0 && prev_total_accepted_txs == 1;
+                    let signal_depleted_total_blue_scores = new_total_blue_scores == 0 && prev_total_blue_scores == 1;
+                    let signal_depleted_total_active = new_total_active == 0 && prev_total_active == 1;
+
+                    if signal_depleted_total_active || signal_depleted_total_accepted_txs || signal_depleted_total_blue_scores {
+                        return Some(Mutation::new(
+                            Command::Stop,
+                            Scope::VirtualChainChanged(VirtualChainChangedScope::new(
+                                signal_depleted_total_active,
+                                signal_depleted_total_accepted_txs,
+                                signal_depleted_total_blue_scores,
+                            )),
+                        ));
                     } else {
-                        // Remove Reduced
-                        assert!(prev_any_reduced > 0);
-                        self.dec(false, blue);
-                        let new_any_reduced = self.any_reduced();
-
-                        if new_any_reduced == 0 && self.any_all() == 0 {
-                            // no reduced remain and no all => stop reduced
-                            return Some(Mutation::new(
-                                Command::Stop,
-                                Scope::VirtualChainChanged(VirtualChainChangedScope::new(false, prev_reduced_blue)),
-                            ));
-                        } else if prev_reduced_blue && self.any_reduced_blue() == 0 && self.any_all() == 0 {
-                            // last reduced blue removed while all absent
-                            return Some(Mutation::new(
-                                Command::Stop,
-                                Scope::VirtualChainChanged(VirtualChainChangedScope::new(false, true)),
-                            ));
-                        }
+                        return None;
                     }
                 }
             }
@@ -231,13 +200,14 @@ impl Subscription for VirtualChainChangedSubscription {
     }
 
     fn active(&self) -> bool {
-        self.any_all() + self.any_reduced() > 0
+        self.active > 0
     }
 
     fn scope(&self, _context: &SubscriptionContext) -> Scope {
         Scope::VirtualChainChanged(VirtualChainChangedScope::new(
-            self.include_accepted_transaction_ids(),
-            self.include_accepting_blue_scores(),
+            self.active > 0,
+            self.accepted_tx_counts > 0,
+            self.blue_scores_counts > 0,
         ))
     }
 }
@@ -406,10 +376,11 @@ mod tests {
     #[test]
     #[allow(clippy::redundant_clone)]
     fn test_virtual_chain_changed_compounding() {
-        fn m(command: Command, include_accepted_transaction_ids: bool, include_accepting_blue_scores: bool) -> Mutation {
+        fn m(command: Command, active: bool, include_accepted_transaction_ids: bool, include_accepting_blue_scores: bool) -> Mutation {
             Mutation {
                 command,
                 scope: Scope::VirtualChainChanged(VirtualChainChangedScope {
+                    active,
                     include_accepted_transaction_ids,
                     include_accepting_blue_scores,
                 }),
@@ -417,39 +388,95 @@ mod tests {
         }
         let none = Box::<VirtualChainChangedSubscription>::default;
         // default blue flag is false for legacy behavior in these unit tests
-        let add_all = || m(Command::Start, true, false);
-        let add_reduced = || m(Command::Start, false, false);
-        let remove_reduced = || m(Command::Stop, false, false);
-        let remove_all = || m(Command::Stop, true, false);
+        let command_builder =
+            |command: Command, active: bool, include_accepted_transaction_ids: bool, include_accepting_blue_scores: bool| {
+                m(command, active, include_accepted_transaction_ids, include_accepting_blue_scores)
+            };
+
         let test = Test {
             name: "VirtualChainChanged",
             context: SubscriptionContext::new(),
             initial_state: none(),
             steps: vec![
-                Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
-                Step { name: "add all 2", mutation: add_all(), result: None },
-                Step { name: "remove all 2", mutation: remove_all(), result: None },
-                Step { name: "remove all 1", mutation: remove_all(), result: Some(remove_all()) },
-                Step { name: "add reduced 1", mutation: add_reduced(), result: Some(add_reduced()) },
-                Step { name: "add reduced 2", mutation: add_reduced(), result: None },
-                Step { name: "remove reduced 2", mutation: remove_reduced(), result: None },
-                Step { name: "remove reduced 1", mutation: remove_reduced(), result: Some(remove_reduced()) },
-                // Interleaved all and reduced
-                Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
-                Step { name: "add reduced 1, masked by all", mutation: add_reduced(), result: None },
-                Step { name: "remove all 1, revealing reduced", mutation: remove_all(), result: Some(add_reduced()) },
-                Step { name: "add all 1, masking reduced", mutation: add_all(), result: Some(add_all()) },
-                Step { name: "remove reduced 1, masked by all", mutation: remove_reduced(), result: None },
-                Step { name: "remove all 1", mutation: remove_all(), result: Some(remove_all()) },
+                Step {
+                    name: "add_all",
+                    mutation: command_builder(Command::Start, true, true, true),
+                    result: Some(command_builder(Command::Start, true, true, true)),
+                },
+                Step {
+                    name: "remove transactions 1",
+                    mutation: command_builder(Command::Stop, false, true, false),
+                    result: Some(command_builder(Command::Stop, false, true, false)),
+                },
+                Step {
+                    name: "remove blue score 1",
+                    mutation: command_builder(Command::Stop, false, false, true),
+                    result: Some(command_builder(Command::Stop, false, false, true)),
+                },
+                Step {
+                    name: "add transactions / add blue score 1",
+                    mutation: command_builder(Command::Start, false, true, true),
+                    result: Some(command_builder(Command::Start, false, true, true)),
+                },
+                Step { name: "add active 1", mutation: command_builder(Command::Start, true, false, false), result: None },
+                Step {
+                    name: "remove transactions / remove blue score 1",
+                    mutation: command_builder(Command::Stop, false, true, true),
+                    result: Some(command_builder(Command::Stop, false, true, true)),
+                },
+                Step { name: "remove active1", mutation: command_builder(Command::Stop, true, false, false), result: None },
+                Step {
+                    name: "remove active2",
+                    mutation: command_builder(Command::Stop, true, false, false),
+                    result: Some(command_builder(Command::Stop, true, false, false)),
+                },
+                Step {
+                    name: "start active+txids",
+                    mutation: command_builder(Command::Start, true, true, false),
+                    result: Some(command_builder(Command::Start, true, true, false)),
+                },
+                // 10: Start blue only (new blue -> emit Start blue)
+                Step {
+                    name: "start blue only",
+                    mutation: command_builder(Command::Start, false, false, true),
+                    result: Some(command_builder(Command::Start, false, false, true)),
+                },
+                Step { name: "start dup all", mutation: command_builder(Command::Start, true, true, true), result: None },
+                Step { name: "stop txids 1", mutation: command_builder(Command::Stop, false, true, false), result: None },
+                Step {
+                    name: "stop txids 2",
+                    mutation: command_builder(Command::Stop, false, true, false),
+                    result: Some(command_builder(Command::Stop, false, true, false)),
+                },
+                Step { name: "stop blue 1", mutation: command_builder(Command::Stop, false, false, true), result: None },
+                Step {
+                    name: "stop blue 2",
+                    mutation: command_builder(Command::Stop, false, false, true),
+                    result: Some(command_builder(Command::Stop, false, false, true)),
+                },
+                Step { name: "stop active 1", mutation: command_builder(Command::Stop, true, false, false), result: None },
+                Step {
+                    name: "stop active 2",
+                    mutation: command_builder(Command::Stop, true, false, false),
+                    result: Some(command_builder(Command::Stop, true, false, false)),
+                },
             ],
             final_state: none(),
         };
         let mut state = test.run();
 
         // Removing once more must panic
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all(), &test.context)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            state.compound(command_builder(Command::Stop, true, false, false), &test.context)
+        }));
         assert!(result.is_err(), "{}: trying to remove all when counter is zero must panic", test.name);
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_reduced(), &test.context)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            state.compound(command_builder(Command::Stop, false, true, false), &test.context)
+        }));
+        assert!(result.is_err(), "{}: trying to remove reduced when counter is zero must panic", test.name);
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            state.compound(command_builder(Command::Stop, false, false, true), &test.context)
+        }));
         assert!(result.is_err(), "{}: trying to remove reduced when counter is zero must panic", test.name);
     }
 

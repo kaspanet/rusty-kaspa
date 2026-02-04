@@ -197,8 +197,8 @@ mod tests {
         create_temp_db,
         prelude::{BatchDbWriter, ConnBuilder},
     };
-    use rocksdb::WriteBatch;
     use kaspa_hashes::Hash;
+    use rocksdb::WriteBatch;
 
     #[test]
     fn test_pruning_sync_store() {

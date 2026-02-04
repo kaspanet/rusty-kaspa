@@ -856,6 +856,7 @@ impl RpcClient {
                 .start_notify(
                     listener_id,
                     Scope::VirtualChainChanged(VirtualChainChangedScope {
+                        active: true,
                         include_accepted_transaction_ids,
                         include_accepting_blue_scores: false,
                     }),
@@ -878,6 +879,7 @@ impl RpcClient {
                 .stop_notify(
                     listener_id,
                     Scope::VirtualChainChanged(VirtualChainChangedScope {
+                        active: true,
                         include_accepted_transaction_ids,
                         include_accepting_blue_scores: false,
                     }),

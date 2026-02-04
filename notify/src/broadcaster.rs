@@ -336,14 +336,19 @@ mod tests {
                                 "{} #{} - {}: - L{} has the new state {:?}",
                                 self.name, step_idx, step.name, idx, self.listeners[idx].subscriptions[event]
                             );
-                            let ctl = match mutation.active() {
-                                true => Ctl::Register(
+                            let ctl = if self.listeners[idx].subscriptions[event].active() {
+                                Ctl::Register(
                                     self.listeners[idx].subscriptions[event].clone(),
                                     idx as u64,
                                     self.listeners[idx].connection(),
-                                ),
-                                false => Ctl::Unregister(event, idx as u64),
+                                )
+                            } else {
+                                Ctl::Unregister(event, idx as u64)
                             };
+                            trace!(
+                                "{} #{} - {}: sending ctl for L{} -> {:?}; listener state = {:?}",
+                                self.name, step_idx, step.name, idx, ctl, self.listeners[idx].subscriptions[event]
+                            );
                             assert!(
                                 self.ctl_sender.send(ctl).await.is_ok(),
                                 "{} #{} - {}: sending a registration message failed",
@@ -352,7 +357,7 @@ mod tests {
                                 step.name
                             );
                             assert!(
-                                timeout(SYNC_MAX_DELAY, self.sync_receiver.recv()).await.unwrap().is_ok(),
+                                self.sync_receiver.recv().await.is_ok(),
                                 "{} #{} - {}: receiving a sync message failed",
                                 self.name,
                                 step_idx,

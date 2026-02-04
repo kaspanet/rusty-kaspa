@@ -91,6 +91,9 @@ impl VirtualChainChangedSubscription {
     pub fn include_accepting_blue_scores(&self) -> bool {
         self.include_accepting_blue_scores
     }
+    pub fn active(&self) -> bool {
+        self.active
+    }
 }
 
 impl Single for VirtualChainChangedSubscription {
@@ -102,105 +105,75 @@ impl Single for VirtualChainChangedSubscription {
         _: &SubscriptionContext,
     ) -> Result<MutationOutcome> {
         assert_eq!(self.event_type(), mutation.event_type());
-        let result = if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
-            // Here we want the code to (almost) match a double entry table structure
-            // by subscription state and by mutation
-            #[allow(clippy::collapsible_else_if)]
-            if !self.active {
-                // State None
-                if !mutation.active() {
-                    // Mutation None
-                    None
-                } else {
-                    // Start from None -> adopt mutation flags
-                    let mutated = Self::new(true, scope.include_accepted_transaction_ids, scope.include_accepting_blue_scores);
-                    Some((Arc::new(mutated), vec![mutation]))
-                }
-            } else if !self.include_accepted_transaction_ids {
-                // State Reduced
-                if !mutation.active() {
-                    // Stop requested -> go to None, emit Stop with incoming mutation's blue flag
-                    let mutated = Self::new(false, false, false);
-                    Some((
-                        Arc::new(mutated),
-                        vec![Mutation::new(
-                            Command::Stop,
-                            VirtualChainChangedScope::new(false, scope.include_accepting_blue_scores).into(),
-                        )],
-                    ))
-                } else if !scope.include_accepted_transaction_ids {
-                    // Mutation Reduced (possible blue toggle)
-                    if self.include_accepting_blue_scores == scope.include_accepting_blue_scores {
-                        None
+        if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
+            // If this is a Start command
+            match mutation.command {
+                Command::Start => {
+                    // check diff
+                    let current_active = self.active;
+                    let mutation_active = scope.active;
+                    let current_accept = self.include_accepted_transaction_ids;
+                    let current_blue = self.include_accepting_blue_scores;
+                    let target_accept = scope.include_accepted_transaction_ids;
+                    let target_blue = scope.include_accepting_blue_scores;
+                    // No invariant assumed for Start mutations; accept/blue may be set independently of active.
+
+                    let signal_accept = if !current_accept && target_accept { target_accept } else { false };
+                    let signal_blue = if !current_blue && target_blue { target_blue } else { false };
+                    let signal_active = if !current_active && mutation_active { mutation_active } else { false };
+
+                    if signal_accept || signal_blue || signal_active {
+                        // new state is the union of current and target (apply the start)
+                        let new_state = Arc::new(VirtualChainChangedSubscription::new(
+                            current_active || signal_active,
+                            current_accept || signal_accept,
+                            current_blue || signal_blue,
+                        ));
+                        let start_target = Mutation::new(
+                            Command::Start,
+                            VirtualChainChangedScope::new(signal_active, signal_accept, signal_blue).into(),
+                        );
+                        return Ok(MutationOutcome::with_mutated(new_state, vec![start_target]));
                     } else {
-                        let mutated = Self::new(true, false, scope.include_accepting_blue_scores);
-                        Some((Arc::new(mutated), vec![mutation]))
+                        // No change
+                        return Ok(MutationOutcome::new());
                     }
-                } else {
-                    // Mutation All: stop previous reduced (current flags) then start all
-                    let mutated = Self::new(true, true, scope.include_accepting_blue_scores);
-                    Some((
-                        Arc::new(mutated),
-                        vec![
-                            Mutation::new(
-                                Command::Stop,
-                                VirtualChainChangedScope::new(false, self.include_accepting_blue_scores).into(),
-                            ),
-                            mutation,
-                        ],
-                    ))
                 }
-            } else {
-                // State All
-                if !mutation.active() {
-                    // Mutation None -> stop all using current state's blue
-                    let mutated = Self::new(false, false, false);
-                    Some((
-                        Arc::new(mutated),
-                        vec![Mutation::new(
+                Command::Stop => {
+                    // check diff
+                    let current_active = self.active;
+                    let mutation_active = scope.active;
+                    let current_accept = self.include_accepted_transaction_ids;
+                    let current_blue = self.include_accepting_blue_scores;
+                    let target_accept = scope.include_accepted_transaction_ids;
+                    let target_blue = scope.include_accepting_blue_scores;
+
+                    // No invariant assumed for Stop mutations; accept/blue may be set independently of active.
+
+                    let designal_accept = if current_accept && target_accept { target_accept } else { false };
+                    let designal_blue = if current_blue && target_blue { target_blue } else { false };
+                    let designal_active = if current_active && mutation_active { mutation_active } else { false };
+
+                    if designal_accept || designal_blue || designal_active {
+                        // new state is the current state with the target flags removed (apply the stop)
+                        let new_state = Arc::new(VirtualChainChangedSubscription::new(
+                            if designal_active { false } else { current_active },
+                            if designal_accept { false } else { current_accept },
+                            if designal_blue { false } else { current_blue },
+                        ));
+                        let start_target = Mutation::new(
                             Command::Stop,
-                            VirtualChainChangedScope::new(true, self.include_accepting_blue_scores).into(),
-                        )],
-                    ))
-                } else if !scope.include_accepted_transaction_ids {
-                    // Mutation Reduced -> start reduced (incoming flags) then stop all (current flags)
-                    let mutated = Self::new(true, false, scope.include_accepting_blue_scores);
-                    Some((
-                        Arc::new(mutated),
-                        vec![
-                            mutation,
-                            Mutation::new(
-                                Command::Stop,
-                                VirtualChainChangedScope::new(true, self.include_accepting_blue_scores).into(),
-                            ),
-                        ],
-                    ))
-                } else {
-                    // Mutation All (maybe blue toggle)
-                    if self.include_accepting_blue_scores == scope.include_accepting_blue_scores {
-                        None
-                    } else if !self.include_accepting_blue_scores && scope.include_accepting_blue_scores {
-                        // upgrade to blue: just send Start(all,true)
-                        let mutated = Self::new(true, true, true);
-                        Some((Arc::new(mutated), vec![mutation]))
+                            VirtualChainChangedScope::new(designal_active, designal_accept, designal_blue).into(),
+                        );
+                        return Ok(MutationOutcome::with_mutated(new_state, vec![start_target]));
                     } else {
-                        // downgrade from all blue -> all non-blue: stop previous blue all then start non-blue
-                        let mutated = Self::new(true, true, false);
-                        Some((
-                            Arc::new(mutated),
-                            vec![Mutation::new(Command::Stop, VirtualChainChangedScope::new(true, true).into()), mutation],
-                        ))
+                        // No change
+                        return Ok(MutationOutcome::new());
                     }
                 }
             }
-        } else {
-            None
         };
-        let outcome = match result {
-            Some((mutated, mutations)) => MutationOutcome::with_mutated(mutated, mutations),
-            None => MutationOutcome::new(),
-        };
-        Ok(outcome)
+        Ok(MutationOutcome::new())
     }
 }
 
@@ -216,7 +189,7 @@ impl Subscription for VirtualChainChangedSubscription {
     }
 
     fn scope(&self, _context: &SubscriptionContext) -> Scope {
-        VirtualChainChangedScope::new(self.include_accepted_transaction_ids, self.include_accepting_blue_scores).into()
+        VirtualChainChangedScope::new(self.active, self.include_accepted_transaction_ids, self.include_accepting_blue_scores).into()
     }
 }
 
@@ -869,159 +842,174 @@ mod tests {
         fn s(active: bool, include_accepted_transaction_ids: bool, include_accepting_blue_scores: bool) -> DynSubscription {
             Arc::new(VirtualChainChangedSubscription { active, include_accepted_transaction_ids, include_accepting_blue_scores })
         }
-        fn m(command: Command, include_accepted_transaction_ids: bool, include_accepting_blue_scores: bool) -> Mutation {
+        fn m(command: Command, active: bool, include_accepted_transaction_ids: bool, include_accepting_blue_scores: bool) -> Mutation {
             Mutation {
                 command,
                 scope: Scope::VirtualChainChanged(VirtualChainChangedScope {
+                    active,
                     include_accepted_transaction_ids,
                     include_accepting_blue_scores,
                 }),
             }
         }
 
-        // Subscriptions (third param = blue)
         let none = || s(false, false, false);
-        let reduced = || s(true, false, false);
-        let reduced_blue = || s(true, false, true);
-        let all = || s(true, true, false);
-        let all_blue = || s(true, true, true);
+        let all = || s(true, true, true);
+        let active_with_blue = || s(true, false, true);
+        let active_with_txids = || s(true, true, false);
 
         // Mutations
-        // Mutations (blue false by default for these unit tests)
-        let start_all = || m(Command::Start, true, false);
-        let start_all_blue = || m(Command::Start, true, true);
-        let stop_all = || m(Command::Stop, true, false);
-        let start_reduced = || m(Command::Start, false, false);
-        let start_reduced_blue = || m(Command::Start, false, true);
-        let stop_reduced = || m(Command::Stop, false, false);
-        let stop_reduced_blue = || m(Command::Stop, false, true);
+        let start_all = || m(Command::Start, true, true, true);
+        let stop_all = || m(Command::Stop, true, true, true);
+        let start_active_with_txids = || m(Command::Start, true, true, false);
+        let stop_active_with_txids = || m(Command::Stop, true, true, false);
+        let start_blue_only = || m(Command::Start, false, false, true);
+        let start_txids_only = || m(Command::Start, false, true, false);
+        let start_txids_with_blue = || m(Command::Start, false, true, true);
+        let stop_txids_with_blue = || m(Command::Stop, false, true, true);
+        let start_reduced = || m(Command::Start, true, false, false);
+        let stop_reduced = || m(Command::Stop, true, false, false);
+        let start_reduced_blue = || m(Command::Start, true, false, true);
+        let stop_reduced_blue = || m(Command::Stop, true, false, true);
 
-        // Tests
+        // Canonical fixed test list derived from the dump output (representative per mutation + composites)
+        // Additional constructors used by the fixed test list (match dump labels)
+        let reduced = || s(true, false, false);
+        let reduced_blue = || s(true, false, true);
+        let blue_only = || s(false, false, true);
+        let txids_only = || s(false, true, false);
+        let txids_with_blue = || s(false, true, true);
+
         let tests = MutationTests::new(vec![
             MutationTest {
-                name: "VirtualChainChangedSubscription None to All",
+                name: "VirtualChainChangedSubscription none to start_all",
                 state: none(),
                 mutation: start_all(),
                 new_state: all(),
                 outcome: MutationOutcome::with_mutated(all(), vec![start_all()]),
             },
             MutationTest {
-                name: "VirtualChainChangedSubscription None to Reduced",
+                name: "VirtualChainChangedSubscription none to start_reduced",
                 state: none(),
                 mutation: start_reduced(),
                 new_state: reduced(),
                 outcome: MutationOutcome::with_mutated(reduced(), vec![start_reduced()]),
             },
             MutationTest {
-                name: "VirtualChainChangedSubscription None to None (stop reduced)",
+                name: "VirtualChainChangedSubscription none to start_reduced_blue",
                 state: none(),
-                mutation: stop_reduced(),
-                new_state: none(),
-                outcome: MutationOutcome::new(),
+                mutation: start_reduced_blue(),
+                new_state: active_with_blue(),
+                outcome: MutationOutcome::with_mutated(active_with_blue(), vec![start_reduced_blue()]),
             },
             MutationTest {
-                name: "VirtualChainChangedSubscription None to None (stop all)",
+                name: "VirtualChainChangedSubscription none to start_active_with_txids",
                 state: none(),
-                mutation: stop_all(),
-                new_state: none(),
-                outcome: MutationOutcome::new(),
+                mutation: start_active_with_txids(),
+                new_state: active_with_txids(),
+                outcome: MutationOutcome::with_mutated(active_with_txids(), vec![start_active_with_txids()]),
             },
             MutationTest {
-                name: "VirtualChainChangedSubscription Reduced to All",
+                name: "VirtualChainChangedSubscription none to start_blue_only",
+                state: none(),
+                mutation: start_blue_only(),
+                new_state: blue_only(),
+                outcome: MutationOutcome::with_mutated(blue_only(), vec![start_blue_only()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription none to start_txids_only",
+                state: none(),
+                mutation: start_txids_only(),
+                new_state: txids_only(),
+                outcome: MutationOutcome::with_mutated(txids_only(), vec![start_txids_only()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription none to start_txids_with_blue",
+                state: none(),
+                mutation: start_txids_with_blue(),
+                new_state: txids_with_blue(),
+                outcome: MutationOutcome::with_mutated(txids_with_blue(), vec![start_txids_with_blue()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription reduced to start_all",
                 state: reduced(),
                 mutation: start_all(),
                 new_state: all(),
-                outcome: MutationOutcome::with_mutated(all(), vec![stop_reduced(), start_all()]),
+                outcome: MutationOutcome::with_mutated(all(), vec![start_txids_with_blue()]),
             },
             MutationTest {
-                name: "VirtualChainChangedSubscription Reduced to Reduced",
+                name: "VirtualChainChangedSubscription reduced to start_reduced_blue",
                 state: reduced(),
-                mutation: start_reduced(),
-                new_state: reduced(),
-                outcome: MutationOutcome::new(),
+                mutation: start_reduced_blue(),
+                new_state: reduced_blue(),
+                outcome: MutationOutcome::with_mutated(reduced_blue(), vec![start_blue_only()]),
             },
             MutationTest {
-                name: "VirtualChainChangedSubscription Reduced to None (stop reduced)",
+                name: "VirtualChainChangedSubscription reduced to stop_all",
+                state: reduced(),
+                mutation: stop_all(),
+                new_state: none(),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_reduced()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription reduced to stop_reduced",
                 state: reduced(),
                 mutation: stop_reduced(),
                 new_state: none(),
                 outcome: MutationOutcome::with_mutated(none(), vec![stop_reduced()]),
             },
             MutationTest {
-                name: "VirtualChainChangedSubscription Reduced(blue) to None (stop reduced blue)",
+                name: "VirtualChainChangedSubscription reduced_blue to stop_reduced_blue",
                 state: reduced_blue(),
                 mutation: stop_reduced_blue(),
                 new_state: none(),
                 outcome: MutationOutcome::with_mutated(none(), vec![stop_reduced_blue()]),
             },
             MutationTest {
-                name: "VirtualChainChangedSubscription Reduced to None (stop all)",
-                state: reduced(),
-                mutation: stop_all(),
+                name: "VirtualChainChangedSubscription active_with_txids to stop_active_with_txids",
+                state: active_with_txids(),
+                mutation: stop_active_with_txids(),
                 new_state: none(),
-                outcome: MutationOutcome::with_mutated(none(), vec![stop_reduced()]),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_active_with_txids()]),
             },
             MutationTest {
-                name: "VirtualChainChangedSubscription All to All",
+                name: "VirtualChainChangedSubscription all to stop_all",
                 state: all(),
+                mutation: stop_all(),
+                new_state: none(),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_all()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription blue_only to start_all",
+                state: blue_only(),
                 mutation: start_all(),
+                new_state: all(),
+                outcome: MutationOutcome::with_mutated(all(), vec![start_active_with_txids()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription txids_only to start_all",
+                state: txids_only(),
+                mutation: start_all(),
+                new_state: all(),
+                outcome: MutationOutcome::with_mutated(all(), vec![start_reduced_blue()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription txids_with_blue to stop_txids_with_blue",
+                state: txids_with_blue(),
+                mutation: stop_txids_with_blue(),
+                new_state: none(),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_txids_with_blue()]),
+            },
+            // Edge case: all->start_reduced: no state change (START won't clear flags)
+            MutationTest {
+                name: "VirtualChainChangedSubscription all to start_reduced",
+                state: all(),
+                mutation: start_reduced(),
                 new_state: all(),
                 outcome: MutationOutcome::new(),
             },
-            MutationTest {
-                name: "VirtualChainChangedSubscription All to Reduced",
-                state: all(),
-                mutation: start_reduced(),
-                new_state: reduced(),
-                outcome: MutationOutcome::with_mutated(reduced(), vec![start_reduced(), stop_all()]),
-            },
-            MutationTest {
-                name: "VirtualChainChangedSubscription All to None (stop reduced)",
-                state: all(),
-                mutation: stop_reduced(),
-                new_state: none(),
-                outcome: MutationOutcome::with_mutated(none(), vec![stop_all()]),
-            },
-            MutationTest {
-                name: "VirtualChainChangedSubscription All to None (stop all)",
-                state: all(),
-                mutation: stop_all(),
-                new_state: none(),
-                outcome: MutationOutcome::with_mutated(none(), vec![stop_all()]),
-            },
-            // Blue flag parity tests
-            MutationTest {
-                name: "VirtualChainChangedSubscription None to Reduced (blue)",
-                state: none(),
-                mutation: start_reduced_blue(),
-                new_state: reduced_blue(),
-                outcome: MutationOutcome::with_mutated(reduced_blue(), vec![start_reduced_blue()]),
-            },
-            MutationTest {
-                name: "VirtualChainChangedSubscription Reduced to Reduced (blue upgrade)",
-                state: reduced(),
-                mutation: start_reduced_blue(),
-                new_state: reduced_blue(),
-                outcome: MutationOutcome::with_mutated(reduced_blue(), vec![start_reduced_blue()]),
-            },
-            MutationTest {
-                name: "VirtualChainChangedSubscription All to All (blue upgrade)",
-                state: all(),
-                mutation: start_all_blue(),
-                new_state: all_blue(),
-                outcome: MutationOutcome::with_mutated(all_blue(), vec![start_all_blue()]),
-            },
-            MutationTest {
-                name: "VirtualChainChangedSubscription All(blue) to All (blue downgrade)",
-                state: all_blue(),
-                mutation: start_all(),
-                new_state: all(),
-                outcome: MutationOutcome::with_mutated(
-                    all(),
-                    vec![Mutation::new(Command::Stop, VirtualChainChangedScope::new(true, true).into()), start_all()],
-                ),
-            },
         ]);
+
         tests.run(&context)
     }
 

@@ -89,13 +89,15 @@ impl Deserializer for BlockAddedScope {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct VirtualChainChangedScope {
+    pub active: bool,
     pub include_accepted_transaction_ids: bool,
     pub include_accepting_blue_scores: bool,
 }
 
 impl VirtualChainChangedScope {
-    pub fn new(include_accepted_transaction_ids: bool, include_accepting_blue_scores: bool) -> Self {
-        Self { include_accepted_transaction_ids, include_accepting_blue_scores }
+    pub fn new(active: bool, include_accepted_transaction_ids: bool, include_accepting_blue_scores: bool) -> Self {
+        // No invariant assumed here: callers may emit any combination of flags.
+        Self { active, include_accepted_transaction_ids, include_accepting_blue_scores }
     }
 }
 
@@ -103,7 +105,8 @@ impl std::fmt::Display for VirtualChainChangedScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "VirtualChainChangedScope{}{}",
+            "VirtualChainChangedScope{}{}{}",
+            if self.active { " active" } else { "" },
             if self.include_accepted_transaction_ids { " with accepted transactions" } else { "" },
             if self.include_accepting_blue_scores { " with accepting blue scores" } else { "" }
         )
@@ -113,6 +116,7 @@ impl std::fmt::Display for VirtualChainChangedScope {
 impl Serializer for VirtualChainChangedScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &2, writer)?;
+        store!(bool, &self.active, writer)?;
         store!(bool, &self.include_accepted_transaction_ids, writer)?;
         store!(bool, &self.include_accepting_blue_scores, writer)?;
         Ok(())
@@ -122,9 +126,10 @@ impl Serializer for VirtualChainChangedScope {
 impl Deserializer for VirtualChainChangedScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let version = load!(u16, reader)?;
+        let active = if version >= 2 { load!(bool, reader)? } else { false };
         let include_accepted_transaction_ids = load!(bool, reader)?;
         let include_accepting_blue_scores = if version >= 2 { load!(bool, reader)? } else { false };
-        Ok(Self { include_accepted_transaction_ids, include_accepting_blue_scores })
+        Ok(Self { include_accepted_transaction_ids, include_accepting_blue_scores, active })
     }
 }
 

@@ -181,7 +181,7 @@ impl Processor {
                 is_fully_pruned = txindex.clone().async_prune_batch().await?;
                 i += 1;
                 if pruning_start_ts.elapsed().as_secs() > 5 {
-                info!("[Index processor] txindex pruning - iterations: {} completed, pruned {}", i, PRUNING_CHUNK_SIZE * i as u64);
+                    info!("[Index processor] txindex pruning - iterations: {} completed, pruned {}", i, PRUNING_CHUNK_SIZE * i as u64);
                     pruning_start_ts = std::time::Instant::now();
                 }
                 tokio::time::sleep(PRUNING_WAIT_INTERVAL).await; // sleep as to not be too greedy on the txindex rw lock.

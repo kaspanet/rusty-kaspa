@@ -795,8 +795,12 @@ async fn sanity_test() {
                     rpc_client
                         .start_notify(
                             id,
-                            VirtualChainChangedScope { include_accepted_transaction_ids: false, include_accepting_blue_scores: false }
-                                .into(),
+                            VirtualChainChangedScope {
+                                active: true,
+                                include_accepted_transaction_ids: false,
+                                include_accepting_blue_scores: false,
+                            }
+                            .into(),
                         )
                         .await
                         .unwrap();
