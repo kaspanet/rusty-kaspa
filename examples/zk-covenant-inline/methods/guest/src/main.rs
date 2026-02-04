@@ -3,8 +3,8 @@
 
 risc0_zkvm::guest::entry!(main);
 
-use risc0_zkvm::guest::env;
 use bytemuck::Zeroable;
+use risc0_zkvm::guest::env;
 use zk_covenant_inline_core::{Action, PublicInput, State};
 //
 

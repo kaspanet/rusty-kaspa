@@ -7,6 +7,7 @@ use kaspa_consensus_core::{
     tx::{PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
 use kaspa_hashes::Hash;
+use kaspa_txscript::zk_precompiles::risc0::Digest;
 use kaspa_txscript::{
     caches::Cache,
     covenants::CovenantsContext,
@@ -81,17 +82,15 @@ fn main() {
 
     // --- Verify STARK (succinct) on-chain ---
     let receipt_inner = succinct_receipt.inner.succinct().unwrap();
-    let script_precompile_inner = SuccinctReceipt {
-        seal: receipt_inner.seal.clone(),
-        control_id: receipt_inner.control_id,
-        claim: receipt_inner.claim.digest(),
-        hashfn: receipt_inner.hashfn.clone(),
-        verifier_parameters: receipt_inner.verifier_parameters,
-        control_inclusion_proof: MerkleProof::new(
+    let script_precompile_inner = SuccinctReceipt::new(
+        receipt_inner.seal.clone(),
+        Digest::new(receipt_inner.claim.digest().into()),
+        receipt_inner.hashfn.clone(),
+        MerkleProof::new(
             receipt_inner.control_inclusion_proof.index,
-            receipt_inner.control_inclusion_proof.digests.clone(),
+            receipt_inner.control_inclusion_proof.digests.iter().cloned().map(|d| Digest::new(d.into())).collect(),
         ),
-    };
+    );
 
     let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_INLINE_GUEST_ID);
     let computed_len = build_redeem_script(public_input.prev_state_hash, 76, &program_id, ZkTag::R0Succinct).len() as i64;
