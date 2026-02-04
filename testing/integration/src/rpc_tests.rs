@@ -50,7 +50,7 @@ async fn sanity_test() {
         enable_unsynced_mining: true,
         block_template_cache_lifetime: Some(0),
         utxoindex: true,
-        txindex: 1,
+        txindex: true,
         unsafe_rpc: true,
         ..Default::default()
     };
@@ -247,6 +247,7 @@ async fn sanity_test() {
                     assert_eq!(response.server_version, kaspa_core::kaspad_env::version().to_string());
                     assert_eq!(response.mempool_size, 0);
                     assert!(response.is_utxo_indexed);
+                    assert!(response.is_tx_indexed);
                     assert!(response.has_message_id);
                     assert!(response.has_notify_command);
                 })
@@ -610,6 +611,7 @@ async fn sanity_test() {
                 tst!(op, {
                     let response = rpc_client.get_server_info_call(None, GetServerInfoRequest {}).await.unwrap();
                     assert!(response.has_utxo_index); // we set utxoindex above
+                    assert!(response.has_tx_index); // txindex is enabled for these tests
                     assert_eq!(response.network_id, network_id);
                 })
             }

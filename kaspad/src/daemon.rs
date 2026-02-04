@@ -280,31 +280,24 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     let network = args.network();
     let mut fd_remaining = fd_total_budget;
     let (utxo_files_limit, tx_files_limit) = match (args.utxoindex, args.txindex) {
-        (false, 0) => (0i32, 0i32),
-        (true, 0) => {
+        (false, false) => (0i32, 0i32),
+        (true, false) => {
             let utxo_files_limit = fd_remaining / 10;
             fd_remaining -= utxo_files_limit;
             (utxo_files_limit, 0i32)
         }
-        (false, 1) => {
+        (false, true) => {
             let txindex_files_limit = fd_remaining / 10;
             fd_remaining -= txindex_files_limit;
             (0i32, txindex_files_limit)
         }
-        (true, 1) => {
+        (true, true) => {
             let file_limit = fd_remaining / 5;
             let utxo_files_limit = file_limit / 2;
             let txindex_files_limit = file_limit / 2;
             fd_remaining -= txindex_files_limit;
             fd_remaining -= utxo_files_limit;
             (utxo_files_limit, txindex_files_limit)
-        }
-        _ => {
-            println!(
-                "Invalid txindex value: {}. Valid values are 0 (disabled) and 1 (enabled for inclusion and acceptance).",
-                args.txindex
-            );
-            exit(1);
         }
     };
 
@@ -384,7 +377,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         info!("Utxoindex Data directory {}", utxoindex_db_dir.display());
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
     }
-    if args.txindex == 1 {
+    if args.txindex {
         info!("Txindex Data directory {}", txindex_db_dir.display());
         fs::create_dir_all(txindex_db_dir.as_path()).unwrap();
     }
@@ -549,7 +542,7 @@ Do you confirm? (y/n)";
         if args.utxoindex {
             fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
         }
-        if args.txindex == 1 {
+        if args.txindex {
             fs::create_dir_all(txindex_db_dir.as_path()).unwrap();
         }
 
@@ -636,7 +629,7 @@ Do you confirm? (y/n)";
     let system_info = SystemInfo::default();
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv, subscription_context.clone()));
-    let index_service: Option<Arc<IndexService>> = if args.utxoindex || args.txindex == 1 {
+    let index_service: Option<Arc<IndexService>> = if args.utxoindex || args.txindex {
         // We spawn, and hence sync indexes, in parallel.
         let utxoindex_jh = if args.utxoindex {
             let utxoindex_db = kaspa_database::prelude::ConnBuilder::default() // Use only a single thread for none-consensus databases
@@ -650,7 +643,7 @@ Do you confirm? (y/n)";
             None
         };
 
-        let txindex_jh = if args.txindex == 1 {
+        let txindex_jh = if args.txindex {
             let txindex_db = kaspa_database::prelude::ConnBuilder::default() // Use only a single thread for none-consensus databases
                 .with_db_path(txindex_db_dir)
                 .with_files_limit(tx_files_limit)

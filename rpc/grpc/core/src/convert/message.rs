@@ -503,6 +503,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetServerInfoResponse>, protowire::GetSer
         server_version: item.server_version.clone(),
         network_id: item.network_id.to_string(),
         has_utxo_index: item.has_utxo_index,
+        has_tx_index: item.has_tx_index,
         is_synced: item.is_synced,
         virtual_daa_score: item.virtual_daa_score,
         error: None,
@@ -1064,6 +1065,7 @@ try_from!(item: &protowire::GetServerInfoResponseMessage, RpcResult<kaspa_rpc_co
         server_version: item.server_version.clone(),
         network_id: NetworkId::from_str(&item.network_id)?,
         has_utxo_index: item.has_utxo_index,
+        has_tx_index: item.has_tx_index,
         is_synced: item.is_synced,
         virtual_daa_score: item.virtual_daa_score,
     }

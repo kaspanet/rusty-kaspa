@@ -53,7 +53,7 @@ pub struct Args {
     #[serde(rename = "uacomment")]
     pub user_agent_comments: Vec<String>,
     pub utxoindex: bool,
-    pub txindex: usize,
+    pub txindex: bool,
     pub reset_db: bool,
     #[serde(rename = "outpeers")]
     pub outbound_target: usize,
@@ -110,7 +110,7 @@ impl Default for Args {
             unsafe_rpc: false,
             async_threads: num_cpus::get(),
             utxoindex: false,
-            txindex: 0, // 0 means disabled
+            txindex: false, // false means disabled
             reset_db: false,
             outbound_target: 8,
             inbound_limit: 128,
@@ -343,9 +343,11 @@ pub fn cli() -> Command {
             Arg::new("txindex")
                 .long("txindex")
                 .env("KASPAD_TXINDEX")
+                .num_args(0..=1)
                 .require_equals(true)
-                .value_parser(clap::value_parser!(usize))
-                .help("Enable the TX index, 0 to disable, 1 to enable for inclusion and acceptance [default: 0]."),
+                .default_missing_value("true")
+                .value_parser(clap::value_parser!(bool))
+                .help("Enable the TX index. Use --txindex (or --txindex=true) to enable, --txindex=false to disable [default: false]."),
         )
         .arg(
             Arg::new("max-tracked-addresses")
@@ -514,7 +516,7 @@ impl Args {
             enable_unsynced_mining: arg_match_unwrap_or::<bool>(&m, "enable-unsynced-mining", defaults.enable_unsynced_mining),
             enable_mainnet_mining: arg_match_unwrap_or::<bool>(&m, "enable-mainnet-mining", defaults.enable_mainnet_mining),
             utxoindex: arg_match_unwrap_or::<bool>(&m, "utxoindex", defaults.utxoindex),
-            txindex: arg_match_unwrap_or::<usize>(&m, "txindex", defaults.txindex),
+            txindex: arg_match_unwrap_or::<bool>(&m, "txindex", defaults.txindex),
             testnet: arg_match_unwrap_or::<bool>(&m, "testnet", defaults.testnet),
             testnet_suffix: arg_match_unwrap_or::<u32>(&m, "netsuffix", defaults.testnet_suffix),
             devnet: arg_match_unwrap_or::<bool>(&m, "devnet", defaults.devnet),
@@ -638,8 +640,7 @@ fn arg_match_many_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatch
       --maxutxocachesize=                   Max size of loaded UTXO into ram from the disk in bytes (default:
                                             5000000000)
       --utxoindex                           Enable the UTXO index
-      --txindex =                           Enable the TX index, 0 to disable, 1 to enable for inclusion and
-                                            acceptance [default: 0]
+      --txindex                              Enable the TX index. Use --txindex (or --txindex=true) to enable, --txindex=false to disable [default: false]
       --archival                            Run as an archival node: don't delete old block data when moving the
                                             pruning point (Warning: heavy disk usage)'
       --protocol-version=                   Use non default p2p protocol version (default: 5)

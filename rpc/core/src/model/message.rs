@@ -297,22 +297,7 @@ impl Deserializer for GetInfoResponse {
         let mempool_size = load!(u64, reader)?;
         let server_version = load!(String, reader)?;
         let is_utxo_indexed = load!(bool, reader)?;
-        if version > 1 {
-            let is_tx_indexed = load!(bool, reader)?;
-            let is_synced = load!(bool, reader)?;
-            let has_notify_command = load!(bool, reader)?;
-            let has_message_id = load!(bool, reader)?;
-            return Ok(Self {
-                p2p_id,
-                mempool_size,
-                server_version,
-                is_utxo_indexed,
-                is_tx_indexed,
-                is_synced,
-                has_notify_command,
-                has_message_id,
-            });
-        };
+        let is_tx_indexed = if version >= 2 { load!(bool, reader)? } else { false };
         let is_synced = load!(bool, reader)?;
         let has_notify_command = load!(bool, reader)?;
         let has_message_id = load!(bool, reader)?;
@@ -322,7 +307,7 @@ impl Deserializer for GetInfoResponse {
             mempool_size,
             server_version,
             is_utxo_indexed,
-            is_tx_indexed: false,
+            is_tx_indexed,
             is_synced,
             has_notify_command,
             has_message_id,
@@ -2422,13 +2407,14 @@ pub struct GetServerInfoResponse {
     pub server_version: String,
     pub network_id: RpcNetworkId,
     pub has_utxo_index: bool,
+    pub has_tx_index: bool,
     pub is_synced: bool,
     pub virtual_daa_score: u64,
 }
 
 impl Serializer for GetServerInfoResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
 
         store!(u16, &self.rpc_api_version, writer)?;
         store!(u16, &self.rpc_api_revision, writer)?;
@@ -2436,6 +2422,7 @@ impl Serializer for GetServerInfoResponse {
         store!(String, &self.server_version, writer)?;
         store!(RpcNetworkId, &self.network_id, writer)?;
         store!(bool, &self.has_utxo_index, writer)?;
+        store!(bool, &self.has_tx_index, writer)?;
         store!(bool, &self.is_synced, writer)?;
         store!(u64, &self.virtual_daa_score, writer)?;
 
@@ -2445,7 +2432,7 @@ impl Serializer for GetServerInfoResponse {
 
 impl Deserializer for GetServerInfoResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let version = load!(u16, reader)?;
 
         let rpc_api_version = load!(u16, reader)?;
         let rpc_api_revision = load!(u16, reader)?;
@@ -2453,10 +2440,20 @@ impl Deserializer for GetServerInfoResponse {
         let server_version = load!(String, reader)?;
         let network_id = load!(RpcNetworkId, reader)?;
         let has_utxo_index = load!(bool, reader)?;
+        let has_tx_index = if version >= 2 { load!(bool, reader)? } else { false };
         let is_synced = load!(bool, reader)?;
         let virtual_daa_score = load!(u64, reader)?;
 
-        Ok(Self { rpc_api_version, rpc_api_revision, server_version, network_id, has_utxo_index, is_synced, virtual_daa_score })
+        Ok(Self {
+            rpc_api_version,
+            rpc_api_revision,
+            server_version,
+            network_id,
+            has_utxo_index,
+            has_tx_index,
+            is_synced,
+            virtual_daa_score,
+        })
     }
 }
 

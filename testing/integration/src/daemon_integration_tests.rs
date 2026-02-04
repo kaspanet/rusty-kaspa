@@ -138,7 +138,7 @@ async fn daemon_utxos_propagation_test() {
         enable_unsynced_mining: true,
         disable_upnp: true, // UPnP registration might take some time and is not needed for this test
         utxoindex: true,
-        txindex: 1,
+        txindex: true,
         ..Default::default()
     };
     let total_fd_limit = 10;

@@ -269,6 +269,7 @@ declare! {
         mempoolSize : bigint;
         serverVersion : string;
         isUtxoIndexed : boolean;
+        isTxIndexed: boolean;
         isSynced : boolean;
         /** GRPC ONLY */
         hasNotifyCommand : boolean;
@@ -499,6 +500,7 @@ declare! {
         serverVersion : string;
         networkId : string;
         hasUtxoIndex : boolean;
+        hasTxIndex: boolean;
         isSynced : boolean;
         virtualDaaScore : bigint;
     }

@@ -905,6 +905,7 @@ message GetServerInfoResponseMessage {
   string serverVersion = 3;
   string networkId = 4;
   bool hasUtxoIndex = 5;
+  bool hasTxIndex = 8;
   bool isSynced = 6;
   uint64 virtualDaaScore = 7;
   RPCError error = 1000;

@@ -518,7 +518,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
-            is_tx_indexed: self.config.txindex == 1,
+            is_tx_indexed: self.config.txindex,
             is_synced: self.mining_rule_engine.is_sink_recent_and_connected(sink_daa_score_timestamp),
             has_notify_command: true,
             has_message_id: true,
@@ -1253,6 +1253,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             server_version: version().to_string(),
             network_id: self.config.net,
             has_utxo_index: self.config.utxoindex,
+            has_tx_index: self.config.txindex,
             is_synced,
             virtual_daa_score,
         })
@@ -1324,7 +1325,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         request: GetTransactionRequest,
     ) -> RpcResult<GetTransactionResponse> {
-        if self.config.txindex != 1 {
+        if !self.config.txindex {
             return Err(RpcError::NoTxIndex);
         }
 

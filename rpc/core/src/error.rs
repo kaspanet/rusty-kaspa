@@ -66,7 +66,7 @@ pub enum RpcError {
     #[error("Method unavailable. Run the node with the --utxoindex argument.")]
     NoUtxoIndex,
 
-    #[error("Method unavailable. Run the node with the --txindex=1 argument.")]
+    #[error("Method unavailable. Run the node with the --txindex argument (or --txindex=true).")]
     NoTxIndex,
 
     #[error("txindex error: {0}")]

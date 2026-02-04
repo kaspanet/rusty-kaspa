@@ -1230,6 +1230,7 @@ mod mockery {
                 server_version: "0.4.2".to_string(),
                 network_id: NetworkType::Mainnet.try_into().unwrap(),
                 has_utxo_index: true,
+                has_tx_index: true,
                 is_synced: false,
                 virtual_daa_score: mock(),
             }
