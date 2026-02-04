@@ -139,15 +139,10 @@ pub struct KaspaApi {
 
 impl KaspaApi {
     /// Create a new Kaspa API client
-    pub async fn new(address: String, _block_wait_time: Duration, coinbase_tag_suffix: Option<String>) -> Result<Arc<Self>> {
-        Self::new_with_shutdown(address, _block_wait_time, coinbase_tag_suffix, None).await
-    }
-
-    pub async fn new_with_shutdown(
+    pub async fn new(
         address: String,
-        _block_wait_time: Duration,
         coinbase_tag_suffix: Option<String>,
-        shutdown_rx: Option<watch::Receiver<bool>>,
+        mut shutdown_rx: watch::Receiver<bool>,
     ) -> Result<Arc<Self>> {
         info!("Connecting to Kaspa node at {}", address);
 
@@ -162,7 +157,6 @@ impl KaspaApi {
 
         let mut attempt: u64 = 0;
         let mut backoff_ms: u64 = 250;
-        let mut shutdown_rx = shutdown_rx;
 
         let client = loop {
             attempt += 1;
@@ -177,15 +171,11 @@ impl KaspaApi {
                 Default::default(),
             );
 
-            let res = if let Some(rx) = shutdown_rx.as_mut() {
-                tokio::select! {
-                    _ = rx.wait_for(|v| *v) => {
-                        return Err(anyhow::anyhow!("shutdown requested"));
-                    }
-                    res = connect_fut => res,
+            let res = tokio::select! {
+                _ = shutdown_rx.wait_for(|v| *v) => {
+                    return Err(anyhow::anyhow!("shutdown requested"));
                 }
-            } else {
-                connect_fut.await
+                res = connect_fut => res,
             };
 
             match res {
@@ -200,15 +190,11 @@ impl KaspaApi {
                         backoff.as_secs_f64()
                     );
 
-                    if let Some(rx) = shutdown_rx.as_mut() {
-                        tokio::select! {
-                            _ = rx.wait_for(|v| *v) => {
-                                return Err(anyhow::anyhow!("shutdown requested"));
-                            }
-                            _ = sleep(backoff) => {}
+                    tokio::select! {
+                        _ = shutdown_rx.wait_for(|v| *v) => {
+                            return Err(anyhow::anyhow!("shutdown requested"));
                         }
-                    } else {
-                        sleep(backoff).await;
+                        _ = sleep(backoff) => {}
                     }
 
                     backoff_ms = (backoff_ms.saturating_mul(2)).min(5_000);
@@ -226,21 +212,19 @@ impl KaspaApi {
 
         // Subscribe to block template notifications
         // Some nodes may take time to accept notification subscriptions; retry until it succeeds.
+        // This retry logic with exponential backoff handles transient failures where nodes are not
+        // immediately ready to accept subscriptions after connection, preventing tight-looping and log spam.
         let mut attempt: u64 = 0;
         let mut backoff_ms: u64 = 250;
         loop {
             attempt += 1;
             let notify_fut = client.start_notify(ListenerId::default(), NewBlockTemplateScope {}.into());
 
-            let res = if let Some(rx) = shutdown_rx.as_mut() {
-                tokio::select! {
-                    _ = rx.wait_for(|v| *v) => {
-                        return Err(anyhow::anyhow!("shutdown requested"));
-                    }
-                    res = notify_fut => res,
+            let res = tokio::select! {
+                _ = shutdown_rx.wait_for(|v| *v) => {
+                    return Err(anyhow::anyhow!("shutdown requested"));
                 }
-            } else {
-                notify_fut.await
+                res = notify_fut => res,
             };
 
             match res {
@@ -254,15 +238,11 @@ impl KaspaApi {
                         backoff.as_secs_f64()
                     );
 
-                    if let Some(rx) = shutdown_rx.as_mut() {
-                        tokio::select! {
-                            _ = rx.wait_for(|v| *v) => {
-                                return Err(anyhow::anyhow!("shutdown requested"));
-                            }
-                            _ = sleep(backoff) => {}
+                    tokio::select! {
+                        _ = shutdown_rx.wait_for(|v| *v) => {
+                            return Err(anyhow::anyhow!("shutdown requested"));
                         }
-                    } else {
-                        sleep(backoff).await;
+                        _ = sleep(backoff) => {}
                     }
                     backoff_ms = (backoff_ms.saturating_mul(2)).min(5_000);
                 }
@@ -600,43 +580,27 @@ impl KaspaApi {
     }
 
     /// Wait for node to sync
-    async fn wait_for_sync(&self, verbose: bool) -> Result<()> {
-        if verbose {
-            debug!("checking kaspad sync state");
-        }
-
+    async fn wait_for_sync(&self) -> Result<()> {
         loop {
             match self.client.get_sync_status().await {
                 Ok(is_synced) => {
                     if is_synced {
-                        if verbose {
-                            debug!("kaspad synced, starting server");
-                        }
                         break;
                     }
                 }
                 Err(e) => {
-                    if verbose {
-                        warn!("failed to get sync status: {}, retrying...", e);
-                    } else {
-                        debug!("failed to get sync status: {}, retrying...", e);
-                    }
+                    debug!("failed to get sync status: {}, retrying...", e);
                 }
             }
 
-            if verbose {
-                warn!("Kaspa is not synced, waiting for sync before starting bridge");
-            }
             sleep(Duration::from_secs(10)).await;
         }
 
         Ok(())
     }
 
-    pub async fn wait_for_sync_with_shutdown(&self, verbose: bool, mut shutdown_rx: watch::Receiver<bool>) -> Result<()> {
-        if verbose {
-            debug!("checking kaspad sync state");
-        }
+    pub async fn wait_for_sync_with_shutdown(&self, mut shutdown_rx: watch::Receiver<bool>) -> Result<()> {
+        debug!("checking kaspad sync state");
 
         loop {
             let sync_fut = self.client.get_sync_status();
@@ -650,24 +614,16 @@ impl KaspaApi {
             match sync_res {
                 Ok(is_synced) => {
                     if is_synced {
-                        if verbose {
-                            debug!("kaspad synced, starting server");
-                        }
+                        debug!("kaspad synced, starting server");
                         break;
                     }
                 }
                 Err(e) => {
-                    if verbose {
-                        warn!("failed to get sync status: {}, retrying...", e);
-                    } else {
-                        debug!("failed to get sync status: {}, retrying...", e);
-                    }
+                    warn!("failed to get sync status: {}, retrying...", e);
                 }
             }
 
-            if verbose {
-                warn!("Kaspa is not synced, waiting for sync before starting bridge");
-            }
+            warn!("Kaspa is not synced, waiting for sync before starting bridge");
 
             tokio::select! {
                 _ = shutdown_rx.wait_for(|v| *v) => {
@@ -833,7 +789,7 @@ impl KaspaApi {
 
             loop {
                 // Check sync state and reconnect if needed
-                if let Err(e) = api_clone.wait_for_sync(false).await {
+                if let Err(e) = api_clone.wait_for_sync().await {
                     error!("error checking kaspad sync state, attempting reconnect: {}", e);
                     // Note: gRPC client handles reconnection automatically, but we log it
                     // In Go, reconnect() is called explicitly, but Rust gRPC handles it
@@ -910,7 +866,7 @@ impl KaspaApi {
                     break;
                 }
 
-                if let Err(e) = api_clone.wait_for_sync(false).await {
+                if let Err(e) = api_clone.wait_for_sync().await {
                     error!("error checking kaspad sync state, attempting reconnect: {}", e);
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     restart_channel = true;
