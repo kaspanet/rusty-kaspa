@@ -16,6 +16,7 @@ use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpt
 use zk_covenant_rollup_core::PublicInput;
 use zk_covenant_rollup_methods::{ZK_COVENANT_ROLLUP_GUEST_ELF, ZK_COVENANT_ROLLUP_GUEST_ID};
 
+use kaspa_txscript::zk_precompiles::risc0::Digest;
 use mock_chain::{build_initial_smt, build_mock_chain, calc_accepted_id_merkle_root, from_bytes};
 use zk_covenant_common::seal_to_compressed_proof;
 
@@ -77,17 +78,15 @@ fn main() {
     let block_prove_to = *chain.block_hashes.last().unwrap();
     if let Ok(receipt_inner) = succinct_receipt.inner.succinct() {
         println!("\n=== On-chain STARK verification ===");
-        let script_receipt = SuccinctReceipt {
-            seal: receipt_inner.seal.clone(),
-            control_id: receipt_inner.control_id,
-            claim: receipt_inner.claim.digest(),
-            hashfn: receipt_inner.hashfn.clone(),
-            verifier_parameters: receipt_inner.verifier_parameters,
-            control_inclusion_proof: MerkleProof::new(
+        let script_receipt = SuccinctReceipt::new(
+            receipt_inner.seal.clone(),
+            Digest::new(receipt_inner.claim.digest().into()),
+            receipt_inner.hashfn.clone(),
+            MerkleProof::new(
                 receipt_inner.control_inclusion_proof.index,
-                receipt_inner.control_inclusion_proof.digests.clone(),
+                receipt_inner.control_inclusion_proof.digests.iter().cloned().map(|d| Digest::new(d.into())).collect(),
             ),
-        };
+        );
         let proof_bytes = borsh::to_vec(&script_receipt).unwrap();
         verify_onchain_with_proof(
             &proof_bytes,

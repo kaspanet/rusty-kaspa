@@ -48,17 +48,17 @@ pub struct ReceiptClaim {
 /// Construct a [ReceiptClaim] representing a zkVM execution that ended normally (i.e.
 /// Halted(0)) with the given image ID and journal.
 pub fn compute_assert_claim(claim: &Digest, image_id: Digest, journal_hash: Digest) -> Result<(), R0Error> {
-    let receipt_claim = ReceiptClaim {
+    let computed_claim = ReceiptClaim {
         pre: image_id,
         post: SystemState { pc: 0, merkle_root: Digest::ZERO },
         exit_code: ExitCode::Halted(0),
         input: Digest::ZERO,
         output: Output { journal: journal_hash, assumptions: Digest::ZERO },
-    };
-    let computed_claim = receipt_claim.digest::<risc0_zkp::core::hash::sha::Impl>();
+    }
+    .digest::<risc0_zkp::core::hash::sha::Impl>();
 
     // If the claim does not match the computed claim, return an error
-    if *claim != (computed_claim) {
+    if *claim != computed_claim {
         return Err(R0Error::VerificationFailed);
     }
     Ok(())

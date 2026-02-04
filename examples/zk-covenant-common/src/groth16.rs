@@ -56,7 +56,7 @@ impl Risc0Groth16Verify for ScriptBuilder {
                              // Push control root halves
         self.add_data(&a1)?; // [id, c1, c0, a1]
         self.add_data(&a0)?; // [id, c1, c0, a1, a0]
-        self.add_u16(PUBLIC_INPUT_COUNT as u16)?; // [..., 5]
+        self.add_i64(PUBLIC_INPUT_COUNT as i64)?; // [..., 5]
                                                   // Bring proof from alt stack
         self.add_op(OpFromAltStack)?; // [..., 5, proof], alt: []
         self.add_data(&verifying_key_compressed())?; // [..., 5, proof, vk]

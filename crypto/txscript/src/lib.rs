@@ -19,10 +19,12 @@ use std::ops::Deref;
 
 use crate::caches::Cache;
 use crate::covenants::CovenantsContext;
-use crate::data_stack::Stack;
+use crate::data_stack::{Stack, StackEntry};
 use crate::opcodes::{OpCodeImplementation, deserialize_next_opcode};
 use crate::zk_precompiles::compute_zk_sigop_cost;
+use crate::zk_precompiles::tags::ZkTag;
 use itertools::Itertools;
+use kaspa_consensus_core::constants::TX_VERSION_POST_COV_HF;
 use kaspa_consensus_core::hashing::sighash::{
     SigHashReusedValues, SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash,
 };
@@ -50,7 +52,7 @@ pub use engine_context::{EngineCtx, EngineCtxSync, EngineCtxUnsync};
 
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 pub const MAX_STACK_SIZE: usize = 244;
-pub const MAX_SCRIPTS_SIZE: usize = 300_000;
+pub const MAX_SCRIPTS_SIZE: usize = 300_000; // TODO(covpp-mainnet): Add proper activation logic, and think of a better regulation mechanism.
 pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 1_000_000; // TODO(covpp-mainnet): Add proper activation logic, and think of a better regulation mechanism.
 pub const MAX_OPS_PER_SCRIPT: i32 = 2010; // TODO(covpp-mainnet): Add proper activation logic, and think of a better regulation mechanism.
 pub const MAX_TX_IN_SEQUENCE_NUM: u64 = u64::MAX;
@@ -63,7 +65,7 @@ pub const MAX_PUB_KEYS_PER_MUTLTISIG: i32 = 20;
 // Note that this includes OP_RESERVED which counts as a push operation.
 pub const NO_COST_OPCODE: u8 = 0x60;
 
-type DynOpcodeImplementation<Tx, Reused> = Box<dyn OpCodeImplementation<Tx, Reused>>;
+pub type DynOpcodeImplementation<Tx, Reused> = Box<dyn OpCodeImplementation<Tx, Reused>>;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 enum Signature {
@@ -118,7 +120,21 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
     flags: EngineFlags,
 }
 
-fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+/// Captures the engine stacks after execution
+pub struct ExecutionStacks {
+    /// data stack snapshot
+    pub dstack: Vec<StackEntry>,
+    /// alt stack snapshot
+    pub astack: Vec<StackEntry>,
+}
+
+/// A read-only view of the execution stacks
+pub struct ExecutionStacksView<'a> {
+    pub dstack: &'a [StackEntry],
+    pub astack: &'a [StackEntry],
+}
+
+pub fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     script: &[u8],
 ) -> impl Iterator<Item = Result<DynOpcodeImplementation<T, Reused>, TxScriptError>> + '_ {
     script.iter().batching(|it| deserialize_next_opcode(it))
@@ -233,7 +249,7 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
                             continue;
                         }
 
-                        let prev_opcode = opcodes[i - 1].as_ref().expect("they were checked before");
+                        let prev_opcode = opcodes[i - 1].as_ref().expect("checked above");
                         if prev_opcode.value() >= codes::OpTrue && prev_opcode.value() <= codes::Op16 {
                             num_sigs += to_small_int(prev_opcode) as u64;
                         } else {
@@ -241,14 +257,21 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
                         }
                     }
                     codes::OpZkPrecompile => {
-                        let tag = if let Some(Ok(zk_tag)) = opcodes.get(i - 1).as_ref() {
-                            zk_tag.get_data().first().unwrap_or(&u8::MAX)
+                        if i == 0 {
+                            num_sigs += ZkTag::max_cost() as u64;
+                            continue;
+                        }
+
+                        let prev_opcode = opcodes[i - 1].as_ref().expect("checked above");
+                        if prev_opcode.is_push_opcode()
+                            && let Some(tag_byte) = prev_opcode.get_data().first()
+                        {
+                            num_sigs += compute_zk_sigop_cost(*tag_byte) as u64;
                         } else {
-                            &u8::MAX
-                        };
-                        num_sigs += compute_zk_sigop_cost(*tag) as u64;
+                            num_sigs += ZkTag::max_cost() as u64;
+                        }
                     }
-                    _ => {} // If the opcode is not a sigop, no need to increase the count
+                    _ => {} // If the opcode is not sigop/zk, no need to increase the count
                 }
             }
             Err(_) => return num_sigs,
@@ -273,7 +296,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             ctx,
             cond_stack: vec![],
             num_ops: 0,
-            runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
+            runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX, TX_VERSION_POST_COV_HF),
             flags,
         }
     }
@@ -285,6 +308,11 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     /// Returns the number of signature operations used in script execution.
     pub fn used_sig_ops(&self) -> u16 {
         self.runtime_sig_op_counter.used_sig_ops()
+    }
+
+    /// Returns a read-only view of the execution stacks
+    pub fn stacks(&self) -> ExecutionStacksView<'_> {
+        ExecutionStacksView { dstack: &self.dstack, astack: &self.astack }
     }
 
     /// Creates a new Script Engine for validating transaction input.
@@ -323,7 +351,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             ctx,
             cond_stack: Default::default(),
             num_ops: 0,
-            runtime_sig_op_counter: RuntimeSigOpCounter::new(input.sig_op_count),
+            runtime_sig_op_counter: RuntimeSigOpCounter::new(input.sig_op_count, tx.version()),
             flags,
         }
     }
@@ -342,7 +370,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             // Runtime sig op counting is not needed for standalone scripts, only inputs have sig op count value
-            runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
+            runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX, TX_VERSION_POST_COV_HF),
             flags,
         }
     }
@@ -352,7 +380,9 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         self.cond_stack.is_empty() || *self.cond_stack.last().expect("Checked not empty") == OpCond::True
     }
 
-    fn execute_opcode(&mut self, opcode: DynOpcodeImplementation<T, Reused>) -> Result<(), TxScriptError> {
+    pub fn execute_opcode(&mut self, opcode: DynOpcodeImplementation<T, Reused>) -> Result<(), TxScriptError> {
+        // Different from kaspad: Illegal and disabled opcode are checked on execute instead
+        // Note that this includes OP_RESERVED which counts as a push operation.
         if !opcode.is_push_opcode() {
             self.num_ops += 1;
             if self.num_ops > MAX_OPS_PER_SCRIPT {
@@ -408,7 +438,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         script_result
     }
 
-    pub fn execute(&mut self) -> Result<(), TxScriptError> {
+    fn execute_inner(&mut self) -> Result<(), TxScriptError> {
         let (scripts, is_p2sh) = match &self.script_source {
             ScriptSource::TxInput { input, utxo_entry, is_p2sh, .. } => {
                 if utxo_entry.script_public_key.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
@@ -454,9 +484,19 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             let script = self.dstack.pop()?;
             self.execute_script(script.as_slice(), false)?
         }
+        Ok(())
+    }
 
+    pub fn execute(&mut self) -> Result<(), TxScriptError> {
+        self.execute_inner()?;
         self.check_error_condition(true)?;
         Ok(())
+    }
+
+    /// Executes the scripts without the final error condition checks and returns both stacks in raw vector form.
+    pub fn execute_and_return_stacks(mut self) -> Result<ExecutionStacks, TxScriptError> {
+        self.execute_inner()?;
+        Ok(ExecutionStacks { dstack: self.dstack.into(), astack: self.astack.into() })
     }
 
     // check_error_condition is called whenever we finish a chunk of the scripts
@@ -654,8 +694,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 }
 
-// todo remove pub modifer
-pub trait SpkEncoding {
+trait SpkEncoding {
     fn to_bytes(&self) -> Vec<u8>;
 }
 

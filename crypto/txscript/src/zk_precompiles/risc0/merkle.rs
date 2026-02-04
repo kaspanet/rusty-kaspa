@@ -27,7 +27,6 @@ use crate::zk_precompiles::risc0::R0Error;
 
 /// An inclusion proof for the [MerkleGroup]. Used to verify inclusion of a
 /// given recursion program in the committed set.
-#[non_exhaustive]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct MerkleProof {
     /// Index of the leaf for which inclusion is being proven.
