@@ -43,10 +43,6 @@ pub struct SuccinctReceipt {
     /// recursion circuit.
     seal: Vec<u32>,
 
-    /// The control ID of this receipt, identifying the recursion program that was run (e.g. lift,
-    /// join, or resolve).
-    control_id: Digest,
-
     /// Claim containing information about the computation that this receipt proves.
     ///
     /// The standard claim type is [ReceiptClaim][crate::ReceiptClaim], which represents a RISC-V
@@ -55,13 +51,6 @@ pub struct SuccinctReceipt {
 
     /// Name of the hash function used to create this receipt.
     hashfn: String,
-
-    /// A digest of the verifier parameters that can be used to verify this receipt.
-    ///
-    /// Acts as a fingerprint to identify differing proof system or circuit versions between a
-    /// prover and a verifier. It is not intended to contain the full verifier parameters, which must
-    /// be provided by a trusted source (e.g. packaged with the verifier code).
-    verifier_parameters: Digest,
 
     /// Merkle inclusion proof for control_id against the control root for this receipt.
     control_inclusion_proof: MerkleProof,

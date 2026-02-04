@@ -26,6 +26,7 @@ impl ZkPrecompile for R0SuccinctPrecompile {
         let [proof_data] = dstack.pop_raw()?;
 
         // Deserialize the receipt
+        // TODO(covpp-mainnet): custom serialization
         let rcpt: SuccinctReceipt = borsh::from_slice(&proof_data)?;
 
         // Convert image_id and journal to Digest, i.e. a hash
