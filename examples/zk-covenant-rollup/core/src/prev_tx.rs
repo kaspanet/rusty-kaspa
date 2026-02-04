@@ -11,6 +11,8 @@
 
 use alloc::vec::Vec;
 
+use crate::AlignedBytes;
+
 /// Covenant binding (optional in outputs for V1+ transactions)
 #[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
@@ -72,25 +74,25 @@ pub struct PrevTxV1Witness {
     pub output_index: u32,
     /// The "rest" part of the transaction (without payload)
     /// Used to compute rest_digest and parse output SPK
-    pub rest_preimage: Vec<u8>,
+    pub rest_preimage: AlignedBytes,
     /// Pre-computed payload digest (host computes this from payload bytes)
     pub payload_digest: [u32; 8],
 }
 
 impl PrevTxV1Witness {
-    pub fn new(output_index: u32, rest_preimage: Vec<u8>, payload_digest: [u32; 8]) -> Self {
+    pub fn new(output_index: u32, rest_preimage: AlignedBytes, payload_digest: [u32; 8]) -> Self {
         Self { output_index, rest_preimage, payload_digest }
     }
 
     /// Compute the tx_id from rest_preimage and payload_digest
     pub fn compute_tx_id(&self) -> [u32; 8] {
-        let rest_digest = crate::rest_digest_bytes(&self.rest_preimage);
+        let rest_digest = crate::rest_digest_bytes(self.rest_preimage.as_bytes());
         crate::tx_id_v1(&self.payload_digest, &rest_digest)
     }
 
     /// Parse the rest_preimage to extract the output at output_index
     pub fn extract_output(&self) -> Option<OutputData> {
-        parse_output_at_index(&self.rest_preimage, self.output_index, 1)
+        parse_output_at_index(self.rest_preimage.as_bytes(), self.output_index, 1)
     }
 }
 

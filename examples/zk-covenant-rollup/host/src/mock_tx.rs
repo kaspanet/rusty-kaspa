@@ -4,7 +4,7 @@ use zk_covenant_rollup_core::{
     prev_tx::PrevTxV1Witness,
     rest_digest,
     state::AccountWitness,
-    tx_id_v1,
+    tx_id_v1, AlignedBytes,
 };
 
 /// "Other data" that goes into rest_digest.
@@ -139,7 +139,7 @@ fn write_prev_tx_v1_witness(builder: &mut risc0_zkvm::ExecutorEnvBuilder<'_>, wi
     builder.write_slice(&witness.output_index.to_le_bytes());
 
     // Write rest_preimage with length prefix
-    write_bytes(builder, &witness.rest_preimage);
+    write_bytes(builder, witness.rest_preimage.as_bytes());
 
     // Write payload_digest (fixed 32 bytes, no length prefix needed)
     builder.write_slice(bytemuck::cast_slice::<_, u8>(&witness.payload_digest));
@@ -228,7 +228,7 @@ fn create_mock_prev_tx_v1(output_value: u64, output_spk: [u8; 34], output_index:
     let payload_digest = payload_digest_bytes(&[]);
 
     // Create the V1 witness
-    let witness = PrevTxV1Witness::new(output_index, rest_preimage, payload_digest);
+    let witness = PrevTxV1Witness::new(output_index, AlignedBytes::from_bytes(&rest_preimage), payload_digest);
 
     // Compute tx_id from the witness
     let tx_id = witness.compute_tx_id();

@@ -24,7 +24,7 @@ impl PrevTxV1WitnessData {
 
     fn read_v1_witness(stdin: &mut impl WordRead) -> PrevTxV1Witness {
         let output_index = input::read_u32(stdin);
-        let rest_preimage = input::read_bytes(stdin);
+        let rest_preimage = input::read_aligned_bytes(stdin);
         let payload_digest = input::read_hash(stdin);
 
         PrevTxV1Witness::new(output_index, rest_preimage, payload_digest)

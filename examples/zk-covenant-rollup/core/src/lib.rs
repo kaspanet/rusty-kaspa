@@ -3,12 +3,70 @@
 extern crate alloc;
 extern crate core;
 
+use alloc::vec::Vec;
+
 pub mod action;
 pub mod p2pk;
 pub mod prev_tx;
 pub mod seq_commit;
 pub mod smt;
 pub mod state;
+
+/// Word-aligned byte buffer. Stores data as `Vec<u32>` for alignment,
+/// provides `&[u8]` view without extra allocation.
+#[derive(Clone, Debug, Default)]
+pub struct AlignedBytes {
+    words: Vec<u32>,
+    byte_len: usize,
+}
+
+impl AlignedBytes {
+    /// Create from words and byte length
+    pub fn new(words: Vec<u32>, byte_len: usize) -> Self {
+        Self { words, byte_len }
+    }
+
+    /// Create from a byte slice by copying into word-aligned storage
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        if bytes.is_empty() {
+            return Self::empty();
+        }
+        let byte_len = bytes.len();
+        let num_words = (byte_len + 3) / 4;
+        let mut words = alloc::vec![0u32; num_words];
+        bytemuck::cast_slice_mut::<u32, u8>(&mut words)[..byte_len].copy_from_slice(bytes);
+        Self { words, byte_len }
+    }
+
+    /// Create empty
+    pub fn empty() -> Self {
+        Self { words: Vec::new(), byte_len: 0 }
+    }
+
+    /// View the data as a byte slice (trimmed to actual length)
+    pub fn as_bytes(&self) -> &[u8] {
+        if self.byte_len == 0 {
+            return &[];
+        }
+        let bytes: &[u8] = bytemuck::cast_slice(&self.words);
+        &bytes[..self.byte_len]
+    }
+
+    /// Get the byte length
+    pub fn len(&self) -> usize {
+        self.byte_len
+    }
+
+    /// Check if empty
+    pub fn is_empty(&self) -> bool {
+        self.byte_len == 0
+    }
+
+    /// Consume and return the underlying words
+    pub fn into_words(self) -> Vec<u32> {
+        self.words
+    }
+}
 
 pub use action::{ACTION_VERSION, Action, ActionHeader, OP_TRANSFER, TransferAction};
 pub use p2pk::{P2PK_SPK_SIZE, extract_pubkey_from_spk, is_p2pk_spk, pay_to_pubkey_spk, verify_p2pk_spk};
@@ -269,7 +327,7 @@ mod tests {
         let rest_preimage = build_v1_rest_preimage(output_value, &spk);
 
         // Create V1 witness with rest_preimage and empty payload_digest
-        let v1_witness = PrevTxV1Witness::new(0, rest_preimage.clone(), [0u32; 8]);
+        let v1_witness = PrevTxV1Witness::new(0, AlignedBytes::from_bytes(&rest_preimage), [0u32; 8]);
         let witness = PrevTxWitness::V1(v1_witness);
 
         // Compute expected tx_id
@@ -291,7 +349,7 @@ mod tests {
 
         // Build full rest_preimage
         let rest_preimage = build_v1_rest_preimage(output_value, &spk);
-        let v1_witness = PrevTxV1Witness::new(0, rest_preimage, [0u32; 8]);
+        let v1_witness = PrevTxV1Witness::new(0, AlignedBytes::from_bytes(&rest_preimage), [0u32; 8]);
         let witness = PrevTxWitness::V1(v1_witness);
         let valid_tx_id = witness.compute_tx_id();
 
@@ -303,7 +361,7 @@ mod tests {
         // Test with tampered SPK (different witness, same claimed tx_id)
         let tampered_spk = pay_to_pubkey_spk(&[0x43u8; 32]);
         let tampered_preimage = build_v1_rest_preimage(output_value, &tampered_spk);
-        let tampered_v1 = PrevTxV1Witness::new(0, tampered_preimage, [0u32; 8]);
+        let tampered_v1 = PrevTxV1Witness::new(0, AlignedBytes::from_bytes(&tampered_preimage), [0u32; 8]);
         let tampered_witness = PrevTxWitness::V1(tampered_v1);
 
         // Try to verify tampered witness against original tx_id - should fail

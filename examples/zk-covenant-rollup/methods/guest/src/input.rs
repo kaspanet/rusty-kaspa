@@ -1,6 +1,8 @@
+use alloc::vec;
+use alloc::vec::Vec;
 use bytemuck::Zeroable;
 use risc0_zkvm::serde::WordRead;
-use zk_covenant_rollup_core::{state::AccountWitness, PublicInput};
+use zk_covenant_rollup_core::{state::AccountWitness, AlignedBytes, PublicInput};
 
 /// Read a single u32 from stdin
 pub fn read_u32(stdin: &mut impl WordRead) -> u32 {
@@ -38,21 +40,17 @@ pub fn read_account_witness(stdin: &mut impl WordRead) -> AccountWitness {
 }
 
 /// Read variable-length bytes from stdin (length-prefixed as u64)
-pub fn read_bytes(stdin: &mut impl WordRead) -> alloc::vec::Vec<u8> {
-    use alloc::vec;
-    use alloc::vec::Vec;
-
-    let len = read_u64(stdin) as usize;
-    if len == 0 {
-        return Vec::new();
+/// Returns AlignedBytes which can be viewed as &[u8] without allocation
+pub fn read_aligned_bytes(stdin: &mut impl WordRead) -> AlignedBytes {
+    let byte_len = read_u64(stdin) as usize;
+    if byte_len == 0 {
+        return AlignedBytes::empty();
     }
 
-    // Read as words, padding if necessary
-    let num_words = (len + 3) / 4;
+    // Read as words (padded to word boundary)
+    let num_words = (byte_len + 3) / 4;
     let mut words = vec![0u32; num_words];
     stdin.read_words(&mut words).unwrap();
 
-    // Convert to bytes and truncate to actual length
-    let bytes: &[u8] = bytemuck::cast_slice(&words);
-    bytes[..len].to_vec()
+    AlignedBytes::new(words, byte_len)
 }

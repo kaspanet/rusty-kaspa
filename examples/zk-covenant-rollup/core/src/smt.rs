@@ -2,9 +2,6 @@
 //!
 //! This module provides an 8-level SMT (256 accounts max) for the demo.
 //! Keys are mapped using the first byte of the pubkey.
-//!
-//! All hash operations use `[u32; 8]` representation internally for zkVM efficiency.
-//! Use bytemuck to convert to/from `[u8; 32]` when interfacing with native code.
 
 use sha2::Digest;
 
