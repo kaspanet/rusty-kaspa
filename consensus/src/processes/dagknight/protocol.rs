@@ -174,14 +174,11 @@ impl<
                     let rank_value = self.rank(conflict_genesis, subgroup, &curr_subgroup, &best_rank_value);
 
                     if let Some(inner_best_rank) = &best_rank_value {
-                        match rank_value.cmp(inner_best_rank) {
-                            Ordering::Less => {
-                                // Tie breaking by hash
-                                best_rank_value = Some(rank_value);
-                                best_conflict_genesis = Some(curr_conflict_genesis);
-                                best_subgroup = Some(subgroup);
-                            }
-                            _ => {}
+                        if rank_value.cmp(inner_best_rank) == Ordering::Less {
+                            // Tie breaking by hash
+                            best_rank_value = Some(rank_value);
+                            best_conflict_genesis = Some(curr_conflict_genesis);
+                            best_subgroup = Some(subgroup);
                         }
                     } else {
                         best_rank_value = Some(rank_value);
@@ -210,6 +207,7 @@ impl<
 
         conflict_ordered_parents.reverse();
 
+        debug!("dk::sp: {} | conflict_ordered_parents: {:?}", curr_subgroup[0], conflict_ordered_parents);
         DagknightData { selected_parent: curr_subgroup[0], conflict_ordered_parents }
     }
 
@@ -388,7 +386,10 @@ impl<
         if blue_block_work + deficit > red_block_work {
             // Michael: here is where cascade voting eventually belongs
             // With this "k" value, our selected parent covers at least half the total region's work (minus some deficit)
-            Some(SortableBlock { hash: subgroup_virtual_sp, blue_work: blue_block_work })
+            Some(SortableBlock {
+                hash: subgroup_virtual_sp,
+                blue_work: self.headers_store.get_header(subgroup_virtual_sp).unwrap().blue_work,
+            })
         } else {
             None
         }
@@ -721,7 +722,7 @@ impl DagPlan {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub struct RankValue {
     pub k: KType,
     pub selected_parent: SortableBlock,
