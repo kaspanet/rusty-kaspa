@@ -28,7 +28,7 @@ use crate::zk_precompiles::risc0::R0Error;
 /// see [MaybePruned].
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[cfg_attr(test, derive(PartialEq))]
-struct ReceiptClaim {
+pub struct ReceiptClaim {
     /// The [SystemState] just before execution has begun.
     pub pre: Digest,
 

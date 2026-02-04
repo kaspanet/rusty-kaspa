@@ -11,7 +11,7 @@ pub mod script_class;
 pub mod standard;
 #[cfg(feature = "wasm32-sdk")]
 pub mod wasm;
-mod zk_precompiles;
+pub mod zk_precompiles;
 
 pub mod runtime_sig_op_counter;
 
@@ -22,6 +22,7 @@ use crate::covenants::CovenantsContext;
 use crate::data_stack::{Stack, StackEntry};
 use crate::opcodes::{OpCodeImplementation, deserialize_next_opcode};
 use crate::zk_precompiles::compute_zk_sigop_cost;
+use crate::zk_precompiles::tags::ZkTag;
 use itertools::Itertools;
 use kaspa_consensus_core::constants::TX_VERSION_POST_COV_HF;
 use kaspa_consensus_core::hashing::sighash::{
@@ -248,7 +249,7 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
                             continue;
                         }
 
-                        let prev_opcode = opcodes[i - 1].as_ref().expect("they were checked before");
+                        let prev_opcode = opcodes[i - 1].as_ref().expect("checked above");
                         if prev_opcode.value() >= codes::OpTrue && prev_opcode.value() <= codes::Op16 {
                             num_sigs += to_small_int(prev_opcode) as u64;
                         } else {
@@ -256,14 +257,21 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
                         }
                     }
                     codes::OpZkPrecompile => {
-                        let tag = if let Some(Ok(zk_tag)) = opcodes.get(i - 1).as_ref() {
-                            zk_tag.get_data().first().unwrap_or(&u8::MAX)
+                        if i == 0 {
+                            num_sigs += ZkTag::max_cost() as u64;
+                            continue;
+                        }
+
+                        let prev_opcode = opcodes[i - 1].as_ref().expect("checked above");
+                        if prev_opcode.is_push_opcode()
+                            && let Some(tag_byte) = prev_opcode.get_data().first()
+                        {
+                            num_sigs += compute_zk_sigop_cost(*tag_byte) as u64;
                         } else {
-                            &u8::MAX
-                        };
-                        num_sigs += compute_zk_sigop_cost(*tag) as u64;
+                            num_sigs += ZkTag::max_cost() as u64;
+                        }
                     }
-                    _ => {} // If the opcode is not a sigop, no need to increase the count
+                    _ => {} // If the opcode is not sigop/zk, no need to increase the count
                 }
             }
             Err(_) => return num_sigs,

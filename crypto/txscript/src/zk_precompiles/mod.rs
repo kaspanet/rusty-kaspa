@@ -1,9 +1,9 @@
 mod benchmarks;
 mod error;
 mod fields;
-mod groth16;
-mod risc0;
-mod tags;
+pub mod groth16;
+pub mod risc0;
+pub mod tags;
 use crate::{
     data_stack::Stack,
     zk_precompiles::{error::ZkIntegrityError, groth16::Groth16Precompile, risc0::R0SuccinctPrecompile, tags::ZkTag},
@@ -15,7 +15,7 @@ trait ZkPrecompile {
     fn verify_zk(dstack: &mut Stack) -> Result<(), Self::Error>;
 }
 
-pub fn parse_tag(dstack: &mut Stack) -> Result<ZkTag, TxScriptError> {
+pub(crate) fn parse_tag(dstack: &mut Stack) -> Result<ZkTag, TxScriptError> {
     let tag_bytes = dstack.pop()?;
     match tag_bytes.as_slice() {
         [tag_byte] => ZkTag::try_from(*tag_byte).map_err(|e| TxScriptError::ZkIntegrity(e.to_string())),
@@ -28,7 +28,7 @@ pub fn parse_tag(dstack: &mut Stack) -> Result<ZkTag, TxScriptError> {
  * Verifies a ZK proof from the data stack.
  * The first byte on the stack indicates the ZK tag (proof type).
  */
-pub fn verify_zk(tag: ZkTag, dstack: &mut Stack) -> Result<(), TxScriptError> {
+pub(crate) fn verify_zk(tag: ZkTag, dstack: &mut Stack) -> Result<(), TxScriptError> {
     // Match the tag and verify the proof accordingly
     match tag {
         ZkTag::Groth16 => Groth16Precompile::verify_zk(dstack).map_err(|e| TxScriptError::ZkIntegrity(e.to_string())),
