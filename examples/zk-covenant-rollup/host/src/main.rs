@@ -13,28 +13,30 @@ use kaspa_txscript::{
     zk_precompiles::{risc0::merkle::MerkleProof, risc0::rcpt::SuccinctReceipt, tags::ZkTag},
 };
 use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts};
-use zk_covenant_rollup_core::{state::State, PublicInput};
+use zk_covenant_rollup_core::PublicInput;
 use zk_covenant_rollup_methods::{ZK_COVENANT_ROLLUP_GUEST_ELF, ZK_COVENANT_ROLLUP_GUEST_ID};
 
-use mock_chain::{build_mock_chain, calc_accepted_id_merkle_root, from_bytes};
+use mock_chain::{build_initial_smt, build_mock_chain, calc_accepted_id_merkle_root, from_bytes};
 use zk_covenant_common::seal_to_compressed_proof;
 
 fn main() {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env()).init();
 
-    // Initialize state and seq_commitment
-    let initial_state = State::default();
-    let prev_state_hash = initial_state.hash();
+    println!("=== ZK Rollup Covenant Demo (Account-Based) ===");
+
+    // Build initial state
+    let initial_smt = build_initial_smt();
+    let prev_state_hash = initial_smt.root();
+
     let prev_seq_commit_hash = calc_accepted_id_merkle_root(Hash::default(), std::iter::empty());
     let prev_seq_commitment = from_bytes(prev_seq_commit_hash.as_bytes());
 
-    println!("=== ZK Rollup Covenant Demo ===");
-    println!("Initial state hash: {}", faster_hex::hex_string(bytemuck::bytes_of(&prev_state_hash)));
+    println!("\nInitial state hash: {}", faster_hex::hex_string(bytemuck::bytes_of(&prev_state_hash)));
     println!("Initial seq_commitment: {}", prev_seq_commit_hash);
 
-    // Build mock chain with 3 blocks
-    let chain = build_mock_chain(3, prev_seq_commit_hash, initial_state);
-    let new_state_hash = chain.final_state.hash();
+    // Build mock chain with transfers
+    let chain = build_mock_chain(prev_seq_commit_hash);
+    let new_state_hash = chain.final_state_root;
     let new_seq_commitment = from_bytes(chain.final_seq_commit.as_bytes());
 
     println!("\nFinal state hash: {}", faster_hex::hex_string(bytemuck::bytes_of(&new_state_hash)));
@@ -46,10 +48,8 @@ fn main() {
     // Build executor env closure
     let build_env = || {
         let mut binding = ExecutorEnv::builder();
-        let builder = binding
-            .write_slice(core::slice::from_ref(&public_input))
-            .write_slice(State::default().as_word_slice())
-            .write_slice(&(chain.block_txs.len() as u32).to_le_bytes());
+        let builder =
+            binding.write_slice(core::slice::from_ref(&public_input)).write_slice(&(chain.block_txs.len() as u32).to_le_bytes());
 
         for txs in &chain.block_txs {
             builder.write_slice(&(txs.len() as u32).to_le_bytes());

@@ -10,6 +10,7 @@ kaspa-consensus-core = { path = "../../../consensus/core" }
 kaspa-txscript = { path = "../../../crypto/txscript" }
 kaspa-hashes = { path = "../../../crypto/hashes" }
 kaspa-merkle = { path = "../../../crypto/merkle" }
+blake3 = "1.5"
 
 borsh = { version = "1.6.0"}
 bytemuck = "1.24.0"
@@ -17,7 +18,7 @@ faster-hex = { version = "0.10.0" }
 risc0-zkvm = { version = "3.0.4", default-features = true, features = [] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zk-covenant-rollup-methods = { path = "../methods" }
-zk-covenant-rollup-core = { path = "../core" }
+zk-covenant-rollup-core = { path = "../core", features = ["std"] }
 zk-covenant-common = { path = "../../zk-covenant-common" }
 
 #uncomment for debug

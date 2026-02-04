@@ -5371,6 +5371,7 @@ dependencies = [
 name = "zk-covenant-rollup-core"
 version = "1.1.0-rc.2"
 dependencies = [
+ "blake2b_simd",
  "blake3",
  "bytemuck",
  "sha2",
@@ -5380,6 +5381,7 @@ dependencies = [
 name = "zk-covenant-rollup-host"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "borsh",
  "bytemuck",
  "faster-hex 0.10.0",
