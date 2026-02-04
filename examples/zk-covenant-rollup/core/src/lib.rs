@@ -32,7 +32,7 @@ impl AlignedBytes {
             return Self::empty();
         }
         let byte_len = bytes.len();
-        let num_words = (byte_len + 3) / 4;
+        let num_words = byte_len.div_ceil(4);
         let mut words = alloc::vec![0u32; num_words];
         bytemuck::cast_slice_mut::<u32, u8>(&mut words)[..byte_len].copy_from_slice(bytes);
         Self { words, byte_len }

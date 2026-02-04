@@ -1,5 +1,4 @@
 use alloc::vec;
-use alloc::vec::Vec;
 use bytemuck::Zeroable;
 use risc0_zkvm::serde::WordRead;
 use zk_covenant_rollup_core::{state::AccountWitness, AlignedBytes, PublicInput};
