@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutput};
 use kaspa_hashes::{Hash, SeqCommitmentMerkleBranchHash};
 use kaspa_txscript::seq_commit_accessor::SeqCommitAccessor;
 use zk_covenant_rollup_core::{
@@ -9,7 +10,9 @@ use zk_covenant_rollup_core::{
     state::{AccountWitness, StateRoot},
 };
 
-use crate::mock_tx::{create_transfer_tx, create_v0_tx, MockTx};
+use crate::mock_tx::{
+    create_prev_tx, create_transfer_tx, create_unknown_action_tx, create_v0_tx, create_v1_non_action_tx, ZkTransaction,
+};
 
 /// Mock implementation of SeqCommitAccessor for testing
 pub struct MockSeqCommitAccessor(pub HashMap<Hash, Hash>);
@@ -96,7 +99,7 @@ impl Transfer {
 /// Result of building a mock chain
 pub struct MockChain {
     pub block_hashes: Vec<Hash>,
-    pub block_txs: Vec<Vec<MockTx>>,
+    pub block_txs: Vec<Vec<ZkTransaction>>,
     pub accessor: MockSeqCommitAccessor,
     pub final_seq_commit: Hash,
     pub final_state_root: StateRoot,
@@ -136,7 +139,7 @@ pub fn build_mock_chain(initial_seq_commit: Hash) -> MockChain {
     ];
 
     let mut block_hashes: Vec<Hash> = Vec::new();
-    let mut block_txs: Vec<Vec<MockTx>> = Vec::new();
+    let mut block_txs: Vec<Vec<ZkTransaction>> = Vec::new();
     let mut accessor_map = HashMap::new();
     let mut seq_commit = initial_seq_commit;
 
@@ -149,7 +152,19 @@ pub fn build_mock_chain(initial_seq_commit: Hash) -> MockChain {
         // Add a regular V0 tx first
         txs.push(create_v0_tx([0xDEADBEEF, block_idx as u32, 0, 0, 0, 0, 0, 0]));
 
-        for (tx_idx, transfer) in transfers.iter().enumerate() {
+        // Block 1: Add a V1 non-action tx (should be ignored by guest)
+        if block_idx == 0 {
+            println!("  Adding V1 non-action tx (should be ignored)");
+            txs.push(create_v1_non_action_tx());
+        }
+
+        // Block 2: Add an unknown action tx (has action prefix but unknown op code)
+        if block_idx == 1 {
+            println!("  Adding unknown action tx (should be ignored)");
+            txs.push(create_unknown_action_tx());
+        }
+
+        for transfer in transfers.iter() {
             let from_pk = transfer.from.pubkey();
             let to_pk = transfer.to.pubkey();
             let from_balance = *balances.get(&transfer.from).unwrap_or(&0);
@@ -185,15 +200,23 @@ pub fn build_mock_chain(initial_seq_commit: Hash) -> MockChain {
                     AccountWitness::new([0u32; 8], 0, dest_proof)
                 };
 
-                // First input SPK (proves source owns the account)
+                // Create SPK for the source account (proves source owns the account)
                 let first_input_spk = pay_to_pubkey_spk(&transfer.from.pubkey_bytes());
+                let first_input_spk_kaspa = ScriptPublicKey::new(0, first_input_spk.to_vec().into());
+
+                // Create a "previous transaction" that has the output with source's SPK
+                // This simulates the UTXO being spent
+                let prev_tx = create_prev_tx(1000, first_input_spk_kaspa);
+
+                // Create mock outputs for the transfer transaction
+                // In a real scenario, these would be the actual outputs
+                let outputs = vec![TransactionOutput::new(
+                    transfer.amount,
+                    ScriptPublicKey::new(0, pay_to_pubkey_spk(&transfer.to.pubkey_bytes()).to_vec().into()),
+                )];
 
                 // Create the transfer transaction
-                // Source pubkey is now in the payload (committed to tx_id via payload_digest)
-                // other_data represents other tx fields (outputs, locktime, etc.)
-                let other_data = [block_idx as u32, tx_idx as u32, 0, 0, 0, 0, 0, 0];
-                let tx =
-                    create_transfer_tx(from_pk, to_pk, transfer.amount, other_data, source_witness, dest_witness, first_input_spk);
+                let tx = create_transfer_tx(from_pk, to_pk, transfer.amount, outputs, source_witness, dest_witness, prev_tx, 0);
 
                 txs.push(tx);
 

@@ -1,17 +1,17 @@
+use kaspa_consensus_core::{
+    hashing::tx::{payload_digest, transaction_v1_rest_preimage},
+    subnets::SUBNETWORK_ID_NATIVE,
+    tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
+};
+use kaspa_hashes::Hash;
 use zk_covenant_rollup_core::{
     action::{ActionHeader, TransferAction, OP_TRANSFER},
-    is_action_tx_id, payload_digest, payload_digest_bytes,
+    bytes_to_words_ref, is_action_tx_id,
     prev_tx::PrevTxV1Witness,
-    rest_digest,
+    rest_digest_bytes,
     state::AccountWitness,
-    tx_id_v1, AlignedBytes,
+    AlignedBytes,
 };
-
-/// "Other data" that goes into rest_digest.
-/// In a real implementation, this would include outputs, locktime, etc.
-/// Note: rest_digest does NOT include input SPKs (kaspa-compatible).
-pub const OTHER_DATA_WORDS: usize = 8;
-pub type OtherData = [u32; OTHER_DATA_WORDS];
 
 /// Transfer payload with header (for computing tx_id)
 #[derive(Clone, Copy, Debug)]
@@ -34,28 +34,10 @@ impl TransferPayload {
         words
     }
 
-    /// Check if the transfer is valid
-    pub fn is_valid(&self) -> bool {
-        self.header.is_valid_version() && self.transfer.is_valid()
+    /// Get as bytes for payload field
+    pub fn as_bytes(&self) -> Vec<u8> {
+        bytemuck::cast_slice(&self.as_words()).to_vec()
     }
-}
-
-/// Represents a mock transaction to be included in a block
-#[derive(Clone, Debug)]
-#[allow(clippy::large_enum_variant)]
-pub enum MockTx {
-    /// Version 0 tx: just a raw tx_id (no payload processing)
-    V0 { tx_id: [u32; 8] },
-    /// Version 1+ tx: has payload, rest_digest components, and optional witness data
-    V1 {
-        version: u16,
-        payload: TransferPayload,
-        /// The "other data" portion of rest_digest (outputs, locktime, etc.)
-        /// rest_digest = hash(other_data) - kaspa-compatible (no input SPKs)
-        other_data: OtherData,
-        /// Witness data for valid action transactions (None if not an action or invalid)
-        witness: Option<ActionWitnessData>,
-    },
 }
 
 /// Witness data for action transactions
@@ -65,72 +47,110 @@ pub struct ActionWitnessData {
     pub source: AccountWitness,
     /// Destination account witness
     pub dest: AccountWitness,
-    /// Previous transaction ID (UTXO being spent)
-    pub prev_tx_id: [u32; 8],
-    /// V1 witness with rest_preimage and payload_digest for verifying the prev tx output
-    pub prev_tx_witness: PrevTxV1Witness,
+    /// Previous transaction (the UTXO being spent)
+    pub prev_tx: Transaction,
+    /// Output index in the previous transaction
+    pub prev_output_index: u32,
 }
 
-impl MockTx {
-    pub fn version(&self) -> u16 {
-        match self {
-            MockTx::V0 { .. } => 0,
-            MockTx::V1 { version, .. } => *version,
-        }
+/// Transaction wrapper that combines a real Kaspa Transaction with ZK witness data
+#[derive(Clone, Debug)]
+pub struct ZkTransaction {
+    /// The real Kaspa transaction
+    pub tx: Transaction,
+    /// Optional witness data for action transactions
+    pub witness: Option<ActionWitnessData>,
+}
+
+impl ZkTransaction {
+    /// Create a new ZkTransaction
+    pub fn new(tx: Transaction, witness: Option<ActionWitnessData>) -> Self {
+        Self { tx, witness }
     }
 
+    /// Get the transaction version
+    pub fn version(&self) -> u16 {
+        self.tx.version
+    }
+
+    /// Get the transaction ID as [u32; 8]
     pub fn tx_id(&self) -> [u32; 8] {
-        match self {
-            MockTx::V0 { tx_id } => *tx_id,
-            MockTx::V1 { payload, other_data, .. } => {
-                let pd = payload_digest(&payload.as_words());
-                // rest_digest is computed from other_data only (kaspa-compatible)
-                // Source is committed via payload_digest (payload contains source)
-                let rd = rest_digest(other_data);
-                tx_id_v1(&pd, &rd)
-            }
-        }
+        bytes_to_words_ref(&self.tx.id().as_bytes())
     }
 
     /// Write to executor env in the format expected by guest
     pub fn write_to_env(&self, builder: &mut risc0_zkvm::ExecutorEnvBuilder<'_>) {
         builder.write_slice(&(self.version() as u32).to_le_bytes());
-        match self {
-            MockTx::V0 { tx_id } => {
-                builder.write_slice(bytemuck::cast_slice::<_, u8>(tx_id));
+
+        if self.tx.version == 0 {
+            // V0: just write the tx_id
+            let tx_id = self.tx_id();
+            builder.write_slice(bytemuck::cast_slice::<_, u8>(&tx_id));
+        } else {
+            // V1+: write payload, rest_digest, and witness data if action tx
+            let payload_bytes = &self.tx.payload;
+            builder.write_slice(&(payload_bytes.len() as u32).to_le_bytes());
+            if !payload_bytes.is_empty() {
+                // Pad to word boundary
+                let padded_len = payload_bytes.len().div_ceil(4) * 4;
+                let mut padded = vec![0u8; padded_len];
+                padded[..payload_bytes.len()].copy_from_slice(payload_bytes);
+                builder.write_slice(&padded);
             }
-            MockTx::V1 { payload, other_data, witness, .. } => {
-                // Write payload length in BYTES then payload (word-aligned)
-                let payload_words = payload.as_words();
-                let payload_bytes: &[u8] = bytemuck::cast_slice(&payload_words);
-                builder.write_slice(&(payload_bytes.len() as u32).to_le_bytes());
-                builder.write_slice(payload_bytes);
-                // Write rest_digest directly (pre-computed from arbitrary-length rest data)
-                let rd = rest_digest(other_data);
-                builder.write_slice(bytemuck::cast_slice::<_, u8>(&rd));
 
-                // Guest determines if this is an action based on tx_id + payload validity.
-                // If it IS a valid action, guest will expect witness data - we must provide it.
-                // No flag needed - the guest's decision is deterministic from the data.
-                let tx_id = self.tx_id();
-                let is_action = is_action_tx_id(&tx_id) && payload.is_valid();
+            // Compute and write rest_digest
+            let rest_preimage = transaction_v1_rest_preimage(&self.tx);
+            let rd = rest_digest_bytes(&rest_preimage);
+            builder.write_slice(bytemuck::cast_slice::<_, u8>(&rd));
 
-                if is_action {
-                    // Guest will read witness data - we must provide it
-                    let w = witness.as_ref().expect("Valid action tx must have witness data");
-                    // Write source account witness
-                    builder.write_slice(w.source.as_bytes());
-                    // Write dest account witness
-                    builder.write_slice(w.dest.as_bytes());
-                    // Write prev_tx_id
-                    builder.write_slice(bytemuck::cast_slice::<_, u8>(&w.prev_tx_id));
-                    // Write prev tx V1 witness
-                    write_prev_tx_v1_witness(builder, &w.prev_tx_witness);
-                }
-                // For non-action txs, guest won't read anything more - don't write anything
+            // Check if this is an action tx that needs witness data
+            let tx_id = self.tx_id();
+            let payload_words: Vec<u32> =
+                payload_bytes.chunks_exact(4).map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap())).collect();
+            let is_action = is_action_tx_id(&tx_id) && is_valid_transfer_payload(&payload_words);
+
+            if is_action {
+                let w = self.witness.as_ref().expect("Valid action tx must have witness data");
+
+                // Write source account witness
+                builder.write_slice(w.source.as_bytes());
+                // Write dest account witness
+                builder.write_slice(w.dest.as_bytes());
+
+                // Write prev_tx_id
+                let prev_tx_id = bytes_to_words_ref(&w.prev_tx.id().as_bytes());
+                builder.write_slice(bytemuck::cast_slice::<_, u8>(&prev_tx_id));
+
+                // Create and write prev tx V1 witness
+                let prev_tx_witness = create_prev_tx_v1_witness(&w.prev_tx, w.prev_output_index);
+                write_prev_tx_v1_witness(builder, &prev_tx_witness);
             }
         }
     }
+}
+
+/// Check if payload words represent a valid transfer payload
+fn is_valid_transfer_payload(payload_words: &[u32]) -> bool {
+    if payload_words.len() < ActionHeader::WORDS + TransferAction::WORDS {
+        return false;
+    }
+    let header = ActionHeader::from_words_ref(payload_words[..ActionHeader::WORDS].try_into().unwrap());
+    if !header.is_valid_version() || header.operation != OP_TRANSFER {
+        return false;
+    }
+    let transfer = TransferAction::from_words(payload_words[ActionHeader::WORDS..][..TransferAction::WORDS].try_into().unwrap());
+    transfer.is_valid()
+}
+
+/// Create a PrevTxV1Witness from a real Transaction
+fn create_prev_tx_v1_witness(prev_tx: &Transaction, output_index: u32) -> PrevTxV1Witness {
+    assert!(prev_tx.version >= 1, "PrevTxV1Witness requires V1+ transaction");
+
+    let rest_preimage = transaction_v1_rest_preimage(prev_tx);
+    let pd = payload_digest(&prev_tx.payload);
+    let payload_digest_words = bytes_to_words_ref(&pd.as_bytes());
+
+    PrevTxV1Witness::new(output_index, AlignedBytes::from_bytes(&rest_preimage), payload_digest_words)
 }
 
 /// Write PrevTxV1Witness to executor env
@@ -159,13 +179,23 @@ fn write_bytes(builder: &mut risc0_zkvm::ExecutorEnvBuilder<'_>, data: &[u8]) {
     }
 }
 
-/// Find a nonce that makes the tx_id start with ACTION_TX_ID_PREFIX (single byte)
-pub fn find_action_tx_nonce(source: [u32; 8], destination: [u32; 8], amount: u64, other_data: &OtherData) -> TransferPayload {
+/// Find a nonce that makes the tx_id start with ACTION_TX_ID_PREFIX
+pub fn find_action_tx_nonce(source: [u32; 8], destination: [u32; 8], amount: u64, outputs: &[TransactionOutput]) -> TransferPayload {
     for nonce in 0u32.. {
         let payload = TransferPayload::new(source, destination, amount, nonce);
-        let pd = payload_digest(&payload.as_words());
-        let rd = rest_digest(other_data);
-        let tx_id = tx_id_v1(&pd, &rd);
+
+        // Build a temporary transaction to compute the tx_id
+        let tx = Transaction::new(
+            1,
+            vec![], // inputs don't affect rest_digest for our purposes
+            outputs.to_vec(),
+            0,
+            SUBNETWORK_ID_NATIVE,
+            0,
+            payload.as_bytes(),
+        );
+
+        let tx_id = bytes_to_words_ref(&tx.id().as_bytes());
         if is_action_tx_id(&tx_id) {
             println!("  Found valid action nonce: {}", nonce);
             return payload;
@@ -175,95 +205,98 @@ pub fn find_action_tx_nonce(source: [u32; 8], destination: [u32; 8], amount: u64
 }
 
 /// Create a V0 transaction (non-action)
-pub fn create_v0_tx(tx_id: [u32; 8]) -> MockTx {
-    MockTx::V0 { tx_id }
+pub fn create_v0_tx(tx_id_bytes: [u32; 8]) -> ZkTransaction {
+    // For V0, we create a minimal transaction that will have the given tx_id
+    // In practice, for testing we just need any V0 tx - the actual tx_id
+    // is derived from the content. For this mock, we create a simple tx.
+    let tx_id_hash = Hash::from_bytes(bytemuck::cast(tx_id_bytes));
+    let tx = Transaction::new(
+        0,
+        vec![TransactionInput::new(TransactionOutpoint::new(tx_id_hash, 0), vec![], 0, 0)],
+        vec![],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    ZkTransaction::new(tx, None)
 }
 
-/// Build a V1 rest_preimage (full transaction without payload) for testing
-fn build_v1_rest_preimage(output_value: u64, output_spk: &[u8; 34]) -> Vec<u8> {
-    let mut rest = Vec::new();
-    // version
-    rest.extend_from_slice(&1u16.to_le_bytes());
-    // 0 inputs
-    rest.extend_from_slice(&0u64.to_le_bytes());
-    // 1 output
-    rest.extend_from_slice(&1u64.to_le_bytes());
-    // output: value
-    rest.extend_from_slice(&output_value.to_le_bytes());
-    // output: spk_version
-    rest.extend_from_slice(&0u16.to_le_bytes());
-    // output: spk_len
-    rest.extend_from_slice(&34u64.to_le_bytes());
-    // output: spk
-    rest.extend_from_slice(output_spk);
-    // output: has_covenant = false
-    rest.push(0);
-    // locktime
-    rest.extend_from_slice(&0u64.to_le_bytes());
-    // subnetwork_id
-    rest.extend_from_slice(&[0u8; 20]);
-    // gas
-    rest.extend_from_slice(&0u64.to_le_bytes());
-    // empty_payload_len
-    rest.extend_from_slice(&0u64.to_le_bytes());
-    // mass
-    rest.extend_from_slice(&0u64.to_le_bytes());
-    rest
-}
-
-/// Create a mock V1 "previous transaction" with the given output.
-///
-/// The mock transaction has:
-/// - Version 1
-/// - 0 inputs
-/// - 1 output at the specified index
-/// - All other fields zeroed
-///
-/// Returns (prev_tx_id, prev_tx_v1_witness) for use in action transaction verification.
-fn create_mock_prev_tx_v1(output_value: u64, output_spk: [u8; 34], output_index: u32) -> ([u32; 8], PrevTxV1Witness) {
-    // Build full rest_preimage
-    let rest_preimage = build_v1_rest_preimage(output_value, &output_spk);
-
-    // Empty payload for the mock prev tx - compute its digest
-    let payload_digest = payload_digest_bytes(&[]);
-
-    // Create the V1 witness
-    let witness = PrevTxV1Witness::new(output_index, AlignedBytes::from_bytes(&rest_preimage), payload_digest);
-
-    // Compute tx_id from the witness
-    let tx_id = witness.compute_tx_id();
-
-    (tx_id, witness)
+/// Create a "previous transaction" for use as UTXO source.
+/// This creates a V1 transaction with a single output containing the given SPK.
+pub fn create_prev_tx(output_value: u64, output_spk: ScriptPublicKey) -> Transaction {
+    Transaction::new(
+        1,
+        vec![], // No inputs needed for prev tx in testing
+        vec![TransactionOutput::new(output_value, output_spk)],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![], // Empty payload for prev tx
+    )
 }
 
 /// Create a V1 transfer action transaction with witness data
-///
-/// The source pubkey is included in the payload and committed to tx_id via payload_digest.
-/// A mock previous transaction is created to provide cryptographic proof of source ownership.
 pub fn create_transfer_tx(
     source: [u32; 8],
     destination: [u32; 8],
     amount: u64,
-    other_data: OtherData,
+    outputs: Vec<TransactionOutput>,
     source_witness: AccountWitness,
     dest_witness: AccountWitness,
-    first_input_spk: [u8; 34],
-) -> MockTx {
-    // Create a mock previous transaction that has an output with source's SPK
-    // This simulates the UTXO being spent
-    let (prev_tx_id, prev_tx_witness) = create_mock_prev_tx_v1(
-        1000, // arbitrary output value
-        first_input_spk,
-        0, // output index
+    prev_tx: Transaction,
+    prev_output_index: u32,
+) -> ZkTransaction {
+    // Find nonce that makes tx_id an action
+    let payload = find_action_tx_nonce(source, destination, amount, &outputs);
+
+    // Create the actual transaction
+    let tx = Transaction::new(1, vec![], outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
+
+    ZkTransaction::new(tx, Some(ActionWitnessData { source: source_witness, dest: dest_witness, prev_tx, prev_output_index }))
+}
+
+/// Create a V1 transaction that is NOT an action (tx_id doesn't start with action prefix).
+/// This tests that the guest correctly ignores non-action V1 transactions.
+pub fn create_v1_non_action_tx() -> ZkTransaction {
+    // Create a simple V1 tx with arbitrary payload that won't have action prefix
+    // Using empty payload ensures it won't be detected as action
+    let tx = Transaction::new(
+        1,
+        vec![],
+        vec![TransactionOutput::new(100, ScriptPublicKey::new(0, vec![0u8; 34].into()))],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![], // Empty payload - not an action
     );
 
-    // Find nonce that makes tx_id an action
-    let payload = find_action_tx_nonce(source, destination, amount, &other_data);
+    // Verify it's not an action
+    let tx_id = bytes_to_words_ref(&tx.id().as_bytes());
+    debug_assert!(!is_action_tx_id(&tx_id), "V1 non-action tx should not have action prefix");
 
-    MockTx::V1 {
-        version: 1,
-        payload,
-        other_data,
-        witness: Some(ActionWitnessData { source: source_witness, dest: dest_witness, prev_tx_id, prev_tx_witness }),
+    ZkTransaction::new(tx, None)
+}
+
+/// Create a V1 transaction with action prefix but UNKNOWN operation code.
+/// This tests that the guest correctly rejects unknown action types.
+pub fn create_unknown_action_tx() -> ZkTransaction {
+    const UNKNOWN_OP: u16 = 0xFFFF; // Unknown operation code
+
+    // Find a nonce that makes tx_id an action
+    let outputs = vec![TransactionOutput::new(100, ScriptPublicKey::new(0, vec![0u8; 34].into()))];
+
+    for nonce in 0u32.. {
+        let header = ActionHeader { version: zk_covenant_rollup_core::action::ACTION_VERSION, operation: UNKNOWN_OP, nonce };
+        let payload_bytes: Vec<u8> = bytemuck::cast_slice(header.as_words()).to_vec();
+
+        let tx = Transaction::new(1, vec![], outputs.clone(), 0, SUBNETWORK_ID_NATIVE, 0, payload_bytes);
+
+        let tx_id = bytes_to_words_ref(&tx.id().as_bytes());
+        if is_action_tx_id(&tx_id) {
+            println!("  Found unknown action nonce: {}", nonce);
+            return ZkTransaction::new(tx, None);
+        }
     }
+    unreachable!()
 }
