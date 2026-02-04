@@ -27,17 +27,26 @@ pub struct DagknightKey {
     pub root_hash: Hash,
     pub k: KType,
     pub free_search: bool,
-    // Precomputed bytes in order: root_hash || pov_hash || k || free_search
-    bytes: [u8; kaspa_hashes::HASH_SIZE * 2 + 2],
+    // Precomputed bytes in order: root_hash || k(u16 BE) || pov_hash || free_search
+    bytes: [u8; kaspa_hashes::HASH_SIZE * 2 + 3],
 }
 
 impl DagknightKey {
     pub fn new(root_hash: Hash, pov_hash: Hash, k: KType, free_search: bool) -> Self {
-        let mut bytes = [0u8; kaspa_hashes::HASH_SIZE * 2 + 2];
-        bytes[..kaspa_hashes::HASH_SIZE].copy_from_slice(root_hash.as_ref());
-        bytes[kaspa_hashes::HASH_SIZE] = k as u8;
-        bytes[(kaspa_hashes::HASH_SIZE + 1)..(2 * kaspa_hashes::HASH_SIZE + 1)].copy_from_slice(pov_hash.as_ref());
-        bytes[(2 * kaspa_hashes::HASH_SIZE) + 1] = if free_search { 1 } else { 0 };
+        // Layout must match DB-level expectations where `k` is encoded as a u16
+        // (two bytes). Allocate enough space: root_hash + k(2) + pov_hash + free_search(1).
+        let mut bytes = [0u8; kaspa_hashes::HASH_SIZE * 2 + 3];
+        let hash_size = kaspa_hashes::HASH_SIZE;
+        bytes[..hash_size].copy_from_slice(root_hash.as_ref());
+
+        // Encode k as big-endian u16 to match other code paths that construct
+        // DB keys using two bytes for k.
+        let k_be = k.to_be_bytes();
+        bytes[hash_size] = k_be[0];
+        bytes[hash_size + 1] = k_be[1];
+
+        bytes[(hash_size + 2)..(hash_size + 2 + hash_size)].copy_from_slice(pov_hash.as_ref());
+        bytes[(2 * hash_size) + 2] = if free_search { 1 } else { 0 };
 
         Self { pov_hash, root_hash, k, free_search, bytes }
     }
@@ -222,5 +231,92 @@ impl DagknightStore for DbDagknightStore {
         // Perform the range delete
         batch.delete_range(start_conflict_genesis_bytes, end_conflict_genesis_bytes);
         Ok(count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dagknight_key_encodes_k() {
+        use crate::model::stores::dagknight::DagknightKey;
+        use kaspa_hashes::Hash;
+
+        let root: Hash = 0xAA_u64.into();
+        let pov: Hash = 0xBB_u64.into();
+        let k1: KType = 0x0001;
+        let k2: KType = 0x0101; // 2nd byte is the same as above
+
+        let key1 = DagknightKey::new(root, pov, k1, false);
+        let key2 = DagknightKey::new(root, pov, k2, false);
+
+        // The DB key bytes must differ when k differs. This captures the previous
+        // bug where `k` was encoded incorrectly and keys collided across k values.
+        println!("key1 bytes: {:?}", key1.as_ref());
+        println!("key2 bytes: {:?}", key2.as_ref());
+        assert_ne!(key1.as_ref(), key2.as_ref(), "DagknightKey DB bytes must encode k uniquely");
+
+        // Also assert that the differing two-byte `k` slot differs (sanity check on layout)
+        let hash_size = kaspa_hashes::HASH_SIZE;
+        // k is encoded as two bytes after root_hash
+        assert_ne!(
+            &key1.as_ref()[hash_size..hash_size + 2],
+            &key2.as_ref()[hash_size..hash_size + 2],
+            "k slot (two bytes) must differ for different k values"
+        );
+    }
+
+    #[test]
+    fn test_db_dagknight_store_isolates_by_k() {
+        use crate::model::stores::dagknight::DbDagknightStore;
+        use crate::model::stores::ghostdag::GhostdagData;
+        use kaspa_database::prelude::CachePolicy;
+        use kaspa_database::prelude::ConnBuilder;
+        use kaspa_hashes::Hash;
+        use std::sync::Arc;
+
+        // Create a temporary RocksDB
+        let (_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+
+        let store = DbDagknightStore::new(db.clone(), CachePolicy::Count(16));
+
+        let root: Hash = 0xAA_u64.into();
+        let pov: Hash = 0xBB_u64.into();
+
+        let k1 = 0x0001;
+        let k2 = 0x0101; // 2nd byte is the same as above
+
+        // Create two distinct GhostdagData values
+        let gd1 = GhostdagData::new(
+            10,
+            Default::default(),
+            Hash::from_u64_word(1),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        );
+        let gd2 = GhostdagData::new(
+            20,
+            Default::default(),
+            Hash::from_u64_word(2),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        );
+
+        let key1 = DagknightKey::new(root, pov, k1, false);
+        let key2 = DagknightKey::new(root, pov, k2, false);
+
+        // Insert both into the DB-backed store
+        store.insert(key1.clone(), Arc::new(gd1)).expect("insert k1");
+        store.insert(key2.clone(), Arc::new(gd2)).expect("insert k2");
+
+        // Read them back and verify isolation
+        let read1 = store.get_data(key1).expect("read k1");
+        let read2 = store.get_data(key2).expect("read k2");
+
+        assert_eq!(read1.blue_score, 10);
+        assert_eq!(read2.blue_score, 20);
     }
 }
