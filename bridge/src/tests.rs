@@ -1057,8 +1057,7 @@ mod integration {
 
         // Create KaspaApi client
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
-        let kaspa_api =
-            KaspaApi::new_with_shutdown(rpc_address.clone(), Duration::from_secs(1), None, Some(shutdown_rx.clone())).await.unwrap();
+        let kaspa_api = KaspaApi::new(rpc_address.clone(), None, shutdown_rx.clone()).await.unwrap();
 
         // Create bridge config
         let bridge_config = StratumBridgeConfig {
@@ -1129,8 +1128,7 @@ mod integration {
 
         // Create KaspaApi client
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
-        let kaspa_api =
-            KaspaApi::new_with_shutdown(rpc_address.clone(), Duration::from_secs(1), None, Some(shutdown_rx.clone())).await.unwrap();
+        let kaspa_api = KaspaApi::new(rpc_address.clone(), None, shutdown_rx.clone()).await.unwrap();
 
         // Test that CPU miner module is available when feature is enabled
         use kaspa_stratum_bridge::InternalCpuMinerConfig;

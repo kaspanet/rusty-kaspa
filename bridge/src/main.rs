@@ -280,14 +280,10 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Create shared kaspa API client (all instances use the same node)
-    let kaspa_api = KaspaApi::new_with_shutdown(
-        config.global.kaspad_address.clone(),
-        config.global.block_wait_time,
-        config.global.coinbase_tag_suffix.clone(),
-        Some(shutdown_rx.clone()),
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?;
+    let kaspa_api =
+        KaspaApi::new(config.global.kaspad_address.clone(), config.global.coinbase_tag_suffix.clone(), shutdown_rx.clone())
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?;
 
     if !config.global.web_dashboard_port.is_empty() {
         let web_dashboard_port = config.global.web_dashboard_port.clone();
@@ -300,7 +296,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     tracing::info!("Waiting for node to fully sync before starting stratum listeners");
     kaspa_api
-        .wait_for_sync_with_shutdown(true, shutdown_rx.clone())
+        .wait_for_sync_with_shutdown(shutdown_rx.clone())
         .await
         .map_err(|e| anyhow::anyhow!("Failed while waiting for node sync: {}", e))?;
     tracing::info!("Node is synced, starting stratum listeners");
