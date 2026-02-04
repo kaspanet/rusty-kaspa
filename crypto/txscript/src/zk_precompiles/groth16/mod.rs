@@ -7,6 +7,7 @@ pub use error::Groth16Error;
 
 use crate::{
     data_stack::Stack,
+    opcodes::i32s_to_usizes,
     zk_precompiles::{ZkPrecompile, fields::Fr},
 };
 
@@ -21,7 +22,7 @@ impl ZkPrecompile for Groth16Precompile {
         let [proof_bytes] = dstack.pop_raw()?;
 
         // Retrieve number of public inputs
-        let [n_inputs] = dstack.pop_items::<1, u16>()?;
+        let [n_inputs] = i32s_to_usizes(dstack.pop_items::<1, i32>()?)?;
 
         // Retrieve public inputs
         let mut unprepared_public_inputs = Vec::new();
@@ -81,7 +82,7 @@ mod tests {
         stack.push(input2).unwrap();
         stack.push(input1).unwrap();
         stack.push(input0).unwrap();
-        stack.push_item(5u16).unwrap(); // Number of public inputs
+        stack.push_item(5i32).unwrap(); // Number of public inputs
         stack.push(proof).unwrap();
         stack.push(unprepared_compressed_vk).unwrap();
         Groth16Precompile::verify_zk(&mut stack).unwrap();

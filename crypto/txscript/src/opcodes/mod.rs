@@ -228,10 +228,11 @@ fn substring(data: &[u8], start: usize, end: usize) -> Result<Vec<u8>, TxScriptE
     data.get(start..end).map(<[u8]>::to_vec).ok_or(TxScriptError::OutOfBoundsSubstring(start, end, data.len()))
 }
 
-fn i32_to_usize(value: i32) -> Result<usize, TxScriptError> {
+pub(crate) fn i32_to_usize(value: i32) -> Result<usize, TxScriptError> {
     value.try_into().map_err(|_| TxScriptError::InvalidIndex(value))
 }
-fn i32s_to_usizes<const N: usize>(arr: [i32; N]) -> Result<[usize; N], TxScriptError> {
+
+pub(crate) fn i32s_to_usizes<const N: usize>(arr: [i32; N]) -> Result<[usize; N], TxScriptError> {
     let mut out = [0usize; N];
     for i in 0..N {
         out[i] = i32_to_usize(arr[i])?;

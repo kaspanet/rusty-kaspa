@@ -46,7 +46,7 @@ mod test {
         groth_stack.push(input2).unwrap();
         groth_stack.push(input1).unwrap();
         groth_stack.push(input0).unwrap();
-        groth_stack.push_item(5u16).unwrap();
+        groth_stack.push_item(5i32).unwrap();
         groth_stack.push(groth16_proof_bytes).unwrap();
         groth_stack.push(unprepared_compressed_vk).unwrap();
         groth_stack.push([groth16_tag].to_vec()).unwrap();
