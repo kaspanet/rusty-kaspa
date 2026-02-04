@@ -34,7 +34,7 @@ impl ZkPrecompile for R0SuccinctPrecompile {
 
      
         // We ensure that the proof itself is valid. This checks the internal consistency of the proof.
-        // Due to the binding above, we are assured that the proof corresponds to the claimed image id and journal.
+        // Due to the binding below, we are assured that the proof corresponds to the claimed image id and journal.
         rcpt.verify_integrity()?;
 
         // Verify that the claim that comes from the SuccinctReceipt matches the computed claim
