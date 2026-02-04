@@ -1445,17 +1445,17 @@ async fn kip10_test() {
     // Initialize consensus with KIP-10 activation point
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
-        .apply_args(|cfg| {
+        .edit_consensus_params(|p| {
             let mut genesis_multiset = MuHash::new();
             initial_utxo_collection.iter().for_each(|(outpoint, utxo)| {
                 genesis_multiset.add_utxo(outpoint, utxo);
             });
-            cfg.params.genesis.utxo_commitment = genesis_multiset.finalize();
-            let genesis_header: Header = (&cfg.params.genesis).into();
-            cfg.params.genesis.hash = genesis_header.hash;
-        })
-        .edit_consensus_params(|p| {
+            p.genesis.utxo_commitment = genesis_multiset.finalize();
+            let genesis_header: Header = (&p.genesis).into();
+            p.genesis.hash = genesis_header.hash;
+
             p.crescendo_activation = ForkActivation::always();
+            p.covenants_activation = ForkActivation::never();
         })
         .build();
 
@@ -1826,14 +1826,16 @@ async fn payload_for_native_tx_test() {
     // Initialize consensus with payload activation point
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
-        .apply_args(|cfg| {
+        .edit_consensus_params(|p| {
             let mut genesis_multiset = MuHash::new();
             initial_utxo_collection.iter().for_each(|(outpoint, utxo)| {
                 genesis_multiset.add_utxo(outpoint, utxo);
             });
-            cfg.params.genesis.utxo_commitment = genesis_multiset.finalize();
-            let genesis_header: Header = (&cfg.params.genesis).into();
-            cfg.params.genesis.hash = genesis_header.hash;
+            p.genesis.utxo_commitment = genesis_multiset.finalize();
+            let genesis_header: Header = (&p.genesis).into();
+            p.genesis.hash = genesis_header.hash;
+
+            p.covenants_activation = ForkActivation::never();
         })
         .build();
 
@@ -1935,16 +1937,15 @@ async fn runtime_sig_op_counting_test() {
 
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
-        .apply_args(|cfg| {
+        .edit_consensus_params(|p| {
             let mut genesis_multiset = MuHash::new();
             initial_utxo_collection.iter().for_each(|(outpoint, utxo)| {
                 genesis_multiset.add_utxo(outpoint, utxo);
             });
-            cfg.params.genesis.utxo_commitment = genesis_multiset.finalize();
-            let genesis_header: Header = (&cfg.params.genesis).into();
-            cfg.params.genesis.hash = genesis_header.hash;
-        })
-        .edit_consensus_params(|p| {
+            p.genesis.utxo_commitment = genesis_multiset.finalize();
+            let genesis_header: Header = (&p.genesis).into();
+            p.genesis.hash = genesis_header.hash;
+
             p.crescendo_activation = ForkActivation::always();
         })
         .build();
@@ -2056,14 +2057,14 @@ async fn sighash_type_commitment_test() {
 
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
-        .apply_args(|cfg| {
+        .edit_consensus_params(|p| {
             let mut genesis_multiset = MuHash::new();
             initial_utxo_collection.iter().for_each(|(outpoint, utxo)| {
                 genesis_multiset.add_utxo(outpoint, utxo);
             });
-            cfg.params.genesis.utxo_commitment = genesis_multiset.finalize();
-            let genesis_header: Header = (&cfg.params.genesis).into();
-            cfg.params.genesis.hash = genesis_header.hash;
+            p.genesis.utxo_commitment = genesis_multiset.finalize();
+            let genesis_header: Header = (&p.genesis).into();
+            p.genesis.hash = genesis_header.hash;
         })
         .build();
 
