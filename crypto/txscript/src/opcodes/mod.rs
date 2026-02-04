@@ -832,7 +832,7 @@ opcode_list! {
             vm.runtime_sig_op_counter.consume_sig_ops(tag.sigop_cost())?;
 
             // Verify the ZK proof
-            verify_zk(tag,&mut vm.dstack)?;
+            verify_zk(tag, &mut vm.dstack)?;
 
             // If no errors, push true to the stack
             vm.dstack.push_item(true)?;
