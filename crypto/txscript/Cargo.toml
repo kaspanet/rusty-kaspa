@@ -26,6 +26,7 @@ ark-relations.workspace = true
 blake2b_simd.workspace = true
 borsh.workspace = true
 cfg-if.workspace = true
+faster-hex.workspace = true
 hexplay.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
@@ -58,12 +59,12 @@ once_cell.workspace = true
 [dev-dependencies]
 criterion.workspace = true
 smallvec.workspace = true
-hex.workspace = true
 serde_json.workspace = true
 rayon.workspace = true
 
 [[bench]]
-name = "bench"
+name = "zk_precompiles"
+path = "benches/zk_precompiles.rs"
 harness = false
 
 [lints]

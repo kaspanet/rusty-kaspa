@@ -431,6 +431,7 @@ impl Stack {
 mod tests {
     use super::OpcodeData;
     use crate::data_stack::{SizedEncodeInt, serialize_i64};
+    use crate::hex;
     use kaspa_txscript_errors::{SerializationError, TxScriptError};
 
     // TestScriptNumBytes
