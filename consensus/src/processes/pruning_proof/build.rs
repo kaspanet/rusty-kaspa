@@ -419,6 +419,13 @@ impl PruningProofManager {
                 continue;
             }
 
+            if let Some(prev_root) = prev_root {
+                // When advancing from a previous descriptor, use `prev_root` as a boundary for root selection.
+                if !self.reachability_service.is_dag_ancestor_of(prev_root, current) {
+                    continue;
+                }
+            }
+
             let header = self.headers_store.get_header(current).unwrap();
 
             // Collect reachable parents at this level
