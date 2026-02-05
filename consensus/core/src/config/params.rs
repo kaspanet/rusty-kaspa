@@ -666,6 +666,12 @@ pub const TESTNET12_PARAMS: Params = Params {
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 12),
     genesis: TESTNET12_GENESIS,
+
+    deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
+    pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
+    pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
+
+    crescendo_activation: ForkActivation::always(),
     covenants_activation: ForkActivation::always(),
     ..TESTNET_PARAMS
 };
@@ -694,7 +700,8 @@ pub const SIMNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    max_block_mass: 500_000,
+    // Increased for testing stark proofs
+    max_block_mass: 1_500_000,
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
@@ -708,7 +715,7 @@ pub const SIMNET_PARAMS: Params = Params {
     pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
 
     crescendo_activation: ForkActivation::always(),
-    covenants_activation: ForkActivation::never(),
+    covenants_activation: ForkActivation::always(),
 };
 
 pub const DEVNET_PARAMS: Params = Params {
@@ -732,19 +739,21 @@ pub const DEVNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    max_block_mass: 500_000,
+
+    // Increased for testing stark proofs
+    max_block_mass: 1_500_000,
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
     deflationary_phase_daa_score: 0,
-    pre_deflationary_phase_base_subsidy: 50000000000,
+    pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
 
     blockrate: BlockrateParams::new::<10>(),
 
-    pre_crescendo_target_time_per_block: 1000,
+    pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
 
     crescendo_activation: ForkActivation::always(),
     covenants_activation: ForkActivation::never(),
