@@ -22,21 +22,7 @@ impl<const LEN: usize> From<i32> for SizedEncodeInt<LEN> {
     }
 }
 
-impl<const LEN: usize> From<u16> for SizedEncodeInt<LEN> {
-    fn from(value: u16) -> Self {
-        SizedEncodeInt(value as i64)
-    }
-}
-
 impl<const LEN: usize> TryFrom<SizedEncodeInt<LEN>> for i32 {
-    type Error = TryFromIntError;
-
-    fn try_from(value: SizedEncodeInt<LEN>) -> Result<Self, Self::Error> {
-        value.0.try_into()
-    }
-}
-
-impl<const LEN: usize> TryFrom<SizedEncodeInt<LEN>> for u16 {
     type Error = TryFromIntError;
 
     fn try_from(value: SizedEncodeInt<LEN>) -> Result<Self, Self::Error> {
