@@ -1,5 +1,6 @@
 use kaspa_txscript::opcodes::codes::{OpVerify, OpZkPrecompile};
 use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
+use kaspa_txscript::zk_precompiles::tags::ZkTag;
 
 /// Converts a RISC0 hash function name string to its byte ID.
 /// Returns None for unrecognized hash function names.
@@ -32,7 +33,7 @@ pub trait Risc0SuccinctVerify {
 impl Risc0SuccinctVerify for ScriptBuilder {
     fn verify_risc0_succinct(&mut self) -> ScriptBuilderResult<&mut ScriptBuilder> {
         // Stack: [seal, claim, hashfn, control_index, control_digests, journal_hash, image_id]
-        self.add_data(&[0x21u8])?; // R0Succinct tag
+        self.add_data(&[ZkTag::R0Succinct as u8])?; // R0Succinct tag
                                    // Stack: [seal, claim, hashfn, control_index, control_digests, journal_hash, image_id, 0x21]
         self.add_op(OpZkPrecompile)?;
         // Stack: [true]

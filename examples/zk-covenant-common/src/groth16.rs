@@ -7,6 +7,7 @@ use kaspa_txscript::opcodes::codes::{OpCat, OpFromAltStack, OpRot, OpSHA256, OpS
 use kaspa_txscript::script_builder::ScriptBuilder;
 use risc0_groth16::Seal;
 use risc0_zkvm::{Digest, Groth16ReceiptVerifierParameters};
+use kaspa_txscript::zk_precompiles::tags::ZkTag;
 
 pub const PUBLIC_INPUT_COUNT: usize = 5;
 
@@ -60,7 +61,7 @@ impl Risc0Groth16Verify for ScriptBuilder {
                                                   // Bring proof from alt stack
         self.add_op(OpFromAltStack)?; // [..., 5, proof], alt: []
         self.add_data(&verifying_key_compressed())?; // [..., 5, proof, vk]
-        self.add_data(&[0x20u8])?; // [..., 5, proof, vk, 0x20]
+        self.add_data(&[ZkTag::Groth16 as u8])?; // [..., 5, proof, vk, 0x20]
         self.add_op(OpZkPrecompile)?; // [true]
         self.add_op(OpVerify) // []
     }
