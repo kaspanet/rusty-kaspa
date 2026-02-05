@@ -1,7 +1,7 @@
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    BlockHashMap, BlockHasher, BlockLevel,
+    BlockHasher, BlockLevel,
     blockhash::ORIGIN,
     header::{CompressedParents, Header},
 };
@@ -66,7 +66,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 .map(|h| (h.header.hash, smallvec![h.header.hash]))
                 // We use smallvec with size 1 in order to optimize for the common case
                 // where the block itself is the only reference block
-                .collect::<BlockHashMap<SmallVec<[Hash; 1]>>>();
+                .collect::<IndexMap<Hash, SmallVec<[Hash; 1]>, BlockHasher>>();
 
             let mut first_parent_marker = 0;
             let grandparents = if level_candidates_to_reference_blocks.is_empty() {
@@ -213,7 +213,7 @@ mod tests {
     use super::ParentsManager;
     use itertools::Itertools;
     use kaspa_consensus_core::{
-        BlockHashSet, HashMapCustomHasher,
+        BlockHashMap, BlockHashSet, HashMapCustomHasher,
         blockhash::{BlockHashes, ORIGIN},
         header::Header,
     };
