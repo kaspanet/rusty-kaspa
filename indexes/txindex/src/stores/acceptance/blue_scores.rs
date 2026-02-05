@@ -1,4 +1,4 @@
-use crate::model::score_refs::BlueScoreAcceptingRefData;
+use crate::{model::score_refs::BlueScoreAcceptingRefData, stores::DaaScoreRefKey};
 
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_database::{
@@ -120,6 +120,13 @@ impl BlueScoreRefKey {
     pub fn extract_transaction_id(&self) -> TransactionId {
         TransactionId::from_slice(&self.0[BLUE_SCORE_SIZE..BLUE_SCORE_SIZE + TRANSACTION_ID_SIZE])
     }
+
+    #[inline(always)]
+    fn increment(mut self) -> Self {
+        let r = self.0.iter_mut().rev().find(|b| **b != u8::MAX).unwrap(); // unless someone manages to mine a max hash this is unwrappable.
+        *r += 1;
+        self
+    }
 }
 
 impl From<BlueScoreRefKey> for BlueScoreAcceptingRefData {
@@ -169,7 +176,7 @@ pub trait TxIndexAcceptingBlueScoreRefStore: TxIndexAcceptingBlueScoreRefReader 
     fn add_blue_score_refs<I>(&mut self, writer: &mut impl DbWriter, to_add_data: BlueScoreRefIter<I>) -> StoreResult<()>
     where
         I: Iterator<Item = BlueScoreRefTuple>; // BlueScoreRefTuple = (blue_score, transaction_id)
-    fn remove_blue_score_refs(&mut self, writer: &mut impl DbWriter, to_remove_blue_score_range: Range<u64>) -> StoreResult<()>;
+    fn remove_blue_score_refs(&mut self, writer: &mut impl DbWriter, start: BlueScoreAcceptingRefData, end: BlueScoreAcceptingRefData) -> StoreResult<()>;
     fn delete_all(&mut self) -> StoreResult<()>;
 }
 
@@ -231,11 +238,12 @@ impl TxIndexAcceptingBlueScoreRefStore for DbTxIndexAcceptingBlueScoreRefStore {
         self.access.write_many_without_cache(writer, &mut kv_iter)
     }
 
-    fn remove_blue_score_refs(&mut self, writer: &mut impl DbWriter, to_remove_blue_score_range: Range<u64>) -> StoreResult<()> {
+    /// Start and end are inclusive
+    fn remove_blue_score_refs(&mut self, writer: &mut impl DbWriter, start: BlueScoreAcceptingRefData, end: BlueScoreAcceptingRefData) -> StoreResult<()> {
         self.access.delete_range(
             writer,
-            BlueScoreRefKey::new_minimized().with_blue_score(to_remove_blue_score_range.start),
-            BlueScoreRefKey::new_maximized().with_blue_score(to_remove_blue_score_range.end),
+            BlueScoreRefKey::default().with_blue_score(start.blue_score).with_transaction_id(start.transaction_id),
+            BlueScoreRefKey::default().with_blue_score(end.blue_score).with_transaction_id(end.transaction_id).increment(),
         )
     }
 
@@ -299,7 +307,7 @@ mod tests {
         // Clean up test
         let mut write_batch = WriteBatch::new();
         let mut writer = BatchDbWriter::new(&mut write_batch);
-        store.remove_blue_score_refs(&mut writer, 0..150u64).unwrap();
+        store.remove_blue_score_refs(&mut writer, BlueScoreAcceptingRefData { blue_score: 0, transaction_id: TransactionId::MIN }, BlueScoreAcceptingRefData { blue_score: 150, transaction_id: TransactionId::MAX }).unwrap();
         txindex_db.write(write_batch).unwrap();
         assert_eq!(store.get_blue_score_refs(.., None).unwrap().collect::<Vec<_>>().len(), 1);
         store.delete_all().unwrap();

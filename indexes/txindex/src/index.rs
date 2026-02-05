@@ -116,18 +116,14 @@ impl TxIndex {
         let consensus_retention_root_blue_score = consensus_retention_root_header.blue_score;
         let consensus_retention_root_daa_score = consensus_retention_root_header.daa_score;
         let txindex_retention_root = self.store.get_retention_root()?;
-        let txindex_retention_root_blue_score = self.store.get_retention_root_blue_score()?;
-        let txindex_retention_root_daa_score = self.store.get_retention_root_daa_score()?;
         let txindex_next_to_prune_blue_score = self.store.get_next_to_prune_blue_score()?;
         let txindex_next_to_prune_daa_score = self.store.get_next_to_prune_daa_score()?;
 
         Ok(txindex_retention_root.is_some_and(|trr| {
             trr == consensus_retention_root
-                && txindex_retention_root_blue_score.is_some_and(|trrb| trrb == consensus_retention_root_blue_score)
-                && txindex_retention_root_daa_score.is_some_and(|trrd| trrd == consensus_retention_root_daa_score)
-                && txindex_next_to_prune_blue_score.is_some_and(|tnp| tnp == consensus_retention_root_blue_score)
-                && txindex_next_to_prune_daa_score.is_some_and(|tnp| tnp == consensus_retention_root_daa_score)
-        }))
+                && txindex_next_to_prune_blue_score.is_some_and(|trrb| trrb == consensus_retention_root_blue_score)
+                && txindex_next_to_prune_daa_score.is_some_and(|trrd| trrd == consensus_retention_root_daa_score)
+               }))
     }
 
     fn resync_acceptance_data_from_scratch(&mut self) -> TxIndexResult<()> {
@@ -156,10 +152,9 @@ impl TxIndex {
             chunks_processed += 1;
             if start_ts.elapsed() >= Duration::from_secs(5) {
                 info!(
-                    "[{}] Resynced acceptance processed: {}, {:.2} items/sec",
+                    "[{}] Resynced acceptance processed: {} txs",
                     IDENT,
                     chunks_processed * RESYNC_ACCEPTANCE_DATA_CHUNK_SIZE,
-                    (chunks_processed * RESYNC_ACCEPTANCE_DATA_CHUNK_SIZE) as f64 / start_ts.elapsed().as_secs_f64(),
                 );
                 start_ts = std::time::Instant::now();
             }
@@ -168,10 +163,9 @@ impl TxIndex {
         let consensus_sink_blue_score = session.get_header(consensus_sink)?.blue_score;
         self.store.set_sink(consensus_sink, consensus_sink_blue_score)?;
         info!(
-            "[{}] Resynced acceptance data completed: {} chunks processed in {:.2} seconds",
+            "[{}] Resynced acceptance data completed: {} chunks processed",
             IDENT,
             chunks_processed,
-            start_ts.elapsed().as_secs_f64()
         );
         Ok(())
     }
@@ -194,10 +188,9 @@ impl TxIndex {
             chunks_processed += 1;
             if start_ts.elapsed() >= Duration::from_secs(5) {
                 info!(
-                    "[{}] Resynced inclusion processed: {}, {:.2} items/sec",
+                    "[{}] Resynced inclusion processed: {} txs",
                     IDENT,
                     chunks_processed * RESYNC_INCLUSION_DATA_CHUNK_SIZE,
-                    (chunks_processed * RESYNC_INCLUSION_DATA_CHUNK_SIZE) as f64 / start_ts.elapsed().as_secs_f64(),
                 );
                 start_ts = std::time::Instant::now();
             }
@@ -207,10 +200,9 @@ impl TxIndex {
         self.store.init_tips(consensus_tips)?;
 
         info!(
-            "[{}] Resynced inclusion data completed: {} chunks processed in {:.2} seconds",
+            "[{}] Resynced inclusion data completed: {} chunks processed",
             IDENT,
             chunks_processed,
-            start_ts.elapsed().as_secs_f64()
         );
         Ok(())
     }
@@ -243,11 +235,14 @@ impl TxIndex {
         while !self.prune_batch()? {
             chunks_processed += 1;
             if start_ts.elapsed() >= Duration::from_secs(5) {
+                let next_to_prune_blue_score = self.store.get_next_to_prune_blue_score()?.unwrap();
+                let retention_root_blue_score = self.store.get_retention_root_blue_score()?.unwrap();
                 info!(
-                    "[{}] Pruned: {}, {:.2} items/sec",
+                    "[{}] Pruned: {} txs with blue score up to {}, retention root blue score: {}",
                     IDENT,
                     chunks_processed * PRUNING_CHUNK_SIZE,
-                    (chunks_processed * PRUNING_CHUNK_SIZE) as f64 / start_ts.elapsed().as_secs_f64(),
+                    next_to_prune_blue_score,
+                    retention_root_blue_score,
                 );
                 start_ts = std::time::Instant::now();
             }

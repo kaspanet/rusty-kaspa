@@ -112,6 +112,13 @@ impl DaaScoreRefKey {
     }
 
     #[inline(always)]
+    fn increment(mut self) -> Self {
+        let r = self.0.iter_mut().rev().find(|b| **b != u8::MAX).unwrap(); // unless someone manages to mine a max hash this is unwrappable.
+        *r += 1;
+        self
+    }
+
+    #[inline(always)]
     pub fn extract_daa_score(&self) -> u64 {
         u64::from_be_bytes(self.0[0..DAA_SCORE_SIZE].try_into().unwrap())
     }
@@ -159,7 +166,6 @@ pub trait TxIndexIncludingDaaScoreRefReader {
         daa_score_range: impl RangeBounds<u64>,
         limit: Option<usize>, // if some, Will stop after limit is reached
     ) -> StoreResult<DaaScoreRefDataResIter<impl Iterator<Item = DaaScoreIncludingRefData>>>;
-
     fn is_empty(&self) -> StoreResult<bool> {
         Ok(self.get_daa_score_refs(0u64..=u64::MAX, Some(1))?.next().is_none())
     }
@@ -169,7 +175,7 @@ pub trait TxIndexIncludingDaaScoreRefStore: TxIndexIncludingDaaScoreRefReader {
     fn add_daa_score_refs<I>(&mut self, writer: &mut impl DbWriter, to_add_data: DaaScoreRefIter<I>) -> StoreResult<()>
     where
         I: Iterator<Item = DaaScoreRefTuple>; // DaaScoreRefTuple = (daa_score, transaction_id)
-    fn remove_daa_score_refs(&mut self, writer: &mut impl DbWriter, to_remove_daa_score_range: Range<u64>) -> StoreResult<()>;
+    fn remove_daa_score_refs(&mut self, writer: &mut impl DbWriter, start: DaaScoreIncludingRefData, end: DaaScoreIncludingRefData) -> StoreResult<()>;
     fn delete_all(&mut self) -> StoreResult<()>;
 }
 
@@ -232,11 +238,12 @@ impl TxIndexIncludingDaaScoreRefStore for DbTxIndexIncludingDaaScoreRefStore {
         self.access.write_many_without_cache(writer, &mut kv_iter)
     }
 
-    fn remove_daa_score_refs(&mut self, writer: &mut impl DbWriter, to_remove_daa_score_range: Range<u64>) -> StoreResult<()> {
+    /// Start and end are inclusive
+    fn remove_daa_score_refs(&mut self, writer: &mut impl DbWriter, start: DaaScoreIncludingRefData, end: DaaScoreIncludingRefData) -> StoreResult<()> {
         self.access.delete_range(
             writer,
-            DaaScoreRefKey::new_minimized().with_daa_score(to_remove_daa_score_range.start),
-            DaaScoreRefKey::new_maximized().with_daa_score(to_remove_daa_score_range.end),
+            DaaScoreRefKey::default().with_daa_score(start.daa_score).with_transaction_id(start.transaction_id),
+            DaaScoreRefKey::default().with_daa_score(end.daa_score).with_transaction_id(end.transaction_id).increment(),
         )
     }
 
@@ -300,7 +307,7 @@ mod tests {
         // Clean up test
         let mut write_batch = WriteBatch::new();
         let mut writer = BatchDbWriter::new(&mut write_batch);
-        store.remove_daa_score_refs(&mut writer, 0..150u64).unwrap();
+        store.remove_daa_score_refs(&mut writer, DaaScoreIncludingRefData { daa_score: 0u64, transaction_id: TransactionId::MIN }, DaaScoreIncludingRefData { daa_score: 150u64, transaction_id: TransactionId::MAX }).unwrap();
         txindex_db.write(write_batch).unwrap();
         assert_eq!(store.get_daa_score_refs(.., None).unwrap().collect::<Vec<_>>().len(), 1);
         store.delete_all().unwrap();

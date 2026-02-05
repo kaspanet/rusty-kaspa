@@ -1,7 +1,7 @@
 use std::{ops::RangeBounds, sync::Arc};
 
 use kaspa_consensus_core::{BlockHashSet, Hash, tx::TransactionId};
-use kaspa_core::trace;
+use kaspa_core::{info, trace};
 use kaspa_database::prelude::{BatchDbWriter, CachePolicy, DB, DbWriter, StoreResult};
 use rocksdb::WriteBatch;
 
@@ -258,31 +258,46 @@ impl Store {
         from_daa_score: u64,
         max_daa_score: u64,
         limit: Option<usize>,
-    ) -> StoreResult<bool> {
+    ) -> StoreResult<()> {
         trace!("Pruning inclusion stores below daa score: {}", max_daa_score);
         let mut batch = WriteBatch::default();
         let mut writer = BatchDbWriter::new(&mut batch);
 
-        let mut next_to_prune_daa_score = 0u64;
-        let mut is_inclusion_store_empty = true;
+        let daa_score_refs = self.scan_daa_score_range(from_daa_score..max_daa_score+1, limit)?;
 
-        for data in self.scan_daa_score_range(from_daa_score..=u64::MAX, limit)? {
-            is_inclusion_store_empty = false;
-            next_to_prune_daa_score = data.daa_score;
+        let (start, end) = if let (Some(start), Some(end)) = (daa_score_refs.first(), daa_score_refs.last()) {
+            (start.clone(), end.clone())
+        } else {
+            // early exit - nothing to prune
+            self.pruning_sync_store.set_new_next_to_prune_daa_score(&mut writer, max_daa_score)?;
+            return self.commit_batch(batch)
+        };
+
+        if start.daa_score >= max_daa_score {
+            // early exit - nothing to prune in this range
+            self.pruning_sync_store.set_new_next_to_prune_daa_score(&mut writer, max_daa_score)?;
+            return self.commit_batch(batch)
+        }
+
+        for data in daa_score_refs {
             if data.daa_score >= max_daa_score {
-                next_to_prune_daa_score = data.daa_score;
-                break;
-            };
+                self.including_daascore_refs_store
+                .remove_daa_score_refs(&mut writer, start, DaaScoreIncludingRefData { daa_score: max_daa_score, transaction_id: TransactionId::MIN})?;
+
+                self.pruning_sync_store.set_new_next_to_prune_daa_score(&mut writer, max_daa_score)?;
+                return self.commit_batch(batch);
+            }
             self.included_transactions_store.remove_transaction_inclusion_data(&mut writer, data.transaction_id, data.daa_score)?;
         }
 
-        self.pruning_sync_store.set_new_next_to_prune_daa_score(&mut writer, next_to_prune_daa_score)?;
+        info!("Pruned inclusion data with max {} from start {:?} to end {:?}", max_daa_score, start, end);
+        self.including_daascore_refs_store
+            .remove_daa_score_refs(&mut writer, start, end.clone())?;
 
-        self.commit_batch(batch)?;
+        self.pruning_sync_store.set_new_next_to_prune_daa_score(&mut writer, end.daa_score)?;
 
-        let is_done = is_inclusion_store_empty || next_to_prune_daa_score >= max_daa_score;
+        self.commit_batch(batch)
 
-        Ok(is_done)
     }
 
     pub fn prune_acceptance_data_from_blue_score(
@@ -290,32 +305,50 @@ impl Store {
         from_blue_score: u64,
         max_blue_score: u64,
         limit: Option<usize>,
-    ) -> StoreResult<bool> {
+    ) -> StoreResult<()> {
         trace!("Pruning acceptance stores below blue score: {}", max_blue_score);
         let mut batch = WriteBatch::default();
         let mut writer = BatchDbWriter::new(&mut batch);
 
-        let mut next_to_prune_blue_score = 0u64;
-        let mut is_acceptance_store_empty = true;
+        let blue_score_refs = self.scan_blue_score_range(from_blue_score..max_blue_score + 1, limit)?;
 
-        for data in self.scan_blue_score_range(from_blue_score..=u64::MAX, limit)? {
-            is_acceptance_store_empty = false;
-            next_to_prune_blue_score = data.blue_score;
+        let (start, end) = if let (Some(start), Some(end)) = (blue_score_refs.first(), blue_score_refs.last()) {
+            (start.clone(), end.clone())
+        } else {
+            // early exit - nothing to prune
+            self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, max_blue_score)?;
+            return self.commit_batch(batch)
+        };
+
+        if start.blue_score >= max_blue_score {
+            // early exit - nothing to prune in this range
+            self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, max_blue_score)?;
+            return self.commit_batch(batch)
+        }
+
+        for data in blue_score_refs {
             if data.blue_score >= max_blue_score {
-                next_to_prune_blue_score = data.blue_score;
-                break;
-            };
+                self.accepting_bluescore_refs_store
+                .remove_blue_score_refs(&mut writer, start, BlueScoreAcceptingRefData { blue_score: max_blue_score, transaction_id: TransactionId::MIN})?;
+
+                self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, max_blue_score)?;
+                return self.commit_batch(batch);
+            }
+
             self.accepted_transactions_store.remove_transaction_acceptance_data(&mut writer, data.transaction_id, data.blue_score)?;
         }
 
-        self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, next_to_prune_blue_score)?;
+        info!("Pruned acceptance data with max {} from start {:?} to end {:?}", max_blue_score, start, end);
 
-        self.commit_batch(batch)?;
+         self.accepting_bluescore_refs_store
+                .remove_blue_score_refs(&mut writer, start, end.clone())?;
 
-        let is_done = is_acceptance_store_empty || next_to_prune_blue_score >= max_blue_score;
 
-        Ok(is_done)
-    }
+        self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, end.blue_score)?;
+
+        self.commit_batch(batch)
+
+        }
 
     // -- set / init
     pub fn set_sink(&mut self, sink: Hash, blue_score: u64) -> StoreResult<()> {
@@ -369,5 +402,130 @@ impl Store {
     // -- commit ---
     fn commit_batch(&self, batch: WriteBatch) -> StoreResult<()> {
         Ok(self.db.write(batch)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::PRUNING_CHUNK_SIZE;
+    use crate::stores::{TxAcceptedIter, TxInclusionIter};
+    use kaspa_database::create_temp_db;
+    use kaspa_database::prelude::{BatchDbWriter, ConnBuilder};
+    use kaspa_hashes::Hash;
+    use rocksdb::WriteBatch;
+
+    #[test]
+    fn test_prune_acceptance_removes_refs() {
+        let (_txindex_db_lt, txindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut store = Store::new(Arc::clone(&txindex_db));
+
+        let txid = TransactionId::from_u64_word(1);
+        let block_hash = Hash::from_u64_word(2);
+        let blue_score = 100u64;
+        let mergeset_index = 1u32 as _;
+
+        // add accepted transaction and its blue-score ref
+        let mut batch = WriteBatch::default();
+        let mut writer = BatchDbWriter::new(&mut batch);
+        store
+            .accepted_transactions_store
+            .add_accepted_transaction_data(
+                &mut writer,
+                TxAcceptedIter::new(vec![(txid, blue_score, block_hash, mergeset_index)].into_iter()),
+            )
+            .unwrap();
+        // add the blue-score ref
+        crate::stores::acceptance::BlueScoreRefIter::new(vec![(blue_score, txid)].into_iter());
+        store
+            .accepting_bluescore_refs_store
+            .add_blue_score_refs(&mut writer, crate::stores::acceptance::BlueScoreRefIter::new(vec![(blue_score, txid)].into_iter()))
+            .unwrap();
+        txindex_db.write(batch).unwrap();
+
+        // set pruning data with retention root above the blue_score so pruning should remove it
+        let retention_root = Hash::from_u64_word(3);
+        store
+            .set_new_pruning_data(PruningData::new(retention_root, 200u64, 1000u64, 0u64, 0u64, ToPruneStore::AcceptanceData))
+            .unwrap();
+
+        store.prune_acceptance_data_from_blue_score(0, 200u64, Some(PRUNING_CHUNK_SIZE as usize)).unwrap();
+        assert!(store.accepting_bluescore_refs_store.is_empty().unwrap());
+    }
+
+    #[test]
+    fn test_prune_inclusion_removes_refs() {
+        let (_txindex_db_lt, txindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut store = Store::new(Arc::clone(&txindex_db));
+
+        let txid = TransactionId::from_u64_word(1);
+        let block_hash = Hash::from_u64_word(2);
+        let daa_score = 100u64;
+        let index_within_block = 1u32 as _;
+
+        // add included transaction and its daa-score ref
+        let mut batch = WriteBatch::default();
+        let mut writer = BatchDbWriter::new(&mut batch);
+        store
+            .included_transactions_store
+            .add_included_transaction_data(
+                &mut writer,
+                TxInclusionIter::new(vec![(txid, daa_score, block_hash, index_within_block)].into_iter()),
+            )
+            .unwrap();
+        // add the daa-score ref
+        store
+            .including_daascore_refs_store
+            .add_daa_score_refs(&mut writer, crate::stores::inclusion::DaaScoreRefIter::new(vec![(daa_score, txid)].into_iter()))
+            .unwrap();
+        txindex_db.write(batch).unwrap();
+
+        // set pruning data with retention root above the daa_score so pruning should remove it
+        let retention_root = Hash::from_u64_word(3);
+        store
+            .set_new_pruning_data(PruningData::new(retention_root, 1000u64, 200u64, 0u64, 0u64, ToPruneStore::InclusionData))
+            .unwrap();
+
+        store.prune_inclusion_data_from_daa_score(0, 200u64, Some(PRUNING_CHUNK_SIZE as usize)).unwrap();
+        assert!(store.including_daascore_refs_store.is_empty().unwrap());
+    }
+
+    #[test]
+    fn test_prune_acceptance_empty_advances_next_to_prune() {
+        let (_txindex_db_lt, txindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut store = Store::new(Arc::clone(&txindex_db));
+
+        // acceptance refs store is empty; set pruning retention root and expect next-to-prune to advance to retention
+        let retention_root = Hash::from_u64_word(5);
+        let retention_blue_score = 12345u64;
+        store
+            .set_new_pruning_data(PruningData::new(
+                retention_root,
+                retention_blue_score,
+                0u64,
+                0u64,
+                0u64,
+                ToPruneStore::AcceptanceData,
+            ))
+            .unwrap();
+
+        store.prune_acceptance_data_from_blue_score(0, retention_blue_score, Some(PRUNING_CHUNK_SIZE as usize)).unwrap();
+        assert_eq!(store.get_next_to_prune_blue_score().unwrap().unwrap(), retention_blue_score);
+    }
+
+    #[test]
+    fn test_prune_inclusion_empty_advances_next_to_prune() {
+        let (_txindex_db_lt, txindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut store = Store::new(Arc::clone(&txindex_db));
+
+        // inclusion refs store is empty; set pruning retention root and expect next-to-prune to advance to retention
+        let retention_root = Hash::from_u64_word(6);
+        let retention_daa_score = 23456u64;
+        store
+            .set_new_pruning_data(PruningData::new(retention_root, 0u64, retention_daa_score, 0u64, 0u64, ToPruneStore::InclusionData))
+            .unwrap();
+
+        store.prune_inclusion_data_from_daa_score(0, retention_daa_score, Some(PRUNING_CHUNK_SIZE as usize)).unwrap();
+        assert_eq!(store.get_next_to_prune_daa_score().unwrap().unwrap(), retention_daa_score);
     }
 }
