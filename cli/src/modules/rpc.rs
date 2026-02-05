@@ -318,12 +318,14 @@ impl Rpc {
                     return Err(Error::custom("Missing transaction id argument"));
                 }
                 let transaction_id = argv.remove(0).parse::<TransactionId>()?;
-                let include_unaccepted = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
-                let include_transactions = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
-                let include_inclusion_data = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
-                let include_acceptance_data = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
-                let include_conf_count = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
-                let include_verbose_data = argv.remove(0).parse::<bool>().ok().unwrap_or_default();
+
+                argv.reverse(); // reverse to allow popping arguments in the correct order
+                let include_unaccepted = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
+                let include_transactions = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
+                let include_inclusion_data = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
+                let include_acceptance_data = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
+                let include_conf_count = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
+                let include_verbose_data = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
                 let result = rpc
                     .get_transaction_call(
                         None,

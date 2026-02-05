@@ -1,4 +1,4 @@
-use crate::{model::score_refs::BlueScoreAcceptingRefData, stores::DaaScoreRefKey};
+use crate::model::score_refs::BlueScoreAcceptingRefData;
 
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_database::{
@@ -9,7 +9,7 @@ use kaspa_database::{
 use std::{
     // iter::Take,
     mem,
-    ops::{Range, RangeBounds},
+    ops::RangeBounds,
     sync::Arc,
 };
 
@@ -176,7 +176,12 @@ pub trait TxIndexAcceptingBlueScoreRefStore: TxIndexAcceptingBlueScoreRefReader 
     fn add_blue_score_refs<I>(&mut self, writer: &mut impl DbWriter, to_add_data: BlueScoreRefIter<I>) -> StoreResult<()>
     where
         I: Iterator<Item = BlueScoreRefTuple>; // BlueScoreRefTuple = (blue_score, transaction_id)
-    fn remove_blue_score_refs(&mut self, writer: &mut impl DbWriter, start: BlueScoreAcceptingRefData, end: BlueScoreAcceptingRefData) -> StoreResult<()>;
+    fn remove_blue_score_refs(
+        &mut self,
+        writer: &mut impl DbWriter,
+        start: BlueScoreAcceptingRefData,
+        end: BlueScoreAcceptingRefData,
+    ) -> StoreResult<()>;
     fn delete_all(&mut self) -> StoreResult<()>;
 }
 
@@ -239,7 +244,12 @@ impl TxIndexAcceptingBlueScoreRefStore for DbTxIndexAcceptingBlueScoreRefStore {
     }
 
     /// Start and end are inclusive
-    fn remove_blue_score_refs(&mut self, writer: &mut impl DbWriter, start: BlueScoreAcceptingRefData, end: BlueScoreAcceptingRefData) -> StoreResult<()> {
+    fn remove_blue_score_refs(
+        &mut self,
+        writer: &mut impl DbWriter,
+        start: BlueScoreAcceptingRefData,
+        end: BlueScoreAcceptingRefData,
+    ) -> StoreResult<()> {
         self.access.delete_range(
             writer,
             BlueScoreRefKey::default().with_blue_score(start.blue_score).with_transaction_id(start.transaction_id),
@@ -307,7 +317,13 @@ mod tests {
         // Clean up test
         let mut write_batch = WriteBatch::new();
         let mut writer = BatchDbWriter::new(&mut write_batch);
-        store.remove_blue_score_refs(&mut writer, BlueScoreAcceptingRefData { blue_score: 0, transaction_id: TransactionId::MIN }, BlueScoreAcceptingRefData { blue_score: 150, transaction_id: TransactionId::MAX }).unwrap();
+        store
+            .remove_blue_score_refs(
+                &mut writer,
+                BlueScoreAcceptingRefData { blue_score: 0, transaction_id: TransactionId::MIN },
+                BlueScoreAcceptingRefData { blue_score: 150, transaction_id: TransactionId::MAX },
+            )
+            .unwrap();
         txindex_db.write(write_batch).unwrap();
         assert_eq!(store.get_blue_score_refs(.., None).unwrap().collect::<Vec<_>>().len(), 1);
         store.delete_all().unwrap();

@@ -44,7 +44,6 @@ impl TryFrom<&[u8]> for Hash {
 }
 
 impl Hash {
-
     pub const MIN: Hash = ZERO_HASH;
     pub const MAX: Hash = MAX_HASH;
 

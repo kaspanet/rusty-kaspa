@@ -9,7 +9,7 @@ use kaspa_database::{
 use std::{
     // iter::Take,
     mem,
-    ops::{Range, RangeBounds},
+    ops::RangeBounds,
     sync::Arc,
 };
 
@@ -175,7 +175,12 @@ pub trait TxIndexIncludingDaaScoreRefStore: TxIndexIncludingDaaScoreRefReader {
     fn add_daa_score_refs<I>(&mut self, writer: &mut impl DbWriter, to_add_data: DaaScoreRefIter<I>) -> StoreResult<()>
     where
         I: Iterator<Item = DaaScoreRefTuple>; // DaaScoreRefTuple = (daa_score, transaction_id)
-    fn remove_daa_score_refs(&mut self, writer: &mut impl DbWriter, start: DaaScoreIncludingRefData, end: DaaScoreIncludingRefData) -> StoreResult<()>;
+    fn remove_daa_score_refs(
+        &mut self,
+        writer: &mut impl DbWriter,
+        start: DaaScoreIncludingRefData,
+        end: DaaScoreIncludingRefData,
+    ) -> StoreResult<()>;
     fn delete_all(&mut self) -> StoreResult<()>;
 }
 
@@ -239,7 +244,12 @@ impl TxIndexIncludingDaaScoreRefStore for DbTxIndexIncludingDaaScoreRefStore {
     }
 
     /// Start and end are inclusive
-    fn remove_daa_score_refs(&mut self, writer: &mut impl DbWriter, start: DaaScoreIncludingRefData, end: DaaScoreIncludingRefData) -> StoreResult<()> {
+    fn remove_daa_score_refs(
+        &mut self,
+        writer: &mut impl DbWriter,
+        start: DaaScoreIncludingRefData,
+        end: DaaScoreIncludingRefData,
+    ) -> StoreResult<()> {
         self.access.delete_range(
             writer,
             DaaScoreRefKey::default().with_daa_score(start.daa_score).with_transaction_id(start.transaction_id),
@@ -307,7 +317,13 @@ mod tests {
         // Clean up test
         let mut write_batch = WriteBatch::new();
         let mut writer = BatchDbWriter::new(&mut write_batch);
-        store.remove_daa_score_refs(&mut writer, DaaScoreIncludingRefData { daa_score: 0u64, transaction_id: TransactionId::MIN }, DaaScoreIncludingRefData { daa_score: 150u64, transaction_id: TransactionId::MAX }).unwrap();
+        store
+            .remove_daa_score_refs(
+                &mut writer,
+                DaaScoreIncludingRefData { daa_score: 0u64, transaction_id: TransactionId::MIN },
+                DaaScoreIncludingRefData { daa_score: 150u64, transaction_id: TransactionId::MAX },
+            )
+            .unwrap();
         txindex_db.write(write_batch).unwrap();
         assert_eq!(store.get_daa_score_refs(.., None).unwrap().collect::<Vec<_>>().len(), 1);
         store.delete_all().unwrap();

@@ -263,26 +263,29 @@ impl Store {
         let mut batch = WriteBatch::default();
         let mut writer = BatchDbWriter::new(&mut batch);
 
-        let daa_score_refs = self.scan_daa_score_range(from_daa_score..max_daa_score+1, limit)?;
+        let daa_score_refs = self.scan_daa_score_range(from_daa_score..max_daa_score + 1, limit)?;
 
         let (start, end) = if let (Some(start), Some(end)) = (daa_score_refs.first(), daa_score_refs.last()) {
             (start.clone(), end.clone())
         } else {
             // early exit - nothing to prune
             self.pruning_sync_store.set_new_next_to_prune_daa_score(&mut writer, max_daa_score)?;
-            return self.commit_batch(batch)
+            return self.commit_batch(batch);
         };
 
         if start.daa_score >= max_daa_score {
             // early exit - nothing to prune in this range
             self.pruning_sync_store.set_new_next_to_prune_daa_score(&mut writer, max_daa_score)?;
-            return self.commit_batch(batch)
+            return self.commit_batch(batch);
         }
 
         for data in daa_score_refs {
             if data.daa_score >= max_daa_score {
-                self.including_daascore_refs_store
-                .remove_daa_score_refs(&mut writer, start, DaaScoreIncludingRefData { daa_score: max_daa_score, transaction_id: TransactionId::MIN})?;
+                self.including_daascore_refs_store.remove_daa_score_refs(
+                    &mut writer,
+                    start,
+                    DaaScoreIncludingRefData { daa_score: max_daa_score, transaction_id: TransactionId::MIN },
+                )?;
 
                 self.pruning_sync_store.set_new_next_to_prune_daa_score(&mut writer, max_daa_score)?;
                 return self.commit_batch(batch);
@@ -291,13 +294,11 @@ impl Store {
         }
 
         info!("Pruned inclusion data with max {} from start {:?} to end {:?}", max_daa_score, start, end);
-        self.including_daascore_refs_store
-            .remove_daa_score_refs(&mut writer, start, end.clone())?;
+        self.including_daascore_refs_store.remove_daa_score_refs(&mut writer, start, end.clone())?;
 
         self.pruning_sync_store.set_new_next_to_prune_daa_score(&mut writer, end.daa_score)?;
 
         self.commit_batch(batch)
-
     }
 
     pub fn prune_acceptance_data_from_blue_score(
@@ -317,19 +318,22 @@ impl Store {
         } else {
             // early exit - nothing to prune
             self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, max_blue_score)?;
-            return self.commit_batch(batch)
+            return self.commit_batch(batch);
         };
 
         if start.blue_score >= max_blue_score {
             // early exit - nothing to prune in this range
             self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, max_blue_score)?;
-            return self.commit_batch(batch)
+            return self.commit_batch(batch);
         }
 
         for data in blue_score_refs {
             if data.blue_score >= max_blue_score {
-                self.accepting_bluescore_refs_store
-                .remove_blue_score_refs(&mut writer, start, BlueScoreAcceptingRefData { blue_score: max_blue_score, transaction_id: TransactionId::MIN})?;
+                self.accepting_bluescore_refs_store.remove_blue_score_refs(
+                    &mut writer,
+                    start,
+                    BlueScoreAcceptingRefData { blue_score: max_blue_score, transaction_id: TransactionId::MIN },
+                )?;
 
                 self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, max_blue_score)?;
                 return self.commit_batch(batch);
@@ -340,15 +344,12 @@ impl Store {
 
         info!("Pruned acceptance data with max {} from start {:?} to end {:?}", max_blue_score, start, end);
 
-         self.accepting_bluescore_refs_store
-                .remove_blue_score_refs(&mut writer, start, end.clone())?;
-
+        self.accepting_bluescore_refs_store.remove_blue_score_refs(&mut writer, start, end.clone())?;
 
         self.pruning_sync_store.set_new_next_to_prune_blue_score(&mut writer, end.blue_score)?;
 
         self.commit_batch(batch)
-
-        }
+    }
 
     // -- set / init
     pub fn set_sink(&mut self, sink: Hash, blue_score: u64) -> StoreResult<()> {

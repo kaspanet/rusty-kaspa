@@ -123,7 +123,7 @@ impl TxIndex {
             trr == consensus_retention_root
                 && txindex_next_to_prune_blue_score.is_some_and(|trrb| trrb == consensus_retention_root_blue_score)
                 && txindex_next_to_prune_daa_score.is_some_and(|trrd| trrd == consensus_retention_root_daa_score)
-               }))
+        }))
     }
 
     fn resync_acceptance_data_from_scratch(&mut self) -> TxIndexResult<()> {
@@ -151,22 +151,14 @@ impl TxIndex {
 
             chunks_processed += 1;
             if start_ts.elapsed() >= Duration::from_secs(5) {
-                info!(
-                    "[{}] Resynced acceptance processed: {} txs",
-                    IDENT,
-                    chunks_processed * RESYNC_ACCEPTANCE_DATA_CHUNK_SIZE,
-                );
+                info!("[{}] Resynced acceptance processed: {} txs", IDENT, chunks_processed * RESYNC_ACCEPTANCE_DATA_CHUNK_SIZE,);
                 start_ts = std::time::Instant::now();
             }
         }
         let consensus_sink = session.get_sink();
         let consensus_sink_blue_score = session.get_header(consensus_sink)?.blue_score;
         self.store.set_sink(consensus_sink, consensus_sink_blue_score)?;
-        info!(
-            "[{}] Resynced acceptance data completed: {} chunks processed",
-            IDENT,
-            chunks_processed,
-        );
+        info!("[{}] Resynced acceptance data completed: {} chunks processed", IDENT, chunks_processed,);
         Ok(())
     }
 
@@ -187,11 +179,7 @@ impl TxIndex {
             self.store.update_with_reindexed_block_body_states(reindexed_block_body_states)?;
             chunks_processed += 1;
             if start_ts.elapsed() >= Duration::from_secs(5) {
-                info!(
-                    "[{}] Resynced inclusion processed: {} txs",
-                    IDENT,
-                    chunks_processed * RESYNC_INCLUSION_DATA_CHUNK_SIZE,
-                );
+                info!("[{}] Resynced inclusion processed: {} txs", IDENT, chunks_processed * RESYNC_INCLUSION_DATA_CHUNK_SIZE,);
                 start_ts = std::time::Instant::now();
             }
         }
@@ -199,11 +187,7 @@ impl TxIndex {
         let consensus_tips = session.get_tips().into_iter().collect::<BlockHashSet>();
         self.store.init_tips(consensus_tips)?;
 
-        info!(
-            "[{}] Resynced inclusion data completed: {} chunks processed",
-            IDENT,
-            chunks_processed,
-        );
+        info!("[{}] Resynced inclusion data completed: {} chunks processed", IDENT, chunks_processed,);
         Ok(())
     }
 
