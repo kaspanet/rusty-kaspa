@@ -62,9 +62,6 @@ members = [
     "metrics/core",
     "metrics/perf_monitor",
     "utils/alloc",
-
-    "examples/zk-covenant-inline/core",
-    "examples/zk-covenant-rollup/core",
 ]
 
 [workspace.package]
@@ -237,15 +234,12 @@ rand_core = { version = "0.6.4", features = ["std"] }
 rand_distr = "0.4.3"
 rayon = "1.8.0"
 regex = "1.10.2"
-risc0-binfmt = "3.0.3"
-risc0-build = "3.0.4"
-risc0-circuit-keccak =  { version="4.0.3", default-features=false }
-risc0-circuit-recursion = { version="4.0.3", default-features=false }
-risc0-core = "3.0.0"
 risc0-groth16 = "3.0.3"
+risc0-circuit-recursion = { version="4.0.3", default-features=false }
+risc0-circuit-keccak =  { version="4.0.3", default-features=false }
 risc0-zkp = "3.0.3"
-risc0-zkvm = {  version = "3.0.4", default-features = false }
-
+risc0-core = "3.0.0"
+risc0-binfmt = "3.0.3"
 ripemd = { version = "0.1.3", default-features = false }
 rlimit = "0.10.1"
 rocksdb = "0.24.0"
@@ -364,9 +358,3 @@ strip = false
 [workspace.lints.clippy]
 empty_docs = "allow"
 uninlined_format_args = "allow"
-
-#[patch.crates-io]
-#risc0-zkp = { path = "../../risc0/risc0/zkp"}
-#risc0-circuit-recursion = { path = "../../risc0/risc0/circuit/recursion"}
-#risc0-core = { path = "../../risc0/risc0/core"}
-#risc0-binfmt = { path = "../../risc0/risc0/binfmt"}

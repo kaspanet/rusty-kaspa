@@ -4,6 +4,7 @@ pub mod caches;
 pub mod covenants;
 mod data_stack;
 pub mod error;
+pub mod hex;
 pub mod opcodes;
 pub mod result;
 pub mod script_builder;
@@ -708,6 +709,7 @@ impl SpkEncoding for ScriptPublicKey {
 mod tests {
     use std::iter::once;
 
+    use crate::hex;
     use crate::opcodes::codes::{
         OpBlake2b, OpCheckMultiSig, OpCheckSig, OpCheckSigECDSA, OpCheckSigVerify, OpData1, OpData2, OpData32, OpDup, OpEndIf,
         OpEqual, OpFalse, OpIf, OpPushData1, OpTrue, OpVerify,

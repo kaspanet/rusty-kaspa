@@ -13,19 +13,42 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use std::collections::BTreeMap;
-
-use alloc::{collections::VecDeque, string::String, vec::Vec};
-use borsh::{BorshDeserialize, BorshSerialize};
+use alloc::{collections::VecDeque, vec::Vec};
 use risc0_binfmt::read_sha_halfs;
 use risc0_circuit_recursion::{CIRCUIT, CircuitImpl, control_id::ALLOWED_CONTROL_ROOT};
 use risc0_core::field::baby_bear::BabyBearElem;
 use risc0_zkp::core::hash::{HashSuite, blake2b::Blake2bCpuHashSuite, poseidon2::Poseidon2HashSuite, sha::Sha256HashSuite};
 use risc0_zkp::{adapter::CircuitInfo, core::digest::Digest, verify::VerificationError};
-use serde::Serialize;
 
 use crate::zk_precompiles::risc0::R0Error;
 use crate::zk_precompiles::risc0::merkle::MerkleProof;
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HashFnId {
+    Blake2b = 0,
+    Poseidon2 = 1,
+    Sha256 = 2,
+}
+
+impl TryFrom<u8> for HashFnId {
+    type Error = R0Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(HashFnId::Blake2b),
+            1 => Ok(HashFnId::Poseidon2),
+            2 => Ok(HashFnId::Sha256),
+            _ => Err(R0Error::InvalidHashFnId(value)),
+        }
+    }
+}
+
+impl From<HashFnId> for u8 {
+    fn from(value: HashFnId) -> Self {
+        value as u8
+    }
+}
 /// A succinct receipt, produced via recursion, proving the execution of the zkVM with a [STARK].
 ///
 /// Using recursion, a [CompositeReceipt][crate::CompositeReceipt] can be compressed to form a
@@ -36,7 +59,7 @@ use crate::zk_precompiles::risc0::merkle::MerkleProof;
 ///
 /// This is a modified version of the SuccinctReceipt defined in risc0. The reason for this is to
 /// simplify it, as we are certain to only receive digests for the claim and verifier parameters.
-#[derive(Debug, Serialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct SuccinctReceipt {
     /// The cryptographic seal of this receipt. This seal is a STARK proving an execution of the
@@ -49,15 +72,15 @@ pub struct SuccinctReceipt {
     /// zkVM execution.
     claim: Digest,
 
-    /// Name of the hash function used to create this receipt.
-    hashfn: String,
+    /// Hash function id used to create this receipt.
+    hashfn: HashFnId,
 
     /// Merkle inclusion proof for control_id against the control root for this receipt.
     control_inclusion_proof: MerkleProof,
 }
 
 impl SuccinctReceipt {
-    pub fn new(seal: Vec<u32>, claim: Digest, hashfn: String, control_inclusion_proof: MerkleProof) -> Self {
+    pub fn new(seal: Vec<u32>, claim: Digest, hashfn: HashFnId, control_inclusion_proof: MerkleProof) -> Self {
         Self { seal, claim, hashfn, control_inclusion_proof }
     }
 
@@ -70,15 +93,12 @@ impl SuccinctReceipt {
     /// Verify the integrity of this receipt, ensuring the claim is attested
     /// to by the seal.
     pub fn verify_integrity(&self) -> Result<(), R0Error> {
-        // Prepare the hash suites we support
-        let suites: BTreeMap<String, HashSuite<risc0_zkp::field::baby_bear::BabyBear>> = BTreeMap::from([
-            ("blake2b".into(), Blake2bCpuHashSuite::new_suite()),
-            ("poseidon2".into(), Poseidon2HashSuite::new_suite()),
-            ("sha-256".into(), Sha256HashSuite::new_suite()),
-        ]);
-
-        // Retrieve the hash suite for this receipt
-        let suite = suites.get(&self.hashfn).ok_or(VerificationError::InvalidHashSuite)?;
+        // Prepare the hash suite for this receipt
+        let suite: HashSuite<risc0_zkp::field::baby_bear::BabyBear> = match self.hashfn {
+            HashFnId::Blake2b => Blake2bCpuHashSuite::new_suite(),
+            HashFnId::Poseidon2 => Poseidon2HashSuite::new_suite(),
+            HashFnId::Sha256 => Sha256HashSuite::new_suite(),
+        };
 
         // There are only some control roots allowed, specifying which circuits are allowed
         // to be verified with this proof. We verify that the control id of the receipt verifies
@@ -91,7 +111,7 @@ impl SuccinctReceipt {
 
         // Verify the receipt itself is correct, and therefore the encoded globals are
         // reliable.
-        risc0_zkp::verify::verify(&CIRCUIT, suite, &self.seal, check_code)?;
+        risc0_zkp::verify::verify(&CIRCUIT, &suite, &self.seal, check_code)?;
 
         // Extract the globals from the seal
         let output_elems: &[BabyBearElem] = bytemuck::checked::cast_slice(&self.seal[..CircuitImpl::OUTPUT_SIZE]);

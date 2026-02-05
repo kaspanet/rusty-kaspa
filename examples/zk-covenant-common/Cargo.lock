@@ -2089,6 +2089,7 @@ dependencies = [
  "borsh",
  "bytemuck",
  "cfg-if",
+ "faster-hex",
  "hexplay",
  "indexmap 2.13.0",
  "itertools 0.13.0",

@@ -140,6 +140,7 @@ impl From<Version> for ScriptClass {
 
 #[cfg(test)]
 mod tests {
+    use crate::hex;
     use kaspa_consensus_core::tx::ScriptVec;
 
     use super::*;
