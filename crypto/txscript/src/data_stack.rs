@@ -83,7 +83,8 @@ impl Index<usize> for Stack {
 #[cfg(test)]
 impl From<Vec<StackEntry>> for Stack {
     fn from(inner: Vec<StackEntry>) -> Self {
-        Self { inner, covenants_enabled: false }
+        // TODO(covpp-mainnet): should have fork logic
+        Self { inner, covenants_enabled: true }
     }
 }
 
@@ -416,6 +417,7 @@ impl Stack {
 mod tests {
     use super::OpcodeData;
     use crate::data_stack::{SizedEncodeInt, serialize_i64};
+    use crate::hex;
     use kaspa_txscript_errors::{SerializationError, TxScriptError};
 
     // TestScriptNumBytes

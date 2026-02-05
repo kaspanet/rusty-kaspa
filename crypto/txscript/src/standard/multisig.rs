@@ -70,6 +70,7 @@ pub fn multisig_redeem_script_ecdsa(pub_keys: impl Iterator<Item = impl Borrow<[
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hex;
     use crate::{EngineContext, TxScriptEngine, caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script};
     use core::str::FromStr;
     use kaspa_consensus_core::{

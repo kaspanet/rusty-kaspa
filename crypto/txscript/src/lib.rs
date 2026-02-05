@@ -1,10 +1,10 @@
 extern crate alloc;
 extern crate core;
-
 pub mod caches;
 pub mod covenants;
 mod data_stack;
 pub mod error;
+pub mod hex;
 pub mod opcodes;
 pub mod result;
 pub mod script_builder;
@@ -12,6 +12,7 @@ pub mod script_class;
 pub mod standard;
 #[cfg(feature = "wasm32-sdk")]
 pub mod wasm;
+pub mod zk_precompiles;
 
 pub mod runtime_sig_op_counter;
 
@@ -21,7 +22,10 @@ use crate::caches::Cache;
 use crate::covenants::CovenantsContext;
 use crate::data_stack::{Stack, StackEntry};
 use crate::opcodes::{OpCodeImplementation, deserialize_next_opcode};
+use crate::zk_precompiles::compute_zk_sigop_cost;
+use crate::zk_precompiles::tags::ZkTag;
 use itertools::Itertools;
+use kaspa_consensus_core::constants::TX_VERSION_POST_COV_HF;
 use kaspa_consensus_core::hashing::sighash::{
     SigHashReusedValues, SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash,
 };
@@ -49,7 +53,7 @@ pub use engine_context::{EngineCtx, EngineCtxSync, EngineCtxUnsync};
 
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 pub const MAX_STACK_SIZE: usize = 244;
-pub const MAX_SCRIPTS_SIZE: usize = 10_000;
+pub const MAX_SCRIPTS_SIZE: usize = 300_000; // TODO(covpp-mainnet): Add proper activation logic, and think of a better regulation mechanism.
 pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 1_000_000; // TODO(covpp-mainnet): Add proper activation logic, and think of a better regulation mechanism.
 pub const MAX_OPS_PER_SCRIPT: i32 = 2010; // TODO(covpp-mainnet): Add proper activation logic, and think of a better regulation mechanism.
 pub const MAX_TX_IN_SEQUENCE_NUM: u64 = u64::MAX;
@@ -173,7 +177,7 @@ pub fn get_sig_op_count<T: VerifiableTransaction>(
     input_idx: usize,
     covenants_ctx: &CovenantsContext,
     seq_commit_accessor: Option<&dyn SeqCommitAccessor>,
-) -> Result<u8, TxScriptError> {
+) -> Result<u16, TxScriptError> {
     let sig_cache = Cache::new(0);
     let reused_values = SigHashReusedValuesUnsync::new();
     let ctx = EngineCtx::new(&sig_cache)
@@ -226,6 +230,7 @@ pub fn get_sig_op_count_upper_bound<T: VerifiableTransaction, Reused: SigHashReu
 
     let p2sh_script = signature_script_ops.last().expect("checked if empty above").as_ref().expect("checked if err above").get_data();
     let p2sh_ops = parse_script::<T, Reused>(p2sh_script).collect_vec();
+
     get_sig_op_count_by_opcodes(&p2sh_ops)
 }
 
@@ -245,14 +250,29 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
                             continue;
                         }
 
-                        let prev_opcode = opcodes[i - 1].as_ref().expect("they were checked before");
+                        let prev_opcode = opcodes[i - 1].as_ref().expect("checked above");
                         if prev_opcode.value() >= codes::OpTrue && prev_opcode.value() <= codes::Op16 {
                             num_sigs += to_small_int(prev_opcode) as u64;
                         } else {
                             num_sigs += MAX_PUB_KEYS_PER_MUTLTISIG as u64;
                         }
                     }
-                    _ => {} // If the opcode is not a sigop, no need to increase the count
+                    codes::OpZkPrecompile => {
+                        if i == 0 {
+                            num_sigs += ZkTag::max_cost() as u64;
+                            continue;
+                        }
+
+                        let prev_opcode = opcodes[i - 1].as_ref().expect("checked above");
+                        if prev_opcode.is_push_opcode()
+                            && let Some(tag_byte) = prev_opcode.get_data().first()
+                        {
+                            num_sigs += compute_zk_sigop_cost(*tag_byte) as u64;
+                        } else {
+                            num_sigs += ZkTag::max_cost() as u64;
+                        }
+                    }
+                    _ => {} // If the opcode is not sigop/zk, no need to increase the count
                 }
             }
             Err(_) => return num_sigs,
@@ -277,7 +297,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             ctx,
             cond_stack: vec![],
             num_ops: 0,
-            runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
+            runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX, TX_VERSION_POST_COV_HF),
             flags,
         }
     }
@@ -287,7 +307,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 
     /// Returns the number of signature operations used in script execution.
-    pub fn used_sig_ops(&self) -> u8 {
+    pub fn used_sig_ops(&self) -> u16 {
         self.runtime_sig_op_counter.used_sig_ops()
     }
 
@@ -332,7 +352,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             ctx,
             cond_stack: Default::default(),
             num_ops: 0,
-            runtime_sig_op_counter: RuntimeSigOpCounter::new(input.sig_op_count),
+            runtime_sig_op_counter: RuntimeSigOpCounter::new(input.sig_op_count, tx.version()),
             flags,
         }
     }
@@ -351,7 +371,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             // Runtime sig op counting is not needed for standalone scripts, only inputs have sig op count value
-            runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX),
+            runtime_sig_op_counter: RuntimeSigOpCounter::new(u8::MAX, TX_VERSION_POST_COV_HF),
             flags,
         }
     }
@@ -689,6 +709,7 @@ impl SpkEncoding for ScriptPublicKey {
 mod tests {
     use std::iter::once;
 
+    use crate::hex;
     use crate::opcodes::codes::{
         OpBlake2b, OpCheckMultiSig, OpCheckSig, OpCheckSigECDSA, OpCheckSigVerify, OpData1, OpData2, OpData32, OpDup, OpEndIf,
         OpEqual, OpFalse, OpIf, OpPushData1, OpTrue, OpVerify,
@@ -1148,7 +1169,7 @@ mod tests {
         name: &'static str,
         script_builder: ScriptBuilderFn,
         sig_builder: SigBuilder,
-        expected_sig_ops: u8,
+        expected_sig_ops: u16,
         sig_op_limit: u8,
         should_pass: bool,
     }

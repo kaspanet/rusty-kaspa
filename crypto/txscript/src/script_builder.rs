@@ -478,15 +478,9 @@ mod tests {
             //     unchecked: false,
             // },
             Test {
-                name: "push data len 32767 (canonical)",
-                data: vec![0x49; 32767],
-                expected: Err(ScriptBuilderError::DataRejected(32770)),
-                unchecked: false,
-            },
-            Test {
-                name: "push data len 65536 (canonical)",
-                data: vec![0x49; 65536],
-                expected: Err(ScriptBuilderError::DataRejected(65541)),
+                name: "push data len 300001 (canonical)",
+                data: vec![0x1; 3000001],
+                expected: Err(ScriptBuilderError::DataRejected(3000006)),
                 unchecked: false,
             },
             // // Additional tests for the add_data_unchecked function that

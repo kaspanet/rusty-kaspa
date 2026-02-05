@@ -138,7 +138,7 @@ macro_rules! opcode_list {
                         builder.add_i64(value)?;
                     }
                 }
-                else if let Some(Ok(value)) = token.strip_prefix("0x").and_then(|trimmed| Some(hex::decode(trimmed))) {
+                else if let Some(Ok(value)) = token.strip_prefix("0x").and_then(|trimmed| Some(crate::hex::decode(trimmed))) {
                     builder.script_mut().extend(&value);
                 }
                 else if token.len() >= 2 && token.chars().nth(0) == Some('\'') && token.chars().last() == Some('\'') {
