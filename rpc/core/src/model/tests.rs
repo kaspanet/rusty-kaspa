@@ -671,6 +671,22 @@ mod mockery {
 
     test!(GetBlockResponse);
 
+    impl Mock for GetTransactionRequest {
+        fn mock() -> Self {
+            GetTransactionRequest {
+                transaction_id: mock(),
+                include_unaccepted: true,
+                transaction_verbosity: Some(RpcDataVerbosityLevel::Full),
+                include_inclusion_data: true,
+                include_acceptance_data: false,
+                include_conf_count: false,
+                include_verbose_data: true,
+            }
+        }
+    }
+
+    test!(GetTransactionRequest);
+
     impl Mock for GetInfoRequest {
         fn mock() -> Self {
             GetInfoRequest {}

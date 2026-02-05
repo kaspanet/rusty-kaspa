@@ -57,7 +57,7 @@ pub enum RpcError {
     #[error("Block {0} is invalid. No verbose data can be built.")]
     InvalidBlock(RpcHash),
 
-    #[error("If includeTransactions is set, then includeBlockVerboseData must be set as well.")]
+    #[error("If transactions are requested via `transactionVerbosity`, then includeBlockVerboseData must be set as well.")]
     InvalidGetBlocksRequest,
 
     #[error("Transaction {0} not found")]

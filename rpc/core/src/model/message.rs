@@ -2833,7 +2833,7 @@ impl Deserializer for GetVirtualChainFromBlockV2Response {
 pub struct GetTransactionRequest {
     pub transaction_id: RpcTransactionId,
     pub include_unaccepted: bool,
-    pub include_transactions: bool,
+    pub transaction_verbosity: Option<RpcDataVerbosityLevel>,
     pub include_inclusion_data: bool,
     pub include_acceptance_data: bool,
     pub include_conf_count: bool,
@@ -2844,7 +2844,7 @@ impl GetTransactionRequest {
     pub fn new(
         transaction_id: RpcTransactionId,
         include_unaccepted: bool,
-        include_transactions: bool,
+        transaction_verbosity: Option<RpcDataVerbosityLevel>,
         include_inclusion_data: bool,
         include_acceptance_data: bool,
         include_conf_count: bool,
@@ -2853,7 +2853,7 @@ impl GetTransactionRequest {
         Self {
             transaction_id,
             include_unaccepted,
-            include_transactions,
+            transaction_verbosity,
             include_inclusion_data,
             include_acceptance_data,
             include_conf_count,
@@ -2867,7 +2867,7 @@ impl Serializer for GetTransactionRequest {
         store!(u16, &1, writer)?;
         store!(RpcTransactionId, &self.transaction_id, writer)?;
         store!(bool, &self.include_unaccepted, writer)?;
-        store!(bool, &self.include_transactions, writer)?;
+        serialize!(Option<RpcDataVerbosityLevel>, &self.transaction_verbosity, writer)?;
         store!(bool, &self.include_inclusion_data, writer)?;
         store!(bool, &self.include_acceptance_data, writer)?;
         store!(bool, &self.include_conf_count, writer)?;
@@ -2881,7 +2881,7 @@ impl Deserializer for GetTransactionRequest {
         let _version = load!(u16, reader)?;
         let transaction_id = load!(RpcTransactionId, reader)?;
         let include_unaccepted = load!(bool, reader)?;
-        let include_transactions = load!(bool, reader)?;
+        let transaction_verbosity = deserialize!(Option<RpcDataVerbosityLevel>, reader)?;
         let include_inclusion_data = load!(bool, reader)?;
         let include_acceptance_data = load!(bool, reader)?;
         let include_conf_count = load!(bool, reader)?;
@@ -2889,7 +2889,7 @@ impl Deserializer for GetTransactionRequest {
         Ok(Self {
             transaction_id,
             include_unaccepted,
-            include_transactions,
+            transaction_verbosity,
             include_inclusion_data,
             include_acceptance_data,
             include_conf_count,

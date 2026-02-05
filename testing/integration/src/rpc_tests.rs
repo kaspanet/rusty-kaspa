@@ -721,7 +721,7 @@ async fn sanity_test() {
                             GetTransactionRequest {
                                 transaction_id: 0.into(),
                                 include_unaccepted: true,
-                                include_transactions: true,
+                                transaction_verbosity: Some(kaspa_rpc_core::RpcDataVerbosityLevel::Full),
                                 include_inclusion_data: true,
                                 include_acceptance_data: true,
                                 include_conf_count: true,

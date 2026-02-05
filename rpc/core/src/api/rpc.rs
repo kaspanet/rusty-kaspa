@@ -504,7 +504,7 @@ pub trait RpcApi: Sync + Send + AnySync {
         &self,
         transaction_id: RpcTransactionId,
         include_unaccepted: bool,
-        include_transactions: bool,
+        transaction_verbosity: Option<RpcDataVerbosityLevel>,
         include_inclusion_data: bool,
         include_acceptance_data: bool,
         include_conf_count: bool,
@@ -515,7 +515,7 @@ pub trait RpcApi: Sync + Send + AnySync {
             GetTransactionRequest {
                 transaction_id,
                 include_unaccepted,
-                include_transactions,
+                transaction_verbosity,
                 include_inclusion_data,
                 include_acceptance_data,
                 include_conf_count,

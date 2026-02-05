@@ -539,7 +539,7 @@ from!(item: &kaspa_rpc_core::GetTransactionRequest, protowire::GetTransactionReq
     Self {
         transaction_id: item.transaction_id.to_string(),
         include_unaccepted: item.include_unaccepted,
-        include_transactions: item.include_transactions,
+        transaction_verbosity: item.transaction_verbosity.map(|v| v as i32),
         include_inclusion_data: item.include_inclusion_data,
         include_acceptance_data: item.include_acceptance_data,
         include_conf_count: item.include_conf_count,
@@ -827,7 +827,7 @@ try_from!(item: &protowire::GetTransactionRequestMessage, kaspa_rpc_core::GetTra
     Self {
         transaction_id: kaspa_rpc_core::RpcTransactionId::from_str(&item.transaction_id)?,
         include_unaccepted: item.include_unaccepted,
-        include_transactions: item.include_transactions,
+        transaction_verbosity: item.transaction_verbosity.map(RpcDataVerbosityLevel::try_from).transpose()?,
         include_inclusion_data: item.include_inclusion_data,
         include_acceptance_data: item.include_acceptance_data,
         include_conf_count: item.include_conf_count,

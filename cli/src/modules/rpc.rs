@@ -321,7 +321,19 @@ impl Rpc {
 
                 argv.reverse(); // reverse to allow popping arguments in the correct order
                 let include_unaccepted = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
-                let include_transactions = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
+                // parse transaction verbosity: accept named (none|low|high|full), numeric, or boolean (true=>Full, false=>None)
+                let tx_verbosity_token = argv.pop().unwrap_or("none".to_string());
+                let transaction_verbosity = match tx_verbosity_token.to_lowercase().as_str() {
+                    "none" => None,
+                    "low" => Some(RpcDataVerbosityLevel::Low),
+                    "high" => Some(RpcDataVerbosityLevel::High),
+                    "full" => Some(RpcDataVerbosityLevel::Full),
+                    other => {
+                        if let Ok(i) = other.parse::<i32>() { Some(RpcDataVerbosityLevel::try_from(i)?) }
+                        else if let Ok(b) = other.parse::<bool>() { if b { Some(RpcDataVerbosityLevel::Full) } else { None } }
+                        else { None }
+                    }
+                };
                 let include_inclusion_data = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
                 let include_acceptance_data = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
                 let include_conf_count = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
@@ -332,7 +344,7 @@ impl Rpc {
                         GetTransactionRequest {
                             transaction_id,
                             include_unaccepted,
-                            include_transactions,
+                            transaction_verbosity,
                             include_inclusion_data,
                             include_acceptance_data,
                             include_conf_count,

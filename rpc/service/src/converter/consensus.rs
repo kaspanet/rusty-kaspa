@@ -28,7 +28,7 @@ use kaspa_rpc_core::{
     RpcTransactionAcceptanceData, RpcTransactionData, RpcTransactionInclusionData, RpcTransactionInput,
     RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity, RpcTransactionOutput, RpcTransactionOutputVerboseData,
     RpcTransactionOutputVerboseDataVerbosity, RpcTransactionOutputVerbosity, RpcTransactionVerboseData,
-    RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerboseDataVerbosity, RpcUtxoEntryVerbosity,
+    RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcDataVerbosityLevel, RpcUtxoEntryVerboseDataVerbosity, RpcUtxoEntryVerbosity,
 };
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
@@ -167,7 +167,7 @@ impl ConsensusConverter {
         accepted_transaction_data: Vec<TxAcceptanceData>,
         included_transaction_data: Vec<TxInclusionData>,
         include_unaccepted: bool,
-        include_transactions: bool,
+        transaction_verbosity: Option<RpcDataVerbosityLevel>,
         include_inclusion_data: bool,
         include_acceptance_data: bool,
         include_conf_count: bool,
@@ -186,7 +186,7 @@ impl ConsensusConverter {
                 (None, None, None)
             };
 
-        let included_transaction_data = if include_inclusion_data || include_transactions {
+        let included_transaction_data = if include_inclusion_data || transaction_verbosity.is_some() {
             let mut included_transaction_data: Vec<RpcTransactionInclusionData> =
                 included_transaction_data.into_iter().map(RpcTransactionInclusionData::from).collect();
             if !include_unaccepted {
@@ -209,7 +209,7 @@ impl ConsensusConverter {
             vec![]
         };
 
-        let transactions = if include_transactions {
+        let transactions = if transaction_verbosity.is_some() {
             let mut transactions = Vec::with_capacity(included_transaction_data.len());
             for inclusion_data_point in included_transaction_data.iter() {
                 let header = if include_verbose_data {
