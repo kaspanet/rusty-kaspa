@@ -21,14 +21,14 @@ use kaspa_mining::model::{TransactionIdSet, owner_txs::OwnerTransactions};
 use kaspa_notify::converter::Converter;
 use kaspa_rpc_core::{
     BlockAddedNotification, Notification, RpcAcceptanceDataVerbosity, RpcAcceptedTransactionIds, RpcBlock, RpcBlockVerboseData,
-    RpcChainBlockAcceptedTransactions, RpcError, RpcHash, RpcHeaderVerbosity, RpcMempoolEntry, RpcMempoolEntryByAddress,
-    RpcMergesetBlockAcceptanceDataVerbosity, RpcOptionalHeader, RpcOptionalTransaction, RpcOptionalTransactionInput,
-    RpcOptionalTransactionInputVerboseData, RpcOptionalTransactionOutput, RpcOptionalTransactionOutputVerboseData,
-    RpcOptionalTransactionVerboseData, RpcOptionalUtxoEntry, RpcOptionalUtxoEntryVerboseData, RpcResult, RpcTransaction,
-    RpcTransactionAcceptanceData, RpcTransactionData, RpcTransactionInclusionData, RpcTransactionInput,
+    RpcChainBlockAcceptedTransactions, RpcDataVerbosityLevel, RpcError, RpcHash, RpcHeaderVerbosity, RpcMempoolEntry,
+    RpcMempoolEntryByAddress, RpcMergesetBlockAcceptanceDataVerbosity, RpcOptionalHeader, RpcOptionalTransaction,
+    RpcOptionalTransactionInput, RpcOptionalTransactionInputVerboseData, RpcOptionalTransactionOutput,
+    RpcOptionalTransactionOutputVerboseData, RpcOptionalTransactionVerboseData, RpcOptionalUtxoEntry, RpcOptionalUtxoEntryVerboseData,
+    RpcResult, RpcTransaction, RpcTransactionAcceptanceData, RpcTransactionData, RpcTransactionInclusionData, RpcTransactionInput,
     RpcTransactionInputVerboseDataVerbosity, RpcTransactionInputVerbosity, RpcTransactionOutput, RpcTransactionOutputVerboseData,
     RpcTransactionOutputVerboseDataVerbosity, RpcTransactionOutputVerbosity, RpcTransactionVerboseData,
-    RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcDataVerbosityLevel, RpcUtxoEntryVerboseDataVerbosity, RpcUtxoEntryVerbosity,
+    RpcTransactionVerboseDataVerbosity, RpcTransactionVerbosity, RpcUtxoEntryVerboseDataVerbosity, RpcUtxoEntryVerbosity,
 };
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
@@ -210,20 +210,92 @@ impl ConsensusConverter {
         };
 
         let transactions = if transaction_verbosity.is_some() {
+            let verbosity = RpcTransactionVerbosity::from(transaction_verbosity.unwrap());
             let mut transactions = Vec::with_capacity(included_transaction_data.len());
             for inclusion_data_point in included_transaction_data.iter() {
-                let header = if include_verbose_data {
+                // Fetch header if either include_verbose_data was requested or verbosity requests verbose data
+                let need_header = include_verbose_data || verbosity.verbose_data_verbosity.is_some();
+                let header = if need_header {
                     Some(consensus.clone().async_get_header(inclusion_data_point.including_block_hash).await?)
                 } else {
                     None
                 };
-                transactions.push(self.get_transaction(
-                    consensus,
-                    &consensus.clone().async_get_block_body(inclusion_data_point.including_block_hash).await?
-                        [inclusion_data_point.index_within_block as usize],
-                    header.as_ref().map(|h| h.as_ref()),
-                    include_verbose_data,
-                ));
+
+                // Fetch block body once (used by fallback path)
+                let body = consensus.clone().async_get_block_body(inclusion_data_point.including_block_hash).await?;
+                let tx = &body[inclusion_data_point.index_within_block as usize];
+
+                // If verbosity requires populated transactions (UTXO entries), try to obtain a SignableTransaction
+                // via the consensus transactions query. If that fails, fall back to the non-populated conversion.
+                let rpc_opt_tx = if verbosity.requires_populated_transaction() {
+                    // Try signable path once, and fall back on any failure.
+                    let maybe_signable_converted = (|| async {
+                        let acceptance_data =
+                            consensus.clone().async_get_block_acceptance_data(inclusion_data_point.including_block_hash).await.ok()?;
+                        let merged_block_data =
+                            acceptance_data.iter().find(|m| m.block_hash == inclusion_data_point.including_block_hash).cloned()?;
+                        let tqres = consensus
+                            .clone()
+                            .async_get_transactions_by_block_acceptance_data(
+                                inclusion_data_point.including_block_hash,
+                                merged_block_data,
+                                Some(vec![transaction_id]),
+                                TransactionType::SignableTransaction,
+                            )
+                            .await
+                            .ok()?;
+
+                        if let TransactionQueryResult::SignableTransaction(txs) = tqres {
+                            if let Some(signable_tx) = txs.iter().cloned().find(|s| s.tx.id() == transaction_id) {
+                                return match self
+                                    .convert_signable_transaction_with_verbosity(
+                                        consensus,
+                                        &signable_tx,
+                                        Some(inclusion_data_point.including_block_hash),
+                                        header.as_ref().map(|h| h.timestamp).unwrap_or_default(),
+                                        &verbosity,
+                                    )
+                                    .await
+                                {
+                                    Ok(opt) => Some(opt),
+                                    Err(_) => None,
+                                };
+                            }
+                        }
+
+                        None
+                    })()
+                    .await;
+
+                    if let Some(opt) = maybe_signable_converted {
+                        opt
+                    } else {
+                        // fallback to regular transaction conversion
+                        self.convert_transaction_with_verbosity(
+                            consensus,
+                            tx,
+                            Some(inclusion_data_point.including_block_hash),
+                            header.as_ref().map(|h| h.timestamp).unwrap_or_default(),
+                            &verbosity,
+                        )
+                        .await?
+                    }
+                } else {
+                    self.convert_transaction_with_verbosity(
+                        consensus,
+                        tx,
+                        Some(inclusion_data_point.including_block_hash),
+                        header.as_ref().map(|h| h.timestamp).unwrap_or_default(),
+                        &verbosity,
+                    )
+                    .await?
+                };
+
+                if rpc_opt_tx.is_empty() {
+                    continue;
+                }
+
+                transactions.push(rpc_opt_tx);
             }
             transactions
         } else {

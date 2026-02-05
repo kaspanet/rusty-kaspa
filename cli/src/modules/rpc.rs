@@ -324,14 +324,18 @@ impl Rpc {
                 // parse transaction verbosity: accept named (none|low|high|full), numeric, or boolean (true=>Full, false=>None)
                 let tx_verbosity_token = argv.pop().unwrap_or("none".to_string());
                 let transaction_verbosity = match tx_verbosity_token.to_lowercase().as_str() {
-                    "none" => None,
+                    "none" => Some(RpcDataVerbosityLevel::None),
                     "low" => Some(RpcDataVerbosityLevel::Low),
                     "high" => Some(RpcDataVerbosityLevel::High),
                     "full" => Some(RpcDataVerbosityLevel::Full),
                     other => {
-                        if let Ok(i) = other.parse::<i32>() { Some(RpcDataVerbosityLevel::try_from(i)?) }
-                        else if let Ok(b) = other.parse::<bool>() { if b { Some(RpcDataVerbosityLevel::Full) } else { None } }
-                        else { None }
+                        if let Ok(i) = other.parse::<i32>() {
+                            Some(RpcDataVerbosityLevel::try_from(i)?)
+                        } else if let Ok(b) = other.parse::<bool>() {
+                            if b { Some(RpcDataVerbosityLevel::Full) } else { Some(RpcDataVerbosityLevel::None) }
+                        } else {
+                            Some(RpcDataVerbosityLevel::None)
+                        }
                     }
                 };
                 let include_inclusion_data = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();

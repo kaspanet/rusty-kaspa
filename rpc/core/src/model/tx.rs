@@ -502,7 +502,7 @@ impl Deserializer for RpcTransactionAcceptanceData {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionData {
-    pub transactions: Vec<RpcTransaction>,
+    pub transactions: Vec<RpcOptionalTransaction>,
     pub inclusion_data: Vec<RpcTransactionInclusionData>,
     pub acceptance_data: Option<RpcTransactionAcceptanceData>,
     pub conf_count: Option<u64>,
@@ -511,7 +511,7 @@ pub struct RpcTransactionData {
 impl Serializer for RpcTransactionData {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        serialize!(Vec<RpcTransaction>, &self.transactions, writer)?;
+        serialize!(Vec<RpcOptionalTransaction>, &self.transactions, writer)?;
         serialize!(Vec<RpcTransactionInclusionData>, &self.inclusion_data, writer)?;
         serialize!(Option<RpcTransactionAcceptanceData>, &self.acceptance_data, writer)?;
         store!(Option<u64>, &self.conf_count, writer)?;
@@ -523,7 +523,7 @@ impl Serializer for RpcTransactionData {
 impl Deserializer for RpcTransactionData {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let transactions = deserialize!(Vec<RpcTransaction>, reader)?;
+        let transactions = deserialize!(Vec<RpcOptionalTransaction>, reader)?;
         let inclusion_data = deserialize!(Vec<RpcTransactionInclusionData>, reader)?;
         let acceptance_data = deserialize!(Option<RpcTransactionAcceptanceData>, reader)?;
         let conf_count = load!(Option<u64>, reader)?;

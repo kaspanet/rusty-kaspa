@@ -1587,7 +1587,7 @@ declare! {
     export interface IGetTransactionRequest {
         transactionId: HexString;
         includeUnaccepted?: boolean;
-        transactionVerbosity?: number; // RpcDataVerbosityLevel (optional): absence implies no transactions will be returned.
+        transactionVerbosity?: RpcDataVerbosityLevel;
         includeInclusionData?: boolean;
         includeAcceptanceData?: boolean;
         includeConfCount?: boolean;
