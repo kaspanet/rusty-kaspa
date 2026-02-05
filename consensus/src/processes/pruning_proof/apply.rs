@@ -21,7 +21,7 @@ use rocksdb::WriteBatch;
 
 use crate::{
     model::{
-        services::reachability::ReachabilityService,
+        services::{reachability::ReachabilityService, seq_commit_accessor::seq_commit_within_threshold},
         stores::{
             ghostdag::{GhostdagData, GhostdagStore},
             headers::HeaderStore,
@@ -58,10 +58,15 @@ impl PruningProofManager {
 
         let mut expanded_proof = proof;
         let mut trusted_gd_map: BlockHashMap<GhostdagData> = BlockHashMap::new();
+        let mut trusted_header_map: BlockHashMap<Arc<Header>> = BlockHashMap::new();
+
         // This loop expands the proof with the headers of the trusted set
         // and creates a hash to ghostdag data map of the trusted set
         for tb in trusted_set.iter() {
-            trusted_gd_map.insert(tb.block.hash(), tb.ghostdag.clone().into());
+            if !tb.ghostdag.is_null() {
+                trusted_gd_map.insert(tb.block.hash(), tb.ghostdag.clone().into());
+            }
+            trusted_header_map.insert(tb.block.hash(), tb.block.header.clone());
             let tb_block_level = calc_block_level(&tb.block.header, self.max_block_level);
 
             (0..=tb_block_level).for_each(|current_proof_level| {
@@ -78,7 +83,39 @@ impl PruningProofManager {
             level_proof.sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
         });
 
-        self.populate_reachability_and_headers(&expanded_proof);
+        // Maps pruning-point chain blocks to their selected parent for reachability seeding.
+        let mut chain_segment_map: BlockHashMap<Hash> = BlockHashMap::new();
+
+        if self.covenants_activation.is_active(pruning_point_header.daa_score) {
+            let pruning_point_blue_score = pruning_point_header.blue_score;
+            let threshold = self.finality_depth;
+            let mut current = pruning_point;
+            loop {
+                let current_header =
+                    trusted_header_map.get(&current).ok_or(PruningImportError::MissingPruningPointChainSegment(current))?;
+
+                if !seq_commit_within_threshold(pruning_point_blue_score, current_header.blue_score, threshold) {
+                    break;
+                }
+
+                // Walk the selected-parent chain until we cross the threshold or hit genesis.
+                // Relies on the covenants-activated chain-qualification rule: the first direct parent is the selected parent.
+                match current_header.direct_parents().first().copied() {
+                    Some(selected_parent) => {
+                        chain_segment_map.insert(current, selected_parent);
+                        current = selected_parent;
+                    }
+                    None if current == self.genesis_hash => {
+                        break;
+                    }
+                    None => {
+                        return Err(PruningImportError::MissingPruningPointChainSegment(current));
+                    }
+                }
+            }
+        }
+
+        self.populate_reachability_and_headers(&expanded_proof, &chain_segment_map)?;
 
         // sanity check
         {
@@ -161,7 +198,11 @@ impl PruningProofManager {
         Ok(())
     }
 
-    pub fn populate_reachability_and_headers(&self, proof: &PruningPointProof) {
+    pub fn populate_reachability_and_headers(
+        &self,
+        proof: &PruningPointProof,
+        chain_segment_map: &BlockHashMap<Hash>,
+    ) -> PruningImportResult<()> {
         let capacity_estimate = self.estimate_proof_unique_size(proof);
         let mut dag = BlockHashMap::with_capacity(capacity_estimate);
         let mut up_heap = BinaryHeap::with_capacity(capacity_estimate);
@@ -222,7 +263,17 @@ impl PruningProofManager {
             }
             let reachability_parents_hashes =
                 BlockHashes::new(reachability_parents.iter().map(|parent| parent.hash).collect_vec().push_if_empty(ORIGIN));
-            let selected_parent = reachability_parents.iter().max().map(|parent| parent.hash).unwrap_or(ORIGIN);
+
+            // Prefer the specified chain segment parent when provided; otherwise infer as usual.
+            let selected_parent = match chain_segment_map.get(&hash).copied() {
+                Some(specified_parent) if reachability_parents_hashes.iter().copied().any(|parent| parent == specified_parent) => {
+                    specified_parent
+                }
+                Some(specified_parent) => {
+                    return Err(PruningImportError::TrustedBlockSelectedParentMissing(hash, specified_parent));
+                }
+                None => reachability_parents.iter().max().map(|parent| parent.hash).unwrap_or(ORIGIN),
+            };
 
             // Prepare batch
             let mut batch = WriteBatch::default();
@@ -251,5 +302,7 @@ impl PruningProofManager {
             drop(reachability_write);
             drop(reachability_relations_write);
         }
+
+        Ok(())
     }
 }

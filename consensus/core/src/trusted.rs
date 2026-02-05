@@ -1,5 +1,5 @@
 use crate::{BlockHashMap, BlueWorkType, KType, block::Block, header::Header};
-use kaspa_hashes::Hash;
+use kaspa_hashes::{Hash, ZERO_HASH};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -13,6 +13,23 @@ pub struct ExternalGhostdagData {
     pub mergeset_blues: Vec<Hash>,
     pub mergeset_reds: Vec<Hash>,
     pub blues_anticone_sizes: BlockHashMap<KType>,
+}
+
+impl ExternalGhostdagData {
+    pub fn new_null() -> Self {
+        Self {
+            blue_score: 0,
+            blue_work: BlueWorkType::ZERO,
+            selected_parent: ZERO_HASH,
+            mergeset_blues: Default::default(),
+            mergeset_reds: Default::default(),
+            blues_anticone_sizes: Default::default(),
+        }
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.selected_parent == ZERO_HASH
+    }
 }
 
 /// Represents an externally provided block with associated Ghostdag data which

@@ -4,12 +4,16 @@ use crate::model::stores::reachability::DbReachabilityStore;
 use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
 
+/// Shared utility function to keep the "within threshold" definition consistent across callers.
+pub fn seq_commit_within_threshold(high_blue_score: u64, low_blue_score: u64, threshold: u64) -> bool {
+    low_blue_score + threshold > high_blue_score
+}
+
 #[derive(Copy, Clone)]
 pub struct SeqCommitAccessor<'a> {
     pub threshold: u64,
 
     pub sp: Hash,
-    pub sp_blue_score: Option<u64>,
     pub reachability_service: &'a MTReachabilityService<DbReachabilityStore>,
     pub headers_store: &'a DbHeadersStore,
 }
@@ -21,7 +25,7 @@ impl<'a> SeqCommitAccessor<'a> {
         headers_store: &'a DbHeadersStore,
         threshold: u64,
     ) -> Self {
-        Self { threshold, sp, sp_blue_score: None, reachability_service, headers_store }
+        Self { threshold, sp, reachability_service, headers_store }
     }
 }
 
@@ -32,7 +36,11 @@ impl<'a> kaspa_txscript::SeqCommitAccessor for SeqCommitAccessor<'a> {
 
     fn seq_commitment_within_depth(&self, block_hash: Hash) -> Option<Hash> {
         let header = self.headers_store.get_header(block_hash).optional().unwrap()?;
-        let sp_blue_score = self.sp_blue_score.unwrap_or_else(|| self.headers_store.get_blue_score(self.sp).unwrap());
-        if sp_blue_score < header.blue_score + self.threshold { Some(header.accepted_id_merkle_root) } else { None }
+        let sp_blue_score = self.headers_store.get_blue_score(self.sp).unwrap();
+        if seq_commit_within_threshold(sp_blue_score, header.blue_score, self.threshold) {
+            Some(header.accepted_id_merkle_root)
+        } else {
+            None
+        }
     }
 }

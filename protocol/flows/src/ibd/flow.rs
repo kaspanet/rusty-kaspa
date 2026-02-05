@@ -455,7 +455,7 @@ impl IbdFlow {
         while let Some(entry) = entry_stream.next().await? {
             entries.push(entry);
         }
-        // Create a topologically ordered vector of  trusted blocks - the pruning point and its anticone,
+        // Create a topologically ordered vector of trusted blocks - the pruning point and its anticone,
         // and their daa windows headers
         let mut trusted_set = pkg.build_trusted_subdag(entries)?;
 

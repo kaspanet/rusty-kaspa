@@ -4,7 +4,7 @@ use crate::{
         BlockProcessResult,
         RuleError::{
             BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext,
-            WrongHeaderPruningPoint,
+            WrongHeaderPruningPoint, WrongSelectedParentOrder,
         },
     },
     model::stores::{
@@ -237,6 +237,16 @@ impl VirtualStateProcessor {
         // Verify the header pruning point
         let reply = self.verify_header_pruning_point(header, ctx.ghostdag_data.to_compact())?;
         ctx.pruning_sample_from_pov = Some(reply.pruning_sample);
+
+        if self.covenants_activation.is_active(header.daa_score) {
+            let selected_parent = ctx.ghostdag_data.selected_parent;
+            let Some(first_parent) = header.direct_parents().first() else {
+                return Err(crate::errors::RuleError::NoParents);
+            };
+            if *first_parent != selected_parent {
+                return Err(WrongSelectedParentOrder(header.hash, selected_parent, *first_parent));
+            }
+        }
 
         // Verify all transactions are valid in context
         let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);

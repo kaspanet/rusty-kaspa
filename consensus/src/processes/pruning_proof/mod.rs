@@ -17,13 +17,14 @@ use rocksdb::WriteBatch;
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
     blockhash::{self, BlockHashExtensions},
+    config::params::ForkActivation,
     errors::{
         consensus::{ConsensusError, ConsensusResult},
         pruning::{PruningImportError, PruningImportResult},
     },
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData},
-    trusted::{TrustedGhostdagData, TrustedHeader},
+    trusted::{ExternalGhostdagData, TrustedGhostdagData, TrustedHeader},
 };
 use kaspa_core::info;
 use kaspa_database::prelude::StoreResultExt;
@@ -37,7 +38,7 @@ use crate::{
         storage::ConsensusStorage,
     },
     model::{
-        services::reachability::MTReachabilityService,
+        services::{reachability::MTReachabilityService, seq_commit_accessor::seq_commit_within_threshold},
         stores::{
             DB,
             depth::DbDepthStore,
@@ -121,8 +122,10 @@ pub struct PruningProofManager {
     genesis_hash: Hash,
     pruning_proof_m: u64,
     anticone_finalization_depth: u64,
+    finality_depth: u64,
     ghostdag_k: KType,
     skip_proof_of_work: bool,
+    covenants_activation: ForkActivation,
 
     is_consensus_exiting: Arc<AtomicBool>,
 }
@@ -141,8 +144,10 @@ impl PruningProofManager {
         genesis_hash: Hash,
         pruning_proof_m: u64,
         anticone_finalization_depth: u64,
+        finality_depth: u64,
         ghostdag_k: KType,
         skip_proof_of_work: bool,
+        covenants_activation: ForkActivation,
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -175,8 +180,10 @@ impl PruningProofManager {
             genesis_hash,
             pruning_proof_m,
             anticone_finalization_depth,
+            finality_depth,
             ghostdag_k,
             skip_proof_of_work,
+            covenants_activation,
 
             is_consensus_exiting,
         }
@@ -330,6 +337,31 @@ impl PruningProofManager {
             for parent in known_parents.iter().copied() {
                 if visited.insert(parent) {
                     queue.push_back(parent);
+                }
+            }
+        }
+
+        if self.covenants_activation.is_active(self.headers_store.get_daa_score(pruning_point).unwrap()) {
+            let pruning_point_header = self.headers_store.get_header(pruning_point).unwrap();
+            let pruning_point_blue_score = pruning_point_header.blue_score;
+
+            // We rely on the fact that finality depth is the interval between pruning points, so this chain segment
+            // is always accessible and valid (this function is called before pruning above the prev pruning point)
+            let threshold = self.finality_depth;
+
+            for current in self.reachability_service.default_backward_chain_iterator(pruning_point) {
+                if let Entry::Vacant(e) = daa_window_blocks.entry(current) {
+                    let header = self.headers_store.get_header(current).unwrap();
+                    // No need for full ghostdag data here; syncees only need the header for seq-commitment access.
+                    e.insert(TrustedHeader { header, ghostdag: ExternalGhostdagData::new_null() });
+                }
+
+                if !seq_commit_within_threshold(
+                    pruning_point_blue_score,
+                    self.headers_store.get_blue_score(current).unwrap(),
+                    threshold,
+                ) {
+                    break;
                 }
             }
         }
