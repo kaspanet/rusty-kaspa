@@ -1,9 +1,5 @@
-use kaspa_txscript::{
-    opcodes::codes::{OpTrue, OpVerify, OpZkPrecompile},
-    script_builder::ScriptBuilder,
-    zk_precompiles::tags::ZkTag,
-};
-use zk_covenant_common::{CovenantBase, Risc0Groth16Verify};
+use kaspa_txscript::{opcodes::codes::OpTrue, script_builder::ScriptBuilder, zk_precompiles::tags::ZkTag};
+use zk_covenant_common::{CovenantBase, Risc0Groth16Verify, Risc0SuccinctVerify};
 
 use crate::covenant::RollupCovenant;
 
@@ -46,9 +42,7 @@ pub fn build_redeem_script(
     // ZK verify based on proof type
     match *zk_tag {
         ZkTag::R0Succinct => {
-            builder.add_data(&[ZkTag::R0Succinct as u8]).unwrap();
-            builder.add_op(OpZkPrecompile).unwrap();
-            builder.add_op(OpVerify).unwrap();
+            builder.verify_risc0_succinct().unwrap();
         }
         ZkTag::Groth16 => {
             builder.verify_risc0_groth16().unwrap();

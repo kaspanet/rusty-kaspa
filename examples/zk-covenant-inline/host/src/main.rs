@@ -7,19 +7,13 @@ use kaspa_consensus_core::{
     tx::{PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
 use kaspa_hashes::Hash;
-use kaspa_txscript::zk_precompiles::risc0::Digest;
 use kaspa_txscript::{
-    caches::Cache,
-    covenants::CovenantsContext,
-    opcodes::codes::{OpTrue, OpVerify, OpZkPrecompile},
-    pay_to_script_hash_script,
-    script_builder::ScriptBuilder,
-    zk_precompiles::{risc0::merkle::MerkleProof, risc0::rcpt::SuccinctReceipt, tags::ZkTag},
-    EngineCtx, EngineFlags, TxScriptEngine,
+    caches::Cache, covenants::CovenantsContext, opcodes::codes::OpTrue, pay_to_script_hash_script, script_builder::ScriptBuilder,
+    zk_precompiles::tags::ZkTag, EngineCtx, EngineFlags, TxScriptEngine,
 };
-use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts};
+use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts, SuccinctReceipt};
 use std::time::Instant;
-use zk_covenant_common::{seal_to_compressed_proof, CovenantBase, Risc0Groth16Verify};
+use zk_covenant_common::{hashfn_str_to_id, seal_to_compressed_proof, CovenantBase, Risc0Groth16Verify, Risc0SuccinctVerify};
 use zk_covenant_inline_core::{Action, PublicInput, State, VersionedActionRaw};
 use zk_covenant_inline_methods::{ZK_COVENANT_INLINE_GUEST_ELF, ZK_COVENANT_INLINE_GUEST_ID};
 
@@ -82,15 +76,6 @@ fn main() {
 
     // --- Verify STARK (succinct) on-chain ---
     let receipt_inner = succinct_receipt.inner.succinct().unwrap();
-    let script_precompile_inner = SuccinctReceipt::new(
-        receipt_inner.seal.clone(),
-        Digest::new(receipt_inner.claim.digest().into()),
-        receipt_inner.hashfn.clone(),
-        MerkleProof::new(
-            receipt_inner.control_inclusion_proof.index,
-            receipt_inner.control_inclusion_proof.digests.iter().cloned().map(|d| Digest::new(d.into())).collect(),
-        ),
-    );
 
     let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_INLINE_GUEST_ID);
     let computed_len = build_redeem_script(public_input.prev_state_hash, 76, &program_id, ZkTag::R0Succinct).len() as i64;
@@ -106,8 +91,8 @@ fn main() {
         payload.clone(),
     );
 
-    let proof_bytes = borsh::to_vec(&script_precompile_inner).unwrap();
-    let final_sig_script = build_final_signature_script(&proof_bytes, new_state_hash_from_journal, &input_redeem_script);
+    // STARK uses separate components on the stack
+    let final_sig_script = build_succinct_signature_script(receipt_inner, new_state_hash_from_journal, &input_redeem_script);
     tx.inputs[0].signature_script = final_sig_script;
 
     verify_tx(&tx, &utxo_entry);
@@ -139,9 +124,41 @@ fn main() {
     println!("Groth16 proof verified successfully on-chain!");
 }
 
-// Unified final signature script builder (used by both STARK and Groth16)
+// Groth16 signature script builder (single compressed proof blob)
 fn build_final_signature_script(proof: &[u8], new_state_hash: &[u8], redeem_script: &[u8]) -> Vec<u8> {
     ScriptBuilder::new().add_data(proof).unwrap().add_data(new_state_hash).unwrap().add_data(redeem_script).unwrap().drain()
+}
+
+// Succinct (STARK) signature script builder with separate components
+// Stack layout for OpZkPrecompile (bottom to top):
+//   [seal, claim, hashfn, control_index, control_digests, journal_hash, image_id]
+fn build_succinct_signature_script(
+    receipt: &SuccinctReceipt<risc0_zkvm::ReceiptClaim>,
+    new_state_hash: &[u8],
+    redeem_script: &[u8],
+) -> Vec<u8> {
+    let seal_bytes: Vec<u8> = receipt.seal.iter().flat_map(|w| w.to_le_bytes()).collect();
+    let claim_bytes: Vec<u8> = receipt.claim.digest().as_bytes().to_vec();
+    let hashfn_byte: Vec<u8> = vec![hashfn_str_to_id(&receipt.hashfn).expect("invalid hashfn")];
+    let control_index_bytes: Vec<u8> = receipt.control_inclusion_proof.index.to_le_bytes().to_vec();
+    let control_digests_bytes: Vec<u8> = receipt.control_inclusion_proof.digests.iter().flat_map(|d| d.as_bytes()).copied().collect();
+
+    ScriptBuilder::new()
+        .add_data(&seal_bytes)
+        .unwrap()
+        .add_data(&claim_bytes)
+        .unwrap()
+        .add_data(&hashfn_byte)
+        .unwrap()
+        .add_data(&control_index_bytes)
+        .unwrap()
+        .add_data(&control_digests_bytes)
+        .unwrap()
+        .add_data(new_state_hash)
+        .unwrap()
+        .add_data(redeem_script)
+        .unwrap()
+        .drain()
 }
 
 fn make_mock_transaction(
@@ -216,13 +233,7 @@ fn build_redeem_script(old_state_hash: [u32; 8], redeem_script_len: i64, program
 
     match zk_tag {
         ZkTag::R0Succinct => {
-            // Push succinct ZK tag and verify
-            builder.add_data(&[ZkTag::R0Succinct as u8]).unwrap();
-            // Stack: [proof, journal_hash, program_id, ZkTag::R0Succinct]
-
-            builder.add_op(OpZkPrecompile).unwrap();
-            // Stack: [true]
-            builder.add_op(OpVerify).unwrap();
+            builder.verify_risc0_succinct().unwrap();
             // Stack: []
         }
         ZkTag::Groth16 => {

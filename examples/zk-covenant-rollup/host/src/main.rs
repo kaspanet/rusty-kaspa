@@ -7,18 +7,13 @@ mod tx;
 use std::time::Instant;
 
 use kaspa_hashes::Hash;
-use kaspa_txscript::{
-    pay_to_script_hash_script,
-    script_builder::ScriptBuilder,
-    zk_precompiles::{risc0::merkle::MerkleProof, risc0::rcpt::SuccinctReceipt, tags::ZkTag},
-};
-use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts};
+use kaspa_txscript::{pay_to_script_hash_script, script_builder::ScriptBuilder, zk_precompiles::tags::ZkTag};
+use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts, SuccinctReceipt};
 use zk_covenant_rollup_core::PublicInput;
 use zk_covenant_rollup_methods::{ZK_COVENANT_ROLLUP_GUEST_ELF, ZK_COVENANT_ROLLUP_GUEST_ID};
 
-use kaspa_txscript::zk_precompiles::risc0::Digest;
 use mock_chain::{build_initial_smt, build_mock_chain, calc_accepted_id_merkle_root, from_bytes};
-use zk_covenant_common::seal_to_compressed_proof;
+use zk_covenant_common::{hashfn_str_to_id, seal_to_compressed_proof};
 
 fn main() {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env()).init();
@@ -78,25 +73,14 @@ fn main() {
     let block_prove_to = *chain.block_hashes.last().unwrap();
     if let Ok(receipt_inner) = succinct_receipt.inner.succinct() {
         println!("\n=== On-chain STARK verification ===");
-        let script_receipt = SuccinctReceipt::new(
-            receipt_inner.seal.clone(),
-            Digest::new(receipt_inner.claim.digest().into()),
-            receipt_inner.hashfn.clone(),
-            MerkleProof::new(
-                receipt_inner.control_inclusion_proof.index,
-                receipt_inner.control_inclusion_proof.digests.iter().cloned().map(|d| Digest::new(d.into())).collect(),
-            ),
-        );
-        let proof_bytes = borsh::to_vec(&script_receipt).unwrap();
-        verify_onchain_with_proof(
-            &proof_bytes,
+        verify_onchain_succinct(
+            receipt_inner,
             &public_input,
             &new_state_hash,
             &new_seq_commitment,
             block_prove_to,
             &chain,
             &program_id,
-            &ZkTag::R0Succinct,
         );
         println!("STARK on-chain verification passed!");
     } else {
@@ -119,7 +103,7 @@ fn main() {
         println!("\n=== On-chain Groth16 verification ===");
         let compressed_proof = seal_to_compressed_proof(&groth16_inner.seal);
 
-        verify_onchain_with_proof(
+        verify_onchain_groth16(
             &compressed_proof,
             &public_input,
             &new_state_hash,
@@ -127,7 +111,6 @@ fn main() {
             block_prove_to,
             &chain,
             &program_id,
-            &ZkTag::Groth16,
         );
         println!("Groth16 on-chain verification passed!");
     } else {
@@ -145,16 +128,16 @@ fn verify_journal(journal: &[u8], public_input: &PublicInput, new_state_hash: &[
     assert_eq!(&journal[pi_size + 32..pi_size + 64], bytemuck::bytes_of(new_seq_commitment));
 }
 
-fn verify_onchain_with_proof(
-    proof_bytes: &[u8],
+fn verify_onchain_succinct(
+    receipt: &SuccinctReceipt<risc0_zkvm::ReceiptClaim>,
     public_input: &PublicInput,
     new_state_hash: &[u32; 8],
     new_seq_commitment: &[u32; 8],
     block_prove_to: Hash,
     chain: &mock_chain::MockChain,
     program_id: &[u8; 32],
-    zk_tag: &ZkTag,
 ) {
+    let zk_tag = ZkTag::R0Succinct;
     let mut computed_len = 75;
     loop {
         let script = redeem::build_redeem_script(
@@ -162,7 +145,7 @@ fn verify_onchain_with_proof(
             public_input.prev_seq_commitment,
             computed_len,
             program_id,
-            zk_tag,
+            &zk_tag,
         );
         let new_len = script.len() as i64;
         if new_len == computed_len {
@@ -172,8 +155,73 @@ fn verify_onchain_with_proof(
     }
 
     let input_redeem =
-        redeem::build_redeem_script(public_input.prev_state_hash, public_input.prev_seq_commitment, computed_len, program_id, zk_tag);
-    let output_redeem = redeem::build_redeem_script(*new_state_hash, *new_seq_commitment, computed_len, program_id, zk_tag);
+        redeem::build_redeem_script(public_input.prev_state_hash, public_input.prev_seq_commitment, computed_len, program_id, &zk_tag);
+    let output_redeem = redeem::build_redeem_script(*new_state_hash, *new_seq_commitment, computed_len, program_id, &zk_tag);
+
+    // Build transaction
+    let (mut tx, utxo) =
+        tx::make_mock_transaction(0, pay_to_script_hash_script(&input_redeem), pay_to_script_hash_script(&output_redeem));
+
+    // Build sig_script with separate Succinct components
+    // Stack layout (bottom to top): [seal, claim, hashfn, control_index, control_digests, block_prove_to, new_state_hash, redeem]
+    let seal_bytes: Vec<u8> = receipt.seal.iter().flat_map(|w| w.to_le_bytes()).collect();
+    let claim_bytes: Vec<u8> = receipt.claim.digest().as_bytes().to_vec();
+    let hashfn_byte: Vec<u8> = vec![hashfn_str_to_id(&receipt.hashfn).expect("invalid hashfn")];
+    let control_index_bytes: Vec<u8> = receipt.control_inclusion_proof.index.to_le_bytes().to_vec();
+    let control_digests_bytes: Vec<u8> =
+        receipt.control_inclusion_proof.digests.iter().flat_map(|d| d.as_bytes()).copied().collect();
+
+    tx.inputs[0].signature_script = ScriptBuilder::new()
+        .add_data(&seal_bytes)
+        .unwrap()
+        .add_data(&claim_bytes)
+        .unwrap()
+        .add_data(&hashfn_byte)
+        .unwrap()
+        .add_data(&control_index_bytes)
+        .unwrap()
+        .add_data(&control_digests_bytes)
+        .unwrap()
+        .add_data(block_prove_to.as_bytes().as_slice())
+        .unwrap()
+        .add_data(bytemuck::bytes_of(new_state_hash))
+        .unwrap()
+        .add_data(&input_redeem)
+        .unwrap()
+        .drain();
+
+    tx::verify_tx(&tx, &utxo, &chain.accessor);
+}
+
+fn verify_onchain_groth16(
+    proof_bytes: &[u8],
+    public_input: &PublicInput,
+    new_state_hash: &[u32; 8],
+    new_seq_commitment: &[u32; 8],
+    block_prove_to: Hash,
+    chain: &mock_chain::MockChain,
+    program_id: &[u8; 32],
+) {
+    let zk_tag = ZkTag::Groth16;
+    let mut computed_len = 75;
+    loop {
+        let script = redeem::build_redeem_script(
+            public_input.prev_state_hash,
+            public_input.prev_seq_commitment,
+            computed_len,
+            program_id,
+            &zk_tag,
+        );
+        let new_len = script.len() as i64;
+        if new_len == computed_len {
+            break;
+        }
+        computed_len = new_len;
+    }
+
+    let input_redeem =
+        redeem::build_redeem_script(public_input.prev_state_hash, public_input.prev_seq_commitment, computed_len, program_id, &zk_tag);
+    let output_redeem = redeem::build_redeem_script(*new_state_hash, *new_seq_commitment, computed_len, program_id, &zk_tag);
 
     // Build transaction
     let (mut tx, utxo) =
