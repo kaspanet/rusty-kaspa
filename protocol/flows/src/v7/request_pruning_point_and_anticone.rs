@@ -70,6 +70,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                             .daa_window_blocks
                             .iter()
                             .map(|daa_block| (self.header_format, daa_block).into())
+                            .chain(trusted_data.header_only_chain_segment.iter().map(|header| (self.header_format, header).into()))
                             .collect_vec(),
                         ghostdag_data: trusted_data.ghostdag_blocks.iter().map(|gd| gd.into()).collect_vec()
                     },

@@ -24,7 +24,7 @@ use kaspa_consensus_core::{
     },
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData},
-    trusted::{ExternalGhostdagData, TrustedGhostdagData, TrustedHeader},
+    trusted::{TrustedGhostdagData, TrustedHeader},
 };
 use kaspa_core::info;
 use kaspa_database::prelude::StoreResultExt;
@@ -273,6 +273,8 @@ impl PruningProofManager {
 
         let mut daa_window_blocks = BlockHashMap::new();
         let mut ghostdag_blocks = BlockHashMap::new();
+        let mut header_only_chain_segment = Vec::new();
+        let mut header_only_chain_segment_set = BlockHashSet::new();
 
         let ghostdag_k = self.ghostdag_k;
 
@@ -350,10 +352,10 @@ impl PruningProofManager {
             let threshold = self.finality_depth;
 
             for current in self.reachability_service.default_backward_chain_iterator(pruning_point) {
-                if let Entry::Vacant(e) = daa_window_blocks.entry(current) {
+                if !daa_window_blocks.contains_key(&current) && header_only_chain_segment_set.insert(current) {
                     let header = self.headers_store.get_header(current).unwrap();
                     // No need for full ghostdag data here; syncees only need the header for seq-commitment access.
-                    e.insert(TrustedHeader { header, ghostdag: ExternalGhostdagData::new_null() });
+                    header_only_chain_segment.push(header);
                 }
 
                 if !seq_commit_within_threshold(
@@ -369,6 +371,7 @@ impl PruningProofManager {
         PruningPointTrustedData {
             anticone,
             daa_window_blocks: daa_window_blocks.into_values().collect_vec(),
+            header_only_chain_segment,
             ghostdag_blocks: ghostdag_blocks.into_iter().map(|(hash, ghostdag)| TrustedGhostdagData { hash, ghostdag }).collect_vec(),
         }
     }

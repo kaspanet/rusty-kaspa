@@ -768,7 +768,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
             .collect_vec();
 
         let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_line_to_trusted_block).collect_vec();
-        tc.apply_pruning_proof(proof, &trusted_blocks).unwrap();
+        tc.apply_pruning_proof(proof, &trusted_blocks, &[]).unwrap();
 
         let past_pruning_points =
             gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();

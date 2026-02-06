@@ -441,9 +441,10 @@ async fn daemon_pruning_seqcommit_sync_test() {
     )
     .await;
 
-    // Choose a target almost a full finality depth below the current tip.
+    // Choose a target almost a full finality depth below the current tip, leaving
+    // a small buffer for the confirmation and spend blocks.
     let dag_info = rpc_client1.get_block_dag_info().await.unwrap();
-    let remaining = finality_depth.saturating_sub(1);
+    let remaining = finality_depth.saturating_sub(3);
     let target_block = walk_parent_chain(&rpc_client1, dag_info.sink, remaining).await;
 
     // Build a P2SH redeem script that exercises OpChainblockSeqCommit.
@@ -480,6 +481,27 @@ async fn daemon_pruning_seqcommit_sync_test() {
         "seqcommit transaction was not added to the mempool",
     )
     .await;
+
+    let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+    rpc_client1.submit_block(template.block, false).await.unwrap();
+
+    // Spend the P2SH output to trigger seqcommit validation on the syncer while the target is
+    // still within the finality depth of the spending block.
+    let outpoint = TransactionOutpoint::new(seqcommit_tx.id(), 0);
+    let pay_spk = pay_to_address_script(&miner_address);
+    let spend_fee = required_fee(1, 1);
+    let spend_value = total_in - fee - spend_fee;
+    let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("canonical signature script");
+    let spend_tx = Transaction::new(
+        TX_VERSION,
+        vec![TransactionInput::new(outpoint, signature_script, 0, 1)],
+        vec![TransactionOutput { value: spend_value, script_public_key: pay_spk, covenant: None }],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    rpc_client1.submit_transaction((&spend_tx).into(), false).await.unwrap();
 
     let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
     rpc_client1.submit_block(template.block, false).await.unwrap();
@@ -535,25 +557,8 @@ async fn daemon_pruning_seqcommit_sync_test() {
     )
     .await;
 
-    // Spend the P2SH output to trigger seqcommit validation on the syncee.
-    let outpoint = TransactionOutpoint::new(seqcommit_tx.id(), 0);
-    let pay_spk = pay_to_address_script(&miner_address);
-    let spend_fee = required_fee(1, 1);
-    let spend_value = total_in - fee - spend_fee;
-    let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("canonical signature script");
-    let spend_tx = Transaction::new(
-        TX_VERSION,
-        vec![TransactionInput::new(outpoint, signature_script, 0, 1)],
-        vec![TransactionOutput { value: spend_value, script_public_key: pay_spk, covenant: None }],
-        0,
-        SUBNETWORK_ID_NATIVE,
-        0,
-        vec![],
-    );
-    rpc_client1.submit_transaction((&spend_tx).into(), false).await.unwrap();
-
-    let template = rpc_client1.get_block_template(miner_address, vec![]).await.unwrap();
-    rpc_client1.submit_block(template.block, false).await.unwrap();
+    // The spend block is already mined before the pruning point moves, so the syncee
+    // should validate it while syncing historical data.
 
     let synced_check = rpc_client2.clone();
     let final_score = rpc_client1.get_server_info().await.unwrap().virtual_daa_score;

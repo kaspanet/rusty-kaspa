@@ -14,6 +14,7 @@ use kaspa_consensus_core::{
     trusted::TrustedBlock,
 };
 use kaspa_core::{debug, trace};
+use kaspa_database::prelude::StoreResultUnitExt;
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
@@ -42,7 +43,12 @@ use crate::{
 use super::PruningProofManager;
 
 impl PruningProofManager {
-    pub fn apply_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
+    pub fn apply_proof(
+        &self,
+        proof: PruningPointProof,
+        trusted_set: &[TrustedBlock],
+        header_only_chain_segment: &[Arc<Header>],
+    ) -> PruningImportResult<()> {
         // Following validation of a pruning proof, various consensus storages must be updated
 
         let pruning_point_header = proof[0].last().unwrap().clone();
@@ -63,9 +69,7 @@ impl PruningProofManager {
         // This loop expands the proof with the headers of the trusted set
         // and creates a hash to ghostdag data map of the trusted set
         for tb in trusted_set.iter() {
-            if !tb.ghostdag.is_null() {
-                trusted_gd_map.insert(tb.block.hash(), tb.ghostdag.clone().into());
-            }
+            trusted_gd_map.insert(tb.block.hash(), tb.ghostdag.clone().into());
             trusted_header_map.insert(tb.block.hash(), tb.block.header.clone());
             let tb_block_level = calc_block_level(&tb.block.header, self.max_block_level);
 
@@ -78,6 +82,17 @@ impl PruningProofManager {
                 expanded_proof[current_proof_level as usize].push(tb.block.header.clone());
             });
         }
+        for header in header_only_chain_segment.iter() {
+            if trusted_header_map.contains_key(&header.hash) {
+                continue;
+            }
+            trusted_header_map.insert(header.hash, header.clone());
+            if !self.headers_store.has(header.hash).unwrap() {
+                let block_level = calc_block_level(header, self.max_block_level);
+                self.headers_store.insert(header.hash, header.clone(), block_level).idempotent().unwrap();
+            }
+        }
+
         // topologically sort every level in the proof
         expanded_proof.iter_mut().for_each(|level_proof| {
             level_proof.sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
@@ -115,7 +130,7 @@ impl PruningProofManager {
             }
         }
 
-        self.populate_reachability_and_headers(&expanded_proof, &chain_segment_map)?;
+        self.populate_reachability_and_headers(&expanded_proof, header_only_chain_segment, &chain_segment_map)?;
 
         // sanity check
         {
@@ -201,16 +216,17 @@ impl PruningProofManager {
     pub fn populate_reachability_and_headers(
         &self,
         proof: &PruningPointProof,
+        header_only_chain_segment: &[Arc<Header>],
         chain_segment_map: &BlockHashMap<Hash>,
     ) -> PruningImportResult<()> {
         let capacity_estimate = self.estimate_proof_unique_size(proof);
         let mut dag = BlockHashMap::with_capacity(capacity_estimate);
         let mut up_heap = BinaryHeap::with_capacity(capacity_estimate);
-        for header in proof.iter().flatten().cloned() {
+        for header in proof.iter().flatten().chain(header_only_chain_segment.iter()).cloned() {
             if let Vacant(e) = dag.entry(header.hash) {
                 // pow passing has already been checked during validation
                 let block_level = calc_block_level(&header, self.max_block_level);
-                self.headers_store.insert(header.hash, header.clone(), block_level).unwrap();
+                self.headers_store.insert(header.hash, header.clone(), block_level).idempotent().unwrap();
 
                 let mut parents = BlockHashSet::with_capacity(header.direct_parents().len() * 2);
                 // We collect all available parent relations in order to maximize reachability information.

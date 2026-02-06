@@ -7,8 +7,10 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
     block::Block,
     blockhash::ORIGIN,
+    header::Header,
     trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
 };
+use std::sync::Arc;
 
 use crate::common::ProtocolError;
 
@@ -16,18 +18,23 @@ use crate::common::ProtocolError;
 /// the sub-DAG in the anticone and in the recent past of the synced pruning point
 pub struct TrustedDataPackage {
     pub daa_window: Vec<TrustedHeader>,
+    pub header_only_chain_segment: Vec<Arc<Header>>,
     pub ghostdag_window: Vec<TrustedGhostdagData>,
 }
 
 impl TrustedDataPackage {
-    pub fn new(daa_window: Vec<TrustedHeader>, ghostdag_window: Vec<TrustedGhostdagData>) -> Self {
-        Self { daa_window, ghostdag_window }
+    pub fn new(
+        daa_window: Vec<TrustedHeader>,
+        header_only_chain_segment: Vec<Arc<Header>>,
+        ghostdag_window: Vec<TrustedGhostdagData>,
+    ) -> Self {
+        Self { daa_window, header_only_chain_segment, ghostdag_window }
     }
 
     /// Returns the trusted set -- a sub-DAG in the anti-future of the pruning point which contains
     /// all the blocks and ghostdag data needed in order to validate the headers in the future of
     /// the pruning point
-    pub fn build_trusted_subdag(self, entries: Vec<TrustedDataEntry>) -> Result<Vec<TrustedBlock>, ProtocolError> {
+    pub fn build_trusted_subdag(self, entries: Vec<TrustedDataEntry>) -> Result<(Vec<TrustedBlock>, Vec<Arc<Header>>), ProtocolError> {
         let mut blocks = Vec::with_capacity(entries.len());
         let mut set = BlockHashSet::new();
         let mut map = BlockHashMap::new();
@@ -60,10 +67,6 @@ impl TrustedDataPackage {
         // Prune all missing ghostdag mergeset blocks. If due to this prune data becomes insufficient, future
         // IBD blocks will not validate correctly which will lead to a rule error and peer disconnection
         for tb in blocks.iter_mut() {
-            if tb.ghostdag.is_null() {
-                // Keep null ghostdag data as is
-                continue;
-            }
             tb.ghostdag.mergeset_blues.retain(|h| set.contains(h));
             tb.ghostdag.mergeset_reds.retain(|h| set.contains(h));
             tb.ghostdag.blues_anticone_sizes.retain(|k, _| set.contains(k));
@@ -72,10 +75,13 @@ impl TrustedDataPackage {
             }
         }
 
+        let header_only_chain_segment =
+            self.header_only_chain_segment.into_iter().filter(|header| !set.contains(&header.hash)).collect::<Vec<_>>();
+
         // Topological sort
         blocks.sort_by(|a, b| a.block.header.blue_work.cmp(&b.block.header.blue_work));
 
-        Ok(blocks)
+        Ok((blocks, header_only_chain_segment))
     }
 }
 

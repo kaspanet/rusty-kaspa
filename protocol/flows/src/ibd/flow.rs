@@ -439,7 +439,12 @@ impl IbdFlow {
         // (including the PP itself), alongside indexing denoting the respective metadata headers or ghostdag data
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
         let pkg: TrustedDataPackage = Versioned(self.header_format, msg).try_into()?;
-        debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
+        debug!(
+            "received trusted data with {} daa entries, {} header-only chain entries, and {} ghostdag entries",
+            pkg.daa_window.len(),
+            pkg.header_only_chain_segment.len(),
+            pkg.ghostdag_window.len()
+        );
 
         let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route, self.header_format);
         // The first entry of the trusted data is the pruning point itself.
@@ -457,7 +462,7 @@ impl IbdFlow {
         }
         // Create a topologically ordered vector of trusted blocks - the pruning point and its anticone,
         // and their daa windows headers
-        let mut trusted_set = pkg.build_trusted_subdag(entries)?;
+        let (mut trusted_set, header_only_chain_segment) = pkg.build_trusted_subdag(entries)?;
 
         if self.ctx.config.enable_sanity_checks {
             let con = self.ctx.consensus().unguarded_session_blocking();
@@ -465,7 +470,7 @@ impl IbdFlow {
                 .clone()
                 .spawn_blocking(move |c| {
                     let ref_proof = proof.clone();
-                    c.apply_pruning_proof(proof, &trusted_set)?;
+                    c.apply_pruning_proof(proof, &trusted_set, &header_only_chain_segment)?;
                     c.import_pruning_points(pruning_points)?;
 
                     info!("Building the proof which was just applied (sanity test)");
@@ -496,7 +501,7 @@ impl IbdFlow {
             trusted_set = staging
                 .clone()
                 .spawn_blocking(move |c| {
-                    c.apply_pruning_proof(proof, &trusted_set)?;
+                    c.apply_pruning_proof(proof, &trusted_set, &header_only_chain_segment)?;
                     c.import_pruning_points(pruning_points)?;
                     Result::<_, ProtocolError>::Ok(trusted_set)
                 })
