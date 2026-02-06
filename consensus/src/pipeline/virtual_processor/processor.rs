@@ -1087,7 +1087,9 @@ impl VirtualStateProcessor {
             .unwrap();
         txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
+        assert_eq!(virtual_state.ghostdag_data.selected_parent, virtual_state.parents[0]);
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
+        assert_eq!(virtual_state.ghostdag_data.selected_parent, parents_by_level.get(0).unwrap()[0]);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter());
 
         let accepted_id_merkle_root = self.calc_accepted_id_merkle_root(
