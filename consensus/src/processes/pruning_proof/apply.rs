@@ -83,13 +83,8 @@ impl PruningProofManager {
             });
         }
         for header in header_only_chain_segment.iter() {
-            if trusted_header_map.contains_key(&header.hash) {
-                continue;
-            }
-            trusted_header_map.insert(header.hash, header.clone());
-            if !self.headers_store.has(header.hash).unwrap() {
-                let block_level = calc_block_level(header, self.max_block_level);
-                self.headers_store.insert(header.hash, header.clone(), block_level).idempotent().unwrap();
+            if let Vacant(entry) = trusted_header_map.entry(header.hash) {
+                entry.insert(header.clone());
             }
         }
 
