@@ -213,20 +213,18 @@ impl ConsensusConverter {
                     included_transaction_data.into_iter().map(RpcTransactionInclusionData::from).collect();
                 if !include_unaccepted {
                     included_transaction_data.retain(|x| mbad.is_some_and(|mbad| x.including_block_hash == mbad.block_hash));
-                } else {
-                    included_transaction_data = vec![];
-                }
+                };
                 included_transaction_data
             } else {
                 vec![]
             };
 
-        // Populate transactions according to verbosity; return empty when not requested
+        // Populate transactions according to verbosity.
         let transactions: Vec<RpcOptionalTransaction> =
             if transaction_verbosity.is_some_and(|v| !matches!(v, RpcDataVerbosityLevel::None)) {
                 let tx_verbosity = RpcTransactionVerbosity::from(transaction_verbosity.unwrap());
 
-                // try to fetch a signable transaction to get entries (owned)
+                // if required try to fetch a signable transaction to get entries.
                 let maybe_signable = if tx_verbosity.requires_populated_transaction() {
                     if let (Some(mbad_ref), Some(accepted_ref)) = (mbad.as_ref(), accepted_acceptance_data.as_ref()) {
                         let res = consensus
