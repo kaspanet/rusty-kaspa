@@ -438,7 +438,7 @@ impl Deserializer for RpcChainBlockAcceptedTransactions {
 pub struct RpcTransactionInclusionData {
     /// The hash of the block that includes the transaction
     pub including_block_hash: RpcHash,
-    /// This is the blue score of the block that includes the transaction
+    /// This is the daa score of the block that includes the transaction
     pub including_daa_score: u64,
     /// The index within the block that this transaction occupies
     pub index_within_block: TransactionIndexType,
