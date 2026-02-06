@@ -82,14 +82,13 @@ impl PruningPointAndItsAnticoneRequestsFlow {
             // TODO(pre-covpp): refactor GRPC to properly include the header-only chain segment and cleanup old fields
             //
 
-            let mut sent = 0;
             let blocks_iter = trusted_data
                 .anticone
                 .iter()
                 .copied()
                 .map(|hash| (hash, false))
                 .chain(trusted_data.header_only_chain_segment.iter().copied().map(|hash| (hash, true)));
-            for (hash, send_header_only) in blocks_iter {
+            for (i, (hash, send_header_only)) in blocks_iter.enumerate() {
                 let block = if send_header_only {
                     let header = session.async_get_header(hash).await?;
                     Block::from_header_arc(header)
@@ -104,7 +103,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                         request_id
                     ))
                     .await?;
-                sent += 1;
+                let sent = i + 1;
                 if sent % IBD_BATCH_SIZE == 0 {
                     // No timeout here, as we don't care if the syncee takes its time computing,
                     // since it only blocks this dedicated flow
