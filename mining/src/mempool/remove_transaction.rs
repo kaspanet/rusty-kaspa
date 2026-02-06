@@ -1,7 +1,7 @@
 use crate::mempool::{
+    Mempool,
     errors::RuleResult,
     model::{pool::Pool, tx::TxRemovalReason},
-    Mempool,
 };
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_core::debug;

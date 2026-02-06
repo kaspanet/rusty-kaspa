@@ -15,8 +15,8 @@ use kaspa_consensus_core::tx::{
 use kaspa_consensus_core::utxo::utxo_view::UtxoView;
 use kaspa_core::trace;
 use kaspa_utils::sim::{Environment, Process, Resumption, Suspension};
-use rand::rngs::ThreadRng;
 use rand::Rng;
+use rand::rngs::ThreadRng;
 use rand_distr::{Distribution, Exp};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::cmp::max;

@@ -1,5 +1,5 @@
 use kaspa_core::debug;
-use kaspa_p2p_lib::{echo::EchoFlowInitializer, PeerOutboundType};
+use kaspa_p2p_lib::{PeerOutboundType, echo::EchoFlowInitializer};
 use std::{sync::Arc, time::Duration};
 
 #[tokio::main]

@@ -1,10 +1,10 @@
 use crate::{
+    MiningCounters,
     feerate::{FeerateEstimator, FeerateEstimatorArgs},
     model::{
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
         tx_query::TransactionQuery,
     },
-    MiningCounters,
 };
 
 use self::{

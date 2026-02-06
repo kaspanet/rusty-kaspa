@@ -8,11 +8,11 @@ use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
+    IncomingRoute, Router, SharedIncomingRoute,
     common::ProtocolError,
     convert::header::{HeaderFormat, Versioned},
     dequeue_with_timeout, dequeue_with_timestamp, make_message, make_request,
-    pb::{kaspad_message::Payload, InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage},
-    IncomingRoute, Router, SharedIncomingRoute,
+    pb::{InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage, kaspad_message::Payload},
 };
 use kaspa_utils::channel::{JobSender, JobTrySendError as TrySendError};
 use std::{collections::VecDeque, sync::Arc, time::Instant};
@@ -231,11 +231,16 @@ impl HandleRelayInvsFlow {
                     .iter()
                     .map(|b| make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(b.hash().into()) }))
                     .collect();
-                self.ctx.hub().broadcast_many(msgs).await;
+                // we filter out the current peer to avoid sending it back invs we know it already has
+                self.ctx.hub().broadcast_many(msgs, Some(self.router.key())).await;
 
+                // we filter out the current peer to avoid sending it back the same invs
                 self.ctx
                     .hub()
-                    .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(inv.hash.into()) }))
+                    .broadcast(
+                        make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(inv.hash.into()) }),
+                        Some(self.router.key()),
+                    )
                     .await;
             }
 

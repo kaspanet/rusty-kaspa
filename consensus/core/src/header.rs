@@ -1,4 +1,4 @@
-use crate::{hashing, BlueWorkType};
+use crate::{BlueWorkType, hashing};
 use borsh::{BorshDeserialize, BorshSerialize};
 use itertools::Itertools;
 use kaspa_hashes::Hash;
@@ -76,6 +76,7 @@ impl CompressedParents {
         *self = parents.try_into().unwrap();
     }
 
+    /// Returns the internal cumulative-sum run-length encoded representation.
     pub fn raw(&self) -> &[(u8, Vec<Hash>)] {
         &self.0
     }

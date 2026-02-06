@@ -3,8 +3,8 @@ use std::{
     collections::{HashMap, HashSet},
     net::{IpAddr, SocketAddr, ToSocketAddrs},
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, SystemTime},
 };
@@ -14,7 +14,7 @@ use futures_util::future::{join_all, try_join_all};
 use itertools::Itertools;
 use kaspa_addressmanager::{AddressManager, NetAddress};
 use kaspa_core::{debug, info, warn};
-use kaspa_p2p_lib::{common::ProtocolError, ConnectionError, Peer, PeerKey, PeerOutboundType};
+use kaspa_p2p_lib::{ConnectionError, Peer, PeerKey, PeerOutboundType, common::ProtocolError};
 use kaspa_perigeemanager::{PerigeeConfig, PerigeeManager};
 use kaspa_utils::triggers::SingleTrigger;
 use parking_lot::Mutex as ParkingLotMutex;
@@ -499,7 +499,6 @@ impl ConnectionManager {
                     addr_iter.len(),
                 );
             }
-
             for (res, net_addr) in (join_all(jobs).await).into_iter().zip(addrs_to_connect) {
                 match res {
                     Ok(_) => {

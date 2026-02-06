@@ -1,8 +1,8 @@
+use crate::ConnectionError;
 use crate::common::ProtocolError;
 use crate::core::hub::Hub;
 use crate::core::peer::PeerOutboundType;
-use crate::ConnectionError;
-use crate::{core::connection_handler::ConnectionHandler, Router};
+use crate::{Router, core::connection_handler::ConnectionHandler};
 use kaspa_utils::networking::NetAddress;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use std::ops::Deref;

@@ -1,8 +1,8 @@
 use kaspa_consensus_core::tx::{TransactionInput, TransactionOutput};
-use kaspa_consensus_core::{tx::Transaction, BlockHasher};
+use kaspa_consensus_core::{BlockHasher, tx::Transaction};
 use kaspa_database::prelude::CachePolicy;
-use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
+use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;

@@ -1,8 +1,8 @@
 use std::{
-    cmp::{min, Ordering},
-    collections::{hash_map::Entry, HashMap, HashSet},
+    cmp::{Ordering, min},
+    collections::{HashMap, HashSet, hash_map::Entry},
     net::SocketAddr,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
     time::{Duration, Instant},
 };
 
@@ -12,7 +12,7 @@ use kaspa_core::{info, trace};
 use kaspa_p2p_lib::{Hub, Peer, PeerKey, Router};
 use log::debug;
 use parking_lot::Mutex;
-use rand::{seq::IteratorRandom, thread_rng, Rng};
+use rand::{Rng, seq::IteratorRandom, thread_rng};
 
 // Tolerance for the amount of blocks verified in a round to trigger evaluation.
 // For example, at 0.175, if We expect to see 200 blocks verified in a round, but less or more than [`BLOCKS_VERIFIED_TOLERANCE`]
