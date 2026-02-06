@@ -604,14 +604,13 @@ fn generate_tx(
     rand::thread_rng().fill_bytes(&mut data);
 
     // set base version according to the usage of covenant
-    // can be overwriten by "randomize tx version" after, if set
     let mut tx_version = match with_covenant_id {
         true => TX_VERSION_POST_COV_HF,
         false => TX_VERSION,
     };
 
-    // randomize version between 0 and 1 (pre/post HF)
-    if randomize_tx_version {
+    // randomize version between 0 and 1 (pre/post HF) only if covenant isn't used
+    if randomize_tx_version && !with_covenant_id {
         tx_version = thread_rng().gen_range(0..=1);
     }
 
