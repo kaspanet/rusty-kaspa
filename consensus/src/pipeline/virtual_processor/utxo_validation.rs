@@ -379,7 +379,13 @@ impl VirtualStateProcessor {
         let populated_tx = PopulatedTransaction::new(transaction, entries);
 
         let seq_commit_accessor = if self.covenants_activation.is_active(pov_daa_score) {
-            Some(SeqCommitAccessor::new(sp, &self.reachability_service, &self.headers_store, self.finality_depth))
+            Some(SeqCommitAccessor::new(
+                sp,
+                &self.reachability_service,
+                &self.headers_store,
+                self.covenants_activation,
+                self.finality_depth,
+            ))
         } else {
             None
         };
@@ -453,7 +459,13 @@ impl VirtualStateProcessor {
             .map(|threshold| (contextual_mass.max(mutable_tx.calculated_non_contextual_masses.unwrap()), threshold));
 
         let seq_commit_accessor = if self.covenants_activation.is_active(pov_daa_score) {
-            Some(SeqCommitAccessor::new(sp, &self.reachability_service, &self.headers_store, self.finality_depth))
+            Some(SeqCommitAccessor::new(
+                sp,
+                &self.reachability_service,
+                &self.headers_store,
+                self.covenants_activation,
+                self.finality_depth,
+            ))
         } else {
             None
         };

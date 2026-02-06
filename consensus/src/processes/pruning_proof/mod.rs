@@ -359,11 +359,15 @@ impl PruningProofManager {
                     header_only_chain_segment.push(current);
                 }
 
-                if !seq_commit_within_threshold(
-                    pruning_point_blue_score,
-                    self.headers_store.get_blue_score(current).unwrap(),
-                    threshold,
-                ) {
+                let current_header = self.headers_store.get_compact_header_data(current).unwrap();
+                if !seq_commit_within_threshold(pruning_point_blue_score, current_header.blue_score, threshold) {
+                    break;
+                }
+
+                if !self.covenants_activation.is_active(current_header.daa_score) {
+                    // We are not demanded to provide the chain segment for blocks below the covenants activation
+                    // See the chain-qualification check in the utxo validation code for details as well as
+                    // code in SeqCommitAccessor
                     break;
                 }
             }

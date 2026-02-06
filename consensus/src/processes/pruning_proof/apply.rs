@@ -108,6 +108,13 @@ impl PruningProofManager {
                     break;
                 }
 
+                if !self.covenants_activation.is_active(current_header.daa_score) {
+                    // We cannot demand chain-qualification for blocks below the covenants activation
+                    // See the chain-qualification check in the utxo validation code for details as well as
+                    // code in SeqCommitAccessor
+                    break;
+                }
+
                 // Walk the selected-parent chain until we cross the threshold or hit genesis.
                 // Relies on the covenants-activated chain-qualification rule: the first direct parent is the selected parent.
                 match current_header.direct_parents().first().copied() {
