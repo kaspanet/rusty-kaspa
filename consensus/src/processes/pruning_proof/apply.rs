@@ -249,9 +249,7 @@ impl PruningProofManager {
 
             // Prefer the specified chain segment parent when provided; otherwise infer as usual.
             let selected_parent = match chain_segment_map.get(&hash).copied() {
-                Some(specified_parent) if reachability_parents_hashes.iter().copied().any(|parent| parent == specified_parent) => {
-                    specified_parent
-                }
+                Some(specified_parent) if reachability_parents_hashes.contains(&specified_parent) => specified_parent,
                 Some(specified_parent) => {
                     return Err(PruningImportError::TrustedBlockSelectedParentMissing(hash, specified_parent));
                 }
