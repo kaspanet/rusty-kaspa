@@ -462,6 +462,7 @@ impl IbdFlow {
         while let Some(entry) = entry_stream.next().await? {
             match entry.block.is_header_only() {
                 true => header_only_chain_segment.push(entry.block.header.clone()),
+                // We expect all header-only entries to be sent after all non-header-only entries
                 false if header_only_chain_segment.is_empty() => entries.push(entry),
                 false => {
                     return Err(ProtocolError::Other("trusted body entries arrived after header-only trusted entries"));
