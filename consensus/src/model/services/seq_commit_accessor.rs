@@ -35,6 +35,9 @@ impl<'a> kaspa_txscript::SeqCommitAccessor for SeqCommitAccessor<'a> {
     }
 
     fn seq_commitment_within_depth(&self, block_hash: Hash) -> Option<Hash> {
+        // TODO(pre-covpp): allow access to this opcode only F time after the hard-fork
+        // activation (to avoid requiring chain segment sync F time before the hard-fork)
+        //
         let header = self.headers_store.get_header(block_hash).optional().unwrap()?;
         let sp_blue_score = self.headers_store.get_blue_score(self.sp).unwrap();
         if seq_commit_within_threshold(sp_blue_score, header.blue_score, self.threshold) {
