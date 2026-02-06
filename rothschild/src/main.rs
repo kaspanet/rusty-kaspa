@@ -563,12 +563,21 @@ fn estimated_mass(num_utxos: usize, num_outs: u64) -> u64 {
     200 + 34 * num_outs + 1000 * (num_utxos as u64)
 }
 
-fn get_random_covenant_binding_among_input(inputs: &[TransactionInput], with_covenant_id: bool) -> Option<CovenantBinding> {
+fn apply_random_covenant_binding_from_input(
+    inputs: &[TransactionInput],
+    outputs: &mut [TransactionOutput],
+    with_covenant_id: bool,
+) -> Option<CovenantBinding> {
     if !with_covenant_id {
         return None;
     }
     let idx = thread_rng().gen_range(0..inputs.len());
-    Some(CovenantBinding::new(idx as u16, covenant_id(inputs[idx].previous_outpoint, std::iter::empty())))
+    let auth_outputs = outputs.iter().enumerate().map(|(i, output)| (i as u32, output));
+    let id = covenant_id(inputs[idx].previous_outpoint, auth_outputs);
+    for output in outputs.iter_mut() {
+        output.covenant = Some(CovenantBinding::new(idx as u16, id));
+    }
+    Some(CovenantBinding::new(idx as u16, id))
 }
 
 fn generate_tx(
@@ -587,13 +596,10 @@ fn generate_tx(
         .map(|(op, _)| TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, sig_op_count: 1 })
         .collect_vec();
 
-    let outputs = (0..num_outs)
-        .map(|_| TransactionOutput {
-            value: send_amount / num_outs,
-            script_public_key: script_public_key.clone(),
-            covenant: get_random_covenant_binding_among_input(&inputs, with_covenant_id),
-        })
+    let mut outputs = (0..num_outs)
+        .map(|_| TransactionOutput { value: send_amount / num_outs, script_public_key: script_public_key.clone(), covenant: None })
         .collect_vec();
+    apply_random_covenant_binding_from_input(&inputs, &mut outputs, with_covenant_id);
     let mut data = vec![0u8; payload_size];
     rand::thread_rng().fill_bytes(&mut data);
 
