@@ -5,7 +5,7 @@ use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
     config::params::{TESTNET_PARAMS, TESTNET12_PARAMS},
-    constants::{SOMPI_PER_KASPA, TX_VERSION_POST_COV_HF},
+    constants::{SOMPI_PER_KASPA, TX_VERSION, TX_VERSION_POST_COV_HF},
     hashing::covenant_id::covenant_id,
     sign::sign,
     subnets::SUBNETWORK_ID_NATIVE,
@@ -597,7 +597,13 @@ fn generate_tx(
     let mut data = vec![0u8; payload_size];
     rand::thread_rng().fill_bytes(&mut data);
 
-    let mut tx_version = TX_VERSION_POST_COV_HF;
+    // set base version according to the usage of covenant
+    // can be overwriten by "randomize tx version" after, if set
+    let mut tx_version = match with_covenant_id {
+        true => TX_VERSION_POST_COV_HF,
+        false => TX_VERSION,
+    };
+
     // randomize version between 0 and 1 (pre/post HF)
     if randomize_tx_version {
         tx_version = thread_rng().gen_range(0..=1);
