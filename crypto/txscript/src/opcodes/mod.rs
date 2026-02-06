@@ -1209,7 +1209,7 @@ opcode_list! {
             _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
         }
     }
-    opcode OpTxInputBlockDaaScore<0xc0, 1>(self, vm){
+    opcode OpTxInputDaaScore<0xc0, 1>(self, vm){
         if vm.flags.covenants_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
@@ -1218,7 +1218,7 @@ opcode_list! {
                     let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
                     push_number(utxo.block_daa_score as i64, vm)
                 },
-                _ => Err(TxScriptError::InvalidSource("OpTxInputBlockDaaScore only applies to transaction inputs".to_string()))
+                _ => Err(TxScriptError::InvalidSource("OpTxInputDaaScore only applies to transaction inputs".to_string()))
             }
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1691,7 +1691,7 @@ mod test {
             opcodes::OpOutpointIndex::empty().expect("Should accept empty"),
             opcodes::OpTxInputScriptSigSubstr::empty().expect("Should accept empty"),
             opcodes::OpTxInputSeq::empty().expect("Should accept empty"),
-            opcodes::OpTxInputBlockDaaScore::empty().expect("Should accept empty"),
+            opcodes::OpTxInputDaaScore::empty().expect("Should accept empty"),
             opcodes::OpTxInputIsCoinbase::empty().expect("Should accept empty"),
         ];
 
@@ -4244,12 +4244,13 @@ mod test {
         use super::*;
         use crate::covenants::CovenantsContext;
         use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
+        use crate::{EngineCtx, pay_to_script_hash_script};
         use crate::{EngineFlags, SpkEncoding, opcodes::codes};
         use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
         use kaspa_consensus_core::subnets::SubnetworkId;
         use kaspa_consensus_core::tx::{
-            CovenantBinding, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint,
-            TransactionOutput, UtxoEntry,
+            CovenantBinding, MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput,
+            TransactionOutpoint, TransactionOutput, UtxoEntry,
         };
         use kaspa_hashes::Hash;
         use kaspa_txscript_errors::CovenantsError;
@@ -4718,6 +4719,262 @@ mod test {
             // let spk_large_sig_substr = script(|sb| sb.add_i64(0)?.add_i64(0)?.add_i64(600)?.add_op(codes::OpTxInputScriptSigSubstr));
             // let err = run_script(&tx_large_sig, entries.clone(), 0, spk_large_sig_substr).expect_err("sig substr too long");
             // assert!(matches!(err, TxScriptError::ElementTooBig(_, _)));
+        }
+
+        #[test]
+        fn test_op_tx_input_daa_score() {
+            // Test: Get DAA score for each input
+            for (input_idx, expected_daa_score) in [(0, 12345), (1, 67890), (2, 99999)] {
+                let mut redeem_script = ScriptBuilder::new();
+                redeem_script
+                    .add_i64(input_idx)
+                    .unwrap()
+                    .add_op(codes::OpTxInputDaaScore)
+                    .unwrap()
+                    .add_i64(expected_daa_score)
+                    .unwrap()
+                    .add_op(codes::OpEqual)
+                    .unwrap();
+                let redeem_script = redeem_script.drain();
+
+                let spk = pay_to_script_hash_script(&redeem_script);
+
+                let inputs = vec![
+                    TransactionInput::new(TransactionOutpoint::new(Hash::default(), 0), vec![0xaa], 0, 0),
+                    TransactionInput::new(TransactionOutpoint::new(Hash::default(), 1), vec![0xbb], 0, 0),
+                    TransactionInput::new(TransactionOutpoint::new(Hash::default(), 2), vec![0xcc], 0, 0),
+                ];
+
+                let output_spk = ScriptBuilder::new().add_op(codes::OpTrue).expect("spk build").drain();
+                let outputs = vec![TransactionOutput::new(100, ScriptPublicKey::new(0, output_spk.into()))];
+
+                let mut tx = Transaction::new(1, inputs, outputs, 0, Default::default(), 0, vec![]);
+                tx.finalize();
+
+                let input_spk = ScriptBuilder::new().add_op(codes::OpTrue).expect("spk build").drain();
+                let entries = vec![
+                    UtxoEntry::new(1000, ScriptPublicKey::new(0, input_spk.clone().into()), 12345, false, None),
+                    UtxoEntry::new(2000, ScriptPublicKey::new(0, input_spk.clone().into()), 67890, false, None),
+                    UtxoEntry::new(3000, ScriptPublicKey::new(0, input_spk.into()), 99999, false, None),
+                ];
+
+                let mut tx = MutableTransaction::with_entries(tx, entries.clone());
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                // Update the SPK of input 0 to be P2SH
+                tx.entries[0].as_mut().unwrap().script_public_key = spk;
+
+                let tx = tx.as_verifiable();
+                let sig_cache = Cache::new(10_000);
+                let reused_values = SigHashReusedValuesUnsync::new();
+
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    EngineCtx::new(&sig_cache).with_reused(&reused_values),
+                    EngineFlags { covenants_enabled: true },
+                );
+
+                vm.execute().expect(&format!("input {} daa score", input_idx));
+            }
+
+            // Test: Invalid input index (negative)
+            {
+                let mut redeem_script = ScriptBuilder::new();
+                redeem_script.add_i64(-1).unwrap().add_op(codes::OpTxInputDaaScore).unwrap();
+                let redeem_script = redeem_script.drain();
+
+                let spk = pay_to_script_hash_script(&redeem_script);
+
+                let input = TransactionInput::new(TransactionOutpoint::new(Hash::default(), 0), vec![], 0, 0);
+                let output = TransactionOutput::new(100, ScriptPublicKey::new(0, vec![codes::OpTrue].into()));
+                let mut tx = Transaction::new(1, vec![input], vec![output], 0, Default::default(), 0, vec![]);
+                tx.finalize();
+
+                let utxo_entry = UtxoEntry::new(1000, spk, 12345, false, None);
+                let mut tx = MutableTransaction::with_entries(tx, vec![utxo_entry]);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let sig_cache = Cache::new(10_000);
+                let reused_values = SigHashReusedValuesUnsync::new();
+
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    EngineCtx::new(&sig_cache).with_reused(&reused_values),
+                    EngineFlags { covenants_enabled: true },
+                );
+
+                let err = vm.execute().expect_err("should fail with negative index");
+                // Negative index fails at i32_to_usize conversion
+                assert!(matches!(err, TxScriptError::InvalidIndex(-1)));
+            }
+
+            // Test: Invalid input index (out of bounds)
+            {
+                let mut redeem_script = ScriptBuilder::new();
+                redeem_script.add_i64(3).unwrap().add_op(codes::OpTxInputDaaScore).unwrap();
+                let redeem_script = redeem_script.drain();
+
+                let spk = pay_to_script_hash_script(&redeem_script);
+
+                let inputs = vec![
+                    TransactionInput::new(TransactionOutpoint::new(Hash::default(), 0), vec![], 0, 0),
+                    TransactionInput::new(TransactionOutpoint::new(Hash::default(), 1), vec![], 0, 0),
+                    TransactionInput::new(TransactionOutpoint::new(Hash::default(), 2), vec![], 0, 0),
+                ];
+                let output = TransactionOutput::new(100, ScriptPublicKey::new(0, vec![codes::OpTrue].into()));
+                let mut tx = Transaction::new(1, inputs, vec![output], 0, Default::default(), 0, vec![]);
+                tx.finalize();
+
+                let input_spk = ScriptBuilder::new().add_op(codes::OpTrue).expect("spk build").drain();
+                let entries = vec![
+                    UtxoEntry::new(1000, spk, 12345, false, None),
+                    UtxoEntry::new(2000, ScriptPublicKey::new(0, input_spk.clone().into()), 67890, false, None),
+                    UtxoEntry::new(3000, ScriptPublicKey::new(0, input_spk.into()), 99999, false, None),
+                ];
+
+                let mut tx = MutableTransaction::with_entries(tx, entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let sig_cache = Cache::new(10_000);
+                let reused_values = SigHashReusedValuesUnsync::new();
+
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    EngineCtx::new(&sig_cache).with_reused(&reused_values),
+                    EngineFlags { covenants_enabled: true },
+                );
+
+                let err = vm.execute().expect_err("should fail with out of bounds index");
+                assert!(matches!(err, TxScriptError::InvalidInputIndex(3, 3)));
+            }
+
+            // Test: Compare DAA scores between inputs
+            {
+                let mut redeem_script = ScriptBuilder::new();
+                redeem_script
+                    .add_i64(0)
+                    .unwrap()
+                    .add_op(codes::OpTxInputDaaScore)
+                    .unwrap()
+                    .add_i64(1)
+                    .unwrap()
+                    .add_op(codes::OpTxInputDaaScore)
+                    .unwrap()
+                    .add_op(codes::OpLessThan)
+                    .unwrap(); // 12345 < 67890
+                let redeem_script = redeem_script.drain();
+
+                let spk = pay_to_script_hash_script(&redeem_script);
+
+                let inputs = vec![
+                    TransactionInput::new(TransactionOutpoint::new(Hash::default(), 0), vec![], 0, 0),
+                    TransactionInput::new(TransactionOutpoint::new(Hash::default(), 1), vec![], 0, 0),
+                ];
+                let output = TransactionOutput::new(100, ScriptPublicKey::new(0, vec![codes::OpTrue].into()));
+                let mut tx = Transaction::new(1, inputs, vec![output], 0, Default::default(), 0, vec![]);
+                tx.finalize();
+
+                let input_spk = ScriptBuilder::new().add_op(codes::OpTrue).expect("spk build").drain();
+                let entries = vec![
+                    UtxoEntry::new(1000, spk, 12345, false, None),
+                    UtxoEntry::new(2000, ScriptPublicKey::new(0, input_spk.into()), 67890, false, None),
+                ];
+
+                let mut tx = MutableTransaction::with_entries(tx, entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let sig_cache = Cache::new(10_000);
+                let reused_values = SigHashReusedValuesUnsync::new();
+
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    EngineCtx::new(&sig_cache).with_reused(&reused_values),
+                    EngineFlags { covenants_enabled: true },
+                );
+
+                vm.execute().expect("compare daa scores");
+            }
+        }
+        #[test]
+        fn test_op_tx_input_daa_score_in_script() {
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+            let ctx = EngineContext::new(&sig_cache).with_reused(&reused_values);
+
+            // Script: Require that input 0 must be from block DAA score >= 50000
+            let redeem_script = ScriptBuilder::new()
+                .add_i64(0)
+                .unwrap()
+                .add_op(codes::OpTxInputDaaScore)
+                .unwrap()
+                .add_i64(50000)
+                .unwrap()
+                .add_op(codes::OpGreaterThanOrEqual)
+                .unwrap()
+                .drain();
+
+            let spk = pay_to_script_hash_script(&redeem_script);
+
+            // Test: Input with DAA score above threshold (should pass)
+            {
+                let input = TransactionInput::new(TransactionOutpoint::new(Hash::default(), 0), vec![], 0, 0);
+                let output = TransactionOutput::new(100, ScriptPublicKey::new(0, vec![codes::OpTrue].into()));
+                let mut tx = Transaction::new(1, vec![input.clone()], vec![output], 0, Default::default(), 0, vec![]);
+                tx.finalize();
+
+                let utxo_entry = UtxoEntry::new(1000, spk.clone(), 60000, false, None); // DAA score 60000
+                let mut tx = MutableTransaction::with_entries(tx, vec![utxo_entry.clone()]);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    ctx,
+                    EngineFlags { covenants_enabled: true },
+                );
+                assert_eq!(vm.execute(), Ok(()), "Should pass with DAA score 60000 >= 50000");
+            }
+
+            // Test: Input with DAA score below threshold (should fail)
+            {
+                let input = TransactionInput::new(TransactionOutpoint::new(Hash::default(), 0), vec![], 0, 0);
+                let output = TransactionOutput::new(100, ScriptPublicKey::new(0, vec![codes::OpTrue].into()));
+                let mut tx = Transaction::new(1, vec![input.clone()], vec![output], 0, Default::default(), 0, vec![]);
+                tx.finalize();
+
+                let utxo_entry = UtxoEntry::new(1000, spk.clone(), 40000, false, None); // DAA score 40000
+                let mut tx = MutableTransaction::with_entries(tx, vec![utxo_entry.clone()]);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    ctx,
+                    EngineFlags { covenants_enabled: true },
+                );
+                assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse), "Should fail with DAA score 40000 < 50000");
+            }
         }
     }
 }
