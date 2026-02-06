@@ -1209,7 +1209,21 @@ opcode_list! {
             _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
         }
     }
-    opcode OpTxInputBlockDaaScore<0xc0, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxInputBlockDaaScore<0xc0, 1>(self, vm){
+        if vm.flags.covenants_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                    let idx = i32_to_usize(idx)?;
+                    let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidInputIndex(idx as i32, tx.inputs().len()))?;
+                    push_number(utxo.block_daa_score as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpTxInputBlockDaaScore only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
     opcode OpTxInputIsCoinbase<0xc1, 1>(self, vm){
         if vm.flags.covenants_enabled {
             match vm.script_source {
