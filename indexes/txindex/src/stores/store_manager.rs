@@ -1,7 +1,7 @@
 use std::{ops::RangeBounds, sync::Arc};
 
 use kaspa_consensus_core::{BlockHashSet, Hash, tx::TransactionId};
-use kaspa_core::{info, trace};
+use kaspa_core::{debug, trace};
 use kaspa_database::prelude::{BatchDbWriter, CachePolicy, DB, DbWriter, StoreResult};
 use rocksdb::WriteBatch;
 
@@ -293,7 +293,7 @@ impl Store {
             self.included_transactions_store.remove_transaction_inclusion_data(&mut writer, data.transaction_id, data.daa_score)?;
         }
 
-        info!("Pruned inclusion data with max {} from start {:?} to end {:?}", max_daa_score, start, end);
+        debug!("Pruned inclusion data with max {} from start {:?} to end {:?}", max_daa_score, start, end);
         self.including_daascore_refs_store.remove_daa_score_refs(&mut writer, start, end.clone())?;
 
         self.pruning_sync_store.set_new_next_to_prune_daa_score(&mut writer, end.daa_score)?;
@@ -342,7 +342,7 @@ impl Store {
             self.accepted_transactions_store.remove_transaction_acceptance_data(&mut writer, data.transaction_id, data.blue_score)?;
         }
 
-        info!("Pruned acceptance data with max {} from start {:?} to end {:?}", max_blue_score, start, end);
+        debug!("Pruned acceptance data with max {} from start {:?} to end {:?}", max_blue_score, start, end);
 
         self.accepting_bluescore_refs_store.remove_blue_score_refs(&mut writer, start, end.clone())?;
 
