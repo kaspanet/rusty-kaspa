@@ -1,7 +1,7 @@
 use crate::{
     hashing::{
-        sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync},
-        sighash_type::{SigHashType, SIG_HASH_ALL},
+        sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash},
+        sighash_type::{SIG_HASH_ALL, SigHashType},
     },
     tx::{SignableTransaction, VerifiableTransaction},
 };
@@ -146,11 +146,7 @@ pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: &[[u
             additional_signatures_required = true;
         }
     }
-    if additional_signatures_required {
-        Signed::Partially(mutable_tx)
-    } else {
-        Signed::Fully(mutable_tx)
-    }
+    if additional_signatures_required { Signed::Partially(mutable_tx) } else { Signed::Fully(mutable_tx) }
 }
 
 /// Sign a transaction input with a sighash_type using schnorr
@@ -187,7 +183,7 @@ pub fn verify(tx: &impl VerifiableTransaction) -> Result<(), Error> {
 mod tests {
     use super::*;
     use crate::{subnets::SubnetworkId, tx::*};
-    use secp256k1::{rand, Secp256k1};
+    use secp256k1::{Secp256k1, rand};
     use std::str::FromStr;
 
     #[test]

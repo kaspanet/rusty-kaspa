@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::ops::Deref;
 
 use {
-    constants::perf::{PerfParams, PERF_PARAMS},
+    constants::perf::{PERF_PARAMS, PerfParams},
     params::Params,
 };
 

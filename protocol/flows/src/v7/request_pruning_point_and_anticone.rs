@@ -5,14 +5,14 @@
 
 use itertools::Itertools;
 use kaspa_p2p_lib::{
+    IncomingRoute, Router,
     common::ProtocolError,
     convert::header::HeaderFormat,
     dequeue, dequeue_with_request_id, make_response,
     pb::{
-        kaspad_message::Payload, BlockWithTrustedDataV4Message, DoneBlocksWithTrustedDataMessage, PruningPointsMessage,
-        TrustedDataMessage,
+        BlockWithTrustedDataV4Message, DoneBlocksWithTrustedDataMessage, PruningPointsMessage, TrustedDataMessage,
+        kaspad_message::Payload,
     },
-    IncomingRoute, Router,
 };
 use log::debug;
 use std::sync::Arc;

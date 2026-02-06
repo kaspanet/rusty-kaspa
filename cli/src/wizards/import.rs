@@ -1,7 +1,7 @@
+use crate::KaspaCli;
 use crate::error::Error;
 use crate::imports::*;
 use crate::result::Result;
-use crate::KaspaCli;
 use kaspa_bip32::{Language, Mnemonic};
 use kaspa_wallet_core::account::{BIP32_ACCOUNT_KIND, LEGACY_ACCOUNT_KIND, MULTISIG_ACCOUNT_KIND};
 use std::sync::Arc;
@@ -31,11 +31,7 @@ pub async fn prompt_for_mnemonic(term: &Arc<Terminal>) -> Result<Vec<String>> {
         }
     }
 
-    if words.len() > 24 {
-        Err("Mnemonic must be 12 or 24 words".into())
-    } else {
-        Ok(words)
-    }
+    if words.len() > 24 { Err("Mnemonic must be 12 or 24 words".into()) } else { Ok(words) }
 }
 
 pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: AccountKind, additional_xpubs: &[String]) -> Result<()> {
@@ -82,11 +78,7 @@ pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: Acco
         );
 
         let payment_secret = term.ask(true, "Enter payment password (optional): ").await?;
-        if payment_secret.trim().is_empty() {
-            None
-        } else {
-            Some(Secret::new(payment_secret.trim().as_bytes().to_vec()))
-        }
+        if payment_secret.trim().is_empty() { None } else { Some(Secret::new(payment_secret.trim().as_bytes().to_vec())) }
     };
 
     let mnemonic = mnemonic.join(" ");

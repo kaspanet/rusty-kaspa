@@ -3,11 +3,11 @@ use kaspa_consensus_core::errors::consensus::ConsensusError;
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
+    IncomingRoute, Router,
     common::ProtocolError,
     convert::header::HeaderFormat,
     dequeue_with_request_id, make_response,
-    pb::{kaspad_message::Payload, BlockHeadersMessage, DoneHeadersMessage},
-    IncomingRoute, Router,
+    pb::{BlockHeadersMessage, DoneHeadersMessage, kaspad_message::Payload},
 };
 use std::sync::Arc;
 
