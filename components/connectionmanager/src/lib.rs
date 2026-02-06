@@ -1,5 +1,5 @@
 mod eviction;
-use crate::eviction::{constants::RETAIN_RATIO, eviction_iter_from_peers, EvictionIterExt};
+use crate::eviction::{EvictionIterExt, constants::RETAIN_RATIO, eviction_iter_from_peers};
 
 use std::{
     cmp::min,

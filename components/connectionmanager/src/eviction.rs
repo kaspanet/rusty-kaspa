@@ -3,7 +3,7 @@ use std::{cmp::Ordering, collections::HashMap};
 use itertools::Itertools;
 use kaspa_p2p_lib::Peer;
 use kaspa_utils::networking::PrefixBucket;
-use rand::{seq::SliceRandom, thread_rng, Rng};
+use rand::{Rng, seq::SliceRandom, thread_rng};
 
 use crate::eviction::{cmp_strats::by_lowest_rank, weight_strats::by_highest_none_latency_rank};
 
@@ -33,7 +33,7 @@ pub mod cmp_strats {
 
     #[cfg(test)]
     mod test {
-        use super::{by_lowest_rank, EvictionRanks};
+        use super::{EvictionRanks, by_lowest_rank};
         use std::cmp::Ordering;
 
         #[test]
@@ -85,7 +85,7 @@ pub mod weight_strats {
 
     #[cfg(test)]
     mod test {
-        use super::{by_highest_none_latency_rank, EvictionRanks};
+        use super::{EvictionRanks, by_highest_none_latency_rank};
 
         #[test]
         fn test_by_highest_none_latency_rank() {
@@ -353,7 +353,7 @@ mod test {
     fn build_test_peers() -> Vec<Peer> {
         let now = Instant::now();
         let instants = Vec::from_iter((0..10).map(|i| now.checked_sub(Duration::from_secs(i)).unwrap())); // `from_secs` is important here, as time_connected has ms granularity, so it most be greater granularity than ms.
-                                                                                                          // rank 0, 1, 2, 3, 5, => 0, 1
+        // rank 0, 1, 2, 3, 5, => 0, 1
         let peer0 = Peer::new(
             PeerId::from(Uuid::from_u128(0u128)),
             SocketAddr::V4(SocketAddrV4::from_str("1.0.0.0:1").unwrap()),
