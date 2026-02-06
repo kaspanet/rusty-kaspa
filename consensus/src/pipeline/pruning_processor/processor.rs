@@ -313,7 +313,7 @@ impl PruningProcessor {
         assert_eq!(genesis, proof.last().unwrap().last().unwrap().hash);
 
         // We keep full data for pruning point and its anticone, relations for DAA/GD
-        // windows and pruning proof, and only headers for past pruning points
+        // windows, seqcommit chain segment and pruning proof, and only headers for past pruning points
         let keep_blocks: BlockHashSet = data.anticone.iter().copied().collect();
         let mut keep_relations: BlockHashMap<BlockLevel> = std::iter::empty()
             .chain(data.anticone.iter().copied())

@@ -238,13 +238,17 @@ impl VirtualStateProcessor {
         let reply = self.verify_header_pruning_point(header, ctx.ghostdag_data.to_compact())?;
         ctx.pruning_sample_from_pov = Some(reply.pruning_sample);
 
-        // Chain-qualification check: fast selected-parent verification for chain-qualified blocks.
+        // Verify the first parent is the selected parent
         //
-        // Ensures the selected chain below the pruning point can be verified without full GHOSTDAG in that
-        // region: require first direct parent == selected parent (gated by covenants activation) so the chain
-        // can be walked down to the threshold. This is only relevant for virtual-chain blocks (the pruning
-        // point is one) and preserves flexibility for future DAGKNIGHT work where selected parents might not
-        // be computed for every block.
+        // Purpose: Enables seqcommit opcode verification for syncees. By enforcing this rule,
+        // a node can trustlessly verify the selected chain segment below the pruning point
+        // (PP) simply by walking back through first-parents, avoiding a full GHOSTDAG
+        // computation over the historical DAG.
+        //
+        // Design Note: This is enforced as a chain-qualification rule rather than
+        // header-validity. This maintains compatibility with protocols like DAGKNIGHT,
+        // which may not compute selected parents for every block, while still securing
+        // the pruning point (which is a qualified chain block by definition).
         if self.covenants_activation.is_active(header.daa_score) {
             let selected_parent = ctx.ghostdag_data.selected_parent;
             let first_parent = header.direct_parents()[0];
