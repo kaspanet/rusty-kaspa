@@ -240,11 +240,9 @@ impl VirtualStateProcessor {
 
         if self.covenants_activation.is_active(header.daa_score) {
             let selected_parent = ctx.ghostdag_data.selected_parent;
-            let Some(first_parent) = header.direct_parents().first() else {
-                return Err(crate::errors::RuleError::NoParents);
-            };
-            if *first_parent != selected_parent {
-                return Err(WrongSelectedParentOrder(header.hash, selected_parent, *first_parent));
+            let first_parent = header.direct_parents()[0];
+            if first_parent != selected_parent {
+                return Err(WrongSelectedParentOrder(header.hash, selected_parent, first_parent));
             }
         }
 

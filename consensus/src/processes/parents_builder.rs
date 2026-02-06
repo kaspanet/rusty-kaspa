@@ -60,6 +60,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         for block_level in 0..=self.max_block_level {
             // Direct parents are guaranteed to be in one another's anticones so add them all to
             // all the block levels they occupy.
+            // IndexMap is important here to preserve the original order of direct parents (level 0).
             let mut level_candidates_to_reference_blocks = direct_parent_headers
                 .iter()
                 .filter(|h| block_level <= h.block_level)
