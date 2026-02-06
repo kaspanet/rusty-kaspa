@@ -3899,11 +3899,11 @@
     "OpTxInputSpk is enabled since kip10"
   ],
   [
-    "1",
+    "0 1",
     "IF 0xc0 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE",
-    "OpTxInputBlockDaaScore is reserved"
+    "OK",
+    "OpTxInputBlockDaaScore is enabled since covpp"
   ],
   [
     "1",
