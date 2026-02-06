@@ -13,13 +13,13 @@ use kaspa_utils::hex::ToHex;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
 pub use script_public_key::{
-    scriptvec, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, SCRIPT_VECTOR_SIZE,
+    SCRIPT_VECTOR_SIZE, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, scriptvec,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
-use std::sync::Arc;
 use std::{
     fmt::Display,
     ops::Range,
@@ -459,13 +459,10 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
 
     pub fn missing_outpoints(&self) -> impl Iterator<Item = TransactionOutpoint> + '_ {
         assert_eq!(self.entries.len(), self.tx.as_ref().inputs.len());
-        self.entries.iter().enumerate().filter_map(|(i, entry)| {
-            if entry.is_none() {
-                Some(self.tx.as_ref().inputs[i].previous_outpoint)
-            } else {
-                None
-            }
-        })
+        self.entries
+            .iter()
+            .enumerate()
+            .filter_map(|(i, entry)| if entry.is_none() { Some(self.tx.as_ref().inputs[i].previous_outpoint) } else { None })
     }
 
     pub fn clear_entries(&mut self) {

@@ -1,4 +1,4 @@
-use super::{factory::MultiConsensusManagementStore, Consensus};
+use super::{Consensus, factory::MultiConsensusManagementStore};
 use kaspa_consensusmanager::ConsensusCtl;
 use kaspa_database::prelude::DB;
 use parking_lot::RwLock;

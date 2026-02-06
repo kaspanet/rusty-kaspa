@@ -1,13 +1,13 @@
 use crate::{consensus::test_consensus::TestConsensus, model::services::reachability::ReachabilityService};
 use kaspa_consensus_core::{
+    BlockHashSet,
     api::ConsensusApi,
     block::{Block, BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     blockhash,
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    config::{params::MAINNET_PARAMS, ConfigBuilder},
+    config::{ConfigBuilder, params::MAINNET_PARAMS},
     tx::{ScriptPublicKey, ScriptVec, Transaction},
-    BlockHashSet,
 };
 use kaspa_hashes::Hash;
 use std::{collections::VecDeque, thread::JoinHandle};

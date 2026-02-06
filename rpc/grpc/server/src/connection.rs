@@ -8,7 +8,7 @@ use crate::{
         method::RoutingPolicy,
     },
 };
-use async_channel::{bounded, Receiver as MpmcReceiver, Sender as MpmcSender, TrySendError as MpmcTrySendError};
+use async_channel::{Receiver as MpmcReceiver, Sender as MpmcSender, TrySendError as MpmcTrySendError, bounded};
 use itertools::Itertools;
 use kaspa_core::{debug, info, trace, warn};
 use kaspa_grpc_core::{
@@ -24,17 +24,17 @@ use kaspa_notify::{
 use kaspa_rpc_core::Notification;
 use parking_lot::Mutex;
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     fmt::Display,
     net::SocketAddr,
     ops::Deref,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 use tokio::sync::mpsc::Sender as MpscSender;
-use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
+use tokio::sync::oneshot::{Sender as OneshotSender, channel as oneshot_channel};
 use tokio::{select, sync::mpsc::error::TrySendError};
 use tonic::Streaming;
 use uuid::Uuid;

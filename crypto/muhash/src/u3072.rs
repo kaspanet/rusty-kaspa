@@ -295,7 +295,7 @@ impl Default for U3072 {
 
 #[cfg(test)]
 mod tests {
-    use crate::u3072::{self, Limb, LIMBS, U3072};
+    use crate::u3072::{self, LIMBS, Limb, U3072};
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
 

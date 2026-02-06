@@ -27,28 +27,28 @@ use crate::{
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashMap, BlockHashSet, BlockLevel,
     blockhash::ORIGIN,
     blockstatus::BlockStatus::StatusHeaderOnly,
     config::Config,
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::ExternalGhostdagData,
-    BlockHashMap, BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, trace, warn};
-use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExt, DB};
+use kaspa_database::prelude::{BatchDbWriter, DB, MemoryWriter, StoreResultExt};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
-    collections::{hash_map::Entry::Vacant, VecDeque},
+    collections::{VecDeque, hash_map::Entry::Vacant},
     ops::Deref,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -135,7 +135,7 @@ impl PruningProcessor {
                 }
                 recovered = true;
             }
-            self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+            self.advance_pruning_point_if_possible(sink_ghostdag_data);
         }
     }
 
@@ -185,9 +185,7 @@ impl PruningProcessor {
         drop(pruning_meta_read);
         trace!(
             "retention_checkpoint: {:?} | retention_period_root: {} | pruning_point: {}",
-            retention_checkpoint,
-            retention_period_root,
-            pruning_point
+            retention_checkpoint, retention_period_root, pruning_point
         );
 
         // This indicates the node crashed or was forced to stop during a former data prune operation hence
@@ -198,7 +196,7 @@ impl PruningProcessor {
         true
     }
 
-    fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
+    fn advance_pruning_point_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
         let pruning_point_read = self.pruning_point_store.upgradable_read();
         let (current_pruning_point, current_index) = pruning_point_read.pruning_point_and_index().unwrap();
         let new_pruning_points = self.pruning_point_manager.next_pruning_points(sink_ghostdag_data, current_pruning_point);
@@ -661,13 +659,13 @@ impl PruningProcessor {
 
     fn assert_proof_rebuilding(&self, ref_proof: Arc<PruningPointProof>, new_pruning_point: Hash) {
         info!("Rebuilding the pruning proof after pruning data (sanity test)");
-        let proof_hashes = ref_proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
         let built_proof = self.pruning_proof_manager.build_pruning_point_proof(new_pruning_point);
-        let built_proof_hashes = built_proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
-        assert_eq!(proof_hashes.len(), built_proof_hashes.len(), "Rebuilt proof does not match the expected reference");
-        for (i, (a, b)) in proof_hashes.into_iter().zip(built_proof_hashes).enumerate() {
-            if a != b {
-                panic!("Proof built following pruning does not match the previous proof: built[{}]={}, prev[{}]={}", i, b, i, a);
+        if ref_proof.len() != built_proof.len() {
+            panic!("Rebuilt proof does not match the original one ({} ref vs. {} rebuilt levels)", ref_proof.len(), built_proof.len());
+        }
+        for (i, (ref_level, built_level)) in ref_proof.iter().zip(built_proof.iter()).enumerate() {
+            if ref_level.iter().map(|h| h.hash).ne(built_level.iter().map(|h| h.hash)) {
+                panic!("Rebuilt proof for level {} does not match the original one", i);
             }
         }
         info!("Proof was rebuilt successfully following pruning");

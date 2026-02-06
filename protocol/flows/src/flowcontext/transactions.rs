@@ -3,9 +3,8 @@ use itertools::Itertools;
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_core::debug;
 use kaspa_p2p_lib::{
-    make_message,
-    pb::{kaspad_message::Payload, InvTransactionsMessage, KaspadMessage},
-    Hub,
+    Hub, make_message,
+    pb::{InvTransactionsMessage, KaspadMessage, kaspad_message::Payload},
 };
 use std::time::{Duration, Instant};
 
@@ -99,7 +98,7 @@ impl TransactionsSpread {
             // TODO: Figure out a better number
             self.hub.broadcast_to_some_peers(msg, 8).await
         } else {
-            self.hub.broadcast(msg).await
+            self.hub.broadcast(msg, None).await
         }
     }
 }

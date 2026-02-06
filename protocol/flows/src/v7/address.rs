@@ -2,10 +2,10 @@ use crate::{flow_context::FlowContext, flow_trait::Flow};
 use itertools::Itertools;
 use kaspa_addressmanager::NetAddress;
 use kaspa_p2p_lib::{
+    IncomingRoute, Router,
     common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
-    pb::{kaspad_message::Payload, AddressesMessage, RequestAddressesMessage},
-    IncomingRoute, Router,
+    pb::{AddressesMessage, RequestAddressesMessage, kaspad_message::Payload},
 };
 use kaspa_utils::networking::IpAddress;
 use rand::seq::SliceRandom;
