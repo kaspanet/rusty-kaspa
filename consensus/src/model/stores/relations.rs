@@ -1,16 +1,16 @@
 use itertools::Itertools;
 use kaspa_consensus_core::BlockHashSet;
-use kaspa_consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel};
+use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, blockhash::BlockHashes};
 use kaspa_database::prelude::{BatchDbWriter, CachePolicy, DbWriter};
 use kaspa_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
+use kaspa_database::prelude::{DB, StoreResult};
 use kaspa_database::prelude::{DirectWriter, MemoryWriter};
 use kaspa_database::prelude::{ReadLock, StoreError};
-use kaspa_database::prelude::{StoreResult, DB};
 use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
-use std::collections::hash_map::Entry;
 use std::collections::HashSet;
+use std::collections::hash_map::Entry;
 use std::iter::once;
 use std::sync::Arc;
 
@@ -110,11 +110,7 @@ impl RelationsStoreReader for DbRelationsStore {
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        if self.parents_access.has(hash)? {
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        if self.parents_access.has(hash)? { Ok(true) } else { Ok(false) }
     }
 
     fn counts(&self) -> Result<(usize, usize), StoreError> {
@@ -306,11 +302,7 @@ impl RelationsStore for StagingRelationsStore<'_> {
 impl RelationsStoreReader for StagingRelationsStore<'_> {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         self.check_not_in_entry_deletions(hash)?;
-        if let Some(data) = self.parents_overrides.get(&hash) {
-            Ok(BlockHashes::clone(data))
-        } else {
-            self.store.get_parents(hash)
-        }
+        if let Some(data) = self.parents_overrides.get(&hash) { Ok(BlockHashes::clone(data)) } else { self.store.get_parents(hash) }
     }
 
     fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {

@@ -8,10 +8,10 @@ use crate::{
     processes::ghostdag::ordering::SortableBlock,
 };
 use kaspa_consensus_core::{
+    BlockHashSet, BlueWorkType, HashMapCustomHasher,
     blockhash::{BlockHashExtensions, ORIGIN},
     config::genesis::GenesisBlock,
     errors::{block::RuleError, difficulty::DifficultyResult},
-    BlockHashSet, BlueWorkType, HashMapCustomHasher,
 };
 use kaspa_hashes::Hash;
 use kaspa_math::Uint256;
@@ -275,11 +275,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             let mut heap = Lazy::new(|| BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_window).clone()));
             // We pass a Lazy heap as an optimization to avoid cloning the selected parent heap in cases where the mergeset contains no samples
             self.push_mergeset(&mut heap, sample_rate, ghostdag_data, selected_parent_blue_work, mergeset_non_daa_inserter);
-            if let Ok(heap) = Lazy::into_value(heap) {
-                Arc::new(heap.binary_heap)
-            } else {
-                selected_parent_window.clone()
-            }
+            if let Ok(heap) = Lazy::into_value(heap) { Arc::new(heap.binary_heap) } else { selected_parent_window.clone() }
         })
     }
 
@@ -316,11 +312,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
                     Some(SampledBlock::NonDaa(block.hash))
                 } else {
                     index += 1;
-                    if (selected_parent_daa_score + index) % sample_rate == 0 {
-                        Some(SampledBlock::Sampled(block))
-                    } else {
-                        None
-                    }
+                    if (selected_parent_daa_score + index) % sample_rate == 0 { Some(SampledBlock::Sampled(block)) } else { None }
                 }
             })
     }

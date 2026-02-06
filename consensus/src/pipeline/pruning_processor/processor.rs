@@ -27,28 +27,28 @@ use crate::{
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashMap, BlockHashSet, BlockLevel,
     blockhash::ORIGIN,
     blockstatus::BlockStatus::StatusHeaderOnly,
     config::Config,
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::ExternalGhostdagData,
-    BlockHashMap, BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, trace, warn};
-use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExt, DB};
+use kaspa_database::prelude::{BatchDbWriter, DB, MemoryWriter, StoreResultExt};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
-    collections::{hash_map::Entry::Vacant, VecDeque},
+    collections::{VecDeque, hash_map::Entry::Vacant},
     ops::Deref,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -185,9 +185,7 @@ impl PruningProcessor {
         drop(pruning_meta_read);
         trace!(
             "retention_checkpoint: {:?} | retention_period_root: {} | pruning_point: {}",
-            retention_checkpoint,
-            retention_period_root,
-            pruning_point
+            retention_checkpoint, retention_period_root, pruning_point
         );
 
         // This indicates the node crashed or was forced to stop during a former data prune operation hence

@@ -123,7 +123,7 @@ impl RebalancingWeightedTransactionSelector {
             }
 
             // Select a candidate tx at random
-            let r = rng.gen::<f64>() * self.candidate_list.total_p;
+            let r = rng.r#gen::<f64>() * self.candidate_list.total_p;
             let selected_candidate_idx = self.candidate_list.find(r);
             let selected_candidate = self.candidate_list.candidates.get_mut(selected_candidate_idx).unwrap();
 

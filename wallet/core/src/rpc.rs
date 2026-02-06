@@ -7,9 +7,9 @@ use std::sync::Arc;
 pub use kaspa_rpc_core::api::ctl::RpcCtl;
 pub use kaspa_rpc_core::api::rpc::RpcApi;
 pub use kaspa_rpc_core::notify::mode::NotificationMode;
-pub use kaspa_wrpc_client::client::{ConnectOptions, ConnectStrategy};
 pub use kaspa_wrpc_client::Resolver;
 pub use kaspa_wrpc_client::WrpcEncoding;
+pub use kaspa_wrpc_client::client::{ConnectOptions, ConnectStrategy};
 
 /// Type alias for [`dyn RpcApi`](RpcApi).
 pub type DynRpcApi = dyn RpcApi;

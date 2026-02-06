@@ -1,4 +1,4 @@
-use kaspa_cli_lib::{kaspa_cli, TerminalOptions};
+use kaspa_cli_lib::{TerminalOptions, kaspa_cli};
 
 #[tokio::main]
 async fn main() {

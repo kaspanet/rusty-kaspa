@@ -7,7 +7,7 @@ use kaspa_addresses::Address;
 use kaspa_core::warn;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::{listener::ListenerId, scope::NewBlockTemplateScope};
-use kaspa_rpc_core::{api::rpc::RpcApi, GetBlockTemplateResponse, Notification};
+use kaspa_rpc_core::{GetBlockTemplateResponse, Notification, api::rpc::RpcApi};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use parking_lot::Mutex;
 use std::sync::Arc;

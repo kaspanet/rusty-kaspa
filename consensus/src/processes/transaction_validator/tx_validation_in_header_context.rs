@@ -3,8 +3,8 @@
 //! the containing block)
 
 use super::{
-    errors::{TxResult, TxRuleError},
     TransactionValidator,
+    errors::{TxResult, TxRuleError},
 };
 use crate::constants::LOCK_TIME_THRESHOLD;
 use kaspa_consensus_core::tx::Transaction;

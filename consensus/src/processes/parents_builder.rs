@@ -1,12 +1,12 @@
 use indexmap::IndexSet;
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashMap, BlockHasher, BlockLevel,
     blockhash::ORIGIN,
     header::{CompressedParents, Header},
-    BlockHashMap, BlockHasher, BlockLevel,
 };
 use kaspa_hashes::Hash;
-use smallvec::{smallvec, SmallVec};
+use smallvec::{SmallVec, smallvec};
 use std::sync::Arc;
 
 use crate::model::{
@@ -213,9 +213,9 @@ mod tests {
     use super::ParentsManager;
     use itertools::Itertools;
     use kaspa_consensus_core::{
+        BlockHashSet, HashMapCustomHasher,
         blockhash::{BlockHashes, ORIGIN},
         header::Header,
-        BlockHashSet, HashMapCustomHasher,
     };
     use kaspa_database::prelude::{ReadLock, StoreError, StoreResult};
     use kaspa_hashes::Hash;
