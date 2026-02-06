@@ -88,53 +88,18 @@ impl PruningProofManager {
             }
         }
 
-        // topologically sort every level in the proof
+        // Topologically sort every level in the proof
         expanded_proof.iter_mut().for_each(|level_proof| {
             level_proof.sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
         });
 
-        // Maps pruning-point chain blocks to their selected parent for reachability seeding.
-        let mut chain_segment_map: BlockHashMap<Hash> = BlockHashMap::new();
+        // Build selected-parent mapping for the PP chain segment
+        let chain_segment_map = self.verify_and_build_chain_segment_map(pruning_point, &pruning_point_header, &trusted_header_map)?;
 
-        if self.covenants_activation.is_active(pruning_point_header.daa_score) {
-            let pruning_point_blue_score = pruning_point_header.blue_score;
-            let threshold = self.finality_depth;
-            let mut current = pruning_point;
-            loop {
-                let current_header =
-                    trusted_header_map.get(&current).ok_or(PruningImportError::MissingPruningPointChainSegment(current))?;
-
-                if !seq_commit_within_threshold(pruning_point_blue_score, current_header.blue_score, threshold) {
-                    break;
-                }
-
-                if !self.covenants_activation.is_active(current_header.daa_score) {
-                    // We cannot demand chain-qualification for blocks below the covenants activation
-                    // See the chain-qualification check in the utxo validation code for details as well as
-                    // code in SeqCommitAccessor
-                    break;
-                }
-
-                // Walk the selected-parent chain until we cross the threshold or hit genesis.
-                // Relies on the covenants-activated chain-qualification rule: the first direct parent is the selected parent.
-                match current_header.direct_parents().first().copied() {
-                    Some(selected_parent) => {
-                        chain_segment_map.insert(current, selected_parent);
-                        current = selected_parent;
-                    }
-                    None if current == self.genesis_hash => {
-                        break;
-                    }
-                    None => {
-                        return Err(PruningImportError::MissingPruningPointChainSegment(current));
-                    }
-                }
-            }
-        }
-
+        // Populate headers/reachability (using the PP chain segment mapping)
         self.populate_reachability_and_headers(&expanded_proof, header_only_chain_segment, &chain_segment_map)?;
 
-        // sanity check
+        // Sanity check
         {
             let reachability_read = self.reachability_store.read();
             for tb in trusted_set.iter() {
@@ -322,5 +287,56 @@ impl PruningProofManager {
         }
 
         Ok(())
+    }
+
+    /// Verify and build a map from pruning-point chain blocks to their selected parent for reachability seeding.
+    ///
+    /// The map is populated only for covenants-activated pruning points and only within the seqcommit
+    /// threshold range; it relies on the chain-qualification rule (first direct parent is the selected parent).
+    fn verify_and_build_chain_segment_map(
+        &self,
+        pruning_point: Hash,
+        pruning_point_header: &Arc<Header>,
+        trusted_header_map: &BlockHashMap<Arc<Header>>,
+    ) -> PruningImportResult<BlockHashMap<Hash>> {
+        let mut chain_segment_map: BlockHashMap<Hash> = BlockHashMap::new();
+
+        if self.covenants_activation.is_active(pruning_point_header.daa_score) {
+            let pruning_point_blue_score = pruning_point_header.blue_score;
+            let threshold = self.finality_depth;
+            let mut current = pruning_point;
+            loop {
+                let current_header =
+                    trusted_header_map.get(&current).ok_or(PruningImportError::MissingPruningPointChainSegment(current))?;
+
+                if !seq_commit_within_threshold(pruning_point_blue_score, current_header.blue_score, threshold) {
+                    break;
+                }
+
+                if !self.covenants_activation.is_active(current_header.daa_score) {
+                    // We cannot demand chain-qualification for blocks below the covenants activation
+                    // See the chain-qualification check in the utxo validation code for details as well as
+                    // code in SeqCommitAccessor
+                    break;
+                }
+
+                // Walk the selected-parent chain until we cross the threshold or hit genesis.
+                // Relies on the covenants-activated chain-qualification rule: the first direct parent is the selected parent.
+                match current_header.direct_parents().first().copied() {
+                    Some(selected_parent) => {
+                        chain_segment_map.insert(current, selected_parent);
+                        current = selected_parent;
+                    }
+                    None if current == self.genesis_hash => {
+                        break;
+                    }
+                    None => {
+                        return Err(PruningImportError::MissingPruningPointChainSegment(current));
+                    }
+                }
+            }
+        }
+
+        Ok(chain_segment_map)
     }
 }
