@@ -3078,9 +3078,11 @@ dependencies = [
  "kaspa-core",
  "kaspa-hashes",
  "kaspa-p2p-lib",
+ "kaspa-utils",
  "log",
  "parking_lot",
  "rand 0.8.5",
+ "uuid 1.18.1",
 ]
 
 [[package]]

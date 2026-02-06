@@ -1,6 +1,7 @@
 use std::{
     cmp::{Ordering, min},
     collections::{HashMap, HashSet, hash_map::Entry},
+    fmt::Display,
     net::SocketAddr,
     sync::{Arc, atomic::AtomicBool},
     time::{Duration, Instant},
@@ -8,53 +9,42 @@ use std::{
 
 use itertools::Itertools;
 use kaspa_consensus_core::{BlockHashSet, Hash, HashMapCustomHasher};
-use kaspa_core::{info, trace};
-use kaspa_p2p_lib::{Hub, Peer, PeerKey, Router};
-use log::debug;
+use kaspa_core::{debug, info, trace};
+use kaspa_p2p_lib::{Peer, PeerKey, Router};
 use parking_lot::Mutex;
 use rand::{Rng, seq::IteratorRandom, thread_rng};
 
-// Tolerance for the amount of blocks verified in a round to trigger evaluation.
-// For example, at 0.175, if We expect to see 200 blocks verified in a round, but less or more than [`BLOCKS_VERIFIED_TOLERANCE`]
-// 175 or 225 (respectively) are verified, we skip the evaluation for leveraging this round.
-// reasoning is that network conditions are then not considered stable enough to make a good decision.
-// and we rather skip, and wait for the next round.
+// Tolerance for the number of blocks verified in a round to trigger evaluation.
+// For example, at 0.175, if we expect to see 200 blocks verified in a round, but fewer or more than
+// 175 or 225 (respectively) are verified, we skip the leverage evaluation for this round.
+// The reasoning is that network conditions are not considered stable enough to make a good decision,
+// and we would rather skip and wait for the next round.
 // Note that exploration can still happen even if this threshold is not met.
-// This ensures that we continue to explore in case network conditions are fault of the peers, and not oneself.
+// This ensures that we continue to explore in case network conditions are the fault of the connect peers, not network-wide.
 const BLOCKS_VERIFIED_FAULT_TOLERANCE: f64 = 0.175;
+const IDENT: &str = "PerigeeManager";
 
+/// Holds the score for a peer.
+#[derive(Debug)]
 pub struct PeerScore {
     p90: u64,
     p95: u64,
     p97_5: u64,
-    p98_25: u64,
-    p99_125: u64,
-    p99_6875: u64,
-    p100: u64,
 }
 
 impl PeerScore {
-    const MAX: PeerScore = PeerScore {
-        p90: u64::MAX,
-        p95: u64::MAX,
-        p97_5: u64::MAX,
-        p98_25: u64::MAX,
-        p99_125: u64::MAX,
-        p99_6875: u64::MAX,
-        p100: u64::MAX,
-    };
+    const MAX: PeerScore = PeerScore { p90: u64::MAX, p95: u64::MAX, p97_5: u64::MAX };
 
     #[inline(always)]
-    fn new(p90: u64, p95: u64, p97_5: u64, p98_25: u64, p99_125: u64, p99_6875: u64, p100: u64) -> Self {
-        PeerScore { p90, p95, p97_5, p98_25, p99_125, p99_6875, p100 }
+    fn new(p90: u64, p95: u64, p97_5: u64) -> Self {
+        PeerScore { p90, p95, p97_5 }
     }
 }
 
 impl PartialEq for PeerScore {
     #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
-        (self.p90, self.p95, self.p97_5, self.p98_25, self.p99_125, self.p99_6875, self.p100)
-            == (other.p90, other.p95, other.p97_5, other.p98_25, other.p99_125, other.p99_6875, other.p100)
+        (self.p90, self.p95, self.p97_5) == (other.p90, other.p95, other.p97_5)
     }
 }
 
@@ -70,18 +60,11 @@ impl PartialOrd for PeerScore {
 impl Ord for PeerScore {
     #[inline(always)]
     fn cmp(&self, other: &Self) -> Ordering {
-        (self.p90, self.p95, self.p97_5, self.p98_25, self.p99_125, self.p99_6875, self.p100).cmp(&(
-            other.p90,
-            other.p95,
-            other.p97_5,
-            other.p98_25,
-            other.p99_125,
-            other.p99_6875,
-            other.p100,
-        ))
+        (self.p90, self.p95, self.p97_5).cmp(&(other.p90, other.p95, other.p97_5))
     }
 }
 
+/// Configuration for the perigee manager.
 #[derive(Debug, Clone)]
 pub struct PerigeeConfig {
     pub perigee_outbound_target: usize,
@@ -89,7 +72,7 @@ pub struct PerigeeConfig {
     pub exploration_target: usize,
     pub round_frequency: usize,
     pub round_duration: Duration,
-    pub expected_blocks_per_round: usize,
+    pub expected_blocks_per_round: u64,
     pub statistics: bool,
     pub persistence: bool,
 }
@@ -99,33 +82,46 @@ impl PerigeeConfig {
         perigee_outbound_target: usize,
         leverage_target: usize,
         exploration_target: usize,
-        round_length: usize,
+        round_duration: usize,
         connection_manager_tick_duration: Duration,
         statistics: bool,
         persistence: bool,
-        bps: usize,
+        bps: u64,
     ) -> Self {
-        let round_duration = Duration::from_secs(round_length as u64);
-        let expected_blocks_per_round = (bps as f64 * round_duration.as_secs_f64()) as usize;
+        let expected_blocks_per_round = bps * round_duration as u64;
+        let round_duration = Duration::from_secs(round_duration as u64);
         Self {
             perigee_outbound_target,
             leverage_target,
             exploration_target,
-            round_frequency: round_length / connection_manager_tick_duration.as_secs() as usize,
+            round_frequency: round_duration.as_secs() as usize / connection_manager_tick_duration.as_secs() as usize,
             round_duration,
             expected_blocks_per_round,
             statistics,
             persistence,
         }
     }
+}
 
-    pub fn should_initiate_perigee(&self) -> bool {
-        (self.perigee_outbound_target > 0 && self.exploration_target > 0 && self.leverage_target < self.perigee_outbound_target)
-            && self.round_frequency > 0
+impl Display for PerigeeConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Perigee outbound target: {}, Leverage target: {}, Exploration target: {}, Round duration: {:2} secs, Expected blocks per round: {}, Statistics: {}, Persistence: {}",
+            self.perigee_outbound_target,
+            self.leverage_target,
+            self.exploration_target,
+            self.round_duration.as_secs(),
+            self.expected_blocks_per_round,
+            self.statistics,
+            self.persistence
+        )
     }
 }
 
 #[derive(Debug)]
+
+/// Manages peer selection and scoring.
 pub struct PerigeeManager {
     verified_blocks: BlockHashSet, // holds blocks that are consensus verified.
     first_seen: HashMap<Hash, Instant>,
@@ -133,12 +129,11 @@ pub struct PerigeeManager {
     round_start: Instant,
     round_counter: u64,
     config: PerigeeConfig,
-    hub: Hub,
     is_ibd_running: Arc<AtomicBool>,
 }
 
 impl PerigeeManager {
-    pub fn new(hub: Hub, config: PerigeeConfig, is_ibd_running: Arc<AtomicBool>) -> Mutex<Self> {
+    pub fn new(config: PerigeeConfig, is_ibd_running: Arc<AtomicBool>) -> Mutex<Self> {
         Mutex::new(Self {
             verified_blocks: BlockHashSet::new(),
             first_seen: HashMap::new(),
@@ -146,12 +141,13 @@ impl PerigeeManager {
             round_start: Instant::now(),
             round_counter: 0,
             config,
-            hub,
             is_ibd_running,
         })
     }
 
     pub fn insert_perigee_timestamp(&mut self, router: &Arc<Router>, hash: Hash, timestamp: Instant, verify: bool) {
+        // Inserts and updates the perigee timestamp for the given router
+        // and into the local state.
         if router.is_perigee() || (self.config.statistics && router.is_random_graph()) {
             router.add_perigee_timestamp(hash, timestamp);
         }
@@ -171,43 +167,61 @@ impl PerigeeManager {
     }
 
     pub fn trim_peers(&mut self, peers_by_address: Arc<HashMap<SocketAddr, Peer>>) -> Vec<PeerKey> {
-        debug!("PerigeeManager: Trimming exceess peers from perigee");
+        // Contains logic to trim excess perigee peers beyond the configured target
+        // without executing a full evaluation.
 
-        let perigee_routers = self
-            .hub
-            .perigee_routers()
-            .into_iter()
-            .filter(|r| peers_by_address.contains_key(&SocketAddr::new(r.net_address().ip(), r.net_address().port())))
-            .collect::<Vec<_>>();
-        let to_remove_amount = perigee_routers.len().saturating_sub(self.config.perigee_outbound_target);
-        let excused_peer: HashSet<PeerKey> = self.iter_excused_peers(&perigee_routers).into_iter().collect();
+        debug!("PerigeeManager: Trimming excess peers from perigee");
+        let perigee_peers = peers_by_address.values().filter(|p| p.is_perigee()).cloned().collect::<Vec<Peer>>();
+        let to_remove_amount = perigee_peers.len().saturating_sub(self.config.perigee_outbound_target);
+        let excused_peers = self.get_excused_peers(&perigee_peers);
 
-        perigee_routers
+        perigee_peers
             .iter()
-            .filter(|r| !self.last_round_leveraged_peers.contains(&r.key()) && !excused_peer.contains(&r.key()))
+            // Ensure we do not remove leveraged or excused peers
+            .filter(|r| !self.last_round_leveraged_peers.contains(&r.key()) && !excused_peers.contains(&r.key()))
             .map(|r| r.key())
             .choose_multiple(&mut thread_rng(), to_remove_amount)
             .iter()
-            .chain(excused_peer.iter())
+            // In cases where we do not have enough non-excused/non-leveraged peers to remove,
+            // we fill the remaining slots with excused peers.
+            // Note: We do not expect to ever need to chain with last round's leveraged peers.
+            .chain(excused_peers.iter())
             .take(to_remove_amount)
             .cloned()
             .collect()
     }
 
-    pub fn evaluate_round(&mut self) -> (Vec<PeerKey>, HashSet<PeerKey>, bool) {
-        trace!("PerigeeManager: evaluating round");
+    pub fn evaluate_round(&mut self, peer_by_address: &HashMap<SocketAddr, Peer>) -> (Vec<PeerKey>, HashSet<PeerKey>, bool) {
         self.round_counter += 1;
+        debug!("[{}]: evaluating round: {}", IDENT, self.round_counter);
 
-        let (mut peer_table, perigee_routers) = self.build_table();
+        let (mut peer_table, perigee_peers) = self.build_table(peer_by_address);
 
         let is_ibd_running = self.is_ibd_running();
-        self.excuse(&mut peer_table, &perigee_routers);
-        let should_leverage = self.should_leverage(is_ibd_running, perigee_routers.len());
-        let should_explore = self.should_explore(is_ibd_running, perigee_routers.len());
+
+        // First, we excuse all peers with insufficient data this round
+        self.excuse(&mut peer_table, &perigee_peers);
+
+        // This excludes peers that have been excused, as well as those that have not provided any data this round.
+        let amount_of_contributing_perigee_peers = peer_table.len();
+        // In contrast, this is the total number of perigee peers registered in the hub.
+        let amount_of_perigee_peers = perigee_peers.len();
+        debug!(
+            "[{}]: amount_of_perigee_peers: {}, amount_of_contributing_perigee_peers: {}",
+            IDENT, amount_of_perigee_peers, amount_of_contributing_perigee_peers
+        );
+        // For should_leverage, we are conservative and require that we have enough contributing peers for sufficient data.
+        let should_leverage = self.should_leverage(is_ibd_running, amount_of_contributing_perigee_peers);
+        // For should_explore, we are more aggressive and only require that we have enough total perigee peers.
+        // As insufficient data may be malicious behavior by some peers, we prefer to continue churning peers.
+        let should_explore = self.should_explore(is_ibd_running, amount_of_perigee_peers);
+
         let mut has_leveraged_changed = false;
 
         if !should_leverage && !should_explore {
-            trace!("PerigeeManager: skipping leveraging and exploration this round");
+            // In this case we skip leveraging and exploration this round.
+            // We maintain the last round leveraged peers as-is.
+            debug!("[{}]: skipping leveraging and exploration this round", IDENT);
             return (self.last_round_leveraged_peers.clone(), HashSet::new(), has_leveraged_changed);
         }
 
@@ -215,24 +229,38 @@ impl PerigeeManager {
         let selected_peers = if should_leverage {
             let selected_peers = self.leverage(&mut peer_table);
             debug!(
-                "PerigeeManager: Selected peers for leveraging this round: {:?}",
+                "[{}]: Selected peers for leveraging this round: {:?}",
+                IDENT,
                 selected_peers.iter().map(|pk| pk.to_string()).collect_vec()
             );
+            // We consider rank changes as well as peer changes here,
             if self.last_round_leveraged_peers != selected_peers {
-                trace!("PerigeeManager: Leveraged peers have changed this round");
+                // Leveraged peers has changed
+                debug!("[{}]: Leveraged peers have changed this round", IDENT);
                 has_leveraged_changed = true;
+                // Update last round's leveraged peers to the newly selected peers
                 self.last_round_leveraged_peers = selected_peers.clone();
             }
+            // Return the newly selected peers
             selected_peers
         } else {
-            for pk in &self.last_round_leveraged_peers {
+            debug!("[{}]: skipping leveraging this round", IDENT);
+            // Remove all previously leveraged peers from the peer table to avoid eviction
+            for pk in self.last_round_leveraged_peers.iter() {
                 peer_table.remove(pk);
             }
+            // Return the previous set
             self.last_round_leveraged_peers.clone()
         };
 
         // i.e. the peers that we mark as "to evict" this round.
-        let deselected_peers = if should_explore { self.explore(&mut peer_table, perigee_routers.len()) } else { HashSet::new() };
+        let deselected_peers = if should_explore {
+            debug!("[{}]: exploring peers this round", IDENT);
+            self.explore(&mut peer_table, amount_of_perigee_peers)
+        } else {
+            debug!("[{}]: skipping exploration this round", IDENT);
+            HashSet::new()
+        };
 
         (selected_peers, deselected_peers, has_leveraged_changed)
     }
@@ -240,91 +268,135 @@ impl PerigeeManager {
     fn leverage(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>) -> Vec<PeerKey> {
         // This is a greedy algorithm, and does not guarantee a globally optimal set of peers.
 
-        assert!(peer_table.len() >= self.config.leverage_target, "About to enter an endless loop");
+        // Sanity check
+        assert!(peer_table.len() >= self.config.leverage_target, "Potentially entering an endless loop");
 
         // We use this Vec to maintain track and ordering of selected peers
-        let mut selected_peers = Vec::new();
+        let mut selected_peers: Vec<Vec<PeerKey>> = Vec::new();
+        let mut num_peers_selected = 0;
+        let mut remaining_table;
 
-        // Outer loop: (re)starts the building of an optimal set of peers from scratch
-        // Note: This potential repetition is not defined in the original perigee paper, but even with extensive tie-breaking,
-        // and on large amounts of perigee peers (i.e. a leverage target > 16), building a single optimal set of peers quickly runs out of peers to select.
-        // As such, to ensure we gain utilize the full leveraging space, we simply build additional independent sets of leveraged peers.
-        'outer: while selected_peers.len() < self.config.leverage_target {
+        // Counts the outer loop only
+        let mut i = 0;
+
+        // Outer loop: (re)starts the building of an optimal set of peers from scratch, based on a joint subset scoring mechanism.
+        // Note: This potential repetition is not defined in the original Perigee paper, but even with extensive tie-breaking,
+        // and with large numbers of perigee peers (i.e., a leverage target > 16), building a single optimal set of peers quickly runs out of peers to select.
+        // As such, to ensure we utilize the full leveraging space, we re-run this outer loop
+        // to build additional independent complementary sets of peers, thereby reducing reliance on a single such set of peers.
+        'outer: while num_peers_selected < self.config.leverage_target {
             debug!(
-                "PerigeeManager: Starting new outer loop iteration for leveraging peers, currently selected {} peers",
-                selected_peers.len()
+                "[{}]: Starting new outer loop iteration for leveraging peers, currently selected {} peers",
+                IDENT, num_peers_selected
             );
 
-            // First we create a new empty selected peer table for this iteration
+            selected_peers.push(Vec::new());
+
+            // First, we create a new empty selected peer table for this iteration
             let mut selected_table = HashMap::new();
 
             // We redefine the remaining table for this iteration as a clone of the original peer table
             // Note: If we knew that we would not be re-entering this outer loop, we could avoid this clone.
-            let mut remaining_table = peer_table.clone();
+            remaining_table = peer_table.clone();
 
-            // remove already selected peers from the remaining table
-            for already_selected in &selected_peers {
-                remaining_table.remove(already_selected);
-            }
-
-            // start with the last best score as max
+            // Start with the last best score as max
             let mut last_score = PeerScore::MAX;
 
-            // Inner loop: this loop selects peers one by one until we reach the leverage target,
-            // or until we reach a local optimum on the peer-set.
-            'inner: while selected_peers.len() < self.config.leverage_target {
-                debug!(
-                    "PerigeeManager: Starting new inner loop iteration for leveraging peers, currently selected {} peers",
-                    selected_peers.len()
+            // Inner loop: This loop selects peers one by one and rates them based on contributions to advancing the current set's joint score,
+            // it does this until we reach the leverage target, the available peers are exhausted, or until a local optimum is reached.
+            'inner: while num_peers_selected < self.config.leverage_target {
+                trace!(
+                    "[{}]: New inner loop iteration for leveraging peers, currently selected {} peers",
+                    IDENT,
+                    selected_peers.get(i).map(|current_set| current_set.len()).unwrap_or(0)
                 );
 
                 // Get the top ranked peer from the remaining table
                 let (top_ranked, top_ranked_score) = match self.get_top_ranked_peer(&remaining_table) {
                     (Some(peer), score) => (peer, score),
-                    _ => break,
+                    _ => {
+                        break 'outer; // no more peers to select from
+                    }
                 };
 
                 if top_ranked_score == last_score {
-                    // Break condition, Local optimum reached.
-                    break 'inner;
+                    // Break condition: local optimum reached.
+                    if top_ranked_score == PeerScore::MAX {
+                        // All remaining peers are unrankable; we cannot proceed further.
+                        break 'outer;
+                    } else {
+                        // We have reached a local optimum;
+                        if num_peers_selected < self.config.leverage_target {
+                            // Build additional sets of leveraged peers
+                            break 'inner;
+                        } else {
+                            break 'outer;
+                        }
+                    }
                 }
 
                 selected_table.insert(top_ranked, remaining_table.remove(&top_ranked).unwrap());
-                selected_peers.push(top_ranked);
+                selected_peers[i].push(top_ranked);
+                num_peers_selected += 1;
 
-                if selected_peers.len() == self.config.leverage_target {
+                if num_peers_selected == self.config.leverage_target {
+                    // Reached our target
                     break 'outer;
                 } else {
-                    // Transform the remaining table based on the newly selected peer
+                    // Transform the remaining table accounting also for the newly selected peer
                     self.transform_peer_table(&mut selected_table, &mut remaining_table);
                 }
-
                 last_score = top_ranked_score;
             }
+
+            // Remove already selected peers from the global peer table
+            for already_selected in selected_peers[i].iter() {
+                peer_table.remove(already_selected);
+            }
+
+            i += 1;
         }
-        selected_peers
+
+        for already_selected in selected_peers[i].iter() {
+            peer_table.remove(already_selected);
+        }
+
+        if num_peers_selected < self.config.leverage_target {
+            // choose randomly from remaining peers to fill the gap
+            let to_choose = self.config.leverage_target - num_peers_selected;
+            debug!("[{}]: Leveraging did not reach intended target, randomly selecting {} remaining peers", IDENT, to_choose);
+            let random_keys: Vec<PeerKey> =
+                peer_table.keys().choose_multiple(&mut thread_rng(), to_choose).into_iter().copied().collect();
+
+            for pk in random_keys {
+                selected_peers[i].push(pk);
+                peer_table.remove(&pk);
+            }
+        }
+
+        selected_peers.into_iter().flatten().collect()
     }
 
-    fn excuse(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, perigee_routers: &[Arc<Router>]) {
-        // Removes excused peers from the peer table so they are not considered for exploration.
-        for k in self.iter_excused_peers(perigee_routers) {
+    fn excuse(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, perigee_peers: &[Peer]) {
+        // Removes excused peers from the peer table so they are not considered for eviction.
+        for k in self.get_excused_peers(perigee_peers) {
             peer_table.remove(&k);
         }
     }
 
-    fn explore(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, num_of_active_perigee: usize) -> HashSet<PeerKey> {
-        // This is conceptually simple, we randomly choose peers to evict from the passed peer table.
-        // it is expected that other logic, such as leveraging, and excusing peers has already been applied to the peer table.
-        let to_remove_target = min(
+    fn explore(&self, peer_table: &mut HashMap<PeerKey, Vec<u64>>, amount_of_active_perigee: usize) -> HashSet<PeerKey> {
+        // This is conceptually simple: we randomly choose peers to evict from the passed peer table.
+        // It is expected that other logic, such as leveraging and excusing peers, has already been applied to the peer table.
+        let to_remove_target = std::cmp::min(
             self.config.exploration_target,
-            num_of_active_perigee.saturating_sub(self.config.perigee_outbound_target - self.config.exploration_target),
+            amount_of_active_perigee.saturating_sub(self.config.perigee_outbound_target - self.config.exploration_target),
         );
 
         peer_table.keys().choose_multiple(&mut thread_rng(), to_remove_target).into_iter().cloned().collect()
     }
 
     pub fn start_new_round(&mut self) {
-        // clears state and starts a new round timer
+        // Clears state and starts a new round timer
         self.clear();
         self.round_start = Instant::now();
     }
@@ -334,12 +406,13 @@ impl PerigeeManager {
     }
 
     fn maybe_insert_first_seen(&mut self, hash: Hash, timestamp: Instant) {
-        // Inserts the first seen timestamp for a block if it is earlier than the existing one
+        // Inserts the first-seen timestamp for a block if it is earlier than the existing one
         // or if it does not exist yet.
         match self.first_seen.entry(hash) {
             Entry::Occupied(mut o) => {
-                if timestamp < *o.get() {
-                    *o.get_mut() = timestamp;
+                let current = o.get_mut();
+                if timestamp.lt(current) {
+                    *current = timestamp;
                 }
             }
             Entry::Vacant(v) => {
@@ -349,39 +422,39 @@ impl PerigeeManager {
     }
 
     fn verify_block(&mut self, hash: Hash) {
-        // Marks a block as verified this round
+        // Marks a block as verified for this round.
+        // I.e., this block will be considered in the current round's evaluation.
         self.verified_blocks.insert(hash);
     }
 
     fn clear(&mut self) {
-        // Resets state for new round
-        debug!["PerigeeManager: Clearing state for new round"];
+        // Resets state for a new round
+        debug!("[{}]: Clearing state for new round", IDENT);
         self.verified_blocks.clear();
         self.first_seen.clear();
-        if self.config.statistics {
-            for router in self.hub.random_graph_routers() {
-                router.clear_perigee_timestamps();
-            }
-        };
-        for router in self.hub.perigee_routers() {
-            router.clear_perigee_timestamps();
-        }
     }
 
-    fn iter_excused_peers(&self, perigee_routers: &[Arc<Router>]) -> Vec<PeerKey> {
+    fn get_excused_peers(&self, perigee_peers: &[Peer]) -> Vec<PeerKey> {
         // Define excused peers as those that joined perigee after the round started.
         // They should not be penalized for not having enough data in this round.
-        perigee_routers.iter().filter(|r| r.connection_started() > self.round_start).map(|r| r.key()).collect()
+        // We also sort them by connection time to give more trimming security to the longest connected peers first,
+        // This allows them more time to complete a full round.
+        perigee_peers
+            .iter()
+            .sorted_by_key(|p| p.connection_started())
+            .filter(|p| p.connection_started() > self.round_start)
+            .map(|p| p.key())
+            .collect()
     }
 
     fn rate_peer(&self, values: &[u64]) -> PeerScore {
-        // rates a peer based on his transformed delay values
+        // Rates a peer based on its transformed delay values
 
         if values.is_empty() {
             return PeerScore::MAX;
         }
 
-        // sort values for percentile calculations
+        // Sort values for percentile calculations
         let sorted_values = {
             let mut sv = values.to_owned();
             sv.sort_unstable();
@@ -391,26 +464,23 @@ impl PerigeeManager {
         let len = sorted_values.len();
 
         // This is defined as the scoring mechanism in the corresponding original perigee paper.
-        // it preferences good connectivity to the bulk of the network, while still considering the tail-end delays.
+        // It favors good connectivity to the bulk of the network while still considering tail-end delays.
         let p90 = sorted_values[((0.90 * len as f64) as usize).min(len - 1)];
 
         // This is a deviation from the paper;
         // We rate beyond the p90 to tie-break
-        // Testing has exposed that the full Coverage of the p90 range often times typically only requires ~4-6 perigee peers
+        // Testing has shown that full coverage of the p90 range often only requires ~4-6 perigee peers.
         // This leaves remaining perigee peers without contribution to latency reduction.
-        // as such we rate these even deeper into the tail-end delays to try and increase coverage of outlier blocks.
+        // As such, we rate these even deeper into the tail-end delays to try to increase coverage of outlier blocks.
         let p95 = sorted_values[((0.95 * len as f64) as usize).min(len - 1)];
         let p97_5 = sorted_values[((0.975 * len as f64) as usize).min(len - 1)];
-        let p98_25 = sorted_values[((0.9825 * len as f64) as usize).min(len - 1)];
-        let p99_125 = sorted_values[((0.99125 * len as f64) as usize).min(len - 1)];
-        let p99_6875 = sorted_values[((0.996875 * len as f64) as usize).min(len - 1)];
-        let p100 = sorted_values[len - 1];
+        // Beyond p97_5 might be too sensitive to noise.
 
-        PeerScore::new(p90, p95, p97_5, p98_25, p99_125, p99_6875, p100)
+        PeerScore::new(p90, p95, p97_5)
     }
 
     fn get_top_ranked_peer(&self, peer_table: &HashMap<PeerKey, Vec<u64>>) -> (Option<PeerKey>, PeerScore) {
-        // finds the peer with the best score in the given peer table
+        // Finds the peer with the best score in the given peer table
         let mut best_peer: Option<PeerKey> = None;
         let mut best_score = PeerScore::MAX;
         let mut tied_count = 0;
@@ -423,7 +493,7 @@ impl PerigeeManager {
             } else if score == best_score {
                 tied_count += 1;
                 // Randomly replace with probability 1/tied_count
-                // this is so that we ensure we don't choose peers based on iteration / Hashmap order
+                // This ensures we don't choose peers based on iteration / HashMap order
                 if thread_rng().gen_ratio(1, tied_count) {
                     best_peer = Some(*peer);
                 }
@@ -431,51 +501,45 @@ impl PerigeeManager {
         }
 
         debug!(
-            "PerigeeManager: Top ranked peer from current peer table is {:?} with score p90: {}, p95: {}, p97.5: {}, p98.25: {}, p99.125: {}, p99.6875: {}, p.100: {}",
-            best_peer,
-            best_score.p90,
-            best_score.p95,
-            best_score.p97_5,
-            best_score.p98_25,
-            best_score.p99_125,
-            best_score.p99_6875,
-            best_score.p100,
+            "[{}]: Top ranked peer from current peer table is {:?} with score p90: {}, p95: {}, p97.5: {}",
+            IDENT, best_peer, best_score.p90, best_score.p95, best_score.p97_5,
         );
         (best_peer, best_score)
     }
 
-    /// This transforms the candidate peer table based on the min(selected peers delay scores, candidate delay scores)
-    /// for each delay score
     fn transform_peer_table(&self, selected_peers: &mut HashMap<PeerKey, Vec<u64>>, candidates: &mut HashMap<PeerKey, Vec<u64>>) {
-        debug!("PerigeeManager: Transforming peer table");
+        // Transforms the candidate peer table to min(selected peers' delay scores, candidate delay scores)
+        // for each delay score. This is one of the key components of the Perigee algorithm for joint subset selection.
+
+        debug!("[{}]: Transforming peer table", IDENT);
 
         for j in 0..self.verified_blocks.len() {
             let selected_min_j = selected_peers.values().map(|vec| vec[j]).min().unwrap();
             for candidate in candidates.values_mut() {
-                // we transform the delay of candidate at pos j to min(candidate_delay_score[j], min(selected_peers_delay_score_at_pos[j])).
+                // We transform the delay of candidate at position j to min(candidate_delay_score[j], min(selected_peers_delay_score_at_pos[j])).
                 candidate[j] = min(candidate[j], selected_min_j);
             }
         }
     }
 
-    fn should_leverage(&self, is_ibd_running: bool, amount_of_perigee_peer: usize) -> bool {
+    fn should_leverage(&self, is_ibd_running: bool, amount_of_contributing_perigee_peers: usize) -> bool {
         // Conditions that need to be met to trigger leveraging:
 
         // 1. IBD is not running
         !is_ibd_running &&
         // 2. Sufficient blocks have been verified this round
         self.block_threshold_reached() &&
-        // 3. We have enough perigee peers to choose from
-        amount_of_perigee_peer > self.config.leverage_target
+        // 3. We have enough contributing perigee peers to choose from
+        amount_of_contributing_perigee_peers >= self.config.leverage_target
     }
 
-    fn should_explore(&self, is_ibd_running: bool, amount_of_perigee_peer: usize) -> bool {
+    fn should_explore(&self, is_ibd_running: bool, amount_of_perigee_peers: usize) -> bool {
         // Conditions that should trigger exploration:
 
         // 1. IBD is not running
         !is_ibd_running &&
         // 2. We are within bounds to evict at least one peer - else we prefer to wait on more peers joining perigee first.
-        amount_of_perigee_peer > (self.config.perigee_outbound_target - self.config.exploration_target)
+        amount_of_perigee_peers > (self.config.perigee_outbound_target - self.config.exploration_target)
     }
 
     fn block_threshold_reached(&self) -> bool {
@@ -485,6 +549,10 @@ impl PerigeeManager {
         let expected_count = self.config.expected_blocks_per_round;
         let lower_bound = (expected_count as f64 * (1.0 - BLOCKS_VERIFIED_FAULT_TOLERANCE)) as usize;
         let upper_bound = (expected_count as f64 * (1.0 + BLOCKS_VERIFIED_FAULT_TOLERANCE)) as usize;
+        debug!(
+            "[{}]: block_threshold_reached: verified_count={}, expected_count={}, lower_bound={}, upper_bound={}",
+            IDENT, verified_count, expected_count, lower_bound, upper_bound
+        );
         verified_count >= lower_bound && verified_count <= upper_bound
     }
 
@@ -493,41 +561,54 @@ impl PerigeeManager {
     }
 
     fn iterate_verified_first_seen(&self) -> impl Iterator<Item = (&Hash, &Instant)> {
-        // Iterates over first_seen entries that correspond to verified blocks only
+        // Iterates over first_seen entries that correspond to verified blocks only.
         self.first_seen.iter().filter(move |(hash, _)| self.verified_blocks.contains(hash))
     }
 
-    fn build_table(&self) -> (HashMap<PeerKey, Vec<u64>>, Vec<Arc<Router>>) {
-        // Builds the peer delay table for all perigee routers
-        debug!("PerigeeManager: Building peer table");
-
+    fn build_table(&self, peer_by_address: &HashMap<SocketAddr, Peer>) -> (HashMap<PeerKey, Vec<u64>>, Vec<Peer>) {
+        // Builds the peer delay table for all perigee peers.
+        debug!("[{}]: Building peer table", IDENT);
         let mut peer_table: HashMap<PeerKey, Vec<u64>> = HashMap::new();
-        let perigee_routers = self.hub.perigee_routers();
 
-        // Below is important as we clone out the hashmap, this should only be done once per round.
-        // Calling .perigee_timestamps() method in the loop would become expensive.
-        let mut perigee_timestamps =
-            perigee_routers.iter().map(|r| (r.key(), r.perigee_timestamps())).collect::<HashMap<PeerKey, HashMap<Hash, Instant>>>();
+        // Pre-fetch perigee timestamps for all perigee peers.
+        // Calling the .perigee_timestamps() method in the loop would become expensive.
+        let mut perigee_timestamps = HashMap::new();
+        let mut perigee_peers = Vec::new();
+        for p in peer_by_address.values() {
+            if p.is_perigee() {
+                perigee_timestamps.insert(p.key(), p.perigee_timestamps());
+                perigee_peers.push(p.clone());
+            }
+        }
 
         for (hash, first_ts) in self.iterate_verified_first_seen() {
             for (peer_key, peer_timestamps) in perigee_timestamps.iter_mut() {
-                match peer_timestamps.entry(*hash) {
+                let mut timestamps = peer_timestamps.as_ref().clone();
+                match timestamps.entry(*hash) {
                     Entry::Occupied(o) => {
                         let delay = o.get().duration_since(*first_ts).as_millis() as u64;
                         peer_table.entry(*peer_key).or_default().push(delay);
                     }
                     Entry::Vacant(_) => {
+                        // Peer did not report this block this round; assign max delay
                         peer_table.entry(*peer_key).or_default().push(u64::MAX);
                     }
                 }
             }
         }
-        (peer_table, perigee_routers)
+        (peer_table, perigee_peers)
     }
 
-    pub fn log_statistics(&self) {
-        let perigee_ts: Vec<_> = self.hub.perigee_routers().iter().map(|r| (r.key(), r.perigee_timestamps())).collect();
-        let rg_ts: Vec<_> = self.hub.random_graph_routers().iter().map(|r| (r.key(), r.perigee_timestamps())).collect();
+    pub fn log_statistics(&self, peer_by_address: &HashMap<SocketAddr, Peer>) {
+        // Note: this function has been artificially compressed for code-sparsity, as it is not mission critical, but is rather verbose.
+        let (perigee_ts, rg_ts): (Vec<_>, Vec<_>) =
+            peer_by_address.values().filter(|p| p.is_perigee() || p.is_random_graph()).partition_map(|p| {
+                if p.is_perigee() {
+                    itertools::Either::Left((p.key(), p.perigee_timestamps()))
+                } else {
+                    itertools::Either::Right((p.key(), p.perigee_timestamps()))
+                }
+            });
 
         let (mut p_delays, mut rg_delays, mut p_wins, mut rg_wins, mut ties) = (vec![], vec![], 0usize, 0usize, 0usize);
 
@@ -557,7 +638,7 @@ impl PerigeeManager {
         }
 
         if p_delays.is_empty() && rg_delays.is_empty() {
-            info!("PerigeeManager Statistics: No data available for this round");
+            debug!("PerigeeManager Statistics: No data available for this round");
             return;
         }
 
@@ -578,7 +659,7 @@ impl PerigeeManager {
         let imp = |p: f64, r: f64| if r == 0.0 { 0.0 } else { (r - p) / r * 100.0 };
 
         info!(
-            "\n\
+            "[{}]\n\
      ════════════════════════════════════════════════════════════════════════════ \n\
                            PERIGEE STATISTICS - Round {:4}                     \n\
      ════════════════════════════════════════════════════════════════════════════ \n\
@@ -602,6 +683,7 @@ impl PerigeeManager {
       P95                          │ {:9} │ {:12} │                 \n\
       P99                          │ {:9} │ {:12} │                 \n\
      ════════════════════════════════════════════════════════════════════════════ ",
+            IDENT,
             self.round_counter,
             self.config.perigee_outbound_target,
             self.config.leverage_target,
@@ -642,5 +724,254 @@ impl PerigeeManager {
             p99,
             r99
         );
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_consensus_core::config::params::TESTNET_PARAMS;
+    use kaspa_hashes::Hash;
+    use kaspa_p2p_lib::PeerOutboundType;
+    use kaspa_p2p_lib::test_utils::RouterTestExt;
+    use kaspa_utils::networking::PeerId;
+
+    use std::collections::HashMap;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Instant;
+    use uuid::Uuid;
+
+    /// Generates a unique Router wit incremental IPv4 SocketAddr and PeerId for testing purposes.
+    fn generate_unique_router(time_connected: Instant) -> std::sync::Arc<kaspa_p2p_lib::Router> {
+        static ROUTER_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+        let id = ROUTER_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let ip_seed = id;
+        let octet1 = ((ip_seed >> 24) & 0xFF) as u8;
+        let octet2 = ((ip_seed >> 16) & 0xFF) as u8;
+        let octet3 = ((ip_seed >> 8) & 0xFF) as u8;
+        let octet4 = (ip_seed & 0xFF) as u8;
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(octet1, octet2, octet3, octet4)), TESTNET_PARAMS.default_p2p_port());
+        let peer_id = PeerId::new(Uuid::from_u128(id as u128));
+        RouterTestExt::test_new(peer_id, addr, Some(PeerOutboundType::Perigee), time_connected)
+    }
+
+    // Helper to generate a default PerigeeConfig for testing purposes
+    fn generate_config() -> PerigeeConfig {
+        PerigeeConfig::new(8, 4, 2, 30, std::time::Duration::from_secs(30), true, true, TESTNET_PARAMS.bps())
+    }
+
+    // Helper to generate a globally unique block hash
+    fn generate_unique_block_hash() -> Hash {
+        static HASH_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+        Hash::from_u64_word(HASH_COUNTER.fetch_add(1, Ordering::Relaxed))
+    }
+
+    #[test]
+    fn test_insertions() {
+        let routers = (0..2).map(|_| generate_unique_router(Instant::now())).collect::<Vec<_>>();
+        let manager = PerigeeManager::new(generate_config(), Arc::new(std::sync::atomic::AtomicBool::new(false)));
+        let now: Vec<_> = (0..4).map(|_| Instant::now()).collect();
+        let block_hashes: Vec<_> = (0..4).map(|_| generate_unique_block_hash()).collect();
+        for (i, (now, block_hash)) in now.iter().zip(block_hashes.iter()).enumerate() {
+            manager.lock().insert_perigee_timestamp(&routers[(i + 1) % 2].clone(), *block_hash, *now, (i + 1) % 2 == 0);
+        }
+
+        let manager = manager.lock();
+        // Check first_seen and router timestamps
+        for (i, (now, block_hash)) in now.iter().zip(block_hashes.iter()).enumerate() {
+            let ts = manager.first_seen.get(block_hash).unwrap();
+            assert_eq!(ts, now);
+            // Only the router that received the block should have it, and timestamp should match
+            let idx = (i + 1) % 2;
+            if idx == 0 {
+                assert!(manager.verified_blocks.contains(block_hash), "Block should be verified for even indices");
+            } else {
+                assert!(!manager.verified_blocks.contains(block_hash), "Block should not be verified for odd indices");
+            }
+            let perigee_timestamps = &routers[idx].perigee_timestamps();
+            let router_ts = perigee_timestamps.get(block_hash).unwrap();
+            assert_eq!(router_ts, now, "Router's perigee_timestamps should match inserted timestamp");
+            assert_eq!(router_ts, ts, "Router's perigee_timestamps should match manager's first_seen");
+            // The other router should NOT have this block_hash
+            let other_perigee_timestamps = &routers[1 - idx].perigee_timestamps();
+            assert!(!other_perigee_timestamps.contains_key(block_hash), "Other router should not have this block hash");
+        }
+
+        // Check lengths
+        assert_eq!(manager.first_seen.len(), block_hashes.len(), "first_seen should have all inserted blocks");
+        assert_eq!(manager.verified_blocks.len(), block_hashes.len().div_ceil(2), "verified_blocks should have half the blocks");
+        for router in &routers {
+            let perigee_timestamps = router.perigee_timestamps();
+            assert_eq!(perigee_timestamps.len(), block_hashes.len() / 2, "Each router should have half the block hashes");
+        }
+    }
+
+    #[test]
+    fn test_trim_peers() {
+        // Set-up environment
+        let config = generate_config();
+        let manager = PerigeeManager::new(config.clone(), Arc::new(std::sync::atomic::AtomicBool::new(false)));
+        let leverage_target = config.leverage_target;
+        let perigee_outbound_target = config.perigee_outbound_target;
+        let excused_count = perigee_outbound_target + 1 - leverage_target;
+        // Set up so that all non-leveraged, non-excused peers are needed to fill the outbound target, so only one excused peer can be trimmed
+        let total_peers = leverage_target + excused_count;
+
+        // Create leveraged peers (should not be trimmed)
+        let now = Instant::now() - std::time::Duration::from_secs(3600);
+        let mut routers = Vec::new();
+        for _ in 0..leverage_target {
+            routers.push(generate_unique_router(now));
+        }
+
+        // Create excused peers, joined after round start, should be excused and and only trimmed as a last resort (ordered by connection time)
+        let mut excused_routers = Vec::new();
+        for i in 0..excused_count {
+            let t = now + std::time::Duration::from_secs(10 + i as u64);
+            excused_routers.push(generate_unique_router(t));
+        }
+
+        // Build all peers
+        let mut peers = HashMap::new();
+        for router in routers.iter().chain(excused_routers.iter()) {
+            let peer = Peer::from((&**router, true));
+            peers.insert(router.key(), peer.clone());
+        }
+
+        // Build peer_by_addr
+        let mut peer_by_addr = HashMap::new();
+        for peer in peers.values() {
+            peer_by_addr.insert(peer.net_address(), peer.clone());
+        }
+
+        // Set leveraged and excused peers in manager
+        manager.lock().set_initial_persistent_peers(routers.iter().map(|r| r.key()).collect());
+        manager.lock().round_start = now; // Set round start to 'now' for excused logic
+
+        // Call trim_peers
+        let to_remove = manager.lock().trim_peers(Arc::new(peer_by_addr));
+
+        // Assert correct number trimmed
+        let expected_trim = total_peers - perigee_outbound_target;
+        assert_eq!(to_remove.len(), expected_trim, "Should trim down to perigee_outbound_target");
+
+        // Assert no leveraged peer is trimmed
+        let leveraged_keys: Vec<_> = routers.iter().map(|r| r.key()).collect();
+        for k in &to_remove {
+            assert!(!leveraged_keys.contains(k), "Leveraged peer should not be trimmed");
+        }
+
+        // Assert that exactly one excused peer is trimmed (evicted), and the rest are not
+        let excused_keys: Vec<_> = excused_routers.iter().map(|r| r.key()).collect();
+        let excused_trimmed: Vec<_> = excused_keys.iter().filter(|k| to_remove.contains(k)).collect();
+        assert_eq!(excused_trimmed.len(), 1, "Exactly one excused peer should be trimmed as a last resort");
+        // The rest of the excused peers should not be trimmed
+        let excused_not_trimmed: Vec<_> = excused_keys.iter().filter(|k| !to_remove.contains(k)).collect();
+        assert_eq!(excused_not_trimmed.len(), excused_count - 1, "All but one excused peer should remain");
+        // Check excused ordering by connection time (still valid for remaining excused)
+        let mut excused_peers: Vec<_> = excused_routers.iter().map(|r| peers.get(&r.key()).unwrap()).collect();
+        excused_peers.sort_by_key(|p| p.connection_started());
+        for w in excused_peers.windows(2) {
+            assert!(w[0].connection_started() <= w[1].connection_started(), "Excused peers should be ordered by connection time");
+        }
+    }
+
+    #[test]
+    fn test_peer_rating() {
+        let score = (0..1000).collect::<Vec<u64>>();
+        let manager = PerigeeManager::new(generate_config(), Arc::new(std::sync::atomic::AtomicBool::new(false)));
+        let peer_score = manager.lock().rate_peer(&score);
+        let expected_peer_score = PeerScore::new(900, 950, 975);
+        assert_eq!(peer_score, expected_peer_score);
+    }
+
+    #[test]
+    fn test_perigee_round_leverage_and_eviction() {
+        run_round(false);
+    }
+
+    #[test]
+    fn test_perigee_round_skips_while_ibd_running() {
+        run_round(true);
+    }
+
+    fn run_round(ibd_running: bool) {
+        kaspa_core::log::try_init_logger("debug");
+
+        // Set up environment
+        let is_ibd_running = Arc::new(std::sync::atomic::AtomicBool::new(ibd_running));
+        let mut config = generate_config();
+        let now = Instant::now() - std::time::Duration::from_secs(3600);
+        let peer_count = config.perigee_outbound_target;
+        let blocks_per_router = 300;
+        config.expected_blocks_per_round = blocks_per_router as u64;
+        let manager = PerigeeManager::new(config, is_ibd_running);
+        let mut routers = Vec::new();
+        for _ in 0..peer_count {
+            let router = generate_unique_router(now);
+            routers.push(router);
+        }
+
+        // Insert blocks using a deterministic delay pattern via bucketing ts
+        let leverage_target = manager.lock().config.leverage_target;
+        for block_idx in 0..blocks_per_router {
+            let block_hash = generate_unique_block_hash();
+            let base_ts = now + std::time::Duration::from_millis((block_idx as u64) * 10_000);
+            for (i, router) in routers.iter().enumerate() {
+                let ts = if i < leverage_target {
+                    let bucket_start = (i as u64) * 10;
+                    let delay = bucket_start + (block_idx as u64 % 10);
+                    base_ts + std::time::Duration::from_millis(delay)
+                } else {
+                    base_ts + std::time::Duration::from_millis(100_000 + (i as u64) * 10)
+                };
+                manager.lock().insert_perigee_timestamp(router, block_hash, ts, true);
+            }
+        }
+
+        assert!(manager.lock().verified_blocks.len() == blocks_per_router);
+
+        // Build peers and peer_by_addr after all timestamps are inserted
+        let mut peers = HashMap::new();
+        for router in &routers {
+            let peer = Peer::from((&**router, true));
+            peers.insert(router.key(), peer.clone());
+        }
+        let mut peer_by_addr = HashMap::new();
+        for peer in peers.values() {
+            peer_by_addr.insert(peer.net_address(), peer.clone());
+        }
+
+        // Execute a perigee round
+        let (leveraged, evicted, has_leveraged_changed) = manager.lock().evaluate_round(&peer_by_addr);
+        debug!("Leveraged peers: {:?}", leveraged);
+        debug!("Evicted peers: {:?}", evicted);
+
+        // Perform assertions:
+        if ibd_running {
+            // While IBD is running, no leveraging or eviction should occur
+            assert!(!has_leveraged_changed, "Leveraging should be skipped while IBD is running");
+            assert!(leveraged.is_empty(), "No peers should be leveraged while IBD is running");
+            assert!(evicted.is_empty(), "No peers should be evicted while IBD is running");
+            return;
+        };
+        assert!(has_leveraged_changed, "Leveraging should not be skipped in this test");
+        assert_eq!(
+            leveraged,
+            routers.iter().take(leverage_target).map(|r| r.key()).collect::<Vec<PeerKey>>(),
+            "Leverage set should match actual deterministic selection (order and membership)"
+        );
+        // No leveraged peer should be evicted
+        assert!(leveraged.iter().all(|p| !evicted.contains(p)), "No leveraged peer should be evicted");
+        assert_eq!(evicted.len(), manager.lock().config.exploration_target);
+
+        // Reset round.
+        manager.lock().start_new_round();
+        // Ensure state is cleared.
+        assert!(manager.lock().verified_blocks.is_empty(), "Verified blocks should be cleared after starting new round");
+        assert!(manager.lock().first_seen.is_empty(), "First seen timestamps should be cleared after starting new round");
     }
 }

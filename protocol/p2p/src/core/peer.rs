@@ -1,6 +1,6 @@
-use kaspa_consensus_core::subnets::SubnetworkId;
+use kaspa_consensus_core::{Hash as BlockHash, subnets::SubnetworkId};
 use kaspa_utils::networking::{IpAddress, PeerId};
-use std::{fmt::Display, hash::Hash, net::SocketAddr, sync::Arc, time::Instant};
+use std::{collections::HashMap, fmt::Display, hash::Hash, net::SocketAddr, sync::Arc, time::Instant};
 
 #[derive(Copy, Debug, Clone)]
 pub enum PeerOutboundType {
@@ -38,6 +38,7 @@ pub struct Peer {
     connection_started: Instant,
     properties: Arc<PeerProperties>,
     last_ping_duration: u64,
+    perigee_timestamps: Arc<HashMap<BlockHash, Instant>>,
 }
 
 impl Peer {
@@ -48,8 +49,9 @@ impl Peer {
         connection_started: Instant,
         properties: Arc<PeerProperties>,
         last_ping_duration: u64,
+        perigee_timestamps: Arc<HashMap<BlockHash, Instant>>,
     ) -> Self {
-        Self { identity, net_address, outbound_type, connection_started, properties, last_ping_duration }
+        Self { identity, net_address, outbound_type, connection_started, properties, last_ping_duration, perigee_timestamps }
     }
 
     /// Internal identity of this peer
@@ -87,6 +89,10 @@ impl Peer {
         matches!(self.outbound_type, Some(PeerOutboundType::RandomGraph))
     }
 
+    pub fn connection_started(&self) -> Instant {
+        self.connection_started
+    }
+
     pub fn time_connected(&self) -> u64 {
         Instant::now().duration_since(self.connection_started).as_millis() as u64
     }
@@ -97,6 +103,10 @@ impl Peer {
 
     pub fn last_ping_duration(&self) -> u64 {
         self.last_ping_duration
+    }
+
+    pub fn perigee_timestamps(&self) -> Arc<HashMap<BlockHash, Instant>> {
+        self.perigee_timestamps.clone()
     }
 }
 
@@ -143,5 +153,41 @@ impl From<&Peer> for PeerKey {
 impl Display for PeerKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}+{}", self.identity, self.ip)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use std::net::IpAddr;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_peer_key_equality() {
+        let peer1 = PeerKey::new(PeerId::new(Uuid::from_u128(1u128)), IpAddr::V4([192, 168, 1, 1].into()).into(), 8080);
+        let peer2 = PeerKey::new(PeerId::new(Uuid::from_u128(1u128)), IpAddr::V4([192, 168, 1, 1].into()).into(), 9090);
+        let peer3 = PeerKey::new(PeerId::new(Uuid::from_u128(2u128)), IpAddr::V4([192, 168, 1, 1].into()).into(), 8080);
+
+        assert_eq!(peer1, peer2);
+        assert_ne!(peer1, peer3);
+    }
+
+    #[test]
+    fn test_peer_key_hashing() {
+        let peer1 = PeerKey::new(PeerId::new(Uuid::from_u128(1u128)), IpAddr::V4([192, 168, 1, 1].into()).into(), 8080);
+
+        let peer2 = PeerKey::new(PeerId::new(Uuid::from_u128(1u128)), IpAddr::V4([192, 168, 1, 1].into()).into(), 9090);
+
+        let mut hasher1 = DefaultHasher::new();
+        peer1.hash(&mut hasher1);
+        let hash1 = hasher1.finish();
+
+        let mut hasher2 = DefaultHasher::new();
+        peer2.hash(&mut hasher2);
+        let hash2 = hasher2.finish();
+
+        assert_eq!(hash1, hash2);
     }
 }

@@ -1042,7 +1042,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         _: GetConnectedPeerInfoRequest,
     ) -> RpcResult<GetConnectedPeerInfoResponse> {
-        let peers = self.flow_context.hub().active_peers();
+        let peers = self.flow_context.hub().active_peers(false);
         let peer_info = self.protocol_converter.get_peers_info(&peers);
         Ok(GetConnectedPeerInfoResponse::new(peer_info))
     }

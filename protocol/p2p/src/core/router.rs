@@ -9,12 +9,13 @@ use kaspa_core::{debug, error, info, trace, warn};
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
 use seqlock::SeqLock;
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::net::SocketAddr;
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
-use std::{collections::HashMap, sync::Arc};
 use tokio::select;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::{Receiver as MpscReceiver, Sender as MpscSender, channel as mpsc_channel};
@@ -157,8 +158,10 @@ impl From<&Router> for PeerKey {
     }
 }
 
-impl From<&Router> for Peer {
-    fn from(router: &Router) -> Self {
+impl From<(&Router, bool)> for Peer {
+    /// the bool indicates whether to include perigee data
+    fn from(item: (&Router, bool)) -> Self {
+        let (router, include_perigee_data) = item;
         Self::new(
             router.identity(),
             router.net_address,
@@ -166,6 +169,12 @@ impl From<&Router> for Peer {
             router.connection_started,
             router.properties(),
             router.last_ping_duration(),
+            if include_perigee_data {
+                let perigee_timestamps = router.perigee_timestamps();
+                Arc::new(perigee_timestamps)
+            } else {
+                Arc::new(HashMap::new())
+            },
         )
     }
 }
@@ -324,6 +333,10 @@ impl Router {
 
     pub fn incoming_flow_baseline_channel_size() -> usize {
         256
+    }
+
+    pub fn protocol_version(&self) -> u32 {
+        self.mutable_state.lock().properties.protocol_version
     }
 
     /// Send a signal to start this router's receive loop
@@ -496,5 +509,45 @@ fn match_for_io_error(err_status: &tonic::Status) -> Option<&std::io::Error> {
         }
 
         err = err.source()?;
+    }
+}
+
+// --- TEST UTILS ---
+#[cfg(feature = "test-utils")]
+pub trait RouterTestExt {
+    fn test_new(
+        identity: PeerId,
+        net_address: std::net::SocketAddr,
+        outbound_type: Option<super::peer::PeerOutboundType>,
+        connection_started: std::time::Instant,
+    ) -> std::sync::Arc<Self>
+    where
+        Self: Sized;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+impl RouterTestExt for Router {
+    fn test_new(
+        identity: PeerId,
+        net_address: std::net::SocketAddr,
+        outbound_type: Option<super::peer::PeerOutboundType>,
+        connection_started: std::time::Instant,
+    ) -> std::sync::Arc<Self> {
+        use tokio::sync::mpsc;
+        let (hub_sender, _hub_receiver) = mpsc::channel(1);
+        let (outgoing_route, _outgoing_receiver) = mpsc::channel(1);
+        // Create a dummy streaming object (not actually used in this test context)
+        // let dummy_stream = Streaming::<KaspadMessage>::new_empty(...); // not needed for struct
+        std::sync::Arc::new(Router {
+            identity: seqlock::SeqLock::new(identity),
+            net_address,
+            outbound_type,
+            connection_started,
+            routing_map_by_type: parking_lot::RwLock::new(std::collections::HashMap::new()),
+            routing_map_by_id: parking_lot::RwLock::new(std::collections::HashMap::new()),
+            outgoing_route,
+            hub_sender,
+            mutable_state: parking_lot::Mutex::new(RouterMutableState::new(None, None)),
+        })
     }
 }

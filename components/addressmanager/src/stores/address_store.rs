@@ -4,8 +4,8 @@ use kaspa_database::{
 };
 use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
-use std::net::Ipv6Addr;
 use std::{error::Error, fmt::Display, sync::Arc};
+use std::{mem, net::Ipv6Addr};
 
 use super::AddressKey;
 use crate::NetAddress;
@@ -40,6 +40,7 @@ pub trait AddressesStore: AddressesStoreReader {
     #[allow(dead_code)]
     fn set_failed_count(&mut self, key: AddressKey, connection_failed_count: u64) -> StoreResult<()>;
     fn remove(&mut self, key: AddressKey) -> StoreResult<()>;
+    fn reset_perigee_data(&mut self) -> StoreResult<()>;
 }
 
 const IPV6_LEN: usize = 16;
@@ -82,11 +83,46 @@ impl From<DbAddressKey> for AddressKey {
     }
 }
 
+impl From<NetAddress> for DbAddressKey {
+    fn from(address: NetAddress) -> Self {
+        AddressKey::from(address).into()
+    }
+}
+
+#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
+struct DbPerigeeRankedAddressKey([u8; mem::size_of::<u16>() + ADDRESS_KEY_SIZE]);
+
+impl From<PerigeeEntry> for DbPerigeeRankedAddressKey {
+    fn from(perigee_entry: PerigeeEntry) -> Self {
+        let mut bytes = [0; mem::size_of::<DbPerigeeRankedAddressKey>()];
+        bytes[..mem::size_of::<u16>()].copy_from_slice(&perigee_entry.rank.to_be_bytes()); // big-endian for lexicographic ordering in rocks db, it is important
+        bytes[mem::size_of::<u16>()..].copy_from_slice(DbAddressKey::from(perigee_entry.address).as_ref());
+        Self(bytes)
+    }
+}
+
+impl From<DbPerigeeRankedAddressKey> for PerigeeEntry {
+    fn from(db_key: DbPerigeeRankedAddressKey) -> Self {
+        let rank_byte_array = db_key.0[..mem::size_of::<u16>()].try_into().unwrap();
+        let rank = u16::from_le_bytes(rank_byte_array);
+        let address_key_bytes: [u8; ADDRESS_KEY_SIZE] = db_key.0[mem::size_of::<u16>()..].try_into().unwrap();
+        let address_key = DbAddressKey(address_key_bytes);
+        let address = AddressKey::from(address_key).into();
+        PerigeeEntry { rank, address }
+    }
+}
+
+impl AsRef<[u8]> for DbPerigeeRankedAddressKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 #[derive(Clone)]
 pub struct DbAddressesStore {
     db: Arc<DB>,
     access: CachedDbAccess<DbAddressKey, Entry>,
-    perigee_access: CachedDbAccess<DbAddressKey, PerigeeEntry>,
+    perigee_access: CachedDbAccess<DbPerigeeRankedAddressKey, PerigeeEntry>,
 }
 
 impl DbAddressesStore {
@@ -144,7 +180,7 @@ impl AddressesStore for DbAddressesStore {
 
         let mut key_iter = entries.iter().enumerate().map(|(rank, address)| {
             let perigee_entry = PerigeeEntry { rank: rank as u16, address: *address };
-            let db_key = DbAddressKey::from(AddressKey::from(*address));
+            let db_key = DbPerigeeRankedAddressKey::from(perigee_entry);
             (db_key, perigee_entry)
         });
 
@@ -158,5 +194,9 @@ impl AddressesStore for DbAddressesStore {
     fn set_failed_count(&mut self, key: AddressKey, connection_failed_count: u64) -> StoreResult<()> {
         let entry = self.get(key)?;
         self.set(key, Entry { connection_failed_count, address: entry.address })
+    }
+
+    fn reset_perigee_data(&mut self) -> StoreResult<()> {
+        self.perigee_access.delete_all(DirectDbWriter::new(&self.db))
     }
 }

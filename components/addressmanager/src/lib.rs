@@ -344,6 +344,10 @@ impl AddressManager {
     pub fn get_perigee_addresses(&mut self) -> Vec<NetAddress> {
         self.address_store.get_perigee_addresses().unwrap()
     }
+
+    pub fn reset_perigee_data(&mut self) {
+        self.address_store.reset_perigee_data();
+    }
 }
 
 mod address_store_with_cache {
@@ -394,6 +398,10 @@ mod address_store_with_cache {
 
         pub fn get_perigee_addresses(&mut self) -> Option<Vec<NetAddress>> {
             self.db_store.get_perigee_addresses().ok()
+        }
+
+        pub fn reset_perigee_data(&mut self) {
+            self.db_store.reset_perigee_data().unwrap();
         }
 
         pub fn has(&mut self, address: NetAddress) -> bool {
@@ -655,6 +663,33 @@ mod address_store_with_cache {
                 significance
             );
             assert!(adjusted_p <= significance);
+        }
+
+        #[test]
+        fn test_perigee_data() {
+            let db = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+            let config = Config::new(SIMNET_PARAMS);
+            let (am, _) = AddressManager::new(Arc::new(config), db.1, Arc::new(TickService::default()));
+
+            let mut am_guard = am.lock();
+
+            let perigee_addresses: Vec<NetAddress> = (0..10)
+                .map(|i| {
+                    NetAddress::new(
+                        IpAddress::from_str(&format!("{}.{}.{}.{}", i, i, i, i)).unwrap(),
+                        SIMNET_PARAMS.default_p2p_port(),
+                    )
+                })
+                .collect();
+            am_guard.set_new_perigee_addresses(perigee_addresses.clone());
+
+            let fetched_perigee_addresses = am_guard.get_perigee_addresses();
+            assert_eq!(fetched_perigee_addresses, perigee_addresses);
+
+            am_guard.reset_perigee_data();
+
+            let fetched_perigee_addresses_after_reset = am_guard.get_perigee_addresses();
+            assert!(fetched_perigee_addresses_after_reset.is_empty());
         }
     }
 }
