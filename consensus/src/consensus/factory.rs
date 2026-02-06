@@ -383,8 +383,8 @@ impl ConsensusFactory for Factory {
             self.mining_rules.clone(),
         ));
 
-        // The default for the body_missing_anticone_set is an empty vector, which corresponds precisely to the state before a consensus commit
-        // But The default value for the pruning_utxoset_stable_flag is true, but a staging consensus does not have a utxo and hence the flag is dropped explicitly
+        // The default for the body_missing_anticone_set is an empty vector, which corresponds precisely to the state before a consensus commit.
+        // The default value for the pruning_utxoset_stable_flag is true, but a staging consensus does not have a utxo and hence the flag is dropped explicitly.
         consensus.set_pruning_utxoset_stable_flag(false);
 
         (ConsensusInstance::new(session_lock, consensus.clone()), Arc::new(Ctl::new(self.management_store.clone(), db, consensus)))

@@ -129,6 +129,9 @@ pub enum RuleError {
     #[error("expected header pruning point is {0} but got {1}")]
     WrongHeaderPruningPoint(Hash, Hash),
 
+    #[error("block {0} first direct parent is {2} but selected parent is {1}")]
+    WrongSelectedParentOrder(Hash, Hash, Hash),
+
     #[error("expected indirect parents {0} but got {1}")]
     UnexpectedIndirectParents(TwoDimVecDisplay<Hash>, TwoDimVecDisplay<Hash>),
 

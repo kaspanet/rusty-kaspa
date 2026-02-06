@@ -181,8 +181,10 @@ impl ConsensusServices {
             params.genesis.hash,
             params.pruning_proof_m,
             params.anticone_finalization_depth(),
+            params.finality_depth(),
             params.ghostdag_k(),
             params.skip_proof_of_work,
+            params.covenants_activation,
             is_consensus_exiting,
         ));
 

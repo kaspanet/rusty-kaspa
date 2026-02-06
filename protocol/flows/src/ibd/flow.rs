@@ -447,15 +447,29 @@ impl IbdFlow {
             return Err(ProtocolError::Other("got `done` message before receiving the pruning point"));
         };
 
+        if pruning_point_entry.block.is_header_only() {
+            return Err(ProtocolError::Other("pruning point entry is header-only"));
+        }
+
         if pruning_point_entry.block.hash() != proof_pruning_point {
             return Err(ProtocolError::Other("the proof pruning point is not equal to the expected trusted entry"));
         }
 
+        // TODO(pre-covpp): this buffering can be heavy on RAM for large chain segments, but is acceptable
+        // for now since syncee memory usage is still low at this phase.
         let mut entries = vec![pruning_point_entry];
+        let mut header_only_chain_segment = Vec::new();
         while let Some(entry) = entry_stream.next().await? {
-            entries.push(entry);
+            match entry.block.is_header_only() {
+                true => header_only_chain_segment.push(entry.block.header.clone()),
+                // We expect all header-only entries to be sent after all non-header-only entries
+                false if header_only_chain_segment.is_empty() => entries.push(entry),
+                false => {
+                    return Err(ProtocolError::Other("trusted body entries arrived after header-only trusted entries"));
+                }
+            }
         }
-        // Create a topologically ordered vector of  trusted blocks - the pruning point and its anticone,
+        // Create a topologically ordered vector of trusted blocks - the pruning point and its anticone,
         // and their daa windows headers
         let mut trusted_set = pkg.build_trusted_subdag(entries)?;
 
@@ -465,7 +479,7 @@ impl IbdFlow {
                 .clone()
                 .spawn_blocking(move |c| {
                     let ref_proof = proof.clone();
-                    c.apply_pruning_proof(proof, &trusted_set)?;
+                    c.apply_pruning_proof(proof, &trusted_set, &header_only_chain_segment)?;
                     c.import_pruning_points(pruning_points)?;
 
                     info!("Building the proof which was just applied (sanity test)");
@@ -496,7 +510,7 @@ impl IbdFlow {
             trusted_set = staging
                 .clone()
                 .spawn_blocking(move |c| {
-                    c.apply_pruning_proof(proof, &trusted_set)?;
+                    c.apply_pruning_proof(proof, &trusted_set, &header_only_chain_segment)?;
                     c.import_pruning_points(pruning_points)?;
                     Result::<_, ProtocolError>::Ok(trusted_set)
                 })

@@ -325,7 +325,7 @@ impl Consensus {
         // Upgrade to initialize the new retention root field correctly
         self.retention_root_database_upgrade();
         self.consensus_transitional_flags_upgrade();
-        // TODO(covpp-mainnet): Add upgrade logic to accomodate for new transaction fields
+        // TODO(covpp-mainnet): Add upgrade logic to accommodate for new transaction fields
     }
 
     fn retention_root_database_upgrade(&self) {
@@ -1060,8 +1060,13 @@ impl ConsensusApi for Consensus {
         self.services.pruning_proof_manager.validate_pruning_point_proof(proof, proof_metadata)
     }
 
-    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
-        self.services.pruning_proof_manager.apply_proof(proof, trusted_set)
+    fn apply_pruning_proof(
+        &self,
+        proof: PruningPointProof,
+        trusted_set: &[TrustedBlock],
+        header_only_chain_segment: &[Arc<Header>],
+    ) -> PruningImportResult<()> {
+        self.services.pruning_proof_manager.apply_proof(proof, trusted_set, header_only_chain_segment)
     }
 
     fn import_pruning_points(&self, pruning_points: PruningPointsList) -> PruningImportResult<()> {
