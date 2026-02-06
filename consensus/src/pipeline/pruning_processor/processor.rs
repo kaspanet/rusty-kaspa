@@ -319,7 +319,7 @@ impl PruningProcessor {
             .chain(data.anticone.iter().copied())
             .chain(data.daa_window_blocks.iter().map(|th| th.header.hash))
             .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
-            .chain(data.header_only_chain_segment.iter().map(|h| h.hash))
+            .chain(data.header_only_chain_segment.iter().copied())
             .chain(proof[0].iter().map(|h| h.hash))
             .map(|h| (h, 0)) // Mark block level 0 for all the above. Note that below we add the remaining levels
             .collect();
@@ -691,8 +691,8 @@ impl PruningProcessor {
             built_data.ghostdag_blocks.iter().map(|gd| gd.hash).collect::<BlockHashSet>()
         );
         assert_eq!(
-            ref_data.header_only_chain_segment.iter().map(|header| header.hash).collect::<BlockHashSet>(),
-            built_data.header_only_chain_segment.iter().map(|header| header.hash).collect::<BlockHashSet>()
+            ref_data.header_only_chain_segment.iter().copied().collect::<BlockHashSet>(),
+            built_data.header_only_chain_segment.iter().copied().collect::<BlockHashSet>()
         );
         info!("Trusted data was rebuilt successfully following pruning");
     }

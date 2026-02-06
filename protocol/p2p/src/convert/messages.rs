@@ -12,7 +12,6 @@ use kaspa_consensus_core::{
     block::Block,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
-    trusted::TrustedHeader,
     tx::{TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_hashes::Hash;
@@ -121,21 +120,8 @@ impl TryFrom<Versioned<protowire::TrustedDataMessage>> for TrustedDataPackage {
     type Error = ConversionError;
     fn try_from(value: Versioned<protowire::TrustedDataMessage>) -> Result<Self, Self::Error> {
         let Versioned(header_format, msg) = value;
-        let mut daa_window = Vec::new();
-        let mut header_only_chain_segment = Vec::new();
-        for entry in msg.daa_window {
-            let header = entry.header.ok_or(ConversionError::NoneValue)?;
-            let header = Arc::new(Versioned(header_format, header).try_into()?);
-            if let Some(ghostdag_data) = entry.ghostdag_data {
-                daa_window.push(TrustedHeader::new(header, ghostdag_data.try_into()?));
-            } else {
-                header_only_chain_segment.push(header);
-            }
-        }
-
         Ok(TrustedDataPackage::new(
-            daa_window,
-            header_only_chain_segment,
+            msg.daa_window.into_iter().map(|x| Versioned(header_format, x).try_into()).collect::<Result<Vec<_>, ConversionError>>()?,
             msg.ghostdag_data.into_iter().map(|x| x.try_into()).collect::<Result<Vec<_>, ConversionError>>()?,
         ))
     }

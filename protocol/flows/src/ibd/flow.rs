@@ -439,12 +439,7 @@ impl IbdFlow {
         // (including the PP itself), alongside indexing denoting the respective metadata headers or ghostdag data
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
         let pkg: TrustedDataPackage = Versioned(self.header_format, msg).try_into()?;
-        debug!(
-            "received trusted data with {} daa entries, {} header-only chain entries, and {} ghostdag entries",
-            pkg.daa_window.len(),
-            pkg.header_only_chain_segment.len(),
-            pkg.ghostdag_window.len()
-        );
+        debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
 
         let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route, self.header_format);
         // The first entry of the trusted data is the pruning point itself.
@@ -452,17 +447,30 @@ impl IbdFlow {
             return Err(ProtocolError::Other("got `done` message before receiving the pruning point"));
         };
 
+        if pruning_point_entry.block.is_header_only() {
+            return Err(ProtocolError::Other("pruning point entry is header-only"));
+        }
+
         if pruning_point_entry.block.hash() != proof_pruning_point {
             return Err(ProtocolError::Other("the proof pruning point is not equal to the expected trusted entry"));
         }
 
+        // TODO(pre-covpp): this buffering can be heavy on RAM for large chain segments, but is acceptable
+        // for now since syncee memory usage is still low at this phase.
         let mut entries = vec![pruning_point_entry];
+        let mut header_only_chain_segment = Vec::new();
         while let Some(entry) = entry_stream.next().await? {
-            entries.push(entry);
+            match entry.block.is_header_only() {
+                true => header_only_chain_segment.push(entry.block.header.clone()),
+                false if header_only_chain_segment.is_empty() => entries.push(entry),
+                false => {
+                    return Err(ProtocolError::Other("trusted body entries arrived after header-only trusted entries"));
+                }
+            }
         }
         // Create a topologically ordered vector of trusted blocks - the pruning point and its anticone,
         // and their daa windows headers
-        let (mut trusted_set, header_only_chain_segment) = pkg.build_trusted_subdag(entries)?;
+        let mut trusted_set = pkg.build_trusted_subdag(entries)?;
 
         if self.ctx.config.enable_sanity_checks {
             let con = self.ctx.consensus().unguarded_session_blocking();

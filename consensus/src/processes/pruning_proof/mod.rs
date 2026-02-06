@@ -303,6 +303,8 @@ impl PruningProofManager {
                     // We fill `ghostdag_blocks` only for kaspad-go legacy reasons, but the real set we
                     // send is `daa_window_blocks` which represents the full trusted sub-DAG in the antifuture
                     // of the pruning point which kaspad-rust nodes expect to get when synced with headers proof
+                    //
+                    // TODO(pre-covpp): remove the redundant `ghostdag_blocks` field as part of restructuring trusted data sending
                     if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {
                         e.insert(TrustedHeader {
                             header: self.headers_store.get_header(hash).unwrap(),
@@ -353,9 +355,8 @@ impl PruningProofManager {
 
             for current in self.reachability_service.default_backward_chain_iterator(pruning_point) {
                 if !daa_window_blocks.contains_key(&current) && header_only_chain_segment_set.insert(current) {
-                    let header = self.headers_store.get_header(current).unwrap();
                     // No need for full ghostdag data here; syncees only need the header for seq-commitment access.
-                    header_only_chain_segment.push(header);
+                    header_only_chain_segment.push(current);
                 }
 
                 if !seq_commit_within_threshold(
