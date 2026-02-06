@@ -1110,12 +1110,12 @@ message GetTransactionRequestMessage {
   /// If true, query for unaccepted transactions as well,
   /// Note: data pertaining to acceptance (i.e. conf counts and acceptance data) is always canonical
   bool includeUnaccepted = 2;
-  RpcDataVerbosityLevel transactionVerbosity = 3; // optional: absence implies legacy-false (no transactions returned)
+  /// Will be filled depending on the supplied RpcDataVerbosityLevel.
+  /// Note: input utxos are filled on a best effort basis, i.e. if utxo data can be found.
+  optional RpcDataVerbosityLevel transactionVerbosity = 3;
   bool includeInclusionData = 4;
   bool includeAcceptanceData = 5;
   bool includeConfCount = 6;
-  /// Fills the verbose data fields in the returned transactions if transactions are returned (i.e., when `transactionVerbosity` is present).
-  bool includeVerboseData = 7;
 }
 
 message GetTransactionResponseMessage {

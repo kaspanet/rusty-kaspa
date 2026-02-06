@@ -1329,8 +1329,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             return Err(RpcError::NoTxIndex);
         }
 
-        let has_transactions = request.transaction_verbosity.is_some();
-        let require_inclusion_data = request.include_inclusion_data || has_transactions;
+        let require_inclusion_data =
+            request.include_inclusion_data || request.transaction_verbosity.is_some_and(|v| !matches!(v, RpcDataVerbosityLevel::None));
         let require_acceptance_data =
             request.include_acceptance_data || request.include_conf_count || (require_inclusion_data && !request.include_unaccepted);
 
@@ -1380,7 +1380,6 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 request.include_inclusion_data,
                 request.include_acceptance_data,
                 request.include_conf_count,
-                request.include_verbose_data,
             )
             .await?;
         Ok(GetTransactionResponse::new(Some(transaction_data)))

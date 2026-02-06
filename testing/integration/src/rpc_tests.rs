@@ -725,7 +725,6 @@ async fn sanity_test() {
                                 include_inclusion_data: true,
                                 include_acceptance_data: true,
                                 include_conf_count: true,
-                                include_verbose_data: true,
                             },
                         )
                         .await;

@@ -508,7 +508,6 @@ pub trait RpcApi: Sync + Send + AnySync {
         include_inclusion_data: bool,
         include_acceptance_data: bool,
         include_conf_count: bool,
-        include_verbose_data: bool,
     ) -> RpcResult<GetTransactionResponse> {
         self.get_transaction_call(
             None,
@@ -519,7 +518,6 @@ pub trait RpcApi: Sync + Send + AnySync {
                 include_inclusion_data,
                 include_acceptance_data,
                 include_conf_count,
-                include_verbose_data,
             },
         )
         .await

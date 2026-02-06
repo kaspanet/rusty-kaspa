@@ -2837,7 +2837,6 @@ pub struct GetTransactionRequest {
     pub include_inclusion_data: bool,
     pub include_acceptance_data: bool,
     pub include_conf_count: bool,
-    pub include_verbose_data: bool,
 }
 
 impl GetTransactionRequest {
@@ -2848,7 +2847,6 @@ impl GetTransactionRequest {
         include_inclusion_data: bool,
         include_acceptance_data: bool,
         include_conf_count: bool,
-        include_verbose_data: bool,
     ) -> Self {
         Self {
             transaction_id,
@@ -2857,7 +2855,6 @@ impl GetTransactionRequest {
             include_inclusion_data,
             include_acceptance_data,
             include_conf_count,
-            include_verbose_data,
         }
     }
 }
@@ -2871,7 +2868,6 @@ impl Serializer for GetTransactionRequest {
         store!(bool, &self.include_inclusion_data, writer)?;
         store!(bool, &self.include_acceptance_data, writer)?;
         store!(bool, &self.include_conf_count, writer)?;
-        store!(bool, &self.include_verbose_data, writer)?;
         Ok(())
     }
 }
@@ -2885,7 +2881,6 @@ impl Deserializer for GetTransactionRequest {
         let include_inclusion_data = load!(bool, reader)?;
         let include_acceptance_data = load!(bool, reader)?;
         let include_conf_count = load!(bool, reader)?;
-        let include_verbose_data = load!(bool, reader)?;
         Ok(Self {
             transaction_id,
             include_unaccepted,
@@ -2893,7 +2888,6 @@ impl Deserializer for GetTransactionRequest {
             include_inclusion_data,
             include_acceptance_data,
             include_conf_count,
-            include_verbose_data,
         })
     }
 }

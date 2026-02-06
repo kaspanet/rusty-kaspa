@@ -543,7 +543,6 @@ from!(item: &kaspa_rpc_core::GetTransactionRequest, protowire::GetTransactionReq
         include_inclusion_data: item.include_inclusion_data,
         include_acceptance_data: item.include_acceptance_data,
         include_conf_count: item.include_conf_count,
-        include_verbose_data: item.include_verbose_data,
     }
 });
 
@@ -831,7 +830,6 @@ try_from!(item: &protowire::GetTransactionRequestMessage, kaspa_rpc_core::GetTra
         include_inclusion_data: item.include_inclusion_data,
         include_acceptance_data: item.include_acceptance_data,
         include_conf_count: item.include_conf_count,
-        include_verbose_data: item.include_verbose_data,
     }
 });
 

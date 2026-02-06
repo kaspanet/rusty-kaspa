@@ -680,7 +680,6 @@ mod mockery {
                 include_inclusion_data: true,
                 include_acceptance_data: false,
                 include_conf_count: false,
-                include_verbose_data: true,
             }
         }
     }
