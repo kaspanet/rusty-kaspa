@@ -4,7 +4,7 @@ use clap::{Arg, ArgAction, Command};
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
-    config::params::TESTNET_PARAMS,
+    config::params::{TESTNET_PARAMS, TESTNET12_PARAMS},
     constants::{SOMPI_PER_KASPA, TX_VERSION_POST_COV_HF},
     hashing::covenant_id::covenant_id,
     sign::sign,
@@ -28,7 +28,7 @@ use tokio::time::{Instant, MissedTickBehavior, interval};
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
 const FEE_RATE: u64 = 10;
 const MILLIS_PER_TICK: u64 = 10;
-const ADDRESS_PREFIX: Prefix = Prefix::Devnet;
+const ADDRESS_PREFIX: Prefix = Prefix::Testnet;
 const ADDRESS_VERSION: Version = Version::PubKey;
 
 struct Stats {
@@ -264,6 +264,7 @@ async fn main() {
 
     let coinbase_maturity = match info.network.suffix {
         Some(11) => panic!("TN11 is not supported on this version"),
+        Some(12) => TESTNET12_PARAMS.coinbase_maturity(),
         None | Some(_) => TESTNET_PARAMS.coinbase_maturity(),
     };
     info!(
@@ -567,7 +568,7 @@ fn get_random_covenant_binding_among_input(inputs: &[TransactionInput], with_cov
         return None;
     }
     let idx = thread_rng().gen_range(0..inputs.len());
-    Some(CovenantBinding::new(idx as u16, covenant_id(inputs[idx].previous_outpoint)))
+    Some(CovenantBinding::new(idx as u16, covenant_id(inputs[idx].previous_outpoint, std::iter::empty())))
 }
 
 fn generate_tx(
