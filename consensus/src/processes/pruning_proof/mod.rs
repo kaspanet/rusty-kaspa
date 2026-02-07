@@ -66,12 +66,6 @@ enum ProofInternalError {
     #[error("block at depth error: {0}")]
     BlockAtDepth(String),
 
-    #[error("find common ancestor error: {0}")]
-    FindCommonAncestor(String),
-
-    #[error("cannot find a common ancestor: {0}")]
-    NoCommonAncestor(String),
-
     #[error("missing headers to build proof: {0}")]
     NotEnoughHeadersToBuildProof(String),
 }
@@ -107,7 +101,7 @@ pub struct PruningProofManager {
     depth_store: Arc<DbDepthStore>,
     selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
     pruning_samples_store: Arc<DbPruningSamplesStore>,
-    pruning_meta_stores: Arc<RwLock<PruningMetaStores>>,
+    _pruning_meta_stores: Arc<RwLock<PruningMetaStores>>,
 
     ghostdag_manager: DbGhostdagManager,
     traversal_manager: DbDagTraversalManager,
@@ -154,7 +148,7 @@ impl PruningProofManager {
             ghostdag_store: storage.ghostdag_store.clone(),
             relations_store: storage.relations_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
-            pruning_meta_stores: storage.pruning_meta_stores.clone(),
+            _pruning_meta_stores: storage.pruning_meta_stores.clone(),
             past_pruning_points_store: storage.past_pruning_points_store.clone(),
             virtual_stores: storage.virtual_stores.clone(),
             body_tips_store: storage.body_tips_store.clone(),

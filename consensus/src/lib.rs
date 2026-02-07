@@ -49,10 +49,6 @@
 //! Functions in this module assume and enforce these invariants. Callers are expected
 //! to respect them as well.
 
-// Until the codebase stables up, we will have a lot of these -- ignore for now
-// TODO: remove this
-#![allow(dead_code)]
-
 pub mod config;
 pub mod consensus;
 pub mod constants;
