@@ -3797,8 +3797,8 @@
     "0 1",
     "IF 0xc0 ELSE 1 ENDIF",
     "",
-    "OK",
-    "OpTxInputBlockDaaScore is enabled since covpp"
+    "BAD_OPCODE",
+    "OpTxInputDaaScore is reserved"
   ],
   [
     "1",
