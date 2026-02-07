@@ -1,6 +1,6 @@
 use std::{
     cmp::{Ordering, Reverse},
-    collections::BinaryHeap,
+    collections::{BinaryHeap, VecDeque},
     sync::Arc,
 };
 
@@ -9,7 +9,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, HashKTypeMap, HashMapCustomHasher, KType,
     blockhash::{self, BlockHashes},
 };
-use kaspa_core::debug;
+use kaspa_core::{debug, trace};
 use kaspa_database::prelude::StoreResultUnitExt;
 use kaspa_hashes::Hash;
 use kaspa_math::Uint192;
@@ -252,8 +252,6 @@ impl<
     }
 
     /// Follows the Calculate-Rank algorithm in the DK paper
-    /// For now, this is missing the concept of representatives, and instead subgroup_tips == representatives
-    /// TODO[DK]: Properly implement representatives
     ///
     /// Currently returns both the Rank and a selected parent (deviates from the paper) since the tie breaking logic
     /// in the caller is simply using blue_work + hash to break ties between subgroups
@@ -379,7 +377,7 @@ impl<
             curr_gd = conflict_zone_manager.get_data(curr_gd.selected_parent).unwrap();
         }
 
-        debug!(
+        trace!(
             "k = {} | blue work = {} | gray work = {} | red work = {} | deficit = {}",
             k_to_check, blue_block_work, gray_block_work, red_block_work, deficit
         );
@@ -434,15 +432,25 @@ impl<
 
         let mut topological_heap: BinaryHeap<_> = Default::default();
 
-        let mut visited = BlockHashSet::new();
+        // Determine last known tips by backward iterating from subgroup tips to root
+        // and stopping at the latest blocks with GD data to proceed from there.
+        // Guaranteed to return at least one entry since the conflict_genesis is initialized above
+        let last_known_tips = self.find_last_known_tips(root, tips, &conflict_manager);
 
-        // TODO: Determine starting roots by backward iterating from subgroup tips to root
-        // and stopping at the last blocks without GD data yet
-        // TODO: Right now it's initializing from the root, but really it should initialized from the saved tips we know
-        // for the k-cluster with this root (since we're tracking tips). This way, the BFS starts only from the tips if
-        // we see another conflict for this root+k.
-        topological_heap
-            .push(Reverse(SortableBlock { hash: root, blue_work: self.headers_store.get_header(root).unwrap().blue_work }));
+        if last_known_tips.len() == 1 && last_known_tips[0] == root {
+            trace!("fill_conflict_zone_data from root: {}", root);
+        } else {
+            trace!("fill_conflict_zone_data from {} last known tips", last_known_tips.len());
+        }
+
+        last_known_tips.iter().for_each(|current_root| {
+            topological_heap.push(Reverse(SortableBlock {
+                hash: *current_root,
+                blue_work: self.headers_store.get_header(*current_root).unwrap().blue_work,
+            }));
+        });
+
+        let mut visited = BlockHashSet::new();
 
         loop {
             let Some(current) = topological_heap.pop() else {
@@ -496,6 +504,44 @@ impl<
         }
 
         conflict_manager
+    }
+
+    fn find_last_known_tips(
+        &self,
+        conflict_genesis: Hash,
+        tips: &[Hash],
+        conflict_manager: &ConflictZoneManager<C, O, D, R>,
+    ) -> Vec<Hash> {
+        let mut visited = BlockHashSet::new();
+        let mut queue: VecDeque<Hash> = VecDeque::from_iter(tips.iter().copied());
+
+        let mut roots = vec![];
+
+        while !queue.is_empty() {
+            let curr = queue.pop_front().unwrap();
+
+            if !visited.insert(curr) {
+                continue;
+            }
+
+            // We only care about blocks that have conflict genesis as it's chain ancestor.
+            // This means search is always free_search = false
+            // TODO[DK]: Fix this to dag ancestry if we need to support free_search = true
+            if !self.reachability_service.is_chain_ancestor_of(conflict_genesis, curr) {
+                continue;
+            }
+
+            if conflict_manager.has(curr) {
+                // This is a tip we can start from
+                roots.push(curr);
+            }
+
+            for parent in self.relations_store.read().get_parents(curr).unwrap().iter() {
+                queue.push_back(*parent);
+            }
+        }
+
+        roots
     }
 }
 
