@@ -476,6 +476,7 @@ impl HeaderProcessor {
         let mut batch = WriteBatch::default();
         let mut relations_write = self.relations_store.write();
         relations_write.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
+        self.ghostdag_store.insert_batch(&mut batch, ORIGIN, &self.ghostdag_manager.origin_ghostdag_data()).unwrap();
         let mut hst_write = self.headers_selected_tip_store.write();
         hst_write.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
         self.db.write(batch).unwrap();
