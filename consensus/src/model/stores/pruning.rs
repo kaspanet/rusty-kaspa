@@ -131,10 +131,6 @@ impl DbPruningStore {
     pub fn set_pruning_proof_descriptor(&mut self, descriptor: PruningProofDescriptor) -> StoreResult<()> {
         self.pruning_proof_descriptor_access.write(DirectDbWriter::new(&self.db), &Arc::new(descriptor))
     }
-
-    pub fn del_pruning_proof_descriptor(&mut self) -> StoreResult<()> {
-        self.pruning_proof_descriptor_access.remove(DirectDbWriter::new(&self.db))
-    }
 }
 
 impl PruningStoreReader for DbPruningStore {
