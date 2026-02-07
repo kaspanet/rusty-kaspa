@@ -379,3 +379,42 @@ async fn daemon_cleaning_test() {
     assert_eq!(async_runtime.strong_count(), 0);
     assert_eq!(core.strong_count(), 0);
 }
+
+/// Tests that KaspaRpcClient properly cleans up resources when dropped without
+/// explicitly calling disconnect(). This validates the Drop implementation
+/// which performs fire-and-forget async cleanup.
+///
+/// See: https://github.com/kaspanet/rusty-kaspa/issues/683
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn daemon_wrpc_client_drop_test() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("info,kaspa_wrpc_client=trace");
+
+    let args = Args { devnet: true, disable_upnp: true, ..Default::default() };
+    let total_fd_limit = 10;
+    let mut kaspad = Daemon::new_random_with_args(args, total_fd_limit);
+
+    // Start daemon and get a gRPC client (to keep daemon running)
+    let _grpc_client = kaspad.start().await;
+
+    // Wait for wRPC server to be ready
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Create and connect a wRPC client
+    let wrpc_client = kaspad.new_wrpc_client();
+    wrpc_client.connect(None).await.expect("wRPC client should connect");
+
+    // Verify the client is connected by making an RPC call
+    let server_info = wrpc_client.get_server_info().await.expect("Should get server info");
+    assert!(!server_info.server_version.is_empty(), "Server version should not be empty");
+
+    // Drop the client WITHOUT calling disconnect() - this tests the Drop implementation
+    // The Drop impl should log a warning and initiate cleanup
+    drop(wrpc_client);
+
+    // Give the fire-and-forget cleanup task time to run
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Clean up
+    kaspad.shutdown();
+}

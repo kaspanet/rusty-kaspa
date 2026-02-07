@@ -3254,6 +3254,7 @@ dependencies = [
  "kaspa-txscript-errors",
  "kaspa-utils",
  "kaspa-utxoindex",
+ "kaspa-wrpc-client",
  "kaspa-wrpc-server",
  "kaspad",
  "log",
