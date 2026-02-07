@@ -344,10 +344,10 @@ impl PruningProofManager {
     pub fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
         let mut cache_lock = self.cached_proof.lock();
-        if let Some(cache) = cache_lock.clone() {
-            if cache.pruning_point == pp {
-                return cache.data;
-            }
+        if let Some(cache) = cache_lock.clone()
+            && cache.pruning_point == pp
+        {
+            return cache.data;
         }
         let proof = Arc::new(self.build_pruning_point_proof(pp));
         info!(
@@ -362,10 +362,10 @@ impl PruningProofManager {
     pub fn get_pruning_point_anticone_and_trusted_data(&self) -> ConsensusResult<Arc<PruningPointTrustedData>> {
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
         let mut cache_lock = self.cached_anticone.lock();
-        if let Some(cache) = cache_lock.clone() {
-            if cache.pruning_point == pp {
-                return Ok(cache.data);
-            }
+        if let Some(cache) = cache_lock.clone()
+            && cache.pruning_point == pp
+        {
+            return Ok(cache.data);
         }
 
         let virtual_state = self.virtual_stores.read().state.get().unwrap();
