@@ -105,10 +105,10 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
             // We count the number of blocks in past(tips) \setminus past(block).
             // We don't use `visited.len()` since it includes some maximal blocks in past(block) as well.
             traversal_count += 1;
-            if let Some(max_traversal_allowed) = max_traversal_allowed {
-                if traversal_count > max_traversal_allowed {
-                    return Err(TraversalError::ReachedMaxTraversalAllowed(traversal_count, max_traversal_allowed));
-                }
+            if let Some(max_traversal_allowed) = max_traversal_allowed
+                && traversal_count > max_traversal_allowed
+            {
+                return Err(TraversalError::ReachedMaxTraversalAllowed(traversal_count, max_traversal_allowed));
             }
 
             if traversal_count % 10000 == 0 {

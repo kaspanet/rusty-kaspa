@@ -671,11 +671,10 @@ impl RpcClient {
                                 }
                                 Ctl::Disconnect => {
                                     let listener_id = this.inner.listener_id.lock().unwrap().take();
-                                    if let Some(listener_id) = listener_id {
-                                        if let Err(err) = this.inner.client.unregister_listener(listener_id).await {
+                                    if let Some(listener_id) = listener_id
+                                        && let Err(err) = this.inner.client.unregister_listener(listener_id).await {
                                             log_error!("Error in unregister_listener: {:?}",err);
                                         }
-                                    }
                                 }
                             }
 
