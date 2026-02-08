@@ -516,11 +516,7 @@ impl MiningManager {
         transactions[lower_bound..]
             .iter()
             .position(|tx| {
-                mass += kaspa_consensus_core::mass::Mass::new(
-                    tx.calculated_non_contextual_masses.unwrap(),
-                    kaspa_consensus_core::mass::ContextualMasses::new(tx.tx.mass()),
-                )
-                .normalized_max(&self.config.mass_cofactors);
+                mass += tx.calculated_non_contextual_masses.unwrap().normalized_max(&self.config.mass_cofactors);
                 mass >= self.config.maximum_mass_per_block
             })
             // Make sure the upper bound is greater than the lower bound, allowing to handle a very unlikely,

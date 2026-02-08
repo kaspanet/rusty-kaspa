@@ -153,6 +153,15 @@ impl NonContextualMasses {
     pub fn new(compute_mass: u64, transient_mass: u64) -> Self {
         Self { compute_mass, transient_mass }
     }
+
+    /// Returns the normalized maximum mass for non-contextual dimensions only.
+    /// The result is in units of `cofactors.reference` (= compute limit).
+    pub fn normalized_max(&self, cofactors: &MassCofactors) -> u64 {
+        // Compute mass is already in the reference scale (compute limit).
+        let c = self.compute_mass;
+        let t = (self.transient_mass as f64 * cofactors.transient).ceil() as u64;
+        c.max(t)
+    }
 }
 
 impl std::fmt::Display for NonContextualMasses {
@@ -260,9 +269,8 @@ impl Mass {
     /// When all limits are equal, all cofactors are 1.0 and this reduces to `max(storage, compute, transient)`.
     pub fn normalized_max(&self, cofactors: &MassCofactors) -> u64 {
         let s = (self.contextual.storage_mass as f64 * cofactors.storage).ceil() as u64;
-        let c = self.non_contextual.compute_mass;
-        let t = (self.non_contextual.transient_mass as f64 * cofactors.transient).ceil() as u64;
-        s.max(c).max(t)
+        let nc = self.non_contextual.normalized_max(cofactors);
+        s.max(nc)
     }
 }
 
