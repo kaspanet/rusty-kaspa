@@ -1,5 +1,6 @@
 use crate::zk_precompiles::error::ZkIntegrityError;
 
+#[derive(Copy, Clone)]
 #[repr(u8)]
 /// The supported ZK proof tags
 pub enum ZkTag {
@@ -26,11 +27,40 @@ impl ZkTag {
     pub fn sigop_cost(&self) -> u16 {
         match self {
             ZkTag::Groth16 => 140,
-            ZkTag::R0Succinct => 740,
+            ZkTag::R0Succinct => 250,
         }
     }
 
     pub fn max_cost() -> u16 {
-        740 // The highest cost among supported tags
+        250 // The highest cost among supported tags
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ZkTag;
+
+    fn expected_max_cost() -> u16 {
+        let mut max_cost = 0;
+
+        for tag in [ZkTag::Groth16, ZkTag::R0Succinct] {
+            // Intentionally exhaustive match so adding a new enum variant
+            // fails to compile until this list is updated.
+            let cost = match tag {
+                ZkTag::Groth16 => ZkTag::Groth16.sigop_cost(),
+                ZkTag::R0Succinct => ZkTag::R0Succinct.sigop_cost(),
+            };
+
+            if cost > max_cost {
+                max_cost = cost;
+            }
+        }
+
+        max_cost
+    }
+
+    #[test]
+    fn max_cost_matches_hardcoded_value() {
+        assert_eq!(ZkTag::max_cost(), expected_max_cost());
     }
 }

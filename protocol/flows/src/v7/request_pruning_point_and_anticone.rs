@@ -104,7 +104,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                     ))
                     .await?;
                 let sent = i + 1;
-                if sent % IBD_BATCH_SIZE == 0 {
+                if sent.is_multiple_of(IBD_BATCH_SIZE) {
                     // No timeout here, as we don't care if the syncee takes its time computing,
                     // since it only blocks this dedicated flow
                     drop(session); // Avoid holding the session through dequeue calls

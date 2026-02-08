@@ -36,7 +36,7 @@ const MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE: u64 = 300_000; // TODO(covpp-mainn
 /// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum mass allowed for transactions that
 /// are considered standard and will therefore be relayed and considered for mining.
 const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 1_000_000; // TODO(covpp-mainnet)
-const MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS: u64 = 600_000; // TODO(covpp-mainnet)
+const MAXIMUM_STANDARD_TRANSACTION_TRANSIENT_MASS: u64 = 1_000_000; // TODO(covpp-mainnet)
 
 impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
@@ -283,7 +283,7 @@ mod tests {
         for test in tests.iter() {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let mut config = Config::build_default(params.target_time_per_block(), false, params.max_block_mass);
+                let mut config = Config::build_default(params.target_time_per_block(), false, params.block_mass_limits);
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
@@ -368,7 +368,7 @@ mod tests {
         for test in tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let mut config = Config::build_default(params.target_time_per_block(), false, params.max_block_mass);
+                let mut config = Config::build_default(params.target_time_per_block(), false, params.block_mass_limits);
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
@@ -548,7 +548,7 @@ mod tests {
         for test in tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let config = Config::build_default(params.target_time_per_block(), false, params.max_block_mass);
+                let config = Config::build_default(params.target_time_per_block(), false, params.block_mass_limits);
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
 

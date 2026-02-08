@@ -6,6 +6,7 @@ pub use super::{
 use crate::{
     BlockLevel, KType,
     constants::STORAGE_MASS_PARAMETER,
+    mass::BlockMassLimits,
     network::{NetworkId, NetworkType},
 };
 use kaspa_addresses::Prefix;
@@ -200,7 +201,7 @@ pub struct OverrideParams {
     pub mass_per_tx_byte: Option<u64>,
     pub mass_per_script_pub_key_byte: Option<u64>,
     pub mass_per_sig_op: Option<u64>,
-    pub max_block_mass: Option<u64>,
+    pub block_mass_limits: Option<BlockMassLimits>,
 
     /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
     pub storage_mass_parameter: Option<u64>,
@@ -242,7 +243,7 @@ impl From<Params> for OverrideParams {
             mass_per_tx_byte: Some(p.mass_per_tx_byte),
             mass_per_script_pub_key_byte: Some(p.mass_per_script_pub_key_byte),
             mass_per_sig_op: Some(p.mass_per_sig_op),
-            max_block_mass: Some(p.max_block_mass),
+            block_mass_limits: Some(p.block_mass_limits),
             storage_mass_parameter: Some(p.storage_mass_parameter),
             deflationary_phase_daa_score: Some(p.deflationary_phase_daa_score),
             pre_deflationary_phase_base_subsidy: Some(p.pre_deflationary_phase_base_subsidy),
@@ -294,7 +295,7 @@ pub struct Params {
     pub mass_per_tx_byte: u64,
     pub mass_per_script_pub_key_byte: u64,
     pub mass_per_sig_op: u64,
-    pub max_block_mass: u64,
+    pub block_mass_limits: BlockMassLimits,
 
     /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
     pub storage_mass_parameter: u64,
@@ -463,7 +464,7 @@ impl Params {
             mass_per_tx_byte: overrides.mass_per_tx_byte.unwrap_or(self.mass_per_tx_byte),
             mass_per_script_pub_key_byte: overrides.mass_per_script_pub_key_byte.unwrap_or(self.mass_per_script_pub_key_byte),
             mass_per_sig_op: overrides.mass_per_sig_op.unwrap_or(self.mass_per_sig_op),
-            max_block_mass: overrides.max_block_mass.unwrap_or(self.max_block_mass),
+            block_mass_limits: overrides.block_mass_limits.unwrap_or(self.block_mass_limits),
 
             storage_mass_parameter: overrides.storage_mass_parameter.unwrap_or(self.storage_mass_parameter),
 
@@ -576,7 +577,7 @@ pub const MAINNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    max_block_mass: 500_000,
+    block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
@@ -633,7 +634,7 @@ pub const TESTNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    max_block_mass: 500_000,
+    block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
@@ -667,6 +668,12 @@ pub const TESTNET12_PARAMS: Params = Params {
     net: NetworkId::with_suffix(NetworkType::Testnet, 12),
     genesis: TESTNET12_GENESIS,
 
+    // Increased for stark proofs
+    max_signature_script_len: 300_000,
+
+    // Transient mass is increased for stark proofs
+    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+
     deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
     pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
     pre_crescendo_target_time_per_block: TenBps::target_time_per_block(),
@@ -694,14 +701,15 @@ pub const SIMNET_PARAMS: Params = Params {
 
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    max_signature_script_len: 10_000,
+    // Increased for stark proofs
+    max_signature_script_len: 300_000,
     max_script_public_key_len: 10_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    // Increased for testing stark proofs
-    max_block_mass: 1_500_000,
+    // Transient mass is increased for stark proofs
+    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
@@ -733,15 +741,16 @@ pub const DEVNET_PARAMS: Params = Params {
 
     max_tx_inputs: 1000,
     max_tx_outputs: 1000,
-    max_signature_script_len: 10_000,
+    // Increased for stark proofs
+    max_signature_script_len: 300_000,
     max_script_public_key_len: 10_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
 
-    // Increased for testing stark proofs
-    max_block_mass: 1_500_000,
+    // Transient mass is increased for stark proofs
+    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
