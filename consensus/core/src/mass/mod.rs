@@ -206,7 +206,6 @@ impl BlockMassLimits {
 #[derive(Copy, Clone, Debug)]
 pub struct MassCofactors {
     pub storage: f64,
-    pub compute: f64,
     pub transient: f64,
     /// The normalized block mass limit (= compute limit)
     pub reference: u64,
@@ -215,12 +214,7 @@ pub struct MassCofactors {
 impl MassCofactors {
     pub fn new(limits: &BlockMassLimits) -> Self {
         let reference = limits.compute as f64;
-        Self {
-            storage: reference / limits.storage as f64,
-            compute: 1.0,
-            transient: reference / limits.transient as f64,
-            reference: limits.compute,
-        }
+        Self { storage: reference / limits.storage as f64, transient: reference / limits.transient as f64, reference: limits.compute }
     }
 }
 
@@ -266,7 +260,7 @@ impl Mass {
     /// When all limits are equal, all cofactors are 1.0 and this reduces to `max(storage, compute, transient)`.
     pub fn normalized_max(&self, cofactors: &MassCofactors) -> u64 {
         let s = (self.contextual.storage_mass as f64 * cofactors.storage).ceil() as u64;
-        let c = (self.non_contextual.compute_mass as f64 * cofactors.compute).ceil() as u64;
+        let c = self.non_contextual.compute_mass;
         let t = (self.non_contextual.transient_mass as f64 * cofactors.transient).ceil() as u64;
         s.max(c).max(t)
     }
@@ -870,45 +864,40 @@ mod tests {
         //   reference  = compute_limit
         //
         // Table of (limits, expected_cofactors, expected_reference)
-        let cases: Vec<(BlockMassLimits, (f64, f64, f64), u64)> = vec![
+        let cases: Vec<(BlockMassLimits, (f64, f64), u64)> = vec![
             // 1. Shared limit — all equal → all cofactors 1.0, reference = L
-            (BlockMassLimits { storage: 500_000, compute: 500_000, transient: 500_000 }, (1.0, 1.0, 1.0), 500_000),
+            (BlockMassLimits { storage: 500_000, compute: 500_000, transient: 500_000 }, (1.0, 1.0), 500_000),
             // 2. Simple multiples — (1M, 500K, 250K)
             //    storage has 2x headroom → cofactor 0.5 (scales down)
             //    transient has half the headroom → cofactor 2.0 (scales up)
-            (BlockMassLimits { storage: 1_000_000, compute: 500_000, transient: 250_000 }, (0.5, 1.0, 2.0), 500_000),
+            (BlockMassLimits { storage: 1_000_000, compute: 500_000, transient: 250_000 }, (0.5, 2.0), 500_000),
             // 3. Coprime-ish values — cofactors are irrational-ish fractions,
             //    but reference stays at a sane 78_901 (the compute limit)
             (
                 BlockMassLimits { storage: 123_456, compute: 78_901, transient: 45_678 },
-                (78_901.0 / 123_456.0, 1.0, 78_901.0 / 45_678.0),
+                (78_901.0 / 123_456.0, 78_901.0 / 45_678.0),
                 78_901,
             ),
             // 4. Realistic ops tuning — wide spread, reference = 77_777
             (
                 BlockMassLimits { storage: 333_333, compute: 77_777, transient: 12_345 },
-                (77_777.0 / 333_333.0, 1.0, 77_777.0 / 12_345.0),
+                (77_777.0 / 333_333.0, 77_777.0 / 12_345.0),
                 77_777,
             ),
             // 5. Mersenne-like — near powers of two, reference = 524_287
             (
                 BlockMassLimits { storage: 1_048_575, compute: 524_287, transient: 262_143 },
-                (524_287.0 / 1_048_575.0, 1.0, 524_287.0 / 262_143.0),
+                (524_287.0 / 1_048_575.0, 524_287.0 / 262_143.0),
                 524_287,
             ),
         ];
 
-        for (i, (limits, (exp_s, exp_c, exp_t), expected_reference)) in cases.iter().enumerate() {
+        for (i, (limits, (exp_s, exp_t), expected_reference)) in cases.iter().enumerate() {
             let cofactors = limits.cofactors();
             assert!(
                 (cofactors.storage - exp_s).abs() < 1e-10,
                 "case {i}: storage cofactor mismatch: {} vs {exp_s}",
                 cofactors.storage
-            );
-            assert!(
-                (cofactors.compute - exp_c).abs() < 1e-10,
-                "case {i}: compute cofactor mismatch: {} vs {exp_c}",
-                cofactors.compute
             );
             assert!(
                 (cofactors.transient - exp_t).abs() < 1e-10,
@@ -942,7 +931,7 @@ mod tests {
         // by their bottleneck dimension (highest utilization fraction), not by raw mass.
         let limits = BlockMassLimits { storage: 1_000_000, compute: 500_000, transient: 250_000 };
         let cofactors = limits.cofactors();
-        // cofactors: (0.5, 1.0, 2.0), reference: 500_000
+        // cofactors: (0.5, 2.0), reference: 500_000
 
         // tx_a: 50% storage utilization (500_000 / 1_000_000)
         let tx_a = Mass::new(NonContextualMasses::new(0, 0), ContextualMasses::new(500_000));
@@ -961,7 +950,7 @@ mod tests {
 
         // Verify exact normalized values (in compute-mass scale)
         assert_eq!(norm_a, 250_000); // ceil(500_000 * 0.5)
-        assert_eq!(norm_b, 300_000); // ceil(300_000 * 1.0)
+        assert_eq!(norm_b, 300_000); // compute mass (no scaling)
         assert_eq!(norm_c, 400_000); // ceil(200_000 * 2.0)
     }
 }
