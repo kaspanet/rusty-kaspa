@@ -384,10 +384,10 @@ impl Interface for LocalStore {
     }
 
     async fn open(&self, wallet_secret: &Secret, args: OpenArgs) -> Result<()> {
-        if let Some(inner) = self.inner.lock().unwrap().as_ref() {
-            if inner.is_modified() {
-                panic!("LocalStore::open called while modified flag is true!");
-            }
+        if let Some(inner) = self.inner.lock().unwrap().as_ref()
+            && inner.is_modified()
+        {
+            panic!("LocalStore::open called while modified flag is true!");
         }
 
         let location = self.location.lock().unwrap().clone().unwrap();
