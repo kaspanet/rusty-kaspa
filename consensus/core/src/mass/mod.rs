@@ -873,4 +873,88 @@ mod tests {
             .collect();
         MutableTransaction::with_entries(tx, entries)
     }
+
+    #[test]
+    fn test_mass_cofactors() {
+        // Table of (limits, expected_cofactors, expected_reference)
+        let cases: Vec<(BlockMassLimits, (u64, u64, u64), u64)> = vec![
+            // 1. Shared limit — all equal
+            (BlockMassLimits { storage: 500_000, compute: 500_000, transient: 500_000 }, (1, 1, 1), 500_000),
+            // 2. Simple multiples — (1M, 500K, 250K)
+            (BlockMassLimits { storage: 1_000_000, compute: 500_000, transient: 250_000 }, (1, 2, 4), 1_000_000),
+            // 3. Partial overlap — coprime-ish values (gcd=1)
+            (
+                BlockMassLimits { storage: 123_456, compute: 78_901, transient: 45_678 },
+                (600_673_313, 939_870_528, 1_623_466_976),
+                74_156_724_529_728,
+            ),
+            // 4. Realistic ops tuning (gcd=1)
+            (
+                BlockMassLimits { storage: 333_333, compute: 77_777, transient: 12_345 },
+                (45_721_765, 195_952_185, 1_234_554_321),
+                15_240_573_092_745,
+            ),
+            // 5. Mersenne-like — near powers of two (gcd=1)
+            (
+                BlockMassLimits { storage: 1_048_575, compute: 524_287, transient: 262_143 },
+                (45_812_722_347, 91_625_532_075, 183_251_413_675),
+                48_038_075_335_005_525,
+            ),
+        ];
+
+        for (i, (limits, expected_cofactors, expected_reference)) in cases.iter().enumerate() {
+            let cofactors = limits.cofactors();
+            assert_eq!(
+                (cofactors.storage, cofactors.compute, cofactors.transient),
+                *expected_cofactors,
+                "case {i}: cofactors mismatch for limits {limits:?}"
+            );
+            assert_eq!(cofactors.reference, *expected_reference, "case {i}: reference mismatch for limits {limits:?}");
+
+            // Verify the normalized_max invariant: a transaction filling exactly one dimension
+            // to its raw limit should have normalized_max == reference.
+            for (dim_limit, dim_label) in [(limits.storage, "storage"), (limits.compute, "compute"), (limits.transient, "transient")] {
+                let mass = match dim_label {
+                    "storage" => Mass::new(NonContextualMasses::new(0, 0), ContextualMasses::new(dim_limit)),
+                    "compute" => Mass::new(NonContextualMasses::new(dim_limit, 0), ContextualMasses::new(0)),
+                    "transient" => Mass::new(NonContextualMasses::new(0, dim_limit), ContextualMasses::new(0)),
+                    _ => unreachable!(),
+                };
+                assert_eq!(
+                    mass.normalized_max(&cofactors),
+                    *expected_reference,
+                    "case {i}: normalized_max invariant failed for {dim_label} dimension"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_normalized_max_ranking() {
+        // When dimensions have unequal limits, normalized_max should rank transactions
+        // by their bottleneck dimension (highest utilization fraction), not by raw mass.
+        let limits = BlockMassLimits { storage: 1_000_000, compute: 500_000, transient: 250_000 };
+        let cofactors = limits.cofactors();
+        // cofactors: (1, 2, 4), reference: 1_000_000
+
+        // tx_a: 50% storage utilization (500_000 / 1_000_000)
+        let tx_a = Mass::new(NonContextualMasses::new(0, 0), ContextualMasses::new(500_000));
+        // tx_b: 60% compute utilization (300_000 / 500_000), raw mass is lower than tx_a
+        let tx_b = Mass::new(NonContextualMasses::new(300_000, 0), ContextualMasses::new(0));
+        // tx_c: 80% transient utilization (200_000 / 250_000), raw mass is lowest
+        let tx_c = Mass::new(NonContextualMasses::new(0, 200_000), ContextualMasses::new(0));
+
+        let norm_a = tx_a.normalized_max(&cofactors);
+        let norm_b = tx_b.normalized_max(&cofactors);
+        let norm_c = tx_c.normalized_max(&cofactors);
+
+        // Ranking by utilization fraction: tx_c (80%) > tx_b (60%) > tx_a (50%)
+        assert!(norm_c > norm_b, "tx_c (80% transient) should rank higher than tx_b (60% compute)");
+        assert!(norm_b > norm_a, "tx_b (60% compute) should rank higher than tx_a (50% storage)");
+
+        // Verify exact normalized values
+        assert_eq!(norm_a, 500_000); // 500_000 * 1
+        assert_eq!(norm_b, 600_000); // 300_000 * 2
+        assert_eq!(norm_c, 800_000); // 200_000 * 4
+    }
 }
