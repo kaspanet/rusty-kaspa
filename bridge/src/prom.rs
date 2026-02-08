@@ -573,10 +573,10 @@ async fn get_stats_json(instance_id: &str) -> StatsResponse {
         }
 
         // Parse network hashrate
-        if name == "ks_estimated_network_hashrate" {
-            if let Some(metric) = family.get_metric().first() {
-                stats.networkHashrate = metric.get_gauge().get_value() as u64;
-            }
+        if name == "ks_estimated_network_hashrate"
+            && let Some(metric) = family.get_metric().first()
+        {
+            stats.networkHashrate = metric.get_gauge().get_value() as u64;
         }
 
         // Parse worker start time
@@ -660,54 +660,53 @@ async fn get_config_json() -> String {
     use yaml_rust::YamlLoader;
 
     let config_path = "config.yaml";
-    if let Ok(content) = fs::read_to_string(config_path) {
-        if let Ok(docs) = YamlLoader::load_from_str(&content) {
-            if let Some(doc) = docs.first() {
-                let mut config = serde_json::Map::new();
+    if let Ok(content) = fs::read_to_string(config_path)
+        && let Ok(docs) = YamlLoader::load_from_str(&content)
+        && let Some(doc) = docs.first()
+    {
+        let mut config = serde_json::Map::new();
 
-                if let Some(port) = doc["stratum_port"].as_str() {
-                    config.insert("stratum_port".to_string(), serde_json::Value::String(port.to_string()));
-                }
-                if let Some(addr) = doc["kaspad_address"].as_str() {
-                    config.insert("kaspad_address".to_string(), serde_json::Value::String(addr.to_string()));
-                }
-                if let Some(port) = doc["prom_port"].as_str() {
-                    config.insert("prom_port".to_string(), serde_json::Value::String(port.to_string()));
-                }
-                if let Some(stats) = doc["print_stats"].as_bool() {
-                    config.insert("print_stats".to_string(), serde_json::Value::Bool(stats));
-                }
-                if let Some(log) = doc["log_to_file"].as_bool() {
-                    config.insert("log_to_file".to_string(), serde_json::Value::Bool(log));
-                }
-                if let Some(port) = doc["health_check_port"].as_str() {
-                    config.insert("health_check_port".to_string(), serde_json::Value::String(port.to_string()));
-                }
-                if let Some(diff) = doc["min_share_diff"].as_i64() {
-                    config.insert("min_share_diff".to_string(), serde_json::Value::Number(serde_json::Number::from(diff)));
-                }
-                if let Some(vd) = doc["var_diff"].as_bool() {
-                    config.insert("var_diff".to_string(), serde_json::Value::Bool(vd));
-                }
-                if let Some(spm) = doc["shares_per_min"].as_i64() {
-                    config.insert("shares_per_min".to_string(), serde_json::Value::Number(serde_json::Number::from(spm)));
-                }
-                if let Some(vds) = doc["var_diff_stats"].as_bool() {
-                    config.insert("var_diff_stats".to_string(), serde_json::Value::Bool(vds));
-                }
-                if let Some(bwt) = doc["block_wait_time"].as_i64() {
-                    config.insert("block_wait_time".to_string(), serde_json::Value::Number(serde_json::Number::from(bwt)));
-                }
-                if let Some(ens) = doc["extranonce_size"].as_i64() {
-                    config.insert("extranonce_size".to_string(), serde_json::Value::Number(serde_json::Number::from(ens)));
-                }
-                if let Some(clamp) = doc["pow2_clamp"].as_bool() {
-                    config.insert("pow2_clamp".to_string(), serde_json::Value::Bool(clamp));
-                }
-
-                return serde_json::to_string(&config).unwrap_or_else(|_| "{}".to_string());
-            }
+        if let Some(port) = doc["stratum_port"].as_str() {
+            config.insert("stratum_port".to_string(), serde_json::Value::String(port.to_string()));
         }
+        if let Some(addr) = doc["kaspad_address"].as_str() {
+            config.insert("kaspad_address".to_string(), serde_json::Value::String(addr.to_string()));
+        }
+        if let Some(port) = doc["prom_port"].as_str() {
+            config.insert("prom_port".to_string(), serde_json::Value::String(port.to_string()));
+        }
+        if let Some(stats) = doc["print_stats"].as_bool() {
+            config.insert("print_stats".to_string(), serde_json::Value::Bool(stats));
+        }
+        if let Some(log) = doc["log_to_file"].as_bool() {
+            config.insert("log_to_file".to_string(), serde_json::Value::Bool(log));
+        }
+        if let Some(port) = doc["health_check_port"].as_str() {
+            config.insert("health_check_port".to_string(), serde_json::Value::String(port.to_string()));
+        }
+        if let Some(diff) = doc["min_share_diff"].as_i64() {
+            config.insert("min_share_diff".to_string(), serde_json::Value::Number(serde_json::Number::from(diff)));
+        }
+        if let Some(vd) = doc["var_diff"].as_bool() {
+            config.insert("var_diff".to_string(), serde_json::Value::Bool(vd));
+        }
+        if let Some(spm) = doc["shares_per_min"].as_i64() {
+            config.insert("shares_per_min".to_string(), serde_json::Value::Number(serde_json::Number::from(spm)));
+        }
+        if let Some(vds) = doc["var_diff_stats"].as_bool() {
+            config.insert("var_diff_stats".to_string(), serde_json::Value::Bool(vds));
+        }
+        if let Some(bwt) = doc["block_wait_time"].as_i64() {
+            config.insert("block_wait_time".to_string(), serde_json::Value::Number(serde_json::Number::from(bwt)));
+        }
+        if let Some(ens) = doc["extranonce_size"].as_i64() {
+            config.insert("extranonce_size".to_string(), serde_json::Value::Number(serde_json::Number::from(ens)));
+        }
+        if let Some(clamp) = doc["pow2_clamp"].as_bool() {
+            config.insert("pow2_clamp".to_string(), serde_json::Value::Bool(clamp));
+        }
+
+        return serde_json::to_string(&config).unwrap_or_else(|_| "{}".to_string());
     }
     "{}".to_string()
 }

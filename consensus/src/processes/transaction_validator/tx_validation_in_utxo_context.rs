@@ -3,7 +3,7 @@ use kaspa_consensus_core::{
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
     tx::{TransactionInput, VerifiableTransaction},
 };
-use kaspa_txscript::{SigCacheKey, TxScriptEngine, caches::Cache, get_sig_op_count_upper_bound};
+use kaspa_txscript::{SigCacheKey, TxScriptEngine, caches::Cache};
 use kaspa_txscript_errors::TxScriptError;
 use rayon::ThreadPool;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -150,17 +150,6 @@ impl TransactionValidator {
             },
         ) {
             return Err(TxRuleError::SequenceLockConditionsAreNotMet);
-        }
-        Ok(())
-    }
-
-    fn check_sig_op_counts<T: VerifiableTransaction>(tx: &T) -> TxResult<()> {
-        for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            let calculated =
-                get_sig_op_count_upper_bound::<T, SigHashReusedValuesUnsync>(&input.signature_script, &entry.script_public_key);
-            if calculated != input.sig_op_count as u64 {
-                return Err(TxRuleError::WrongSigOpCount(i, input.sig_op_count as u64, calculated));
-            }
         }
         Ok(())
     }
@@ -796,6 +785,5 @@ mod tests {
         let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), schnorr_key);
         let populated_tx = signed_tx.as_verifiable();
         assert_eq!(tv.check_scripts(&populated_tx), Ok(()));
-        assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));
     }
 }
