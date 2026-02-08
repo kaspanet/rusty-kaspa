@@ -647,10 +647,10 @@ impl Inner {
     }
 
     fn send_connection_event(&self, event: ConnectionEvent) {
-        if let Some(ref connection_event_sender) = self.connection_event_sender {
-            if let Err(err) = connection_event_sender.try_send(event) {
-                debug!("Send connection event error: {err}");
-            }
+        if let Some(ref connection_event_sender) = self.connection_event_sender
+            && let Err(err) = connection_event_sender.try_send(event)
+        {
+            debug!("Send connection event error: {err}");
         }
     }
 
