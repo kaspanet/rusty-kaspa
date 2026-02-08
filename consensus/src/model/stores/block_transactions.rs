@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 pub trait BlockTransactionsStoreReader {
     fn get(&self, hash: Hash) -> Result<Arc<Vec<Transaction>>, StoreError>;
+    fn iterator(&self) -> impl Iterator<Item = (Hash, Arc<Vec<Transaction>>)> + '_;
 }
 
 pub trait BlockTransactionsStore: BlockTransactionsStoreReader {
@@ -77,6 +78,14 @@ impl DbBlockTransactionsStore {
 impl BlockTransactionsStoreReader for DbBlockTransactionsStore {
     fn get(&self, hash: Hash) -> Result<Arc<Vec<Transaction>>, StoreError> {
         Ok(self.access.read(hash)?.0)
+    }
+
+    fn iterator(&self) -> impl Iterator<Item = (Hash, Arc<Vec<Transaction>>)> + '_ {
+        self.access.iterator().map(|item| {
+            let (key, val) = item.unwrap();
+            let hash = Hash::from_slice(&key);
+            (hash, val.0)
+        })
     }
 }
 

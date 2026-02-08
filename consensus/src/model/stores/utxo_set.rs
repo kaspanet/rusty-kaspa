@@ -23,7 +23,7 @@ pub trait UtxoSetStoreReader {
 pub trait UtxoSetStore: UtxoSetStoreReader {
     /// Updates the store according to the UTXO diff -- adding and deleting entries correspondingly.
     /// Note we define `self` as `mut` in order to require write access even though the compiler does not require it.
-    /// This is because concurrent readers can interfere with cache consistency.  
+    /// This is because concurrent readers can interfere with cache consistency.
     fn write_diff(&mut self, utxo_diff: &UtxoDiff) -> Result<(), StoreError>;
     fn write_many(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError>;
 }
@@ -153,7 +153,7 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
 
     fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator<'_> {
         let seek_key = from_outpoint.map(UtxoKey::from);
-        Box::new(self.access.seek_iterator(None, seek_key, limit, skip_first).map(|res| {
+        Box::new(self.access.seek_iterator(None, seek_key, None, limit, skip_first).map(|res| {
             let (key, entry) = res?;
             let outpoint: TransactionOutpoint = UtxoKey::try_from(key.as_ref()).unwrap().into();
             Ok((outpoint, UtxoEntry::clone(&entry)))

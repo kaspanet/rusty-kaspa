@@ -48,6 +48,8 @@ pub enum ConsensusError {
 
     #[error("{0}")]
     GeneralOwned(String),
+    //#[error("store error: {0}")]
+    //StoreError(#[from] kaspa_database::prelude::StoreError),
 }
 
 pub type ConsensusResult<T> = std::result::Result<T, ConsensusError>;

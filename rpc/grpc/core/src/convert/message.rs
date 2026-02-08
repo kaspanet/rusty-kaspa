@@ -182,6 +182,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetInfoResponse>, protowire::GetInfoRespo
         mempool_size: item.mempool_size,
         server_version: item.server_version.clone(),
         is_utxo_indexed: item.is_utxo_indexed,
+        is_tx_indexed: item.is_tx_indexed,
         is_synced: item.is_synced,
         has_notify_command: item.has_notify_command,
         has_message_id: item.has_message_id,
@@ -502,6 +503,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetServerInfoResponse>, protowire::GetSer
         server_version: item.server_version.clone(),
         network_id: item.network_id.to_string(),
         has_utxo_index: item.has_utxo_index,
+        has_tx_index: item.has_tx_index,
         is_synced: item.is_synced,
         virtual_daa_score: item.virtual_daa_score,
         error: None,
@@ -529,6 +531,24 @@ from!(item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockV2Response>, prot
         removed_chain_block_hashes: item.removed_chain_block_hashes.iter().map(|x| x.to_string()).collect(),
         added_chain_block_hashes: item.added_chain_block_hashes.iter().map(|x| x.to_string()).collect(),
         chain_block_accepted_transactions: item.chain_block_accepted_transactions.iter().map(|x| x.into()).collect(),
+        error: None,
+    }
+});
+
+from!(item: &kaspa_rpc_core::GetTransactionRequest, protowire::GetTransactionRequestMessage, {
+    Self {
+        transaction_id: item.transaction_id.to_string(),
+        include_unaccepted: item.include_unaccepted,
+        transaction_verbosity: item.transaction_verbosity.map(|v| v as i32),
+        include_inclusion_data: item.include_inclusion_data,
+        include_acceptance_data: item.include_acceptance_data,
+        include_conf_count: item.include_conf_count,
+    }
+});
+
+from!(item: RpcResult<&kaspa_rpc_core::GetTransactionResponse>, protowire::GetTransactionResponseMessage, {
+    Self {
+        transaction_data: item.transaction_data.as_ref().map(|x| x.into()),
         error: None,
     }
 });
@@ -662,6 +682,7 @@ try_from!(item: &protowire::GetInfoResponseMessage, RpcResult<kaspa_rpc_core::Ge
         mempool_size: item.mempool_size,
         server_version: item.server_version.clone(),
         is_utxo_indexed: item.is_utxo_indexed,
+        is_tx_indexed: item.is_tx_indexed,
         is_synced: item.is_synced,
         has_notify_command: item.has_notify_command,
         has_message_id: item.has_message_id,
@@ -798,6 +819,23 @@ try_from!(item: &protowire::GetVirtualChainFromBlockV2ResponseMessage, RpcResult
         removed_chain_block_hashes: Arc::new(item.removed_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?),
         added_chain_block_hashes: Arc::new(item.added_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?),
         chain_block_accepted_transactions: Arc::new(item.chain_block_accepted_transactions.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?),
+    }
+});
+
+try_from!(item: &protowire::GetTransactionRequestMessage, kaspa_rpc_core::GetTransactionRequest, {
+    Self {
+        transaction_id: kaspa_rpc_core::RpcTransactionId::from_str(&item.transaction_id)?,
+        include_unaccepted: item.include_unaccepted,
+        transaction_verbosity: item.transaction_verbosity.map(RpcDataVerbosityLevel::try_from).transpose()?,
+        include_inclusion_data: item.include_inclusion_data,
+        include_acceptance_data: item.include_acceptance_data,
+        include_conf_count: item.include_conf_count,
+    }
+});
+
+try_from!(item: &protowire::GetTransactionResponseMessage, RpcResult<kaspa_rpc_core::GetTransactionResponse>, {
+    Self {
+        transaction_data: item.transaction_data.as_ref().map(|x| x.try_into()).transpose()?
     }
 });
 
@@ -1025,6 +1063,7 @@ try_from!(item: &protowire::GetServerInfoResponseMessage, RpcResult<kaspa_rpc_co
         server_version: item.server_version.clone(),
         network_id: NetworkId::from_str(&item.network_id)?,
         has_utxo_index: item.has_utxo_index,
+        has_tx_index: item.has_tx_index,
         is_synced: item.is_synced,
         virtual_daa_score: item.virtual_daa_score,
     }

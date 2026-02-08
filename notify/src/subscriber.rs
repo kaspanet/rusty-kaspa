@@ -164,11 +164,35 @@ pub mod test_helpers {
     #[async_trait]
     impl SubscriptionManager for SubscriptionManagerMock {
         async fn start_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
-            Ok(self.sender.send(SubscriptionMessage::new(id, Command::Start, scope)).await?)
+            println!(
+                "[DEBUG]   [SubscriptionManagerMock] Sending START subscription message: listener_id={:?}, scope={:?}",
+                id,
+                scope.clone()
+            );
+            let result = self.sender.send(SubscriptionMessage::new(id, Command::Start, scope.clone())).await;
+            println!(
+                "[DEBUG]   [SubscriptionManagerMock] Sent START subscription message: listener_id={:?}, scope={:?}, result={:?}",
+                id,
+                scope.clone(),
+                result
+            );
+            Ok(result?)
         }
 
         async fn stop_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
-            Ok(self.sender.send(SubscriptionMessage::new(id, Command::Stop, scope)).await?)
+            println!(
+                "[DEBUG]   [SubscriptionManagerMock] Sending STOP subscription message: listener_id={:?}, scope={:?}",
+                id,
+                scope.clone()
+            );
+            let result = self.sender.send(SubscriptionMessage::new(id, Command::Stop, scope.clone())).await;
+            println!(
+                "[DEBUG]   [SubscriptionManagerMock] Sent STOP subscription message: listener_id={:?}, scope={:?}, result={:?}",
+                id,
+                scope.clone(),
+                result
+            );
+            Ok(result?)
         }
     }
 }

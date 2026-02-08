@@ -283,6 +283,7 @@ impl Consensus {
             pruning_lock.clone(),
             config.clone(),
             is_consensus_exiting.clone(),
+            notification_root.clone(),
         ));
 
         // Ensure the relations stores are initialized
@@ -1144,6 +1145,16 @@ impl ConsensusApi for Consensus {
         // PRUNE SAFETY: proof is cached before the prune op begins and the
         // pruning point cannot move during the prune so the cache remains valid
         self.services.pruning_proof_manager.get_pruning_point_proof()
+    }
+
+    fn get_block_transaction_iterator(&self) -> Box<dyn Iterator<Item = (Hash, Arc<Vec<Transaction>>)> + Send + Sync + '_> {
+        Box::new(self.block_transactions_store.iterator())
+    }
+
+    fn get_acceptance_data_iterator(
+        &self,
+    ) -> Box<dyn Iterator<Item = (Hash, Arc<Vec<MergesetBlockAcceptanceData>>)> + Send + Sync + '_> {
+        Box::new(self.acceptance_data_store.iterator())
     }
 
     fn create_virtual_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>> {

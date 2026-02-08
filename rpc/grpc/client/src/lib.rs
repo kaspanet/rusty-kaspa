@@ -278,6 +278,7 @@ impl RpcApi for GrpcClient {
     route!(get_current_block_color_call, GetCurrentBlockColor);
     route!(get_utxo_return_address_call, GetUtxoReturnAddress);
     route!(get_virtual_chain_from_block_v2_call, GetVirtualChainFromBlockV2);
+    route!(get_transaction_call, GetTransaction);
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

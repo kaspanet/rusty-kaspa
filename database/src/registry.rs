@@ -4,6 +4,7 @@ use enum_primitive_derive::Primitive;
 /// the [`DatabaseStorePrefixes`] enum we make sure it is not used as a prefix as well
 pub const SEPARATOR: u8 = u8::MAX;
 
+// TODO(Relaxed) if this ever becomes crowded, consider migrating index and meta prefixes, these have there own databases.
 #[derive(Primitive, Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum DatabaseStorePrefixes {
@@ -71,9 +72,23 @@ pub enum DatabaseStorePrefixes {
     BannedAddresses = 129,
 
     // ---- Indexes ----
+
+    // UtxoIndex
     UtxoIndex = 192,
     UtxoIndexTips = 193,
     CirculatingSupply = 194,
+
+    // TxIndex
+    // - acceptance -
+    TransactionAcceptanceData = 198,
+    AcceptingBlueScoreRefs = 199,
+    TxIndexSink = 200,
+    // - inclusion -
+    TransactionInclusionData = 203,
+    IncludingDaaScoreRefs = 204,
+    TxIndexTips = 205,
+    // - pruning sync -
+    PruningData = 208,
 
     // ---- Separator ----
     /// Reserved as a separator

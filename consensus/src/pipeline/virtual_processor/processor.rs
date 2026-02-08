@@ -78,7 +78,7 @@ use kaspa_core::{debug, info, time::unix_now, trace, warn};
 use kaspa_database::prelude::{StoreError, StoreResultExt, StoreResultUnitExt};
 use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::MuHash;
-use kaspa_notify::{events::EventType, notifier::Notify};
+use kaspa_notify::{events::EventType, notifier::Notify, subscription::single};
 use once_cell::unsync::Lazy;
 
 use super::{
@@ -359,13 +359,30 @@ impl VirtualStateProcessor {
             .expect("expecting an open unbounded channel");
         if self.notification_root.has_subscription(EventType::VirtualChainChanged) {
             // check for subscriptions before the heavy lifting
-            let added_chain_blocks_acceptance_data =
-                chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
+            let (include_accepted_transaction_ids, include_accepting_blue_scores) = self
+                .notification_root
+                .get_subscription_as::<single::VirtualChainChangedSubscription>(EventType::VirtualChainChanged)
+                .map(|s| (s.include_accepted_transaction_ids(), s.include_accepting_blue_scores()))
+                .unwrap_or((false, false));
+
+            let added_chain_blocks_acceptance_data = if include_accepted_transaction_ids {
+                Arc::new(chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec())
+            } else {
+                Arc::new(Vec::new())
+            };
+
+            let added_accepting_blue_scores = if include_accepting_blue_scores {
+                Arc::new(chain_path.added.iter().copied().map(|added| self.headers_store.get_blue_score(added).unwrap()).collect_vec())
+            } else {
+                Arc::new(Vec::new())
+            };
+
             self.notification_root
                 .notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
                     chain_path.added.into(),
                     chain_path.removed.into(),
-                    Arc::new(added_chain_blocks_acceptance_data),
+                    added_chain_blocks_acceptance_data,
+                    added_accepting_blue_scores,
                 )))
                 .expect("expecting an open unbounded channel");
         }
@@ -536,7 +553,6 @@ impl VirtualStateProcessor {
     ) -> Result<Arc<VirtualState>, RuleError> {
         let selected_parent_utxo_view = (&virtual_stores.utxo_set).compose(&*accumulated_diff);
         let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset);
-
         // Calc virtual DAA score, difficulty bits and past median time
         let virtual_daa_window = self.window_manager.block_daa_window(&virtual_ghostdag_data)?;
         let virtual_bits = self.window_manager.calculate_difficulty_bits(&virtual_ghostdag_data, &virtual_daa_window);
@@ -691,7 +707,7 @@ impl VirtualStateProcessor {
     /// Assumes:
     ///     1. `selected_parent` is a UTXO-valid block
     ///     2. `candidates` are an antichain ordered in descending blue work order
-    ///     3. `candidates` do not contain `selected_parent` and `selected_parent.blue work > max(candidates.blue_work)`  
+    ///     3. `candidates` do not contain `selected_parent` and `selected_parent.blue work > max(candidates.blue_work)`
     pub(super) fn pick_virtual_parents(
         &self,
         selected_parent: Hash,

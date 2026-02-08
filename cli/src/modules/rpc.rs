@@ -313,6 +313,47 @@ impl Rpc {
 
                 self.println(&ctx, result);
             }
+            RpcApiOps::GetTransaction => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Missing transaction id argument"));
+                }
+                let transaction_id = argv.remove(0).parse::<TransactionId>()?;
+
+                argv.reverse(); // reverse to allow popping arguments in the correct order
+                let include_unaccepted = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
+                // parse transaction verbosity: accept named (none|low|high|full) or numeric (0|1|2|3) verbosity levels, default to None if parsing fails or if not provided
+                let tx_verbosity_token = argv.pop().unwrap_or("none".to_string());
+                let transaction_verbosity = match tx_verbosity_token.to_lowercase().as_str() {
+                    "none" => Some(RpcDataVerbosityLevel::None),
+                    "low" => Some(RpcDataVerbosityLevel::Low),
+                    "high" => Some(RpcDataVerbosityLevel::High),
+                    "full" => Some(RpcDataVerbosityLevel::Full),
+                    other => {
+                        if let Ok(i) = other.parse::<i32>() {
+                            Some(RpcDataVerbosityLevel::try_from(i)?)
+                        } else {
+                            Some(RpcDataVerbosityLevel::None)
+                        }
+                    }
+                };
+                let include_inclusion_data = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
+                let include_acceptance_data = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
+                let include_conf_count = argv.pop().unwrap_or("false".to_string()).parse::<bool>().ok().unwrap_or_default();
+                let result = rpc
+                    .get_transaction_call(
+                        None,
+                        GetTransactionRequest {
+                            transaction_id,
+                            include_unaccepted,
+                            transaction_verbosity,
+                            include_inclusion_data,
+                            include_acceptance_data,
+                            include_conf_count,
+                        },
+                    )
+                    .await?;
+                self.println(&ctx, result);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

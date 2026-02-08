@@ -16,6 +16,9 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+// All supported params
+pub const ALL_PARAMS: [Params; 4] = [MAINNET_PARAMS, TESTNET_PARAMS, DEVNET_PARAMS, SIMNET_PARAMS];
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForkActivation(u64);
 
@@ -53,7 +56,7 @@ impl ForkActivation {
     }
 
     /// Checks if the fork is expected to be activated "soon", i.e., in the time frame of the provided range.
-    /// Returns the distance from activation if so, or `None` otherwise.  
+    /// Returns the distance from activation if so, or `None` otherwise.
     pub fn is_within_range_before_activation(self, current_daa_score: u64, range: u64) -> Option<u64> {
         if !self.is_active(current_daa_score) && current_daa_score + range > self.0 { Some(self.0 - current_daa_score) } else { None }
     }

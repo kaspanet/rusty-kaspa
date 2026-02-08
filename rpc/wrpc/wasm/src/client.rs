@@ -853,7 +853,14 @@ impl RpcClient {
         if let Some(listener_id) = self.listener_id() {
             self.inner
                 .client
-                .start_notify(listener_id, Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }))
+                .start_notify(
+                    listener_id,
+                    Scope::VirtualChainChanged(VirtualChainChangedScope {
+                        active: true,
+                        include_accepted_transaction_ids,
+                        include_accepting_blue_scores: false,
+                    }),
+                )
                 .await?;
         } else {
             log_error!("RPC subscribe on a closed connection");
@@ -869,7 +876,14 @@ impl RpcClient {
         if let Some(listener_id) = self.listener_id() {
             self.inner
                 .client
-                .stop_notify(listener_id, Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }))
+                .stop_notify(
+                    listener_id,
+                    Scope::VirtualChainChanged(VirtualChainChangedScope {
+                        active: true,
+                        include_accepted_transaction_ids,
+                        include_accepting_blue_scores: false,
+                    }),
+                )
                 .await?;
         } else {
             log_error!("RPC unsubscribe on a closed connection");

@@ -45,6 +45,7 @@ pub enum Scope {
     VirtualDaaScoreChanged,
     PruningPointUtxoSetOverride,
     NewBlockTemplate,
+    RetentionRootChanged,
 }
 }
 
@@ -56,7 +57,7 @@ impl Scope {
 
 impl Serializer for Scope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         store!(Scope, self, writer)?;
         Ok(())
     }
@@ -74,7 +75,7 @@ pub struct BlockAddedScope {}
 
 impl Serializer for BlockAddedScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?; // increased version to 2, because retention root scope was added.
         Ok(())
     }
 }
@@ -88,34 +89,47 @@ impl Deserializer for BlockAddedScope {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct VirtualChainChangedScope {
+    pub active: bool,
     pub include_accepted_transaction_ids: bool,
+    pub include_accepting_blue_scores: bool,
 }
 
 impl VirtualChainChangedScope {
-    pub fn new(include_accepted_transaction_ids: bool) -> Self {
-        Self { include_accepted_transaction_ids }
+    pub fn new(active: bool, include_accepted_transaction_ids: bool, include_accepting_blue_scores: bool) -> Self {
+        // No invariant assumed here: callers may emit any combination of flags.
+        Self { active, include_accepted_transaction_ids, include_accepting_blue_scores }
     }
 }
 
 impl std::fmt::Display for VirtualChainChangedScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "VirtualChainChangedScope{}", if self.include_accepted_transaction_ids { " with accepted transactions" } else { "" })
+        write!(
+            f,
+            "VirtualChainChangedScope{}{}{}",
+            if self.active { " active" } else { "" },
+            if self.include_accepted_transaction_ids { " with accepted transactions" } else { "" },
+            if self.include_accepting_blue_scores { " with accepting blue scores" } else { "" }
+        )
     }
 }
 
 impl Serializer for VirtualChainChangedScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
+        store!(bool, &self.active, writer)?;
         store!(bool, &self.include_accepted_transaction_ids, writer)?;
+        store!(bool, &self.include_accepting_blue_scores, writer)?;
         Ok(())
     }
 }
 
 impl Deserializer for VirtualChainChangedScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let version = load!(u16, reader)?;
+        let active = if version >= 2 { load!(bool, reader)? } else { false };
         let include_accepted_transaction_ids = load!(bool, reader)?;
-        Ok(Self { include_accepted_transaction_ids })
+        let include_accepting_blue_scores = if version >= 2 { load!(bool, reader)? } else { false };
+        Ok(Self { include_accepted_transaction_ids, include_accepting_blue_scores, active })
     }
 }
 
@@ -261,6 +275,23 @@ impl Serializer for NewBlockTemplateScope {
 }
 
 impl Deserializer for NewBlockTemplateScope {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct RetentionRootChangedScope {}
+
+impl Serializer for RetentionRootChangedScope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for RetentionRootChangedScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})

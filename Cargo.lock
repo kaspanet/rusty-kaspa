@@ -2809,6 +2809,7 @@ dependencies = [
  "derive_more",
  "futures",
  "kaspa-consensus-core",
+ "kaspa-consensus-notify",
  "kaspa-hashes",
  "kaspa-notify",
  "kaspa-utils",
@@ -2836,6 +2837,7 @@ dependencies = [
  "kaspa-hashes",
  "kaspa-index-core",
  "kaspa-notify",
+ "kaspa-txindex",
  "kaspa-utils",
  "kaspa-utxoindex",
  "log",
@@ -3158,6 +3160,7 @@ dependencies = [
  "kaspa-p2p-mining",
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
+ "kaspa-txindex",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",
@@ -3250,6 +3253,7 @@ dependencies = [
  "kaspa-pow",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
+ "kaspa-txindex",
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
@@ -3270,6 +3274,31 @@ dependencies = [
  "thiserror 1.0.64",
  "tokio",
  "workflow-perf-monitor",
+]
+
+[[package]]
+name = "kaspa-txindex"
+version = "1.1.0-rc.2"
+dependencies = [
+ "bincode",
+ "futures",
+ "itertools 0.13.0",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
+ "kaspa-consensusmanager",
+ "kaspa-core",
+ "kaspa-database",
+ "kaspa-hashes",
+ "kaspa-index-core",
+ "kaspa-utils",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "rocksdb",
+ "serde",
+ "thiserror 1.0.64",
+ "tokio",
 ]
 
 [[package]]
@@ -3787,6 +3816,7 @@ dependencies = [
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
+ "kaspa-txindex",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",

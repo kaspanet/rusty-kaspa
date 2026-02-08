@@ -1,8 +1,11 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Address;
-use kaspa_consensus_core::tx::{
-    ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
-    UtxoEntry,
+use kaspa_consensus_core::{
+    acceptance_data::MergesetIndexType,
+    tx::{
+        ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
+        UtxoEntry,
+    },
 };
 use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
 use serde::{Deserialize, Serialize};
@@ -427,5 +430,104 @@ impl Deserializer for RpcChainBlockAcceptedTransactions {
         let accepted_transactions = deserialize!(Vec<RpcOptionalTransaction>, reader)?;
 
         Ok(Self { chain_block_header, accepted_transactions })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcTransactionInclusionData {
+    /// The hash of the block that includes the transaction
+    pub including_block_hash: RpcHash,
+    /// This is the daa score of the block that includes the transaction
+    pub including_daa_score: u64,
+    /// The index within the block that this transaction occupies
+    pub index_within_block: TransactionIndexType,
+}
+
+impl Serializer for RpcTransactionInclusionData {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        store!(RpcHash, &self.including_block_hash, writer)?;
+        store!(u64, &self.including_daa_score, writer)?;
+        store!(TransactionIndexType, &self.index_within_block, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcTransactionInclusionData {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let including_block_hash = load!(RpcHash, reader)?;
+        let including_daa_score = load!(u64, reader)?;
+        let index_within_block = load!(TransactionIndexType, reader)?;
+
+        Ok(Self { including_daa_score, including_block_hash, index_within_block })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcTransactionAcceptanceData {
+    /// The hash of the block that accepted the transaction
+    pub accepting_block_hash: RpcHash,
+    /// The blue score of the block that accepted the transaction
+    pub accepting_blue_score: u64,
+    /// The index of the including block within the mergeset of the accepting block
+    pub mergeset_index: MergesetIndexType,
+}
+
+impl Serializer for RpcTransactionAcceptanceData {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        store!(RpcHash, &self.accepting_block_hash, writer)?;
+        store!(u64, &self.accepting_blue_score, writer)?;
+        store!(MergesetIndexType, &self.mergeset_index, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcTransactionAcceptanceData {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let accepting_block_hash = load!(RpcHash, reader)?;
+        let accepting_blue_score = load!(u64, reader)?;
+        let mergeset_index = load!(MergesetIndexType, reader)?;
+
+        Ok(Self { accepting_block_hash, accepting_blue_score, mergeset_index })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcTransactionData {
+    pub transactions: Vec<RpcOptionalTransaction>,
+    pub inclusion_data: Vec<RpcTransactionInclusionData>,
+    pub acceptance_data: Option<RpcTransactionAcceptanceData>,
+    pub conf_count: Option<u64>,
+}
+
+impl Serializer for RpcTransactionData {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcOptionalTransaction>, &self.transactions, writer)?;
+        serialize!(Vec<RpcTransactionInclusionData>, &self.inclusion_data, writer)?;
+        serialize!(Option<RpcTransactionAcceptanceData>, &self.acceptance_data, writer)?;
+        store!(Option<u64>, &self.conf_count, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcTransactionData {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transactions = deserialize!(Vec<RpcOptionalTransaction>, reader)?;
+        let inclusion_data = deserialize!(Vec<RpcTransactionInclusionData>, reader)?;
+        let acceptance_data = deserialize!(Option<RpcTransactionAcceptanceData>, reader)?;
+        let conf_count = load!(Option<u64>, reader)?;
+
+        Ok(Self { transactions, inclusion_data, acceptance_data, conf_count })
     }
 }

@@ -268,6 +268,7 @@ pub struct GetInfoResponse {
     pub mempool_size: u64,
     pub server_version: String,
     pub is_utxo_indexed: bool,
+    pub is_tx_indexed: bool,
     pub is_synced: bool,
     pub has_notify_command: bool,
     pub has_message_id: bool,
@@ -275,11 +276,12 @@ pub struct GetInfoResponse {
 
 impl Serializer for GetInfoResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         store!(String, &self.p2p_id, writer)?;
         store!(u64, &self.mempool_size, writer)?;
         store!(String, &self.server_version, writer)?;
         store!(bool, &self.is_utxo_indexed, writer)?;
+        store!(bool, &self.is_tx_indexed, writer)?;
         store!(bool, &self.is_synced, writer)?;
         store!(bool, &self.has_notify_command, writer)?;
         store!(bool, &self.has_message_id, writer)?;
@@ -290,16 +292,26 @@ impl Serializer for GetInfoResponse {
 
 impl Deserializer for GetInfoResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let version = load!(u16, reader)?;
         let p2p_id = load!(String, reader)?;
         let mempool_size = load!(u64, reader)?;
         let server_version = load!(String, reader)?;
         let is_utxo_indexed = load!(bool, reader)?;
+        let is_tx_indexed = if version >= 2 { load!(bool, reader)? } else { false };
         let is_synced = load!(bool, reader)?;
         let has_notify_command = load!(bool, reader)?;
         let has_message_id = load!(bool, reader)?;
 
-        Ok(Self { p2p_id, mempool_size, server_version, is_utxo_indexed, is_synced, has_notify_command, has_message_id })
+        Ok(Self {
+            p2p_id,
+            mempool_size,
+            server_version,
+            is_utxo_indexed,
+            is_tx_indexed,
+            is_synced,
+            has_notify_command,
+            has_message_id,
+        })
     }
 }
 
@@ -2395,13 +2407,14 @@ pub struct GetServerInfoResponse {
     pub server_version: String,
     pub network_id: RpcNetworkId,
     pub has_utxo_index: bool,
+    pub has_tx_index: bool,
     pub is_synced: bool,
     pub virtual_daa_score: u64,
 }
 
 impl Serializer for GetServerInfoResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
 
         store!(u16, &self.rpc_api_version, writer)?;
         store!(u16, &self.rpc_api_revision, writer)?;
@@ -2409,6 +2422,7 @@ impl Serializer for GetServerInfoResponse {
         store!(String, &self.server_version, writer)?;
         store!(RpcNetworkId, &self.network_id, writer)?;
         store!(bool, &self.has_utxo_index, writer)?;
+        store!(bool, &self.has_tx_index, writer)?;
         store!(bool, &self.is_synced, writer)?;
         store!(u64, &self.virtual_daa_score, writer)?;
 
@@ -2418,7 +2432,7 @@ impl Serializer for GetServerInfoResponse {
 
 impl Deserializer for GetServerInfoResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let version = load!(u16, reader)?;
 
         let rpc_api_version = load!(u16, reader)?;
         let rpc_api_revision = load!(u16, reader)?;
@@ -2426,10 +2440,20 @@ impl Deserializer for GetServerInfoResponse {
         let server_version = load!(String, reader)?;
         let network_id = load!(RpcNetworkId, reader)?;
         let has_utxo_index = load!(bool, reader)?;
+        let has_tx_index = if version >= 2 { load!(bool, reader)? } else { false };
         let is_synced = load!(bool, reader)?;
         let virtual_daa_score = load!(u64, reader)?;
 
-        Ok(Self { rpc_api_version, rpc_api_revision, server_version, network_id, has_utxo_index, is_synced, virtual_daa_score })
+        Ok(Self {
+            rpc_api_version,
+            rpc_api_revision,
+            server_version,
+            network_id,
+            has_utxo_index,
+            has_tx_index,
+            is_synced,
+            virtual_daa_score,
+        })
     }
 }
 
@@ -2801,6 +2825,98 @@ impl Deserializer for GetVirtualChainFromBlockV2Response {
             added_chain_block_hashes: added_chain_block_hashes.into(),
             chain_block_accepted_transactions: chain_block_accepted_transactions.into(),
         })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTransactionRequest {
+    pub transaction_id: RpcTransactionId,
+    pub include_unaccepted: bool,
+    pub transaction_verbosity: Option<RpcDataVerbosityLevel>,
+    pub include_inclusion_data: bool,
+    pub include_acceptance_data: bool,
+    pub include_conf_count: bool,
+}
+
+impl GetTransactionRequest {
+    pub fn new(
+        transaction_id: RpcTransactionId,
+        include_unaccepted: bool,
+        transaction_verbosity: Option<RpcDataVerbosityLevel>,
+        include_inclusion_data: bool,
+        include_acceptance_data: bool,
+        include_conf_count: bool,
+    ) -> Self {
+        Self {
+            transaction_id,
+            include_unaccepted,
+            transaction_verbosity,
+            include_inclusion_data,
+            include_acceptance_data,
+            include_conf_count,
+        }
+    }
+}
+
+impl Serializer for GetTransactionRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcTransactionId, &self.transaction_id, writer)?;
+        store!(bool, &self.include_unaccepted, writer)?;
+        serialize!(Option<RpcDataVerbosityLevel>, &self.transaction_verbosity, writer)?;
+        store!(bool, &self.include_inclusion_data, writer)?;
+        store!(bool, &self.include_acceptance_data, writer)?;
+        store!(bool, &self.include_conf_count, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetTransactionRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transaction_id = load!(RpcTransactionId, reader)?;
+        let include_unaccepted = load!(bool, reader)?;
+        let transaction_verbosity = deserialize!(Option<RpcDataVerbosityLevel>, reader)?;
+        let include_inclusion_data = load!(bool, reader)?;
+        let include_acceptance_data = load!(bool, reader)?;
+        let include_conf_count = load!(bool, reader)?;
+        Ok(Self {
+            transaction_id,
+            include_unaccepted,
+            transaction_verbosity,
+            include_inclusion_data,
+            include_acceptance_data,
+            include_conf_count,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTransactionResponse {
+    pub transaction_data: Option<RpcTransactionData>,
+}
+
+impl GetTransactionResponse {
+    pub fn new(transaction_data: Option<RpcTransactionData>) -> Self {
+        Self { transaction_data }
+    }
+}
+
+impl Serializer for GetTransactionResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Option<RpcTransactionData>, &self.transaction_data, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetTransactionResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transaction_data = deserialize!(Option<RpcTransactionData>, reader)?;
+        Ok(Self { transaction_data })
     }
 }
 

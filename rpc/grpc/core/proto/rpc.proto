@@ -127,6 +127,25 @@ message RpcTransactionOutputVerboseData {
   string scriptPublicKeyAddress = 6;
 }
 
+message RpcTransactionData {
+  repeated RpcOptionalTransaction Transactions = 2;
+  repeated RpcTransactionInclusionData inclusionData = 3;
+  optional RpcTransactionAcceptanceData acceptanceData = 4;
+  optional uint64 confCount = 5; // None is unconfirmed.
+}
+
+message RpcTransactionInclusionData {
+  string includingBlockHash = 1; // the block that includes the transaction
+  uint64 includingDaaScore = 2; // the blue score of that block
+  uint32 indexWithinBlock = 3; // the index of the transaction within that block
+}
+
+message RpcTransactionAcceptanceData {
+  string acceptingBlockHash = 1; // the block that accepted the transaction
+  uint64 acceptingBlueScore = 2; // the blue score of that block
+  uint32 mergesetIndex = 3; // the index of the including block within the mergeset of the accepting block
+}
+
 enum RpcNotifyCommand {
   NOTIFY_START = 0;
   NOTIFY_STOP = 1;
@@ -704,6 +723,7 @@ message GetInfoResponseMessage {
   uint64 mempoolSize = 2;
   string serverVersion = 3;
   bool isUtxoIndexed = 4;
+  bool isTxIndexed = 6;
   bool isSynced = 5;
   bool hasNotifyCommand = 11;
   bool hasMessageId = 12;
@@ -885,6 +905,7 @@ message GetServerInfoResponseMessage {
   string serverVersion = 3;
   string networkId = 4;
   bool hasUtxoIndex = 5;
+  bool hasTxIndex = 8;
   bool isSynced = 6;
   uint64 virtualDaaScore = 7;
   RPCError error = 1000;
@@ -1083,6 +1104,26 @@ message GetVirtualChainFromBlockV2ResponseMessage {
 
   RPCError error = 1000;
 }
+
+message GetTransactionRequestMessage {
+  string transactionId = 1;
+  /// If true, query for unaccepted transactions as well,
+  /// Note: data pertaining to acceptance (i.e. conf counts and acceptance data) is always canonical
+  bool includeUnaccepted = 2;
+  /// Will be filled depending on the supplied RpcDataVerbosityLevel.
+  /// Note: input utxos are filled on a best effort basis, i.e. if utxo data can be found.
+  optional RpcDataVerbosityLevel transactionVerbosity = 3;
+  bool includeInclusionData = 4;
+  bool includeAcceptanceData = 5;
+  bool includeConfCount = 6;
+}
+
+message GetTransactionResponseMessage {
+  RpcTransactionData transactionData = 1;
+
+  RPCError error = 1000;
+}
+
 
 message GetCurrentBlockColorRequestMessage {
   string hash = 1;

@@ -93,6 +93,7 @@ pub mod test_helpers {
     pub struct VirtualChainChangedNotification {
         pub data: u64,
         pub accepted_transaction_ids: Option<u64>,
+        pub accepting_blue_scores: Option<u64>,
     }
 
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -130,12 +131,15 @@ pub mod test_helpers {
             match subscription.active() {
                 true => {
                     if let TestNotification::VirtualChainChanged(payload) = self {
-                        if !subscription.include_accepted_transaction_ids() && payload.accepted_transaction_ids.is_some() {
-                            return Some(TestNotification::VirtualChainChanged(VirtualChainChangedNotification {
-                                data: payload.data,
-                                accepted_transaction_ids: None,
-                            }));
-                        }
+                        // Filter out fields that the subscription does not request
+                        let accepted =
+                            if subscription.include_accepted_transaction_ids() { payload.accepted_transaction_ids } else { None };
+                        let blue = if subscription.include_accepting_blue_scores() { payload.accepting_blue_scores } else { None };
+                        return Some(TestNotification::VirtualChainChanged(VirtualChainChangedNotification {
+                            data: payload.data,
+                            accepted_transaction_ids: accepted,
+                            accepting_blue_scores: blue,
+                        }));
                     }
                     Some(self.clone())
                 }
