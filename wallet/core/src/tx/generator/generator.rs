@@ -595,12 +595,12 @@ impl Generator {
                 loop {
                     let utxo_entry = context.utxo_source_iterator.next()?;
 
-                    if let Some(filter) = context.priority_utxo_entry_filter.as_ref() {
-                        if filter.contains(&utxo_entry) {
-                            // skip the entry from the iterator intake
-                            // if it has been supplied as a priority entry
-                            continue;
-                        }
+                    if let Some(filter) = context.priority_utxo_entry_filter.as_ref()
+                        && filter.contains(&utxo_entry)
+                    {
+                        // skip the entry from the iterator intake
+                        // if it has been supplied as a priority entry
+                        continue;
                     }
 
                     break Some(utxo_entry);
@@ -679,15 +679,14 @@ impl Generator {
             if let Some(final_transaction) = &self.inner.final_transaction {
                 // try finish a stage or produce a final transaction with target value
                 // use basic condition checks to avoid unnecessary processing
-                if data.aggregate_mass > TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION
+                if (data.aggregate_mass > TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION
                     || (self.inner.final_transaction_priority_fee.sender_pays()
                         && stage.aggregate_input_value >= final_transaction.value_with_priority_fee)
                     || (self.inner.final_transaction_priority_fee.receiver_pays()
-                        && stage.aggregate_input_value >= final_transaction.value_no_fees.saturating_sub(context.aggregate_fees))
+                        && stage.aggregate_input_value >= final_transaction.value_no_fees.saturating_sub(context.aggregate_fees)))
+                    && let Some(kind) = self.try_finish_standard_stage_processing(context, stage, &mut data, final_transaction)?
                 {
-                    if let Some(kind) = self.try_finish_standard_stage_processing(context, stage, &mut data, final_transaction)? {
-                        return Ok((kind, data));
-                    }
+                    return Ok((kind, data));
                 }
             }
         }

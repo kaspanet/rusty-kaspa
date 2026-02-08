@@ -17,6 +17,7 @@ use rocksdb::WriteBatch;
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
     blockhash::{self, BlockHashExtensions},
+    config::params::ForkActivation,
     errors::{
         consensus::{ConsensusError, ConsensusResult},
         pruning::{PruningImportError, PruningImportResult},
@@ -37,7 +38,7 @@ use crate::{
         storage::ConsensusStorage,
     },
     model::{
-        services::reachability::MTReachabilityService,
+        services::{reachability::MTReachabilityService, seq_commit_accessor::seq_commit_within_threshold},
         stores::{
             DB,
             depth::DbDepthStore,
@@ -65,12 +66,6 @@ use super::window::WindowManager;
 enum ProofInternalError {
     #[error("block at depth error: {0}")]
     BlockAtDepth(String),
-
-    #[error("find common ancestor error: {0}")]
-    FindCommonAncestor(String),
-
-    #[error("cannot find a common ancestor: {0}")]
-    NoCommonAncestor(String),
 
     #[error("missing headers to build proof: {0}")]
     NotEnoughHeadersToBuildProof(String),
@@ -107,7 +102,7 @@ pub struct PruningProofManager {
     depth_store: Arc<DbDepthStore>,
     selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
     pruning_samples_store: Arc<DbPruningSamplesStore>,
-    pruning_meta_stores: Arc<RwLock<PruningMetaStores>>,
+    _pruning_meta_stores: Arc<RwLock<PruningMetaStores>>,
 
     ghostdag_manager: DbGhostdagManager,
     traversal_manager: DbDagTraversalManager,
@@ -121,8 +116,10 @@ pub struct PruningProofManager {
     genesis_hash: Hash,
     pruning_proof_m: u64,
     anticone_finalization_depth: u64,
+    finality_depth: u64,
     ghostdag_k: KType,
     skip_proof_of_work: bool,
+    covenants_activation: ForkActivation,
 
     is_consensus_exiting: Arc<AtomicBool>,
 }
@@ -141,8 +138,10 @@ impl PruningProofManager {
         genesis_hash: Hash,
         pruning_proof_m: u64,
         anticone_finalization_depth: u64,
+        finality_depth: u64,
         ghostdag_k: KType,
         skip_proof_of_work: bool,
+        covenants_activation: ForkActivation,
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -154,7 +153,7 @@ impl PruningProofManager {
             ghostdag_store: storage.ghostdag_store.clone(),
             relations_store: storage.relations_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
-            pruning_meta_stores: storage.pruning_meta_stores.clone(),
+            _pruning_meta_stores: storage.pruning_meta_stores.clone(),
             past_pruning_points_store: storage.past_pruning_points_store.clone(),
             virtual_stores: storage.virtual_stores.clone(),
             body_tips_store: storage.body_tips_store.clone(),
@@ -175,8 +174,10 @@ impl PruningProofManager {
             genesis_hash,
             pruning_proof_m,
             anticone_finalization_depth,
+            finality_depth,
             ghostdag_k,
             skip_proof_of_work,
+            covenants_activation,
 
             is_consensus_exiting,
         }
@@ -266,6 +267,8 @@ impl PruningProofManager {
 
         let mut daa_window_blocks = BlockHashMap::new();
         let mut ghostdag_blocks = BlockHashMap::new();
+        let mut header_only_chain_segment = Vec::new();
+        let mut header_only_chain_segment_set = BlockHashSet::new();
 
         let ghostdag_k = self.ghostdag_k;
 
@@ -294,6 +297,8 @@ impl PruningProofManager {
                     // We fill `ghostdag_blocks` only for kaspad-go legacy reasons, but the real set we
                     // send is `daa_window_blocks` which represents the full trusted sub-DAG in the antifuture
                     // of the pruning point which kaspad-rust nodes expect to get when synced with headers proof
+                    //
+                    // TODO(pre-covpp): remove the redundant `ghostdag_blocks` field as part of restructuring trusted data sending
                     if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {
                         e.insert(TrustedHeader {
                             header: self.headers_store.get_header(hash).unwrap(),
@@ -334,9 +339,38 @@ impl PruningProofManager {
             }
         }
 
+        if self.covenants_activation.is_active(self.headers_store.get_daa_score(pruning_point).unwrap()) {
+            let pruning_point_header = self.headers_store.get_header(pruning_point).unwrap();
+            let pruning_point_blue_score = pruning_point_header.blue_score;
+
+            // We rely on the fact that finality depth is the interval between pruning points, so this chain segment
+            // is always accessible and valid (this function is called before pruning above the prev pruning point)
+            let threshold = self.finality_depth;
+
+            for current in self.reachability_service.default_backward_chain_iterator(pruning_point) {
+                if !daa_window_blocks.contains_key(&current) && header_only_chain_segment_set.insert(current) {
+                    // No need for full ghostdag data here; syncees only need the header for seq-commitment access.
+                    header_only_chain_segment.push(current);
+                }
+
+                let current_header = self.headers_store.get_compact_header_data(current).unwrap();
+                if !seq_commit_within_threshold(pruning_point_blue_score, current_header.blue_score, threshold) {
+                    break;
+                }
+
+                if !self.covenants_activation.is_active(current_header.daa_score) {
+                    // We are not demanded to provide the chain segment for blocks below the covenants activation
+                    // See the chain-qualification check in the utxo validation code for details as well as
+                    // code in SeqCommitAccessor
+                    break;
+                }
+            }
+        }
+
         PruningPointTrustedData {
             anticone,
             daa_window_blocks: daa_window_blocks.into_values().collect_vec(),
+            header_only_chain_segment,
             ghostdag_blocks: ghostdag_blocks.into_iter().map(|(hash, ghostdag)| TrustedGhostdagData { hash, ghostdag }).collect_vec(),
         }
     }
@@ -344,10 +378,10 @@ impl PruningProofManager {
     pub fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
         let mut cache_lock = self.cached_proof.lock();
-        if let Some(cache) = cache_lock.clone() {
-            if cache.pruning_point == pp {
-                return cache.data;
-            }
+        if let Some(cache) = cache_lock.clone()
+            && cache.pruning_point == pp
+        {
+            return cache.data;
         }
         let proof = Arc::new(self.build_pruning_point_proof(pp));
         info!(
@@ -362,10 +396,10 @@ impl PruningProofManager {
     pub fn get_pruning_point_anticone_and_trusted_data(&self) -> ConsensusResult<Arc<PruningPointTrustedData>> {
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
         let mut cache_lock = self.cached_anticone.lock();
-        if let Some(cache) = cache_lock.clone() {
-            if cache.pruning_point == pp {
-                return Ok(cache.data);
-            }
+        if let Some(cache) = cache_lock.clone()
+            && cache.pruning_point == pp
+        {
+            return Ok(cache.data);
         }
 
         let virtual_state = self.virtual_stores.read().state.get().unwrap();

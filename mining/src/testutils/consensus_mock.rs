@@ -114,10 +114,10 @@ impl ConsensusApi for ConsensusMock {
 
     fn validate_mempool_transaction(&self, mutable_tx: &mut MutableTransaction, _: &TransactionValidationArgs) -> TxResult<()> {
         // If a predefined status was registered to simulate an error, return it right away
-        if let Some(status) = self.statuses.read().get(&mutable_tx.id()) {
-            if status.is_err() {
-                return status.clone();
-            }
+        if let Some(status) = self.statuses.read().get(&mutable_tx.id())
+            && status.is_err()
+        {
+            return status.clone();
         }
         let utxos = self.utxos.read();
         let mut has_missing_outpoints = false;

@@ -4,7 +4,7 @@ use crate::{
         BlockProcessResult,
         RuleError::{
             BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext,
-            WrongHeaderPruningPoint,
+            WrongHeaderPruningPoint, WrongSelectedParentOrder,
         },
     },
     model::stores::{
@@ -55,19 +55,19 @@ pub(crate) mod crescendo {
     };
 
     #[derive(Clone)]
-    pub(crate) struct CrescendoLogger {
+    pub(crate) struct _CrescendoLogger {
         steps: Arc<AtomicU8>,
     }
 
-    impl CrescendoLogger {
-        pub fn new() -> Self {
-            Self { steps: Arc::new(AtomicU8::new(Self::ACTIVATE)) }
+    impl _CrescendoLogger {
+        pub fn _new() -> Self {
+            Self { steps: Arc::new(AtomicU8::new(Self::_ACTIVATE)) }
         }
 
-        const ACTIVATE: u8 = 0;
+        const _ACTIVATE: u8 = 0;
 
-        pub fn report_activation(&self) -> bool {
-            if self.steps.compare_exchange(Self::ACTIVATE, Self::ACTIVATE + 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+        pub fn _report_activation(&self) -> bool {
+            if self.steps.compare_exchange(Self::_ACTIVATE, Self::_ACTIVATE + 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
                 info!(target: CRESCENDO_KEYWORD, "[Crescendo] [--------- Crescendo activated for UTXO state processing rules ---------]");
                 true
             } else {
@@ -238,6 +238,25 @@ impl VirtualStateProcessor {
         let reply = self.verify_header_pruning_point(header, ctx.ghostdag_data.to_compact())?;
         ctx.pruning_sample_from_pov = Some(reply.pruning_sample);
 
+        // Verify the first parent is the selected parent
+        //
+        // Purpose: Enables seqcommit opcode verification for syncees. By enforcing this rule,
+        // a node can trustlessly verify the selected chain segment below the pruning point
+        // (PP) simply by walking back through first-parents, avoiding a full GHOSTDAG
+        // computation over the historical DAG.
+        //
+        // Design Note: This is enforced as a chain-qualification rule rather than
+        // header-validity. This maintains compatibility with protocols like DAGKNIGHT,
+        // which may not compute selected parents for every block, while still securing
+        // the pruning point (which is a qualified chain block by definition).
+        if self.covenants_activation.is_active(header.daa_score) {
+            let selected_parent = ctx.ghostdag_data.selected_parent;
+            let first_parent = header.direct_parents()[0];
+            if first_parent != selected_parent {
+                return Err(WrongSelectedParentOrder(header.hash, selected_parent, first_parent));
+            }
+        }
+
         // Verify all transactions are valid in context
         let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
         let validated_transactions = self.validate_transactions_in_parallel(
@@ -364,7 +383,13 @@ impl VirtualStateProcessor {
         let populated_tx = PopulatedTransaction::new(transaction, entries);
 
         let seq_commit_accessor = if self.covenants_activation.is_active(pov_daa_score) {
-            Some(SeqCommitAccessor::new(sp, &self.reachability_service, &self.headers_store, self.finality_depth))
+            Some(SeqCommitAccessor::new(
+                sp,
+                &self.reachability_service,
+                &self.headers_store,
+                self.covenants_activation,
+                self.finality_depth,
+            ))
         } else {
             None
         };
@@ -438,7 +463,13 @@ impl VirtualStateProcessor {
             .map(|threshold| (contextual_mass.max(mutable_tx.calculated_non_contextual_masses.unwrap()), threshold));
 
         let seq_commit_accessor = if self.covenants_activation.is_active(pov_daa_score) {
-            Some(SeqCommitAccessor::new(sp, &self.reachability_service, &self.headers_store, self.finality_depth))
+            Some(SeqCommitAccessor::new(
+                sp,
+                &self.reachability_service,
+                &self.headers_store,
+                self.covenants_activation,
+                self.finality_depth,
+            ))
         } else {
             None
         };

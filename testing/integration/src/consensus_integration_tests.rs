@@ -768,7 +768,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
             .collect_vec();
 
         let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_line_to_trusted_block).collect_vec();
-        tc.apply_pruning_proof(proof, &trusted_blocks).unwrap();
+        tc.apply_pruning_proof(proof, &trusted_blocks, &[]).unwrap();
 
         let past_pruning_points =
             gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
@@ -1133,7 +1133,7 @@ async fn difficulty_test() {
         // Add exactly one block in the past to the window
         info!("{} - Stage 2", test.name);
         for _ in 0..sample_rate {
-            if (tip.daa_score + 1) % sample_rate == 0 {
+            if (tip.daa_score + 1).is_multiple_of(sample_rate) {
                 // This block should be part of the sampled window
                 let block_in_the_past = add_block_with_min_time(&consensus, vec![tip.hash]).await;
                 tip = block_in_the_past;
@@ -1201,7 +1201,7 @@ async fn difficulty_test() {
         info!("{} - Stage 5", test.name);
         let pre_slow_block_bits = tip.bits;
         for _ in 0..sample_rate {
-            if (tip.daa_score + 1) % sample_rate == 0 {
+            if (tip.daa_score + 1).is_multiple_of(sample_rate) {
                 // This block should be part of the sampled window
                 let slow_block_time = tip.timestamp + test.config.target_time_per_block() * 3;
                 let slow_block = add_block(&consensus, Some(slow_block_time), vec![tip.hash]).await;
