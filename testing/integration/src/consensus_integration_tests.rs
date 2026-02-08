@@ -1788,7 +1788,7 @@ async fn payload_test() {
     );
 
     // Create a tx with transient mass over the block limit
-    txx.payload = vec![0; (2 * config.params.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR) as usize];
+    txx.payload = vec![0; (config.params.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR + 100) as usize];
     let mut tx = MutableTransaction::from_tx(txx.clone());
     // This triggers storage mass population
     consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
