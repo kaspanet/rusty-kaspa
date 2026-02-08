@@ -228,10 +228,26 @@ impl MassCofactors {
     }
 }
 
+/// Computes the greatest common divisor (GCD) of two non-negative integers.
+///
+/// Uses the classical Euclidean algorithm:
+/// repeatedly replaces (a, b) with (b, a mod b) until b == 0.
+/// The remaining value `a` is the GCD.
+///
+/// See: https://en.wikipedia.org/wiki/Euclidean_algorithm
 const fn gcd(a: u64, b: u64) -> u64 {
     if b == 0 { a } else { gcd(b, a % b) }
 }
 
+/// Computes the least common multiple (LCM) of two non-negative integers.
+///
+/// Uses the identity:
+///   lcm(a, b) = (a / gcd(a, b)) * b
+///
+/// This formulation avoids overflow compared to `a * b / gcd(a, b)`
+/// and is valid for all non-zero integers.
+///
+/// See: https://en.wikipedia.org/wiki/Least_common_multiple
 const fn lcm(a: u64, b: u64) -> u64 {
     a / gcd(a, b) * b
 }
