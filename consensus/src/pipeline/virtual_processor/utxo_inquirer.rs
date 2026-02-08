@@ -354,7 +354,7 @@ impl VirtualStateProcessor {
 
     /// Finds a transaction's containing block hash and index within block through
     /// the accepting block acceptance data
-    fn find_containing_blocks_and_indices_from_acceptance_data(
+    fn _find_containing_blocks_and_indices_from_acceptance_data(
         &self,
         tx_ids: &[TransactionId],
         acceptance_data: &AcceptanceData,

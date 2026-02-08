@@ -55,19 +55,19 @@ pub(crate) mod crescendo {
     };
 
     #[derive(Clone)]
-    pub(crate) struct CrescendoLogger {
+    pub(crate) struct _CrescendoLogger {
         steps: Arc<AtomicU8>,
     }
 
-    impl CrescendoLogger {
-        pub fn new() -> Self {
-            Self { steps: Arc::new(AtomicU8::new(Self::ACTIVATE)) }
+    impl _CrescendoLogger {
+        pub fn _new() -> Self {
+            Self { steps: Arc::new(AtomicU8::new(Self::_ACTIVATE)) }
         }
 
-        const ACTIVATE: u8 = 0;
+        const _ACTIVATE: u8 = 0;
 
-        pub fn report_activation(&self) -> bool {
-            if self.steps.compare_exchange(Self::ACTIVATE, Self::ACTIVATE + 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+        pub fn _report_activation(&self) -> bool {
+            if self.steps.compare_exchange(Self::_ACTIVATE, Self::_ACTIVATE + 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
                 info!(target: CRESCENDO_KEYWORD, "[Crescendo] [--------- Crescendo activated for UTXO state processing rules ---------]");
                 true
             } else {

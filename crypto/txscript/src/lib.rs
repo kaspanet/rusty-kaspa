@@ -1464,10 +1464,10 @@ mod bitcoind_tests {
                 }
             };
 
-            if let JsonTestRow::TestWithComment(_, _, _, _, comment) = self.clone() {
-                if comment.contains("OpTxSubnetId") {
-                    eprintln!("debug");
-                }
+            if let JsonTestRow::TestWithComment(_, _, _, _, comment) = self.clone()
+                && comment.contains("OpTxSubnetId")
+            {
+                eprintln!("debug");
             }
 
             let result = Self::run_test(sig_script, script_pub_key, flags);

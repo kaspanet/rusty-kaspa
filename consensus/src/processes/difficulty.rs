@@ -78,23 +78,23 @@ trait DifficultyManagerExtension {
 }
 
 #[derive(Clone)]
-struct CrescendoLogger {
-    steps: Arc<AtomicU8>,
+struct _CrescendoLogger {
+    _steps: Arc<AtomicU8>,
 }
 
-impl CrescendoLogger {
-    fn new() -> Self {
-        Self { steps: Arc::new(AtomicU8::new(Self::ACTIVATE)) }
+impl _CrescendoLogger {
+    fn _new() -> Self {
+        Self { _steps: Arc::new(AtomicU8::new(Self::_ACTIVATE)) }
     }
 
-    const ACTIVATE: u8 = 0;
-    const DYNAMIC: u8 = 1;
-    const FULL: u8 = 2;
+    const _ACTIVATE: u8 = 0;
+    const _DYNAMIC: u8 = 1;
+    const _FULL: u8 = 2;
 
-    pub fn report_activation_progress(&self, step: u8) -> bool {
-        if self.steps.compare_exchange(step, step + 1, AtomicOrdering::SeqCst, AtomicOrdering::SeqCst).is_ok() {
+    pub fn _report_activation_progress(&self, step: u8) -> bool {
+        if self._steps.compare_exchange(step, step + 1, AtomicOrdering::SeqCst, AtomicOrdering::SeqCst).is_ok() {
             match step {
-                Self::ACTIVATE => {
+                Self::_ACTIVATE => {
                     info!(target: CRESCENDO_KEYWORD,
                         r#"
         ____                                  _             
@@ -112,8 +112,8 @@ impl CrescendoLogger {
                     );
                     info!(target: CRESCENDO_KEYWORD, "[Crescendo] Accelerating block rate 10 fold")
                 }
-                Self::DYNAMIC => {}
-                Self::FULL => {}
+                Self::_DYNAMIC => {}
+                Self::_FULL => {}
                 _ => {}
             }
             true
@@ -123,7 +123,7 @@ impl CrescendoLogger {
     }
 }
 
-fn hash_suffix(n: f64) -> (f64, &'static str) {
+fn _hash_suffix(n: f64) -> (f64, &'static str) {
     match n {
         n if n < 1_000.0 => (n, "hash/block"),
         n if n < 1_000_000.0 => (n / 1_000.0, "Khash/block"),
@@ -135,10 +135,10 @@ fn hash_suffix(n: f64) -> (f64, &'static str) {
     }
 }
 
-fn difficulty_desc(target: Uint320) -> String {
+fn _difficulty_desc(target: Uint320) -> String {
     let difficulty = MAX_DIFFICULTY_TARGET_AS_F64 / target.as_f64();
     let hashrate = difficulty * 2.0;
-    let (rate, suffix) = hash_suffix(hashrate);
+    let (rate, suffix) = _hash_suffix(hashrate);
     format!("{:.2} {}", rate, suffix)
 }
 
@@ -146,7 +146,7 @@ fn difficulty_desc(target: Uint320) -> String {
 #[derive(Clone)]
 pub struct SampledDifficultyManager<T: HeaderStoreReader, U: GhostdagStoreReader> {
     headers_store: Arc<T>,
-    ghostdag_store: Arc<U>,
+    _ghostdag_store: Arc<U>,
     genesis_hash: Hash,
     genesis_bits: u32,
     max_difficulty_target: Uint320,
@@ -171,7 +171,7 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader> SampledDifficultyManager<T, U
         Self::check_min_difficulty_window_size(difficulty_window_size, min_difficulty_window_size);
         Self {
             headers_store,
-            ghostdag_store,
+            _ghostdag_store: ghostdag_store,
             genesis_hash,
             genesis_bits,
             max_difficulty_target: max_difficulty_target.into(),
