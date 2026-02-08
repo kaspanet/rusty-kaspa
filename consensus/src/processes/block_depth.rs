@@ -25,7 +25,7 @@ pub struct BlockDepthManager<S: DepthStoreReader, U: ReachabilityStoreReader, V:
     depth_store: Arc<S>,
     reachability_service: MTReachabilityService<U>,
     ghostdag_store: Arc<V>,
-    headers_store: Arc<T>,
+    _headers_store: Arc<T>,
 }
 
 impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader, T: HeaderStoreReader> BlockDepthManager<S, U, V, T> {
@@ -38,7 +38,15 @@ impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader, T:
         ghostdag_store: Arc<V>,
         headers_store: Arc<T>,
     ) -> Self {
-        Self { merge_depth, finality_depth, genesis_hash, depth_store, reachability_service, ghostdag_store, headers_store }
+        Self {
+            merge_depth,
+            finality_depth,
+            genesis_hash,
+            depth_store,
+            reachability_service,
+            ghostdag_store,
+            _headers_store: headers_store,
+        }
     }
     pub fn calc_merge_depth_root(&self, ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {
         self.calculate_block_at_depth(ghostdag_data, BlockDepthType::MergeRoot, pruning_point)
