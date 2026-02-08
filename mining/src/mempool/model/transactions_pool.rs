@@ -234,7 +234,7 @@ impl TransactionsPool {
         }
 
         // Returns a vector of transactions to be removed (the caller has to actually remove)
-        let feerate_threshold = transaction.calculated_feerate().unwrap();
+        let feerate_threshold = transaction.calculated_feerate(&self.config.mass_cofactors).unwrap();
         let mut txs_to_remove = Vec::with_capacity(1); // Normally we expect a single removal
         let mut selection_overall_size = 0;
         for tx in self
@@ -250,7 +250,7 @@ impl TransactionsPool {
             }
 
             // We are iterating ready txs by ascending feerate so the pending tx has lower feerate than all remaining txs
-            if tx.feerate() > feerate_threshold {
+            if tx.feerate(&self.config.mass_cofactors) > feerate_threshold {
                 let err = RuleError::RejectMempoolIsFull;
                 debug!("Transaction {} with feerate {} has been rejected: {}", transaction.id(), feerate_threshold, err);
                 return Err(err);

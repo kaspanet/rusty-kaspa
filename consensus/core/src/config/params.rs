@@ -577,7 +577,7 @@ pub const MAINNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    block_mass_limits: BlockMassLimits::builder().with_all(500_000).build(),
+    block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
@@ -634,7 +634,7 @@ pub const TESTNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    block_mass_limits: BlockMassLimits::builder().with_all(500_000).build(),
+    block_mass_limits: BlockMassLimits::with_shared_limit(500_000),
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
@@ -702,7 +702,7 @@ pub const SIMNET_PARAMS: Params = Params {
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     // Increased for testing stark proofs
-    block_mass_limits: BlockMassLimits::builder().with_all(1_500_000).build(),
+    block_mass_limits: BlockMassLimits::with_shared_limit(1_500_000),
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
@@ -742,7 +742,7 @@ pub const DEVNET_PARAMS: Params = Params {
     mass_per_sig_op: 1000,
 
     // Increased for testing stark proofs
-    block_mass_limits: BlockMassLimits::builder().with_all(1_500_000).build(),
+    block_mass_limits: BlockMassLimits::with_shared_limit(1_500_000),
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 

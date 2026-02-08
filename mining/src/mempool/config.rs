@@ -31,10 +31,10 @@ pub struct Config {
     pub accepted_transaction_expire_scan_interval_milliseconds: u64,
     pub orphan_expire_interval_daa_score: u64,
     pub orphan_expire_scan_interval_daa_score: u64,
-    pub maximum_orphan_transaction_mass: u64,
+    pub maximum_orphan_transaction_mass: u64, // TODO normalized max mass
     pub maximum_orphan_transaction_count: u64,
     pub accept_non_standard: bool,
-    pub maximum_mass_per_block: u64,
+    pub maximum_mass_per_block: u64, // TODO should it be renamed to normalized max mass
     pub mass_cofactors: MassCofactors,
     pub minimum_relay_transaction_fee: u64,
     pub network_blocks_per_second: u64,
@@ -54,10 +54,10 @@ impl Config {
         accepted_transaction_expire_scan_interval_milliseconds: u64,
         orphan_expire_interval_daa_score: u64,
         orphan_expire_scan_interval_daa_score: u64,
-        maximum_orphan_transaction_mass: u64,
+        maximum_orphan_transaction_mass: u64, // TODO normalized max mass
         maximum_orphan_transaction_count: u64,
         accept_non_standard: bool,
-        maximum_mass_per_block: u64,
+        maximum_mass_per_block: u64, // TODO should it be renamed to normalized max mass
         mass_cofactors: MassCofactors,
         minimum_relay_transaction_fee: u64,
         network_blocks_per_second: u64,
@@ -91,8 +91,8 @@ impl Config {
         relay_non_std_transactions: bool,
         block_mass_limits: BlockMassLimits,
     ) -> Self {
-        let mass_cofactors = MassCofactors::new(&block_mass_limits);
-        let maximum_mass_per_block = mass_cofactors.reference;
+        let maximum_mass_per_block = block_mass_limits.reference();
+        let mass_cofactors = block_mass_limits.cofactors();
         Self {
             maximum_transaction_count: DEFAULT_MAXIMUM_TRANSACTION_COUNT,
             mempool_size_limit: DEFAULT_MEMPOOL_SIZE_LIMIT,
@@ -108,7 +108,7 @@ impl Config {
             accepted_transaction_expire_scan_interval_milliseconds: DEFAULT_ACCEPTED_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000,
             orphan_expire_interval_daa_score: DEFAULT_ORPHAN_EXPIRE_INTERVAL_SECONDS * 1000 / target_milliseconds_per_block,
             orphan_expire_scan_interval_daa_score: DEFAULT_ORPHAN_EXPIRE_SCAN_INTERVAL_SECONDS * 1000 / target_milliseconds_per_block,
-            maximum_orphan_transaction_mass: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_MASS,
+            maximum_orphan_transaction_mass: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_MASS, // TODO normalized max mass
             maximum_orphan_transaction_count: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_COUNT,
             accept_non_standard: relay_non_std_transactions,
             maximum_mass_per_block,

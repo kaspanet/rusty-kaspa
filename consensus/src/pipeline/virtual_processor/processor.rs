@@ -118,6 +118,7 @@ pub struct VirtualStateProcessor {
     pub(super) max_block_parents: u8,
     pub(super) mergeset_size_limit: u64,
     pub(super) finality_depth: u64,
+    pub(super) mass_cofactors: kaspa_consensus_core::mass::MassCofactors,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -200,6 +201,7 @@ impl VirtualStateProcessor {
             genesis: params.genesis.clone(),
             max_block_parents: params.max_block_parents(),
             mergeset_size_limit: params.mergeset_size_limit(),
+            mass_cofactors: params.block_mass_limits.cofactors(),
 
             db,
             statuses_store: storage.statuses_store.clone(),

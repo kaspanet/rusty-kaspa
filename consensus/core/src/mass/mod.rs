@@ -153,13 +153,6 @@ impl NonContextualMasses {
     pub fn new(compute_mass: u64, transient_mass: u64) -> Self {
         Self { compute_mass, transient_mass }
     }
-
-    /// Returns the maximum over all non-contextual masses (currently compute and transient). This
-    /// max value has no consensus meaning and should only be used for mempool-level simplification
-    /// such as obtaining a one-dimensional mass value when composing blocks templates.  
-    pub fn max(&self) -> u64 {
-        self.compute_mass.max(self.transient_mass)
-    }
 }
 
 impl std::fmt::Display for NonContextualMasses {
@@ -176,55 +169,24 @@ pub struct BlockMassLimits {
     pub transient: u64,
 }
 
-const DEFAULT_MASS_LIMIT: u64 = u64::MAX;
-
 impl BlockMassLimits {
-    /// Returns a builder for constructing `BlockMassLimits`.
-    /// Unset dimensions default to `u64::MAX` (i.e. effectively unlimited).
+    /// Create limits with the same value for all dimensions.
     #[inline]
-    pub const fn builder() -> BlockMassLimitsBuilder {
-        BlockMassLimitsBuilder { storage: DEFAULT_MASS_LIMIT, compute: DEFAULT_MASS_LIMIT, transient: DEFAULT_MASS_LIMIT }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct BlockMassLimitsBuilder {
-    storage: u64,
-    compute: u64,
-    transient: u64,
-}
-
-impl BlockMassLimitsBuilder {
-    #[inline]
-    pub const fn with_storage(mut self, limit: u64) -> Self {
-        self.storage = limit;
-        self
+    pub const fn with_shared_limit(limit: u64) -> Self {
+        Self { storage: limit, compute: limit, transient: limit }
     }
 
+    /// Returns the mass cofactors derived from these limits.
     #[inline]
-    pub const fn with_compute(mut self, limit: u64) -> Self {
-        self.compute = limit;
-        self
+    pub const fn cofactors(&self) -> MassCofactors {
+        MassCofactors::new(self)
     }
 
+    /// Returns the normalized block mass reference value: `lcm(storage, compute, transient)`.
+    /// All normalized masses should be compared against this value.
     #[inline]
-    pub const fn with_transient(mut self, limit: u64) -> Self {
-        self.transient = limit;
-        self
-    }
-
-    /// Convenience: set all three dimensions to the same limit.
-    #[inline]
-    pub const fn with_all(mut self, limit: u64) -> Self {
-        self.storage = limit;
-        self.compute = limit;
-        self.transient = limit;
-        self
-    }
-
-    #[inline]
-    pub const fn build(self) -> BlockMassLimits {
-        BlockMassLimits { storage: self.storage, compute: self.compute, transient: self.transient }
+    pub const fn reference(&self) -> u64 {
+        self.cofactors().reference
     }
 }
 
@@ -312,6 +274,7 @@ impl Mass {
 
     /// Returns the normalized maximum mass, scaling each dimension by its integer cofactor.
     /// The result is in units of `cofactors.reference` (= lcm of all limits).
+    /// When all limits are equal, all cofactors are 1 and this reduces to `max(storage, compute, transient)`.
     pub fn normalized_max(&self, cofactors: &MassCofactors) -> u64 {
         let s = self.contextual.storage_mass.saturating_mul(cofactors.storage);
         let c = self.non_contextual.compute_mass.saturating_mul(cofactors.compute);

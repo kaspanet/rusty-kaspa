@@ -1617,7 +1617,7 @@ async fn push_limit_activation_test() {
         .edit_consensus_params(|p| {
             p.coinbase_maturity = 0;
             let mass_limit = 100 * MAX_SCRIPT_ELEMENT_SIZE as u64;
-            p.block_mass_limits = kaspa_consensus_core::mass::BlockMassLimits::builder().with_all(mass_limit).build();
+            p.block_mass_limits = kaspa_consensus_core::mass::BlockMassLimits::with_shared_limit(mass_limit);
             p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE;
             p.storage_mass_parameter = 1;
             p.covenants_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
