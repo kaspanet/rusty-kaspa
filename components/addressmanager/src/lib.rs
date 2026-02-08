@@ -113,18 +113,20 @@ impl AddressManager {
     }
 
     fn local_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
-        match self.config.externalip {
-            // An external IP was passed, we will try to bind that if it's valid
-            Some(local_net_address) if local_net_address.ip.is_publicly_routable() => {
-                info!("External address is publicly routable {}", local_net_address);
-                return Left(iter::once(local_net_address));
+        if let Some(externalips) = &self.config.externalip {
+            let mut is_publicly_routable = Vec::new();
+            for addr in externalips {
+                if addr.ip.is_publicly_routable() {
+                    info!("External address is publicly routable {}", addr);
+                    is_publicly_routable.push(*addr);
+                } else {
+                    info!("External address is not publicly routable {}", addr);
+                }
             }
-            Some(local_net_address) => {
-                info!("External address is not publicly routable {}", local_net_address);
+            if !is_publicly_routable.is_empty() {
+                return Left(is_publicly_routable.into_iter());
             }
-            None => {}
-        };
-
+        }
         Right(self.routable_addresses_from_net_interfaces())
     }
 
