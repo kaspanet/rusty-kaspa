@@ -99,11 +99,9 @@ impl OrphanPool {
     }
 
     fn check_orphan_mass(&self, transaction: &MutableTransaction) -> RuleResult<()> {
-        if transaction.calculated_non_contextual_masses.unwrap().max() > self.config.maximum_orphan_transaction_mass {
-            return Err(RuleError::RejectBadOrphanMass(
-                transaction.calculated_non_contextual_masses.unwrap().max(),
-                self.config.maximum_orphan_transaction_mass,
-            ));
+        let normalized_mass = transaction.calculated_non_contextual_masses.unwrap().normalized_max(&self.config.block_mass_cofactors);
+        if normalized_mass > self.config.maximum_orphan_transaction_normalized_mass {
+            return Err(RuleError::RejectBadOrphanMass(normalized_mass, self.config.maximum_orphan_transaction_normalized_mass));
         }
         Ok(())
     }
@@ -117,10 +115,10 @@ impl OrphanPool {
 
     fn check_orphan_double_spend(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         for input in transaction.tx.inputs.iter() {
-            if let Some(double_spend_orphan) = self.outpoint_orphan(&input.previous_outpoint) {
-                if double_spend_orphan.id() != transaction.id() {
-                    return Err(RuleError::RejectDoubleSpendOrphan(transaction.id(), double_spend_orphan.id()));
-                }
+            if let Some(double_spend_orphan) = self.outpoint_orphan(&input.previous_outpoint)
+                && double_spend_orphan.id() != transaction.id()
+            {
+                return Err(RuleError::RejectDoubleSpendOrphan(transaction.id(), double_spend_orphan.id()));
             }
         }
         Ok(())

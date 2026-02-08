@@ -116,22 +116,22 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo build with devnet-prealloc feature
-        run: cargo build --release --features devnet-prealloc --workspace --all --tests --benches
+        run: cargo build --features devnet-prealloc --workspace --all --tests --benches
 
       - name: Run cargo test regular features
-        run: cargo nextest run --release --workspace
+        run: cargo nextest run --workspace
 
       - name: Run cargo doc tests
-        run: cargo test --doc --release --workspace
+        run: cargo test --doc --workspace
 
       - name: Run cargo test on kaspa-hashes without asm
-        run: cargo nextest run --release -p kaspa-hashes --features=no-asm --benches
+        run: cargo nextest run -p kaspa-hashes --features=no-asm --benches
 
       - name: Run cargo doc tests with features=no-asm on kaspa-hashes
-        run: cargo test --doc --release -p kaspa-hashes --features=no-asm
+        run: cargo test --doc -p kaspa-hashes --features=no-asm
 
       - name: Run cargo doc
-        run: cargo doc --release --no-deps --workspace
+        run: cargo doc --no-deps --workspace
       - name: Run kip-10 example
         run: cargo run --example kip-10
 

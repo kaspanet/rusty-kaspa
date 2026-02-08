@@ -768,7 +768,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
             .collect_vec();
 
         let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_line_to_trusted_block).collect_vec();
-        tc.apply_pruning_proof(proof, &trusted_blocks).unwrap();
+        tc.apply_pruning_proof(proof, &trusted_blocks, &[]).unwrap();
 
         let past_pruning_points =
             gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
@@ -1133,7 +1133,7 @@ async fn difficulty_test() {
         // Add exactly one block in the past to the window
         info!("{} - Stage 2", test.name);
         for _ in 0..sample_rate {
-            if (tip.daa_score + 1) % sample_rate == 0 {
+            if (tip.daa_score + 1).is_multiple_of(sample_rate) {
                 // This block should be part of the sampled window
                 let block_in_the_past = add_block_with_min_time(&consensus, vec![tip.hash]).await;
                 tip = block_in_the_past;
@@ -1201,7 +1201,7 @@ async fn difficulty_test() {
         info!("{} - Stage 5", test.name);
         let pre_slow_block_bits = tip.bits;
         for _ in 0..sample_rate {
-            if (tip.daa_score + 1) % sample_rate == 0 {
+            if (tip.daa_score + 1).is_multiple_of(sample_rate) {
                 // This block should be part of the sampled window
                 let slow_block_time = tip.timestamp + test.config.target_time_per_block() * 3;
                 let slow_block = add_block(&consensus, Some(slow_block_time), vec![tip.hash]).await;
@@ -1616,7 +1616,8 @@ async fn push_limit_activation_test() {
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.coinbase_maturity = 0;
-            p.max_block_mass = 100 * MAX_SCRIPT_ELEMENT_SIZE as u64;
+            let mass_limit = 100 * MAX_SCRIPT_ELEMENT_SIZE as u64;
+            p.block_mass_limits = kaspa_consensus_core::mass::BlockMassLimits::with_shared_limit(mass_limit);
             p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE;
             p.storage_mass_parameter = 1;
             p.covenants_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
@@ -1783,11 +1784,11 @@ async fn payload_test() {
         0,
         SubnetworkId::default(),
         0,
-        vec![0; (config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize],
+        vec![0; (config.params.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize],
     );
 
     // Create a tx with transient mass over the block limit
-    txx.payload = vec![0; (2 * config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR) as usize];
+    txx.payload = vec![0; (config.params.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR + 100) as usize];
     let mut tx = MutableTransaction::from_tx(txx.clone());
     // This triggers storage mass population
     consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
@@ -1795,7 +1796,7 @@ async fn payload_test() {
     assert_match!(consensus_res, Err(RuleError::ExceedsTransientMassLimit(_, _)));
 
     // Fix the payload to be below the limit
-    txx.payload = vec![0; (config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
+    txx.payload = vec![0; (config.params.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
     let mut tx = MutableTransaction::from_tx(txx.clone());
     // This triggers storage mass population
     consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
@@ -1846,7 +1847,7 @@ async fn payload_for_native_tx_test() {
     consensus.init();
 
     // Create transaction with large payload
-    let large_payload = vec![0u8; (config.params.max_block_mass / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
+    let large_payload = vec![0u8; (config.params.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
     let mut tx_with_payload = Transaction::new(
         0,
         vec![TransactionInput::new(

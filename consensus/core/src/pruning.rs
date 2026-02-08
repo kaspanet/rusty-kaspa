@@ -17,6 +17,9 @@ pub struct PruningPointTrustedData {
     /// Union of DAA window data required to verify blocks in the future of the pruning point
     pub daa_window_blocks: Vec<TrustedHeader>,
 
+    /// Chain segment hashes required for seqcommit validation (headers only, no GHOSTDAG)
+    pub header_only_chain_segment: Vec<Hash>,
+
     /// Union of GHOSTDAG data required to verify blocks in the future of the pruning point
     pub ghostdag_blocks: Vec<TrustedGhostdagData>,
 }
