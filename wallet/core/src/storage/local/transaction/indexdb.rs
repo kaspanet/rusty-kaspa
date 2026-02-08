@@ -91,18 +91,18 @@ impl Inner {
                 if let Some(cursor) = cursor {
                     loop {
                         let js_value = cursor.value();
-                        if let Ok(record) = transaction_record_from_js_value(&js_value, None) {
-                            if record.unixtime_msec.is_some() {
-                                let new_js_value = transaction_record_to_js_value(&record, None, ENCRYPTION_KIND)?;
+                        if let Ok(record) = transaction_record_from_js_value(&js_value, None)
+                            && record.unixtime_msec.is_some()
+                        {
+                            let new_js_value = transaction_record_to_js_value(&record, None, ENCRYPTION_KIND)?;
 
-                                //log_info!("DEBUG: new_js_value: {:?}", new_js_value);
+                            //log_info!("DEBUG: new_js_value: {:?}", new_js_value);
 
-                                cursor
-                                    .update(&new_js_value)
-                                    .map_err(|err| Error::Custom(format!("Failed to update record timestamp {:?}", err)))?
-                                    .await
-                                    .map_err(|err| Error::Custom(format!("Failed to update record timestamp {:?}", err)))?;
-                            }
+                            cursor
+                                .update(&new_js_value)
+                                .map_err(|err| Error::Custom(format!("Failed to update record timestamp {:?}", err)))?
+                                .await
+                                .map_err(|err| Error::Custom(format!("Failed to update record timestamp {:?}", err)))?;
                         }
                         if let Ok(b) = cursor.continue_cursor() {
                             match b.await {

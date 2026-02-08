@@ -10,8 +10,8 @@ use std::{
 
 pub struct Ctl {
     management_store: Arc<RwLock<MultiConsensusManagementStore>>,
-    consensus_db_ref: Weak<DB>,
-    consensus_db_path: PathBuf,
+    _consensus_db_ref: Weak<DB>,
+    _consensus_db_path: PathBuf,
     consensus: Arc<Consensus>,
 }
 
@@ -21,9 +21,9 @@ impl Ctl {
         consensus_db: Arc<DB>,
         consensus: Arc<Consensus>,
     ) -> Self {
-        let consensus_db_path = consensus_db.path().to_owned();
-        let consensus_db_ref = Arc::downgrade(&consensus_db);
-        Self { management_store, consensus_db_ref, consensus_db_path, consensus }
+        let _consensus_db_path = consensus_db.path().to_owned();
+        let _consensus_db_ref = Arc::downgrade(&consensus_db);
+        Self { management_store, _consensus_db_ref, _consensus_db_path, consensus }
     }
 }
 

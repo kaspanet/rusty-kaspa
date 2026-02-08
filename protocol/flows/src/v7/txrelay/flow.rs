@@ -231,7 +231,7 @@ impl RelayTransactionsFlow {
                 }
                 Err(MiningManagerError::MempoolError(RuleError::RejectNonStandard(..))) => {
                     self.spam_counter += 1;
-                    if self.spam_counter % 100 == 0 {
+                    if self.spam_counter.is_multiple_of(100) {
                         kaspa_core::warn!("Peer {} has shared {} spam/non-standard txs ({:?})", self.router, self.spam_counter, res);
                     }
                 }

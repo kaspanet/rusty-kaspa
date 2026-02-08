@@ -79,11 +79,11 @@ pub(crate) trait Pool {
             while let Some(transaction) = queue.pop_front() {
                 if let Some(chains) = self.chained().get(&transaction.id()) {
                     chains.iter().for_each(|redeemer_id| {
-                        if let Some(redeemer) = self.get(redeemer_id) {
-                            if visited.insert(*redeemer_id) {
-                                descendants.push(*redeemer_id);
-                                queue.push_back(redeemer);
-                            }
+                        if let Some(redeemer) = self.get(redeemer_id)
+                            && visited.insert(*redeemer_id)
+                        {
+                            descendants.push(*redeemer_id);
+                            queue.push_back(redeemer);
                         }
                     })
                 }

@@ -647,22 +647,22 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let batch_size = (self.config.mergeset_size_limit() * 10) as usize;
         let mut virtual_chain_batch = session.async_get_virtual_chain_from_block(request.start_hash, Some(batch_size)).await?;
 
-        if let Some(min_confirmation_count) = request.min_confirmation_count {
-            if min_confirmation_count > 0 {
-                let sink_blue_score = session.async_get_sink_blue_score().await;
+        if let Some(min_confirmation_count) = request.min_confirmation_count
+            && min_confirmation_count > 0
+        {
+            let sink_blue_score = session.async_get_sink_blue_score().await;
 
-                while !virtual_chain_batch.added.is_empty() {
-                    let vc_last_accepted_block_hash = virtual_chain_batch.added.last().unwrap();
-                    let vc_last_accepted_block = session.async_get_block(*vc_last_accepted_block_hash).await?;
+            while !virtual_chain_batch.added.is_empty() {
+                let vc_last_accepted_block_hash = virtual_chain_batch.added.last().unwrap();
+                let vc_last_accepted_block = session.async_get_block(*vc_last_accepted_block_hash).await?;
 
-                    let distance = sink_blue_score.saturating_sub(vc_last_accepted_block.header.blue_score);
+                let distance = sink_blue_score.saturating_sub(vc_last_accepted_block.header.blue_score);
 
-                    if distance > min_confirmation_count {
-                        break;
-                    }
-
-                    virtual_chain_batch.added.pop();
+                if distance > min_confirmation_count {
+                    break;
                 }
+
+                virtual_chain_batch.added.pop();
             }
         }
 
@@ -967,10 +967,10 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         // In the current implementation, consensus behaves the same when it gets a None instead.
         const LEGACY_VIRTUAL: kaspa_hashes::Hash = kaspa_hashes::Hash::from_bytes([0xff; kaspa_hashes::HASH_SIZE]);
         let mut start_hash = request.start_hash;
-        if let Some(start) = start_hash {
-            if start == LEGACY_VIRTUAL {
-                start_hash = None;
-            }
+        if let Some(start) = start_hash
+            && start == LEGACY_VIRTUAL
+        {
+            start_hash = None;
         }
 
         Ok(EstimateNetworkHashesPerSecondResponse::new(
@@ -1260,22 +1260,22 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         // if min confirmation count is present, strip chain head if needed
         // so the new head has at least min_confirmation_count confirmations
-        if let Some(min_confirmation_count) = request.min_confirmation_count {
-            if min_confirmation_count > 0 {
-                let sink_blue_score = session.async_get_sink_blue_score().await;
+        if let Some(min_confirmation_count) = request.min_confirmation_count
+            && min_confirmation_count > 0
+        {
+            let sink_blue_score = session.async_get_sink_blue_score().await;
 
-                while !chain_path.added.is_empty() {
-                    let vc_last_accepted_block_hash = chain_path.added.last().unwrap();
-                    let vc_last_accepted_block = session.async_get_block(*vc_last_accepted_block_hash).await?;
+            while !chain_path.added.is_empty() {
+                let vc_last_accepted_block_hash = chain_path.added.last().unwrap();
+                let vc_last_accepted_block = session.async_get_block(*vc_last_accepted_block_hash).await?;
 
-                    let distance = sink_blue_score.saturating_sub(vc_last_accepted_block.header.blue_score);
+                let distance = sink_blue_score.saturating_sub(vc_last_accepted_block.header.blue_score);
 
-                    if distance > min_confirmation_count {
-                        break;
-                    }
-
-                    chain_path.added.pop();
+                if distance > min_confirmation_count {
+                    break;
                 }
+
+                chain_path.added.pop();
             }
         }
 

@@ -21,10 +21,10 @@ impl DefaultSettings for MinerSettings {
         let mut settings = vec![(Self::Server, to_value("127.0.0.1").unwrap()), (Self::Mute, to_value(true).unwrap())];
 
         let root = nw_sys::app::folder();
-        if let Ok(binaries) = locate_binaries(&root, "kaspa-cpu-miner").await {
-            if let Some(path) = binaries.first() {
-                settings.push((Self::Location, to_value(path.to_string_lossy().to_string()).unwrap()));
-            }
+        if let Ok(binaries) = locate_binaries(&root, "kaspa-cpu-miner").await
+            && let Some(path) = binaries.first()
+        {
+            settings.push((Self::Location, to_value(path.to_string_lossy().to_string()).unwrap()));
         }
 
         settings

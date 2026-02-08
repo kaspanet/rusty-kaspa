@@ -116,10 +116,10 @@ impl UtxosChangedNotification {
         } else {
             let tracker_data = context.address_tracker.data();
             subscription_data.iter().for_each(|index| {
-                if let Some(script_public_key) = tracker_data.get_index(*index) {
-                    if let Some(collection) = utxo_set.get(script_public_key) {
-                        result.insert(script_public_key.clone(), collection.clone());
-                    }
+                if let Some(script_public_key) = tracker_data.get_index(*index)
+                    && let Some(collection) = utxo_set.get(script_public_key)
+                {
+                    result.insert(script_public_key.clone(), collection.clone());
                 }
             });
         }

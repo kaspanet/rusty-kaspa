@@ -20,10 +20,10 @@ impl DefaultSettings for KaspadSettings {
         let mut settings = vec![(Self::Mute, to_value(true).unwrap())];
 
         let root = nw_sys::app::folder();
-        if let Ok(binaries) = kaspa_daemon::locate_binaries(&root, "kaspad").await {
-            if let Some(path) = binaries.first() {
-                settings.push((Self::Location, to_value(path.to_string_lossy().to_string()).unwrap()));
-            }
+        if let Ok(binaries) = kaspa_daemon::locate_binaries(&root, "kaspad").await
+            && let Some(path) = binaries.first()
+        {
+            settings.push((Self::Location, to_value(path.to_string_lossy().to_string()).unwrap()));
         }
 
         settings

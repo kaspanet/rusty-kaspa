@@ -755,10 +755,10 @@ pub trait DerivationCapableAccount: Account {
             keys.zeroize();
         }
 
-        if index > last_notification {
-            if let Some(notifier) = notifier {
-                notifier(index, aggregate_utxo_count, aggregate_balance, None);
-            }
+        if index > last_notification
+            && let Some(notifier) = notifier
+        {
+            notifier(index, aggregate_utxo_count, aggregate_balance, None);
         }
 
         // update address manager with the last used index

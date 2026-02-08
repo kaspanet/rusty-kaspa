@@ -493,14 +493,14 @@ impl ClientHandler {
                     let wallet_addr = client_clone.wallet_addr.lock();
                     if wallet_addr.is_empty() {
                         let connect_time = state.connect_time();
-                        if let Ok(elapsed) = connect_time.elapsed() {
-                            if elapsed > CLIENT_TIMEOUT {
-                                warn!("client misconfigured, no miner address specified - disconnecting");
-                                let wallet_str = wallet_addr.clone();
-                                record_worker_error(&instance_id, &wallet_str, crate::errors::ErrorShortCode::NoMinerAddress.as_str());
-                                drop(wallet_addr); // Drop before disconnect
-                                client_clone.disconnect();
-                            }
+                        if let Ok(elapsed) = connect_time.elapsed()
+                            && elapsed > CLIENT_TIMEOUT
+                        {
+                            warn!("client misconfigured, no miner address specified - disconnecting");
+                            let wallet_str = wallet_addr.clone();
+                            record_worker_error(&instance_id, &wallet_str, crate::errors::ErrorShortCode::NoMinerAddress.as_str());
+                            drop(wallet_addr); // Drop before disconnect
+                            client_clone.disconnect();
                         }
                         debug!("new_block_available: client {} has no wallet address yet, skipping", client_clone.remote_addr);
                         return;
