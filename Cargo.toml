@@ -332,7 +332,6 @@ workflow-wasm = { version = "0.18.0" }
 # nw-sys = { path = "../nw-sys" }
 
 [profile.release]
-lto = "thin"
 strip = true
 overflow-checks = true
 
