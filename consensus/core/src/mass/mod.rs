@@ -178,78 +178,50 @@ impl BlockMassLimits {
 
     /// Returns the mass cofactors derived from these limits.
     #[inline]
-    pub const fn cofactors(&self) -> MassCofactors {
+    pub fn cofactors(&self) -> MassCofactors {
         MassCofactors::new(self)
     }
 
-    /// Returns the normalized block mass reference value: `lcm(storage, compute, transient)`.
+    /// Returns the normalized block mass reference value (= compute limit).
     /// All normalized masses should be compared against this value.
     #[inline]
     pub const fn reference(&self) -> u64 {
-        self.cofactors().reference
+        self.compute
     }
 }
 
-/// Per-dimension integer scaling factors for normalizing masses to a common scale.
+/// Per-dimension floating-point scaling factors for normalizing masses to compute-mass scale.
 ///
-/// Given per-dimension block mass limits (L_s, L_c, L_t):
-///   g = gcd(L_s, L_c, L_t)
-///   share_i = L_i / g                          (integer)
-///   lcm_shares = lcm(share_s, share_c, share_t)
-///   cofactor_i = lcm_shares / share_i           (integer)
-///   reference = lcm_shares * g = lcm(L_s, L_c, L_t)
+/// Given per-dimension block mass limits (L_s, L_c, L_t), normalization maps all
+/// dimensions to the compute limit scale:
+///   cofactor_i = L_compute / L_i
+///   reference  = L_compute
 ///
-/// A normalized mass `m_i * cofactor_i` is in units of `reference` and can be
+/// A normalized mass `ceil(m_i * cofactor_i)` is in compute-mass units and can be
 /// compared directly against `reference` as the block mass limit.
 ///
-/// When all limits are equal, all cofactors = 1, reference = L.
+/// When all limits are equal, all cofactors = 1.0, reference = L.
+/// Cofactors can be less than 1 (dimension has a larger limit than compute)
+/// or greater than 1 (dimension has a smaller limit than compute).
 #[derive(Copy, Clone, Debug)]
 pub struct MassCofactors {
-    pub storage: u64,
-    pub compute: u64,
-    pub transient: u64,
-    /// The normalized block mass limit: lcm(L_s, L_c, L_t)
+    pub storage: f64,
+    pub compute: f64,
+    pub transient: f64,
+    /// The normalized block mass limit (= compute limit)
     pub reference: u64,
 }
 
 impl MassCofactors {
-    pub const fn new(limits: &BlockMassLimits) -> Self {
-        let g = gcd(gcd(limits.storage, limits.compute), limits.transient);
-        let storage_share = limits.storage / g;
-        let compute_share = limits.compute / g;
-        let transient_share = limits.transient / g;
-        let lcm_shares = lcm(lcm(storage_share, compute_share), transient_share);
+    pub fn new(limits: &BlockMassLimits) -> Self {
+        let reference = limits.compute as f64;
         Self {
-            storage: lcm_shares / storage_share,
-            compute: lcm_shares / compute_share,
-            transient: lcm_shares / transient_share,
-            reference: lcm_shares * g,
+            storage: reference / limits.storage as f64,
+            compute: 1.0,
+            transient: reference / limits.transient as f64,
+            reference: limits.compute,
         }
     }
-}
-
-/// Computes the greatest common divisor (GCD) of two non-negative integers.
-///
-/// Uses the classical Euclidean algorithm:
-/// repeatedly replaces (a, b) with (b, a mod b) until b == 0.
-/// The remaining value `a` is the GCD.
-///
-/// See: https://en.wikipedia.org/wiki/Euclidean_algorithm
-const fn gcd(a: u64, b: u64) -> u64 {
-    if b == 0 { a } else { gcd(b, a % b) }
-}
-
-/// Computes the least common multiple (LCM) of two non-negative integers.
-///
-/// Uses the identity:
-///   lcm(a, b) = (a / gcd(a, b)) * b
-///
-/// This formulation avoids overflow compared to `a * b / gcd(a, b)`
-/// and is valid for all non-zero integers.
-///
-/// See: https://en.wikipedia.org/wiki/Least_common_multiple
-const fn lcm(a: u64, b: u64) -> u64 {
-    a / gcd(a, b) * b
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -288,13 +260,14 @@ impl Mass {
         Self { non_contextual, contextual }
     }
 
-    /// Returns the normalized maximum mass, scaling each dimension by its integer cofactor.
-    /// The result is in units of `cofactors.reference` (= lcm of all limits).
-    /// When all limits are equal, all cofactors are 1 and this reduces to `max(storage, compute, transient)`.
+    /// Returns the normalized maximum mass, scaling each dimension by its f64 cofactor
+    /// (with ceiling) to compute-mass scale.
+    /// The result is in units of `cofactors.reference` (= compute limit).
+    /// When all limits are equal, all cofactors are 1.0 and this reduces to `max(storage, compute, transient)`.
     pub fn normalized_max(&self, cofactors: &MassCofactors) -> u64 {
-        let s = self.contextual.storage_mass.saturating_mul(cofactors.storage);
-        let c = self.non_contextual.compute_mass.saturating_mul(cofactors.compute);
-        let t = self.non_contextual.transient_mass.saturating_mul(cofactors.transient);
+        let s = (self.contextual.storage_mass as f64 * cofactors.storage).ceil() as u64;
+        let c = (self.non_contextual.compute_mass as f64 * cofactors.compute).ceil() as u64;
+        let t = (self.non_contextual.transient_mass as f64 * cofactors.transient).ceil() as u64;
         s.max(c).max(t)
     }
 }
@@ -892,43 +865,61 @@ mod tests {
 
     #[test]
     fn test_mass_cofactors() {
+        // Cofactors are f64, normalized to compute-mass scale:
+        //   cofactor_i = compute_limit / limit_i
+        //   reference  = compute_limit
+        //
         // Table of (limits, expected_cofactors, expected_reference)
-        let cases: Vec<(BlockMassLimits, (u64, u64, u64), u64)> = vec![
-            // 1. Shared limit — all equal
-            (BlockMassLimits { storage: 500_000, compute: 500_000, transient: 500_000 }, (1, 1, 1), 500_000),
+        let cases: Vec<(BlockMassLimits, (f64, f64, f64), u64)> = vec![
+            // 1. Shared limit — all equal → all cofactors 1.0, reference = L
+            (BlockMassLimits { storage: 500_000, compute: 500_000, transient: 500_000 }, (1.0, 1.0, 1.0), 500_000),
             // 2. Simple multiples — (1M, 500K, 250K)
-            (BlockMassLimits { storage: 1_000_000, compute: 500_000, transient: 250_000 }, (1, 2, 4), 1_000_000),
-            // 3. Partial overlap — coprime-ish values (gcd=1)
+            //    storage has 2x headroom → cofactor 0.5 (scales down)
+            //    transient has half the headroom → cofactor 2.0 (scales up)
+            (BlockMassLimits { storage: 1_000_000, compute: 500_000, transient: 250_000 }, (0.5, 1.0, 2.0), 500_000),
+            // 3. Coprime-ish values — cofactors are irrational-ish fractions,
+            //    but reference stays at a sane 78_901 (the compute limit)
             (
                 BlockMassLimits { storage: 123_456, compute: 78_901, transient: 45_678 },
-                (600_673_313, 939_870_528, 1_623_466_976),
-                74_156_724_529_728,
+                (78_901.0 / 123_456.0, 1.0, 78_901.0 / 45_678.0),
+                78_901,
             ),
-            // 4. Realistic ops tuning (gcd=1)
+            // 4. Realistic ops tuning — wide spread, reference = 77_777
             (
                 BlockMassLimits { storage: 333_333, compute: 77_777, transient: 12_345 },
-                (45_721_765, 195_952_185, 1_234_554_321),
-                15_240_573_092_745,
+                (77_777.0 / 333_333.0, 1.0, 77_777.0 / 12_345.0),
+                77_777,
             ),
-            // 5. Mersenne-like — near powers of two (gcd=1)
+            // 5. Mersenne-like — near powers of two, reference = 524_287
             (
                 BlockMassLimits { storage: 1_048_575, compute: 524_287, transient: 262_143 },
-                (45_812_722_347, 91_625_532_075, 183_251_413_675),
-                48_038_075_335_005_525,
+                (524_287.0 / 1_048_575.0, 1.0, 524_287.0 / 262_143.0),
+                524_287,
             ),
         ];
 
-        for (i, (limits, expected_cofactors, expected_reference)) in cases.iter().enumerate() {
+        for (i, (limits, (exp_s, exp_c, exp_t), expected_reference)) in cases.iter().enumerate() {
             let cofactors = limits.cofactors();
-            assert_eq!(
-                (cofactors.storage, cofactors.compute, cofactors.transient),
-                *expected_cofactors,
-                "case {i}: cofactors mismatch for limits {limits:?}"
+            assert!(
+                (cofactors.storage - exp_s).abs() < 1e-10,
+                "case {i}: storage cofactor mismatch: {} vs {exp_s}",
+                cofactors.storage
+            );
+            assert!(
+                (cofactors.compute - exp_c).abs() < 1e-10,
+                "case {i}: compute cofactor mismatch: {} vs {exp_c}",
+                cofactors.compute
+            );
+            assert!(
+                (cofactors.transient - exp_t).abs() < 1e-10,
+                "case {i}: transient cofactor mismatch: {} vs {exp_t}",
+                cofactors.transient
             );
             assert_eq!(cofactors.reference, *expected_reference, "case {i}: reference mismatch for limits {limits:?}");
 
             // Verify the normalized_max invariant: a transaction filling exactly one dimension
-            // to its raw limit should have normalized_max == reference.
+            // to its raw limit should have normalized_max == reference (compute limit).
+            // Because ceil(limit_i * (compute / limit_i)) == compute for f64 precision in this range.
             for (dim_limit, dim_label) in [(limits.storage, "storage"), (limits.compute, "compute"), (limits.transient, "transient")] {
                 let mass = match dim_label {
                     "storage" => Mass::new(NonContextualMasses::new(0, 0), ContextualMasses::new(dim_limit)),
@@ -951,7 +942,7 @@ mod tests {
         // by their bottleneck dimension (highest utilization fraction), not by raw mass.
         let limits = BlockMassLimits { storage: 1_000_000, compute: 500_000, transient: 250_000 };
         let cofactors = limits.cofactors();
-        // cofactors: (1, 2, 4), reference: 1_000_000
+        // cofactors: (0.5, 1.0, 2.0), reference: 500_000
 
         // tx_a: 50% storage utilization (500_000 / 1_000_000)
         let tx_a = Mass::new(NonContextualMasses::new(0, 0), ContextualMasses::new(500_000));
@@ -968,9 +959,9 @@ mod tests {
         assert!(norm_c > norm_b, "tx_c (80% transient) should rank higher than tx_b (60% compute)");
         assert!(norm_b > norm_a, "tx_b (60% compute) should rank higher than tx_a (50% storage)");
 
-        // Verify exact normalized values
-        assert_eq!(norm_a, 500_000); // 500_000 * 1
-        assert_eq!(norm_b, 600_000); // 300_000 * 2
-        assert_eq!(norm_c, 800_000); // 200_000 * 4
+        // Verify exact normalized values (in compute-mass scale)
+        assert_eq!(norm_a, 250_000); // ceil(500_000 * 0.5)
+        assert_eq!(norm_b, 300_000); // ceil(300_000 * 1.0)
+        assert_eq!(norm_c, 400_000); // ceil(200_000 * 2.0)
     }
 }
