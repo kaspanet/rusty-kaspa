@@ -204,7 +204,7 @@ impl MiningManager {
 
     /// Returns realtime feerate estimations based on internal mempool state
     pub(crate) fn get_realtime_feerate_estimations(&self) -> FeerateEstimations {
-        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.mass_cofactors.reference);
         let estimator = self.mempool.read().build_feerate_estimator(args);
         estimator.calc_estimations(self.config.minimum_feerate())
     }
@@ -215,7 +215,7 @@ impl MiningManager {
         consensus: &dyn ConsensusApi,
         prefix: kaspa_addresses::Prefix,
     ) -> MiningManagerResult<FeeEstimateVerbose> {
-        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.mass_cofactors.reference);
         let network_mass_per_second = args.network_mass_per_second();
         let mempool_read = self.mempool.read();
         let estimator = mempool_read.build_feerate_estimator(args);
@@ -517,7 +517,7 @@ impl MiningManager {
             .iter()
             .position(|tx| {
                 mass += tx.calculated_non_contextual_masses.unwrap().normalized_max(&self.config.mass_cofactors);
-                mass >= self.config.maximum_mass_per_block
+                mass >= self.config.mass_cofactors.reference
             })
             // Make sure the upper bound is greater than the lower bound, allowing to handle a very unlikely,
             // (if not impossible) case where the mass of a single transaction is greater than the maximum
