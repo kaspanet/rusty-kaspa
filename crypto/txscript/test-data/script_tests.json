@@ -3794,7 +3794,7 @@
     "OpTxInputSpk is enabled since kip10"
   ],
   [
-    "0 1",
+    "1",
     "IF 0xc0 ELSE 1 ENDIF",
     "",
     "BAD_OPCODE",

@@ -1691,7 +1691,6 @@ mod test {
             opcodes::OpOutpointIndex::empty().expect("Should accept empty"),
             opcodes::OpTxInputScriptSigSubstr::empty().expect("Should accept empty"),
             opcodes::OpTxInputSeq::empty().expect("Should accept empty"),
-            opcodes::OpTxInputDaaScore::empty().expect("Should accept empty"),
             opcodes::OpTxInputIsCoinbase::empty().expect("Should accept empty"),
         ];
 
@@ -4777,7 +4776,7 @@ mod test {
                     EngineFlags { covenants_enabled: true },
                 );
 
-                vm.execute().expect(&format!("input {} daa score", input_idx));
+                vm.execute().unwrap_or_else(|_| panic!("input {} daa score", input_idx));
             }
 
             // Test: Invalid input index (negative)
