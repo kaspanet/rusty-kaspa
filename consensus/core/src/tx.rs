@@ -8,7 +8,7 @@
 
 mod script_public_key;
 
-use crate::mass::{ContextualMasses, NonContextualMasses};
+use crate::mass::{ContextualMasses, Mass, NonContextualMasses};
 use crate::{
     hashing,
     subnets::{self, SubnetworkId},
@@ -549,7 +549,7 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
     /// exist, otherwise `None` is returned.
     pub fn calculated_feerate(&self) -> Option<f64> {
         self.calculated_non_contextual_masses
-            .map(|non_contextual_masses| ContextualMasses::new(self.tx.as_ref().mass()).max(non_contextual_masses))
+            .map(|non_contextual| Mass::new(non_contextual, ContextualMasses::new(self.tx.as_ref().mass())).normalized_max())
             .and_then(|max_mass| self.calculated_fee.map(|fee| fee as f64 / max_mass as f64))
     }
 

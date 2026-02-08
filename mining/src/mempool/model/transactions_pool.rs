@@ -26,6 +26,7 @@ use std::{
 };
 
 use super::frontier::Frontier;
+use super::frontier::feerate_key::FeerateTransactionKey;
 
 /// Pool of transactions to be included in a block template
 ///
@@ -123,7 +124,7 @@ impl TransactionsPool {
         let parents = self.get_parent_transaction_ids_in_pool(&transaction.mtx);
         self.parent_transactions.insert(id, parents.clone());
         if parents.is_empty() {
-            self.ready_transactions.insert((&transaction).into());
+            self.ready_transactions.insert(FeerateTransactionKey::from_tx(&transaction, &self.config.mass_cofactors));
         }
         for parent_id in parents {
             let entry = self.chained_transactions.entry(parent_id).or_default();
@@ -153,7 +154,7 @@ impl TransactionsPool {
                     parents.remove(transaction_id);
                     if parents.is_empty() {
                         let tx = self.all_transactions.get(chain).unwrap();
-                        self.ready_transactions.insert(tx.into());
+                        self.ready_transactions.insert(FeerateTransactionKey::from_tx(tx, &self.config.mass_cofactors));
                     }
                 }
             }
@@ -164,7 +165,7 @@ impl TransactionsPool {
         // Remove the transaction itself
         let removed_tx = self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))?;
 
-        self.ready_transactions.remove(&(&removed_tx).into());
+        self.ready_transactions.remove(&FeerateTransactionKey::from_tx(&removed_tx, &self.config.mass_cofactors));
 
         // TODO: consider using `self.parent_transactions.get(transaction_id)`
         // The tradeoff to consider is whether it might be possible that a parent tx exists in the pool

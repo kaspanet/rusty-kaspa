@@ -168,6 +168,112 @@ impl std::fmt::Display for NonContextualMasses {
     }
 }
 
+/// Per-dimension block mass limits grouped into a single struct for convenience.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BlockMassLimits {
+    pub storage: u64,
+    pub compute: u64,
+    pub transient: u64,
+}
+
+const DEFAULT_MASS_LIMIT: u64 = u64::MAX;
+
+impl BlockMassLimits {
+    /// Returns a builder for constructing `BlockMassLimits`.
+    /// Unset dimensions default to `u64::MAX` (i.e. effectively unlimited).
+    #[inline]
+    pub const fn builder() -> BlockMassLimitsBuilder {
+        BlockMassLimitsBuilder { storage: DEFAULT_MASS_LIMIT, compute: DEFAULT_MASS_LIMIT, transient: DEFAULT_MASS_LIMIT }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct BlockMassLimitsBuilder {
+    storage: u64,
+    compute: u64,
+    transient: u64,
+}
+
+impl BlockMassLimitsBuilder {
+    #[inline]
+    pub const fn with_storage(mut self, limit: u64) -> Self {
+        self.storage = limit;
+        self
+    }
+
+    #[inline]
+    pub const fn with_compute(mut self, limit: u64) -> Self {
+        self.compute = limit;
+        self
+    }
+
+    #[inline]
+    pub const fn with_transient(mut self, limit: u64) -> Self {
+        self.transient = limit;
+        self
+    }
+
+    /// Convenience: set all three dimensions to the same limit.
+    #[inline]
+    pub const fn with_all(mut self, limit: u64) -> Self {
+        self.storage = limit;
+        self.compute = limit;
+        self.transient = limit;
+        self
+    }
+
+    #[inline]
+    pub const fn build(self) -> BlockMassLimits {
+        BlockMassLimits { storage: self.storage, compute: self.compute, transient: self.transient }
+    }
+}
+
+/// Per-dimension integer scaling factors for normalizing masses to a common scale.
+///
+/// Given per-dimension block mass limits (L_s, L_c, L_t):
+///   g = gcd(L_s, L_c, L_t)
+///   share_i = L_i / g                          (integer)
+///   lcm_shares = lcm(share_s, share_c, share_t)
+///   cofactor_i = lcm_shares / share_i           (integer)
+///   reference = lcm_shares * g = lcm(L_s, L_c, L_t)
+///
+/// A normalized mass `m_i * cofactor_i` is in units of `reference` and can be
+/// compared directly against `reference` as the block mass limit.
+///
+/// When all limits are equal, all cofactors = 1, reference = L.
+#[derive(Copy, Clone, Debug)]
+pub struct MassCofactors {
+    pub storage: u64,
+    pub compute: u64,
+    pub transient: u64,
+    /// The normalized block mass limit: lcm(L_s, L_c, L_t)
+    pub reference: u64,
+}
+
+impl MassCofactors {
+    pub const fn new(limits: &BlockMassLimits) -> Self {
+        let g = gcd(gcd(limits.storage, limits.compute), limits.transient);
+        let storage_share = limits.storage / g;
+        let compute_share = limits.compute / g;
+        let transient_share = limits.transient / g;
+        let lcm_shares = lcm(lcm(storage_share, compute_share), transient_share);
+        Self {
+            storage: lcm_shares / storage_share,
+            compute: lcm_shares / compute_share,
+            transient: lcm_shares / transient_share,
+            reference: lcm_shares * g,
+        }
+    }
+}
+
+const fn gcd(a: u64, b: u64) -> u64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+const fn lcm(a: u64, b: u64) -> u64 {
+    a / gcd(a, b) * b
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ContextualMasses {
     /// Persistent storage mass
@@ -177,13 +283,6 @@ pub struct ContextualMasses {
 impl ContextualMasses {
     pub fn new(storage_mass: u64) -> Self {
         Self { storage_mass }
-    }
-
-    /// Returns the maximum over *all masses* (currently compute, transient and storage). This max
-    /// value has no consensus meaning and should only be used for mempool-level simplification such
-    /// as obtaining a one-dimensional mass value when composing blocks templates.  
-    pub fn max(&self, non_contextual_masses: NonContextualMasses) -> u64 {
-        self.storage_mass.max(non_contextual_masses.max())
     }
 }
 
@@ -199,15 +298,25 @@ impl std::cmp::PartialEq<u64> for ContextualMasses {
     }
 }
 
-pub type Mass = (NonContextualMasses, ContextualMasses);
-
-pub trait MassOps {
-    fn max(&self) -> u64;
+/// Block mass breakdown with explicit contextual and non-contextual dimensions.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Mass {
+    pub non_contextual: NonContextualMasses,
+    pub contextual: ContextualMasses,
 }
 
-impl MassOps for Mass {
-    fn max(&self) -> u64 {
-        self.1.max(self.0)
+impl Mass {
+    pub fn new(non_contextual: NonContextualMasses, contextual: ContextualMasses) -> Self {
+        Self { non_contextual, contextual }
+    }
+
+    /// Returns the normalized maximum mass, scaling each dimension by its integer cofactor.
+    /// The result is in units of `cofactors.reference` (= lcm of all limits).
+    pub fn normalized_max(&self, cofactors: &MassCofactors) -> u64 {
+        let s = self.contextual.storage_mass.saturating_mul(cofactors.storage);
+        let c = self.non_contextual.compute_mass.saturating_mul(cofactors.compute);
+        let t = self.non_contextual.transient_mass.saturating_mul(cofactors.transient);
+        s.max(c).max(t)
     }
 }
 
@@ -481,8 +590,8 @@ mod tests {
         */
         for net in NetworkType::iter() {
             let params: Params = net.into();
-            let max_spk_len =
-                (params.max_script_public_key_len as u64).min(params.max_block_mass.div_ceil(params.mass_per_script_pub_key_byte));
+            let max_spk_len = (params.max_script_public_key_len as u64)
+                .min(params.block_mass_limits.compute.div_ceil(params.mass_per_script_pub_key_byte));
             let max_plurality = (UTXO_CONST_STORAGE + max_spk_len).div_ceil(UTXO_UNIT_SIZE); // see utxo_plurality
             let product = params.storage_mass_parameter.checked_mul(max_plurality).and_then(|x| x.checked_mul(max_plurality));
             // verify C·P^2 can never overflow

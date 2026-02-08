@@ -49,24 +49,24 @@ impl MiningManager {
     pub fn new(
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
-        max_block_mass: u64,
+        block_mass_limits: kaspa_consensus_core::mass::BlockMassLimits,
         cache_lifetime: Option<u64>,
         counters: Arc<MiningCounters>,
     ) -> Self {
-        let config = Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass);
+        let config = Config::build_default(target_time_per_block, relay_non_std_transactions, block_mass_limits);
         Self::with_config(config, cache_lifetime, counters)
     }
 
     pub fn new_with_extended_config(
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
-        max_block_mass: u64,
+        block_mass_limits: kaspa_consensus_core::mass::BlockMassLimits,
         ram_scale: f64,
         cache_lifetime: Option<u64>,
         counters: Arc<MiningCounters>,
     ) -> Self {
         let config =
-            Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass).apply_ram_scale(ram_scale);
+            Config::build_default(target_time_per_block, relay_non_std_transactions, block_mass_limits).apply_ram_scale(ram_scale);
         Self::with_config(config, cache_lifetime, counters)
     }
 
