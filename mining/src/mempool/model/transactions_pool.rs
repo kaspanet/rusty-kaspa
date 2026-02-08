@@ -124,7 +124,7 @@ impl TransactionsPool {
         let parents = self.get_parent_transaction_ids_in_pool(&transaction.mtx);
         self.parent_transactions.insert(id, parents.clone());
         if parents.is_empty() {
-            self.ready_transactions.insert(FeerateTransactionKey::from_tx(&transaction, &self.config.mass_cofactors));
+            self.ready_transactions.insert(FeerateTransactionKey::from_tx(&transaction, &self.config.block_mass_cofactors));
         }
         for parent_id in parents {
             let entry = self.chained_transactions.entry(parent_id).or_default();
@@ -154,7 +154,7 @@ impl TransactionsPool {
                     parents.remove(transaction_id);
                     if parents.is_empty() {
                         let tx = self.all_transactions.get(chain).unwrap();
-                        self.ready_transactions.insert(FeerateTransactionKey::from_tx(tx, &self.config.mass_cofactors));
+                        self.ready_transactions.insert(FeerateTransactionKey::from_tx(tx, &self.config.block_mass_cofactors));
                     }
                 }
             }
@@ -165,7 +165,7 @@ impl TransactionsPool {
         // Remove the transaction itself
         let removed_tx = self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))?;
 
-        self.ready_transactions.remove(&FeerateTransactionKey::from_tx(&removed_tx, &self.config.mass_cofactors));
+        self.ready_transactions.remove(&FeerateTransactionKey::from_tx(&removed_tx, &self.config.block_mass_cofactors));
 
         // TODO: consider using `self.parent_transactions.get(transaction_id)`
         // The tradeoff to consider is whether it might be possible that a parent tx exists in the pool
@@ -206,7 +206,7 @@ impl TransactionsPool {
 
     /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
     pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
-        self.ready_transactions.build_selector(&Policy::new(self.config.mass_cofactors.reference))
+        self.ready_transactions.build_selector(&Policy::new(self.config.block_mass_cofactors.reference))
     }
 
     /// Builds a feerate estimator based on internal state of the ready transactions frontier
@@ -234,7 +234,7 @@ impl TransactionsPool {
         }
 
         // Returns a vector of transactions to be removed (the caller has to actually remove)
-        let feerate_threshold = transaction.calculated_feerate(&self.config.mass_cofactors).unwrap();
+        let feerate_threshold = transaction.calculated_feerate(&self.config.block_mass_cofactors).unwrap();
         let mut txs_to_remove = Vec::with_capacity(1); // Normally we expect a single removal
         let mut selection_overall_size = 0;
         for tx in self
@@ -250,7 +250,7 @@ impl TransactionsPool {
             }
 
             // We are iterating ready txs by ascending feerate so the pending tx has lower feerate than all remaining txs
-            if tx.feerate(&self.config.mass_cofactors) > feerate_threshold {
+            if tx.feerate(&self.config.block_mass_cofactors) > feerate_threshold {
                 let err = RuleError::RejectMempoolIsFull;
                 debug!("Transaction {} with feerate {} has been rejected: {}", transaction.id(), feerate_threshold, err);
                 return Err(err);

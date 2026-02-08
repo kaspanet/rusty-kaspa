@@ -119,7 +119,7 @@ impl Mempool {
 
     fn get_double_spend_feerate(&self, double_spend: &DoubleSpend) -> RuleResult<f64> {
         let owner = self.transaction_pool.get_double_spend_owner(double_spend)?;
-        match owner.mtx.calculated_feerate(&self.config.mass_cofactors) {
+        match owner.mtx.calculated_feerate(&self.config.block_mass_cofactors) {
             Some(double_spend_feerate) => Ok(double_spend_feerate),
             // Getting here is unexpected since a mempool owned tx should be populated with fee
             // and mass at this stage but nonetheless we fail gracefully
@@ -133,9 +133,10 @@ impl Mempool {
         double_spend: &DoubleSpend,
     ) -> RuleResult<&'a MempoolTransaction> {
         let owner = self.transaction_pool.get_double_spend_owner(double_spend)?;
-        if let (Some(transaction_feerate), Some(double_spend_feerate)) =
-            (transaction.calculated_feerate(&self.config.mass_cofactors), owner.mtx.calculated_feerate(&self.config.mass_cofactors))
-        {
+        if let (Some(transaction_feerate), Some(double_spend_feerate)) = (
+            transaction.calculated_feerate(&self.config.block_mass_cofactors),
+            owner.mtx.calculated_feerate(&self.config.block_mass_cofactors),
+        ) {
             if transaction_feerate > double_spend_feerate {
                 return Ok(owner);
             } else {

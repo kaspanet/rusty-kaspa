@@ -34,7 +34,7 @@ pub struct Config {
     pub maximum_orphan_transaction_mass: u64, // TODO normalized max mass
     pub maximum_orphan_transaction_count: u64,
     pub accept_non_standard: bool,
-    pub mass_cofactors: MassCofactors,
+    pub block_mass_cofactors: MassCofactors,
     pub minimum_relay_transaction_fee: u64,
     pub network_blocks_per_second: u64,
 }
@@ -56,7 +56,7 @@ impl Config {
         maximum_orphan_transaction_mass: u64, // TODO normalized max mass
         maximum_orphan_transaction_count: u64,
         accept_non_standard: bool,
-        mass_cofactors: MassCofactors,
+        block_mass_cofactors: MassCofactors,
         minimum_relay_transaction_fee: u64,
         network_blocks_per_second: u64,
     ) -> Self {
@@ -75,7 +75,7 @@ impl Config {
             maximum_orphan_transaction_mass,
             maximum_orphan_transaction_count,
             accept_non_standard,
-            mass_cofactors,
+            block_mass_cofactors,
             minimum_relay_transaction_fee,
             network_blocks_per_second,
         }
@@ -88,7 +88,7 @@ impl Config {
         relay_non_std_transactions: bool,
         block_mass_limits: BlockMassLimits,
     ) -> Self {
-        let mass_cofactors = block_mass_limits.cofactors();
+        let block_mass_cofactors = block_mass_limits.cofactors();
         Self {
             maximum_transaction_count: DEFAULT_MAXIMUM_TRANSACTION_COUNT,
             mempool_size_limit: DEFAULT_MEMPOOL_SIZE_LIMIT,
@@ -107,7 +107,7 @@ impl Config {
             maximum_orphan_transaction_mass: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_MASS, // TODO normalized max mass
             maximum_orphan_transaction_count: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_COUNT,
             accept_non_standard: relay_non_std_transactions,
-            mass_cofactors,
+            block_mass_cofactors,
             minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
             network_blocks_per_second: 1000 / target_milliseconds_per_block,
         }
