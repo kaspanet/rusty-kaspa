@@ -3798,7 +3798,7 @@
     "IF 0xc0 ELSE 1 ENDIF",
     "",
     "BAD_OPCODE",
-    "OpTxInputBlockDaaScore is reserved"
+    "OpTxInputDaaScore is reserved"
   ],
   [
     "1",

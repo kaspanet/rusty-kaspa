@@ -3900,10 +3900,10 @@
   ],
   [
     "1",
-    "IF 0xc0 ELSE 1 ENDIF",
+    "0 TX_INPUT_DAA_SCORE DROP",
     "",
-    "BAD_OPCODE",
-    "OpTxInputBlockDaaScore is reserved"
+    "OK",
+    "OpTxInputDaaScore is enabled since covpp"
   ],
   [
     "1",
