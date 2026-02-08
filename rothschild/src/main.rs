@@ -179,7 +179,7 @@ struct TxConfig {
     priority_fee: u64,
     randomize_fee: bool,
     payload_size: usize,
-    with_convenant_id: bool,
+    with_covenant_id: bool,
     randomize_tx_version: bool,
 }
 
@@ -233,7 +233,7 @@ async fn main() {
         priority_fee: args.priority_fee,
         randomize_fee: args.randomize_fee,
         payload_size: args.payload_size,
-        with_convenant_id: args.enable_covenant_id,
+        with_covenant_id: args.enable_covenant_id,
         randomize_tx_version: args.randomize_tx_version,
     };
 
@@ -523,7 +523,7 @@ async fn maybe_send_tx(
                     num_outs,
                     &kaspa_addr,
                     tx_config.payload_size,
-                    tx_config.with_convenant_id,
+                    tx_config.with_covenant_id,
                     tx_config.randomize_tx_version,
                 );
 
