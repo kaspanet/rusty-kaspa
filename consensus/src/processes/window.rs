@@ -75,10 +75,10 @@ pub struct SampledWindowManager<
     genesis_hash: Hash,
     ghostdag_store: Arc<T>,
     headers_store: Arc<V>,
-    daa_store: Arc<W>,
+    _daa_store: Arc<W>,
     block_window_cache_for_difficulty: Arc<U>,
     block_window_cache_for_past_median_time: Arc<U>,
-    target_time_per_block: u64,
+    _target_time_per_block: u64,
     difficulty_window_size: usize,
     difficulty_sample_rate: u64,
     past_median_time_window_size: usize,
@@ -122,10 +122,10 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             genesis_hash: genesis.hash,
             ghostdag_store,
             headers_store,
-            daa_store,
+            _daa_store: daa_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
-            target_time_per_block,
+            _target_time_per_block: target_time_per_block,
             difficulty_window_size,
             difficulty_sample_rate,
             past_median_time_window_size,
@@ -253,10 +253,10 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         } else {
             // If we don't have a non-daa inserter, we can iterate over the sampled mergeset and return early if we can't push anymore.
             for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
-                if let SampledBlock::Sampled(block) = block {
-                    if !heap.try_push(block.hash, block.blue_work) {
-                        return;
-                    }
+                if let SampledBlock::Sampled(block) = block
+                    && !heap.try_push(block.hash, block.blue_work)
+                {
+                    return;
                 }
             }
         }
@@ -312,7 +312,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
                     Some(SampledBlock::NonDaa(block.hash))
                 } else {
                     index += 1;
-                    if (selected_parent_daa_score + index) % sample_rate == 0 { Some(SampledBlock::Sampled(block)) } else { None }
+                    if (selected_parent_daa_score + index).is_multiple_of(sample_rate) {
+                        Some(SampledBlock::Sampled(block))
+                    } else {
+                        None
+                    }
                 }
             })
     }
@@ -454,10 +458,10 @@ impl BoundedSizeBlockHeap {
     fn try_push(&mut self, hash: Hash, blue_work: BlueWorkType) -> bool {
         let r_sortable_block = Reverse(SortableBlock { hash, blue_work });
         if self.reached_size_bound() {
-            if let Some(max) = self.binary_heap.peek() {
-                if *max < r_sortable_block {
-                    return false; // Heap is full and the suggested block is greater than the max
-                }
+            if let Some(max) = self.binary_heap.peek()
+                && *max < r_sortable_block
+            {
+                return false; // Heap is full and the suggested block is greater than the max
             }
             self.binary_heap.pop(); // Remove the max block (because it's reverse, it'll be the block with the least blue work)
         }

@@ -81,10 +81,7 @@ use kaspa_muhash::MuHash;
 use kaspa_notify::{events::EventType, notifier::Notify};
 use once_cell::unsync::Lazy;
 
-use super::{
-    errors::{PruningImportError, PruningImportResult},
-    utxo_validation::crescendo::CrescendoLogger,
-};
+use super::errors::{PruningImportError, PruningImportResult};
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
 use kaspa_consensus_core::hashing::tx::seq_commit_tx_digest;
@@ -171,13 +168,11 @@ pub struct VirtualStateProcessor {
     // Counters
     counters: Arc<ProcessingCounters>,
 
-    pub(super) crescendo_logger: CrescendoLogger,
-
-    // Crescendo hardfork activation score (used here for activating KIPs 9,10)
-    pub(crate) crescendo_activation: ForkActivation,
+    // Covenants activation
     pub(crate) covenants_activation: ForkActivation,
+
     // Mining Rule
-    mining_rules: Arc<MiningRules>,
+    _mining_rules: Arc<MiningRules>,
 }
 
 impl VirtualStateProcessor {
@@ -242,10 +237,8 @@ impl VirtualStateProcessor {
             pruning_lock,
             notification_root,
             counters,
-            crescendo_logger: CrescendoLogger::new(),
-            crescendo_activation: params.crescendo_activation,
             covenants_activation: params.covenants_activation,
-            mining_rules,
+            _mining_rules: mining_rules,
             finality_depth: params.finality_depth(),
         }
     }

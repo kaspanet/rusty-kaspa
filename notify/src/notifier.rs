@@ -456,10 +456,10 @@ where
             compound_result = subscriptions[event].compound(mutation, context);
         }
         // Report to the parent if any
-        if let Some(mutation) = compound_result {
-            if let Some(ref subscriber) = self.enabled_subscriber[event] {
-                subscriber.mutate(mutation)?;
-            }
+        if let Some(mutation) = compound_result
+            && let Some(ref subscriber) = self.enabled_subscriber[event]
+        {
+            subscriber.mutate(mutation)?;
         }
         Ok(())
     }

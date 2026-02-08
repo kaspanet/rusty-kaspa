@@ -25,12 +25,13 @@ fn parse_digest(bytes: Vec<u8>) -> Result<Digest, R0Error> {
 }
 
 fn parse_seal(bytes: Vec<u8>) -> Result<Vec<u32>, R0Error> {
-    if bytes.len() % 4 != 0 {
-        return Err(R0Error::InvalidSealLength(bytes.len()));
+    let (chunks, remaining) = bytes.as_chunks::<4>();
+    if !remaining.is_empty() {
+        // we require no remainder
+        Err(R0Error::InvalidSealLength(bytes.len()))
+    } else {
+        Ok(chunks.iter().copied().map(u32::from_le_bytes).collect())
     }
-
-    #[allow(clippy::incompatible_msrv, reason = "uses as_chunks from 1.88; ignore until we bump msrv on master")]
-    Ok(bytes.as_chunks::<4>().0.iter().copied().map(u32::from_le_bytes).collect())
 }
 
 fn parse_hashfn(bytes: Vec<u8>) -> Result<HashFnId, R0Error> {
@@ -50,12 +51,13 @@ fn parse_merkle_index(bytes: Vec<u8>) -> Result<u32, R0Error> {
 }
 
 fn parse_digest_list(bytes: Vec<u8>) -> Result<Vec<Digest>, R0Error> {
-    if bytes.len() % DIGEST_BYTES != 0 {
-        return Err(R0Error::InvalidDigestLength(bytes.len()));
+    let (chunks, remaining) = bytes.as_chunks::<DIGEST_BYTES>();
+    if !remaining.is_empty() {
+        // we require no remainder
+        Err(R0Error::InvalidDigestLength(bytes.len()))
+    } else {
+        Ok(chunks.iter().copied().map(Digest::from).collect())
     }
-
-    #[allow(clippy::incompatible_msrv, reason = "uses as_chunks from 1.88; ignore until we bump msrv on master")]
-    Ok(bytes.as_chunks::<DIGEST_BYTES>().0.iter().copied().map(Digest::from_bytes).collect())
 }
 
 impl ZkPrecompile for R0SuccinctPrecompile {

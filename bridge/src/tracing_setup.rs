@@ -177,14 +177,14 @@ where
         let mut instance_num: Option<usize> = None;
 
         // Try to find instance_id in the message and look it up in registry
-        if let Some(instance_start) = original_message.find("[Instance ") {
-            if let Some(instance_end) = original_message[instance_start..].find("]") {
-                let instance_id_str = &original_message[instance_start..instance_start + instance_end + 1];
-                if let Ok(registry) = INSTANCE_REGISTRY.lock() {
-                    if let Some(&num) = registry.get(instance_id_str) {
-                        instance_num = Some(num);
-                    }
-                }
+        if let Some(instance_start) = original_message.find("[Instance ")
+            && let Some(instance_end) = original_message[instance_start..].find("]")
+        {
+            let instance_id_str = &original_message[instance_start..instance_start + instance_end + 1];
+            if let Ok(registry) = INSTANCE_REGISTRY.lock()
+                && let Some(&num) = registry.get(instance_id_str)
+            {
+                instance_num = Some(num);
             }
         }
 
@@ -256,16 +256,16 @@ where
                 return Ok(());
             } else
             // Fallback: Check for instance pattern in message
-            if let Some(instance_start) = message.find("[Instance ") {
-                if let Some(instance_end) = message[instance_start..].find("]") {
-                    let instance_str = &message[instance_start + 10..instance_start + instance_end];
-                    if let Ok(inst_num) = instance_str.parse::<usize>() {
-                        // Apply instance color to the entire message
-                        let color_code = LogColors::instance_color_code(inst_num);
-                        write!(writer, "{}{}\x1b[0m", color_code, &message)?;
-                        writeln!(writer)?;
-                        return Ok(());
-                    }
+            if let Some(instance_start) = message.find("[Instance ")
+                && let Some(instance_end) = message[instance_start..].find("]")
+            {
+                let instance_str = &message[instance_start + 10..instance_start + instance_end];
+                if let Ok(inst_num) = instance_str.parse::<usize>() {
+                    // Apply instance color to the entire message
+                    let color_code = LogColors::instance_color_code(inst_num);
+                    write!(writer, "{}{}\x1b[0m", color_code, &message)?;
+                    writeln!(writer)?;
+                    return Ok(());
                 }
             }
             if message.contains("[ASIC->BRIDGE]") {

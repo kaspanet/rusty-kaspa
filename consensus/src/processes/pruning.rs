@@ -50,7 +50,7 @@ pub struct PruningPointManager<
     ghostdag_store: Arc<S>,
     headers_store: Arc<U>,
     past_pruning_points_store: Arc<V>,
-    header_selected_tip_store: Arc<RwLock<W>>,
+    _header_selected_tip_store: Arc<RwLock<W>>,
     pruning_samples_store: Arc<Y>,
 
     /// The number of hops to go through pruning samples in order to get the pruning point of a sample
@@ -87,7 +87,7 @@ impl<
             ghostdag_store,
             headers_store,
             past_pruning_points_store,
-            header_selected_tip_store,
+            _header_selected_tip_store: header_selected_tip_store,
             pruning_samples_steps,
             pruning_samples_store,
         }

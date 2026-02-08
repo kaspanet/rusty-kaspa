@@ -88,10 +88,10 @@ impl Miner {
 
     fn check_halt(&mut self, _env: &mut Environment<Message>) -> bool {
         self.num_blocks += 1;
-        if let Some(target_blocks) = self.target_blocks {
-            if self.num_blocks > target_blocks {
-                return true; // Exit
-            }
+        if let Some(target_blocks) = self.target_blocks
+            && self.num_blocks > target_blocks
+        {
+            return true; // Exit
         }
         false
     }

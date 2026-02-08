@@ -48,7 +48,7 @@ where
 
 // Convert 8bit array to 5bit array with right padding
 fn conv8to5(payload: &[u8]) -> Vec<u8> {
-    let padding = match payload.len() % 5 == 0 {
+    let padding = match payload.len().is_multiple_of(5) {
         true => 0,
         false => 1,
     };

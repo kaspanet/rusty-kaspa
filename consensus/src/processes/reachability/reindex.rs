@@ -9,13 +9,13 @@ use std::collections::VecDeque;
 pub(super) struct ReindexOperationContext<'a, T: ReachabilityStore + ?Sized> {
     store: &'a mut T,
     subtree_sizes: BlockHashMap<u64>, // Cache for subtree sizes computed during this operation
-    depth: u64,
+    _depth: u64,
     slack: u64,
 }
 
 impl<'a, T: ReachabilityStore + ?Sized> ReindexOperationContext<'a, T> {
     pub(super) fn new(store: &'a mut T, depth: u64, slack: u64) -> Self {
-        Self { store, subtree_sizes: BlockHashMap::new(), depth, slack }
+        Self { store, subtree_sizes: BlockHashMap::new(), _depth: depth, slack }
     }
 
     /// Traverses the reachability subtree that's defined by the new child

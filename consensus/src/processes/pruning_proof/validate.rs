@@ -42,18 +42,18 @@ use crate::{
 use super::PruningProofManager;
 
 struct ProofContext {
-    headers_store: Arc<DbHeadersStore>,
+    _headers_store: Arc<DbHeadersStore>,
     ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
-    relations_stores: Vec<DbRelationsStore>,
-    reachability_stores: Vec<Arc<RwLock<DbReachabilityStore>>>,
-    ghostdag_managers:
+    _relations_stores: Vec<DbRelationsStore>,
+    _reachability_stores: Vec<Arc<RwLock<DbReachabilityStore>>>,
+    _ghostdag_managers:
         Vec<GhostdagManager<DbGhostdagStore, DbRelationsStore, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>>,
     selected_tip_by_level: Vec<Hash>,
 
     pp_header: Arc<Header>,
-    pp_level: BlockLevel,
+    _pp_level: BlockLevel,
 
-    db_lifetime: DbLifetime,
+    _db_lifetime: DbLifetime,
 }
 
 struct ProofLevelContext<'a> {
@@ -282,15 +282,15 @@ impl ProofContext {
         let selected_tip_by_level = selected_tip_by_level.into_iter().map(|selected_tip| selected_tip.unwrap()).collect();
 
         let ctx = ProofContext {
-            db_lifetime,
-            headers_store,
+            _db_lifetime: db_lifetime,
+            _headers_store: headers_store,
             ghostdag_stores,
-            relations_stores,
-            reachability_stores,
-            ghostdag_managers,
+            _relations_stores: relations_stores,
+            _reachability_stores: reachability_stores,
+            _ghostdag_managers: ghostdag_managers,
             selected_tip_by_level,
             pp_header: proof_pp_header,
-            pp_level: proof_pp_level,
+            _pp_level: proof_pp_level,
         };
 
         Ok(ControlFlow::Continue(ctx))
@@ -422,7 +422,7 @@ impl PruningProofManager {
     /// See [`PruningProofManager::compare_proofs_inner`] for more details.
     ///
     /// Exposed here for local revalidation needs.
-    pub(crate) fn compare_proofs(
+    pub(crate) fn _compare_proofs(
         &self,
         defender: &PruningPointProof,
         challenger: &PruningPointProof,

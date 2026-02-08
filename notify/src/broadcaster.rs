@@ -65,12 +65,12 @@ where
             }
         }
         // Cleaning empty entries
-        if let Some(ref subscription) = found_subscription {
-            if let Some(ref encoding) = found_encoding {
-                self.0.get_mut(subscription).unwrap().remove(encoding);
-                if self.0.get(subscription).unwrap().is_empty() {
-                    self.0.swap_remove(subscription);
-                }
+        if let Some(ref subscription) = found_subscription
+            && let Some(ref encoding) = found_encoding
+        {
+            self.0.get_mut(subscription).unwrap().remove(encoding);
+            if self.0.get(subscription).unwrap().is_empty() {
+                self.0.swap_remove(subscription);
             }
         }
         result
