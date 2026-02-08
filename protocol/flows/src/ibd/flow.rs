@@ -423,10 +423,11 @@ impl IbdFlow {
             // Sanity check for consistency between past pruning points and the headers proof
             let pruning_points_set: BlockHashSet = pruning_points.iter().map(|h| h.hash).collect();
             for level in proof.iter() {
-                if let Some(root) = level.first() {
-                    if root.hash != self.ctx.config.genesis.hash && !pruning_points_set.contains(&root.pruning_point) {
-                        return Err(ProtocolError::Other("proof and past pruning points are inconsistent with each other"));
-                    }
+                if let Some(root) = level.first()
+                    && root.hash != self.ctx.config.genesis.hash
+                    && !pruning_points_set.contains(&root.pruning_point)
+                {
+                    return Err(ProtocolError::Other("proof and past pruning points are inconsistent with each other"));
                 }
             }
         }

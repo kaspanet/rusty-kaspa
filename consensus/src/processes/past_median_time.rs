@@ -7,12 +7,12 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct SampledPastMedianTimeManager<T: HeaderStoreReader> {
     headers_store: Arc<T>,
-    genesis_timestamp: u64,
+    _genesis_timestamp: u64,
 }
 
 impl<T: HeaderStoreReader> SampledPastMedianTimeManager<T> {
     pub fn new(headers_store: Arc<T>, genesis_timestamp: u64) -> Self {
-        Self { headers_store, genesis_timestamp }
+        Self { headers_store, _genesis_timestamp: genesis_timestamp }
     }
 
     pub fn calc_past_median_time(&self, window: &BlockWindowHeap, selected_parent: Hash) -> Result<u64, RuleError> {
