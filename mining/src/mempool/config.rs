@@ -11,7 +11,7 @@ pub(crate) const DEFAULT_ACCEPTED_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS: u64 
 pub(crate) const DEFAULT_ORPHAN_EXPIRE_INTERVAL_SECONDS: u64 = 60;
 pub(crate) const DEFAULT_ORPHAN_EXPIRE_SCAN_INTERVAL_SECONDS: u64 = 10;
 
-pub(crate) const DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_MASS: u64 = 1_000_000; // TODO(covpp-mainnet)
+pub(crate) const DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_NORMALIZED_MASS: u64 = 1_000_000; // TODO(covpp-mainnet)
 pub(crate) const DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_COUNT: u64 = 500;
 
 /// DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE specifies the minimum transaction fee for a transaction to be accepted to
@@ -31,7 +31,7 @@ pub struct Config {
     pub accepted_transaction_expire_scan_interval_milliseconds: u64,
     pub orphan_expire_interval_daa_score: u64,
     pub orphan_expire_scan_interval_daa_score: u64,
-    pub maximum_orphan_transaction_mass: u64, // TODO normalized max mass
+    pub maximum_orphan_transaction_normalized_mass: u64,
     pub maximum_orphan_transaction_count: u64,
     pub accept_non_standard: bool,
     pub block_mass_cofactors: MassCofactors,
@@ -53,7 +53,7 @@ impl Config {
         accepted_transaction_expire_scan_interval_milliseconds: u64,
         orphan_expire_interval_daa_score: u64,
         orphan_expire_scan_interval_daa_score: u64,
-        maximum_orphan_transaction_mass: u64, // TODO normalized max mass
+        maximum_orphan_transaction_normalized_mass: u64,
         maximum_orphan_transaction_count: u64,
         accept_non_standard: bool,
         block_mass_cofactors: MassCofactors,
@@ -72,7 +72,7 @@ impl Config {
             accepted_transaction_expire_scan_interval_milliseconds,
             orphan_expire_interval_daa_score,
             orphan_expire_scan_interval_daa_score,
-            maximum_orphan_transaction_mass,
+            maximum_orphan_transaction_normalized_mass,
             maximum_orphan_transaction_count,
             accept_non_standard,
             block_mass_cofactors,
@@ -104,7 +104,7 @@ impl Config {
             accepted_transaction_expire_scan_interval_milliseconds: DEFAULT_ACCEPTED_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000,
             orphan_expire_interval_daa_score: DEFAULT_ORPHAN_EXPIRE_INTERVAL_SECONDS * 1000 / target_milliseconds_per_block,
             orphan_expire_scan_interval_daa_score: DEFAULT_ORPHAN_EXPIRE_SCAN_INTERVAL_SECONDS * 1000 / target_milliseconds_per_block,
-            maximum_orphan_transaction_mass: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_MASS, // TODO normalized max mass
+            maximum_orphan_transaction_normalized_mass: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_NORMALIZED_MASS,
             maximum_orphan_transaction_count: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_COUNT,
             accept_non_standard: relay_non_std_transactions,
             block_mass_cofactors,
