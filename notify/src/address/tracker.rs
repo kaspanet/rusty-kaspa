@@ -487,7 +487,7 @@ impl Tracker {
             let mut inner = self.inner.write();
             addresses.retain(|address| {
                 counter += 1;
-                if counter % Self::ADDRESS_CHUNK_SIZE == 0 {
+                if counter.is_multiple_of(Self::ADDRESS_CHUNK_SIZE) {
                     RwLockWriteGuard::bump(&mut inner);
                 }
                 let spk = pay_to_address_script(address);
@@ -530,7 +530,7 @@ impl Tracker {
             let mut inner = self.inner.write();
             addresses.retain(|address| {
                 counter += 1;
-                if counter % Self::ADDRESS_CHUNK_SIZE == 0 {
+                if counter.is_multiple_of(Self::ADDRESS_CHUNK_SIZE) {
                     RwLockWriteGuard::bump(&mut inner);
                 }
                 let spk = pay_to_address_script(address);

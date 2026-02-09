@@ -42,21 +42,21 @@ impl<T: Clone> ExpiringCache<T> {
 
         {
             let guard = self.store.load();
-            if let Some(entry) = guard.as_ref() {
-                if let Some(elapsed) = Instant::now().checked_duration_since(entry.timestamp) {
-                    if elapsed < self.refetch {
-                        return entry.item.clone();
-                    }
-                    // Refetch is triggered, attempt to capture the task
-                    fetching = self.fetching.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok();
-                    // If the fetch task is not captured and expire time is not over yet, return with prev value. Another
-                    // thread is refetching the data but we can return with the not-too-old value
-                    if !fetching && elapsed < self.expire {
-                        return entry.item.clone();
-                    }
+            if let Some(entry) = guard.as_ref()
+                && let Some(elapsed) = Instant::now().checked_duration_since(entry.timestamp)
+            {
+                if elapsed < self.refetch {
+                    return entry.item.clone();
                 }
-                // else -- In rare cases where now < timestamp, fall through to re-update the cache
+                // Refetch is triggered, attempt to capture the task
+                fetching = self.fetching.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok();
+                // If the fetch task is not captured and expire time is not over yet, return with prev value. Another
+                // thread is refetching the data but we can return with the not-too-old value
+                if !fetching && elapsed < self.expire {
+                    return entry.item.clone();
+                }
             }
+            // else -- In rare cases where now < timestamp, fall through to re-update the cache
         }
 
         // We reach here if either we are the refetching thread or the current data has fully expired
