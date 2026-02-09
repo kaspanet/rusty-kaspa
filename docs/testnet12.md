@@ -30,9 +30,9 @@ Testnet12 uses a dedicated P2P port (16311) so that nodes from the usual testnet
 We reiterate that only the included miner should be used to maintain a level playing field.
 
 First, we set-up a node:
-1. Clone the `covpp` branch of the `kaspad` repository:
+1. Clone the `tn12` branch of the `kaspad` repository:
 ```
-git clone --branch covpp https://github.com/kaspanet/rusty-kaspa.git
+git clone --branch tn12 https://github.com/kaspanet/rusty-kaspa.git
 ```
 2. Start the ``kaspad`` client with ``utxoindex`` enabled:
 
@@ -59,7 +59,7 @@ If you want to transmit transactions, first create a Rothschild wallet
 
 Like kaspad, the Rothschild window should remain open and undisturbed.
 
-For mining, grab `kaspa-miner` from within the latest [Release](https://github.com/elichai/kaspa-miner/releases) and run it with the following flags (**this is currently the only miner that supports testnet-12**):
+For mining, grab `kaspa-miner` from within the latest [Release](https://github.com/kaspanet/cpuminer/releases) and run it with the following flags (**this is currently the only miner that supports testnet-12**):
     ```
     kaspa-miner --testnet --mining-address <address> -p 16210 -t 1
     ```
