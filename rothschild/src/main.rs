@@ -4,7 +4,6 @@ use clap::{Arg, ArgAction, Command};
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
-    Hash,
     config::params::{TESTNET_PARAMS, TESTNET12_PARAMS},
     constants::{SOMPI_PER_KASPA, TX_VERSION, TX_VERSION_POST_COV_HF},
     hashing::covenant_id::covenant_id,
@@ -564,41 +563,32 @@ fn estimated_mass(num_utxos: usize, num_outs: u64) -> u64 {
     200 + 34 * num_outs + 1000 * (num_utxos as u64)
 }
 
-fn apply_random_covenant_binding_from_inputs(
-    inputs: &[InputWithCovenantId],
-    outputs: &mut [TransactionOutput],
-    with_covenant_id: bool,
-) -> Option<CovenantBinding> {
+fn apply_random_covenant_binding_from_inputs(tx: &mut MutableTransaction<Transaction>, with_covenant_id: bool) {
     if !with_covenant_id {
-        return None;
+        return;
     }
 
-    // only start a new genesis 1:100
-    let should_start_new_genesis = thread_rng().gen_bool(0.01);
-    let idx = thread_rng().gen_range(0..inputs.len());
+    if tx.entries.is_empty() || tx.tx.outputs.is_empty() {
+        return;
+    }
 
-    // start a new genesis or use the existing one
-    let covenant_id = if should_start_new_genesis {
-        let auth_outputs = outputs.iter().enumerate().map(|(i, output)| (i as u32, output));
-        Some(covenant_id(inputs[idx].transaction_input.previous_outpoint, auth_outputs))
+    // Only start a new genesis with probability 1:100
+    let start_covenant_genesis = thread_rng().gen_bool(0.01);
+    let idx = thread_rng().gen_range(0..tx.entries.len());
+
+    let covenant_id = if start_covenant_genesis {
+        let auth_outputs = tx.tx.outputs.iter().enumerate().map(|(i, output)| (i as u32, output));
+        Some(covenant_id(tx.tx.inputs[idx].previous_outpoint, auth_outputs))
     } else {
-        inputs[idx].covenant_id
+        // Otherwise try reusing an existing covenant id
+        tx.entries[idx].as_ref().expect("populated").covenant_id
     };
 
-    // apply the binding to the output is not none
-    if let Some(id) = covenant_id {
-        for output in outputs.iter_mut() {
-            output.covenant = Some(CovenantBinding::new(idx as u16, id));
+    if let Some(covenant_id) = covenant_id {
+        for output in tx.tx.outputs.iter_mut() {
+            output.covenant = Some(CovenantBinding::new(idx as u16, covenant_id));
         }
-        return Some(CovenantBinding::new(idx as u16, id));
     }
-
-    None
-}
-
-struct InputWithCovenantId {
-    pub transaction_input: TransactionInput,
-    pub covenant_id: Option<Hash>,
 }
 
 fn generate_tx(
@@ -612,12 +602,9 @@ fn generate_tx(
     randomize_tx_version: bool,
 ) -> Transaction {
     let script_public_key = pay_to_address_script(kaspa_addr);
-    let inputs_with_covenant_id = utxos
+    let inputs = utxos
         .iter()
-        .map(|(op, entry)| InputWithCovenantId {
-            transaction_input: TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, sig_op_count: 1 },
-            covenant_id: entry.covenant_id,
-        })
+        .map(|(op, _)| TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, sig_op_count: 1 })
         .collect_vec();
 
     // set base version according to the usage of covenant
@@ -631,28 +618,19 @@ fn generate_tx(
         tx_version = thread_rng().gen_range(0..=1);
     }
 
-    let mut outputs = (0..num_outs)
+    let outputs = (0..num_outs)
         .map(|_| TransactionOutput { value: send_amount / num_outs, script_public_key: script_public_key.clone(), covenant: None })
         .collect_vec();
-
-    if tx_version == TX_VERSION_POST_COV_HF {
-        apply_random_covenant_binding_from_inputs(&inputs_with_covenant_id, &mut outputs, with_covenant_id);
-    }
 
     let mut data = vec![0u8; payload_size];
     rand::thread_rng().fill_bytes(&mut data);
 
-    let unsigned_tx = Transaction::new_non_finalized(
-        tx_version,
-        inputs_with_covenant_id.iter().map(|i| i.transaction_input.clone()).collect_vec(),
-        outputs,
-        0,
-        SUBNETWORK_ID_NATIVE,
-        0,
-        data,
-    );
-    let signed_tx =
-        sign(MutableTransaction::with_entries(unsigned_tx, utxos.iter().map(|(_, entry)| entry.clone()).collect_vec()), schnorr_key);
+    let unsigned_tx = Transaction::new_non_finalized(tx_version, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, data);
+    let mut unsigned_tx = MutableTransaction::with_entries(unsigned_tx, utxos.iter().map(|(_, entry)| entry.clone()).collect_vec());
+    if tx_version == TX_VERSION_POST_COV_HF {
+        apply_random_covenant_binding_from_inputs(&mut unsigned_tx, with_covenant_id);
+    }
+    let signed_tx = sign(unsigned_tx, schnorr_key);
     signed_tx.tx
 }
 
