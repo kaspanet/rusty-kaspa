@@ -3213,7 +3213,6 @@ dependencies = [
  "kaspa-rpc-service",
  "kaspa-utils",
  "kaspad",
- "mimalloc",
  "num-bigint",
  "num-traits",
  "once_cell",
