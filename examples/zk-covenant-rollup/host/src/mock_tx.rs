@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_hashes::Hash;
 use zk_covenant_rollup_core::{
-    action::{ActionHeader, TransferAction, OP_TRANSFER},
+    action::{ActionHeader, EntryAction, TransferAction, OP_ENTRY, OP_TRANSFER},
     bytes_to_words_ref, is_action_tx_id,
     prev_tx::PrevTxV1Witness,
     rest_digest_bytes,
@@ -40,9 +40,36 @@ impl TransferPayload {
     }
 }
 
-/// Witness data for action transactions
+/// Entry (deposit) payload with header (for computing tx_id)
+#[derive(Clone, Copy, Debug)]
+pub struct EntryPayload {
+    pub header: ActionHeader,
+    pub entry: EntryAction,
+}
+
+impl EntryPayload {
+    /// Create a new entry payload
+    pub fn new(destination: [u32; 8], nonce: u32) -> Self {
+        Self { header: ActionHeader::new(OP_ENTRY, nonce), entry: EntryAction::new(destination) }
+    }
+
+    /// Get as words for hashing
+    pub fn as_words(&self) -> Vec<u32> {
+        let mut words = Vec::with_capacity(ActionHeader::WORDS + EntryAction::WORDS);
+        words.extend_from_slice(self.header.as_words());
+        words.extend_from_slice(self.entry.as_words());
+        words
+    }
+
+    /// Get as bytes for payload field
+    pub fn as_bytes(&self) -> Vec<u8> {
+        bytemuck::cast_slice(&self.as_words()).to_vec()
+    }
+}
+
+/// Witness data for transfer actions
 #[derive(Clone, Debug)]
-pub struct ActionWitnessData {
+pub struct TransferWitnessData {
     /// Source account witness
     pub source: AccountWitness,
     /// Destination account witness
@@ -53,18 +80,34 @@ pub struct ActionWitnessData {
     pub prev_output_index: u32,
 }
 
+/// Witness data for entry (deposit) actions.
+/// Deposit amount is always taken from output index 0.
+#[derive(Clone, Debug)]
+pub struct EntryWitnessData {
+    /// Destination account witness
+    pub dest: AccountWitness,
+}
+
+/// Witness data for action transactions (discriminated by action type)
+#[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)]
+pub enum ActionWitness {
+    Transfer(Box<TransferWitnessData>),
+    Entry(EntryWitnessData),
+}
+
 /// Transaction wrapper that combines a real Kaspa Transaction with ZK witness data
 #[derive(Clone, Debug)]
 pub struct ZkTransaction {
     /// The real Kaspa transaction
     pub tx: Transaction,
     /// Optional witness data for action transactions
-    pub witness: Option<ActionWitnessData>,
+    pub witness: Option<ActionWitness>,
 }
 
 impl ZkTransaction {
     /// Create a new ZkTransaction
-    pub fn new(tx: Transaction, witness: Option<ActionWitnessData>) -> Self {
+    pub fn new(tx: Transaction, witness: Option<ActionWitness>) -> Self {
         Self { tx, witness }
     }
 
@@ -103,27 +146,33 @@ impl ZkTransaction {
             let rd = rest_digest_bytes(&rest_preimage);
             builder.write_slice(bytemuck::cast_slice::<_, u8>(&rd));
 
-            // Check if this is an action tx that needs witness data
+            // Check if this is a valid action tx and write witness data accordingly
             let tx_id = self.tx_id();
-            let payload_words: Vec<u32> =
-                payload_bytes.chunks_exact(4).map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap())).collect();
-            let is_action = is_action_tx_id(&tx_id) && is_valid_transfer_payload(&payload_words);
+            if is_action_tx_id(&tx_id) {
+                let payload_words: Vec<u32> =
+                    payload_bytes.chunks_exact(4).map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap())).collect();
 
-            if is_action {
-                let w = self.witness.as_ref().expect("Valid action tx must have witness data");
+                match &self.witness {
+                    Some(ActionWitness::Transfer(w)) if is_valid_transfer_payload(&payload_words) => {
+                        // Write transfer witness: source, dest, prev_tx_id, prev_tx_v1_witness
+                        builder.write_slice(w.source.as_bytes());
+                        builder.write_slice(w.dest.as_bytes());
 
-                // Write source account witness
-                builder.write_slice(w.source.as_bytes());
-                // Write dest account witness
-                builder.write_slice(w.dest.as_bytes());
+                        let prev_tx_id = bytes_to_words_ref(&w.prev_tx.id().as_bytes());
+                        builder.write_slice(bytemuck::cast_slice::<_, u8>(&prev_tx_id));
 
-                // Write prev_tx_id
-                let prev_tx_id = bytes_to_words_ref(&w.prev_tx.id().as_bytes());
-                builder.write_slice(bytemuck::cast_slice::<_, u8>(&prev_tx_id));
-
-                // Create and write prev tx V1 witness
-                let prev_tx_witness = create_prev_tx_v1_witness(&w.prev_tx, w.prev_output_index);
-                write_prev_tx_v1_witness(builder, &prev_tx_witness);
+                        let prev_tx_witness = create_prev_tx_v1_witness(&w.prev_tx, w.prev_output_index);
+                        write_prev_tx_v1_witness(builder, &prev_tx_witness);
+                    }
+                    Some(ActionWitness::Entry(w)) if is_valid_entry_payload(&payload_words) => {
+                        // Write entry witness: dest, rest_preimage (length-prefixed)
+                        builder.write_slice(w.dest.as_bytes());
+                        write_bytes(builder, &rest_preimage);
+                    }
+                    _ => {
+                        // Not a recognized action or no witness — guest will handle
+                    }
+                }
             }
         }
     }
@@ -140,6 +189,19 @@ fn is_valid_transfer_payload(payload_words: &[u32]) -> bool {
     }
     let transfer = TransferAction::from_words(payload_words[ActionHeader::WORDS..][..TransferAction::WORDS].try_into().unwrap());
     transfer.is_valid()
+}
+
+/// Check if payload words represent a valid entry payload
+fn is_valid_entry_payload(payload_words: &[u32]) -> bool {
+    if payload_words.len() < ActionHeader::WORDS + EntryAction::WORDS {
+        return false;
+    }
+    let header = ActionHeader::from_words_ref(payload_words[..ActionHeader::WORDS].try_into().unwrap());
+    if !header.is_valid_version() || header.operation != OP_ENTRY {
+        return false;
+    }
+    let entry = EntryAction::from_words(payload_words[ActionHeader::WORDS..][..EntryAction::WORDS].try_into().unwrap());
+    entry.is_valid()
 }
 
 /// Create a PrevTxV1Witness from a real Transaction
@@ -179,7 +241,7 @@ fn write_bytes(builder: &mut risc0_zkvm::ExecutorEnvBuilder<'_>, data: &[u8]) {
     }
 }
 
-/// Find a nonce that makes the tx_id start with ACTION_TX_ID_PREFIX
+/// Find a nonce that makes the tx_id start with ACTION_TX_ID_PREFIX (for transfers)
 pub fn find_action_tx_nonce(source: [u32; 8], destination: [u32; 8], amount: u64, outputs: &[TransactionOutput]) -> TransferPayload {
     for nonce in 0u32.. {
         let payload = TransferPayload::new(source, destination, amount, nonce);
@@ -198,6 +260,22 @@ pub fn find_action_tx_nonce(source: [u32; 8], destination: [u32; 8], amount: u64
         let tx_id = bytes_to_words_ref(&tx.id().as_bytes());
         if is_action_tx_id(&tx_id) {
             println!("  Found valid action nonce: {}", nonce);
+            return payload;
+        }
+    }
+    unreachable!()
+}
+
+/// Find a nonce that makes the tx_id start with ACTION_TX_ID_PREFIX (for entry/deposits)
+pub fn find_entry_tx_nonce(destination: [u32; 8], outputs: &[TransactionOutput]) -> EntryPayload {
+    for nonce in 0u32.. {
+        let payload = EntryPayload::new(destination, nonce);
+
+        let tx = Transaction::new(1, vec![], outputs.to_vec(), 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
+
+        let tx_id = bytes_to_words_ref(&tx.id().as_bytes());
+        if is_action_tx_id(&tx_id) {
+            println!("  Found valid entry nonce: {}", nonce);
             return payload;
         }
     }
@@ -253,7 +331,27 @@ pub fn create_transfer_tx(
     // Create the actual transaction
     let tx = Transaction::new(1, vec![], outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
 
-    ZkTransaction::new(tx, Some(ActionWitnessData { source: source_witness, dest: dest_witness, prev_tx, prev_output_index }))
+    ZkTransaction::new(
+        tx,
+        Some(ActionWitness::Transfer(Box::new(TransferWitnessData {
+            source: source_witness,
+            dest: dest_witness,
+            prev_tx,
+            prev_output_index,
+        }))),
+    )
+}
+
+/// Create a V1 entry (deposit) action transaction with witness data.
+/// The deposit amount is always taken from output index 0.
+pub fn create_entry_tx(destination: [u32; 8], outputs: Vec<TransactionOutput>, dest_witness: AccountWitness) -> ZkTransaction {
+    // Find nonce that makes tx_id an action
+    let payload = find_entry_tx_nonce(destination, &outputs);
+
+    // Create the actual transaction
+    let tx = Transaction::new(1, vec![], outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
+
+    ZkTransaction::new(tx, Some(ActionWitness::Entry(EntryWitnessData { dest: dest_witness })))
 }
 
 /// Create a V1 transaction that is NOT an action (tx_id doesn't start with action prefix).

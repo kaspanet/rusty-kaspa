@@ -2,7 +2,7 @@ use risc0_zkvm::serde::WordRead;
 use zk_covenant_rollup_core::{
     prev_tx::{verify_output_in_tx, PrevTxV1Witness, PrevTxWitness},
     state::AccountWitness,
-    OutputData,
+    AlignedBytes, OutputData,
 };
 
 use crate::input;
@@ -54,6 +54,28 @@ impl TransferWitness {
             source: input::read_account_witness(stdin),
             dest: input::read_account_witness(stdin),
             prev_tx: PrevTxV1WitnessData::read_from_stdin(stdin),
+        }
+    }
+}
+
+/// Witness data for an entry (deposit) action.
+///
+/// Entry deposits don't need source authorization (no source account).
+/// The deposit amount is always taken from the first output (index 0).
+pub struct EntryWitness {
+    /// Destination account SMT proof (for crediting the deposit)
+    pub dest: AccountWitness,
+    /// rest_preimage of the current entry transaction.
+    /// Used to parse output 0 and extract the deposit value.
+    /// Tamper-proof because rest_digest (committed via tx_id) is verified against this.
+    pub rest_preimage: AlignedBytes,
+}
+
+impl EntryWitness {
+    pub fn read_from_stdin(stdin: &mut impl WordRead) -> Self {
+        Self {
+            dest: input::read_account_witness(stdin),
+            rest_preimage: input::read_aligned_bytes(stdin),
         }
     }
 }

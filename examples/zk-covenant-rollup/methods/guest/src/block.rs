@@ -1,10 +1,10 @@
 use risc0_zkvm::serde::WordRead;
 use zk_covenant_rollup_core::{
-    action::{Action, TransferAction},
+    action::{Action, EntryAction, TransferAction},
     seq_commit::{seq_commitment_leaf, StreamingMerkleBuilder},
 };
 
-use crate::{auth, input, state, tx, witness::TransferWitness};
+use crate::{auth, input, state, tx, witness::TransferWitness, witness::EntryWitness};
 
 /// Process all transactions in a block, updating state and building merkle tree
 pub fn process_block(stdin: &mut impl WordRead, state_root: &mut [u32; 8]) -> [u32; 8] {
@@ -39,7 +39,7 @@ fn process_v1_transaction(stdin: &mut impl WordRead, state_root: &mut [u32; 8]) 
     // Guest determines if this is an action based on cryptographic data
     // If it's a valid action, host MUST provide witness data
     if let Some(action) = tx_data.action {
-        process_action(stdin, state_root, action);
+        process_action(stdin, state_root, action, &tx_data.rest_digest);
     }
 
     tx_data.tx_id
@@ -49,9 +49,10 @@ fn process_v1_transaction(stdin: &mut impl WordRead, state_root: &mut [u32; 8]) 
 ///
 /// Called only when guest has cryptographically determined this is a valid action.
 /// Host must provide witness data for verification.
-fn process_action(stdin: &mut impl WordRead, state_root: &mut [u32; 8], action: Action) {
+fn process_action(stdin: &mut impl WordRead, state_root: &mut [u32; 8], action: Action, rest_digest: &[u32; 8]) {
     match action {
         Action::Transfer(transfer) => process_transfer(stdin, state_root, transfer),
+        Action::Entry(entry) => process_entry(stdin, state_root, entry, rest_digest),
     }
 }
 
@@ -67,6 +68,39 @@ fn process_transfer(stdin: &mut impl WordRead, state_root: &mut [u32; 8], transf
 
     // Process the transfer and update state if successful
     if let Some(new_root) = state::process_transfer(&transfer, &witness, state_root) {
+        *state_root = new_root;
+    }
+}
+
+/// Process an entry (deposit) action
+///
+/// Entry actions credit a destination account with the deposit amount.
+/// The amount is extracted from the transaction output (verified via rest_digest).
+fn process_entry(stdin: &mut impl WordRead, state_root: &mut [u32; 8], entry: EntryAction, rest_digest: &[u32; 8]) {
+    let witness = EntryWitness::read_from_stdin(stdin);
+
+    // Verify rest_preimage matches the rest_digest committed in the tx_id.
+    // This ensures the output data (including deposit value) is tamper-proof.
+    let computed_rest_digest = zk_covenant_rollup_core::rest_digest_bytes(witness.rest_preimage.as_bytes());
+    if computed_rest_digest != *rest_digest {
+        // rest_preimage doesn't match — reject
+        return;
+    }
+
+    // Parse the first output (index 0) to extract the deposit value.
+    // Deposit output is always at index 0. tx_version=1 because entry txs are always V1.
+    let output = match zk_covenant_rollup_core::prev_tx::parse_output_at_index(witness.rest_preimage.as_bytes(), 0, 1) {
+        Some(o) => o,
+        None => return, // Parse failure
+    };
+
+    let amount = output.value;
+    if amount == 0 {
+        return; // Zero-value deposit — skip
+    }
+
+    // Credit the destination account
+    if let Some(new_root) = state::process_entry(&entry, &witness.dest, amount, state_root) {
         *state_root = new_root;
     }
 }

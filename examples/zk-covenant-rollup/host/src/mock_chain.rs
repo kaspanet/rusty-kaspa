@@ -11,7 +11,8 @@ use zk_covenant_rollup_core::{
 };
 
 use crate::mock_tx::{
-    create_prev_tx, create_transfer_tx, create_unknown_action_tx, create_v0_tx, create_v1_non_action_tx, ZkTransaction,
+    create_entry_tx, create_prev_tx, create_transfer_tx, create_unknown_action_tx, create_v0_tx, create_v1_non_action_tx,
+    ZkTransaction,
 };
 
 /// Mock implementation of SeqCommitAccessor for testing
@@ -34,6 +35,7 @@ pub enum AccountName {
     Bob,
     Charlie,
     Dave,
+    Eve,
 }
 
 impl AccountName {
@@ -64,6 +66,11 @@ impl AccountName {
                 let w1 = b'e' as u32;
                 [w0, w1, 0, 0, 0, 0, 0, 0]
             }
+            // key=50, "eve"
+            AccountName::Eve => {
+                let w0 = 50u32 | (b'e' as u32) << 8 | (b'v' as u32) << 16 | (b'e' as u32) << 24;
+                [w0, 0, 0, 0, 0, 0, 0, 0]
+            }
         }
     }
 
@@ -78,6 +85,7 @@ impl AccountName {
             AccountName::Bob => "Bob",
             AccountName::Charlie => "Charlie",
             AccountName::Dave => "Dave",
+            AccountName::Eve => "Eve",
         }
     }
 }
@@ -162,6 +170,44 @@ pub fn build_mock_chain(initial_seq_commit: Hash) -> MockChain {
         if block_idx == 1 {
             println!("  Adding unknown action tx (should be ignored)");
             txs.push(create_unknown_action_tx());
+        }
+
+        // Block 3: Add an entry (deposit) for Eve — 200 KAS (new account)
+        if block_idx == 2 {
+            let eve_pk = AccountName::Eve.pubkey();
+            let deposit_amount = 200u64;
+            let eve_exists = smt.get(&eve_pk).is_some();
+
+            println!("  Entry deposit → Eve: {} tokens (new account)", deposit_amount);
+
+            // Generate dest proof against current state
+            let dest_proof = smt.prove(&eve_pk);
+            let dest_witness = if eve_exists {
+                let eve_balance = *balances.get(&AccountName::Eve).unwrap_or(&0);
+                AccountWitness::new(eve_pk, eve_balance, dest_proof)
+            } else {
+                // New account — provide empty witness
+                AccountWitness::new([0u32; 8], 0, dest_proof)
+            };
+
+            // The deposit output: value=deposit_amount, SPK is arbitrary (not checked by guest for entries)
+            let outputs = vec![TransactionOutput::new(
+                deposit_amount,
+                ScriptPublicKey::new(0, pay_to_pubkey_spk(&AccountName::Eve.pubkey_bytes()).to_vec().into()),
+            )];
+
+            let entry_tx = create_entry_tx(eve_pk, outputs, dest_witness);
+            txs.push(entry_tx);
+
+            // Update SMT and balances
+            let eve_old_balance = *balances.get(&AccountName::Eve).unwrap_or(&0);
+            let eve_new_balance = eve_old_balance + deposit_amount;
+            smt.upsert(eve_pk, eve_new_balance);
+            balances.insert(AccountName::Eve, eve_new_balance);
+
+            if !eve_exists {
+                println!("    (new account created for Eve)");
+            }
         }
 
         for transfer in transfers.iter() {
@@ -256,7 +302,7 @@ pub fn build_mock_chain(initial_seq_commit: Hash) -> MockChain {
 
     // Print final balances
     println!("\n=== Final Accounts ===");
-    for account in [AccountName::Alice, AccountName::Bob, AccountName::Charlie, AccountName::Dave] {
+    for account in [AccountName::Alice, AccountName::Bob, AccountName::Charlie, AccountName::Dave, AccountName::Eve] {
         if let Some(balance) = balances.get(&account) {
             println!("  {}: {} tokens", account.name(), balance);
         }

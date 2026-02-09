@@ -1,8 +1,18 @@
 use kaspa_txscript::opcodes::codes::{
-    OpAdd, OpCat, OpChainblockSeqCommit, OpData32, OpDup, OpFromAltStack, OpSHA256, OpSwap, OpToAltStack, OpTxInputIndex,
+    Op0, OpAdd, OpCat, OpChainblockSeqCommit, OpData32, OpDrop, OpDup, OpFromAltStack, OpSHA256, OpSwap, OpToAltStack, OpTxInputIndex,
     OpTxInputScriptSigLen, OpTxInputScriptSigSubstr,
 };
 use kaspa_txscript::script_builder::ScriptBuilder;
+
+/// Redeem script prefix size in bytes.
+///
+/// Layout (68 bytes total):
+/// - 2 bytes: domain tag (`OP_0, OP_DROP` for state verification)
+/// - 1 byte:  `OpData32`
+/// - 32 bytes: `prev_seq_commitment`
+/// - 1 byte:  `OpData32`
+/// - 32 bytes: `prev_state_hash`
+pub const REDEEM_PREFIX_LEN: i64 = 68;
 
 /// Rollup covenant specific methods.
 /// Note: hash_redeem_to_spk, verify_output_spk, verify_input_index_zero, and verify_covenant_single_output
@@ -21,7 +31,7 @@ pub trait RollupCovenant {
     fn obtain_new_seq_commitment(&mut self) -> Result<&mut Self, Self::Error>;
 
     /// Expects: [..., new_app_state_hash, new_seq_commitment], alt:[prev_state_hash, prev_seq_commitment]
-    /// Leaves:  [..., 66-byte-prefix], alt:[prev_state_hash, prev_seq_commitment, new_app_state_hash, new_seq_commitment]
+    /// Leaves:  [..., REDEEM_PREFIX_LEN-byte prefix], alt:[prev_state_hash, prev_seq_commitment, new_app_state_hash, new_seq_commitment]
     fn build_next_redeem_prefix_rollup(&mut self) -> Result<&mut Self, Self::Error>;
 
     /// Expects: [..., prefix]
@@ -56,7 +66,7 @@ impl RollupCovenant for ScriptBuilder {
 
     fn build_next_redeem_prefix_rollup(&mut self) -> Result<&mut Self, Self::Error> {
         // Stack: [..., new_app_state_hash, new_seq_commitment]
-        // Build: OpData32 || new_seq_commitment || OpData32 || new_app_state_hash
+        // Build: OP_0 || OP_DROP || OpData32 || new_seq_commitment || OpData32 || new_app_state_hash
         // Stash new values on alt stack (on top of prev values already there)
 
         self.add_op(OpSwap)?;
@@ -78,15 +88,22 @@ impl RollupCovenant for ScriptBuilder {
         self.add_op(OpCat)?;
         // Stack: [..., (OpData32||new_app_state_hash), (OpData32||new_seq_commitment)]
         self.add_op(OpSwap)?;
+        self.add_op(OpCat)?;
+        // Stack: [..., (OpData32||new_seq_commitment||OpData32||new_app_state_hash)] = 66-byte data
+
+        // Prepend domain prefix: [OP_0(0x00), OP_DROP(0x75)]
+        self.add_data(&[Op0, OpDrop])?;
+        self.add_op(OpSwap)?;
         self.add_op(OpCat)
-        // Stack: [..., (OpData32||new_seq_commitment||OpData32||new_app_state_hash)] = 66-byte prefix
+        // Stack: [..., (OP_0||OP_DROP||OpData32||new_seq_commitment||OpData32||new_app_state_hash)] = 68-byte prefix
     }
 
     fn extract_redeem_suffix_and_concat(&mut self, redeem_script_len: i64) -> Result<&mut Self, Self::Error> {
         self.add_op(OpTxInputIndex)?;
         self.add_op(OpTxInputIndex)?;
         self.add_op(OpTxInputScriptSigLen)?;
-        self.add_i64(-redeem_script_len + 66)?;
+        // Skip past the REDEEM_PREFIX_LEN-byte prefix to get the suffix
+        self.add_i64(-redeem_script_len + REDEEM_PREFIX_LEN)?;
         self.add_op(OpAdd)?;
         self.add_op(OpTxInputIndex)?;
         self.add_op(OpTxInputScriptSigLen)?;

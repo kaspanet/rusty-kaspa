@@ -1,3 +1,5 @@
+#[allow(dead_code)] // Bridge functions are defined but not yet wired into the demo (deferred).
+mod bridge;
 mod covenant;
 mod mock_chain;
 mod mock_tx;
@@ -162,15 +164,13 @@ fn verify_onchain_succinct(
     let (mut tx, utxo) =
         tx::make_mock_transaction(0, pay_to_script_hash_script(&input_redeem), pay_to_script_hash_script(&output_redeem));
 
-    // Build sig_script with separate Succinct components
+    // Build sig_script: push proof components then the redeem script (P2SH).
     // Stack layout (bottom to top): [seal, claim, hashfn, control_index, control_digests, block_prove_to, new_state_hash, redeem]
     let seal_bytes: Vec<u8> = receipt.seal.iter().flat_map(|w| w.to_le_bytes()).collect();
     let claim_bytes: Vec<u8> = receipt.claim.digest().as_bytes().to_vec();
     let hashfn_byte: Vec<u8> = vec![hashfn_str_to_id(&receipt.hashfn).expect("invalid hashfn")];
     let control_index_bytes: Vec<u8> = receipt.control_inclusion_proof.index.to_le_bytes().to_vec();
-    let control_digests_bytes: Vec<u8> =
-        receipt.control_inclusion_proof.digests.iter().flat_map(|d| d.as_bytes()).copied().collect();
-
+    let control_digests_bytes: Vec<u8> = receipt.control_inclusion_proof.digests.iter().flat_map(|d| d.as_bytes()).copied().collect();
     tx.inputs[0].signature_script = ScriptBuilder::new()
         .add_data(&seal_bytes)
         .unwrap()
@@ -227,7 +227,7 @@ fn verify_onchain_groth16(
     let (mut tx, utxo) =
         tx::make_mock_transaction(0, pay_to_script_hash_script(&input_redeem), pay_to_script_hash_script(&output_redeem));
 
-    // Build sig_script: [proof, block_prove_to, new_state_hash, redeem]
+    // Build sig_script: push proof then the redeem script (P2SH).
     tx.inputs[0].signature_script = ScriptBuilder::new()
         .add_data(proof_bytes)
         .unwrap()

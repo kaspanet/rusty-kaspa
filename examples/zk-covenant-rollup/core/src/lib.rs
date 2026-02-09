@@ -68,7 +68,7 @@ impl AlignedBytes {
     }
 }
 
-pub use action::{ACTION_VERSION, Action, ActionHeader, OP_TRANSFER, TransferAction};
+pub use action::{ACTION_VERSION, Action, ActionHeader, EntryAction, OP_ENTRY, OP_TRANSFER, TransferAction};
 pub use p2pk::{P2PK_SPK_SIZE, extract_pubkey_from_spk, is_p2pk_spk, pay_to_pubkey_spk, verify_p2pk_spk};
 pub use prev_tx::{
     CovenantBinding, OutputData, PrevTxV0Witness, PrevTxV1Witness, PrevTxWitness, parse_output_at_index, verify_output_in_tx,

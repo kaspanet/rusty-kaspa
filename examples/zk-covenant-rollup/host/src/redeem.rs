@@ -1,4 +1,8 @@
-use kaspa_txscript::{opcodes::codes::OpTrue, script_builder::ScriptBuilder, zk_precompiles::tags::ZkTag};
+use kaspa_txscript::{
+    opcodes::codes::{Op0, OpDrop, OpTrue},
+    script_builder::ScriptBuilder,
+    zk_precompiles::tags::ZkTag,
+};
 use zk_covenant_common::{CovenantBase, Risc0Groth16Verify, Risc0SuccinctVerify};
 
 use crate::covenant::RollupCovenant;
@@ -13,7 +17,12 @@ pub fn build_redeem_script(
 ) -> Vec<u8> {
     let mut builder = ScriptBuilder::new();
 
-    // 66-byte prefix: OpData32 || prev_seq_commitment || OpData32 || prev_state_hash
+    // Domain prefix: OP_0, OP_DROP (state verification domain tag)
+    builder.add_op(Op0).unwrap();
+    builder.add_op(OpDrop).unwrap();
+
+    // 66-byte data: OpData32 || prev_seq_commitment || OpData32 || prev_state_hash
+    // Total prefix is now 68 bytes (2 domain + 66 data)
     builder.add_data(bytemuck::bytes_of(&prev_seq_commitment)).unwrap();
     builder.add_data(bytemuck::bytes_of(&prev_state_hash)).unwrap();
 

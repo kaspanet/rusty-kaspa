@@ -1,7 +1,7 @@
 use alloc::vec;
 use risc0_zkvm::serde::WordRead;
 use zk_covenant_rollup_core::{
-    action::{Action, ActionHeader, TransferAction, OP_TRANSFER},
+    action::{Action, ActionHeader, EntryAction, TransferAction, OP_ENTRY, OP_TRANSFER},
     is_action_tx_id, payload_digest_bytes, tx_id_v1,
 };
 
@@ -17,6 +17,9 @@ pub struct V1TxData {
     pub tx_id: [u32; 8],
     /// Some if this is a valid action transaction (determined cryptographically)
     pub action: Option<Action>,
+    /// rest_digest for this transaction (always populated for V1 txs).
+    /// Needed by entry actions to verify output amounts via rest_preimage.
+    pub rest_digest: [u32; 8],
 }
 
 /// Read V1 transaction data and compute tx_id
@@ -66,7 +69,7 @@ pub fn read_v1_tx_data(stdin: &mut impl WordRead) -> V1TxData {
     // Only valid if tx_id has action prefix AND action parsed successfully AND is valid
     let valid_action = if is_action_tx_id(&tx_id) { action.filter(|a| a.is_valid()) } else { None };
 
-    V1TxData { tx_id, action: valid_action }
+    V1TxData { tx_id, action: valid_action, rest_digest }
 }
 
 /// Parse action from payload words
@@ -84,6 +87,11 @@ fn parse_action(payload: &[u32]) -> Option<Action> {
             let transfer_words = rest.first_chunk()?;
             let transfer = TransferAction::from_words(*transfer_words);
             Some(Action::Transfer(transfer))
+        }
+        OP_ENTRY => {
+            let entry_words = rest.first_chunk()?;
+            let entry = EntryAction::from_words(*entry_words);
+            Some(Action::Entry(entry))
         }
         _ => None, // Unknown operation
     }
