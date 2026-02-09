@@ -210,6 +210,30 @@ pub fn build_mock_chain(initial_seq_commit: Hash) -> MockChain {
             }
         }
 
+        // Block 3: Add a second entry deposit for Eve (existing account, 50 more tokens)
+        if block_idx == 2 {
+            let eve_pk = AccountName::Eve.pubkey();
+            let deposit_amount = 50u64;
+            let eve_balance = *balances.get(&AccountName::Eve).unwrap();
+
+            println!("  Entry deposit → Eve: {} tokens (existing account)", deposit_amount);
+
+            let dest_proof = smt.prove(&eve_pk);
+            let dest_witness = AccountWitness::new(eve_pk, eve_balance, dest_proof);
+
+            let outputs = vec![TransactionOutput::new(
+                deposit_amount,
+                ScriptPublicKey::new(0, pay_to_pubkey_spk(&AccountName::Eve.pubkey_bytes()).to_vec().into()),
+            )];
+
+            let entry_tx = create_entry_tx(eve_pk, outputs, dest_witness);
+            txs.push(entry_tx);
+
+            let eve_new_balance = eve_balance + deposit_amount;
+            smt.upsert(eve_pk, eve_new_balance);
+            balances.insert(AccountName::Eve, eve_new_balance);
+        }
+
         for transfer in transfers.iter() {
             let from_pk = transfer.from.pubkey();
             let to_pk = transfer.to.pubkey();
