@@ -59,11 +59,11 @@ include_dir = "0.7"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Console"] }
 
-# For musl builds, we need mimalloc without the 'override' feature to avoid conflicts
-# with libstdc++'s operator new/delete. This overrides the mimalloc from kaspa-alloc
-# which uses 'override' (incompatible with musl static linking).
+# For musl builds, we declare mimalloc without 'override' to override kaspa-alloc's version
+# The .cargo/config.toml linker flag handles any remaining conflicts
 [target.'cfg(all(not(target_os = "macos"), target_env = "musl"))'.dependencies]
 mimalloc = { version = "0.1.48", default-features = false }
+
 
 [dev-dependencies]
 tokio-test = "0.4"
