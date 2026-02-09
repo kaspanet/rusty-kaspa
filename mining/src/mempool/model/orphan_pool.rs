@@ -117,10 +117,10 @@ impl OrphanPool {
 
     fn check_orphan_double_spend(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         for input in transaction.tx.inputs.iter() {
-            if let Some(double_spend_orphan) = self.outpoint_orphan(&input.previous_outpoint) {
-                if double_spend_orphan.id() != transaction.id() {
-                    return Err(RuleError::RejectDoubleSpendOrphan(transaction.id(), double_spend_orphan.id()));
-                }
+            if let Some(double_spend_orphan) = self.outpoint_orphan(&input.previous_outpoint)
+                && double_spend_orphan.id() != transaction.id()
+            {
+                return Err(RuleError::RejectDoubleSpendOrphan(transaction.id(), double_spend_orphan.id()));
             }
         }
         Ok(())
