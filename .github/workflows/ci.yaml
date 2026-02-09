@@ -12,8 +12,6 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -82,8 +80,6 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -175,8 +171,6 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -202,8 +196,6 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install llvm
         id: install_llvm
@@ -261,8 +253,6 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install llvm
         id: install_llvm
@@ -330,8 +320,6 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
