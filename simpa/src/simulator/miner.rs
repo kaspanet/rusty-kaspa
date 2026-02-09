@@ -240,15 +240,15 @@ impl Miner {
 
     fn report_progress(&mut self, env: &mut Environment<Block>) -> bool {
         self.num_blocks += 1;
-        if let Some(target_blocks) = self.target_blocks {
-            if self.num_blocks > target_blocks {
-                return true; // Exit
-            }
+        if let Some(target_blocks) = self.target_blocks
+            && self.num_blocks > target_blocks
+        {
+            return true; // Exit
         }
         if self.id != 0 {
             return false;
         }
-        if self.num_blocks % 50 == 0 || self.sim_time / 5000 != env.now() / 5000 {
+        if self.num_blocks.is_multiple_of(50) || self.sim_time / 5000 != env.now() / 5000 {
             trace!("Simulation time: {}\tGenerated {} blocks", env.now() as f64 / 1000.0, self.num_blocks);
         }
         self.sim_time = env.now();
