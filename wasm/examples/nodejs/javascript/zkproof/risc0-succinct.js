@@ -1,68 +1,53 @@
 const { PrivateKey, RpcClient, ScriptBuilder, Opcodes,
     payToScriptHashScript, addressFromScriptPublicKey,
-    createTransaction, signTransaction } = require('./kaspa')
+    createTransaction, signTransaction } = require('../../../../nodejs/kaspa');
 const fs = require('fs');
 const path = require('path');
 
-// Configuration  
-const NETWORK_ID = 'devnet';
-const RPC_URL = 'ws://127.0.0.1:17610';
+// Configuration
+const NETWORK_ID = 'testnet-12';
+const RPC_URL = 'ws://127.0.0.1:16310';
 const PRIVATE_KEY = 'b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f';
 
-// ZK Proof configuration  
-const ZK_VERIFIER_TAG = 0x21; // Succinct
-const ZK_PROOF_FILE = './succinct.proof.hex';
-const IMAGE_ID_FILE = './succinct.image.hex'; // 32-byte image ID file
-const JOURNAL_FILE='./succinct.journal.hex';
+// ZK Proof configuration
+const ZK_VERIFIER_TAG = 0x21; // R0Succinct
+
+// Data files - matches the stack layout expected by R0SuccinctPrecompile::verify_zk
+// Stack (bottom to top): seal, claim, hashfn, control_index, control_digests, journal, image_id, tag
+const SEAL_FILE = './succinct.seal.hex';
+const CLAIM_FILE = './succinct.claim.hex';
+const HASHFN_FILE = './succinct.hashfn.hex';
+const CONTROL_INDEX_FILE = './succinct.control_index.hex';
+const CONTROL_DIGESTS_FILE = './succinct.control_digests.hex';
+const JOURNAL_FILE = './succinct.journal.hex';
+const IMAGE_ID_FILE = './succinct.image.hex';
+
+function loadHexFile(filePath, label) {
+    const hex = fs.readFileSync(filePath, 'utf8').trim();
+    const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
+    const buf = Buffer.from(cleanHex, 'hex');
+    console.log(`Loaded ${label}: ${buf.length} bytes`);
+    return buf;
+}
+
 async function zktest() {
     const privateKey = new PrivateKey(PRIVATE_KEY);
     const keypair = privateKey.toKeypair();
     const sourceAddress = keypair.toAddress(NETWORK_ID);
-    
-    // Load ZK proof from file
-    let ZK_PROOF_DATA;
-    try {
-        const proofHex = fs.readFileSync(ZK_PROOF_FILE, 'utf8').trim();
-        const cleanHex = proofHex.startsWith('0x') ? proofHex.slice(2) : proofHex;
-        ZK_PROOF_DATA = Buffer.from(cleanHex, 'hex');
-        console.log(`Loaded ZK proof: ${ZK_PROOF_DATA.length} bytes`);
-        console.log(`Proof hex: ${cleanHex.substring(0, 64)}...`);
-    } catch (error) {
-        console.error(`Failed to load ZK proof from ${ZK_PROOF_FILE}:`, error.message);
-        return;
-    }
+    console.log(`Using source address: ${sourceAddress}`);
 
-    // Load Image ID from file
-    let EXPECTED_IMAGE_ID;
+    // Load all proof components
+    let seal, claim, hashfn, controlIndex, controlDigests, journal, imageId;
     try {
-        const imageIdHex = fs.readFileSync(IMAGE_ID_FILE, 'utf8').trim();
-        const cleanHex = imageIdHex.startsWith('0x') ? imageIdHex.slice(2) : imageIdHex;
-        EXPECTED_IMAGE_ID = Buffer.from(cleanHex, 'hex');
-        
-        if (EXPECTED_IMAGE_ID.length !== 32) {
-            throw new Error(`Image ID must be 32 bytes, got ${EXPECTED_IMAGE_ID.length}`);
-        }
-        
-        console.log(`Loaded Image ID: ${cleanHex}`);
+        seal = loadHexFile(SEAL_FILE, 'seal');
+        claim = loadHexFile(CLAIM_FILE, 'claim');
+        hashfn = loadHexFile(HASHFN_FILE, 'hashfn');
+        controlIndex = loadHexFile(CONTROL_INDEX_FILE, 'control_index');
+        controlDigests = loadHexFile(CONTROL_DIGESTS_FILE, 'control_digests');
+        journal = loadHexFile(JOURNAL_FILE, 'journal');
+        imageId = loadHexFile(IMAGE_ID_FILE, 'image_id');
     } catch (error) {
-        console.error(`Failed to load Image ID from ${IMAGE_ID_FILE}:`, error.message);
-        return;
-    }
-
-    // Load Image ID from file
-    let JOURNAL;
-    try {
-        const journalHex = fs.readFileSync(JOURNAL_FILE, 'utf8').trim();
-        const cleanHex = journalHex.startsWith('0x') ? journalHex.slice(2) : journalHex;
-        JOURNAL = Buffer.from(cleanHex, 'hex');
-        
-        if (JOURNAL.length !== 32) {
-            throw new Error(`Image ID must be 32 bytes, got ${JOURNAL.length}`);
-        }
-        
-        console.log(`Loaded Image ID: ${cleanHex}`);
-    } catch (error) {
-        console.error(`Failed to load Image ID from ${IMAGE_ID_FILE}:`, error.message);
+        console.error('Failed to load proof data:', error.message);
         return;
     }
 
@@ -73,15 +58,15 @@ async function zktest() {
     });
 
     await rpc.connect();
-    
+
     try {
         // Get UTXOs and wait for maturity
         console.log('Fetching UTXOs...');
         let response = await rpc.getUtxosByAddresses([sourceAddress]);
-        
+
         const info = await rpc.getBlockDagInfo();
         const currentDaaScore = info.virtualDaaScore;
-        
+
         const matureUtxos = response.entries.filter(entry => {
             if (!entry.entry.isCoinbase) return true;
             return (currentDaaScore - entry.entry.blockDaaScore) >= 100n;
@@ -94,15 +79,17 @@ async function zktest() {
 
         console.log(`Found ${matureUtxos.length} mature UTXOs`);
 
-        // Create P2SH redeem script with embedded tag and image ID
-        // When executed, stack will be: [proof_data] (from signature script)
-        // This script pushes: image_id, tag, then calls OpZkPrecompile
-        // OpZkPrecompile pops: tag first, then proof_data, then image_id
+        // Create P2SH redeem script
+        // The redeem script pushes journal, image_id, and tag, then calls OpZkPrecompile.
+        // The signature script provides: seal, claim, hashfn, control_index, control_digests.
+        //
+        // Combined stack (bottom to top) before OpZkPrecompile:
+        //   seal, claim, hashfn, control_index, control_digests, journal, image_id, tag
         const redeemScript = new ScriptBuilder()
-            .addData(JOURNAL)
-            .addData(EXPECTED_IMAGE_ID)              // Push image ID onto stack
-            .addData(Buffer.from([ZK_VERIFIER_TAG])) // Push tag (0x20) onto stack
-            .addOp(Opcodes.OpZkPrecompile)           // Execute ZK verification
+            .addData(journal)                              // Push journal onto stack
+            .addData(imageId)                              // Push image ID onto stack
+            .addData(Buffer.from([ZK_VERIFIER_TAG]))       // Push tag (0x21) onto stack
+            .addOp(Opcodes.OpZkPrecompile)                 // Execute ZK verification
             .drain();
 
         const lockingScript = payToScriptHashScript(redeemScript);
@@ -150,7 +137,7 @@ async function zktest() {
 
         // Submit commit transaction
         const submitResult = await rpc.submitTransaction({ transaction: signedCommitTx });
-        
+
         // Extract the transaction ID from the result
         const commitTxId = submitResult.transactionId || submitResult;
         console.log(`Commit transaction submitted: ${commitTxId}`);
@@ -162,12 +149,16 @@ async function zktest() {
         // Create REDEEM transaction
         console.log('Creating redeem transaction...');
 
-        // Build signature script for P2SH spending
-        // Only need to provide: proof_data + redeem_script
-        // The redeem script already contains the tag and image ID
+        // Build signature script for P2SH spending.
+        // Push proof components that are NOT in the redeem script, then the redeem script itself.
+        // These go onto the stack before the redeem script executes.
         const signatureScript = new ScriptBuilder()
-            .addData(ZK_PROOF_DATA)                    // Push proof data
-            .addData(Buffer.from(redeemScript, 'hex')) // Push redeem script (P2SH requirement)
+            .addData(seal)                                   // Push seal (bottom of proof stack)
+            .addData(claim)                                  // Push claim
+            .addData(hashfn)                                 // Push hash function id
+            .addData(controlIndex)                           // Push control inclusion proof index
+            .addData(controlDigests)                         // Push control inclusion proof digests
+            .addData(Buffer.from(redeemScript, 'hex'))       // Push redeem script (P2SH requirement)
             .drain();
 
         console.log(`Signature script length: ${Buffer.from(signatureScript, 'hex').length} bytes`);
@@ -194,7 +185,7 @@ async function zktest() {
             }],
             0n,
             '',
-            164 
+            250
         );
 
         console.log(redeemTx)
@@ -204,10 +195,11 @@ async function zktest() {
 
         console.log('Redeem transaction created');
         console.log('Redeem script contains:');
-        console.log('  - Image ID:', EXPECTED_IMAGE_ID.toString('hex'));
-        console.log('  - Tag: 0x21 (Succinct)');
+        console.log('  - Journal:', journal.toString('hex'));
+        console.log('  - Image ID:', imageId.toString('hex'));
+        console.log('  - Tag: 0x21 (R0Succinct)');
         console.log('  - OpZkPrecompile');
-        console.log('Signature script provides only the proof data');
+        console.log('Signature script provides: seal, claim, hashfn, control_index, control_digests');
 
         // Submit redeem transaction
         const redeemResult = await rpc.submitTransaction({ transaction: redeemTx });
