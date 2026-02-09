@@ -2,7 +2,7 @@
 # This configures linker flags to handle mimalloc conflicts with libstdc++
 # Since kaspa-alloc uses mimalloc with 'override' feature (which conflicts with
 # libstdc++'s operator new/delete in musl static builds), we use linker flags
-# to allow multiple definitions, letting the first one win.
+# to allow multiple definitions. The linker will use the first definition it encounters.
 
 [target.x86_64-unknown-linux-musl]
 rustflags = [
