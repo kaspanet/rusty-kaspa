@@ -184,10 +184,10 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         // no point in checking it.
 
         // We check if chain_block is not the new block by checking if it has a hash.
-        if let Some(hash) = chain_block.hash {
-            if self.reachability_service.is_dag_ancestor_of(hash, blue_candidate) {
-                return ColoringState::Blue;
-            }
+        if let Some(hash) = chain_block.hash
+            && self.reachability_service.is_dag_ancestor_of(hash, blue_candidate)
+        {
+            return ColoringState::Blue;
         }
 
         // Iterate over blue peers and check for k-cluster violations

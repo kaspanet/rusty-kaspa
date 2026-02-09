@@ -78,18 +78,18 @@ impl BlockBodyProcessor {
             total_transient_mass = total_transient_mass.saturating_add(transient_mass);
             total_storage_mass = total_storage_mass.saturating_add(storage_mass_commitment);
 
-            // Verify all limits
-            if total_compute_mass > self.max_block_mass {
-                return Err(RuleError::ExceedsComputeMassLimit(total_compute_mass, self.max_block_mass));
+            // Verify each dimension against its own limit
+            if total_compute_mass > self.block_mass_limits.compute {
+                return Err(RuleError::ExceedsComputeMassLimit(total_compute_mass, self.block_mass_limits.compute));
             }
-            if total_transient_mass > self.max_block_mass {
-                return Err(RuleError::ExceedsTransientMassLimit(total_transient_mass, self.max_block_mass));
+            if total_transient_mass > self.block_mass_limits.transient {
+                return Err(RuleError::ExceedsTransientMassLimit(total_transient_mass, self.block_mass_limits.transient));
             }
-            if total_storage_mass > self.max_block_mass {
-                return Err(RuleError::ExceedsStorageMassLimit(total_storage_mass, self.max_block_mass));
+            if total_storage_mass > self.block_mass_limits.storage {
+                return Err(RuleError::ExceedsStorageMassLimit(total_storage_mass, self.block_mass_limits.storage));
             }
         }
-        Ok((NonContextualMasses::new(total_compute_mass, total_transient_mass), ContextualMasses::new(total_storage_mass)))
+        Ok(Mass::new(NonContextualMasses::new(total_compute_mass, total_transient_mass), ContextualMasses::new(total_storage_mass)))
     }
 
     fn check_block_double_spends(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {

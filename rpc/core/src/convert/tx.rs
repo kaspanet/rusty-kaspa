@@ -79,7 +79,7 @@ impl TryFrom<RpcTransaction> for Transaction {
 impl TryFrom<RpcTransactionOutput> for TransactionOutput {
     type Error = RpcError;
     fn try_from(item: RpcTransactionOutput) -> RpcResult<Self> {
-        Ok(Self::new(item.value, item.script_public_key))
+        Ok(Self::with_covenant(item.value, item.script_public_key, item.covenant.map(Into::into)))
     }
 }
 

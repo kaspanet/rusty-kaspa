@@ -313,12 +313,13 @@ impl PruningProcessor {
         assert_eq!(genesis, proof.last().unwrap().last().unwrap().hash);
 
         // We keep full data for pruning point and its anticone, relations for DAA/GD
-        // windows and pruning proof, and only headers for past pruning points
+        // windows, seqcommit chain segment and pruning proof, and only headers for past pruning points
         let keep_blocks: BlockHashSet = data.anticone.iter().copied().collect();
         let mut keep_relations: BlockHashMap<BlockLevel> = std::iter::empty()
             .chain(data.anticone.iter().copied())
             .chain(data.daa_window_blocks.iter().map(|th| th.header.hash))
             .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
+            .chain(data.header_only_chain_segment.iter().copied())
             .chain(proof[0].iter().map(|h| h.hash))
             .map(|h| (h, 0)) // Mark block level 0 for all the above. Note that below we add the remaining levels
             .collect();
@@ -688,6 +689,10 @@ impl PruningProcessor {
         assert_eq!(
             ref_data.ghostdag_blocks.iter().map(|gd| gd.hash).collect::<BlockHashSet>(),
             built_data.ghostdag_blocks.iter().map(|gd| gd.hash).collect::<BlockHashSet>()
+        );
+        assert_eq!(
+            ref_data.header_only_chain_segment.iter().copied().collect::<BlockHashSet>(),
+            built_data.header_only_chain_segment.iter().copied().collect::<BlockHashSet>()
         );
         info!("Trusted data was rebuilt successfully following pruning");
     }

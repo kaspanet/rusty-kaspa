@@ -4,6 +4,7 @@
 //!
 
 use itertools::Itertools;
+use kaspa_consensus_core::block::Block;
 use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
@@ -77,20 +78,33 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                 ))
                 .await?;
 
-            for hashes in trusted_data.anticone.chunks(IBD_BATCH_SIZE) {
-                for &hash in hashes {
-                    let block = session.async_get_block(hash).await?;
-                    self.router
-                        .enqueue(make_response!(
-                            Payload::BlockWithTrustedDataV4,
-                            // No need to send window indices in v6
-                            BlockWithTrustedDataV4Message { block: Some((self.header_format, &block).into()), ..Default::default() },
-                            request_id
-                        ))
-                        .await?;
-                }
+            //
+            // TODO(pre-covpp): refactor GRPC to properly include the header-only chain segment and cleanup old fields
+            //
 
-                if hashes.len() == IBD_BATCH_SIZE {
+            let blocks_iter = trusted_data
+                .anticone
+                .iter()
+                .copied()
+                .map(|hash| (hash, false))
+                .chain(trusted_data.header_only_chain_segment.iter().copied().map(|hash| (hash, true)));
+            for (i, (hash, send_header_only)) in blocks_iter.enumerate() {
+                let block = if send_header_only {
+                    let header = session.async_get_header(hash).await?;
+                    Block::from_header_arc(header)
+                } else {
+                    session.async_get_block(hash).await?
+                };
+                self.router
+                    .enqueue(make_response!(
+                        Payload::BlockWithTrustedDataV4,
+                        // No need to send window indices since v6
+                        BlockWithTrustedDataV4Message { block: Some((self.header_format, &block).into()), ..Default::default() },
+                        request_id
+                    ))
+                    .await?;
+                let sent = i + 1;
+                if sent.is_multiple_of(IBD_BATCH_SIZE) {
                     // No timeout here, as we don't care if the syncee takes its time computing,
                     // since it only blocks this dedicated flow
                     drop(session); // Avoid holding the session through dequeue calls

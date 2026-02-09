@@ -28,7 +28,7 @@ use kaspa_consensus_core::{
     block::Block,
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
     config::{genesis::GenesisBlock, params::Params},
-    mass::{Mass, MassCalculator, MassOps},
+    mass::{BlockMassLimits, Mass, MassCalculator},
     tx::Transaction,
 };
 use kaspa_consensus_notify::{
@@ -55,19 +55,19 @@ pub struct BlockBodyProcessor {
     db: Arc<DB>,
 
     // Config
-    pub(super) max_block_mass: u64,
+    pub(super) block_mass_limits: BlockMassLimits,
     pub(super) genesis: GenesisBlock,
-    pub(super) ghostdag_k: KType,
+    pub(super) _ghostdag_k: KType,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
-    pub(super) headers_store: Arc<DbHeadersStore>,
+    pub(super) _ghostdag_store: Arc<DbGhostdagStore>,
+    pub(super) _headers_store: Arc<DbHeadersStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
 
     // Managers and services
-    pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pub(super) _reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(crate) mass_calculator: MassCalculator,
     pub(super) transaction_validator: TransactionValidator,
@@ -107,17 +107,17 @@ impl BlockBodyProcessor {
             thread_pool,
             db,
 
-            max_block_mass: params.max_block_mass,
+            block_mass_limits: params.block_mass_limits,
             genesis: params.genesis.clone(),
-            ghostdag_k: params.ghostdag_k(),
+            _ghostdag_k: params.ghostdag_k(),
 
             statuses_store: storage.statuses_store.clone(),
-            ghostdag_store: storage.ghostdag_store.clone(),
-            headers_store: storage.headers_store.clone(),
+            _ghostdag_store: storage.ghostdag_store.clone(),
+            _headers_store: storage.headers_store.clone(),
             block_transactions_store: storage.block_transactions_store.clone(),
             body_tips_store: storage.body_tips_store.clone(),
 
-            reachability_service: services.reachability_service.clone(),
+            _reachability_service: services.reachability_service.clone(),
             coinbase_manager: services.coinbase_manager.clone(),
             mass_calculator: services.mass_calculator.clone(),
             transaction_validator: services.transaction_validator.clone(),
@@ -213,7 +213,9 @@ impl BlockBodyProcessor {
         // Report counters
         self.counters.body_counts.fetch_add(1, Ordering::Relaxed);
         self.counters.txs_counts.fetch_add(block.transactions.len() as u64, Ordering::Relaxed);
-        self.counters.mass_counts.fetch_add(mass.max(), Ordering::Relaxed);
+        self.counters.storage_mass_counts.fetch_add(mass.contextual.storage_mass, Ordering::Relaxed);
+        self.counters.compute_mass_counts.fetch_add(mass.non_contextual.compute_mass, Ordering::Relaxed);
+        self.counters.transient_mass_counts.fetch_add(mass.non_contextual.transient_mass, Ordering::Relaxed);
         Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 

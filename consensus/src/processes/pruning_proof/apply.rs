@@ -14,6 +14,7 @@ use kaspa_consensus_core::{
     trusted::TrustedBlock,
 };
 use kaspa_core::{debug, trace};
+use kaspa_database::prelude::StoreResultUnitExt;
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
@@ -21,7 +22,7 @@ use rocksdb::WriteBatch;
 
 use crate::{
     model::{
-        services::reachability::ReachabilityService,
+        services::{reachability::ReachabilityService, seq_commit_accessor::seq_commit_within_threshold},
         stores::{
             ghostdag::{GhostdagData, GhostdagStore},
             headers::HeaderStore,
@@ -42,7 +43,12 @@ use crate::{
 use super::PruningProofManager;
 
 impl PruningProofManager {
-    pub fn apply_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
+    pub fn apply_proof(
+        &self,
+        proof: PruningPointProof,
+        trusted_set: &[TrustedBlock],
+        header_only_chain_segment: &[Arc<Header>],
+    ) -> PruningImportResult<()> {
         // Following validation of a pruning proof, various consensus storages must be updated
 
         let pruning_point_header = proof[0].last().unwrap().clone();
@@ -58,10 +64,13 @@ impl PruningProofManager {
 
         let mut expanded_proof = proof;
         let mut trusted_gd_map: BlockHashMap<GhostdagData> = BlockHashMap::new();
+        let mut trusted_header_map: BlockHashMap<Arc<Header>> = BlockHashMap::new();
+
         // This loop expands the proof with the headers of the trusted set
         // and creates a hash to ghostdag data map of the trusted set
         for tb in trusted_set.iter() {
             trusted_gd_map.insert(tb.block.hash(), tb.ghostdag.clone().into());
+            trusted_header_map.insert(tb.block.hash(), tb.block.header.clone());
             let tb_block_level = calc_block_level(&tb.block.header, self.max_block_level);
 
             (0..=tb_block_level).for_each(|current_proof_level| {
@@ -73,14 +82,24 @@ impl PruningProofManager {
                 expanded_proof[current_proof_level as usize].push(tb.block.header.clone());
             });
         }
-        // topologically sort every level in the proof
+        for header in header_only_chain_segment.iter() {
+            if let Vacant(entry) = trusted_header_map.entry(header.hash) {
+                entry.insert(header.clone());
+            }
+        }
+
+        // Topologically sort every level in the proof
         expanded_proof.iter_mut().for_each(|level_proof| {
             level_proof.sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
         });
 
-        self.populate_reachability_and_headers(&expanded_proof);
+        // Build selected-parent mapping for the PP chain segment
+        let chain_segment_map = self.verify_and_build_chain_segment_map(pruning_point, &pruning_point_header, &trusted_header_map)?;
 
-        // sanity check
+        // Populate headers/reachability (using the PP chain segment mapping)
+        self.populate_reachability_and_headers(&expanded_proof, header_only_chain_segment, &chain_segment_map)?;
+
+        // Sanity check
         {
             let reachability_read = self.reachability_store.read();
             for tb in trusted_set.iter() {
@@ -161,15 +180,20 @@ impl PruningProofManager {
         Ok(())
     }
 
-    pub fn populate_reachability_and_headers(&self, proof: &PruningPointProof) {
+    pub fn populate_reachability_and_headers(
+        &self,
+        proof: &PruningPointProof,
+        header_only_chain_segment: &[Arc<Header>],
+        chain_segment_map: &BlockHashMap<Hash>,
+    ) -> PruningImportResult<()> {
         let capacity_estimate = self.estimate_proof_unique_size(proof);
         let mut dag = BlockHashMap::with_capacity(capacity_estimate);
         let mut up_heap = BinaryHeap::with_capacity(capacity_estimate);
-        for header in proof.iter().flatten().cloned() {
+        for header in proof.iter().flatten().chain(header_only_chain_segment.iter()).cloned() {
             if let Vacant(e) = dag.entry(header.hash) {
                 // pow passing has already been checked during validation
                 let block_level = calc_block_level(&header, self.max_block_level);
-                self.headers_store.insert(header.hash, header.clone(), block_level).unwrap();
+                self.headers_store.insert(header.hash, header.clone(), block_level).idempotent().unwrap();
 
                 let mut parents = BlockHashSet::with_capacity(header.direct_parents().len() * 2);
                 // We collect all available parent relations in order to maximize reachability information.
@@ -222,7 +246,15 @@ impl PruningProofManager {
             }
             let reachability_parents_hashes =
                 BlockHashes::new(reachability_parents.iter().map(|parent| parent.hash).collect_vec().push_if_empty(ORIGIN));
-            let selected_parent = reachability_parents.iter().max().map(|parent| parent.hash).unwrap_or(ORIGIN);
+
+            // Prefer the specified chain segment parent when provided; otherwise infer as usual.
+            let selected_parent = match chain_segment_map.get(&hash).copied() {
+                Some(specified_parent) if reachability_parents_hashes.contains(&specified_parent) => specified_parent,
+                Some(specified_parent) => {
+                    return Err(PruningImportError::TrustedBlockSelectedParentMissing(hash, specified_parent));
+                }
+                None => reachability_parents.iter().max().map(|parent| parent.hash).unwrap_or(ORIGIN),
+            };
 
             // Prepare batch
             let mut batch = WriteBatch::default();
@@ -251,5 +283,58 @@ impl PruningProofManager {
             drop(reachability_write);
             drop(reachability_relations_write);
         }
+
+        Ok(())
+    }
+
+    /// Verify and build a map from pruning-point chain blocks to their selected parent for reachability seeding.
+    ///
+    /// The map is populated only for covenants-activated pruning points and only within the seqcommit
+    /// threshold range; it relies on the chain-qualification rule (first direct parent is the selected parent).
+    fn verify_and_build_chain_segment_map(
+        &self,
+        pruning_point: Hash,
+        pruning_point_header: &Arc<Header>,
+        trusted_header_map: &BlockHashMap<Arc<Header>>,
+    ) -> PruningImportResult<BlockHashMap<Hash>> {
+        let mut chain_segment_map: BlockHashMap<Hash> = BlockHashMap::new();
+
+        if self.covenants_activation.is_active(pruning_point_header.daa_score) {
+            let pruning_point_blue_score = pruning_point_header.blue_score;
+            let threshold = self.finality_depth;
+            let mut current = pruning_point;
+            loop {
+                let current_header =
+                    trusted_header_map.get(&current).ok_or(PruningImportError::MissingPruningPointChainSegment(current))?;
+
+                if !seq_commit_within_threshold(pruning_point_blue_score, current_header.blue_score, threshold) {
+                    break;
+                }
+
+                if !self.covenants_activation.is_active(current_header.daa_score) {
+                    // We cannot demand chain-qualification for blocks below the covenants activation
+                    // See the chain-qualification check in the utxo validation code for details as well as
+                    // code in SeqCommitAccessor
+                    break;
+                }
+
+                // Walk the selected-parent chain until we cross the threshold or hit genesis.
+                // Relies on the covenants-activated chain-qualification rule: the first direct parent is the selected parent.
+                match current_header.direct_parents().first().copied() {
+                    Some(selected_parent) => {
+                        chain_segment_map.insert(current, selected_parent);
+                        current = selected_parent;
+                    }
+                    None if current == self.genesis_hash => {
+                        break;
+                    }
+                    None => {
+                        return Err(PruningImportError::MissingPruningPointChainSegment(current));
+                    }
+                }
+            }
+        }
+
+        Ok(chain_segment_map)
     }
 }

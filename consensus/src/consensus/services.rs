@@ -50,7 +50,7 @@ pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, 
 
 pub struct ConsensusServices {
     // Underlying storage
-    storage: Arc<ConsensusStorage>,
+    _storage: Arc<ConsensusStorage>,
 
     // Services and managers
     pub statuses_service: MTStatusesService<DbStatusesStore>,
@@ -181,8 +181,10 @@ impl ConsensusServices {
             params.genesis.hash,
             params.pruning_proof_m,
             params.anticone_finalization_depth(),
+            params.finality_depth(),
             params.ghostdag_k(),
             params.skip_proof_of_work,
+            params.covenants_activation,
             is_consensus_exiting,
         ));
 
@@ -198,7 +200,7 @@ impl ConsensusServices {
         );
 
         Arc::new(Self {
-            storage,
+            _storage: storage,
             statuses_service,
             relations_service,
             reachability_service,

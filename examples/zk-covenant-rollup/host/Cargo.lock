@@ -1983,7 +1983,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-addresses"
-version = "1.1.0-rc.2"
+version = "1.1.0-rc.3"
 dependencies = [
  "borsh",
  "js-sys",
@@ -1997,7 +1997,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensus-core"
-version = "1.1.0-rc.2"
+version = "1.1.0-rc.3"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -2033,7 +2033,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-core"
-version = "1.1.0-rc.2"
+version = "1.1.0-rc.3"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2052,7 +2052,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-hashes"
-version = "1.1.0-rc.2"
+version = "1.1.0-rc.3"
 dependencies = [
  "blake2b_simd",
  "blake3",
@@ -2071,7 +2071,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-math"
-version = "1.1.0-rc.2"
+version = "1.1.0-rc.3"
 dependencies = [
  "borsh",
  "faster-hex 0.9.0",
@@ -2090,14 +2090,14 @@ dependencies = [
 
 [[package]]
 name = "kaspa-merkle"
-version = "1.1.0-rc.2"
+version = "1.1.0-rc.3"
 dependencies = [
  "kaspa-hashes",
 ]
 
 [[package]]
 name = "kaspa-muhash"
-version = "1.1.0-rc.2"
+version = "1.1.0-rc.3"
 dependencies = [
  "kaspa-hashes",
  "kaspa-math",
@@ -2107,7 +2107,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-txscript"
-version = "1.1.0-rc.2"
+version = "1.1.0-rc.3"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -2151,7 +2151,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-txscript-errors"
-version = "1.1.0-rc.2"
+version = "1.1.0-rc.3"
 dependencies = [
  "borsh",
  "kaspa-hashes",
@@ -2161,7 +2161,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-utils"
-version = "1.1.0-rc.2"
+version = "1.1.0-rc.3"
 dependencies = [
  "arc-swap",
  "async-channel 2.5.0",
@@ -2190,7 +2190,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wasm-core"
-version = "1.1.0-rc.2"
+version = "1.1.0-rc.3"
 dependencies = [
  "faster-hex 0.9.0",
  "hexplay",
@@ -5366,7 +5366,7 @@ dependencies = [
 
 [[package]]
 name = "zk-covenant-rollup-core"
-version = "1.1.0-rc.2"
+version = "1.1.0-rc.3"
 dependencies = [
  "blake2b_simd",
  "blake3",
