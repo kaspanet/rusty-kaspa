@@ -2,7 +2,7 @@
 
 use kaspa_txscript_errors::TxScriptError;
 
-use crate::input::InputBuilderError;
+use crate::{input::InputBuilderError, pskt::ExtractError};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -10,6 +10,8 @@ pub enum Error {
     Custom(String),
     #[error(transparent)]
     ConstructorError(#[from] ConstructorError),
+    #[error(transparent)]
+    ExtractError(#[from] ExtractError),
     #[error("OutputNotModifiable")]
     OutOfBounds,
     #[error("Missing UTXO entry")]
