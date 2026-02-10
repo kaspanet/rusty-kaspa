@@ -138,7 +138,7 @@ impl TryFrom<Uint256> for Uint192 {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Uint256, Uint3072};
+    use crate::{Uint256, Uint320, Uint3072};
 
     #[test]
     fn test_overflow_bug() {
@@ -185,5 +185,17 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ]);
         assert_eq!(r / newr, expected);
+    }
+
+    #[test]
+    fn test_default_is_zero() {
+        let default_192: crate::Uint192 = Default::default();
+        assert_eq!(default_192, crate::Uint192::ZERO);
+        let default_256: Uint256 = Default::default();
+        assert_eq!(default_256, Uint256::ZERO);
+        let default_320: Uint320 = Default::default();
+        assert_eq!(default_320, Uint320::ZERO);
+        let default_3072: Uint3072 = Default::default();
+        assert_eq!(default_3072, Uint3072::ZERO);
     }
 }

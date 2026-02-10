@@ -91,6 +91,10 @@ message Hash{
   bytes bytes = 1;
 }
 
+message BlueWork{
+  bytes bytes = 1;
+}
+
 message RequestBlockLocatorMessage{
   Hash highHash = 1;
   uint32 limit = 2;
@@ -123,8 +127,10 @@ message TransactionNotFoundMessage{
   TransactionId id = 1;
 }
 
+// v9: Added required blue_work field to InvRelayBlockMessage. In previous versions, this field is ignored (default None).
 message InvRelayBlockMessage{
   Hash hash = 1;
+  BlueWork blue_work = 2; // Required in v9, ignored in earlier versions (default None)
 }
 
 message InvTransactionsMessage{

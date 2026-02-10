@@ -1,4 +1,5 @@
 pub mod block;
+pub mod blue_work;
 pub mod error;
 pub mod ghostdag;
 pub mod hash;
