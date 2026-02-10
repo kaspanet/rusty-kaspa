@@ -20,6 +20,7 @@ kaspa-utils-tower.workspace = true
 kaspa-hashes.workspace = true
 kaspa-muhash.workspace = true
 kaspa-connectionmanager.workspace = true
+kaspa-perigeemanager.workspace = true
 kaspa-addressmanager.workspace = true
 kaspa-consensusmanager.workspace = true
 kaspa-mining.workspace = true

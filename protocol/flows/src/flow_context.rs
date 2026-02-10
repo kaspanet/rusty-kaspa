@@ -36,6 +36,7 @@ use kaspa_p2p_lib::{
     pb::{InvRelayBlockMessage, kaspad_message::Payload},
 };
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
+use kaspa_perigeemanager::{PerigeeConfig, PerigeeManager};
 use kaspa_utils::iter::IterExtensions;
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
@@ -233,6 +234,9 @@ pub struct FlowContextInner {
 
     // Mining rule engine
     mining_rule_engine: Arc<MiningRuleEngine>,
+
+    // perigee manager
+    pub perigee_manager: Option<Arc<Mutex<PerigeeManager>>>,
 }
 
 #[derive(Clone)]
@@ -252,7 +256,7 @@ impl Drop for IbdRunningGuard {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct IbdMetadata {
+pub struct IbdMetadata {
     /// The peer from which current IBD is syncing from
     peer: PeerKey,
     /// The DAA score of the relay block which triggered the current IBD
@@ -277,7 +281,8 @@ impl<T: PartialEq + Eq + std::hash::Hash> RequestScope<T> {
     /// Scope holders should use this function to report that the request has
     /// successfully been obtained from the peer and is now being processed
     pub fn report_obtained(&self) {
-        if let Some(e) = self.set.lock().get_mut(&self.req) {
+        let mut guard = self.set.lock();
+        if let Some(e) = guard.get_mut(&self.req) {
             e.obtained = true;
         }
     }
@@ -307,6 +312,8 @@ impl FlowContext {
         notification_root: Arc<ConsensusNotificationRoot>,
         hub: Hub,
         mining_rule_engine: Arc<MiningRuleEngine>,
+        is_ibd_running: Arc<AtomicBool>,
+        perigee_manager: Option<Arc<Mutex<PerigeeManager>>>,
     ) -> Self {
         let bps = config.bps() as usize;
         let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps as f64).log2().ceil() as u32;
@@ -322,7 +329,7 @@ impl FlowContext {
                 shared_block_requests: Arc::new(Mutex::new(HashMap::new())),
                 transactions_spread: AsyncRwLock::new(TransactionsSpread::new(hub.clone())),
                 shared_transaction_requests: Arc::new(Mutex::new(HashMap::new())),
-                is_ibd_running: Default::default(),
+                is_ibd_running,
                 ibd_metadata: Default::default(),
                 hub,
                 address_manager,
@@ -336,6 +343,7 @@ impl FlowContext {
                 max_orphans,
                 config,
                 mining_rule_engine,
+                perigee_manager,
             }),
         }
     }
@@ -693,6 +701,27 @@ impl FlowContext {
     pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(&self, transaction_ids: I, should_throttle: bool) {
         self.transactions_spread.write().await.broadcast_transactions(transaction_ids, should_throttle).await
     }
+
+    pub fn is_perigee_active(&self) -> bool {
+        self.perigee_manager.is_some()
+    }
+
+    pub async fn maybe_add_perigee_timestamp(&self, router: Arc<Router>, hash: Hash, timestamp: Instant, verify: bool) {
+        if let Some(ref manager) = self.perigee_manager {
+            let mut manager = manager.lock();
+            manager.insert_perigee_timestamp(&router, hash, timestamp, verify);
+        }
+    }
+
+    pub fn perigee_config(&self) -> Option<PerigeeConfig> {
+        match self.perigee_manager {
+            Some(ref manager) => {
+                let manager = manager.lock();
+                Some(manager.config().clone())
+            }
+            None => None,
+        }
+    }
 }
 
 #[async_trait]
@@ -759,7 +788,7 @@ impl ConnectionInitializer for FlowContext {
         // Send and receive the ready signal
         handshake.exchange_ready_messages().await?;
 
-        info!("Registering p2p flows for peer {} for protocol version {}", router, applied_protocol_version);
+        debug!("Registering p2p flows for peer {} for protocol version {}", router, applied_protocol_version);
 
         // Launch all flows. Note we launch only after the ready signal was exchanged
         for flow in flows {

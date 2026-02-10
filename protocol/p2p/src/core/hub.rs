@@ -39,12 +39,22 @@ impl Hub {
                     HubEvent::NewPeer(new_router) => {
                         // If peer is outbound then connection initialization was already performed as part of the connect logic
                         if new_router.is_outbound() {
-                            info!("P2P Connected to outgoing peer {} (outbound: {})", new_router, self.peers_query(true) + 1);
+                            info!(
+                                "P2P Connected to outgoing peer {} (protocol ver: {}, outbound: {})",
+                                new_router,
+                                new_router.protocol_version(),
+                                self.peers_query(true) + 1
+                            );
                             self.insert_new_router(new_router).await;
                         } else {
                             match initializer.initialize_connection(new_router.clone()).await {
                                 Ok(()) => {
-                                    info!("P2P Connected to incoming peer {} (inbound: {})", new_router, self.peers_query(false) + 1);
+                                    info!(
+                                        "P2P Connected to incoming peer {} (protocol ver: {}, inbound: {})",
+                                        new_router,
+                                        new_router.protocol_version(),
+                                        self.peers_query(false) + 1
+                                    );
                                     self.insert_new_router(new_router).await;
                                 }
                                 Err(err) => {
@@ -192,8 +202,22 @@ impl Hub {
     }
 
     /// Returns a list of all currently active peers
-    pub fn active_peers(&self) -> Vec<Peer> {
-        self.peers.read().values().map(|r| r.as_ref().into()).collect()
+    pub fn active_peers(&self, include_perigee_data: bool) -> Vec<Peer> {
+        self.peers.read().values().map(|r| (r.as_ref(), include_perigee_data).into()).collect()
+    }
+
+    pub fn random_graph_routers(&self) -> Vec<Arc<Router>> {
+        self.peers.read().values().filter(|r| r.is_random_graph()).cloned().collect()
+    }
+
+    pub fn perigee_routers(&self) -> Vec<Arc<Router>> {
+        self.peers.read().values().filter(|r| r.is_perigee()).cloned().collect()
+    }
+
+    pub async fn clear_perigee_timestamps(&self) {
+        for router in self.peers.read().values().filter(|r| r.is_outbound()) {
+            router.clear_perigee_timestamps();
+        }
     }
 
     /// Returns the number of currently active peers
