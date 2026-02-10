@@ -97,10 +97,10 @@ impl OrphanBlocksPool {
                 let rand_index = rand::thread_rng().gen_range(0..self.orphans.len());
                 if !orphan_ancestors.is_empty() {
                     // IndexMap has no API for getting a removable Entry by index
-                    if let Some(rand_hash) = self.orphans.get_index(rand_index).map(|(&h, _)| h) {
-                        if orphan_ancestors.contains(&rand_hash) {
-                            continue; // Do not evict an ancestor of this new orphan
-                        }
+                    if let Some(rand_hash) = self.orphans.get_index(rand_index).map(|(&h, _)| h)
+                        && orphan_ancestors.contains(&rand_hash)
+                    {
+                        continue; // Do not evict an ancestor of this new orphan
                     }
                 }
                 if let Some((evicted, _)) = self.orphans.swap_remove_index(rand_index) {
