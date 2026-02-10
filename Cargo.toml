@@ -365,6 +365,19 @@ opt-level = 2
 [profile.dev.package.kaspa-txscript]
 opt-level = 2
 
+# External crates used heavily by consensus/crypto
+[profile.dev.package.blake2b_simd]
+opt-level = 2
+
+[profile.dev.package.rand_chacha]
+opt-level = 2
+
+[profile.dev.package.malachite-base]
+opt-level = 2
+
+[profile.dev.package.malachite-nz]
+opt-level = 2
+
 [workspace.lints.clippy]
 empty_docs = "allow"
 uninlined_format_args = "allow"
