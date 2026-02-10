@@ -39,7 +39,7 @@ use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_utils::iter::IterExtensions;
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 use std::{collections::hash_map::Entry, fmt::Display};
 use std::{
@@ -212,6 +212,7 @@ pub struct FlowContextInner {
     hub: Hub,
     orphans_pool: AsyncRwLock<OrphanBlocksPool>,
     shared_block_requests: Arc<Mutex<HashMap<Hash, RequestScopeMetadata>>>,
+    block_inv_processing_metadata: Arc<Mutex<BlockInvProcessingMetadata>>,
     transactions_spread: AsyncRwLock<TransactionsSpread>,
     shared_transaction_requests: Arc<Mutex<HashMap<TransactionId, RequestScopeMetadata>>>,
     is_ibd_running: Arc<AtomicBool>,
@@ -248,6 +249,40 @@ impl Drop for IbdRunningGuard {
     fn drop(&mut self) {
         let result = self.indicator.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst);
         assert!(result.is_ok())
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct BlockInvProcessingMetadata {
+    processing: HashMap<Hash, HashSet<PeerKey>>,
+}
+
+impl BlockInvProcessingMetadata {
+    // Bound the amount of hashes kept.
+    const MAX_SIZE: usize = 10_000;
+
+    fn insert_hash(&mut self, peer: PeerKey, hash: Hash) -> bool {
+        if self.processing.len() >= Self::MAX_SIZE {
+            // Remove a random entry to make space
+            if let Some(first_key) = self.processing.keys().next().cloned() {
+                self.processing.remove(&first_key);
+            }
+        };
+        match self.processing.entry(hash) {
+            Entry::Occupied(mut e) => {
+                let peers = e.get_mut();
+                peers.insert(peer);
+                false
+            }
+            Entry::Vacant(e) => {
+                e.insert(HashSet::from_iter(once(peer)));
+                true
+            }
+        }
+    }
+
+    fn remove_hash(&mut self, hash: &Hash) -> Option<HashSet<PeerKey>> {
+        self.processing.remove(hash)
     }
 }
 
@@ -320,6 +355,7 @@ impl FlowContext {
                 consensus_manager,
                 orphans_pool: AsyncRwLock::new(OrphanBlocksPool::new(max_orphans)),
                 shared_block_requests: Arc::new(Mutex::new(HashMap::new())),
+                block_inv_processing_metadata: Arc::new(Mutex::new(BlockInvProcessingMetadata::default())),
                 transactions_spread: AsyncRwLock::new(TransactionsSpread::new(hub.clone())),
                 shared_transaction_requests: Arc::new(Mutex::new(HashMap::new())),
                 is_ibd_running: Default::default(),
@@ -491,7 +527,6 @@ impl FlowContext {
         }
         // Broadcast as soon as the block has been validated and inserted into the DAG
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) }), None).await;
-
         self.on_new_block(consensus, Default::default(), block, virtual_state_task).await;
         self.log_block_event(BlockLogEvent::Submit(hash));
 
@@ -692,6 +727,14 @@ impl FlowContext {
     /// after a predefined interval or when the queue length is larger than the Inv message capacity.
     pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(&self, transaction_ids: I, should_throttle: bool) {
         self.transactions_spread.write().await.broadcast_transactions(transaction_ids, should_throttle).await
+    }
+
+    pub async fn register_hash_for_processing_loop(&self, peer: PeerKey, hash: Hash) -> bool {
+        self.block_inv_processing_metadata.lock().insert_hash(peer, hash)
+    }
+
+    pub async fn unregister_hash_from_processing_loop(&self, hash: &Hash) -> Option<HashSet<PeerKey>> {
+        self.block_inv_processing_metadata.lock().remove_hash(hash)
     }
 }
 
