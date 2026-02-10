@@ -7,6 +7,7 @@ use alloc::vec::Vec;
 
 pub mod action;
 pub mod p2pk;
+pub mod p2sh;
 pub mod prev_tx;
 pub mod seq_commit;
 pub mod smt;
@@ -70,6 +71,10 @@ impl AlignedBytes {
 
 pub use action::{ACTION_VERSION, Action, ActionHeader, EntryAction, OP_ENTRY, OP_TRANSFER, TransferAction};
 pub use p2pk::{P2PK_SPK_SIZE, extract_pubkey_from_spk, is_p2pk_spk, pay_to_pubkey_spk, verify_p2pk_spk};
+pub use p2sh::{
+    P2SH_SPK_SIZE, blake2b_script_hash, extract_script_hash, is_p2sh_spk, pay_to_script_hash_spk, pay_to_script_hash_spk_from_script,
+    verify_entry_output_spk, verify_p2sh_spk,
+};
 pub use prev_tx::{
     CovenantBinding, OutputData, PrevTxV0Witness, PrevTxV1Witness, PrevTxWitness, parse_output_at_index, verify_output_in_tx,
 };

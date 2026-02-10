@@ -94,6 +94,12 @@ fn process_entry(stdin: &mut impl WordRead, state_root: &mut [u32; 8], entry: En
         None => return, // Parse failure
     };
 
+    // Verify the output SPK is a valid entry (deposit) script.
+    // Currently a stub that always passes — see p2sh::verify_entry_output_spk docs.
+    if !zk_covenant_rollup_core::p2sh::verify_entry_output_spk(&output.spk) {
+        return;
+    }
+
     let amount = output.value;
     if amount == 0 {
         return; // Zero-value deposit — skip

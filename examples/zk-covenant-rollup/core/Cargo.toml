@@ -13,10 +13,10 @@ default = []
 std = []
 
 [dependencies]
-bytemuck = { workspace = true, features = ["derive"]}
-sha2 = { version = "=0.10.9", default-features = false }
+bytemuck = { workspace = true, features = ["derive"] }
+sha2 = { workspace = true, default-features = false }
 blake3 = { workspace = true }
-blake2b_simd = { version = "1.0.2", default-features = false }
+blake2b_simd = { workspace = true, default-features = false }
 
 [lints]
 workspace = true
@@ -24,3 +24,4 @@ workspace = true
 [dev-dependencies]
 kaspa-hashes.workspace = true
 kaspa-merkle.workspace = true
+kaspa-txscript.workspace = true

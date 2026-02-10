@@ -5,9 +5,9 @@ use ark_groth16::{Proof, VerifyingKey};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use kaspa_txscript::opcodes::codes::{OpCat, OpFromAltStack, OpRot, OpSHA256, OpSwap, OpToAltStack, OpVerify, OpZkPrecompile};
 use kaspa_txscript::script_builder::ScriptBuilder;
+use kaspa_txscript::zk_precompiles::tags::ZkTag;
 use risc0_groth16::Seal;
 use risc0_zkvm::{Digest, Groth16ReceiptVerifierParameters};
-use kaspa_txscript::zk_precompiles::tags::ZkTag;
 
 pub const PUBLIC_INPUT_COUNT: usize = 5;
 

@@ -203,10 +203,10 @@ impl Smt {
         let mut siblings = [[0u32; 8]; SMT_DEPTH];
 
         let mut current_idx = key;
-        for level in 0..SMT_DEPTH {
+        for (idx, level) in siblings.iter_mut().enumerate() {
             // Sibling index
             let sibling_idx = current_idx ^ 1;
-            siblings[level] = self.compute_root_recursive(level, sibling_idx);
+            *level = self.compute_root_recursive(idx, sibling_idx);
             current_idx /= 2;
         }
 

@@ -62,6 +62,10 @@ members = [
     "metrics/core",
     "metrics/perf_monitor",
     "utils/alloc",
+
+    "examples/zk-covenant-common",
+    "examples/zk-covenant-inline/core",
+    "examples/zk-covenant-rollup/core",
 ]
 
 [workspace.package]
@@ -158,7 +162,7 @@ async-trait = "0.1.88"
 base64 = "0.22.1"
 bincode = { version = "1.3.3", default-features = false }
 bitflags = "2.9.4"
-blake2b_simd = "1.0.2"
+blake2b_simd = { version = "1.0.2", default-features = false }
 blake3 = { version = "1.8.3", default-features = false }
 borsh = { version = "1.5.1", features = ["derive", "rc"] }
 bs58 = { version = "0.5.0", features = ["check"], default-features = false }
@@ -240,6 +244,7 @@ risc0-circuit-keccak =  { version="4.0.3", default-features=false }
 risc0-zkp = "3.0.3"
 risc0-core = "3.0.0"
 risc0-binfmt = "3.0.3"
+risc0-zkvm = "3.0.5"
 ripemd = { version = "0.1.3", default-features = false }
 rlimit = "0.10.1"
 rocksdb = "0.24.0"
@@ -259,7 +264,7 @@ serde_repr = "0.1.18"
 serde-value = "0.7.0"
 serde-wasm-bindgen = "0.6.1"
 sha1 = "0.10.6"
-sha2 = "0.10.8"
+sha2 = { version = "0.10.8", default-features = false }
 sha3 = "0.10.8"
 slugify-rs = "0.0.3"
 smallvec = { version = "1.11.1", features = ["serde", "const_generics"] }
