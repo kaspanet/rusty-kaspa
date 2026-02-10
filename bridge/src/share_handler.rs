@@ -1525,6 +1525,7 @@ impl ShareHandler {
                     total_stales += stl;
                     total_invalids += inv;
                     total_blocks += blocks;
+                    total_blocks_all_time += blocks; // Also add to all-time total for the "Total" column
                 }
 
                 let overall_spm = if total_uptime_mins > 0.0 { (total_shares as f64) / total_uptime_mins } else { 0.0 };

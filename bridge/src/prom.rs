@@ -916,47 +916,47 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     for family in all_families.iter() {
         let name = family.get_name();
 
-        if name == "ks_estimated_network_hashrate_gauge" {
-            if let Some(metric) = family.get_metric().first() {
-                stats.networkHashrate = metric.get_gauge().get_value() as u64;
-            }
+        if name == "ks_estimated_network_hashrate_gauge"
+            && let Some(metric) = family.get_metric().first()
+        {
+            stats.networkHashrate = metric.get_gauge().get_value() as u64;
         }
 
-        if name == "ks_network_difficulty_gauge" {
-            if let Some(metric) = family.get_metric().first() {
-                stats.networkDifficulty = metric.get_gauge().get_value();
-            }
+        if name == "ks_network_difficulty_gauge"
+            && let Some(metric) = family.get_metric().first()
+        {
+            stats.networkDifficulty = metric.get_gauge().get_value();
         }
 
         // Network height / block count gauge. Historical name is "ks_network_block_count".
         // Accept both just in case we rename later.
-        if name == "ks_network_block_count" || name == "ks_network_block_count_gauge" {
-            if let Some(metric) = family.get_metric().first() {
-                stats.networkBlockCount = metric.get_gauge().get_value() as u64;
-            }
+        if (name == "ks_network_block_count" || name == "ks_network_block_count_gauge")
+            && let Some(metric) = family.get_metric().first()
+        {
+            stats.networkBlockCount = metric.get_gauge().get_value() as u64;
         }
 
         // Internal CPU miner metrics (exported when the bridge is built with `rkstratum_cpu_miner`
         // and the internal miner is enabled at runtime).
-        if name == "ks_internal_cpu_hashrate_ghs" {
-            if let Some(metric) = family.get_metric().first() {
-                internal_cpu_hashrate_ghs = Some(metric.get_gauge().get_value());
-            }
+        if name == "ks_internal_cpu_hashrate_ghs"
+            && let Some(metric) = family.get_metric().first()
+        {
+            internal_cpu_hashrate_ghs = Some(metric.get_gauge().get_value());
         }
-        if name == "ks_internal_cpu_hashes_tried_total" {
-            if let Some(metric) = family.get_metric().first() {
-                internal_cpu_hashes_tried = Some(metric.get_counter().get_value().max(0.0) as u64);
-            }
+        if name == "ks_internal_cpu_hashes_tried_total"
+            && let Some(metric) = family.get_metric().first()
+        {
+            internal_cpu_hashes_tried = Some(metric.get_counter().get_value().max(0.0) as u64);
         }
-        if name == "ks_internal_cpu_blocks_submitted_total" {
-            if let Some(metric) = family.get_metric().first() {
-                internal_cpu_blocks_submitted = Some(metric.get_counter().get_value().max(0.0) as u64);
-            }
+        if name == "ks_internal_cpu_blocks_submitted_total"
+            && let Some(metric) = family.get_metric().first()
+        {
+            internal_cpu_blocks_submitted = Some(metric.get_counter().get_value().max(0.0) as u64);
         }
-        if name == "ks_internal_cpu_blocks_accepted_total" {
-            if let Some(metric) = family.get_metric().first() {
-                internal_cpu_blocks_accepted = Some(metric.get_counter().get_value().max(0.0) as u64);
-            }
+        if name == "ks_internal_cpu_blocks_accepted_total"
+            && let Some(metric) = family.get_metric().first()
+        {
+            internal_cpu_blocks_accepted = Some(metric.get_counter().get_value().max(0.0) as u64);
         }
     }
 
@@ -1199,19 +1199,19 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         let mut activity = activity_map.lock();
         for (key, mut worker) in worker_stats.into_iter() {
             // Populate difficulty and session uptime from collected metrics
-            if let Some(&difficulty) = worker_difficulties.get(&key) {
-                if difficulty > 0.0 {
-                    worker.current_difficulty = Some(difficulty);
-                }
+            if let Some(&difficulty) = worker_difficulties.get(&key)
+                && difficulty > 0.0
+            {
+                worker.current_difficulty = Some(difficulty);
             }
 
             // Calculate session uptime from start time
-            if let Some(&start_time_secs) = worker_start_times.get(&key) {
-                if start_time_secs > 0.0 {
-                    let start_time_u64 = start_time_secs as u64;
-                    let session_uptime_secs = current_time_secs.saturating_sub(start_time_u64);
-                    worker.session_uptime = Some(session_uptime_secs);
-                }
+            if let Some(&start_time_secs) = worker_start_times.get(&key)
+                && start_time_secs > 0.0
+            {
+                let start_time_u64 = start_time_secs as u64;
+                let session_uptime_secs = current_time_secs.saturating_sub(start_time_u64);
+                worker.session_uptime = Some(session_uptime_secs);
             }
 
             // Check if worker has been active recently
