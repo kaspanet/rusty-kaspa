@@ -1112,6 +1112,13 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
             }
         }
 
+        // Parse network hashrate
+        if name == "ks_estimated_network_hashrate"
+            && let Some(metric) = family.get_metric().first()
+        {
+            stats.networkHashrate = metric.get_gauge().get_value() as u64;
+        }
+
         // Parse worker start time
         if name == "ks_worker_start_time" {
             for metric in family.get_metric() {
@@ -1330,34 +1337,34 @@ async fn get_config_json() -> String {
     use std::fs;
 
     let config_path = get_web_config_path();
-    if let Ok(content) = fs::read_to_string(&config_path) {
-        if let Ok(config) = BridgeConfig::from_yaml(&content) {
-            // Convert BridgeConfig to JSON for web UI
-            // For backward compatibility with single-instance mode UI, show first instance fields
-            let first_instance = config.instances.first();
+    if let Ok(content) = fs::read_to_string(&config_path)
+        && let Ok(config) = BridgeConfig::from_yaml(&content)
+    {
+        // Convert BridgeConfig to JSON for web UI
+        // For backward compatibility with single-instance mode UI, show first instance fields
+        let first_instance = config.instances.first();
 
-            let json_value = serde_json::json!({
-                // Global fields
-                "kaspad_address": config.global.kaspad_address,
-                "block_wait_time": config.global.block_wait_time.as_millis() as u64,
-                "print_stats": config.global.print_stats,
-                "log_to_file": config.global.log_to_file,
-                "health_check_port": config.global.health_check_port,
-                "web_dashboard_port": config.global.web_dashboard_port,
-                "var_diff": config.global.var_diff,
-                "shares_per_min": config.global.shares_per_min,
-                "var_diff_stats": config.global.var_diff_stats,
-                "extranonce_size": config.global.extranonce_size,
-                "pow2_clamp": config.global.pow2_clamp,
-                "coinbase_tag_suffix": config.global.coinbase_tag_suffix,
-                // Instance fields (from first instance for backward compatibility)
-                "stratum_port": first_instance.map(|i| &i.stratum_port),
-                "min_share_diff": first_instance.map(|i| i.min_share_diff),
-                "prom_port": first_instance.and_then(|i| i.prom_port.as_ref()),
-            });
+        let json_value = serde_json::json!({
+            // Global fields
+            "kaspad_address": config.global.kaspad_address,
+            "block_wait_time": config.global.block_wait_time.as_millis() as u64,
+            "print_stats": config.global.print_stats,
+            "log_to_file": config.global.log_to_file,
+            "health_check_port": config.global.health_check_port,
+            "web_dashboard_port": config.global.web_dashboard_port,
+            "var_diff": config.global.var_diff,
+            "shares_per_min": config.global.shares_per_min,
+            "var_diff_stats": config.global.var_diff_stats,
+            "extranonce_size": config.global.extranonce_size,
+            "pow2_clamp": config.global.pow2_clamp,
+            "coinbase_tag_suffix": config.global.coinbase_tag_suffix,
+            // Instance fields (from first instance for backward compatibility)
+            "stratum_port": first_instance.map(|i| &i.stratum_port),
+            "min_share_diff": first_instance.map(|i| i.min_share_diff),
+            "prom_port": first_instance.and_then(|i| i.prom_port.as_ref()),
+        });
 
-            return serde_json::to_string(&json_value).unwrap_or_else(|_| "{}".to_string());
-        }
+        return serde_json::to_string(&json_value).unwrap_or_else(|_| "{}".to_string());
     }
     "{}".to_string()
 }
