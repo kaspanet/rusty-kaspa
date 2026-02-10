@@ -73,9 +73,6 @@ jobs:
       - name: Build on Windows
         if: runner.os == 'Windows'
         shell: bash
-        # Static link CRT to avoid VCRedist dependency (like musl on Linux)
-        env:
-          RUSTFLAGS: "-C target-feature=+crt-static"
         run: |
           cargo build --bin kaspad --release
           cargo build --bin rothschild --release
