@@ -2377,8 +2377,7 @@ dependencies = [
 [[package]]
 name = "malachite-base"
 version = "0.4.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ea0ed76adf7defc1a92240b5c36d5368cfe9251640dcce5bd2d0b7c1fd87aeb"
+source = "git+https://github.com/mhogrefe/malachite?tag=v0.4.22#3c71c6c8a4eb3efb57caa9e609c8d35ec007cb24"
 dependencies = [
  "hashbrown 0.14.5",
  "itertools 0.11.0",
@@ -2389,8 +2388,7 @@ dependencies = [
 [[package]]
 name = "malachite-nz"
 version = "0.4.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34a79feebb2bc9aa7762047c8e5495269a367da6b5a90a99882a0aeeac1841f7"
+source = "git+https://github.com/mhogrefe/malachite?tag=v0.4.22#3c71c6c8a4eb3efb57caa9e609c8d35ec007cb24"
 dependencies = [
  "itertools 0.11.0",
  "libm",
