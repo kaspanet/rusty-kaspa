@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RK-Stratum</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="static/css/site.css">
+</head>
+<body>
+  <nav class="bg-surface-1 border-b border-card relative">
+    <div class="container mx-auto px-4 py-4">
+      <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold kaspa-primary flex items-center gap-3">
+          <img src="static/assets/kaspa.svg" alt="Kaspa" class="rk-logo h-9 w-auto" />
+          <span>RK-Stratum</span>
+        </h1>
+        <div class="flex items-center gap-2 sm:gap-4">
+          <div class="flex items-center space-x-2 sm:space-x-3">
+            <div class="loader" id="status-loader"></div>
+            <span id="status-text" class="status-dot status-dot--loading" title="Loading"></span>
+          </div>
+          <div class="flex items-center gap-2 sm:gap-3">
+            <div class="bg-surface-2 border border-card px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm">
+              <div class="text-[10px] sm:text-xs text-gray-400">Server Time</div>
+              <div id="serverTime" class="text-white font-semibold tabular-nums text-[10px] sm:text-sm leading-tight">-</div>
+            </div>
+          </div>
+          <div class="hidden md:flex items-center gap-2">
+            <a class="bg-surface-2 border border-card px-4 py-2 rounded-full text-sm font-medium text-white hover:border-kaspa-primary flex items-center gap-2" href="raw.html">Raw</a>
+            <a class="bg-kaspa-primary hover-bg-kaspa-primary px-4 py-2 rounded-full text-sm font-medium text-white flex items-center gap-2"
+               href="https://github.com/kaspanet" target="_blank" rel="noopener noreferrer">
+              <span aria-hidden="true">
+                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor"><path d="M12 .297a12 12 0 0 0-3.793 23.405c.6.111.793-.261.793-.58v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.757-1.333-1.757-1.089-.745.083-.73.083-.73 1.205.084 1.84 1.237 1.84 1.237 1.07 1.835 2.809 1.305 3.495.998.108-.776.418-1.305.762-1.604-2.665-.3-5.466-1.334-5.466-5.932 0-1.31.468-2.381 1.235-3.221-.123-.303-.535-1.523.117-3.176 0 0 1.008-.322 3.301 1.23a11.52 11.52 0 0 1 6.003 0c2.29-1.552 3.297-1.23 3.297-1.23.654 1.653.242 2.873.119 3.176.77.84 1.233 1.911 1.233 3.221 0 4.61-2.807 5.628-5.479 5.922.43.372.823 1.102.823 2.222v3.293c0 .322.192.694.801.576A12 12 0 0 0 12 .297z"/></svg>
+              </span>
+              GitHub
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-8 gap-3">
+      <div class="bg-surface-2 rounded-lg px-4 py-2 border border-card min-w-0">
+        <div class="text-gray-400 text-xs">Total Blocks</div>
+        <div id="totalBlocks" class="text-base font-semibold tabular-nums leading-tight truncate">-</div>
+      </div>
+      <div class="bg-surface-2 rounded-lg px-4 py-2 border border-card min-w-0">
+        <div class="text-gray-400 text-xs">Total Shares</div>
+        <div id="totalShares" class="text-base font-semibold tabular-nums leading-tight truncate">-</div>
+      </div>
+      <div class="bg-surface-2 rounded-lg px-4 py-2 border border-card min-w-0">
+        <div class="text-gray-400 text-xs">Active Workers</div>
+        <div class="flex items-baseline gap-2">
+          <div id="activeWorkers" class="text-base font-semibold tabular-nums leading-tight truncate">-</div>
+          <div id="totalWorkerHashrate" class="text-xs text-gray-400 tabular-nums truncate"></div>
+        </div>
+      </div>
+      <div class="bg-surface-2 rounded-lg px-4 py-2 border border-card min-w-0">
+        <div class="text-gray-400 text-xs">Network Hashrate</div>
+        <div id="networkHashrate" class="text-base font-semibold tabular-nums leading-tight truncate">-</div>
+      </div>
+      <div class="bg-surface-2 rounded-lg px-4 py-2 border border-card min-w-0">
+        <div class="text-gray-400 text-xs">RKStratum CPU Miner Hashrate</div>
+        <div id="internalCpuHashrate" class="text-base font-semibold tabular-nums leading-tight truncate">-</div>
+      </div>
+      <div class="bg-surface-2 rounded-lg px-4 py-2 border border-card min-w-0">
+        <div class="text-gray-400 text-xs">RKStratum CPU Miner Blocks</div>
+        <div id="internalCpuBlocks" class="text-base font-semibold tabular-nums leading-tight truncate">-</div>
+      </div>
+      <div class="bg-surface-2 rounded-lg px-4 py-2 border border-card min-w-0">
+        <div class="text-gray-400 text-xs">Network Difficulty</div>
+        <div id="networkDifficulty" class="text-base font-semibold tabular-nums leading-tight truncate">-</div>
+      </div>
+      <div class="bg-surface-2 rounded-lg px-4 py-2 border border-card min-w-0">
+        <div class="text-gray-400 text-xs">Network Height</div>
+        <div id="networkBlockCount" class="text-base font-semibold tabular-nums leading-tight truncate">-</div>
+      </div>
+    </div>
+    </div>
+  </nav>
+
+  <div class="container mx-auto px-4 py-8">
+    <div class="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start mb-8">
+      <div class="xl:col-span-6 space-y-6">
+        <div class="bg-surface-1 rounded-lg p-6 border border-card">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h3 class="text-lg font-semibold kaspa-primary">Status</h3>
+            <button type="button" class="bg-surface-2 border border-card px-3 py-1.5 rounded-lg text-xs font-medium text-white hover:border-kaspa-primary flex items-center gap-2" data-collapsible-toggle="status" aria-expanded="true">
+              <svg class="h-4 w-4 transition-transform" data-collapsible-icon="status" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08z" clip-rule="evenodd"/></svg>
+              <span data-collapsible-label="status">Collapse</span>
+            </button>
+          </div>
+          <div data-collapsible-body="status">
+            <div class="space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-gray-400">Kaspad Version</span><span id="kaspadVersion">-</span></div>
+            <div class="flex justify-between"><span class="text-gray-400">Instances</span><span id="instances">-</span></div>
+            <div class="flex justify-between"><span class="text-gray-400">Last Update</span><span id="lastUpdated">-</span></div>
+            <div class="flex justify-between"><span class="text-gray-400">Bridge Uptime</span><span id="bridgeUptime">-</span></div>
+          </div>
+          </div>
+          <div class="mt-4 flex gap-3">
+            <button id="refreshBtn" class="bg-kaspa-primary hover-bg-kaspa-primary px-6 py-2 rounded-lg text-sm font-medium text-white">
+              Refresh
+            </button>
+            <button id="clearCacheBtn" class="bg-surface-2 border border-card px-6 py-2 rounded-lg text-sm font-medium text-white hover:border-kaspa-primary">
+              Clear Cache
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-surface-1 rounded-lg p-6 border border-card">
+        <div class="flex items-center justify-between gap-4 mb-4">
+          <h3 class="text-lg font-semibold kaspa-primary">Metrics</h3>
+          <button type="button" class="bg-surface-2 border border-card px-3 py-1.5 rounded-lg text-xs font-medium text-white hover:border-kaspa-primary flex items-center gap-2" data-collapsible-toggle="metrics" aria-expanded="true">
+            <svg class="h-4 w-4 transition-transform" data-collapsible-icon="metrics" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08z" clip-rule="evenodd"/></svg>
+            <span data-collapsible-label="metrics">Collapse</span>
+          </button>
+        </div>
+
+        <div class="pt-2">
+          <label class="text-gray-400">Wallet Search</label>
+          <div class="mt-1 flex items-center gap-2">
+            <input id="walletSearchInput" type="text" placeholder="kaspa:..." autocomplete="off"
+              class="w-full px-4 py-2 bg-surface-2 border border-card rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-kaspa-primary" />
+            <button id="walletSearchBtn" type="button" class="bg-kaspa-primary hover-bg-kaspa-primary px-4 py-2 rounded-lg text-sm font-medium text-white">Search</button>
+            <button id="walletClearBtn" type="button" class="bg-surface-2 border border-card px-4 py-2 rounded-lg text-sm font-medium text-white hover:border-kaspa-primary">Clear</button>
+          </div>
+          <input id="walletFilter" type="hidden" />
+          <div id="walletSummary" class="mt-3 hidden bg-surface-2 border border-card rounded-lg px-4 py-3"></div>
+        </div>
+
+        <div class="text-sm text-gray-300 space-y-2" data-collapsible-body="metrics">
+          <div>Prometheus endpoint: <a class="kaspa-primary" href="metrics" target="_blank">metrics</a></div>
+          <div>JSON stats endpoint: <code class="text-white">/api/stats</code></div>
+        </div>
+      </div>
+      </div>
+
+      <div class="bg-surface-2 rounded-lg p-6 border border-card xl:col-span-6">
+        <div class="flex items-center justify-between gap-4 mb-4">
+          <h3 class="text-lg font-semibold kaspa-primary">Blocks Mined</h3>
+          <div class="flex items-center gap-3">
+            <div class="text-xs text-gray-400">Distribution by worker (filtered by wallet if set)</div>
+            <button type="button" class="bg-surface-1 border border-card px-3 py-1.5 rounded-lg text-xs font-medium text-white hover:border-kaspa-primary flex items-center gap-2" data-collapsible-toggle="blocksMined" aria-expanded="true">
+              <svg class="h-4 w-4 transition-transform" data-collapsible-icon="blocksMined" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08z" clip-rule="evenodd"/></svg>
+              <span data-collapsible-label="blocksMined">Collapse</span>
+            </button>
+          </div>
+        </div>
+        <div data-collapsible-body="blocksMined">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="flex items-center justify-center">
+              <div id="blocksPie" class="w-72 h-72"></div>
+            </div>
+            <div>
+              <div id="blocksPieLegend" class="space-y-2 text-sm"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-surface-2 rounded-lg p-4 sm:p-6 border border-card mb-8 xl:col-span-12">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4">
+          <h3 class="text-lg font-semibold kaspa-primary">Recent Blocks</h3>
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+            <div class="flex items-center gap-2">
+              <label for="blocksDayFilter" class="text-xs text-gray-400 whitespace-nowrap">Filter by days:</label>
+              <select id="blocksDayFilter" class="flex-1 sm:flex-none bg-surface-1 border border-card px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm text-white hover:border-kaspa-primary focus:outline-none focus:border-kaspa-primary min-w-0">
+                <option value="0">All</option>
+                <option value="1">Last 1 day</option>
+                <option value="3">Last 3 days</option>
+                <option value="7">Last 7 days</option>
+                <option value="14">Last 14 days</option>
+                <option value="30">Last 30 days</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" class="bg-surface-1 border border-card px-2 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-white hover:border-kaspa-primary flex items-center gap-1.5 sm:gap-2" data-collapsible-toggle="recentBlocks" aria-expanded="true">
+                <svg class="h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform" data-collapsible-icon="recentBlocks" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08z" clip-rule="evenodd"/></svg>
+                <span data-collapsible-label="recentBlocks" class="hidden sm:inline">Collapse</span>
+              </button>
+              <button id="downloadBlocksCsv" type="button" class="flex-1 sm:flex-none bg-surface-1 border border-card px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium text-white hover:border-kaspa-primary whitespace-nowrap">Download CSV</button>
+            </div>
+          </div>
+        </div>
+        <div data-collapsible-body="recentBlocks">
+          <div class="sm:hidden text-xs text-gray-400 mb-2">Tip: swipe sideways to see all columns, or tap a row to view full details.</div>
+          <div class="table-wrap">
+            <table class="min-w-[980px] w-max text-sm">
+              <colgroup>
+                <col style="width: 12rem;" />
+                <col style="width: 6.5rem;" />
+                <col style="width: 7.5rem;" />
+                <col style="width: 7rem;" />
+                <col />
+                <col style="width: 11rem;" />
+                <col style="width: 12rem;" />
+              </colgroup>
+              <thead class="text-gray-400">
+                <tr class="border-b border-card">
+                  <th class="text-left py-2 pr-3">Timestamp</th>
+                  <th class="text-left py-2 pr-3">Instance</th>
+                  <th class="text-left py-2 pr-3">Bluescore</th>
+                  <th class="text-left py-2 pr-3">Worker</th>
+                  <th class="text-left py-2 pr-3">Wallet</th>
+                  <th class="text-left py-2 pr-3">Nonce</th>
+                  <th class="text-left py-2 pr-3">Hash</th>
+                </tr>
+              </thead>
+              <tbody id="blocksBody" class="text-gray-200"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    <div class="bg-surface-2 rounded-lg p-6 border border-card mb-8 xl:col-span-12">
+        <div class="flex items-center justify-between gap-4 mb-4">
+          <h3 class="text-lg font-semibold kaspa-primary">Workers</h3>
+          <div class="flex items-center gap-3">
+            <button type="button" class="bg-surface-1 border border-card px-3 py-1.5 rounded-lg text-xs font-medium text-white hover:border-kaspa-primary flex items-center gap-2" data-collapsible-toggle="workers" aria-expanded="true">
+              <svg class="h-4 w-4 transition-transform" data-collapsible-icon="workers" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08z" clip-rule="evenodd"/></svg>
+              <span data-collapsible-label="workers">Collapse</span>
+            </button>
+            <button id="downloadWorkersCsv" type="button" class="bg-surface-1 border border-card px-4 py-2 rounded-lg text-sm font-medium text-white hover:border-kaspa-primary">Download CSV</button>
+          </div>
+        </div>
+        <div data-collapsible-body="workers">
+          <div class="sm:hidden text-xs text-gray-400 mb-2">Tip: swipe sideways to see all columns, or tap a row to view full details.</div>
+          <div class="table-wrap" data-workers-table>
+            <table class="min-w-[1400px] w-max text-sm">
+              <colgroup>
+                <col style="width: 6.5rem;" />
+                <col style="width: 9rem;" />
+                <col />
+                <col style="width: 9rem;" />
+                <col style="width: 7rem;" />
+                <col style="width: 4.5rem;" />
+                <col style="width: 4.5rem;" />
+                <col style="width: 4.5rem;" />
+                <col style="width: 4.5rem;" />
+                <col style="width: 5rem;" />
+                <col style="width: 8rem;" />
+                <col style="width: 8rem;" />
+              </colgroup>
+              <thead class="text-gray-400">
+                <tr class="border-b border-card">
+                  <th class="text-left py-2 pr-3">Instance</th>
+                  <th class="text-left py-2 pr-3">Worker</th>
+                  <th class="text-left py-2 pr-3">Wallet</th>
+                  <th class="text-left py-2 pr-3">Hashrate (GH/s)</th>
+                  <th class="text-left py-2 pr-3">Difficulty</th>
+                  <th class="text-left py-2 pr-3">Shares</th>
+                  <th class="text-left py-2 pr-3">Stale</th>
+                  <th class="text-left py-2 pr-3">Invalid</th>
+                  <th class="text-left py-2 pr-3">Blocks</th>
+                  <th class="text-left py-2 pr-3">Status</th>
+                  <th class="text-left py-2 pr-3">Last Seen</th>
+                  <th class="text-left py-2 pr-3">Session Uptime</th>
+                </tr>
+              </thead>
+              <tbody id="workersBody" class="text-gray-200"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="rowDetailModal" class="hidden fixed inset-0 z-50">
+    <div id="rowDetailBackdrop" class="absolute inset-0 bg-black/60"></div>
+    <div class="absolute inset-0 flex items-end sm:items-center justify-center p-3 sm:p-6">
+      <div class="bg-surface-1 border border-card rounded-2xl w-full max-w-xl shadow-xl">
+        <div class="flex items-center justify-between gap-4 px-5 py-4 border-b border-card">
+          <div class="min-w-0">
+            <div id="rowDetailTitle" class="text-base font-semibold text-white truncate">Details</div>
+            <div class="text-xs text-gray-400">Tap Copy to copy values</div>
+          </div>
+          <button id="rowDetailClose" type="button" class="bg-surface-2 border border-card px-3 py-2 rounded-lg text-sm font-medium text-white hover:border-kaspa-primary">Close</button>
+        </div>
+        <div id="rowDetailBody" class="px-5 py-4 space-y-3"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="static/js/dashboard.js"></script>
+
+  <div id="toast" class="hidden fixed right-4 top-4 z-50 bg-surface-1 border border-card px-4 py-2 rounded-lg text-sm text-white"></div>
+</body>
+</html>

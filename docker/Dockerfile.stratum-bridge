@@ -24,13 +24,13 @@ ENV RUSTFLAGS="-C target-feature=-crt-static" \
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL="sparse"
 
 # Build dependencies - this is the caching Docker layer
-RUN cargo chef cook --release --recipe-path recipe.json -p kaspa-stratum-bridge --bin stratum-bridge
+RUN cargo chef cook --release --recipe-path recipe.json -p kaspa-stratum-bridge --features rkstratum_cpu_miner --bin stratum-bridge
 
 COPY . .
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=cargo-target,target=/app/target,sharing=locked \
-    cargo build --release --bin stratum-bridge \
+    cargo build -p kaspa-stratum-bridge --release --features rkstratum_cpu_miner --bin stratum-bridge \
     && cp /app/target/release/stratum-bridge /app/stratum-bridge   # <-- outside the mount, persists
 
 

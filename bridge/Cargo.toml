@@ -22,6 +22,7 @@ kaspa-notify = { workspace = true }
 kaspa-core = { workspace = true }
 kaspa-utils = { workspace = true }
 kaspad = { workspace = true }
+kaspa-alloc = { workspace = true }
 dirs = { workspace = true }
 
 # External dependencies - using workspace versions where available
@@ -50,10 +51,19 @@ tracing-appender = "0.2"
 blake2 = "0.10"
 num-bigint = "0.4"
 prometheus = "0.13"
-yaml-rust = "0.4"
+serde_yaml = "0.9"
 faster-hex = "0.1"
-windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Console"] }
 chrono = { workspace = true }
+include_dir = "0.7"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Console"] }
+
+# For musl builds, we declare mimalloc without 'override' to override kaspa-alloc's version
+# The .cargo/config.toml linker flag handles any remaining conflicts
+[target.'cfg(all(not(target_os = "macos"), target_env = "musl"))'.dependencies]
+mimalloc = { version = "0.1.48", default-features = false }
+
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -61,6 +71,9 @@ tokio-test = "0.4"
 [[bin]]
 name = "stratum-bridge"
 path = "src/main.rs"
+
+[features]
+rkstratum_cpu_miner = []
 
 [lints]
 workspace = true
