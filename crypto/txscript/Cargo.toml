@@ -8,6 +8,7 @@ authors.workspace = true
 include.workspace = true
 license.workspace = true
 repository.workspace = true
+build = "build.rs"
 
 [[example]]
 name = "kip-10"
@@ -55,6 +56,9 @@ risc0-core.workspace = true
 risc0-binfmt.workspace = true
 bytemuck.workspace = true
 once_cell.workspace = true
+
+[build-dependencies]
+cc = { workspace = true }
 
 [dev-dependencies]
 criterion.workspace = true
