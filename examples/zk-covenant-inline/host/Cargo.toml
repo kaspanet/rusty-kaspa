@@ -5,6 +5,9 @@ edition = "2021"
 
 [workspace]
 
+[features]
+cuda = ["risc0-zkvm/cuda"]
+
 [dependencies]
 kaspa-consensus-core = { path = "../../../consensus/core" }
 kaspa-txscript = { path = "../../../crypto/txscript" }
