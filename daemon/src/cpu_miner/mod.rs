@@ -152,10 +152,10 @@ impl CpuMiner {
 
     pub fn start(&self) -> Result<()> {
         let process = self.process();
-        if let Some(process) = process {
-            if process.is_running() {
-                return Err(Error::Custom("Miner is already running.".to_string()));
-            }
+        if let Some(process) = process
+            && process.is_running()
+        {
+            return Err(Error::Custom("Miner is already running.".to_string()));
         }
 
         let argv = self.try_argv()?;

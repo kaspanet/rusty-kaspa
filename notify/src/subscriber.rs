@@ -94,15 +94,14 @@ impl Subscriber {
         trace!("[Subscriber {}] starting subscription receiving task", self.name);
         workflow_core::task::spawn(async move {
             while let Ok(mutation) = self.incoming.recv().await {
-                if self.handles_event_type(mutation.event_type()) {
-                    if let Err(err) = self
+                if self.handles_event_type(mutation.event_type())
+                    && let Err(err) = self
                         .subscription_manager
                         .clone()
                         .execute_subscribe_command(self.listener_id, mutation.scope, mutation.command)
                         .await
-                    {
-                        trace!("[Subscriber {}] the subscription command returned an error: {:?}", self.name, err);
-                    }
+                {
+                    trace!("[Subscriber {}] the subscription command returned an error: {:?}", self.name, err);
                 }
             }
 
