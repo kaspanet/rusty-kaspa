@@ -378,6 +378,12 @@ opt-level = 2
 [profile.dev.package.malachite-nz]
 opt-level = 2
 
+[profile.dev.package.secp256k1]
+opt-level = 2
+
+[profile.dev.package.sha2]
+opt-level = 2
+
 [workspace.lints.clippy]
 empty_docs = "allow"
 uninlined_format_args = "allow"
