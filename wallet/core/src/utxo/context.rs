@@ -763,11 +763,12 @@ impl UtxoContext {
                 let filtered_utxos = utxos
                     .iter()
                     .filter_map(|utxo| {
-                        if let Some(address) = utxo.address() {
-                            if addresses.contains(&address) && amount < min_amount_sompi {
-                                amount += utxo.amount();
-                                return Some(utxo.entry().clone());
-                            }
+                        if let Some(address) = utxo.address()
+                            && addresses.contains(&address)
+                            && amount < min_amount_sompi
+                        {
+                            amount += utxo.amount();
+                            return Some(utxo.entry().clone());
                         }
 
                         None
@@ -778,10 +779,10 @@ impl UtxoContext {
                 let filtered_utxos = utxos
                     .iter()
                     .filter_map(|utxo| {
-                        if let Some(address) = utxo.address() {
-                            if addresses.contains(&address) {
-                                return Some(utxo.entry().clone());
-                            }
+                        if let Some(address) = utxo.address()
+                            && addresses.contains(&address)
+                        {
+                            return Some(utxo.entry().clone());
                         }
                         None
                     })

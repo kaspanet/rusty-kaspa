@@ -846,10 +846,11 @@ impl Cli for KaspaCli {
 
         if (self.wallet.is_open() && !self.wallet.is_connected()) || (node_running && !self.wallet.is_connected()) {
             prompt.push(style("N/C").red().to_string());
-        } else if self.wallet.is_connected() && !self.wallet.is_synced() {
-            if let Some(state) = self.sync_state() {
-                prompt.push(state);
-            }
+        } else if self.wallet.is_connected()
+            && !self.wallet.is_synced()
+            && let Some(state) = self.sync_state()
+        {
+            prompt.push(state);
         }
 
         if let Some(descriptor) = self.wallet.descriptor() {

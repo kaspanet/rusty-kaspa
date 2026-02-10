@@ -76,12 +76,12 @@ impl TasksRunner {
     }
 
     async fn run_main(&mut self) {
-        if let Some(ref main) = self.main {
-            if self.main_handles.is_none() {
-                self.tasks.push(StopTask::build(self.main_stop_signal.clone()));
-                self.main_handles = Some(main.start(self.main_stop_signal.clone()));
-                main.ready().await;
-            }
+        if let Some(ref main) = self.main
+            && self.main_handles.is_none()
+        {
+            self.tasks.push(StopTask::build(self.main_stop_signal.clone()));
+            self.main_handles = Some(main.start(self.main_stop_signal.clone()));
+            main.ready().await;
         }
     }
     pub async fn run(&mut self) {

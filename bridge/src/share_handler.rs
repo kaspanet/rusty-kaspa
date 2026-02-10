@@ -1249,10 +1249,10 @@ impl ShareHandler {
 
                 let mut total_target: Option<f64> = Some(entries[0].1);
                 for (inst_short, target_spm, _, stats, overall) in entries.iter() {
-                    if let Some(t) = total_target {
-                        if (t - *target_spm).abs() > 0.0001 {
-                            total_target = None;
-                        }
+                    if let Some(t) = total_target
+                        && (t - *target_spm).abs() > 0.0001
+                    {
+                        total_target = None;
                     }
 
                     total_shares += *overall.shares_found.lock();
