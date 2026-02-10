@@ -2,19 +2,6 @@
 //
 // WORKAROUND: Temporary workaround for Windows linking errors with risc0-zkvm-platform
 //
-// WHY THIS IS NEEDED:
-// ===================
-// The kaspa-txscript crate uses risc0-zkvm-platform for zero-knowledge proof verification
-// (specifically for KIP-10 precompiles). The risc0-zkvm-platform crate is designed primarily
-// for Linux/Unix systems and expects platform-specific memory allocation functions that are
-// not available on Windows.
-//
-// The risc0-zkvm-platform crate calls sys_alloc_aligned() and sys_free_aligned() functions
-// for aligned memory allocation, which are provided by platform-specific implementations.
-// On Linux, these are typically provided by the risc0-zkvm-platform crate itself or system
-// libraries. However, on Windows with MSVC toolchain, these symbols are missing, causing
-// linker errors.
-//
 // ERROR ENCOUNTERED:
 // ==================
 // When building on Windows (tn12 branch) with MSVC toolchain, the linker fails with:
@@ -30,15 +17,15 @@
 //
 // WHY THIS SOLUTION:
 // ==================
-// We provide a Windows-specific implementation of sys_alloc_aligned() and sys_free_aligned()
-// using MSVC's native _aligned_malloc() and _aligned_free() functions. This satisfies the
+// We provide a Windows-specific implementation of sys_alloc_aligned()
+// using MSVC's native _aligned_malloc() functions. This satisfies the
 // linker's requirement for these symbols while maintaining the same functionality.
 //
 // IMPORTANT NOTES:
 // ================
 // - This function is called by risc0-zkvm-platform but is only used during ZK proof execution,
 //   not during verification-only use cases (which is how Kaspa uses it).
-// - The implementation uses Windows-specific functions (_aligned_malloc/_aligned_free) which
+// - The implementation uses Windows-specific functions (_aligned_malloc) which
 //   are part of the MSVC runtime library, so no additional dependencies are required.
 // - This is a temporary workaround until risc0-zkvm-platform adds proper Windows support.
 //
@@ -76,18 +63,11 @@
 // Explicitly declare Windows-specific functions (provided by MSVC runtime)
 // These declarations satisfy the compiler even if the linter can't find the headers
 void* _aligned_malloc(size_t size, size_t alignment);
-void _aligned_free(void* ptr);
 
 __declspec(dllexport) void* sys_alloc_aligned(size_t size, size_t alignment) {
     // Use _aligned_malloc on Windows (provided by MSVC runtime)
     return _aligned_malloc(size, alignment);
 }
 
-__declspec(dllexport) void sys_free_aligned(void* ptr) {
-    // Use _aligned_free on Windows (provided by MSVC runtime)
-    if (ptr) {
-        _aligned_free(ptr);
-    }
-}
 #endif  // _WIN32
 

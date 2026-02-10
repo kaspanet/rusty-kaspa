@@ -109,12 +109,14 @@ impl SuccinctReceipt {
                 .map_err(|_| VerificationError::ControlVerificationError { control_id: *control_id })
         };
 
+        let all: &[BabyBearElem] = bytemuck::checked::try_cast_slice(&self.seal).map_err(|_| R0Error::SealHasInvalidBabyBearElem)?;
+        // Extract the globals from the seal
+        let output_elems: &[BabyBearElem] = &all[..CircuitImpl::OUTPUT_SIZE];
+
         // Verify the receipt itself is correct, and therefore the encoded globals are
         // reliable.
         risc0_zkp::verify::verify(&CIRCUIT, &suite, &self.seal, check_code)?;
 
-        // Extract the globals from the seal
-        let output_elems: &[BabyBearElem] = bytemuck::checked::cast_slice(&self.seal[..CircuitImpl::OUTPUT_SIZE]);
         let mut seal_claim = VecDeque::new();
         for elem in output_elems {
             // add the output field elements from the encoded globals
