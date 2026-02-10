@@ -17,6 +17,13 @@ use {
     params::Params,
 };
 
+#[derive(Clone, Copy, Debug)]
+pub enum IpVersionMode {
+    Auto,
+    Ipv4,
+    Ipv6,
+}
+
 /// Various consensus configurations all bundled up under a single struct. Use `Config::new` for directly building from
 /// a `Params` instance. For anything more complex it is recommended to use `ConfigBuilder`. NOTE: this struct can be
 /// implicitly de-refed into `Params`
@@ -66,6 +73,15 @@ pub struct Config {
 
     pub disable_upnp: bool,
 
+    /// Disable IPv6 during automatic local address discovery (explicit IPv6 in config is still honored)
+    pub disable_ipv6_interface_discovery: bool,
+    // DynDNS based external IP resolution (optional hostname). If set and UPnP fails to yield a public IP,
+    // a dyn dns resolver service will periodically resolve this host and update the external address on change.
+    pub external_dyndns_host: Option<String>,
+    pub external_dyndns_min_refresh_sec: u64,
+    pub external_dyndns_max_refresh_sec: u64,
+    pub external_dyndns_ip_version: IpVersionMode,
+
     /// A scale factor to apply to memory allocation bounds
     pub ram_scale: f64,
 
@@ -97,6 +113,11 @@ impl Config {
             #[cfg(feature = "devnet-prealloc")]
             initial_utxo_set: Default::default(),
             disable_upnp: false,
+            disable_ipv6_interface_discovery: false,
+            external_dyndns_host: None,
+            external_dyndns_min_refresh_sec: 30,
+            external_dyndns_max_refresh_sec: 300,
+            external_dyndns_ip_version: IpVersionMode::Auto,
             ram_scale: 1.0,
             retention_period_days: None,
         }

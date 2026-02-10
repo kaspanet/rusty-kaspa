@@ -622,7 +622,7 @@ Do you confirm? (y/n)";
         None
     };
 
-    let (address_manager, port_mapping_extender_svc) = AddressManager::new(config.clone(), meta_db, tick_service.clone());
+    let (address_manager, port_mapping_extender_svc, dyndns_extender_svc) = AddressManager::new(config.clone(), meta_db, tick_service.clone());
 
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_extended_config(
         config.target_time_per_block(),
@@ -671,7 +671,7 @@ Do you confirm? (y/n)";
         notify_service.notifier(),
         index_service.as_ref().map(|x| x.notifier()),
         mining_manager,
-        flow_context,
+        flow_context.clone(),
         subscription_context,
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
         config.clone(),
@@ -706,13 +706,17 @@ Do you confirm? (y/n)";
     if let Some(index_service) = index_service {
         async_runtime.register(index_service)
     };
+    
     if let Some(port_mapping_extender_svc) = port_mapping_extender_svc {
         async_runtime.register(Arc::new(port_mapping_extender_svc))
     };
+    if let Some(dyndns_extender_svc) = dyndns_extender_svc {
+        async_runtime.register(Arc::new(dyndns_extender_svc));
+    }
     async_runtime.register(rpc_core_service.clone());
     if let Some(grpc_service) = grpc_service {
         async_runtime.register(grpc_service)
-    }
+    };
     async_runtime.register(p2p_service);
     async_runtime.register(consensus_monitor);
     async_runtime.register(mining_monitor);
