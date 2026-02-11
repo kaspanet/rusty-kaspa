@@ -38,9 +38,10 @@ pub trait RollupCovenant {
     /// Leaves:  [..., new_redeem_script]
     fn extract_redeem_suffix_and_concat(&mut self, redeem_script_len: i64) -> Result<&mut Self, Self::Error>;
 
-    /// Build journal preimage from alt stack and hash.
+    /// Build journal preimage from alt stack and sig_script values, then hash.
     ///
-    /// Expects: [...], alt:[prev_state_hash, prev_seq_commitment, new_app_state_hash, new_seq_commitment]
+    /// Expects: [..., exit_amount, exit_root, exit_unclaimed_count],
+    ///          alt:[prev_state_hash, prev_seq_commitment, new_app_state_hash, new_seq_commitment]
     /// Leaves:  [..., journal_hash]
     fn build_and_hash_journal(&mut self) -> Result<&mut Self, Self::Error>;
 }
@@ -112,32 +113,32 @@ impl RollupCovenant for ScriptBuilder {
     }
 
     fn build_and_hash_journal(&mut self) -> Result<&mut Self, Self::Error> {
-        // Alt stack (top→bottom): [new_seq_commitment, new_app_state_hash, prev_seq_commitment, prev_state_hash]
-        // Need preimage: prev_state_hash || prev_seq_commitment || new_app_state_hash || new_seq_commitment
+        // Stack:     [..., exit_amount, exit_root, exit_unclaimed_count]
+        // Alt stack (top→bottom): [new_seq, new_state, prev_seq, prev_state]
+        //
+        // Target preimage (176 bytes):
+        //   prev_state(32) || prev_seq(32) || new_state(32) || new_seq(32)
+        //   || exit_amount(8) || exit_root(32) || exit_unclaimed_count(8)
 
-        self.add_op(OpFromAltStack)?;
-        // Stack: [..., new_seq_commitment]
-        self.add_op(OpFromAltStack)?;
-        // Stack: [..., new_seq_commitment, new_app_state_hash]
+        // --- Concat exit fields (already in correct order) ---
+        self.add_op(OpCat)?; // [..., exit_amount, (exit_root||exit_unclaimed_count)]
+        self.add_op(OpCat)?; // [..., exit_suffix] (48 bytes)
+
+        // --- Build first 128 bytes from alt stack ---
+        self.add_op(OpFromAltStack)?; // [..., exit_suffix, new_seq]
+        self.add_op(OpFromAltStack)?; // [..., exit_suffix, new_seq, new_state]
+        self.add_op(OpSwap)?;         // [..., exit_suffix, new_state, new_seq]
+        self.add_op(OpCat)?;          // [..., exit_suffix, (new_state||new_seq)]
+        self.add_op(OpFromAltStack)?; // [..., exit_suffix, (new_state||new_seq), prev_seq]
+        self.add_op(OpFromAltStack)?; // [..., exit_suffix, (new_state||new_seq), prev_seq, prev_state]
+        self.add_op(OpSwap)?;         // [..., exit_suffix, (new_state||new_seq), prev_state, prev_seq]
+        self.add_op(OpCat)?;          // [..., exit_suffix, (new_state||new_seq), (prev_state||prev_seq)]
         self.add_op(OpSwap)?;
-        // Stack: [..., new_app_state_hash, new_seq_commitment]
-        self.add_op(OpCat)?;
-        // Stack: [..., (new_app_state_hash||new_seq_commitment)]
+        self.add_op(OpCat)?;          // [..., exit_suffix, (prev||new)] (128 bytes)
 
-        self.add_op(OpFromAltStack)?;
-        // Stack: [..., (new_app||new_seq), prev_seq_commitment]
-        self.add_op(OpFromAltStack)?;
-        // Stack: [..., (new_app||new_seq), prev_seq_commitment, prev_state_hash]
+        // --- Concat and hash ---
         self.add_op(OpSwap)?;
-        // Stack: [..., (new_app||new_seq), prev_state_hash, prev_seq_commitment]
-        self.add_op(OpCat)?;
-        // Stack: [..., (new_app||new_seq), (prev_state_hash||prev_seq_commitment)]
-
-        self.add_op(OpSwap)?;
-        self.add_op(OpCat)?;
-        // Stack: [..., (prev_state_hash||prev_seq_commitment||new_app_state_hash||new_seq_commitment)]
-
-        self.add_op(OpSHA256)
-        // Stack: [..., journal_hash]
+        self.add_op(OpCat)?;          // [..., 176-byte preimage]
+        self.add_op(OpSHA256)         // [..., journal_hash]
     }
 }
