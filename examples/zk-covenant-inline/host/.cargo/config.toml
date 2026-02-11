@@ -2,5 +2,5 @@
 CUDA_PATH = "/usr/local/cuda"
 NVCC = "/usr/local/cuda/bin/nvcc"
 
-[build]
-rustc-wrapper = ""
+#[build]
+#rustc-wrapper = ""
