@@ -1,4 +1,5 @@
 use crate::domain_to_key;
+use crate::streaming_merkle::{MerkleHashOps, StreamingMerkle};
 use alloc::vec;
 
 const DOMAIN_SEP: &[u8] = b"SeqCommitmentMerkleBranchHash";
@@ -12,6 +13,19 @@ pub fn merkle_hash(left: &[u32; 8], right: &[u32; 8], mut hasher: blake3::Hasher
     let mut out = [0u32; 8];
     bytemuck::bytes_of_mut(&mut out).copy_from_slice(hasher.finalize().as_bytes());
     out
+}
+
+/// Seq-commitment Merkle hash operations — blake3 with zero-padding.
+pub struct SeqCommitHashOps;
+
+impl MerkleHashOps for SeqCommitHashOps {
+    fn branch(left: &[u32; 8], right: &[u32; 8]) -> [u32; 8] {
+        merkle_hash(left, right, blake3::Hasher::new_keyed(&KEY))
+    }
+
+    fn empty_subtree(_level: usize) -> [u32; 8] {
+        ZERO_HASH
+    }
 }
 
 pub fn calc_merkle_root(mut hashes: impl ExactSizeIterator<Item = [u32; 8]>) -> [u32; 8] {
@@ -66,99 +80,8 @@ pub fn seq_commitment_leaf(tx_id: &[u32; 8], tx_version: u16) -> [u32; 8] {
 }
 
 /// Streaming merkle tree builder that requires no heap allocation.
-/// Works by maintaining a stack of intermediate hashes as we process leaves.
-pub struct StreamingMerkleBuilder {
-    // Stack of (level, hash) pairs. Max depth for u32::MAX leaves is 32.
-    stack: [(u32, [u32; 8]); 32],
-    stack_len: usize,
-    leaf_count: u32,
-}
-
-impl Default for StreamingMerkleBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl StreamingMerkleBuilder {
-    pub fn new() -> Self {
-        Self { stack: [(0, ZERO_HASH); 32], stack_len: 0, leaf_count: 0 }
-    }
-
-    /// Add a leaf to the merkle tree
-    pub fn add_leaf(&mut self, hash: [u32; 8]) {
-        let mut level = 0u32;
-        let mut current_hash = hash;
-
-        // Merge with existing nodes at the same level
-        while self.stack_len > 0 {
-            let (top_level, top_hash) = self.stack[self.stack_len - 1];
-            if top_level != level {
-                break;
-            }
-
-            // Pop from stack and merge
-            self.stack_len -= 1;
-            current_hash = merkle_hash(&top_hash, &current_hash, blake3::Hasher::new_keyed(&KEY));
-            level += 1;
-        }
-
-        // Push the result onto stack
-        self.stack[self.stack_len] = (level, current_hash);
-        self.stack_len += 1;
-        self.leaf_count += 1;
-    }
-
-    /// Finalize and return the merkle root
-    pub fn finalize(self) -> [u32; 8] {
-        if self.leaf_count == 0 {
-            return ZERO_HASH;
-        }
-
-        if self.leaf_count == 1 {
-            return merkle_hash(&self.stack[0].1, &ZERO_HASH, blake3::Hasher::new_keyed(&KEY));
-        }
-
-        // The stack represents a binary number where each bit position corresponds to a level.
-        // To build the final tree, we need to process from RIGHT to LEFT (high index to low),
-        // padding and merging as we go.
-        //
-        // Example: 7 elements gives stack [(2, A), (1, B), (0, C)] where:
-        // - A is at level 2 (covers 4 elements)
-        // - B is at level 1 (covers 2 elements)
-        // - C is at level 0 (covers 1 element)
-        //
-        // We build from right: C → pad to level 1 → merge with B → pad to level 2 → merge with A
-
-        let mut result_hash = ZERO_HASH;
-        let mut result_level = 0u32;
-        let mut first = true;
-
-        // Process from right to left (high index to low)
-        for i in (0..self.stack_len).rev() {
-            let (level, hash) = self.stack[i];
-
-            if first {
-                result_hash = hash;
-                result_level = level;
-                first = false;
-                continue;
-            }
-
-            // Pad result hash from its current level up to the level of the current node
-            while result_level < level {
-                result_hash = merkle_hash(&result_hash, &ZERO_HASH, blake3::Hasher::new_keyed(&KEY));
-                result_level += 1;
-            }
-
-            // Now merge: current node (left) with padded result (right)
-            result_hash = merkle_hash(&hash, &result_hash, blake3::Hasher::new_keyed(&KEY));
-            result_level += 1;
-        }
-
-        result_hash
-    }
-}
+/// Uses the generic [`StreamingMerkle`] with seq-commitment hash ops.
+pub type StreamingMerkleBuilder = StreamingMerkle<SeqCommitHashOps>;
 
 #[cfg(test)]
 mod tests {

@@ -22,6 +22,7 @@ blake2b_simd = { workspace = true, default-features = false }
 workspace = true
 
 [dev-dependencies]
+kaspa-addresses.workspace = true
 kaspa-hashes.workspace = true
 kaspa-merkle.workspace = true
 kaspa-txscript.workspace = true

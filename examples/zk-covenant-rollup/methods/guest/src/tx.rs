@@ -1,7 +1,7 @@
 use alloc::vec;
 use risc0_zkvm::serde::WordRead;
 use zk_covenant_rollup_core::{
-    action::{Action, ActionHeader, EntryAction, TransferAction, OP_ENTRY, OP_TRANSFER},
+    action::{Action, ActionHeader, EntryAction, ExitAction, TransferAction, OP_ENTRY, OP_EXIT, OP_TRANSFER},
     is_action_tx_id, payload_digest_bytes, tx_id_v1,
 };
 
@@ -92,6 +92,11 @@ fn parse_action(payload: &[u32]) -> Option<Action> {
             let entry_words = rest.first_chunk()?;
             let entry = EntryAction::from_words(*entry_words);
             Some(Action::Entry(entry))
+        }
+        OP_EXIT => {
+            let exit_words = rest.first_chunk()?;
+            let exit = ExitAction::from_words(*exit_words);
+            Some(Action::Exit(exit))
         }
         _ => None, // Unknown operation
     }

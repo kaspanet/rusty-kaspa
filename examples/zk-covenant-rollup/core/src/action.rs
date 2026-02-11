@@ -6,6 +6,7 @@
 /// Operation codes
 pub const OP_TRANSFER: u16 = 0;
 pub const OP_ENTRY: u16 = 1;
+pub const OP_EXIT: u16 = 2;
 
 /// Current action version
 pub const ACTION_VERSION: u16 = 1;
@@ -53,6 +54,7 @@ impl ActionHeader {
         match self.operation {
             OP_TRANSFER => Some(TransferAction::SIZE),
             OP_ENTRY => Some(EntryAction::SIZE),
+            OP_EXIT => Some(ExitAction::SIZE),
             _ => None,
         }
     }
@@ -164,11 +166,86 @@ impl EntryAction {
     }
 }
 
+/// Maximum destination SPK size in the exit action payload (35 bytes).
+/// Fits P2PK (34B) and P2SH (35B). Actual length is inferred from SPK content
+/// (P2PK starts with OP_DATA_32=0x20, P2SH starts with OP_BLAKE2B=0xaa).
+pub const EXIT_SPK_MAX: usize = 35;
+
+/// Word count for the SPK + padding region: 35 bytes SPK + 5 bytes zero padding = 40 bytes = 10 words.
+pub const EXIT_SPK_WORDS: usize = 10;
+
+/// Exit (withdrawal) action data (follows ActionHeader when operation == OP_EXIT)
+///
+/// Layout:
+/// - source: [u32; 8] (32 bytes) - sender L2 pubkey (authorized via prev tx output)
+/// - destination_spk: [u32; 10] (40 bytes) - L1 SPK in first 35 bytes, last 5 zero-padded
+/// - amount: u64 (8 bytes) - amount to withdraw
+///
+/// Total: 80 bytes = 20 words
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct ExitAction {
+    /// Sender L2 pubkey (authorized via prev tx output, same as TransferAction)
+    pub source: [u32; 8],
+    /// Destination L1 SPK stored as words. First 35 bytes = SPK, last 5 = zero padding.
+    pub destination_spk: [u32; EXIT_SPK_WORDS],
+    /// Amount to withdraw
+    pub amount: u64,
+}
+
+impl ExitAction {
+    /// Size in bytes
+    pub const SIZE: usize = core::mem::size_of::<Self>();
+
+    /// Size in u32 words
+    pub const WORDS: usize = Self::SIZE / 4;
+
+    /// Create a new exit action
+    pub fn new(source: [u32; 8], destination_spk: &[u8], amount: u64) -> Self {
+        assert!(destination_spk.len() <= EXIT_SPK_MAX);
+        let mut spk_words = [0u32; EXIT_SPK_WORDS];
+        let spk_bytes: &mut [u8] = bytemuck::cast_slice_mut(&mut spk_words);
+        spk_bytes[..destination_spk.len()].copy_from_slice(destination_spk);
+        Self { source, destination_spk: spk_words, amount }
+    }
+
+    /// Infer the actual SPK length from its content.
+    /// Schnorr P2PK starts with OP_DATA_32 (0x20) → 34 bytes.
+    /// ECDSA P2PK starts with OP_DATA_33 (0x21) → 35 bytes.
+    /// P2SH starts with OP_BLAKE2B (0xaa) → 35 bytes.
+    pub fn spk_len(&self) -> usize {
+        let first_byte = self.destination_spk[0] as u8;
+        if first_byte == 0x20 { 34 } else { 35 }
+    }
+
+    /// Get the actual destination SPK bytes (trimmed to inferred length)
+    pub fn destination_spk_bytes(&self) -> &[u8] {
+        let bytes: &[u8] = bytemuck::cast_slice(&self.destination_spk);
+        &bytes[..self.spk_len()]
+    }
+
+    /// Check if this exit is valid
+    pub fn is_valid(&self) -> bool {
+        self.amount > 0
+    }
+
+    /// Convert to word slice
+    pub fn as_words(&self) -> &[u32] {
+        bytemuck::cast_slice(bytemuck::bytes_of(self))
+    }
+
+    /// Convert from word slice
+    pub fn from_words(words: [u32; Self::WORDS]) -> Self {
+        bytemuck::cast(words)
+    }
+}
+
 /// Parsed action types
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Action {
     Transfer(TransferAction),
     Entry(EntryAction),
+    Exit(ExitAction),
 }
 
 impl Action {
@@ -178,6 +255,7 @@ impl Action {
         match self {
             Action::Transfer(t) => Some(t.source),
             Action::Entry(_) => None,
+            Action::Exit(e) => Some(e.source),
         }
     }
 
@@ -186,6 +264,7 @@ impl Action {
         match self {
             Action::Transfer(t) => t.is_valid(),
             Action::Entry(e) => e.is_valid(),
+            Action::Exit(e) => e.is_valid(),
         }
     }
 
@@ -204,6 +283,14 @@ impl Action {
             _ => None,
         }
     }
+
+    /// Get as exit action if it is one
+    pub fn as_exit(&self) -> Option<&ExitAction> {
+        match self {
+            Action::Exit(e) => Some(e),
+            _ => None,
+        }
+    }
 }
 
 /// Full transfer payload size: header (8 bytes) + TransferAction (72 bytes) = 80 bytes = 20 words
@@ -213,6 +300,10 @@ pub const TRANSFER_PAYLOAD_WORDS: usize = TRANSFER_PAYLOAD_SIZE / 4;
 /// Full entry payload size: header (8 bytes) + EntryAction (32 bytes) = 40 bytes = 10 words
 pub const ENTRY_PAYLOAD_SIZE: usize = ActionHeader::SIZE + EntryAction::SIZE;
 pub const ENTRY_PAYLOAD_WORDS: usize = ENTRY_PAYLOAD_SIZE / 4;
+
+/// Full exit payload size: header (8 bytes) + ExitAction (80 bytes) = 88 bytes = 22 words
+pub const EXIT_PAYLOAD_SIZE: usize = ActionHeader::SIZE + ExitAction::SIZE;
+pub const EXIT_PAYLOAD_WORDS: usize = EXIT_PAYLOAD_SIZE / 4;
 
 #[cfg(test)]
 mod tests {
@@ -318,6 +409,102 @@ mod tests {
     }
 
     #[test]
+    fn test_exit_action_size() {
+        // 32 (source) + 40 (spk words) + 8 (amount) = 80 bytes = 20 words
+        assert_eq!(ExitAction::SIZE, 80);
+        assert_eq!(ExitAction::WORDS, 20);
+    }
+
+    #[test]
+    fn test_exit_payload_size() {
+        // 8 + 80 = 88 bytes = 22 words
+        assert_eq!(EXIT_PAYLOAD_SIZE, 88);
+        assert_eq!(EXIT_PAYLOAD_WORDS, 22);
+    }
+
+    #[test]
+    fn test_exit_valid() {
+        let p2pk_spk = crate::pay_to_pubkey_spk(&[0x42; 32]);
+        let exit = ExitAction::new([1; 8], &p2pk_spk, 100);
+        assert!(exit.is_valid());
+
+        let zero_amount = ExitAction::new([1; 8], &p2pk_spk, 0);
+        assert!(!zero_amount.is_valid());
+    }
+
+    #[test]
+    fn test_exit_spk_p2pk_schnorr() {
+        let pubkey = [0x42u8; 32];
+        let p2pk_spk = crate::pay_to_pubkey_spk(&pubkey);
+        assert_eq!(p2pk_spk.len(), 34);
+
+        let exit = ExitAction::new([1; 8], &p2pk_spk, 100);
+        assert_eq!(exit.spk_len(), 34);
+        assert_eq!(exit.destination_spk_bytes(), &p2pk_spk);
+    }
+
+    #[test]
+    fn test_exit_spk_p2pk_ecdsa() {
+        // ECDSA P2PK: OP_DATA_33 (0x21) || 33-byte compressed pubkey || OP_CHECK_SIG_ECDSA (0xab)
+        let compressed_pubkey = [0x02u8; 33]; // mock compressed pubkey
+        let mut ecdsa_spk = [0u8; 35];
+        ecdsa_spk[0] = 0x21; // OP_DATA_33
+        ecdsa_spk[1..34].copy_from_slice(&compressed_pubkey);
+        ecdsa_spk[34] = 0xab; // OP_CHECK_SIG_ECDSA
+
+        let exit = ExitAction::new([1; 8], &ecdsa_spk, 300);
+        assert_eq!(exit.spk_len(), 35);
+        assert_eq!(exit.destination_spk_bytes(), &ecdsa_spk);
+    }
+
+    #[test]
+    fn test_exit_spk_p2pk_ecdsa_matches_kaspa() {
+        use kaspa_addresses::{Address, Prefix, Version};
+        let compressed_pubkey = [0x02u8; 33];
+        let addr = Address::new(Prefix::Mainnet, Version::PubKeyECDSA, &compressed_pubkey);
+        let kaspa_spk = kaspa_txscript::pay_to_address_script(&addr);
+
+        let exit = ExitAction::new([1; 8], kaspa_spk.script(), 300);
+        assert_eq!(exit.spk_len(), 35);
+        assert_eq!(exit.destination_spk_bytes(), kaspa_spk.script());
+    }
+
+    #[test]
+    fn test_exit_spk_p2sh() {
+        let script_hash = [0xAB; 32];
+        let p2sh_spk = crate::pay_to_script_hash_spk(&script_hash);
+        assert_eq!(p2sh_spk.len(), 35);
+
+        let exit = ExitAction::new([1; 8], &p2sh_spk, 200);
+        assert_eq!(exit.spk_len(), 35);
+        assert_eq!(exit.destination_spk_bytes(), &p2sh_spk);
+    }
+
+    #[test]
+    fn test_exit_roundtrip() {
+        let p2pk_spk = crate::pay_to_pubkey_spk(&[0x42; 32]);
+        let exit = ExitAction::new([0xAAAAAAAA; 8], &p2pk_spk, 999);
+        let words: [u32; ExitAction::WORDS] = bytemuck::cast(exit);
+        let restored = ExitAction::from_words(words);
+        assert_eq!(exit, restored);
+        assert_eq!(restored.destination_spk_bytes(), &p2pk_spk);
+    }
+
+    #[test]
+    fn test_exit_roundtrip_ecdsa() {
+        let mut ecdsa_spk = [0u8; 35];
+        ecdsa_spk[0] = 0x21;
+        ecdsa_spk[1..34].copy_from_slice(&[0x03; 33]);
+        ecdsa_spk[34] = 0xab;
+
+        let exit = ExitAction::new([0xBBBBBBBB; 8], &ecdsa_spk, 555);
+        let words: [u32; ExitAction::WORDS] = bytemuck::cast(exit);
+        let restored = ExitAction::from_words(words);
+        assert_eq!(exit, restored);
+        assert_eq!(restored.destination_spk_bytes(), &ecdsa_spk);
+    }
+
+    #[test]
     fn test_action_as_variants() {
         let transfer = Action::Transfer(TransferAction::new([1; 8], [2; 8], 100));
         assert!(transfer.as_transfer().is_some());
@@ -326,5 +513,11 @@ mod tests {
         let entry = Action::Entry(EntryAction::new([3; 8]));
         assert!(entry.as_transfer().is_none());
         assert!(entry.as_entry().is_some());
+
+        let p2pk_spk = crate::pay_to_pubkey_spk(&[0x42; 32]);
+        let exit = Action::Exit(ExitAction::new([4; 8], &p2pk_spk, 50));
+        assert!(exit.as_exit().is_some());
+        assert!(exit.as_transfer().is_none());
+        assert_eq!(exit.source(), Some([4; 8]));
     }
 }

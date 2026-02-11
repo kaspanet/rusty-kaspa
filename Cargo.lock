@@ -8679,6 +8679,7 @@ dependencies = [
  "blake2b_simd",
  "blake3",
  "bytemuck",
+ "kaspa-addresses",
  "kaspa-hashes",
  "kaspa-merkle",
  "kaspa-txscript",

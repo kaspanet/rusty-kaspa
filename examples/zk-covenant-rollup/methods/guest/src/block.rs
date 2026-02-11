@@ -53,6 +53,9 @@ fn process_action(stdin: &mut impl WordRead, state_root: &mut [u32; 8], action: 
     match action {
         Action::Transfer(transfer) => process_transfer(stdin, state_root, transfer),
         Action::Entry(entry) => process_entry(stdin, state_root, entry, rest_digest),
+        Action::Exit(_exit) => {
+            // TODO: process exit action (Subtask 6)
+        }
     }
 }
 
@@ -60,8 +63,9 @@ fn process_action(stdin: &mut impl WordRead, state_root: &mut [u32; 8], action: 
 fn process_transfer(stdin: &mut impl WordRead, state_root: &mut [u32; 8], transfer: TransferAction) {
     let witness = TransferWitness::read_from_stdin(stdin);
 
-    // Verify source authorization (prev tx output proves ownership)
-    if auth::verify_source(&transfer, &witness.prev_tx).is_none() {
+    // Verify source authorization (prev tx output proves ownership).
+    // Only Schnorr P2PK sources are accepted — see auth::verify_source.
+    if auth::verify_source(&transfer.source, &witness.prev_tx).is_none() {
         // Invalid authorization - action rejected but tx_id still committed
         return;
     }
