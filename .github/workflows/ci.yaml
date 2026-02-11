@@ -354,8 +354,9 @@ jobs:
         run: |
           # Run build script for musl toolchain
           source musl-toolchain/build.sh
-          # Append linker flag to handle mimalloc conflicts with libstdc++ in musl builds
-          # This allows multiple definitions to resolve the kaspa-alloc mimalloc override conflict
+          # Build other binaries first (without the allow-multiple-definition flag)
+          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-musl
+          # Build bridge with allow-multiple-definition flag to handle mimalloc conflicts with libstdc++ in musl builds
+          # This flag is only needed for kaspa-stratum-bridge due to its dual mimalloc dependency structure
           export RUSTFLAGS="$RUSTFLAGS -C link-arg=-Wl,--allow-multiple-definition"
-          # Build for musl
-          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --bin stratum-bridge --release --target x86_64-unknown-linux-musl
+          cargo --verbose build --bin stratum-bridge --release --target x86_64-unknown-linux-musl
