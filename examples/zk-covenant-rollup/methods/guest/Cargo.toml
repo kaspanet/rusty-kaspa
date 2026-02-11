@@ -1,0 +1,24 @@
+[package]
+name = "zk-covenant-rollup-guest"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+bytemuck = { version = "1.24.0", features = ["derive"]}
+risc0-zkvm = { version = "^3.0.4", default-features = false }
+
+zk-covenant-rollup-core = { path = "../../core" }
+#kaspa-consensus-core = { path = "../../../../consensus/core" }
+
+# Always optimize; building and running the guest takes much longer without optimization.
+[profile.dev]
+opt-level = 3
+
+[profile.release]
+debug = 1
+lto = true
+
+[patch.crates-io]
+sha2 = { git = "https://github.com/risc0/RustCrypto-hashes.git", package = "sha2", branch = "risczero"}

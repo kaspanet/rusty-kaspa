@@ -1,0 +1,16 @@
+[package]
+name = "zk-covenant-inline-core"
+rust-version.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+include.workspace = true
+
+[dependencies]
+bytemuck = { workspace = true, features = ["derive"]}
+sha2 = { version = "=0.10.9", default-features = false }
+
+[lints]
+workspace = true

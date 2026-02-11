@@ -1,0 +1,31 @@
+[package]
+name = "zk-covenant-inline-host"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+kaspa-consensus-core = { path = "../../../consensus/core" }
+kaspa-txscript = { path = "../../../crypto/txscript" }
+kaspa-hashes = { path = "../../../crypto/hashes" }
+
+
+borsh = { version = "1.6.0"}
+bytemuck = "1.24.0"
+faster-hex = { version = "0.10.0" }
+risc0-zkvm = { version = "3.0.4", default-features = true, features = [] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+zk-covenant-inline-methods = { path = "../methods" }
+zk-covenant-inline-core = { path = "../core" }
+zk-covenant-common = { path = "../../zk-covenant-common" }
+
+
+##uncomment for debug
+#[patch.crates-io]
+#risc0-zkp = { path = "../../../../../risc0/risc0/zkp"}
+#risc0-circuit-recursion = { path = "../../../../../risc0/risc0/circuit/recursion"}
+#risc0-core = { path = "../../../../../risc0/risc0/core"}
+#risc0-binfmt = { path = "../../../../../risc0/risc0/binfmt"}
+##risc0-groth16 = { path = "../../../../../risc0/risc0/groth16"}

@@ -149,6 +149,19 @@ pub fn transaction_v0_id_preimage(tx: &Transaction) -> Vec<u8> {
     hasher.buff
 }
 
+/// Serializes the transaction for V1 rest_digest preimage
+/// (excluding payload, signature scripts, and mass).
+pub fn transaction_v1_rest_preimage(tx: &Transaction) -> Vec<u8> {
+    assert!(tx.version >= 1);
+    let mut hasher = PreimageHasher { buff: Vec::with_capacity(transaction_estimated_serialized_size(tx) as usize) };
+    write_transaction(
+        &mut hasher,
+        tx,
+        TxEncodingFlags::EXCLUDE_PAYLOAD | TxEncodingFlags::EXCLUDE_SIGNATURE_SCRIPT | TxEncodingFlags::EXCLUDE_MASS_COMMIT,
+    );
+    hasher.buff
+}
+
 /// Precomputed hash digest for an empty payload using `PayloadDigest`.
 const ZERO_PAYLOAD_DIGEST: Hash = Hash::from_bytes([
     156, 12, 162, 172, 180, 94, 146, 255, 230, 206, 180, 174, 41, 24, 139, 53, 200, 45, 150, 118, 205, 211, 206, 6, 127, 214, 204,
