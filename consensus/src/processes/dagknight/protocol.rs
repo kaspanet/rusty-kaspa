@@ -147,9 +147,9 @@ impl<
             // Shortcut condition to avoid doing unnecessary work
             if group_map.len() == 1 {
                 // There is exactly one group, we don't rank anymore.
-                let (&curr_conflict_genesis, subgroup) = group_map.iter().next().unwrap();
+                let (_, subgroup) = group_map.iter().next().unwrap();
                 curr_subgroup = subgroup.to_vec();
-                conflict_genesis = curr_conflict_genesis;
+                conflict_genesis = self.common_chain_ancestor(subgroup);
                 continue;
             }
 
