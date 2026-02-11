@@ -28,8 +28,8 @@ use crate::{
             pruning::PruningProofDescriptor,
             reachability::StagingReachabilityStore,
             relations::StagingRelationsStore,
-            selected_chain::SelectedChainStore,
-            virtual_state::{VirtualState, VirtualStateStore},
+            //selected_chain::SelectedChainStore,
+            virtual_state::VirtualState,
         },
     },
     processes::{
@@ -40,6 +40,8 @@ use crate::{
 };
 
 use super::PruningProofManager;
+
+use crate::consensus::write_common_pruning_point_db_updates;
 
 impl PruningProofManager {
     pub fn apply_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
@@ -146,16 +148,30 @@ impl PruningProofManager {
             ghostdag_data: self.ghostdag_manager.ghostdag(&virtual_parents),
             ..VirtualState::default()
         });
-        self.virtual_stores.write().state.set(virtual_state).unwrap();
 
         let mut batch = WriteBatch::default();
-        self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
+
+        // REFACTOR: Use the common helper to apply standard pruning point DB updates
+        // Wir nutzen .unwrap(), weil ein DB-Fehler hier fatal ist (genau wie im Original-Code)
+        write_common_pruning_point_db_updates(
+            &self.virtual_stores,
+            &self.body_tips_store,
+            &self.selected_chain_store,
+            &mut batch,
+            pruning_point,
+            virtual_state,
+        )
+        .unwrap();
+
+        // Apply updates specific to the pruning proof flow (not shared with intrusive update)
         self.headers_selected_tip_store
             .write()
             .set_batch(&mut batch, SortableBlock { hash: pruning_point, blue_work: pruning_point_header.blue_work })
             .unwrap();
-        self.selected_chain_store.write().init_with_pruning_point(&mut batch, pruning_point).unwrap();
+
         self.depth_store.insert_batch(&mut batch, pruning_point, ORIGIN, ORIGIN).unwrap();
+
+        // Finalize the batch write
         self.db.write(batch).unwrap();
 
         Ok(())
