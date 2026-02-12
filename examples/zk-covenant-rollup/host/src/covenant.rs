@@ -127,18 +127,18 @@ impl RollupCovenant for ScriptBuilder {
         // --- Build first 128 bytes from alt stack ---
         self.add_op(OpFromAltStack)?; // [..., exit_suffix, new_seq]
         self.add_op(OpFromAltStack)?; // [..., exit_suffix, new_seq, new_state]
-        self.add_op(OpSwap)?;         // [..., exit_suffix, new_state, new_seq]
-        self.add_op(OpCat)?;          // [..., exit_suffix, (new_state||new_seq)]
+        self.add_op(OpSwap)?; // [..., exit_suffix, new_state, new_seq]
+        self.add_op(OpCat)?; // [..., exit_suffix, (new_state||new_seq)]
         self.add_op(OpFromAltStack)?; // [..., exit_suffix, (new_state||new_seq), prev_seq]
         self.add_op(OpFromAltStack)?; // [..., exit_suffix, (new_state||new_seq), prev_seq, prev_state]
-        self.add_op(OpSwap)?;         // [..., exit_suffix, (new_state||new_seq), prev_state, prev_seq]
-        self.add_op(OpCat)?;          // [..., exit_suffix, (new_state||new_seq), (prev_state||prev_seq)]
+        self.add_op(OpSwap)?; // [..., exit_suffix, (new_state||new_seq), prev_state, prev_seq]
+        self.add_op(OpCat)?; // [..., exit_suffix, (new_state||new_seq), (prev_state||prev_seq)]
         self.add_op(OpSwap)?;
-        self.add_op(OpCat)?;          // [..., exit_suffix, (prev||new)] (128 bytes)
+        self.add_op(OpCat)?; // [..., exit_suffix, (prev||new)] (128 bytes)
 
         // --- Concat and hash ---
         self.add_op(OpSwap)?;
-        self.add_op(OpCat)?;          // [..., 176-byte preimage]
-        self.add_op(OpSHA256)         // [..., journal_hash]
+        self.add_op(OpCat)?; // [..., 176-byte preimage]
+        self.add_op(OpSHA256) // [..., journal_hash]
     }
 }

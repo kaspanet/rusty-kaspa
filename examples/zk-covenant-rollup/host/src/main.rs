@@ -4,6 +4,7 @@ mod covenant;
 mod mock_chain;
 mod mock_tx;
 mod redeem;
+#[allow(dead_code)] // Multi-input tx helpers are used by bridge tests only.
 mod tx;
 
 use std::time::Instant;
