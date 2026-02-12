@@ -43,6 +43,7 @@ use crate::{
     },
     processes::{
         coinbase::CoinbaseManager,
+        dagknight::protocol::DagknightData,
         ghostdag::ordering::SortableBlock,
         transaction_validator::{TransactionValidator, errors::TxResult, tx_validation_in_utxo_context::TxValidationFlags},
         window::WindowManager,
@@ -668,7 +669,7 @@ impl VirtualStateProcessor {
             let candidate = if let Some(executor) = &self.dagknight_executor {
                 // TODO[DK]: extra hacky workaround. Get rid of this!
                 let curr_tips = heap.iter().map(|sb| sb.hash).collect::<Vec<_>>();
-                let candidate = executor.dagknight(&curr_tips);
+                let DagknightData { selected_parent: candidate, .. } = executor.dagknight(&curr_tips);
 
                 // Remove the selected candidate from the heap so it won't be reconsidered.
                 // BinaryHeap has no direct remove, so recreate it without the candidate.
@@ -827,7 +828,7 @@ impl VirtualStateProcessor {
     ) -> (Vec<Hash>, GhostdagData, GhostdagData) {
         let mut topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
         let mut coloring_ghostdag_data = if let Some(executor) = &self.dagknight_executor {
-            let dk_sp = executor.dagknight(&virtual_parents);
+            let DagknightData { selected_parent: dk_sp, .. } = executor.dagknight(&virtual_parents);
             self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
         } else {
             self.coloring_ghostdag_manager.ghostdag(&virtual_parents)
@@ -860,7 +861,7 @@ impl VirtualStateProcessor {
             // Recompute ghostdag data since parents changed
             topology_ghostdag_data = self.topology_ghostdag_manager.ghostdag(&virtual_parents);
             coloring_ghostdag_data = if let Some(executor) = &self.dagknight_executor {
-                let dk_sp = executor.dagknight(&virtual_parents);
+                let DagknightData { selected_parent: dk_sp, .. } = executor.dagknight(&virtual_parents);
                 self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
             } else {
                 self.coloring_ghostdag_manager.ghostdag(&virtual_parents)
@@ -1244,7 +1245,7 @@ impl VirtualStateProcessor {
         let virtual_parents = vec![new_pruning_point];
         let virtual_coloring_ghostdag_data = if let Some(executor) = &self.dagknight_executor {
             // Ensure we compute coloring GD (for blue score decisions) with the DK selected parent
-            let dk_sp = executor.dagknight(&virtual_parents);
+            let DagknightData { selected_parent: dk_sp, .. } = executor.dagknight(&virtual_parents);
             self.coloring_ghostdag_manager.incremental_coloring(&virtual_parents, dk_sp)
         } else {
             self.coloring_ghostdag_manager.ghostdag(&virtual_parents)

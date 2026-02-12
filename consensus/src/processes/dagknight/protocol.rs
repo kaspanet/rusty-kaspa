@@ -98,6 +98,12 @@ pub struct DagknightExecutor<
     pub reachability_service: MTReachabilityService<R>,
 }
 
+#[derive(Clone)]
+pub struct DagknightData {
+    pub selected_parent: Hash,               // The selected parent for this call
+    pub conflict_ordered_parents: Vec<Hash>, // The rest of the parents, ordered by conflict hierarchy (parents from latest/topmost conflicts first)
+}
+
 impl<
     C: DagknightStore + DagknightStoreReader,
     O: HeaderStoreReader + 'static,
@@ -105,7 +111,7 @@ impl<
     R: ReachabilityStoreReader + Clone,
 > DagknightExecutor<C, O, D, R>
 {
-    pub fn dagknight(&self, parents: &[Hash]) -> Hash {
+    pub fn dagknight(&self, parents: &[Hash]) -> DagknightData {
         /*
             input: a set of block parents
             output: the selected parent + incremental metadata
@@ -129,6 +135,8 @@ impl<
         // g = find LCCA
         let mut conflict_genesis = self.common_chain_ancestor(parents);
         let mut curr_subgroup = current_parents;
+        let mut conflict_ordered_parents = vec![];
+        debug!("conflict_genesis: {:#?}", conflict_genesis);
 
         while curr_subgroup.len() > 1 {
             let group_map = curr_subgroup
@@ -146,8 +154,9 @@ impl<
             }
 
             // Pick a "winner" among these subgroups
-            let winning_subgroup = {
+            let (winning_conflict_genesis, winning_subgroup) = {
                 let mut best_rank_value = None;
+                let mut best_conflict_genesis = None;
                 let mut best_subgroup = None;
 
                 // TODO[DK]: Process groups from highest blue score first to improve chances of getting the best group
@@ -169,19 +178,29 @@ impl<
                             Ordering::Less => {
                                 // Tie breaking by hash
                                 best_rank_value = Some(rank_value);
+                                best_conflict_genesis = Some(curr_conflict_genesis);
                                 best_subgroup = Some(subgroup);
                             }
                             _ => {}
                         }
                     } else {
                         best_rank_value = Some(rank_value);
+                        best_conflict_genesis = Some(curr_conflict_genesis);
                         best_subgroup = Some(subgroup);
                     }
                 }
 
                 // This will always be Some since curr_subgroup.len() > 1 and thus there is at least one subgroup
-                best_subgroup.unwrap()
+                (best_conflict_genesis.unwrap(), best_subgroup.unwrap())
             };
+
+            // Add the non-winners to the ordered parents
+            group_map.iter().for_each(|(conflict_genesis, subgroup)| {
+                // TODO[DK]: Asserting here that order of the non-winning parents within a conflict hierarchy doesn't matter
+                if conflict_genesis != winning_conflict_genesis {
+                    conflict_ordered_parents.extend(subgroup);
+                }
+            });
 
             curr_subgroup = winning_subgroup.to_vec();
             // Skip to the top-most new common chain ancestor:
@@ -189,7 +208,9 @@ impl<
         }
         assert_eq!(1, curr_subgroup.len(), "Expected dagknight to have only a single parent at the end");
 
-        curr_subgroup[0]
+        conflict_ordered_parents.reverse();
+
+        DagknightData { selected_parent: curr_subgroup[0], conflict_ordered_parents }
     }
 
     fn common_chain_ancestor(&self, parents: &[Hash]) -> Hash {
@@ -863,7 +884,7 @@ mod tests {
             // Pure GD for blue_work:
             let topology_gd_data = topology_gd_manager.ghostdag(&new_block.parents);
 
-            let selected_parent = dk_executor.dagknight(&new_block.parents);
+            let DagknightData { selected_parent, .. } = dk_executor.dagknight(&new_block.parents);
 
             // Maintain global coloring based on DK megachain selected parent:
             let gd_data = coloring_gd_manager.incremental_coloring(&new_block.parents, selected_parent);
@@ -885,7 +906,7 @@ mod tests {
         let tip_hashes = tips.iter().copied().collect_vec();
         let virtual_hash = Hash::from_u64_word(plan.blocks.last().unwrap().0 + 1);
         let virtual_block = DagBlock::new(virtual_hash, tip_hashes.clone());
-        let selected_parent = dk_executor.dagknight(&virtual_block.parents.clone());
+        let DagknightData { selected_parent, .. } = dk_executor.dagknight(&virtual_block.parents.clone());
         // let selected_parent = dk_data.selected_parent;
         let gd_data = coloring_gd_manager.incremental_coloring(&tip_hashes, selected_parent);
         println!("virtual_block: {} | sp: {}", virtual_block.hash, selected_parent);
@@ -1047,7 +1068,7 @@ mod tests {
         // We'll use a small helper closure to reduce repetition when adding a block and its header.
         let mut add_block_with_header = |id: u64, parents: Vec<Hash>| {
             let current_hash = id.into();
-            let selected_parent = dk_executor.dagknight(&parents);
+            let DagknightData { selected_parent, .. } = dk_executor.dagknight(&parents);
             builder.add_block_with_selected_parent(DagBlock::new(current_hash, parents.clone()), selected_parent);
             let gd = topology_gd_manager.ghostdag(&parents);
 
@@ -1074,7 +1095,7 @@ mod tests {
         let hash_of_2 = add_block_with_header(2, vec![genesis_hash]);
         let hash_of_3 = add_block_with_header(3, vec![genesis_hash]);
 
-        let virtual_sp = dk_executor.dagknight(&[hash_of_2, hash_of_3]);
+        let DagknightData { selected_parent: virtual_sp, .. } = dk_executor.dagknight(&[hash_of_2, hash_of_3]);
         println!("virtual sp: {}", virtual_sp);
 
         let other_tip = if hash_of_2 == virtual_sp { hash_of_3 } else { hash_of_2 };
@@ -1090,7 +1111,7 @@ mod tests {
         let hash_of_9 = add_block_with_header(9, vec![other_tip]);
         tips.push(hash_of_9);
 
-        let new_sp_virtual = dk_executor.dagknight(&tips);
+        let DagknightData { selected_parent: new_sp_virtual, .. } = dk_executor.dagknight(&tips);
         println!("new virtual sp: {}", new_sp_virtual);
 
         assert!(

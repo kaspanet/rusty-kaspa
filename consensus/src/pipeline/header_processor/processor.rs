@@ -25,7 +25,10 @@ use crate::{
     },
     params::Params,
     pipeline::deps_manager::{BlockProcessingMessage, BlockTask, BlockTaskDependencyManager, TaskId},
-    processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations::RelationsStoreExtensions},
+    processes::{
+        dagknight::protocol::DagknightData, ghostdag::ordering::SortableBlock, reachability::inquirer as reachability,
+        relations::RelationsStoreExtensions,
+    },
 };
 use crossbeam_channel::{Receiver, Sender};
 use itertools::Itertools;
@@ -346,7 +349,7 @@ impl HeaderProcessor {
     fn ghostdag(&self, ctx: &mut HeaderProcessingContext) {
         let coloring_ghostdag_data = self.coloring_ghostdag_store.get_data(ctx.hash).optional().unwrap().unwrap_or_else(|| {
             Arc::new(if let Some(executor) = &self.dagknight_executor {
-                let dk_sp = executor.dagknight(&ctx.known_direct_parents);
+                let DagknightData { selected_parent: dk_sp, .. } = executor.dagknight(&ctx.known_direct_parents);
                 self.coloring_ghostdag_manager.incremental_coloring(&ctx.known_direct_parents, dk_sp)
             } else {
                 self.coloring_ghostdag_manager.ghostdag(&ctx.known_direct_parents)
