@@ -35,8 +35,6 @@ kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-txscript-errors.workspace = true
-kaspa-utils.workspace = true
-kaspa-wasm-core.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
@@ -49,22 +47,20 @@ smallvec.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
-risc0-groth16.workspace = true
 risc0-circuit-recursion.workspace = true
 risc0-zkp.workspace = true
 risc0-core.workspace = true
 risc0-binfmt.workspace = true
-bytemuck.workspace = true
-once_cell.workspace = true
 
 [build-dependencies]
 cc = { workspace = true }
 
 [dev-dependencies]
+bytemuck.workspace = true
 criterion.workspace = true
-smallvec.workspace = true
-serde_json.workspace = true
 rayon.workspace = true
+serde_json.workspace = true
+smallvec.workspace = true
 
 [[bench]]
 name = "zk_precompiles"

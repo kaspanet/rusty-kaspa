@@ -10,7 +10,7 @@ use crate::{
     zk_precompiles::tags::ZkTag,
 };
 
-pub fn build_zk_script(elements: &[Vec<u8>]) -> ScriptBuilderResult<Vec<u8>> {
+pub fn build_zk_script(elements: &[&[u8]]) -> ScriptBuilderResult<Vec<u8>> {
     let mut builder = ScriptBuilder::new();
     for element in elements {
         builder.add_data(element)?;
@@ -65,7 +65,7 @@ pub fn load_stark_fields() -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<
 pub fn build_stark_script() -> Vec<u8> {
     let (seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
     let stark_tag = ZkTag::R0Succinct as u8;
-    build_zk_script(&[seal, claim, hashfn, control_index, control_digests, journal, image_id, vec![stark_tag]]).unwrap()
+    build_zk_script(&[&seal, &claim, &hashfn, &control_index, &control_digests, &journal, &image_id, &[stark_tag]]).unwrap()
 }
 
 pub fn build_groth_script() -> Vec<u8> {
