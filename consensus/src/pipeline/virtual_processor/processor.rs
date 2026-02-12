@@ -304,18 +304,23 @@ impl VirtualStateProcessor {
         let prev_sink = prev_state.coloring_ghostdag_data.selected_parent;
         let mut accumulated_diff = prev_state.utxo_diff.clone().to_reversed();
 
-        let (new_sink, virtual_parent_candidates) =
-            self.sink_search_algorithm(&virtual_read, &mut accumulated_diff, prev_sink, tips.clone(), finality_point, pruning_point);
-        let (virtual_parents, virtual_topology_ghostdag_data, virtual_coloring_ghostdag_data) =
-            self.pick_virtual_parents(new_sink, virtual_parent_candidates.clone(), pruning_point);
+        let (new_sink, virtual_parent_candidates) = if let Some(dk_executor) = &self.dagknight_executor {
+            self.sink_search_algorithm_v2(
+                &virtual_read,
+                &mut accumulated_diff,
+                prev_sink,
+                tips.clone(),
+                finality_point,
+                pruning_point,
+                dk_executor,
+            )
+        } else {
+            self.sink_search_algorithm(&virtual_read, &mut accumulated_diff, prev_sink, tips.clone(), finality_point, pruning_point)
+        };
 
-        // TODO[DK]: Remove once debugging ends
-        if virtual_coloring_ghostdag_data.selected_parent != new_sink {
-            println!("Coloring GD: {:#?}", virtual_coloring_ghostdag_data.selected_parent);
-            println!("Topology GD: {:#?}", virtual_topology_ghostdag_data.selected_parent);
-            println!("virtual_parent_candidates: {:#?}", virtual_parent_candidates);
-            println!("Tips: {:#?}", tips);
-        }
+        let (virtual_parents, virtual_topology_ghostdag_data, virtual_coloring_ghostdag_data) =
+            self.pick_virtual_parents(new_sink, virtual_parent_candidates, pruning_point);
+
         assert_eq!(virtual_coloring_ghostdag_data.selected_parent, new_sink);
 
         let sink_multiset = self.utxo_multisets_store.get(new_sink).unwrap();
@@ -666,21 +671,8 @@ impl VirtualStateProcessor {
         // since we check that every pushed block is not in the past of current heap
         // (and it can't be in the future by induction)
         loop {
-            let candidate = if let Some(executor) = &self.dagknight_executor {
-                // TODO[DK]: extra hacky workaround. Get rid of this!
-                let curr_tips = heap.iter().map(|sb| sb.hash).collect::<Vec<_>>();
-                let DagknightData { selected_parent: candidate, .. } = executor.dagknight(&curr_tips);
+            let candidate = heap.pop().expect("valid sink must exist").hash;
 
-                // Remove the selected candidate from the heap so it won't be reconsidered.
-                // BinaryHeap has no direct remove, so recreate it without the candidate.
-                let vec = heap.into_vec();
-                let filtered: Vec<SortableBlock> = vec.into_iter().filter(|sb| sb.hash != candidate).collect();
-                heap = BinaryHeap::from(filtered);
-
-                candidate
-            } else {
-                heap.pop().expect("valid sink must exist").hash
-            };
             if self.reachability_service.is_chain_ancestor_of(finality_point, candidate) {
                 diff_point = self.calculate_utxo_state_relatively(stores, diff, diff_point, candidate);
                 if diff_point == candidate {
@@ -710,6 +702,108 @@ impl VirtualStateProcessor {
                     && !self.reachability_service.is_dag_ancestor_of_any(parent, &mut heap.iter().map(|sb| sb.hash))
                 {
                     heap.push(SortableBlock { hash: parent, blue_work: self.topology_ghostdag_store.get_blue_work(parent).unwrap() });
+                }
+            }
+            drop(prune_guard);
+        }
+    }
+
+    /// Searches for the next valid sink block (SINK = Virtual selected parent). The search is performed
+    /// in the inclusive past of `tips`.
+    /// The provided `diff` is assumed to initially hold the UTXO diff of `prev_sink` from virtual.
+    /// The function returns with `diff` being the diff of the new sink from previous virtual.
+    /// In addition to the found sink the function also returns a queue of additional virtual
+    /// parent candidates ordered in descending blue work order.
+    pub(super) fn sink_search_algorithm_v2(
+        &self,
+        stores: &VirtualStores,
+        diff: &mut UtxoDiff,
+        prev_sink: Hash,
+        tips: Vec<Hash>,
+        finality_point: Hash,
+        pruning_point: Hash,
+        dagknight_executor: &DbDagknightExecutor,
+    ) -> (Hash, VecDeque<Hash>) {
+        // TODO (relaxed): additional tests
+
+        let mut tip_set = tips.into_iter().collect::<BlockHashSet>();
+
+        // The initial diff point is the previous sink
+        let mut diff_point = prev_sink;
+
+        // We maintain the following invariant: `heap` is an antichain.
+        // It holds at step 0 since tips are an antichain, and remains through the loop
+        // since we check that every pushed block is not in the past of current heap
+        // (and it can't be in the future by induction)
+        loop {
+            let mut sub_tips = tip_set.clone();
+
+            let (candidate, parents) = loop {
+                // Pseudo-code:
+                //
+                // candidate, conflict_ordered_parents = dk(sub_tips)
+                // let parents = pick_virtual_parents(candidate, conflict_ordered_parents)
+                // if parents != conflict_ordered_parents:
+                //    sub_tips = {candidate} + parents
+                // else:
+                //    break inner loop with (candidate, parents)
+                let DagknightData { selected_parent: inner_candidate, conflict_ordered_parents } =
+                    dagknight_executor.dagknight(&sub_tips.iter().copied().collect_vec());
+
+                debug!("Dagknight selected candidate: {}", inner_candidate);
+                debug!("Dagknight conflict ordered parents: {:#?}", conflict_ordered_parents);
+
+                let (parents, _, _) =
+                    self.pick_virtual_parents(inner_candidate, conflict_ordered_parents.clone().into(), pruning_point);
+
+                let mut parents_no_sp = BlockHashSet::from(parents.iter().copied().collect());
+                let cg_hashset = BlockHashSet::from(conflict_ordered_parents.iter().copied().collect());
+                parents_no_sp.remove(&inner_candidate);
+
+                debug!("parents_no_sp: {:#?} | cg_hashset: {:#?} | ne: {}", parents_no_sp, cg_hashset, parents_no_sp != cg_hashset);
+
+                if parents_no_sp != cg_hashset {
+                    // TODO[DK]: Cleanup
+                    debug!(
+                        "Dagknight candidate {} had its parents changed by virtual parent selection, retrying Dagknight with new tips.",
+                        inner_candidate
+                    );
+                    debug!("Dagknight conflict ordered parents: {:#?}", conflict_ordered_parents);
+                    debug!("Virtual selected parents: {:#?}", parents);
+                    sub_tips = parents.iter().copied().collect();
+                    sub_tips.insert(inner_candidate);
+                } else {
+                    break (inner_candidate, parents_no_sp.iter().copied().collect_vec());
+                }
+            };
+
+            if self.reachability_service.is_chain_ancestor_of(finality_point, candidate) {
+                diff_point = self.calculate_utxo_state_relatively(stores, diff, diff_point, candidate);
+                if diff_point == candidate {
+                    // This indicates that candidate has valid UTXO state and that `diff` represents its diff from virtual
+
+                    // All blocks with lower blue work than filtering_root are:
+                    // 1. not in its future (bcs blue work is monotonic),
+                    // 2. will be removed eventually by the bounded merge check.
+                    // Hence as an optimization we prefer removing such blocks in advance to allow valid tips to be considered.
+                    // TODO[DK]: Do we need this or can we remove it?
+                    // let filtering_root = self.depth_store.merge_depth_root(candidate).unwrap();
+                    // let filtering_blue_work = self.topology_ghostdag_store.get_blue_work(filtering_root).unwrap_or_default();
+                    return (candidate, parents.into());
+                } else {
+                    debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate)
+                }
+            } else if finality_point != pruning_point {
+                // `finality_point == pruning_point` indicates we are at IBD start hence no warning required
+                warn!("Finality Violation Detected. Block {} violates finality and is ignored from Virtual chain.", candidate);
+            }
+            // PRUNE SAFETY: see comment within [`resolve_virtual`]
+            let prune_guard = self.pruning_lock.blocking_read();
+            for parent in self.relations_service.get_parents(candidate).unwrap().iter().copied() {
+                if self.reachability_service.is_dag_ancestor_of(finality_point, parent)
+                    && !self.reachability_service.is_dag_ancestor_of_any(parent, &mut tip_set.iter().copied())
+                {
+                    tip_set.insert(parent);
                 }
             }
             drop(prune_guard);
