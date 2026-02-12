@@ -3707,6 +3707,8 @@ dependencies = [
  "kaspa-core",
  "kaspa-hashes",
  "kaspa-txscript-errors",
+ "kaspa-utils",
+ "kaspa-wasm-core",
  "log",
  "parking_lot",
  "rand 0.8.5",
