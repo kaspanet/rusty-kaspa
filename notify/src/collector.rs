@@ -159,6 +159,14 @@ mod tests {
             unimplemented!()
         }
 
+        fn apply_block_added_subscription(
+            &self,
+            _: &crate::subscription::single::BlockAddedSubscription,
+            _: &SubscriptionContext,
+        ) -> Option<Self> {
+            unimplemented!()
+        }
+
         fn apply_virtual_chain_changed_subscription(
             &self,
             _: &VirtualChainChangedSubscription,

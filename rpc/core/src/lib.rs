@@ -31,5 +31,6 @@ pub mod prelude {
 pub use api::notifications::*;
 pub use convert::utxo::*;
 pub use error::*;
+pub use kaspa_notify::payload_prefix_filter::RpcPayloadPrefixFilter;
 pub use model::script_class::*;
 pub use model::*;

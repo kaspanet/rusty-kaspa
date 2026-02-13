@@ -4,7 +4,7 @@ use super::{
     events::EventType,
     subscription::{
         Single,
-        single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
+        single::{BlockAddedSubscription, OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
     },
 };
 use std::fmt::{Debug, Display};
@@ -12,6 +12,8 @@ use std::fmt::{Debug, Display};
 /// A notification, usable throughout the full notification system via types implementing this trait
 pub trait Notification: Clone + Debug + Display + Send + Sync + 'static {
     fn apply_overall_subscription(&self, subscription: &OverallSubscription, context: &SubscriptionContext) -> Option<Self>;
+
+    fn apply_block_added_subscription(&self, subscription: &BlockAddedSubscription, context: &SubscriptionContext) -> Option<Self>;
 
     fn apply_virtual_chain_changed_subscription(
         &self,
@@ -24,6 +26,9 @@ pub trait Notification: Clone + Debug + Display + Send + Sync + 'static {
 
     fn apply_subscription(&self, subscription: &dyn Single, context: &SubscriptionContext) -> Option<Self> {
         match subscription.event_type() {
+            EventType::BlockAdded => {
+                self.apply_block_added_subscription(subscription.as_any().downcast_ref::<BlockAddedSubscription>().unwrap(), context)
+            }
             EventType::VirtualChainChanged => self.apply_virtual_chain_changed_subscription(
                 subscription.as_any().downcast_ref::<VirtualChainChangedSubscription>().unwrap(),
                 context,
@@ -87,6 +92,7 @@ pub mod test_helpers {
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
     pub struct BlockAddedNotification {
         pub data: u64,
+        pub payloads: Vec<Vec<u8>>,
     }
 
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -118,6 +124,26 @@ pub mod test_helpers {
             trace!("apply_overall_subscription: {self:?}, {subscription:?}");
             match subscription.active() {
                 true => Some(self.clone()),
+                false => None,
+            }
+        }
+
+        fn apply_block_added_subscription(&self, subscription: &BlockAddedSubscription, _: &SubscriptionContext) -> Option<Self> {
+            match subscription.active() {
+                true => {
+                    if let TestNotification::BlockAdded(payload) = self {
+                        let data = subscription.data();
+                        if !data.to_all() {
+                            let filtered: Vec<Vec<u8>> =
+                                payload.payloads.iter().filter(|p| data.contains_prefix(p)).cloned().collect();
+                            return Some(TestNotification::BlockAdded(BlockAddedNotification {
+                                data: payload.data,
+                                payloads: filtered,
+                            }));
+                        }
+                    }
+                    Some(self.clone())
+                }
                 false => None,
             }
         }

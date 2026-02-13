@@ -1,6 +1,7 @@
 use crate::imports::*;
 use convert_case::{Case, Casing};
 use kaspa_rpc_core::api::ops::RpcApiOps;
+use kaspa_utils::flattened_slice::FlattenedSliceBuilder;
 
 #[derive(Default, Handler)]
 #[help("Execute RPC commands against the connected Kaspa node")]
@@ -115,7 +116,18 @@ impl Rpc {
                 let hash = argv.remove(0);
                 let hash = RpcHash::from_hex(hash.as_str())?;
                 let include_transactions = argv.first().and_then(|x| x.parse::<bool>().ok()).unwrap_or(true);
-                let result = rpc.get_block_call(None, GetBlockRequest { hash, include_transactions }).await?;
+
+                let mut builder = FlattenedSliceBuilder::new();
+                let tx_payload_prefixes = argv.get(1);
+                if let Some(tx_payload_prefixes) = tx_payload_prefixes {
+                    for prefix in tx_payload_prefixes.split(',') {
+                        let mut prefix_bts = vec![0; prefix.len() / 2];
+                        faster_hex::hex_decode(prefix.as_bytes(), &mut prefix_bts)?;
+                        builder.add_slice(&prefix_bts);
+                    }
+                };
+                let tx_payload_prefixes = kaspa_rpc_core::RpcPayloadPrefixFilter::from(builder);
+                let result = rpc.get_block_call(None, GetBlockRequest { hash, include_transactions, tx_payload_prefixes }).await?;
                 self.println(&ctx, result);
             }
             // RpcApiOps::GetSubnetwork => {
