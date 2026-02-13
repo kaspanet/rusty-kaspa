@@ -71,61 +71,69 @@ pub fn verify_p2sh_spk(spk: &[u8], redeem_script: &[u8]) -> bool {
     }
 }
 
-/// Verify that an entry (deposit) transaction output SPK is valid.
+/// Size of the delegate/entry script in bytes.
 ///
-/// # Current behavior
+/// Layout (53 bytes):
+/// - 4 bytes:  index check (`OpTxInputIndex, Op0, OpGreaterThan, OpVerify`)
+/// - 36 bytes: covenant ID check (`Op0, OpInputCovenantId, OpData32, cov_id(32), OpEqualVerify`)
+/// - 12 bytes: domain suffix check (`Op0, Op0, OpTxInputScriptSigLen, OpDup, Op2, OpSub,
+///             OpSwap, OpTxInputScriptSigSubstr, push-2, 0x51, 0x75, OpEqualVerify`)
+/// - 1 byte:  `OpTrue`
+pub const DELEGATE_SCRIPT_LEN: usize = 53;
+
+/// Build the delegate/entry script as raw bytes (`no_std` compatible).
 ///
-/// **Stub — always returns `true`.**
+/// This is the `no_std` equivalent of `host::bridge::build_delegate_entry_script`.
+/// It produces identical bytes without requiring `ScriptBuilder`.
 ///
-/// # Intended design
+/// The script verifies:
+/// 1. Self is not at input index 0 (reserved for permission script)
+/// 2. Input 0 carries the expected `covenant_id`
+/// 3. Input 0's sig_script ends with `[0x51, 0x75]` (permission domain suffix)
+pub fn build_delegate_entry_script_bytes(covenant_id: &[u32; 8]) -> [u8; DELEGATE_SCRIPT_LEN] {
+    let mut s = [0u8; DELEGATE_SCRIPT_LEN];
+
+    // Step 1: verify self not at input 0
+    s[0] = 0xb9; // OpTxInputIndex
+    s[1] = 0x00; // Op0
+    s[2] = 0xa0; // OpGreaterThan
+    s[3] = 0x69; // OpVerify
+
+    // Step 2: check covenant ID of input 0
+    s[4] = 0x00; // Op0
+    s[5] = 0xcf; // OpInputCovenantId
+    s[6] = 0x20; // OpData32
+    s[7..39].copy_from_slice(crate::words_to_bytes_ref(covenant_id));
+    s[39] = 0x88; // OpEqualVerify
+
+    // Step 3: verify input 0's sig_script ends with permission domain suffix
+    s[40] = 0x00; // Op0 (idx for Substr)
+    s[41] = 0x00; // Op0 (idx for SigLen)
+    s[42] = 0xc9; // OpTxInputScriptSigLen
+    s[43] = 0x76; // OpDup
+    s[44] = 0x52; // Op2
+    s[45] = 0x94; // OpSub
+    s[46] = 0x7c; // OpSwap
+    s[47] = 0xbc; // OpTxInputScriptSigSubstr
+    s[48] = 0x02; // push-2-bytes
+    s[49] = 0x51; // OP_TRUE (permission suffix byte 1)
+    s[50] = 0x75; // OP_DROP (permission suffix byte 2)
+    s[51] = 0x88; // OpEqualVerify
+
+    // Final result
+    s[52] = 0x51; // OpTrue
+
+    s
+}
+
+/// Verify that an entry (deposit) transaction output SPK is a P2SH wrapping the
+/// correct delegate/entry script for the given covenant.
 ///
-/// When fully implemented, this function will verify that `spk` is a P2SH script
-/// wrapping the correct **delegate/entry redeem script** for the rollup covenant.
-/// This ensures that deposited funds are actually locked in the covenant, preventing
+/// This ensures deposited funds are actually locked in the covenant, preventing
 /// a malicious host from crediting L2 accounts for funds sent to arbitrary addresses.
-///
-/// ## Script dependency chain
-///
-/// Kaspa covenants use a layered script architecture:
-///
-/// 1. **State script** — encodes the current covenant state (e.g. the rollup state root).
-///    Changes every transition.
-/// 2. **Permission script** — defines what operations are allowed (spend, delegate, etc.).
-///    Typically contains `OpCheckCovenantVerify` and permission-specific logic.
-/// 3. **Delegate/entry script** — a specific permission script that authorizes deposits
-///    into the rollup. This is the script whose hash appears in the deposit output SPK.
-///
-/// The deposit output SPK must be: `P2SH(delegate_entry_redeem_script)` where
-/// `delegate_entry_redeem_script` is constructed from the covenant's permission rules
-/// and includes the covenant ID.
-///
-/// ## Parameters needed (future)
-///
-/// - `covenant_id`: identifies which covenant the deposit targets. The delegate/entry
-///   redeem script embeds the covenant ID so that deposits are locked to the correct
-///   covenant instance.
-/// - Possibly `image_id`: the zkVM image ID, if the entry script encodes which proof
-///   system is authorized to process deposits.
-///
-/// ## Why this matters
-///
-/// Without SPK verification, the guest trusts the host's claim about which output
-/// constitutes a deposit. A malicious host could point to an output paying an
-/// unrelated address, causing the guest to credit L2 funds that aren't actually
-/// locked in the covenant. Verifying the SPK is P2SH of the correct delegate/entry
-/// script closes this attack vector.
-///
-/// ## Signature
-///
-/// When implemented, the signature will likely change to accept additional parameters:
-/// ```ignore
-/// fn verify_entry_output_spk(spk: &[u8], covenant_id: &[u8], ...) -> bool
-/// ```
-pub fn verify_entry_output_spk(spk: &[u8]) -> bool {
-    // TODO: Verify spk is P2SH of the delegate/entry redeem script.
-    // For now, accept any SPK to avoid blocking progress on other features.
-    let _ = spk;
-    true
+pub fn verify_entry_output_spk(spk: &[u8], covenant_id: &[u32; 8]) -> bool {
+    let delegate = build_delegate_entry_script_bytes(covenant_id);
+    verify_p2sh_spk(spk, &delegate)
 }
 
 #[cfg(test)]
@@ -216,11 +224,30 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_entry_output_spk_stub() {
-        // Stub always returns true
-        assert!(verify_entry_output_spk(&[]));
-        assert!(verify_entry_output_spk(&[0u8; 35]));
-        assert!(verify_entry_output_spk(&[1, 2, 3]));
+    fn test_verify_entry_output_spk() {
+        let cov_id = [0xABu32; 8];
+        let delegate = build_delegate_entry_script_bytes(&cov_id);
+        let spk = pay_to_script_hash_spk_from_script(&delegate);
+
+        // Valid SPK for this covenant_id
+        assert!(verify_entry_output_spk(&spk, &cov_id));
+
+        // Wrong covenant_id should fail
+        let wrong_cov_id = [0xCDu32; 8];
+        assert!(!verify_entry_output_spk(&spk, &wrong_cov_id));
+
+        // Arbitrary SPK should fail
+        assert!(!verify_entry_output_spk(&[0u8; 35], &cov_id));
+        assert!(!verify_entry_output_spk(&[], &cov_id));
+    }
+
+    #[test]
+    fn test_build_delegate_entry_script_bytes_length() {
+        let cov_id = [0x42u32; 8];
+        let script = build_delegate_entry_script_bytes(&cov_id);
+        assert_eq!(script.len(), DELEGATE_SCRIPT_LEN);
+        // Verify covenant_id bytes are embedded at offset 7..39
+        assert_eq!(&script[7..39], crate::words_to_bytes_ref(&cov_id));
     }
 
     /// Test that our P2SH SPK construction matches kaspa_txscript::pay_to_script_hash_script.

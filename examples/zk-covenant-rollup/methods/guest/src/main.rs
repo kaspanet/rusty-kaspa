@@ -28,7 +28,7 @@ pub fn main() {
     let mut seq_commitment = public_input.prev_seq_commitment;
 
     for _ in 0..chain_len {
-        let block_root = block::process_block(&mut stdin, &mut state_root);
+        let block_root = block::process_block(&mut stdin, &mut state_root, &public_input.covenant_id);
         seq_commitment = calc_accepted_id_merkle_root(&seq_commitment, &block_root);
     }
 

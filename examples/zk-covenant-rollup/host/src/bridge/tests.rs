@@ -556,3 +556,27 @@ fn delegate_at_index_zero() {
     let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
     assert!(result.is_err(), "should fail: delegate at index 0 → V4 GreaterThan fail");
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  Cross-validation: raw bytes vs ScriptBuilder
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn delegate_script_cross_validation() {
+    let cov_id_bytes = [0xAB; 32];
+    let cov_id_words = zk_covenant_rollup_core::bytes_to_words(cov_id_bytes);
+    let from_builder = build_delegate_entry_script(&cov_id_bytes);
+    let from_raw = zk_covenant_rollup_core::p2sh::build_delegate_entry_script_bytes(&cov_id_words);
+    assert_eq!(from_builder, from_raw.as_slice(), "raw byte builder must match ScriptBuilder output");
+}
+
+#[test]
+fn delegate_script_cross_validation_various_ids() {
+    for seed in [0x00u8, 0x42, 0xFF, 0xDE] {
+        let cov_id_bytes = [seed; 32];
+        let cov_id_words = zk_covenant_rollup_core::bytes_to_words(cov_id_bytes);
+        let from_builder = build_delegate_entry_script(&cov_id_bytes);
+        let from_raw = zk_covenant_rollup_core::p2sh::build_delegate_entry_script_bytes(&cov_id_words);
+        assert_eq!(from_builder, from_raw.as_slice(), "mismatch for seed {:#04x}", seed);
+    }
+}

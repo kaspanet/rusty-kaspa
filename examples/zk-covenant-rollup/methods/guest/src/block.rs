@@ -7,12 +7,12 @@ use zk_covenant_rollup_core::{
 use crate::{auth, input, state, tx, witness::TransferWitness, witness::EntryWitness};
 
 /// Process all transactions in a block, updating state and building merkle tree
-pub fn process_block(stdin: &mut impl WordRead, state_root: &mut [u32; 8]) -> [u32; 8] {
+pub fn process_block(stdin: &mut impl WordRead, state_root: &mut [u32; 8], covenant_id: &[u32; 8]) -> [u32; 8] {
     let tx_count = input::read_u32(stdin);
     let mut merkle_builder = StreamingMerkleBuilder::new();
 
     for _ in 0..tx_count {
-        let (tx_id, version) = process_transaction(stdin, state_root);
+        let (tx_id, version) = process_transaction(stdin, state_root, covenant_id);
         let leaf = seq_commitment_leaf(&tx_id, version);
         merkle_builder.add_leaf(leaf);
     }
@@ -21,25 +21,25 @@ pub fn process_block(stdin: &mut impl WordRead, state_root: &mut [u32; 8]) -> [u
 }
 
 /// Process a single transaction
-fn process_transaction(stdin: &mut impl WordRead, state_root: &mut [u32; 8]) -> ([u32; 8], u16) {
+fn process_transaction(stdin: &mut impl WordRead, state_root: &mut [u32; 8], covenant_id: &[u32; 8]) -> ([u32; 8], u16) {
     let version = input::read_u32(stdin) as u16;
 
     let tx_id = match version {
         0 => tx::read_v0_tx(stdin),
-        _ => process_v1_transaction(stdin, state_root),
+        _ => process_v1_transaction(stdin, state_root, covenant_id),
     };
 
     (tx_id, version)
 }
 
 /// Process a V1+ transaction (may contain action payload)
-fn process_v1_transaction(stdin: &mut impl WordRead, state_root: &mut [u32; 8]) -> [u32; 8] {
+fn process_v1_transaction(stdin: &mut impl WordRead, state_root: &mut [u32; 8], covenant_id: &[u32; 8]) -> [u32; 8] {
     let tx_data = tx::read_v1_tx_data(stdin);
 
     // Guest determines if this is an action based on cryptographic data
     // If it's a valid action, host MUST provide witness data
     if let Some(action) = tx_data.action {
-        process_action(stdin, state_root, action, &tx_data.rest_digest);
+        process_action(stdin, state_root, action, &tx_data.rest_digest, covenant_id);
     }
 
     tx_data.tx_id
@@ -49,10 +49,16 @@ fn process_v1_transaction(stdin: &mut impl WordRead, state_root: &mut [u32; 8]) 
 ///
 /// Called only when guest has cryptographically determined this is a valid action.
 /// Host must provide witness data for verification.
-fn process_action(stdin: &mut impl WordRead, state_root: &mut [u32; 8], action: Action, rest_digest: &[u32; 8]) {
+fn process_action(
+    stdin: &mut impl WordRead,
+    state_root: &mut [u32; 8],
+    action: Action,
+    rest_digest: &[u32; 8],
+    covenant_id: &[u32; 8],
+) {
     match action {
         Action::Transfer(transfer) => process_transfer(stdin, state_root, transfer),
-        Action::Entry(entry) => process_entry(stdin, state_root, entry, rest_digest),
+        Action::Entry(entry) => process_entry(stdin, state_root, entry, rest_digest, covenant_id),
         Action::Exit(_exit) => {
             // TODO: process exit action (Subtask 6)
         }
@@ -80,7 +86,13 @@ fn process_transfer(stdin: &mut impl WordRead, state_root: &mut [u32; 8], transf
 ///
 /// Entry actions credit a destination account with the deposit amount.
 /// The amount is extracted from the transaction output (verified via rest_digest).
-fn process_entry(stdin: &mut impl WordRead, state_root: &mut [u32; 8], entry: EntryAction, rest_digest: &[u32; 8]) {
+fn process_entry(
+    stdin: &mut impl WordRead,
+    state_root: &mut [u32; 8],
+    entry: EntryAction,
+    rest_digest: &[u32; 8],
+    covenant_id: &[u32; 8],
+) {
     let witness = EntryWitness::read_from_stdin(stdin);
 
     // Verify rest_preimage matches the rest_digest committed in the tx_id.
@@ -98,9 +110,8 @@ fn process_entry(stdin: &mut impl WordRead, state_root: &mut [u32; 8], entry: En
         None => return, // Parse failure
     };
 
-    // Verify the output SPK is a valid entry (deposit) script.
-    // Currently a stub that always passes — see p2sh::verify_entry_output_spk docs.
-    if !zk_covenant_rollup_core::p2sh::verify_entry_output_spk(&output.spk) {
+    // Verify the output SPK is P2SH of the delegate/entry script for this covenant.
+    if !zk_covenant_rollup_core::p2sh::verify_entry_output_spk(&output.spk, covenant_id) {
         return;
     }
 

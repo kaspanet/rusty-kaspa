@@ -34,14 +34,15 @@ fn main() {
     println!("Initial seq_commitment: {}", prev_seq_commit_hash);
 
     // Build mock chain with transfers
-    let chain = build_mock_chain(prev_seq_commit_hash);
+    let chain = build_mock_chain(prev_seq_commit_hash, &[0xFF; 32]);
     let new_state_hash = chain.final_state_root;
     let new_seq_commitment = from_bytes(chain.final_seq_commit.as_bytes());
 
     println!("\nFinal state hash: {}", faster_hex::hex_string(bytemuck::bytes_of(&new_state_hash)));
     println!("Final seq_commitment: {}", chain.final_seq_commit);
 
-    let public_input = PublicInput { prev_state_hash, prev_seq_commitment };
+    let covenant_id = from_bytes([0xFF; 32]);
+    let public_input = PublicInput { prev_state_hash, prev_seq_commitment, covenant_id };
     let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
 
     // Exit fields — zeros until exit actions are added to the mock chain (Subtask 6)
@@ -159,20 +160,25 @@ fn verify_journal(
     exit_root: &[u32; 8],
     exit_unclaimed_count: u64,
 ) {
-    let pi_size = size_of::<PublicInput>();
-    let committed_pi: PublicInput = *bytemuck::from_bytes(&journal[..pi_size]);
-    assert_eq!(*public_input, committed_pi, "PublicInput mismatch");
-
-    let mut off = pi_size;
-    assert_eq!(&journal[off..off + 32], bytemuck::bytes_of(new_state_hash));
+    // Journal layout (208 bytes):
+    //   prev_state_hash(32) | prev_seq_commitment(32) | new_state(32) | new_seq(32)
+    //   | exit_amount(8) | exit_root(32) | exit_unclaimed_count(8) | covenant_id(32)
+    let mut off = 0;
+    assert_eq!(&journal[off..off + 32], bytemuck::bytes_of(&public_input.prev_state_hash), "prev_state_hash mismatch");
     off += 32;
-    assert_eq!(&journal[off..off + 32], bytemuck::bytes_of(new_seq_commitment));
+    assert_eq!(&journal[off..off + 32], bytemuck::bytes_of(&public_input.prev_seq_commitment), "prev_seq_commitment mismatch");
     off += 32;
-    assert_eq!(&journal[off..off + 8], &exit_amount.to_le_bytes());
+    assert_eq!(&journal[off..off + 32], bytemuck::bytes_of(new_state_hash), "new_state_hash mismatch");
+    off += 32;
+    assert_eq!(&journal[off..off + 32], bytemuck::bytes_of(new_seq_commitment), "new_seq_commitment mismatch");
+    off += 32;
+    assert_eq!(&journal[off..off + 8], &exit_amount.to_le_bytes(), "exit_amount mismatch");
     off += 8;
-    assert_eq!(&journal[off..off + 32], bytemuck::bytes_of(exit_root));
+    assert_eq!(&journal[off..off + 32], bytemuck::bytes_of(exit_root), "exit_root mismatch");
     off += 32;
-    assert_eq!(&journal[off..off + 8], &exit_unclaimed_count.to_le_bytes());
+    assert_eq!(&journal[off..off + 8], &exit_unclaimed_count.to_le_bytes(), "exit_unclaimed_count mismatch");
+    off += 8;
+    assert_eq!(&journal[off..off + 32], bytemuck::bytes_of(&public_input.covenant_id), "covenant_id mismatch");
 }
 
 fn verify_onchain_succinct(

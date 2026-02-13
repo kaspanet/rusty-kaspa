@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutput};
 use kaspa_hashes::{Hash, SeqCommitmentMerkleBranchHash};
+use kaspa_txscript::pay_to_script_hash_script;
 use kaspa_txscript::seq_commit_accessor::SeqCommitAccessor;
 use zk_covenant_rollup_core::{
     pay_to_pubkey_spk,
@@ -9,6 +10,8 @@ use zk_covenant_rollup_core::{
     smt::Smt,
     state::{AccountWitness, StateRoot},
 };
+
+use crate::bridge::build_delegate_entry_script;
 
 use crate::mock_tx::{
     create_entry_tx, create_prev_tx, create_transfer_tx, create_unknown_action_tx, create_v0_tx, create_v1_non_action_tx,
@@ -114,7 +117,7 @@ pub struct MockChain {
 }
 
 /// Build a mock chain with account-based transfers
-pub fn build_mock_chain(initial_seq_commit: Hash) -> MockChain {
+pub fn build_mock_chain(initial_seq_commit: Hash, covenant_id_bytes: &[u8; 32]) -> MockChain {
     // Initialize accounts
     let mut smt = Smt::new();
     let mut balances: HashMap<AccountName, u64> = HashMap::new();
@@ -190,11 +193,10 @@ pub fn build_mock_chain(initial_seq_commit: Hash) -> MockChain {
                 AccountWitness::new([0u32; 8], 0, dest_proof)
             };
 
-            // The deposit output: value=deposit_amount, SPK is arbitrary (not checked by guest for entries)
-            let outputs = vec![TransactionOutput::new(
-                deposit_amount,
-                ScriptPublicKey::new(0, pay_to_pubkey_spk(&AccountName::Eve.pubkey_bytes()).to_vec().into()),
-            )];
+            // The deposit output: value=deposit_amount, SPK = P2SH(delegate_entry_script)
+            let delegate = build_delegate_entry_script(covenant_id_bytes);
+            let deposit_spk = pay_to_script_hash_script(&delegate);
+            let outputs = vec![TransactionOutput::new(deposit_amount, deposit_spk)];
 
             let entry_tx = create_entry_tx(eve_pk, outputs, dest_witness);
             txs.push(entry_tx);
@@ -221,10 +223,9 @@ pub fn build_mock_chain(initial_seq_commit: Hash) -> MockChain {
             let dest_proof = smt.prove(&eve_pk);
             let dest_witness = AccountWitness::new(eve_pk, eve_balance, dest_proof);
 
-            let outputs = vec![TransactionOutput::new(
-                deposit_amount,
-                ScriptPublicKey::new(0, pay_to_pubkey_spk(&AccountName::Eve.pubkey_bytes()).to_vec().into()),
-            )];
+            let delegate = build_delegate_entry_script(covenant_id_bytes);
+            let deposit_spk = pay_to_script_hash_script(&delegate);
+            let outputs = vec![TransactionOutput::new(deposit_amount, deposit_spk)];
 
             let entry_tx = create_entry_tx(eve_pk, outputs, dest_witness);
             txs.push(entry_tx);

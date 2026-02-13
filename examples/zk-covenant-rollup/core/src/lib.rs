@@ -77,8 +77,8 @@ pub use action::{
 };
 pub use p2pk::{P2PK_SPK_SIZE, extract_pubkey_from_spk, is_p2pk_spk, pay_to_pubkey_spk, verify_p2pk_spk};
 pub use p2sh::{
-    P2SH_SPK_SIZE, blake2b_script_hash, extract_script_hash, is_p2sh_spk, pay_to_script_hash_spk, pay_to_script_hash_spk_from_script,
-    verify_entry_output_spk, verify_p2sh_spk,
+    DELEGATE_SCRIPT_LEN, P2SH_SPK_SIZE, blake2b_script_hash, build_delegate_entry_script_bytes, extract_script_hash, is_p2sh_spk,
+    pay_to_script_hash_spk, pay_to_script_hash_spk_from_script, verify_entry_output_spk, verify_p2sh_spk,
 };
 pub use permission_tree::{
     PERM_MAX_DEPTH, PermProof, StreamingPermTreeBuilder, compute_permission_root, perm_branch_hash, perm_empty_leaf_hash,
@@ -129,6 +129,8 @@ pub struct PublicInput {
     pub prev_state_hash: [u32; 8],
 
     pub prev_seq_commitment: [u32; 8],
+
+    pub covenant_id: [u32; 8],
 }
 
 impl PublicInput {

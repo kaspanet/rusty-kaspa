@@ -1,6 +1,6 @@
 use kaspa_txscript::opcodes::codes::{
-    Op0, OpAdd, OpCat, OpChainblockSeqCommit, OpData32, OpDrop, OpDup, OpFromAltStack, OpSHA256, OpSwap, OpToAltStack, OpTxInputIndex,
-    OpTxInputScriptSigLen, OpTxInputScriptSigSubstr,
+    Op0, OpAdd, OpCat, OpChainblockSeqCommit, OpData32, OpDrop, OpDup, OpFromAltStack, OpInputCovenantId, OpSHA256, OpSwap,
+    OpToAltStack, OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr,
 };
 use kaspa_txscript::script_builder::ScriptBuilder;
 
@@ -116,9 +116,10 @@ impl RollupCovenant for ScriptBuilder {
         // Stack:     [..., exit_amount, exit_root, exit_unclaimed_count]
         // Alt stack (top→bottom): [new_seq, new_state, prev_seq, prev_state]
         //
-        // Target preimage (176 bytes):
+        // Target preimage (208 bytes):
         //   prev_state(32) || prev_seq(32) || new_state(32) || new_seq(32)
         //   || exit_amount(8) || exit_root(32) || exit_unclaimed_count(8)
+        //   || covenant_id(32)
 
         // --- Concat exit fields (already in correct order) ---
         self.add_op(OpCat)?; // [..., exit_amount, (exit_root||exit_unclaimed_count)]
@@ -139,6 +140,11 @@ impl RollupCovenant for ScriptBuilder {
         // --- Concat and hash ---
         self.add_op(OpSwap)?;
         self.add_op(OpCat)?; // [..., 176-byte preimage]
+
+        // --- Append covenant_id from introspection ---
+        self.add_op(OpTxInputIndex)?; // [..., 176-byte preimage, own_input_idx]
+        self.add_op(OpInputCovenantId)?; // [..., 176-byte preimage, covenant_id(32)]
+        self.add_op(OpCat)?; // [..., 208-byte preimage]
         self.add_op(OpSHA256) // [..., journal_hash]
     }
 }
