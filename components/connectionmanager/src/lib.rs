@@ -1,3 +1,6 @@
+mod eviction;
+use crate::eviction::{EvictionIterExt, constants::RETAIN_RATIO, eviction_iter_from_peers};
+
 use std::{
     cmp::min,
     collections::{HashMap, HashSet},
@@ -240,11 +243,31 @@ impl ConnectionManager {
         let active_inbound = peer_by_address.values().filter(|peer| !peer.is_outbound()).collect_vec();
         let active_inbound_len = active_inbound.len();
         if self.inbound_limit >= active_inbound_len {
+            debug!(
+                "Connection manager: has {} incoming P2P connections, inbound limit is {}, keeping new peers..",
+                active_inbound_len, self.inbound_limit
+            );
             return;
         }
 
-        let mut futures = Vec::with_capacity(active_inbound_len - self.inbound_limit);
-        for peer in active_inbound.choose_multiple(&mut thread_rng(), active_inbound_len - self.inbound_limit) {
+        let peer_overflow_amount = active_inbound_len - self.inbound_limit;
+
+        let mut futures = Vec::with_capacity(peer_overflow_amount);
+
+        // the following peer selection strategy is designed to ensure that an eclipse attacker must outperform
+        // the best performing peers in any independent metric in order to perform a total eclipse.
+        // while keeping a bias to disconnect from newer peers, and those with concentrated prefix buckets.
+        for peer in eviction_iter_from_peers(&active_inbound)
+            .retain_lowest_rank_peers(
+                // We retain a number of peers proportional to the inbound limit.
+                (self.inbound_limit as f64 * RETAIN_RATIO).floor() as usize,
+            )
+            .evict_by_highest_none_latency_rank_weighted(
+                // then we select the overflowing amount from the remaining peers,
+                peer_overflow_amount,
+            )
+            .iterate_peers()
+        {
             debug!("Disconnecting from {} because we're above the inbound limit", peer.net_address());
             futures.push(self.p2p_adaptor.terminate(peer.key()));
         }

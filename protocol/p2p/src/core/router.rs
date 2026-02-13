@@ -102,6 +102,15 @@ struct RouterMutableState {
 
     /// Duration of the last ping to this peer
     last_ping_duration: u64,
+
+    /// Time of the last block transfer
+    /// This corresponds to the last block transferred, even if it is header only, but not the last Block Inv message.
+    /// It also tracks Block Bodies and Block Headers transferred over IBD, excluding trusted blocks used to build the pruning proof.
+    last_block_transfer: Option<Instant>,
+
+    /// Time of the last transaction transfer
+    /// This corresponds to the last transaction(s) transferred, not the last Transaction Inv message.
+    last_tx_transfer: Option<Instant>,
 }
 
 impl RouterMutableState {
@@ -162,6 +171,8 @@ impl From<&Router> for Peer {
             router.connection_started,
             router.properties(),
             router.last_ping_duration(),
+            router.last_block_transfer(),
+            router.last_tx_transfer(),
         )
     }
 }
@@ -290,8 +301,24 @@ impl Router {
         self.mutable_state.lock().last_ping_duration = last_ping_duration;
     }
 
+    pub fn set_last_block_transfer(&self, last_block_transfer: Instant) {
+        self.mutable_state.lock().last_block_transfer = Some(last_block_transfer);
+    }
+
+    pub fn set_last_tx_transfer(&self, last_tx_transfer: Instant) {
+        self.mutable_state.lock().last_tx_transfer = Some(last_tx_transfer);
+    }
+
     pub fn last_ping_duration(&self) -> u64 {
         self.mutable_state.lock().last_ping_duration
+    }
+
+    pub fn last_block_transfer(&self) -> Option<Instant> {
+        self.mutable_state.lock().last_block_transfer
+    }
+
+    pub fn last_tx_transfer(&self) -> Option<Instant> {
+        self.mutable_state.lock().last_tx_transfer
     }
 
     pub fn incoming_flow_baseline_channel_size() -> usize {

@@ -22,5 +22,10 @@ parking_lot.workspace = true
 rand.workspace = true
 tokio.workspace = true
 
+[dev-dependencies]
+rv.workspace = true
+uuid.workspace = true
+
+
 [lints]
 workspace = true

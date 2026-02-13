@@ -446,8 +446,7 @@ mod address_store_with_cache {
                 .iter()
                 .filter(|(addr_key, _)| !exceptions.contains(addr_key))
                 .map(|(_, e)| {
-                    let count = prefix_counter.entry(e.address.prefix_bucket()).or_insert(0);
-                    *count += 1;
+                    *prefix_counter.entry(e.address.prefix_bucket()).or_insert(0) += 1;
                     (64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - e.connection_failed_count) as f64), e.address)
                 })
                 .unzip();

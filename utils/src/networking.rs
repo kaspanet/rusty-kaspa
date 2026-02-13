@@ -39,34 +39,62 @@ const TS_IP_ADDRESS: &'static str = r#"
 pub struct PrefixBucket(u64);
 
 impl PrefixBucket {
+    #[inline]
+    /// get ip prefix encoded as u64 value
     pub fn as_u64(&self) -> u64 {
         self.0
     }
 }
 
-impl From<&IpAddress> for PrefixBucket {
-    fn from(ip_address: &IpAddress) -> Self {
-        match ip_address.0 {
-            IpAddr::V4(ipv4) => {
-                let prefix_bytes = ipv4.octets();
-                Self(u64::from_be_bytes([0u8, 0u8, 0u8, 0u8, 0u8, 0u8, prefix_bytes[0], prefix_bytes[1]]))
-            }
+impl From<Ipv4Addr> for PrefixBucket {
+    #[inline]
+    fn from(ipv4: Ipv4Addr) -> Self {
+        Self(u64::from_be_bytes([0u8, 0u8, 0u8, 0u8, 0u8, 0u8, ipv4.octets()[0], ipv4.octets()[1]]))
+    }
+}
+
+impl From<Ipv6Addr> for PrefixBucket {
+    #[inline]
+    fn from(ipv6: Ipv6Addr) -> Self {
+        // ipv6 prefix is the first 8 octets, hostnetwork + subnet
+        Self(u64::from_be_bytes(ipv6.octets().as_slice()[..8].try_into().expect("Slice with incorrect length")))
+    }
+}
+
+impl From<IpAddr> for PrefixBucket {
+    #[inline]
+    fn from(ip: IpAddr) -> Self {
+        match ip {
+            IpAddr::V4(ipv4) => Self::from(ipv4),
             IpAddr::V6(ipv6) => {
                 if let Some(ipv4) = ipv6.to_ipv4() {
-                    let prefix_bytes = ipv4.octets();
-                    Self(u64::from_be_bytes([0u8, 0u8, 0u8, 0u8, 0u8, 0u8, prefix_bytes[0], prefix_bytes[1]]))
+                    Self::from(ipv4)
                 } else {
-                    // Else use first 8 bytes (routing prefix + subnetwork id) of ipv6
-                    Self(u64::from_be_bytes(ipv6.octets().as_slice()[..8].try_into().expect("Slice with incorrect length")))
+                    Self::from(ipv6)
                 }
             }
         }
     }
 }
 
-impl From<&NetAddress> for PrefixBucket {
-    fn from(net_address: &NetAddress) -> Self {
-        Self::from(&net_address.ip)
+impl From<IpAddress> for PrefixBucket {
+    #[inline]
+    fn from(ip_address: IpAddress) -> Self {
+        Self::from(ip_address.0)
+    }
+}
+
+impl From<NetAddress> for PrefixBucket {
+    #[inline]
+    fn from(net_address: NetAddress) -> Self {
+        Self::from(net_address.ip)
+    }
+}
+
+impl From<SocketAddr> for PrefixBucket {
+    #[inline]
+    fn from(socket_addr: SocketAddr) -> Self {
+        Self::from(socket_addr.ip())
     }
 }
 
@@ -125,27 +153,32 @@ impl IpAddress {
         true
     }
 
+    #[inline]
     pub fn prefix_bucket(&self) -> PrefixBucket {
-        PrefixBucket::from(self)
+        PrefixBucket::from(self.0)
     }
 }
 
 impl From<IpAddr> for IpAddress {
+    #[inline]
     fn from(ip: IpAddr) -> Self {
         Self(ip)
     }
 }
 impl From<Ipv4Addr> for IpAddress {
+    #[inline]
     fn from(value: Ipv4Addr) -> Self {
         Self(value.into())
     }
 }
 impl From<Ipv6Addr> for IpAddress {
+    #[inline]
     fn from(value: Ipv6Addr) -> Self {
         Self(value.into())
     }
 }
 impl From<IpAddress> for IpAddr {
+    #[inline]
     fn from(value: IpAddress) -> Self {
         value.0
     }
@@ -231,7 +264,7 @@ impl NetAddress {
     }
 
     pub fn prefix_bucket(&self) -> PrefixBucket {
-        PrefixBucket::from(self)
+        PrefixBucket::from(self.ip)
     }
 }
 
