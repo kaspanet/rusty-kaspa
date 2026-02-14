@@ -198,6 +198,43 @@ impl Inner {
         *self.notifier.lock().unwrap() = Some(notifier.clone());
         Ok(notifier)
     }
+
+    /// Initiates cleanup of resources without blocking. Called from Drop.
+    ///
+    /// This method performs best-effort cleanup when the client is dropped
+    /// while still connected. For guaranteed cleanup, call
+    /// [`KaspaRpcClient::disconnect()`] before dropping.
+    fn initiate_cleanup(&self) {
+        // Skip if services are already stopped
+        if !self.background_services_running.load(Ordering::SeqCst) {
+            return;
+        }
+
+        log_warn!(
+            "KaspaRpcClient dropped while still connected. \
+             Call disconnect() before dropping for clean shutdown."
+        );
+
+        // Close notification channels synchronously (safe, non-blocking)
+        self.notification_relay_channel.sender.close();
+        if let Ok(channel) = self.notification_intake_channel.lock() {
+            channel.sender.close();
+        }
+
+        // Spawn fire-and-forget cleanup task for async operations
+        let rpc_client = self.rpc_client.clone();
+        let service_ctl = self.service_ctl.clone();
+        let background_services_running = self.background_services_running.clone();
+
+        spawn(async move {
+            // Signal background service to stop
+            let _ = service_ctl.signal(()).await;
+            // Shutdown the underlying RPC client connection
+            let _ = rpc_client.shutdown().await;
+            // Mark services as stopped
+            background_services_running.store(false, Ordering::SeqCst);
+        });
+    }
 }
 
 impl Debug for Inner {
@@ -207,6 +244,12 @@ impl Debug for Inner {
             // .field("notification_channel", &self.notification_channel)
             .field("encoding", &self.encoding)
             .finish()
+    }
+}
+
+impl Drop for Inner {
+    fn drop(&mut self) {
+        self.initiate_cleanup();
     }
 }
 
@@ -249,6 +292,25 @@ impl RpcResolver for Inner {
 const WRPC_CLIENT: &str = "wrpc-client";
 
 /// # [`KaspaRpcClient`] connects to Kaspa wRPC endpoint via binary Borsh or JSON protocols.
+///
+/// ## Resource Management
+///
+/// `KaspaRpcClient` manages background tasks and network connections.
+/// For proper cleanup, always call [`disconnect()`](Self::disconnect) before dropping:
+///
+/// ```ignore
+/// let client = KaspaRpcClient::new(...)?;
+/// client.connect(None).await?;
+/// // ... use client ...
+/// client.disconnect().await?; // Clean shutdown
+/// // client can now be safely dropped
+/// ```
+///
+/// If the client is dropped while still connected, a warning will be logged and
+/// a best-effort background cleanup will be attempted. However, this cleanup
+/// is not guaranteed to complete if the runtime exits immediately.
+///
+/// ## Architecture
 ///
 /// RpcClient has two ways to interface with the underlying RPC subsystem:
 /// [`Interface`] that has a [`notification()`](Interface::notification)
