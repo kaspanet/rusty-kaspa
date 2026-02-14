@@ -6,7 +6,7 @@ We welcome contributions of all sizes and there are many opportunities to contri
 
 Reach out to `@Node Developers` in Discord in the [#development](https://discord.com/channels/599153230659846165/755890250643144788) channel.
 
-Follow along the R&D Telegram group [@kasparnd](https://t.me/c/kasparnd).
+Follow along the R&D Telegram group [@kasparnd](https://t.me/kasparnd).
 
 ## Quick summary
 
