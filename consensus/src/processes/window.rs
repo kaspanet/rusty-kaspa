@@ -317,6 +317,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         let mut index: u64 = 0;
 
         once(selected_parent_block)
+            // TODO[DK]: Verify which store to use here since ordering matters
             .chain(coloring_ghostdag_data.descending_mergeset_without_selected_parent(self.topology_ghostdag_store.deref()))
             .filter_map(move |block| {
                 let blue_score = self.coloring_ghostdag_store.get_blue_score(block.hash).unwrap();

@@ -336,10 +336,9 @@ impl PruningProcessor {
             let mut batch = WriteBatch::default();
             // At this point keep_relations only holds level-0 relations which is the correct filtering criteria for primary GHOSTDAG
             for kept in keep_relations.keys().copied() {
-                let Some(ghostdag) = self.ghostdag_store.get_data(kept).optional().unwrap() else {
-                    continue;
-                };
-                if ghostdag.unordered_mergeset().any(|h| !keep_relations.contains_key(&h)) {
+                if let Some(ghostdag) = self.topology_ghostdag_store.get_data(kept).optional().unwrap()
+                    && ghostdag.unordered_mergeset().any(|h| !keep_relations.contains_key(&h))
+                {
                     let mut mutable_ghostdag: ExternalGhostdagData = ghostdag.as_ref().into();
                     mutable_ghostdag.mergeset_blues.retain(|h| keep_relations.contains_key(h));
                     mutable_ghostdag.mergeset_reds.retain(|h| keep_relations.contains_key(h));
@@ -348,8 +347,22 @@ impl PruningProcessor {
                         mutable_ghostdag.selected_parent = ORIGIN;
                     }
                     counter += 1;
-                    self.ghostdag_store.update_batch(&mut batch, kept, &Arc::new(mutable_ghostdag.into())).unwrap();
-                }
+                    self.topology_ghostdag_store.update_batch(&mut batch, kept, &Arc::new(mutable_ghostdag.into())).unwrap();
+                };
+
+                if let Some(ghostdag) = self.coloring_ghostdag_store.get_data(kept).optional().unwrap()
+                    && ghostdag.unordered_mergeset().any(|h| !keep_relations.contains_key(&h))
+                {
+                    let mut mutable_ghostdag: ExternalGhostdagData = ghostdag.as_ref().into();
+                    mutable_ghostdag.mergeset_blues.retain(|h| keep_relations.contains_key(h));
+                    mutable_ghostdag.mergeset_reds.retain(|h| keep_relations.contains_key(h));
+                    mutable_ghostdag.blues_anticone_sizes.retain(|k, _| keep_relations.contains_key(k));
+                    if !keep_relations.contains_key(&mutable_ghostdag.selected_parent) {
+                        mutable_ghostdag.selected_parent = ORIGIN;
+                    }
+                    counter += 1;
+                    self.coloring_ghostdag_store.update_batch(&mut batch, kept, &Arc::new(mutable_ghostdag.into())).unwrap();
+                };
             }
             self.db.write(batch).unwrap();
             info!("Header and Block pruning: updated ghostdag data for {} blocks", counter);
@@ -513,7 +526,8 @@ impl PruningProcessor {
                         let mut staging_relations = StagingRelationsStore::new(&mut relations_write);
                         relations::delete_level_relations(MemoryWriter, &mut staging_relations, current).optional().unwrap();
                         staging_relations.commit(&mut batch).unwrap();
-                        self.ghostdag_store.delete_batch(&mut batch, current).optional().unwrap();
+                        self.topology_ghostdag_store.delete_batch(&mut batch, current).optional().unwrap();
+                        self.coloring_ghostdag_store.delete_batch(&mut batch, current).optional().unwrap();
                     }
                     // while we keep headers for keep relation blocks regardless,
                     // some of those relations blocks may accidentally have a pruning sample stored,
@@ -536,7 +550,8 @@ impl PruningProcessor {
                     relations::delete_level_relations(MemoryWriter, &mut staging_relations, current).optional().unwrap();
                     staging_relations.commit(&mut batch).unwrap();
 
-                    self.ghostdag_store.delete_batch(&mut batch, current).optional().unwrap();
+                    self.topology_ghostdag_store.delete_batch(&mut batch, current).optional().unwrap();
+                    self.coloring_ghostdag_store.delete_batch(&mut batch, current).optional().unwrap();
 
                     // Remove additional header related data
                     self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();

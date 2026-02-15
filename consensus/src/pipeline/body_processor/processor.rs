@@ -112,7 +112,7 @@ impl BlockBodyProcessor {
             _ghostdag_k: params.ghostdag_k(),
 
             statuses_store: storage.statuses_store.clone(),
-            _ghostdag_store: storage.ghostdag_store.clone(),
+            _ghostdag_store: storage.topology_ghostdag_store.clone(),
             _headers_store: storage.headers_store.clone(),
             block_transactions_store: storage.block_transactions_store.clone(),
             body_tips_store: storage.body_tips_store.clone(),

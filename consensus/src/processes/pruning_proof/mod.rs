@@ -104,7 +104,8 @@ pub struct PruningProofManager {
     pruning_samples_store: Arc<DbPruningSamplesStore>,
     _pruning_meta_stores: Arc<RwLock<PruningMetaStores>>,
 
-    ghostdag_manager: DbGhostdagManager,
+    coloring_ghostdag_manager: DbGhostdagManager,
+    topology_ghostdag_manager: DbGhostdagManager,
     traversal_manager: DbDagTraversalManager,
     window_manager: DbWindowManager,
     parents_manager: DbParentsManager,
@@ -129,7 +130,8 @@ impl PruningProofManager {
         storage: &Arc<ConsensusStorage>,
         parents_manager: DbParentsManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
-        ghostdag_manager: DbGhostdagManager,
+        coloring_ghostdag_manager: DbGhostdagManager,
+        topology_ghostdag_manager: DbGhostdagManager,
         traversal_manager: DbDagTraversalManager,
         window_manager: DbWindowManager,
         max_block_level: BlockLevel,
@@ -146,7 +148,7 @@ impl PruningProofManager {
             reachability_store: storage.reachability_store.clone(),
             reachability_relations_store: storage.reachability_relations_store.clone(),
             reachability_service,
-            topology_ghostdag_store: storage.ghostdag_store.clone(),
+            topology_ghostdag_store: storage.topology_ghostdag_store.clone(),
             coloring_ghostdag_store: storage.coloring_ghostdag_store.clone(),
             relations_store: storage.relations_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
@@ -159,7 +161,8 @@ impl PruningProofManager {
             depth_store: storage.depth_store.clone(),
             pruning_samples_store: storage.pruning_samples_store.clone(),
 
-            ghostdag_manager,
+            coloring_ghostdag_manager,
+            topology_ghostdag_manager,
             traversal_manager,
             window_manager,
             parents_manager,
@@ -257,7 +260,7 @@ impl PruningProofManager {
             .traversal_manager
             .anticone(pruning_point, virtual_parents, None)
             .expect("no error is expected when max_traversal_allowed is None");
-        let mut anticone = self.ghostdag_manager.sort_blocks(anticone);
+        let mut anticone = self.coloring_ghostdag_manager.sort_blocks(anticone);
         anticone.insert(0, pruning_point);
 
         let mut daa_window_blocks = BlockHashMap::new();
@@ -268,15 +271,16 @@ impl PruningProofManager {
         // PRUNE SAFETY: called either via consensus under the prune guard or by the pruning processor (hence no pruning in parallel)
 
         for anticone_block in anticone.iter().copied() {
-            let ghostdag = self.coloring_ghostdag_store.get_data(anticone_block).unwrap();
-            let window = self.window_manager.block_window(&ghostdag, WindowType::DifficultyWindow).unwrap();
-            let cover = self.window_manager.consecutive_cover_for_window(ghostdag, &window);
+            let coloring_ghostdag = self.coloring_ghostdag_store.get_data(anticone_block).unwrap();
+            let window = self.window_manager.block_window(&coloring_ghostdag, WindowType::DifficultyWindow).unwrap();
+            let cover = self.window_manager.consecutive_cover_for_window(coloring_ghostdag, &window);
 
             for hash in cover {
                 if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {
                     e.insert(TrustedHeader {
                         header: self.headers_store.get_header(hash).unwrap(),
-                        ghostdag: (&*self.coloring_ghostdag_store.get_data(hash).unwrap()).into(),
+                        coloring_ghostdag: (&*self.coloring_ghostdag_store.get_data(hash).unwrap()).into(),
+                        topology_ghostdag: (&*self.topology_ghostdag_store.get_data(hash).unwrap()).into(),
                     });
                 }
             }
@@ -284,8 +288,9 @@ impl PruningProofManager {
             let ghostdag_chain = self.get_ghostdag_chain_k_depth(anticone_block, ghostdag_k);
             for hash in ghostdag_chain {
                 if let Entry::Vacant(e) = ghostdag_blocks.entry(hash) {
-                    let ghostdag = self.coloring_ghostdag_store.get_data(hash).unwrap();
-                    e.insert((&*ghostdag).into());
+                    let coloring_ghostdag = self.coloring_ghostdag_store.get_data(hash).unwrap();
+                    let topology_ghostdag = self.topology_ghostdag_store.get_data(hash).unwrap();
+                    e.insert(((&*coloring_ghostdag).into(), (&*topology_ghostdag).into()));
 
                     // We fill `ghostdag_blocks` only for kaspad-go legacy reasons, but the real set we
                     // send is `daa_window_blocks` which represents the full trusted sub-DAG in the antifuture
@@ -293,7 +298,8 @@ impl PruningProofManager {
                     if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {
                         e.insert(TrustedHeader {
                             header: self.headers_store.get_header(hash).unwrap(),
-                            ghostdag: (&*ghostdag).into(),
+                            coloring_ghostdag: (&*coloring_ghostdag).into(),
+                            topology_ghostdag: (&*topology_ghostdag).into(),
                         });
                     }
                 }
@@ -316,8 +322,9 @@ impl PruningProofManager {
                 if header.blue_work < min_blue_work {
                     continue;
                 }
-                let ghostdag = (&*self.coloring_ghostdag_store.get_data(current).unwrap()).into();
-                e.insert(TrustedHeader { header, ghostdag });
+                let coloring_ghostdag = (&*self.coloring_ghostdag_store.get_data(current).unwrap()).into();
+                let topology_ghostdag = (&*self.topology_ghostdag_store.get_data(current).unwrap()).into();
+                e.insert(TrustedHeader { header, coloring_ghostdag, topology_ghostdag });
             }
 
             // The relation store signifies precisely the node's contiguous Dag segment -
@@ -333,7 +340,14 @@ impl PruningProofManager {
         PruningPointTrustedData {
             anticone,
             daa_window_blocks: daa_window_blocks.into_values().collect_vec(),
-            ghostdag_blocks: ghostdag_blocks.into_iter().map(|(hash, ghostdag)| TrustedGhostdagData { hash, ghostdag }).collect_vec(),
+            ghostdag_blocks: ghostdag_blocks
+                .into_iter()
+                .map(|(hash, (coloring_ghostdag, topology_ghostdag))| TrustedGhostdagData {
+                    hash,
+                    coloring_ghostdag,
+                    topology_ghostdag,
+                })
+                .collect_vec(),
         }
     }
 

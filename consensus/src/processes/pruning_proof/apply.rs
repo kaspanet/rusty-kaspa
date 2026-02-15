@@ -57,11 +57,11 @@ impl PruningProofManager {
             .collect_vec();
 
         let mut expanded_proof = proof;
-        let mut trusted_gd_map: BlockHashMap<GhostdagData> = BlockHashMap::new();
+        let mut trusted_gd_map: BlockHashMap<(GhostdagData, GhostdagData)> = BlockHashMap::new();
         // This loop expands the proof with the headers of the trusted set
         // and creates a hash to ghostdag data map of the trusted set
         for tb in trusted_set.iter() {
-            trusted_gd_map.insert(tb.block.hash(), tb.ghostdag.clone().into());
+            trusted_gd_map.insert(tb.block.hash(), (tb.coloring_ghostdag.clone().into(), tb.topology_ghostdag.clone().into()));
             let tb_block_level = calc_block_level(&tb.block.header, self.max_block_level);
 
             (0..=tb_block_level).for_each(|current_proof_level| {
@@ -119,20 +119,30 @@ impl PruningProofManager {
             let gd = if let Some(gd) = trusted_gd_map.get(&header.hash) {
                 gd.clone()
             } else {
-                let calculated_gd = self.ghostdag_manager.ghostdag(&parents);
+                let calculated_coloring_gd = self.coloring_ghostdag_manager.ghostdag(&parents);
+                let calculated_topology_gd = self.topology_ghostdag_manager.ghostdag(&parents);
                 // Override the ghostdag data with the real blue score and blue work
-                GhostdagData {
-                    blue_score: header.blue_score,
-                    blue_work: header.blue_work,
-                    selected_parent: calculated_gd.selected_parent,
-                    mergeset_blues: calculated_gd.mergeset_blues,
-                    mergeset_reds: calculated_gd.mergeset_reds,
-                    blues_anticone_sizes: calculated_gd.blues_anticone_sizes,
-                }
+                (
+                    GhostdagData {
+                        blue_score: header.blue_score,
+                        blue_work: header.blue_work,
+                        selected_parent: calculated_coloring_gd.selected_parent,
+                        mergeset_blues: calculated_coloring_gd.mergeset_blues,
+                        mergeset_reds: calculated_coloring_gd.mergeset_reds,
+                        blues_anticone_sizes: calculated_coloring_gd.blues_anticone_sizes,
+                    },
+                    GhostdagData {
+                        blue_score: header.blue_score,
+                        blue_work: header.blue_work,
+                        selected_parent: calculated_topology_gd.selected_parent,
+                        mergeset_blues: calculated_topology_gd.mergeset_blues,
+                        mergeset_reds: calculated_topology_gd.mergeset_reds,
+                        blues_anticone_sizes: calculated_topology_gd.blues_anticone_sizes,
+                    },
+                )
             };
-            let arc_gd = Arc::new(gd);
-            self.coloring_ghostdag_store.insert(header.hash, arc_gd.clone()).unwrap();
-            self.topology_ghostdag_store.insert(header.hash, arc_gd).unwrap();
+            self.coloring_ghostdag_store.insert(header.hash, Arc::new(gd.0)).unwrap();
+            self.topology_ghostdag_store.insert(header.hash, Arc::new(gd.1)).unwrap();
 
             ancestors.insert(header.hash);
         }
@@ -144,7 +154,7 @@ impl PruningProofManager {
         // updating of the utxoset is done separately as it requires downloading the new utxoset in its entirety.
         let virtual_parents = vec![pruning_point];
         // TODO[DK]: Check if I need a different coloring GD for here too
-        let gd_data = self.ghostdag_manager.ghostdag(&virtual_parents);
+        let gd_data = self.coloring_ghostdag_manager.ghostdag(&virtual_parents);
         let virtual_state = Arc::new(VirtualState {
             parents: virtual_parents.clone(),
             topology_ghostdag_data: gd_data.clone(),

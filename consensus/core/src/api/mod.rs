@@ -47,6 +47,11 @@ pub struct BlockValidationFutures {
     pub virtual_state_task: BlockValidationFuture,
 }
 
+pub struct ExternalGhostdagDataForHash {
+    pub coloring_ghostdag: ExternalGhostdagData,
+    pub topology_ghostdag: ExternalGhostdagData,
+}
+
 /// Abstracts the consensus external API
 #[allow(unused_variables)]
 pub trait ConsensusApi: Send + Sync {
@@ -323,7 +328,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagData> {
+    fn get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagDataForHash> {
         unimplemented!()
     }
 

@@ -62,7 +62,9 @@ impl TryFrom<protowire::GhostdagData> for ExternalGhostdagData {
 impl TryFrom<protowire::BlockGhostdagDataHashPair> for TrustedGhostdagData {
     type Error = ConversionError;
     fn try_from(pair: protowire::BlockGhostdagDataHashPair) -> Result<Self, Self::Error> {
-        Ok(Self::new(pair.hash.try_into_ex()?, pair.ghostdag_data.try_into_ex()?))
+        let coloring_gd: ExternalGhostdagData = pair.coloring_ghostdag_data.try_into_ex()?;
+        let topology_gd: ExternalGhostdagData = pair.topology_ghostdag_data.try_into_ex()?;
+        Ok(Self::new(pair.hash.try_into_ex()?, coloring_gd, topology_gd))
     }
 }
 
@@ -71,6 +73,8 @@ impl TryFrom<Versioned<protowire::DaaBlockV4>> for TrustedHeader {
     fn try_from(value: Versioned<protowire::DaaBlockV4>) -> Result<Self, Self::Error> {
         let Versioned(header_format, b) = value;
         let header = b.header.ok_or(ConversionError::NoneValue)?;
-        Ok(TrustedHeader::new(Versioned(header_format, header).try_into().map(Arc::new)?, b.ghostdag_data.try_into_ex()?))
+        let coloring_ghostdag: ExternalGhostdagData = b.coloring_ghostdag_data.try_into_ex()?;
+        let topology_ghostdag: ExternalGhostdagData = b.topology_ghostdag_data.try_into_ex()?;
+        Ok(TrustedHeader::new(Versioned(header_format, header).try_into().map(Arc::new)?, coloring_ghostdag, topology_ghostdag))
     }
 }

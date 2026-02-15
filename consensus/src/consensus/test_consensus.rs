@@ -223,7 +223,7 @@ impl TestConsensus {
     }
 
     pub fn ghostdag_store(&self) -> &Arc<DbGhostdagStore> {
-        &self.consensus.ghostdag_store
+        &self.consensus.topology_ghostdag_store
     }
 
     pub fn reachability_store(&self) -> &Arc<RwLock<DbReachabilityStore>> {
