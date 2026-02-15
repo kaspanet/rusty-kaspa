@@ -111,9 +111,50 @@ impl JsonRpcResponse {
     }
 }
 
+/// Sanitize JSON string by removing or replacing control characters
+/// Control characters (0x00-0x1F) are not allowed in JSON strings except when escaped.
+/// Tabs and other control characters inside JSON string values must be escaped or removed.
+/// We replace them with spaces to preserve the structure while making it valid JSON.
+fn sanitize_json_input(input: &str) -> String {
+    input
+        .chars()
+        .map(|c| {
+            // Control characters (0x00-0x1F) are not allowed in JSON strings
+            // Keep newline and carriage return for line endings, replace others with space
+            // This handles cases like Goldshell ASICs that send tab characters in JSON strings
+            if c.is_control() && c != '\n' && c != '\r' {
+                ' ' // Replace with space to preserve JSON structure
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 /// Unmarshal a JSON-RPC event from a string
+/// Automatically sanitizes control characters that are invalid in JSON
 pub fn unmarshal_event(input: &str) -> Result<JsonRpcEvent, serde_json::Error> {
-    serde_json::from_str(input)
+    // Check if sanitization is needed
+    let needs_sanitization = input.chars().any(|c| c.is_control() && c != '\n' && c != '\r');
+
+    if needs_sanitization {
+        let sanitized = sanitize_json_input(input);
+        // Try parsing sanitized version
+        match serde_json::from_str(&sanitized) {
+            Ok(result) => {
+                tracing::debug!("JSON input sanitized (control characters replaced with spaces)");
+                Ok(result)
+            }
+            Err(e) => {
+                // If sanitized version still fails, return original error
+                tracing::warn!("JSON sanitization applied but parsing still failed: {}", e);
+                Err(e)
+            }
+        }
+    } else {
+        // No sanitization needed, parse directly
+        serde_json::from_str(input)
+    }
 }
 
 /// Unmarshal a JSON-RPC response from a string

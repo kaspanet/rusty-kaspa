@@ -28,10 +28,10 @@ jobs:
     name: Test Suite
     # runs-on: ${{ matrix.os }}
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      # matrix:
-      #   os: [ ubuntu-latest, macos-latest, windows-latest ]
+    # strategy:
+    #   fail-fast: false
+    #   matrix:
+    #     os: [ ubuntu-latest, macos-latest, windows-latest ]
     steps:
       # Clean unnecessary files to save disk space
       - name: clean unnecessary files to save space
@@ -354,5 +354,9 @@ jobs:
         run: |
           # Run build script for musl toolchain
           source musl-toolchain/build.sh
-          # Build for musl
+          # Build other binaries first (without the allow-multiple-definition flag)
           cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-musl
+          # Build bridge with allow-multiple-definition flag to handle mimalloc conflicts with libstdc++ in musl builds
+          # This flag is only needed for kaspa-stratum-bridge due to its dual mimalloc dependency structure
+          export RUSTFLAGS="$RUSTFLAGS -C link-arg=-Wl,--allow-multiple-definition"
+          cargo --verbose build --bin stratum-bridge --release --target x86_64-unknown-linux-musl

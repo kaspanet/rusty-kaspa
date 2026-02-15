@@ -155,6 +155,19 @@ impl ClientHandler {
         }
     }
 
+    pub fn disconnect_all(&self) {
+        let clients = {
+            let guard = self.clients.lock();
+            guard.values().cloned().collect::<Vec<_>>()
+        };
+
+        for client in clients {
+            client.disconnect();
+        }
+
+        self.clients.lock().clear();
+    }
+
     /// Send an immediate job to a specific client (for use after authorization)
     /// This ensures IceRiver and other ASICs get a job immediately, not waiting for polling
     pub async fn send_immediate_job_to_client<T: KaspaApiTrait + Send + Sync + ?Sized + 'static>(
@@ -294,6 +307,21 @@ impl ClientHandler {
                 let remote_app_clone = remote_app.clone();
                 stratum_diff.set_diff_value_for_miner(min_diff, &remote_app_clone);
                 state.set_stratum_diff(stratum_diff);
+
+                // Update worker difficulty metric
+                let wallet_addr = client_clone.wallet_addr.lock().clone();
+                let worker_name = client_clone.worker_name.lock().clone();
+                update_worker_difficulty(
+                    &WorkerContext {
+                        instance_id: instance_id.clone(),
+                        worker_name: worker_name.clone(),
+                        miner: remote_app_clone.clone(),
+                        wallet: wallet_addr.clone(),
+                        ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
+                    },
+                    min_diff,
+                );
+
                 let target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(BigUint::zero);
                 let target_bytes = target.to_bytes_be();
                 debug!(
@@ -307,9 +335,28 @@ impl ClientHandler {
 
             // CRITICAL: Always send difficulty to each client (IceRiver expects this on every connection)
             // Even if state is already initialized, we need to send difficulty to this specific client
+            // Use the actual current difficulty from state if available, otherwise use min_diff
+            let current_diff = state.stratum_diff().map(|d| d.diff_value).unwrap_or(min_diff);
+
+            // Update metric to ensure displayed difficulty matches what we're sending
+            // (This handles the case where state was already initialized but metric wasn't updated)
+            let wallet_addr = client_clone.wallet_addr.lock().clone();
+            let worker_name = client_clone.worker_name.lock().clone();
+            let remote_app = client_clone.remote_app.lock().clone();
+            update_worker_difficulty(
+                &WorkerContext {
+                    instance_id: instance_id.clone(),
+                    worker_name: worker_name.clone(),
+                    miner: remote_app.clone(),
+                    wallet: wallet_addr.clone(),
+                    ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
+                },
+                current_diff,
+            );
+
             debug!("[DIFFICULTY] ===== SENDING DIFFICULTY TO {} =====", client_clone.remote_addr);
-            debug!("[DIFFICULTY] Difficulty value: {}", min_diff);
-            send_client_diff(&instance_id, &client_clone, &state, min_diff);
+            debug!("[DIFFICULTY] Difficulty value: {} (from state: {})", current_diff, state.stratum_diff().is_some());
+            send_client_diff(&instance_id, &client_clone, &state, current_diff);
             share_handler.set_client_vardiff(&client_clone, min_diff);
             debug!("[DIFFICULTY] ===== DIFFICULTY SENT TO {} =====", client_clone.remote_addr);
 
@@ -594,6 +641,21 @@ impl ClientHandler {
                     let remote_app = client_clone.remote_app.lock().clone();
                     stratum_diff.set_diff_value_for_miner(min_diff, &remote_app);
                     state.set_stratum_diff(stratum_diff);
+
+                    // Update worker difficulty metric
+                    let wallet_addr = client_clone.wallet_addr.lock().clone();
+                    let worker_name = client_clone.worker_name.lock().clone();
+                    update_worker_difficulty(
+                        &WorkerContext {
+                            instance_id: instance_id.clone(),
+                            worker_name: worker_name.clone(),
+                            miner: remote_app.clone(),
+                            wallet: wallet_addr.clone(),
+                            ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
+                        },
+                        min_diff,
+                    );
+
                     let target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(BigUint::zero);
                     let target_bytes = target.to_bytes_be();
                     debug!(
@@ -616,6 +678,21 @@ impl ClientHandler {
                             let remote_app = client_clone.remote_app.lock().clone();
                             stratum_diff.set_diff_value_for_miner(var_diff, &remote_app);
                             state.set_stratum_diff(stratum_diff);
+
+                            // Update worker difficulty metric
+                            let wallet_addr = client_clone.wallet_addr.lock().clone();
+                            let worker_name = client_clone.worker_name.lock().clone();
+                            update_worker_difficulty(
+                                &WorkerContext {
+                                    instance_id: instance_id.clone(),
+                                    worker_name: worker_name.clone(),
+                                    miner: remote_app.clone(),
+                                    wallet: wallet_addr.clone(),
+                                    ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
+                                },
+                                var_diff,
+                            );
+
                             send_client_diff(&instance_id, &client_clone, &state, var_diff);
                             share_handler.start_client_vardiff(&client_clone);
                         }
