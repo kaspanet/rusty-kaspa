@@ -19,7 +19,7 @@ use std::{cell::RefCell, sync::Arc};
 /// Re-export for convenience
 pub use kaspa_consensus_core::{HashKTypeMap, KType};
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct GhostdagData {
     pub blue_score: u64,
     pub blue_work: BlueWorkType,
