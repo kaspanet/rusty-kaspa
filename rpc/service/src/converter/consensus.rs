@@ -71,13 +71,13 @@ impl ConsensusConverter {
         let verbose_data = Some(RpcBlockVerboseData {
             hash,
             difficulty: self.get_difficulty_ratio(block.header.bits),
-            selected_parent_hash: ghostdag_data.selected_parent,
+            selected_parent_hash: ghostdag_data.coloring_ghostdag.selected_parent,
             transaction_ids: block.transactions.iter().map(|x| x.id()).collect(),
             is_header_only: block_status.is_header_only(),
-            blue_score: ghostdag_data.blue_score,
+            blue_score: ghostdag_data.coloring_ghostdag.blue_score,
             children_hashes: children,
-            merge_set_blues_hashes: ghostdag_data.mergeset_blues,
-            merge_set_reds_hashes: ghostdag_data.mergeset_reds,
+            merge_set_blues_hashes: ghostdag_data.coloring_ghostdag.mergeset_blues,
+            merge_set_reds_hashes: ghostdag_data.coloring_ghostdag.mergeset_reds,
             is_chain_block,
         });
 

@@ -179,7 +179,7 @@ impl HeaderProcessor {
             relations_store: storage.relations_store.clone(),
             reachability_store: storage.reachability_store.clone(),
             reachability_relations_store: storage.reachability_relations_store.clone(),
-            topology_ghostdag_store: storage.ghostdag_store.clone(),
+            topology_ghostdag_store: storage.topology_ghostdag_store.clone(),
             coloring_ghostdag_store: storage.coloring_ghostdag_store.clone(),
             statuses_store: storage.statuses_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),

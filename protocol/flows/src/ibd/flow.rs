@@ -7,7 +7,7 @@ use futures::future::{Either, join_all, select, try_join_all};
 use itertools::Itertools;
 use kaspa_consensus_core::{
     BlockHashSet,
-    api::BlockValidationFuture,
+    api::{BlockValidationFuture, ExternalGhostdagDataForHash},
     block::Block,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList, PruningProofMetadata},
@@ -732,9 +732,11 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 // TODO (relaxed): sending ghostdag data may be redundant, especially when the headers were already verified.
                 // Consider sending empty ghostdag data, simplifying a great deal. The result should be the same -
                 // a trusted task is sent, however the header is already verified, and hence only the block body will be verified.
+                let ExternalGhostdagDataForHash { coloring_ghostdag, topology_ghostdag } =
+                    consensus.async_get_ghostdag_data(hash).await?;
                 jobs.push(
                     consensus
-                        .validate_and_insert_trusted_block(TrustedBlock::new(block, consensus.async_get_ghostdag_data(hash).await?))
+                        .validate_and_insert_trusted_block(TrustedBlock::new(block, coloring_ghostdag, topology_ghostdag))
                         .virtual_state_task,
                 );
             }
@@ -770,9 +772,11 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 // TODO (relaxed): sending ghostdag data may be redundant, especially when the headers were already verified.
                 // Consider sending empty ghostdag data, simplifying a great deal. The result should be the same -
                 // a trusted task is sent, however the header is already verified, and hence only the block body will be verified.
+                let ExternalGhostdagDataForHash { coloring_ghostdag, topology_ghostdag } =
+                    consensus.async_get_ghostdag_data(hash).await?;
                 jobs.push(
                     consensus
-                        .validate_and_insert_trusted_block(TrustedBlock::new(block, consensus.async_get_ghostdag_data(hash).await?))
+                        .validate_and_insert_trusted_block(TrustedBlock::new(block, coloring_ghostdag, topology_ghostdag))
                         .virtual_state_task,
                 );
             }

@@ -249,13 +249,15 @@ message DaaBlock {
 // TODO: rename to `TrustedHeader` once v5 is obsolete
 message DaaBlockV4 {
   BlockHeader header = 1;
-  GhostdagData ghostdagData = 2;
+  GhostdagData coloringGhostdagData = 2;
+  GhostdagData topologyGhostdagData = 3;  // TODO[DK]: added for dk tmp
 }
 
 // TODO: remove once v5 is obsolete
 message BlockGhostdagDataHashPair {
   Hash hash = 1;
-  GhostdagData ghostdagData = 2;
+  GhostdagData coloringGhostdagData = 2;
+  GhostdagData topologyGhostdagData = 3; // TODO[DK]: added for dk tmp
 }
 
 message GhostdagData {

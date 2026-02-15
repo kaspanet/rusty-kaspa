@@ -10,12 +10,20 @@ use crate::pb as protowire;
 impl From<(HeaderFormat, &TrustedHeader)> for protowire::DaaBlockV4 {
     fn from(value: (HeaderFormat, &TrustedHeader)) -> Self {
         let (header_format, item) = value;
-        Self { header: Some((header_format, &*item.header).into()), ghostdag_data: Some((&item.ghostdag).into()) }
+        Self {
+            header: Some((header_format, &*item.header).into()),
+            coloring_ghostdag_data: Some((&item.coloring_ghostdag).into()),
+            topology_ghostdag_data: Some((&item.topology_ghostdag).into()),
+        }
     }
 }
 
 impl From<&TrustedGhostdagData> for protowire::BlockGhostdagDataHashPair {
     fn from(item: &TrustedGhostdagData) -> Self {
-        Self { hash: Some(item.hash.into()), ghostdag_data: Some((&item.ghostdag).into()) }
+        Self {
+            hash: Some(item.hash.into()),
+            coloring_ghostdag_data: Some((&item.coloring_ghostdag).into()),
+            topology_ghostdag_data: Some((&item.topology_ghostdag).into()),
+        }
     }
 }

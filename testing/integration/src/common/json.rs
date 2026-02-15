@@ -26,7 +26,8 @@ pub struct JtfOutpointUtxoEntryPair {
 pub fn json_line_to_trusted_block(line: String) -> TrustedBlock {
     let jtf_trusted_block: JtfTrustedBlock = serde_json::from_str(&line).unwrap();
     let block: Block = jtf_trusted_block.block.try_into().unwrap();
-    TrustedBlock::new(block, jtf_trusted_block.ghostdag)
+    // TODO[DK]: Check if this needs separated coloring/topology
+    TrustedBlock::new(block, jtf_trusted_block.ghostdag.clone(), jtf_trusted_block.ghostdag)
 }
 
 pub fn json_line_to_utxo_pairs(line: String) -> Vec<(TransactionOutpoint, UtxoEntry)> {

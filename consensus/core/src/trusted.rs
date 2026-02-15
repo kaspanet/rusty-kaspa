@@ -21,12 +21,13 @@ pub struct ExternalGhostdagData {
 #[derive(Clone)]
 pub struct TrustedBlock {
     pub block: Block,
-    pub ghostdag: ExternalGhostdagData,
+    pub coloring_ghostdag: ExternalGhostdagData,
+    pub topology_ghostdag: ExternalGhostdagData,
 }
 
 impl TrustedBlock {
-    pub fn new(block: Block, ghostdag: ExternalGhostdagData) -> Self {
-        Self { block, ghostdag }
+    pub fn new(block: Block, coloring_ghostdag: ExternalGhostdagData, topology_ghostdag: ExternalGhostdagData) -> Self {
+        Self { block, coloring_ghostdag, topology_ghostdag }
     }
 }
 
@@ -35,23 +36,25 @@ impl TrustedBlock {
 /// but rather these headers are indirectly validated through the PoW mined over them
 pub struct TrustedHeader {
     pub header: Arc<Header>,
-    pub ghostdag: ExternalGhostdagData,
+    pub coloring_ghostdag: ExternalGhostdagData,
+    pub topology_ghostdag: ExternalGhostdagData,
 }
 
 impl TrustedHeader {
-    pub fn new(header: Arc<Header>, ghostdag: ExternalGhostdagData) -> Self {
-        Self { header, ghostdag }
+    pub fn new(header: Arc<Header>, coloring_ghostdag: ExternalGhostdagData, topology_ghostdag: ExternalGhostdagData) -> Self {
+        Self { header, coloring_ghostdag, topology_ghostdag }
     }
 }
 
 /// Represents externally provided Ghostdag data associated with a block Hash
 pub struct TrustedGhostdagData {
     pub hash: Hash,
-    pub ghostdag: ExternalGhostdagData,
+    pub coloring_ghostdag: ExternalGhostdagData,
+    pub topology_ghostdag: ExternalGhostdagData,
 }
 
 impl TrustedGhostdagData {
-    pub fn new(hash: Hash, ghostdag: ExternalGhostdagData) -> Self {
-        Self { hash, ghostdag }
+    pub fn new(hash: Hash, coloring_ghostdag: ExternalGhostdagData, topology_ghostdag: ExternalGhostdagData) -> Self {
+        Self { hash, coloring_ghostdag, topology_ghostdag }
     }
 }

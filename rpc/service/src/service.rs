@@ -624,7 +624,9 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _: GetSinkBlueScoreRequest,
     ) -> RpcResult<GetSinkBlueScoreResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
-        Ok(GetSinkBlueScoreResponse::new(session.async_get_ghostdag_data(session.async_get_sink().await).await?.blue_score))
+        Ok(GetSinkBlueScoreResponse::new(
+            session.async_get_ghostdag_data(session.async_get_sink().await).await?.coloring_ghostdag.blue_score,
+        ))
     }
 
     async fn get_virtual_chain_from_block_call(

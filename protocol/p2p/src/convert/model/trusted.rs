@@ -33,18 +33,18 @@ impl TrustedDataPackage {
         let mut map = BlockHashMap::new();
 
         for th in self.ghostdag_window.iter() {
-            map.insert(th.hash, th.ghostdag.clone());
+            map.insert(th.hash, (th.coloring_ghostdag.clone(), th.topology_ghostdag.clone()));
         }
 
         for th in self.daa_window.iter() {
-            map.insert(th.header.hash, th.ghostdag.clone());
+            map.insert(th.header.hash, (th.coloring_ghostdag.clone(), th.topology_ghostdag.clone()));
         }
 
         for entry in entries {
             let block = entry.block;
             if set.insert(block.hash()) {
-                if let Some(ghostdag) = map.get(&block.hash()) {
-                    blocks.push(TrustedBlock::new(block, ghostdag.clone()));
+                if let Some((coloring_ghostdag, topology_ghostdag)) = map.get(&block.hash()) {
+                    blocks.push(TrustedBlock::new(block, coloring_ghostdag.clone(), topology_ghostdag.clone()));
                 } else {
                     return Err(ProtocolError::Other("missing ghostdag data for some trusted entries"));
                 }
@@ -53,18 +53,30 @@ impl TrustedDataPackage {
 
         for th in self.daa_window.iter() {
             if set.insert(th.header.hash) {
-                blocks.push(TrustedBlock::new(Block::from_header_arc(th.header.clone()), th.ghostdag.clone()));
+                blocks.push(TrustedBlock::new(
+                    Block::from_header_arc(th.header.clone()),
+                    th.coloring_ghostdag.clone(),
+                    th.topology_ghostdag.clone(),
+                ));
             }
         }
 
         // Prune all missing ghostdag mergeset blocks. If due to this prune data becomes insufficient, future
         // IBD blocks will not validate correctly which will lead to a rule error and peer disconnection
         for tb in blocks.iter_mut() {
-            tb.ghostdag.mergeset_blues.retain(|h| set.contains(h));
-            tb.ghostdag.mergeset_reds.retain(|h| set.contains(h));
-            tb.ghostdag.blues_anticone_sizes.retain(|k, _| set.contains(k));
-            if !set.contains(&tb.ghostdag.selected_parent) {
-                tb.ghostdag.selected_parent = ORIGIN;
+            tb.coloring_ghostdag.mergeset_blues.retain(|h| set.contains(h));
+            tb.coloring_ghostdag.mergeset_reds.retain(|h| set.contains(h));
+            tb.coloring_ghostdag.blues_anticone_sizes.retain(|k, _| set.contains(k));
+            if !set.contains(&tb.coloring_ghostdag.selected_parent) {
+                tb.coloring_ghostdag.selected_parent = ORIGIN;
+            }
+
+            // TODO[DK]: Verify that this copy is sufficient
+            tb.topology_ghostdag.mergeset_blues.retain(|h| set.contains(h));
+            tb.topology_ghostdag.mergeset_reds.retain(|h| set.contains(h));
+            tb.topology_ghostdag.blues_anticone_sizes.retain(|k, _| set.contains(k));
+            if !set.contains(&tb.topology_ghostdag.selected_parent) {
+                tb.topology_ghostdag.selected_parent = ORIGIN;
             }
         }
 

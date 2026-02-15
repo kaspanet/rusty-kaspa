@@ -5,7 +5,7 @@
 use kaspa_consensus_core::{
     BlockHashSet, BlueWorkType, ChainPath, Hash,
     acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
-    api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus},
+    api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus, ExternalGhostdagDataForHash},
     block::Block,
     blockstatus::BlockStatus,
     daa_score_timestamp::DaaScoreTimestamp,
@@ -13,7 +13,7 @@ use kaspa_consensus_core::{
     header::Header,
     mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
-    trusted::{ExternalGhostdagData, TrustedBlock},
+    trusted::TrustedBlock,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, TransactionQueryResult, TransactionType, UtxoEntry},
 };
 use kaspa_utils::sync::rwlock::*;
@@ -391,7 +391,7 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_block_even_if_header_only(hash)).await
     }
 
-    pub async fn async_get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagData> {
+    pub async fn async_get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagDataForHash> {
         self.clone().spawn_blocking(move |c| c.get_ghostdag_data(hash)).await
     }
 

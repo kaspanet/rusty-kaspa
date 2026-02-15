@@ -97,7 +97,7 @@ impl ConsensusServices {
         );
         let window_manager = SampledWindowManager::new(
             &params.genesis,
-            storage.ghostdag_store.clone(),
+            storage.topology_ghostdag_store.clone(),
             storage.coloring_ghostdag_store.clone(),
             storage.headers_store.clone(),
             storage.daa_excluded_store.clone(),
@@ -123,7 +123,7 @@ impl ConsensusServices {
         let ghostdag_manager = GhostdagManager::new(
             params.genesis.hash,
             params.ghostdag_k(),
-            storage.ghostdag_store.clone(),
+            storage.topology_ghostdag_store.clone(),
             relations_service.clone(),
             storage.headers_store.clone(),
             reachability_service.clone(),
@@ -198,6 +198,7 @@ impl ConsensusServices {
             &storage,
             parents_manager.clone(),
             reachability_service.clone(),
+            coloring_ghostdag_manager.clone(),
             ghostdag_manager.clone(),
             dag_traversal_manager.clone(),
             window_manager.clone(),

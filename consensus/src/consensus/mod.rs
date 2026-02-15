@@ -47,7 +47,7 @@ use kaspa_consensus_core::{
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
     acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData},
     api::{
-        BlockValidationFutures, ConsensusApi, ConsensusStats,
+        BlockValidationFutures, ConsensusApi, ConsensusStats, ExternalGhostdagDataForHash,
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         stats::BlockCount,
     },
@@ -70,7 +70,7 @@ use kaspa_consensus_core::{
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
-    trusted::{ExternalGhostdagData, TrustedBlock},
+    trusted::TrustedBlock,
     tx::{
         MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, TransactionQueryResult,
         TransactionType, UtxoEntry,
@@ -520,12 +520,16 @@ impl Consensus {
         // The new pruning point P can be "finalized" into consensus if:
         // 1) P satisfies P.blue_score>Nf and selected_parent(P).blue_score<=NF
         // where N is some integer (i.e. it is a valid pruning point based on score)
-        let Ok(candidate_ghostdag_data) = self.get_ghostdag_data(new_pruning_point) else {
+        let Ok(ExternalGhostdagDataForHash { coloring_ghostdag: candidate_ghostdag_data, .. }) =
+            self.get_ghostdag_data(new_pruning_point)
+        else {
             return Err(ConsensusError::General(
                 "Catchup cannot be continued since the syncer pruning point could not be confirmed to be a valid pruning point",
             ));
         };
-        let Ok(selected_parent_ghostdag_data) = self.get_ghostdag_data(candidate_ghostdag_data.selected_parent) else {
+        let Ok(ExternalGhostdagDataForHash { coloring_ghostdag: selected_parent_ghostdag_data, .. }) =
+            self.get_ghostdag_data(candidate_ghostdag_data.selected_parent)
+        else {
             return Err(ConsensusError::General(
                 "Catchup cannot be continued since the syncer pruning point could not be confirmed to be a valid pruning point",
             ));
@@ -677,7 +681,8 @@ impl ConsensusApi for Consensus {
 
     fn get_virtual_merge_depth_blue_work_threshold(&self) -> BlueWorkType {
         // PRUNE SAFETY: merge depth root is never close to being pruned (in terms of block depth)
-        self.get_virtual_merge_depth_root().map_or(BlueWorkType::ZERO, |root| self.ghostdag_store.get_blue_work(root).unwrap())
+        self.get_virtual_merge_depth_root()
+            .map_or(BlueWorkType::ZERO, |root| self.topology_ghostdag_store.get_blue_work(root).unwrap())
     }
 
     fn get_sink(&self) -> Hash {
@@ -720,14 +725,14 @@ impl ConsensusApi for Consensus {
 
         for child in initial_children {
             if visited.insert(child) {
-                let blue_work = self.ghostdag_store.get_blue_work(child).unwrap();
+                let blue_work = self.topology_ghostdag_store.get_blue_work(child).unwrap();
                 heap.push(Reverse(SortableBlock::new(child, blue_work)));
             }
         }
 
         while let Some(Reverse(SortableBlock { hash: decedent, .. })) = heap.pop() {
             if self.services.reachability_service.is_chain_ancestor_of(decedent, sink) {
-                let decedent_data = self.get_ghostdag_data(decedent).unwrap();
+                let ExternalGhostdagDataForHash { coloring_ghostdag: decedent_data, .. } = self.get_ghostdag_data(decedent).unwrap();
 
                 if decedent_data.mergeset_blues.contains(&hash) {
                     return Some(true);
@@ -747,7 +752,7 @@ impl ConsensusApi for Consensus {
 
             for child in children {
                 if visited.insert(child) {
-                    let blue_work = self.ghostdag_store.get_blue_work(child).unwrap();
+                    let blue_work = self.topology_ghostdag_store.get_blue_work(child).unwrap();
                     heap.push(Reverse(SortableBlock::new(child, blue_work)));
                 }
             }
@@ -1247,14 +1252,20 @@ impl ConsensusApi for Consensus {
         })
     }
 
-    fn get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagData> {
+    fn get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagDataForHash> {
         match self.get_block_status(hash) {
             None => return Err(ConsensusError::HeaderNotFound(hash)),
             Some(BlockStatus::StatusInvalid) => return Err(ConsensusError::InvalidBlock(hash)),
             _ => {}
         };
-        let ghostdag = self.ghostdag_store.get_data(hash).optional().unwrap().ok_or(ConsensusError::MissingData(hash))?;
-        Ok((&*ghostdag).into())
+        let coloring_ghostdag =
+            self.coloring_ghostdag_store.get_data(hash).optional().unwrap().ok_or(ConsensusError::MissingData(hash))?;
+        let topology_ghostdag =
+            self.topology_ghostdag_store.get_data(hash).optional().unwrap().ok_or(ConsensusError::MissingData(hash))?;
+        Ok(ExternalGhostdagDataForHash {
+            coloring_ghostdag: (&*coloring_ghostdag).into(),
+            topology_ghostdag: (&*topology_ghostdag).into(),
+        })
     }
 
     fn get_block_children(&self, hash: Hash) -> Option<Vec<Hash>> {
@@ -1347,7 +1358,7 @@ impl ConsensusApi for Consensus {
         match start_hash {
             Some(hash) => {
                 self.validate_block_exists(hash)?;
-                let ghostdag_data = self.ghostdag_store.get_data(hash).unwrap();
+                let ghostdag_data = self.topology_ghostdag_store.get_data(hash).unwrap();
                 // The selected parent header is used within to check for sampling activation, so we verify its existence first
                 if !self.headers_store.has(ghostdag_data.selected_parent).unwrap() {
                     return Err(ConsensusError::DifficultyError(DifficultyError::InsufficientWindowData(0)));

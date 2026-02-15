@@ -204,7 +204,7 @@ impl VirtualStateProcessor {
             db,
             statuses_store: storage.statuses_store.clone(),
             headers_store: storage.headers_store.clone(),
-            topology_ghostdag_store: storage.ghostdag_store.clone(),
+            topology_ghostdag_store: storage.topology_ghostdag_store.clone(),
             coloring_ghostdag_store: storage.coloring_ghostdag_store.clone(),
             daa_excluded_store: storage.daa_excluded_store.clone(),
             block_transactions_store: storage.block_transactions_store.clone(),
