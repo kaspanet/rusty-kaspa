@@ -121,7 +121,7 @@ pub trait PermissionRedeemEmitter {
     /// Stash the two embedded constants (root, unclaimed_count) to the alt stack.
     ///
     /// ```text
-    /// Main:  [..., deduct, amount, spk, G1.., G2..]
+    /// Main:  [..G2, ..G1, spk, amount, deduct]
     /// Alt:   [] -> [uncl_emb, root_emb]
     /// ```
     fn emit_stash_embedded(&self, b: &mut ScriptBuilder);
@@ -132,8 +132,8 @@ pub trait PermissionRedeemEmitter {
     /// Computes `new_amount = amount - deduct` and leaves it on the stack.
     ///
     /// ```text
-    /// Main: [..., deduct, amount, spk, G1.., G2..]
-    ///    -> [..., new_amount, amount, spk, G1.., G2..]
+    /// Main: [..G2, ..G1, spk, amount, deduct]
+    ///    -> [..G2, ..G1, spk, amount, new_amount]
     /// Alt:  [uncl, root] -> [uncl, root, deduct]
     /// ```
     fn emit_validate_amounts(&self, b: &mut ScriptBuilder);
@@ -151,8 +151,8 @@ pub trait PermissionRedeemEmitter {
     /// hash when `new_amount == 0`).
     ///
     /// ```text
-    /// Stack: [..., new_amount, amount, spk, G1.., G2..]
-    ///     -> [..., old_leaf(32B), G1.., G2..]
+    /// Stack: [..G2, ..G1, spk, amount, new_amount]
+    ///     -> [..G2, ..G1, old_leaf(32B)]
     /// Alt:   [..., root, deduct] -> [..., root, deduct, is_zero, new_leaf]
     /// ```
     fn emit_compute_leaf_hashes(&self, b: &mut ScriptBuilder);
@@ -241,12 +241,12 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         // After prefix the top two items are uncl_emb (top) and root_emb.
         b.add_op(OpToAltStack).unwrap(); // stash uncl_emb
         b.add_op(OpToAltStack).unwrap(); // stash root_emb
-                                         // Main: [..., deduct, amount, spk, G1.., G2..]
+                                         // Main: [..G2, ..G1, spk, amount, deduct]
                                          // Alt:  [uncl_emb, root_emb]  (root on top)
     }
 
     fn emit_validate_amounts(&self, b: &mut ScriptBuilder) {
-        // Main top: deduct, amount, spk, G1.., G2..
+        // Main: [..G2, ..G1, spk, amount, deduct]
         // Alt: [uncl, root]
 
         // ── verify deduct > 0 ──
@@ -268,11 +268,11 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_i64(0).unwrap();
         b.add_op(OpGreaterThanOrEqual).unwrap();
         b.add_op(OpVerify).unwrap();
-        // Main: [..., new_amount, amount, spk, G1.., G2..]
+        // Main: [..G2, ..G1, spk, amount, new_amount]
     }
 
     fn emit_verify_withdrawal(&self, b: &mut ScriptBuilder) {
-        // Main top: new_amount(0), amount(1), spk(2), ...
+        // Main: [..., spk, amount, new_amount]
 
         // ── bring spk to top ──
         b.add_i64(2).unwrap();
@@ -297,7 +297,7 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         // ── restore stack: spk back to depth 2 ──
         b.add_op(OpRot).unwrap(); // [new_amount, spk, amount]
         b.add_op(OpRot).unwrap(); // [spk, amount, new_amount]
-                                  // Main: [..., new_amount, amount, spk, G1.., G2..]
+                                  // Main: [..G2, ..G1, spk, amount, new_amount]
     }
 
     fn emit_compute_leaf_hashes(&self, b: &mut ScriptBuilder) {
@@ -313,14 +313,14 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_op(OpNum2Bin).unwrap();
 
         // ── dup spk for reuse in old leaf hash ──
-        b.add_op(OpRot).unwrap(); // [..., spk, new_amt_8b, amount, G1..]
+        b.add_op(OpRot).unwrap(); // [..G2, ..G1, amount, new_amt_8b, spk]
         b.add_op(OpDup).unwrap();
         b.add_op(OpToAltStack).unwrap();
         // Alt: [uncl, root, deduct, is_zero, spk_dup]
 
         // ── new leaf (nonzero): SHA256("PermLeaf" || spk || new_amt_8b) ──
-        b.add_op(OpSwap).unwrap(); // [..., new_amt_8b, spk, amount, G1..]
-        b.add_op(OpCat).unwrap(); // [..., spk||new_amt_8b, amount, G1..]
+        b.add_op(OpSwap).unwrap(); // [..G2, ..G1, amount, spk, new_amt_8b]
+        b.add_op(OpCat).unwrap(); // [..G2, ..G1, amount, spk||new_amt_8b]
         b.add_data(b"PermLeaf").unwrap();
         b.add_op(OpSwap).unwrap();
         b.add_op(OpCat).unwrap();
@@ -352,8 +352,8 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_op(OpFromAltStack).unwrap(); // new_leaf
         b.add_op(OpFromAltStack).unwrap(); // spk_dup
                                            // Alt: [uncl, root, deduct, is_zero]
-        b.add_op(OpRot).unwrap(); // [..., amount, spk_dup, new_leaf, G1..]
-        b.add_op(OpCat).unwrap(); // [..., spk_dup||amount, new_leaf, G1..]
+        b.add_op(OpRot).unwrap(); // [..G2, ..G1, new_leaf, spk_dup, amount]
+        b.add_op(OpCat).unwrap(); // [..G2, ..G1, new_leaf, spk_dup||amount]
         b.add_data(b"PermLeaf").unwrap();
         b.add_op(OpSwap).unwrap();
         b.add_op(OpCat).unwrap();
@@ -362,7 +362,7 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         // Stash new_leaf for compute_new_root
         b.add_op(OpSwap).unwrap();
         b.add_op(OpToAltStack).unwrap();
-        // Main: [..., old_leaf, G1.., G2..]
+        // Main: [..G2, ..G1, old_leaf]
         // Alt: [uncl, root, deduct, is_zero, new_leaf]
     }
 
@@ -370,28 +370,28 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         for _ in 0..self.depth {
             emit_merkle_step(b);
         }
-        // Main: [computed_root, G2..], Alt: [uncl, root, deduct, is_zero, new_leaf]
+        // Main: [..G2, computed_root], Alt: [uncl, root, deduct, is_zero, new_leaf]
 
         b.add_op(OpFromAltStack).unwrap(); // new_leaf
         b.add_op(OpFromAltStack).unwrap(); // is_zero
         b.add_op(OpFromAltStack).unwrap(); // deduct
         b.add_op(OpFromAltStack).unwrap(); // root_emb
                                            // Alt: [uncl]
-                                           // Main: [root_emb, deduct, is_zero, new_leaf, computed_root, G2..]
+                                           // Main: [..G2, computed_root, new_leaf, is_zero, deduct, root_emb]
 
         // Bring computed_old_root to top (position 4 from top)
         b.add_i64(4).unwrap();
         b.add_op(OpRoll).unwrap();
         b.add_op(OpEqualVerify).unwrap();
-        // Main: [deduct, is_zero, new_leaf, G2..]
+        // Main: [..G2, new_leaf, is_zero, deduct]
 
         // Re-stash deduct (deep) and is_zero, leave new_leaf on main
-        b.add_op(OpRot).unwrap(); // [new_leaf, deduct, is_zero, G2..]
-        b.add_op(OpSwap).unwrap(); // [deduct, new_leaf, is_zero, G2..]
+        b.add_op(OpRot).unwrap(); // [..G2, is_zero, deduct, new_leaf]
+        b.add_op(OpSwap).unwrap(); // [..G2, is_zero, new_leaf, deduct]
         b.add_op(OpToAltStack).unwrap(); // stash deduct. Alt: [uncl, deduct]
-        b.add_op(OpSwap).unwrap(); // [is_zero, new_leaf, G2..]
+        b.add_op(OpSwap).unwrap(); // [..G2, new_leaf, is_zero]
         b.add_op(OpToAltStack).unwrap(); // stash is_zero. Alt: [uncl, deduct, is_zero]
-                                         // Main: [new_leaf, G2..]
+                                         // Main: [..G2, new_leaf]
     }
 
     fn emit_compute_new_root(&self, b: &mut ScriptBuilder) {
@@ -405,10 +405,10 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_op(OpFromAltStack).unwrap(); // is_zero
         b.add_op(OpFromAltStack).unwrap(); // deduct
         b.add_op(OpFromAltStack).unwrap(); // uncl_emb
-                                           // Alt: [], Main: [uncl_emb, deduct, is_zero, new_root]
+                                           // Alt: [], Main: [new_root, is_zero, deduct, uncl_emb]
 
         // Bring is_zero to top for conditional
-        b.add_op(OpRot).unwrap(); // [is_zero, uncl_emb, deduct, new_root]
+        b.add_op(OpRot).unwrap(); // [new_root, deduct, uncl_emb, is_zero]
 
         // new_uncl = if is_zero { uncl - 1 } else { uncl }
         b.add_op(OpIf).unwrap();
@@ -417,16 +417,16 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_op(OpElse).unwrap();
         // uncl unchanged
         b.add_op(OpEndIf).unwrap();
-        // Main: [new_uncl, deduct, new_root]
+        // Main: [new_root, deduct, new_uncl]
 
         // Convert to 8-byte LE for prefix reconstruction
         b.add_i64(8).unwrap();
         b.add_op(OpNum2Bin).unwrap();
-        // Main: [new_uncl_8b, deduct, new_root]
+        // Main: [new_root, deduct, new_uncl_8b]
 
-        // Rearrange to [new_uncl_8b, new_root, deduct]
-        b.add_op(OpRot).unwrap(); // [new_root, new_uncl_8b, deduct]
-        b.add_op(OpSwap).unwrap(); // [new_uncl_8b, new_root, deduct]
+        // Rearrange to [deduct, new_root, new_uncl_8b]
+        b.add_op(OpRot).unwrap(); // [deduct, new_uncl_8b, new_root]
+        b.add_op(OpSwap).unwrap(); // [deduct, new_root, new_uncl_8b]
     }
 
     fn emit_verify_outputs(&self, b: &mut ScriptBuilder) {
@@ -441,7 +441,7 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_op(OpDup).unwrap();
         b.add_data(&0u64.to_le_bytes()).unwrap();
         b.add_op(OpEqual).unwrap();
-        // Main: [is_done, new_uncl_8b, new_root, deduct]
+        // Main: [deduct, new_root, new_uncl_8b, is_done]
 
         b.add_op(OpIf).unwrap();
         {
@@ -460,7 +460,7 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_op(OpElse).unwrap();
         {
             // Unclaimed exits remain — verify continuation at output 1.
-            // Main: [new_uncl_8b(8B), new_root(32B), deduct]
+            // Main: [deduct, new_root, new_uncl_8b]
 
             // Build unclaimed part: [0x08 || new_uncl_8b]
             b.add_data(&[0x08u8]).unwrap();
@@ -557,7 +557,7 @@ impl PermissionRedeemEmitter for PermissionRedeem {
             }
             b.add_op(OpEndIf).unwrap();
         }
-        // Main: [total_input, deduct], Alt: [expected_spk]
+        // Main: [deduct, total_input], Alt: [expected_spk]
 
         // ── guard: input N+1 must NOT have delegate SPK ──
         b.add_op(OpTxInputCount).unwrap();
@@ -577,7 +577,7 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_op(OpEndIf).unwrap();
 
         // ── compute expected_change = total_input - deduct; verify >= 0 ──
-        b.add_op(OpSwap).unwrap(); // [deduct(top), total_input]
+        b.add_op(OpSwap).unwrap(); // [total_input, deduct]
         b.add_op(OpSub).unwrap(); // total_input - deduct
                                   // Main: [expected_change], Alt: [expected_spk]
         b.add_op(OpDup).unwrap();
@@ -591,20 +591,20 @@ impl PermissionRedeemEmitter for PermissionRedeem {
         b.add_op(OpCovOutCount).unwrap();
         b.add_i64(1).unwrap();
         b.add_op(OpAdd).unwrap();
-        // Main: [delegate_idx, expected_change], Alt: [expected_spk]
+        // Main: [expected_change, delegate_idx], Alt: [expected_spk]
 
         // ── verify delegate change output at expected index if needed ──
         b.add_op(OpOver).unwrap(); // [expected_change, delegate_idx, expected_change]
         b.add_i64(0).unwrap();
-        b.add_op(OpGreaterThan).unwrap(); // [change_needed, delegate_idx, expected_change]
+        b.add_op(OpGreaterThan).unwrap(); // [expected_change, delegate_idx, change_needed]
         b.add_op(OpIf).unwrap();
         {
             // expected_change > 0: verify output[delegate_idx] has delegate SPK and correct amount
-            b.add_op(OpDup).unwrap(); // [delegate_idx, delegate_idx, expected_change]
-            b.add_op(OpTxOutputSpk).unwrap(); // [output_spk, delegate_idx, expected_change]
-            b.add_op(OpFromAltStack).unwrap(); // [expected_spk, output_spk, ...]
-            b.add_op(OpEqualVerify).unwrap(); // [delegate_idx, expected_change]
-            b.add_op(OpTxOutputAmount).unwrap(); // [output_amount, expected_change]
+            b.add_op(OpDup).unwrap(); // [expected_change, delegate_idx, delegate_idx]
+            b.add_op(OpTxOutputSpk).unwrap(); // [expected_change, delegate_idx, output_spk]
+            b.add_op(OpFromAltStack).unwrap(); // [..., output_spk, expected_spk]
+            b.add_op(OpEqualVerify).unwrap(); // [expected_change, delegate_idx]
+            b.add_op(OpTxOutputAmount).unwrap(); // [expected_change, output_amount]
             b.add_op(OpEqualVerify).unwrap(); // []
         }
         b.add_op(OpElse).unwrap();
