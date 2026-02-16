@@ -4,7 +4,7 @@ use zk_covenant_rollup_core::{
     seq_commit::{seq_commitment_leaf, StreamingMerkleBuilder},
 };
 
-use crate::{auth, input, state, tx, witness::TransferWitness, witness::EntryWitness};
+use crate::{auth, input, state, tx, witness::EntryWitness, witness::TransferWitness};
 
 /// Process all transactions in a block, updating state and building merkle tree
 pub fn process_block(stdin: &mut impl WordRead, state_root: &mut [u32; 8], covenant_id: &[u32; 8]) -> [u32; 8] {
@@ -100,6 +100,12 @@ fn process_entry(
     let computed_rest_digest = zk_covenant_rollup_core::rest_digest_bytes(witness.rest_preimage.as_bytes());
     if computed_rest_digest != *rest_digest {
         // rest_preimage doesn't match — reject
+        return;
+    }
+
+    // Reject if input 0 is a permission script. This prevents delegate change
+    // outputs (from withdrawal transactions) from being counted as new deposits.
+    if zk_covenant_rollup_core::prev_tx::input0_has_permission_suffix(witness.rest_preimage.as_bytes()) {
         return;
     }
 

@@ -18,12 +18,7 @@ pub fn process_transfer(transfer: &TransferAction, witness: &TransferWitness, cu
 /// Process an entry (deposit): credit destination only (no source debit).
 ///
 /// `amount` comes from the verified transaction output, not from the payload.
-pub fn process_entry(
-    entry: &EntryAction,
-    dest_witness: &AccountWitness,
-    amount: u64,
-    current_root: &[u32; 8],
-) -> Option<[u32; 8]> {
+pub fn process_entry(entry: &EntryAction, dest_witness: &AccountWitness, amount: u64, current_root: &[u32; 8]) -> Option<[u32; 8]> {
     verify_and_update_dest(&entry.destination, dest_witness, amount, current_root)
 }
 

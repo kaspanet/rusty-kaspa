@@ -276,6 +276,53 @@ fn read_u16(buf: &[u8], cursor: &mut usize) -> Option<u16> {
     Some(val)
 }
 
+/// Check if the first input's sig_script ends with the permission domain suffix.
+///
+/// Returns `true` if input 0's sig_script ends with `[0x51, 0x75]` (`OP_TRUE OP_DROP`),
+/// which identifies the permission script domain. This is used by the guest to reject
+/// entry (deposit) transactions whose first input is a permission script, preventing
+/// delegate change outputs from being counted as new deposits.
+///
+/// The transaction byte format is the same as documented on [`parse_output_at_index`].
+pub fn input0_has_permission_suffix(tx_bytes: &[u8]) -> bool {
+    let mut cursor = 0;
+
+    // Skip version (2 bytes)
+    cursor += 2;
+    if cursor > tx_bytes.len() {
+        return false;
+    }
+
+    // Read num_inputs
+    let num_inputs = match read_u64(tx_bytes, &mut cursor) {
+        Some(n) => n,
+        None => return false,
+    };
+    if num_inputs == 0 {
+        return false;
+    }
+
+    // Skip prev_tx_id (32 bytes) + prev_index (4 bytes)
+    cursor += 36;
+    if cursor > tx_bytes.len() {
+        return false;
+    }
+
+    // Read sig_script_len
+    let sig_len = match read_u64(tx_bytes, &mut cursor) {
+        Some(n) => n as usize,
+        None => return false,
+    };
+
+    if sig_len < 2 || cursor + sig_len > tx_bytes.len() {
+        return false;
+    }
+
+    // Check last 2 bytes of sig_script: [0x51, 0x75] = OP_TRUE, OP_DROP
+    let sig_end = cursor + sig_len;
+    tx_bytes[sig_end - 2] == 0x51 && tx_bytes[sig_end - 1] == 0x75
+}
+
 /// Verify an output is in a previous transaction.
 ///
 /// 1. Computes tx_id from the witness preimage
@@ -416,5 +463,56 @@ mod tests {
         let output = parse_output_at_index(&tx, 0, 0).expect("should parse");
         assert_eq!(output.value, 500);
         assert_eq!(output.spk[0], 0x55);
+    }
+
+    /// Helper: build tx bytes with one input whose sig_script ends with `suffix`.
+    fn build_tx_with_sig_suffix(suffix: &[u8]) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.extend_from_slice(&1u16.to_le_bytes()); // version
+        tx.extend_from_slice(&1u64.to_le_bytes()); // 1 input
+        tx.extend_from_slice(&[0xAA; 32]); // prev_tx_id
+        tx.extend_from_slice(&0u32.to_le_bytes()); // prev_index
+        // sig_script = [0xBB; 10] + suffix
+        let sig_len = 10 + suffix.len();
+        tx.extend_from_slice(&(sig_len as u64).to_le_bytes());
+        tx.extend_from_slice(&[0xBB; 10]);
+        tx.extend_from_slice(suffix);
+        tx.extend_from_slice(&0u64.to_le_bytes()); // sequence
+        tx
+    }
+
+    #[test]
+    fn test_input0_has_permission_suffix_positive() {
+        let tx = build_tx_with_sig_suffix(&[0x51, 0x75]);
+        assert!(input0_has_permission_suffix(&tx));
+    }
+
+    #[test]
+    fn test_input0_has_permission_suffix_negative() {
+        // State verification suffix [0x00, 0x75]
+        let tx = build_tx_with_sig_suffix(&[0x00, 0x75]);
+        assert!(!input0_has_permission_suffix(&tx));
+    }
+
+    #[test]
+    fn test_input0_has_permission_suffix_no_inputs() {
+        let mut tx = Vec::new();
+        tx.extend_from_slice(&1u16.to_le_bytes()); // version
+        tx.extend_from_slice(&0u64.to_le_bytes()); // 0 inputs
+        assert!(!input0_has_permission_suffix(&tx));
+    }
+
+    #[test]
+    fn test_input0_has_permission_suffix_short_sig() {
+        // sig_script only 1 byte — too short for suffix check
+        let mut tx = Vec::new();
+        tx.extend_from_slice(&1u16.to_le_bytes());
+        tx.extend_from_slice(&1u64.to_le_bytes());
+        tx.extend_from_slice(&[0xAA; 32]);
+        tx.extend_from_slice(&0u32.to_le_bytes());
+        tx.extend_from_slice(&1u64.to_le_bytes()); // sig_script_len = 1
+        tx.push(0x51);
+        tx.extend_from_slice(&0u64.to_le_bytes());
+        assert!(!input0_has_permission_suffix(&tx));
     }
 }

@@ -1,6 +1,8 @@
+use std::num::NonZeroUsize;
+
 use kaspa_consensus_core::{
     constants::SOMPI_PER_KASPA,
-    tx::{CovenantBinding, Transaction, UtxoEntry},
+    tx::{CovenantBinding, ScriptPublicKey, Transaction, UtxoEntry},
 };
 use kaspa_hashes::Hash;
 use kaspa_txscript::{pay_to_script_hash_script, script_builder::ScriptBuilder, seq_commit_accessor::SeqCommitAccessor};
@@ -34,6 +36,10 @@ fn cov_id() -> Hash {
     Hash::from_bytes(COV_ID_BYTES)
 }
 
+fn max_del(n: usize) -> NonZeroUsize {
+    NonZeroUsize::new(n).unwrap()
+}
+
 /// A simple 34-byte P2PK-like SPK for testing.
 fn test_spk_p2pk(seed: u8) -> Vec<u8> {
     let mut spk = vec![0u8; 34];
@@ -53,6 +59,14 @@ fn test_spk_p2sh(seed: u8) -> Vec<u8> {
     spk
 }
 
+/// Returns (delegate_spk, delegate_sig_script) for the standard test covenant ID.
+fn test_delegate_input() -> (ScriptPublicKey, Vec<u8>) {
+    let delegate_redeem = build_delegate_entry_script(&COV_ID_BYTES);
+    let spk = pay_to_script_hash_script(&delegate_redeem);
+    let sig = ScriptBuilder::new().add_data(&delegate_redeem).unwrap().drain();
+    (spk, sig)
+}
+
 // ─────────────────────────────────────────────────────────────────
 //  Permission test helpers
 // ─────────────────────────────────────────────────────────────────
@@ -60,6 +74,7 @@ fn test_spk_p2sh(seed: u8) -> Vec<u8> {
 /// Build a complete permission test transaction from tree leaves.
 ///
 /// Returns (tx, utxos, old_redeem) — the old_redeem is needed for delegate tests.
+/// Includes a single delegate input at position 1 with amount = deduct.
 fn build_perm_test_tx(leaves: Vec<(Vec<u8>, u64)>, leaf_idx: usize, deduct: u64) -> (Transaction, Vec<UtxoEntry>, Vec<u8>) {
     let tree = PermissionTree::from_leaves(leaves);
     let depth = tree.depth();
@@ -70,7 +85,7 @@ fn build_perm_test_tx(leaves: Vec<(Vec<u8>, u64)>, leaf_idx: usize, deduct: u64)
     let spk = spk.to_vec();
     let proof = tree.prove(leaf_idx);
 
-    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth);
+    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth, max_del(1));
 
     // Compute new state
     let new_amount = amount - deduct;
@@ -83,19 +98,23 @@ fn build_perm_test_tx(leaves: Vec<(Vec<u8>, u64)>, leaf_idx: usize, deduct: u64)
 
     let id = cov_id();
     let input_spk = pay_to_script_hash_script(&old_redeem);
+    let (delegate_spk, delegate_sig) = test_delegate_input();
 
-    let outputs = if is_done {
-        vec![]
-    } else {
-        let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth);
+    // Output 0: withdrawal (always)
+    let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
+    let mut outputs: Vec<(u64, ScriptPublicKey, Option<CovenantBinding>)> = vec![(deduct, withdrawal_spk, None)];
+    // Output 1: continuation (if unclaimed > 0)
+    if !is_done {
+        let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth, max_del(1));
         let output_spk = pay_to_script_hash_script(&new_redeem);
-        vec![(SOMPI_PER_KASPA, output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id }))]
-    };
+        outputs.push((SOMPI_PER_KASPA, output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id })));
+    }
 
-    let (mut tx, utxos) = make_multi_input_mock_transaction(vec![(input_spk, Some(id))], outputs);
+    let (mut tx, utxos) = make_multi_input_mock_transaction(vec![(0, input_spk, Some(id)), (deduct, delegate_spk, None)], outputs);
 
     let sig_script = build_permission_sig_script(&spk, amount, deduct, &proof, &old_redeem);
     tx.inputs[0].signature_script = sig_script;
+    tx.inputs[1].signature_script = delegate_sig;
 
     (tx, utxos, old_redeem)
 }
@@ -134,8 +153,8 @@ fn partial_deduct_depth3() {
 fn full_deduct_not_last() {
     let leaves = vec![(test_spk_p2pk(1), 1000u64), (test_spk_p2pk(2), 500u64)];
     let (tx, utxos, _) = build_perm_test_tx(leaves, 0, 1000);
-    // is_zero=true, unclaimed 2→1, continuation exists
-    assert_eq!(tx.outputs.len(), 1);
+    // is_zero=true, unclaimed 2→1, withdrawal + continuation
+    assert_eq!(tx.outputs.len(), 2);
     verify_tx_input(&tx, &utxos, 0, &NullAccessor);
 }
 
@@ -143,8 +162,8 @@ fn full_deduct_not_last() {
 fn full_deduct_last_leaf() {
     let leaves = vec![(test_spk_p2pk(1), 1000u64)];
     let (tx, utxos, _) = build_perm_test_tx(leaves, 0, 1000);
-    // is_done=true, no continuation output
-    assert_eq!(tx.outputs.len(), 0);
+    // is_done=true, no continuation output, only withdrawal
+    assert_eq!(tx.outputs.len(), 1);
     verify_tx_input(&tx, &utxos, 0, &NullAccessor);
 }
 
@@ -202,17 +221,23 @@ fn wrong_sibling() {
     let new_leaf_hash = perm_leaf_hash(&spk, new_amount);
     let new_root = proof.compute_new_root(&new_leaf_hash);
 
-    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth);
-    let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth);
+    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth, max_del(1));
+    let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth, max_del(1));
     let output_spk = pay_to_script_hash_script(&new_redeem);
     let input_spk = pay_to_script_hash_script(&old_redeem);
     let id = cov_id();
+    let (delegate_spk, delegate_sig) = test_delegate_input();
 
+    let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
     let (mut tx, utxos) = make_multi_input_mock_transaction(
-        vec![(input_spk, Some(id))],
-        vec![(SOMPI_PER_KASPA, output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id }))],
+        vec![(0, input_spk, Some(id)), (deduct, delegate_spk, None)],
+        vec![
+            (deduct, withdrawal_spk, None),
+            (SOMPI_PER_KASPA, output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id })),
+        ],
     );
     tx.inputs[0].signature_script = build_permission_sig_script(&spk, amount, deduct, &proof, &old_redeem);
+    tx.inputs[1].signature_script = delegate_sig;
 
     let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
     assert!(result.is_err(), "should fail: corrupted sibling");
@@ -236,17 +261,23 @@ fn wrong_amount() {
     let new_leaf_hash = perm_leaf_hash(&spk, new_amount);
     let new_root = proof.compute_new_root(&new_leaf_hash);
 
-    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth);
-    let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth);
+    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth, max_del(1));
+    let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth, max_del(1));
     let output_spk = pay_to_script_hash_script(&new_redeem);
     let input_spk = pay_to_script_hash_script(&old_redeem);
     let id = cov_id();
+    let (delegate_spk, delegate_sig) = test_delegate_input();
 
+    let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
     let (mut tx, utxos) = make_multi_input_mock_transaction(
-        vec![(input_spk, Some(id))],
-        vec![(SOMPI_PER_KASPA, output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id }))],
+        vec![(0, input_spk, Some(id)), (deduct, delegate_spk, None)],
+        vec![
+            (deduct, withdrawal_spk, None),
+            (SOMPI_PER_KASPA, output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id })),
+        ],
     );
     tx.inputs[0].signature_script = build_permission_sig_script(&spk, wrong_amount, deduct, &proof, &old_redeem);
+    tx.inputs[1].signature_script = delegate_sig;
 
     let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
     assert!(result.is_err(), "should fail: wrong amount → root mismatch");
@@ -264,21 +295,23 @@ fn deduct_exceeds_amount() {
     let proof = tree.prove(0);
 
     let deduct = amount + 1; // exceeds
-    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth);
+    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth, max_del(1));
     let input_spk = pay_to_script_hash_script(&old_redeem);
     let id = cov_id();
+    let (delegate_spk, delegate_sig) = test_delegate_input();
 
-    // We still need a valid-looking output for the tx structure, but the script
-    // should fail before reaching the output check. Use a dummy output.
+    // Script fails at emit_validate_amounts (before output checks), but we still
+    // need a well-formed output list.
+    let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
     let (mut tx, utxos) = make_multi_input_mock_transaction(
-        vec![(input_spk, Some(id))],
-        vec![(
-            SOMPI_PER_KASPA,
-            pay_to_script_hash_script(&[0u8; 35]),
-            Some(CovenantBinding { authorizing_input: 0, covenant_id: id }),
-        )],
+        vec![(0, input_spk, Some(id)), (deduct, delegate_spk, None)],
+        vec![
+            (deduct, withdrawal_spk, None),
+            (SOMPI_PER_KASPA, pay_to_script_hash_script(&[0u8; 35]), Some(CovenantBinding { authorizing_input: 0, covenant_id: id })),
+        ],
     );
     tx.inputs[0].signature_script = build_permission_sig_script(&spk, amount, deduct, &proof, &old_redeem);
+    tx.inputs[1].signature_script = delegate_sig;
 
     let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
     assert!(result.is_err(), "should fail: deduct > amount → GreaterThanOrEqual fail");
@@ -300,17 +333,23 @@ fn zero_deduct() {
     let new_leaf_hash = perm_leaf_hash(&spk, amount); // amount unchanged
     let new_root = proof.compute_new_root(&new_leaf_hash);
 
-    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth);
-    let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth);
+    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth, max_del(1));
+    let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth, max_del(1));
     let output_spk = pay_to_script_hash_script(&new_redeem);
     let input_spk = pay_to_script_hash_script(&old_redeem);
     let id = cov_id();
+    let (delegate_spk, delegate_sig) = test_delegate_input();
 
+    let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
     let (mut tx, utxos) = make_multi_input_mock_transaction(
-        vec![(input_spk, Some(id))],
-        vec![(SOMPI_PER_KASPA, output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id }))],
+        vec![(0, input_spk, Some(id)), (deduct, delegate_spk, None)],
+        vec![
+            (deduct, withdrawal_spk, None),
+            (SOMPI_PER_KASPA, output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id })),
+        ],
     );
     tx.inputs[0].signature_script = build_permission_sig_script(&spk, amount, deduct, &proof, &old_redeem);
+    tx.inputs[1].signature_script = delegate_sig;
 
     let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
     assert!(result.is_err(), "should fail: deduct=0 → GreaterThan fail");
@@ -333,17 +372,23 @@ fn wrong_new_unclaimed() {
     let new_leaf_hash = perm_empty_leaf_hash();
     let new_root = proof.compute_new_root(&new_leaf_hash);
 
-    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth);
-    let new_redeem = build_permission_redeem_converged(&new_root, wrong_new_unclaimed, depth);
+    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth, max_del(1));
+    let new_redeem = build_permission_redeem_converged(&new_root, wrong_new_unclaimed, depth, max_del(1));
     let output_spk = pay_to_script_hash_script(&new_redeem);
     let input_spk = pay_to_script_hash_script(&old_redeem);
     let id = cov_id();
+    let (delegate_spk, delegate_sig) = test_delegate_input();
 
+    let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
     let (mut tx, utxos) = make_multi_input_mock_transaction(
-        vec![(input_spk, Some(id))],
-        vec![(SOMPI_PER_KASPA, output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id }))],
+        vec![(0, input_spk, Some(id)), (deduct, delegate_spk, None)],
+        vec![
+            (deduct, withdrawal_spk, None),
+            (SOMPI_PER_KASPA, output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id })),
+        ],
     );
     tx.inputs[0].signature_script = build_permission_sig_script(&spk, amount, deduct, &proof, &old_redeem);
+    tx.inputs[1].signature_script = delegate_sig;
 
     let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
     assert!(result.is_err(), "should fail: wrong new_unclaimed in output redeem → P6 SPK mismatch");
@@ -362,21 +407,27 @@ fn wrong_output_spk() {
 
     let deduct = 300u64;
 
-    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth);
+    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth, max_del(1));
     let input_spk = pay_to_script_hash_script(&old_redeem);
     let id = cov_id();
+    let (delegate_spk, delegate_sig) = test_delegate_input();
 
-    // Use a wrong output SPK (not matching expected continuation)
-    let wrong_output_spk = pay_to_script_hash_script(&[0xDE, 0xAD]);
+    // Output 0: valid withdrawal, Output 1: wrong continuation SPK
+    let wrong_cont_spk = pay_to_script_hash_script(&[0xDE, 0xAD]);
+    let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
 
     let (mut tx, utxos) = make_multi_input_mock_transaction(
-        vec![(input_spk, Some(id))],
-        vec![(SOMPI_PER_KASPA, wrong_output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id }))],
+        vec![(0, input_spk, Some(id)), (deduct, delegate_spk, None)],
+        vec![
+            (deduct, withdrawal_spk, None),
+            (SOMPI_PER_KASPA, wrong_cont_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id })),
+        ],
     );
     tx.inputs[0].signature_script = build_permission_sig_script(&spk, amount, deduct, &proof, &old_redeem);
+    tx.inputs[1].signature_script = delegate_sig;
 
     let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
-    assert!(result.is_err(), "should fail: wrong output SPK → P6 EqualVerify fail");
+    assert!(result.is_err(), "should fail: wrong continuation SPK → EqualVerify fail");
 }
 
 #[test]
@@ -393,17 +444,23 @@ fn empty_tree_with_cov_output() {
 
     let deduct = amount;
 
-    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth);
+    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth, max_del(1));
     let input_spk = pay_to_script_hash_script(&old_redeem);
     let id = cov_id();
+    let (delegate_spk, delegate_sig) = test_delegate_input();
 
-    // V3 fix test: is_done but tx has a covenant output (should fail)
+    // is_done but tx has a covenant output (should fail)
     let bogus_output_spk = pay_to_script_hash_script(&[0xBB; 35]);
+    let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
     let (mut tx, utxos) = make_multi_input_mock_transaction(
-        vec![(input_spk, Some(id))],
-        vec![(SOMPI_PER_KASPA, bogus_output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id }))],
+        vec![(0, input_spk, Some(id)), (deduct, delegate_spk, None)],
+        vec![
+            (deduct, withdrawal_spk, None),
+            (SOMPI_PER_KASPA, bogus_output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id })),
+        ],
     );
     tx.inputs[0].signature_script = build_permission_sig_script(&spk, amount, deduct, &proof, &old_redeem);
+    tx.inputs[1].signature_script = delegate_sig;
 
     let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
     assert!(result.is_err(), "should fail: is_done but CovOutCount != 0");
@@ -431,7 +488,7 @@ fn build_delegate_test_tx(
     let spk = spk.to_vec();
     let proof = tree.prove(leaf_idx);
 
-    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth);
+    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth, max_del(1));
 
     let new_amount = amount - deduct;
     let is_zero = new_amount == 0;
@@ -446,13 +503,17 @@ fn build_delegate_test_tx(
     let delegate_redeem = build_delegate_entry_script(delegate_cov_id_check);
     let input1_spk = pay_to_script_hash_script(&delegate_redeem);
 
-    // Build continuation output
-    let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth);
-    let output_spk = pay_to_script_hash_script(&new_redeem);
+    // Build outputs: withdrawal at 0, continuation at 1
+    let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth, max_del(1));
+    let cont_spk = pay_to_script_hash_script(&new_redeem);
+    let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
 
     let (mut tx, utxos) = make_multi_input_mock_transaction(
-        vec![(input0_spk, Some(perm_cov_id)), (input1_spk, None)],
-        vec![(SOMPI_PER_KASPA, output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: perm_cov_id }))],
+        vec![(0, input0_spk, Some(perm_cov_id)), (deduct, input1_spk, None)],
+        vec![
+            (deduct, withdrawal_spk, None),
+            (SOMPI_PER_KASPA, cont_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: perm_cov_id })),
+        ],
     );
 
     // Set input 0 sig_script (permission)
@@ -505,7 +566,7 @@ fn delegate_wrong_domain() {
     let new_unclaimed = old_unclaimed;
 
     // Build legitimate permission redeem, then replace domain suffix bytes
-    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth);
+    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth, max_del(1));
 
     // Create a fake redeem with state verification domain suffix [0x00, 0x75]
     let mut fake_redeem = old_redeem.clone();
@@ -514,7 +575,7 @@ fn delegate_wrong_domain() {
 
     let new_leaf_hash = perm_leaf_hash(&spk, new_amount);
     let new_root = proof.compute_new_root(&new_leaf_hash);
-    let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth);
+    let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth, max_del(1));
 
     // Use fake_redeem for input 0's SPK and sig_script
     let input0_spk = pay_to_script_hash_script(&fake_redeem);
@@ -523,11 +584,15 @@ fn delegate_wrong_domain() {
     let delegate_redeem = build_delegate_entry_script(&COV_ID_BYTES);
     let input1_spk = pay_to_script_hash_script(&delegate_redeem);
 
-    let output_spk = pay_to_script_hash_script(&new_redeem);
+    let cont_spk = pay_to_script_hash_script(&new_redeem);
+    let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
 
     let (mut tx, utxos) = make_multi_input_mock_transaction(
-        vec![(input0_spk, Some(id)), (input1_spk, None)],
-        vec![(SOMPI_PER_KASPA, output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id }))],
+        vec![(0, input0_spk, Some(id)), (deduct, input1_spk, None)],
+        vec![
+            (deduct, withdrawal_spk, None),
+            (SOMPI_PER_KASPA, cont_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id })),
+        ],
     );
 
     // Input 0 sig_script uses the fake_redeem
@@ -549,7 +614,7 @@ fn delegate_at_index_zero() {
     let input_spk = pay_to_script_hash_script(&delegate_redeem);
 
     // Single-input tx with delegate at index 0
-    let (mut tx, utxos) = make_multi_input_mock_transaction(vec![(input_spk, Some(id))], vec![]);
+    let (mut tx, utxos) = make_multi_input_mock_transaction(vec![(0, input_spk, Some(id))], vec![]);
 
     tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&delegate_redeem).unwrap().drain();
 
@@ -579,4 +644,221 @@ fn delegate_script_cross_validation_various_ids() {
         let from_raw = zk_covenant_rollup_core::p2sh::build_delegate_entry_script_bytes(&cov_id_words);
         assert_eq!(from_builder, from_raw.as_slice(), "mismatch for seed {:#04x}", seed);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  P7: Delegate balance verification tests
+// ═══════════════════════════════════════════════════════════════════
+
+/// Build a permission transaction with configurable delegate inputs and outputs
+/// for testing P7 balance verification.
+fn build_delegate_balance_test_tx(
+    perm_leaves: Vec<(Vec<u8>, u64)>,
+    leaf_idx: usize,
+    deduct: u64,
+    delegate_amounts: Vec<u64>,
+    collateral_amount: Option<u64>,
+    delegate_change_output_amount: Option<u64>,
+    max_delegate_inputs: NonZeroUsize,
+) -> (Transaction, Vec<UtxoEntry>) {
+    let tree = PermissionTree::from_leaves(perm_leaves);
+    let depth = tree.depth();
+    let old_root = tree.root();
+    let old_unclaimed = tree.len() as u64;
+    let (spk, amount) = tree.get_leaf(leaf_idx).unwrap();
+    let spk = spk.to_vec();
+    let proof = tree.prove(leaf_idx);
+
+    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth, max_delegate_inputs);
+
+    let new_amount = amount - deduct;
+    let is_zero = new_amount == 0;
+    let new_unclaimed = if is_zero { old_unclaimed - 1 } else { old_unclaimed };
+    let is_done = new_unclaimed == 0;
+
+    let new_leaf_hash = if is_zero { perm_empty_leaf_hash() } else { perm_leaf_hash(&spk, new_amount) };
+    let new_root = proof.compute_new_root(&new_leaf_hash);
+
+    let id = cov_id();
+
+    // Build inputs
+    let input0_spk = pay_to_script_hash_script(&old_redeem);
+    let delegate_redeem = build_delegate_entry_script(&COV_ID_BYTES);
+    let delegate_spk = pay_to_script_hash_script(&delegate_redeem);
+
+    let mut inputs = vec![(0u64, input0_spk, Some(id))];
+    for &da in &delegate_amounts {
+        inputs.push((da, delegate_spk.clone(), None));
+    }
+    if let Some(ca) = collateral_amount {
+        // Non-delegate SPK for collateral
+        inputs.push((ca, pay_to_script_hash_script(&[0xCC; 35]), None));
+    }
+
+    // Build outputs
+    // Output 0: withdrawal (always)
+    let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
+    let mut outputs: Vec<(u64, ScriptPublicKey, Option<CovenantBinding>)> = vec![(deduct, withdrawal_spk, None)];
+    // Output 1: continuation (if unclaimed > 0)
+    if !is_done {
+        let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth, max_delegate_inputs);
+        let output_spk = pay_to_script_hash_script(&new_redeem);
+        outputs.push((SOMPI_PER_KASPA, output_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id })));
+    }
+    // Output 2: delegate change (if specified)
+    if let Some(dco) = delegate_change_output_amount {
+        if dco > 0 {
+            outputs.push((dco, delegate_spk.clone(), None));
+        }
+    }
+
+    let (mut tx, utxos) = make_multi_input_mock_transaction(inputs, outputs);
+
+    // Set permission sig_script
+    tx.inputs[0].signature_script = build_permission_sig_script(&spk, amount, deduct, &proof, &old_redeem);
+
+    // Set delegate sig_scripts
+    let delegate_sig = ScriptBuilder::new().add_data(&delegate_redeem).unwrap().drain();
+    for i in 1..=delegate_amounts.len() {
+        tx.inputs[i].signature_script = delegate_sig.clone();
+    }
+
+    (tx, utxos)
+}
+
+#[test]
+fn delegate_balance_exact() {
+    // [300] - 300 = 0, no change output
+    let leaves = vec![(test_spk_p2pk(1), 500u64), (test_spk_p2pk(2), 500u64)];
+    let (tx, utxos) = build_delegate_balance_test_tx(leaves, 0, 300, vec![300], None, None, max_del(1));
+    verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+}
+
+#[test]
+fn delegate_balance_with_change() {
+    // [500] - 300 = 200, change output 200
+    let leaves = vec![(test_spk_p2pk(1), 500u64), (test_spk_p2pk(2), 500u64)];
+    let (tx, utxos) = build_delegate_balance_test_tx(leaves, 0, 300, vec![500], None, Some(200), max_del(1));
+    verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+}
+
+#[test]
+fn delegate_balance_two_inputs() {
+    // [200, 300] - 500 = 0, no change
+    let leaves = vec![(test_spk_p2pk(1), 500u64), (test_spk_p2pk(2), 500u64)];
+    let (tx, utxos) = build_delegate_balance_test_tx(leaves, 0, 500, vec![200, 300], None, None, max_del(2));
+    verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+}
+
+#[test]
+fn delegate_balance_two_inputs_with_change() {
+    // [300, 400] - 500 = 200, change 200
+    let leaves = vec![(test_spk_p2pk(1), 500u64), (test_spk_p2pk(2), 500u64)];
+    let (tx, utxos) = build_delegate_balance_test_tx(leaves, 0, 500, vec![300, 400], None, Some(200), max_del(2));
+    verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+}
+
+#[test]
+fn delegate_balance_insufficient() {
+    // [200] - 300 → delegate total 200 < deduct 300 → fails
+    let leaves = vec![(test_spk_p2pk(1), 500u64), (test_spk_p2pk(2), 500u64)];
+    let (tx, utxos) = build_delegate_balance_test_tx(leaves, 0, 300, vec![200], None, None, max_del(1));
+    let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+    assert!(result.is_err(), "should fail: delegate inputs insufficient");
+}
+
+#[test]
+fn delegate_balance_wrong_output_amount() {
+    // [500] - 300 should give change 200, but we provide 100
+    let leaves = vec![(test_spk_p2pk(1), 500u64), (test_spk_p2pk(2), 500u64)];
+    let (tx, utxos) = build_delegate_balance_test_tx(leaves, 0, 300, vec![500], None, Some(100), max_del(1));
+    let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+    assert!(result.is_err(), "should fail: wrong delegate change output amount");
+}
+
+#[test]
+fn delegate_balance_no_inputs() {
+    // No delegate inputs → total_input=0, 0-300 ≠ 0 → fails
+    let leaves = vec![(test_spk_p2pk(1), 500u64), (test_spk_p2pk(2), 500u64)];
+    let (tx, utxos) = build_delegate_balance_test_tx(leaves, 0, 300, vec![], None, None, max_del(1));
+    let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+    assert!(result.is_err(), "should fail: no delegate inputs");
+}
+
+#[test]
+fn delegate_at_position_n_plus_1() {
+    // Delegate at position N+1 (the collateral slot) should be rejected by P7d guard
+    let leaves = vec![(test_spk_p2pk(1), 500u64), (test_spk_p2pk(2), 500u64)];
+    let tree = PermissionTree::from_leaves(leaves);
+    let depth = tree.depth();
+    let old_root = tree.root();
+    let old_unclaimed = tree.len() as u64;
+    let (spk, amount) = tree.get_leaf(0).unwrap();
+    let spk = spk.to_vec();
+    let proof = tree.prove(0);
+
+    let deduct = 300u64;
+    let n = max_del(1);
+
+    let old_redeem = build_permission_redeem_converged(&old_root, old_unclaimed, depth, n);
+
+    let new_amount = amount - deduct;
+    let new_unclaimed = old_unclaimed;
+    let new_leaf_hash = perm_leaf_hash(&spk, new_amount);
+    let new_root = proof.compute_new_root(&new_leaf_hash);
+
+    let id = cov_id();
+    let delegate_redeem = build_delegate_entry_script(&COV_ID_BYTES);
+    let delegate_spk = pay_to_script_hash_script(&delegate_redeem);
+    let input0_spk = pay_to_script_hash_script(&old_redeem);
+
+    // Input 0: permission, Input 1: delegate(300), Input 2: delegate at forbidden position
+    let inputs = vec![
+        (0u64, input0_spk, Some(id)),
+        (deduct, delegate_spk.clone(), None),
+        (0, delegate_spk.clone(), None), // delegate at N+1 = forbidden!
+    ];
+
+    let new_redeem = build_permission_redeem_converged(&new_root, new_unclaimed, depth, n);
+    let cont_spk = pay_to_script_hash_script(&new_redeem);
+    let withdrawal_spk = ScriptPublicKey::new(0, spk.clone().into());
+    let outputs = vec![
+        (deduct, withdrawal_spk, None),
+        (SOMPI_PER_KASPA, cont_spk, Some(CovenantBinding { authorizing_input: 0, covenant_id: id })),
+    ];
+
+    let (mut tx, utxos) = make_multi_input_mock_transaction(inputs, outputs);
+    tx.inputs[0].signature_script = build_permission_sig_script(&spk, amount, deduct, &proof, &old_redeem);
+    let delegate_sig = ScriptBuilder::new().add_data(&delegate_redeem).unwrap().drain();
+    tx.inputs[1].signature_script = delegate_sig.clone();
+    tx.inputs[2].signature_script = delegate_sig;
+
+    let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+    assert!(result.is_err(), "should fail: delegate at position N+1");
+}
+
+#[test]
+fn delegate_balance_with_collateral() {
+    // [300] + collateral, deduct=300, no change → passes (collateral not counted)
+    let leaves = vec![(test_spk_p2pk(1), 500u64), (test_spk_p2pk(2), 500u64)];
+    let (tx, utxos) = build_delegate_balance_test_tx(leaves, 0, 300, vec![300], Some(100), None, max_del(2));
+    verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+}
+
+#[test]
+fn delegate_balance_no_continuation() {
+    // Single leaf, fully consumed → is_done=true, no continuation output.
+    // Delegate change at index 1 (= 1 + CovOutCount(0)).
+    let leaves = vec![(test_spk_p2pk(1), 500u64)];
+    let (tx, utxos) = build_delegate_balance_test_tx(leaves, 0, 500, vec![700], None, Some(200), max_del(1));
+    verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+}
+
+#[test]
+fn delegate_balance_missing_change() {
+    // Delegate input 500, deduct 300 → expected_change=200, but no delegate output at index 2 → fails
+    let leaves = vec![(test_spk_p2pk(1), 500u64), (test_spk_p2pk(2), 500u64)];
+    let (tx, utxos) = build_delegate_balance_test_tx(leaves, 0, 300, vec![500], None, None, max_del(1));
+    let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
+    assert!(result.is_err(), "should fail: expected_change > 0 but no delegate output at expected index");
 }

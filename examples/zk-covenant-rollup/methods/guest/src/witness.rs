@@ -73,9 +73,6 @@ pub struct EntryWitness {
 
 impl EntryWitness {
     pub fn read_from_stdin(stdin: &mut impl WordRead) -> Self {
-        Self {
-            dest: input::read_account_witness(stdin),
-            rest_preimage: input::read_aligned_bytes(stdin),
-        }
+        Self { dest: input::read_account_witness(stdin), rest_preimage: input::read_aligned_bytes(stdin) }
     }
 }

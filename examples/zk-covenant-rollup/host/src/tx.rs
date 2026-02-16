@@ -50,7 +50,7 @@ pub fn verify_tx(tx: &Transaction, utxo: &UtxoEntry, accessor: &dyn SeqCommitAcc
 
 /// Multi-input/output mock transaction for permission/delegate testing.
 pub fn make_multi_input_mock_transaction(
-    inputs_spk: Vec<(ScriptPublicKey, Option<Hash>)>,
+    inputs_spk: Vec<(u64, ScriptPublicKey, Option<Hash>)>,
     outputs: Vec<(u64, ScriptPublicKey, Option<CovenantBinding>)>,
 ) -> (Transaction, Vec<UtxoEntry>) {
     let tx = Transaction::new(
@@ -68,7 +68,8 @@ pub fn make_multi_input_mock_transaction(
         0,
         vec![],
     );
-    let utxos: Vec<UtxoEntry> = inputs_spk.into_iter().map(|(spk, cov_id)| UtxoEntry::new(0, spk, 0, false, cov_id)).collect();
+    let utxos: Vec<UtxoEntry> =
+        inputs_spk.into_iter().map(|(amount, spk, cov_id)| UtxoEntry::new(amount, spk, 0, false, cov_id)).collect();
     (tx, utxos)
 }
 

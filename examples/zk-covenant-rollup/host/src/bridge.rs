@@ -1,8 +1,11 @@
+use std::num::NonZeroUsize;
+
 use kaspa_consensus_core::constants::TX_VERSION;
 use kaspa_txscript::opcodes::codes::{
-    Op0, OpAdd, OpBlake2b, OpCat, OpCovOutCount, OpData32, OpDrop, OpDup, OpElse, OpEndIf, OpEqual, OpEqualVerify, OpFromAltStack,
-    OpGreaterThan, OpGreaterThanOrEqual, OpIf, OpInputCovenantId, OpNip, OpNum2Bin, OpOver, OpRoll, OpRot, OpSHA256, OpSub, OpSwap,
-    OpToAltStack, OpTrue, OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpk, OpVerify,
+    Op0, OpAdd, OpBlake2b, OpCat, OpCovOutCount, OpData32, OpDrop, OpDup, OpElse, OpEndIf, OpEqual, OpEqualVerify, OpFalse,
+    OpFromAltStack, OpGreaterThan, OpGreaterThanOrEqual, OpIf, OpInputCovenantId, OpNip, OpNum2Bin, OpOver, OpRoll, OpRot, OpSHA256,
+    OpSub, OpSwap, OpToAltStack, OpTrue, OpTxInputAmount, OpTxInputCount, OpTxInputIndex, OpTxInputScriptSigLen,
+    OpTxInputScriptSigSubstr, OpTxInputSpk, OpTxOutputAmount, OpTxOutputCount, OpTxOutputSpk, OpVerify,
 };
 use kaspa_txscript::script_builder::ScriptBuilder;
 use zk_covenant_rollup_core::permission_tree::PermProof;
@@ -10,10 +13,14 @@ use zk_covenant_rollup_core::permission_tree::PermProof;
 #[cfg(test)]
 mod tests;
 
+// ─────────────────────────────────────────────────────────────────
+//  Script domains
+// ─────────────────────────────────────────────────────────────────
+
 /// Script domain suffixes for distinguishing different scripts within the same covenant.
 ///
 /// Each domain has a 2-byte suffix (`[opcode, OP_DROP]`) appended to the redeem script
-/// after the final `OP_ENDIF`. This is a no-op (pushes a value then drops it) so the
+/// after the final `OP_TRUE`. This is a no-op (pushes a value then drops it) so the
 /// stack result is unchanged, but it makes the last 2 bytes of the sig_script
 /// (= last 2 bytes of the redeem) identifiable by cross-script introspection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,6 +41,10 @@ impl ScriptDomain {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────
+//  Constants
+// ─────────────────────────────────────────────────────────────────
+
 /// Permission redeem script prefix size in bytes.
 ///
 /// Layout (42 bytes total):
@@ -41,321 +52,604 @@ impl ScriptDomain {
 /// - 32 bytes:  root hash
 /// - 1 byte:   `OP_DATA_8` (push-8-bytes opcode = 0x08)
 /// - 8 bytes:   unclaimed_count (LE)
-///
-/// The domain tag (`OP_1, OP_DROP`) is a 2-byte **suffix** at the end of the
-/// redeem, not part of this prefix.
 pub const PERM_REDEEM_PREFIX_LEN: i64 = 42;
 
+/// Delegate entry script bytes **before** the 32-byte covenant_id (bytes 0..7).
+///
+/// ```text
+/// OpTxInputIndex(0xb9) Op0(0x00) OpGreaterThan(0xa0) OpVerify(0x69)
+/// Op0(0x00) OpInputCovenantId(0xcf) OpData32(0x20)
+/// ```
+const DELEGATE_SCRIPT_PREFIX: [u8; 7] = [0xb9, 0x00, 0xa0, 0x69, 0x00, 0xcf, 0x20];
+
+/// Delegate entry script bytes **after** the 32-byte covenant_id (bytes 39..53).
+///
+/// ```text
+/// OpEqualVerify(0x88) Op0(0x00) Op0(0x00) OpTxInputScriptSigLen(0xc9)
+/// OpDup(0x76) Op2(0x52) OpSub(0x94) OpSwap(0x7c) OpTxInputScriptSigSubstr(0xbc)
+/// push-2(0x02) 0x51 0x75 OpEqualVerify(0x88) OpTrue(0x51)
+/// ```
+const DELEGATE_SCRIPT_SUFFIX: [u8; 14] = [0x88, 0x00, 0x00, 0xc9, 0x76, 0x52, 0x94, 0x7c, 0xbc, 0x02, 0x51, 0x75, 0x88, 0x51];
+
+/// Maximum number of transaction outputs allowed by the permission script.
+///
+/// Layout: withdrawal(1) + continuation(0-1) + delegate change(0-1) + collateral change(0-1).
+const MAX_OUTPUTS: i64 = 4;
+
 // ═══════════════════════════════════════════════════════════════════
-//  Permission redeem script
+//  Permission redeem — trait + implementation
 // ═══════════════════════════════════════════════════════════════════
 
-/// Build the permission redeem script with a known redeem length.
+/// Emitter for the phases of a permission redeem script.
 ///
-/// This script governs L2→L1 withdrawals. It embeds a Merkle tree root
-/// and an unclaimed leaf count. When spent, the sig_script provides a
-/// withdrawal claim (spk, amount, deduct_amount, merkle proof). The
-/// script verifies the claim against the embedded root, computes the
-/// updated tree root, and enforces that the first output carries the
-/// updated script (unless unclaimed drops to 0).
+/// The permission script governs L2->L1 withdrawals by verifying merkle-tree
+/// claims and enforcing delegate input balance.  Each phase emits opcodes
+/// into a [`ScriptBuilder`] and uses `OpVerify`/`OpEqualVerify` for its own
+/// checks — no phase passes a `TRUE` sentinel to the next.
 ///
-/// # Redeem layout
+/// ## Transaction layout
+///
+/// **Inputs:**
+///
+/// | Index   | Role                                   |
+/// |---------|----------------------------------------|
+/// | 0       | Permission script (this input)         |
+/// | 1..N    | Delegate inputs (bridge reserves)      |
+/// | N+1     | Optional collateral for fees           |
+///
+/// **Outputs (max 4, fixed order):**
+///
+/// | Index   | Presence             | Role                           |
+/// |---------|----------------------|--------------------------------|
+/// | 0       | Always               | Withdrawal to leaf's SPK       |
+/// | 1       | If unclaimed > 0     | Permission continuation        |
+/// | 2       | If delegate change   | Delegate change output         |
+/// | 3       | Optional             | Collateral change (unchecked)  |
+///
+/// ## Sig_script push order (bottom of stack first)
+///
 /// ```text
-/// prefix(42B) || body || suffix(2B)
-/// ```
-///
-/// Prefix (42 bytes): `[OpData32, root(32B), OP_DATA_8, unclaimed(8B)]`
-/// Suffix (2 bytes):  `[OP_1(0x51), OP_DROP(0x75)]` — domain tag (no-op)
-///
-/// # Sig_script push order (bottom of stack first)
-/// ```text
-/// G2_sib_{d-1}(32B), G2_dir_{d-1}(0|1), ..., G2_sib_0, G2_dir_0,
-/// G1_sib_{d-1}(32B), G1_dir_{d-1}(0|1), ..., G1_sib_0, G1_dir_0,
-/// spk(var), amount(8B LE), deduct(8B LE),
+/// G2_sib_{d-1}, G2_dir_{d-1}, ..., G2_sib_0, G2_dir_0,
+/// G1_sib_{d-1}, G1_dir_{d-1}, ..., G1_sib_0, G1_dir_0,
+/// spk(var), amount(8B LE), deduct(i64),
 /// redeem_script
 /// ```
-///
-/// G1 = siblings for old root verification, G2 = siblings for new root computation.
-/// Both are identical copies of the same merkle proof.
-///
-/// # Stack after P2SH pops redeem + redeem pushes embedded (top→bottom)
-/// ```text
-/// uncl_emb, root_emb, deduct, amount, spk,
-/// G1_dir_0, G1_sib_0, ..., G1_dir_{d-1}, G1_sib_{d-1},
-/// G2_dir_0, G2_sib_0, ..., G2_dir_{d-1}, G2_sib_{d-1}
-/// ```
-pub fn build_permission_redeem(root: &[u32; 8], unclaimed_count: u64, depth: usize, redeem_script_len: i64) -> Vec<u8> {
-    let mut b = ScriptBuilder::new();
+pub trait PermissionRedeemEmitter {
+    /// Emit the 42-byte prefix: `[OpData32, root(32B), 0x08, unclaimed_count(8B)]`.
+    fn emit_prefix(&self, b: &mut ScriptBuilder, root: &[u32; 8], unclaimed_count: u64);
 
-    // ═══════════ PREFIX (42 bytes) ═══════════
-    b.add_data(bytemuck::bytes_of(root)).unwrap(); // OpData32 + root(32)
-    b.add_data(&unclaimed_count.to_le_bytes()).unwrap(); // OP_DATA_8 + unclaimed(8)
-                                                         // Stack: [..., uncl_emb(8B), root_emb(32B)]
+    /// Stash the two embedded constants (root, unclaimed_count) to the alt stack.
+    ///
+    /// ```text
+    /// Main:  [..., deduct, amount, spk, G1.., G2..]
+    /// Alt:   [] -> [uncl_emb, root_emb]
+    /// ```
+    fn emit_stash_embedded(&self, b: &mut ScriptBuilder);
 
-    // ═══════════ P0: stash embedded data ═══════════
-    b.add_op(OpToAltStack).unwrap();
-    // Stack: [..., uncl_emb], alt:[root_emb]   (note: alt shown top-first from here on)
-    b.add_op(OpToAltStack).unwrap();
-    // Stack: [..., deduct, amount, spk, G1..., G2...], alt:[root_emb, uncl_emb]
+    /// Validate `deduct > 0` and `amount >= deduct`.
+    ///
+    /// Stashes a copy of `deduct` to the alt stack for later use by P7.
+    /// Computes `new_amount = amount - deduct` and leaves it on the stack.
+    ///
+    /// ```text
+    /// Main: [..., deduct, amount, spk, G1.., G2..]
+    ///    -> [..., new_amount, amount, spk, G1.., G2..]
+    /// Alt:  [uncl, root] -> [uncl, root, deduct]
+    /// ```
+    fn emit_validate_amounts(&self, b: &mut ScriptBuilder);
 
-    // ═══════════ P1: validate amounts ═══════════
-    // Check deduct > 0
-    b.add_op(OpDup).unwrap();
-    b.add_i64(0).unwrap();
-    b.add_op(OpGreaterThan).unwrap();
-    b.add_op(OpVerify).unwrap();
+    /// Verify output 0's SPK matches the leaf's `spk` (withdrawal goes to rightful owner).
+    ///
+    /// Reads `spk` from the stack (depth 2), prepends the 2-byte SPK version prefix,
+    /// and compares against `OpTxOutputSpk(0)`.  Restores the stack afterward.
+    fn emit_verify_withdrawal(&self, b: &mut ScriptBuilder);
 
-    // Compute new_amount = amount - deduct; check >= 0
-    // OpSub pops b(top), a(second) and pushes a − b.
-    b.add_op(OpOver).unwrap();
-    // Stack: [..., amount, deduct, amount]
-    b.add_op(OpSwap).unwrap();
-    // Stack: [..., amount, amount, deduct]
-    b.add_op(OpSub).unwrap();
-    // Stack: [..., amount, new_amount]          (new_amount in minimal i64 encoding)
-    b.add_op(OpDup).unwrap();
-    b.add_i64(0).unwrap();
-    b.add_op(OpGreaterThanOrEqual).unwrap();
-    b.add_op(OpVerify).unwrap();
-    // Stack: [..., new_amount, amount, spk, G1..., G2...]
+    /// Compute old and new leaf hashes from `(spk, amount, new_amount)`.
+    ///
+    /// Produces `old_leaf = SHA256("PermLeaf" || spk || amount)` and
+    /// `new_leaf` (either the same form with `new_amount`, or the empty-leaf
+    /// hash when `new_amount == 0`).
+    ///
+    /// ```text
+    /// Stack: [..., new_amount, amount, spk, G1.., G2..]
+    ///     -> [..., old_leaf(32B), G1.., G2..]
+    /// Alt:   [..., root, deduct] -> [..., root, deduct, is_zero, new_leaf]
+    /// ```
+    fn emit_compute_leaf_hashes(&self, b: &mut ScriptBuilder);
 
-    // ═══════════ P2: compute leaf hashes ═══════════
+    /// Merkle walk over G1 siblings to verify old root matches embedded root.
+    ///
+    /// Consumes `depth` `(sib, dir)` pairs from the stack.
+    /// Fails (via `OpEqualVerify`) if the computed root != embedded root.
+    fn emit_verify_old_root(&self, b: &mut ScriptBuilder);
 
-    // 2a. is_zero = (new_amount == 0), stash for P5
-    b.add_op(OpDup).unwrap();
-    b.add_i64(0).unwrap();
-    b.add_op(OpEqual).unwrap();
-    b.add_op(OpToAltStack).unwrap();
-    // Stack: [..., new_amount, amount, spk, G1...], alt:[root, uncl, is_zero]
+    /// Merkle walk over G2 siblings to compute the new root.
+    ///
+    /// Consumes `depth` `(sib, dir)` pairs from the stack.
+    fn emit_compute_new_root(&self, b: &mut ScriptBuilder);
 
-    // 2b. new_amount → 8-byte LE for hashing (OpNum2Bin: sign-magnitude, same as u64 LE for ≥0)
-    b.add_i64(8).unwrap();
-    b.add_op(OpNum2Bin).unwrap();
-    // Stack: [..., new_amt_8b(8B), amount(8B), spk, G1...]
+    /// Compute `new_unclaimed`: decrements by 1 when the leaf is fully consumed.
+    ///
+    /// Converts the result to 8-byte LE via `OpNum2Bin` for prefix reconstruction.
+    fn emit_compute_new_unclaimed(&self, b: &mut ScriptBuilder);
 
-    // 2c. Dup spk for reuse in old leaf hash
-    // OpRot: [a,b,c] → [b,c,a] (3rd-from-top moves to top)
-    b.add_op(OpRot).unwrap();
-    // Stack: [..., spk, new_amt_8b, amount, G1...]
-    b.add_op(OpDup).unwrap();
-    b.add_op(OpToAltStack).unwrap();
-    // Stack: [..., spk, new_amt_8b, amount, G1...], alt:[root, uncl, is_zero, spk_dup]
+    /// Verify transaction outputs: output count cap, and continuation SPK when needed.
+    ///
+    /// * Enforces `output_count <= 4`.
+    /// * If `new_unclaimed > 0`: verifies output 1 SPK matches P2SH(new_redeem)
+    ///   and exactly one covenant continuation output exists.
+    /// * If `new_unclaimed == 0`: verifies zero covenant outputs remain.
+    ///
+    /// Leaves `[deduct]` on the stack (no TRUE sentinel).
+    fn emit_verify_outputs(&self, b: &mut ScriptBuilder);
 
-    // 2d. New leaf (nonzero): SHA256("PermLeaf" || spk || new_amt_8b)
-    // OpCat pops b(top), a(second), pushes a||b.
-    b.add_op(OpSwap).unwrap();
-    // Stack: [..., new_amt_8b, spk, amount, G1...]
-    b.add_op(OpCat).unwrap();
-    // Stack: [..., spk||new_amt_8b, amount, G1...]
-    b.add_data(b"PermLeaf").unwrap();
-    b.add_op(OpSwap).unwrap();
-    b.add_op(OpCat).unwrap();
-    // Stack: [..., "PermLeaf"||spk||new_amt_8b, amount, G1...]
-    b.add_op(OpSHA256).unwrap();
-    // Stack: [..., new_leaf_nz(32B), amount, G1...]
+    /// Verify the delegate input/output balance equation (index-based).
+    ///
+    /// Enforces:
+    /// ```text
+    /// input_count <= N + 2
+    /// expected_change = sum(delegate_input_amounts) - deduct >= 0
+    /// if expected_change > 0:
+    ///     output[1 + CovOutCount] has delegate SPK and amount == expected_change
+    /// ```
+    ///
+    /// The delegate change output position is deterministic:
+    /// `delegate_idx = 1 + CovOutCount` (after withdrawal and optional continuation).
+    ///
+    /// where N = `max_delegate_inputs`.
+    ///
+    /// Leaves an empty stack.
+    fn emit_verify_delegate_balance(&self, b: &mut ScriptBuilder);
 
-    // 2e. Empty leaf hash (constant)
-    b.add_data(b"PermEmpty").unwrap();
-    b.add_op(OpSHA256).unwrap();
-    // Stack: [..., empty_h(32B), new_leaf_nz, amount, G1...]
+    /// Emit the 2-byte domain suffix `[OP_1(0x51), OP_DROP(0x75)]` — a no-op
+    /// that tags this script for cross-script introspection by the delegate.
+    fn emit_domain_suffix(&self, b: &mut ScriptBuilder);
 
-    // 2f. Select new_leaf based on is_zero; re-stash is_zero and spk_dup
-    b.add_op(OpFromAltStack).unwrap(); // spk_dup
-    b.add_op(OpFromAltStack).unwrap(); // is_zero
-                                       // Stack: [..., is_zero, spk_dup, empty_h, new_leaf_nz, amount, G1...], alt:[root, uncl]
-
-    b.add_op(OpDup).unwrap();
-    b.add_op(OpToAltStack).unwrap(); // re-stash is_zero
-    b.add_op(OpSwap).unwrap();
-    b.add_op(OpToAltStack).unwrap(); // re-stash spk_dup
-                                     // Stack: [..., is_zero, empty_h, new_leaf_nz, amount, G1...], alt:[root, uncl, is_zero, spk_dup]
-
-    b.add_op(OpIf).unwrap();
-    b.add_op(OpNip).unwrap(); // is_zero true: keep empty_h, drop new_leaf_nz
-    b.add_op(OpElse).unwrap();
-    b.add_op(OpDrop).unwrap(); // is_zero false: keep new_leaf_nz, drop empty_h
-    b.add_op(OpEndIf).unwrap();
-    // Stack: [..., new_leaf(32B), amount(8B), G1..., G2...]
-
-    b.add_op(OpToAltStack).unwrap();
-    // Stack: [..., amount, G1...], alt:[root, uncl, is_zero, spk_dup, new_leaf]
-
-    // 2g. Old leaf hash: SHA256("PermLeaf" || spk || amount)
-    //     `amount` here is the original 8-byte LE from sig_script (no arithmetic was applied to it).
-    b.add_op(OpFromAltStack).unwrap(); // new_leaf
-    b.add_op(OpFromAltStack).unwrap(); // spk_dup
-                                       // Stack: [..., spk_dup, new_leaf, amount, G1...], alt:[root, uncl, is_zero]
-    b.add_op(OpRot).unwrap();
-    // Stack: [..., amount, spk_dup, new_leaf, G1...]
-    b.add_op(OpCat).unwrap();
-    // Stack: [..., spk_dup||amount, new_leaf, G1...]     (Cat: spk_dup(second)||amount(top))
-    b.add_data(b"PermLeaf").unwrap();
-    b.add_op(OpSwap).unwrap();
-    b.add_op(OpCat).unwrap();
-    // Stack: [..., "PermLeaf"||spk||amount, new_leaf, G1...]
-    b.add_op(OpSHA256).unwrap();
-    // Stack: [..., old_leaf(32B), new_leaf, G1...]
-
-    // Stash new_leaf for P4
-    b.add_op(OpSwap).unwrap();
-    b.add_op(OpToAltStack).unwrap();
-    // Stack: [..., old_leaf, G1..., G2...], alt:[root, uncl, is_zero, new_leaf]
-
-    // ═══════════ P3: old root merkle walk ═══════════
-    // Each step: Expects [..., sib, dir, hash], Leaves [..., parent_hash]
-    for _ in 0..depth {
-        emit_merkle_step(&mut b);
+    /// Build the complete permission redeem script by calling all phases in order.
+    fn build(&self, root: &[u32; 8], unclaimed_count: u64) -> Vec<u8> {
+        let mut b = ScriptBuilder::new();
+        self.emit_prefix(&mut b, root, unclaimed_count);
+        self.emit_stash_embedded(&mut b);
+        self.emit_validate_amounts(&mut b);
+        self.emit_verify_withdrawal(&mut b);
+        self.emit_compute_leaf_hashes(&mut b);
+        self.emit_verify_old_root(&mut b);
+        self.emit_compute_new_root(&mut b);
+        self.emit_compute_new_unclaimed(&mut b);
+        self.emit_verify_outputs(&mut b);
+        self.emit_verify_delegate_balance(&mut b);
+        b.add_op(OpTrue).unwrap(); // single final TRUE for P2SH
+        self.emit_domain_suffix(&mut b);
+        b.drain()
     }
-    // Stack: [..., computed_old_root(32B), G2...], alt:[root, uncl, is_zero, new_leaf]
+}
 
-    // Pop from alt to verify root and set up P4
-    b.add_op(OpFromAltStack).unwrap(); // new_leaf
-    b.add_op(OpFromAltStack).unwrap(); // is_zero
-    b.add_op(OpFromAltStack).unwrap(); // root_emb
-                                       // Stack: [..., root_emb, is_zero, new_leaf, computed_old_root, G2...], alt:[uncl]
+/// Standard implementation of the permission redeem script.
+pub struct PermissionRedeem {
+    pub depth: usize,
+    pub redeem_script_len: i64,
+    pub max_delegate_inputs: NonZeroUsize,
+}
 
-    // Bring computed_old_root to top (it's at position 3 from top)
-    b.add_i64(3).unwrap();
-    b.add_op(OpRoll).unwrap();
-    // Stack: [..., computed_old_root, root_emb, is_zero, new_leaf, G2...]
-    b.add_op(OpEqualVerify).unwrap();
-    // Stack: [..., is_zero, new_leaf, G2...]
-
-    b.add_op(OpToAltStack).unwrap();
-    // Stack: [..., new_leaf, G2...], alt:[uncl, is_zero]
-
-    // ═══════════ P4: new root merkle walk ═══════════
-    for _ in 0..depth {
-        emit_merkle_step(&mut b);
+impl PermissionRedeemEmitter for PermissionRedeem {
+    fn emit_prefix(&self, b: &mut ScriptBuilder, root: &[u32; 8], unclaimed_count: u64) {
+        b.add_data(bytemuck::bytes_of(root)).unwrap(); // OpData32 + root(32)
+        b.add_data(&unclaimed_count.to_le_bytes()).unwrap(); // OP_DATA_8 + unclaimed(8)
     }
-    // Stack: [new_root(32B)], alt:[uncl, is_zero]
 
-    // ═══════════ P5: compute new_uncl ═══════════
-    b.add_op(OpFromAltStack).unwrap(); // is_zero
-    b.add_op(OpFromAltStack).unwrap(); // uncl_emb
-                                       // Stack: [uncl_emb, is_zero, new_root]
+    fn emit_stash_embedded(&self, b: &mut ScriptBuilder) {
+        // After prefix the top two items are uncl_emb (top) and root_emb.
+        b.add_op(OpToAltStack).unwrap(); // stash uncl_emb
+        b.add_op(OpToAltStack).unwrap(); // stash root_emb
+                                         // Main: [..., deduct, amount, spk, G1.., G2..]
+                                         // Alt:  [uncl_emb, root_emb]  (root on top)
+    }
 
-    // new_uncl = if is_zero then uncl-1 else uncl
-    b.add_op(OpSwap).unwrap();
-    // Stack: [is_zero, uncl_emb, new_root]
-    b.add_op(OpIf).unwrap();
-    b.add_i64(1).unwrap();
-    b.add_op(OpSub).unwrap(); // uncl - 1
-    b.add_op(OpElse).unwrap();
-    // uncl unchanged
-    b.add_op(OpEndIf).unwrap();
-    // Stack: [new_uncl, new_root]
+    fn emit_validate_amounts(&self, b: &mut ScriptBuilder) {
+        // Main top: deduct, amount, spk, G1.., G2..
+        // Alt: [uncl, root]
 
-    // Convert to 8-byte LE for prefix reconstruction
-    b.add_i64(8).unwrap();
-    b.add_op(OpNum2Bin).unwrap();
-    // Stack: [new_uncl_8b(8B), new_root(32B)]
+        // ── verify deduct > 0 ──
+        b.add_op(OpDup).unwrap();
+        b.add_i64(0).unwrap();
+        b.add_op(OpGreaterThan).unwrap();
+        b.add_op(OpVerify).unwrap();
 
-    // ═══════════ P6: conditional output verification ═══════════
+        // ── stash deduct to alt for later use by P7 ──
+        b.add_op(OpDup).unwrap();
+        b.add_op(OpToAltStack).unwrap();
+        // Alt: [uncl, root, deduct]
 
-    // Check if all exits claimed (expected_new_uncl == 0)
-    b.add_op(OpDup).unwrap();
-    b.add_data(&0u64.to_le_bytes()).unwrap();
-    b.add_op(OpEqual).unwrap();
-    // Stack: [is_done, new_uncl_8b, new_root]
+        // ── compute new_amount = amount - deduct; verify >= 0 ──
+        b.add_op(OpOver).unwrap(); // [..., amount, deduct, amount]
+        b.add_op(OpSwap).unwrap(); // [..., amount, amount, deduct]
+        b.add_op(OpSub).unwrap(); // [..., amount, new_amount]
+        b.add_op(OpDup).unwrap();
+        b.add_i64(0).unwrap();
+        b.add_op(OpGreaterThanOrEqual).unwrap();
+        b.add_op(OpVerify).unwrap();
+        // Main: [..., new_amount, amount, spk, G1.., G2..]
+    }
 
-    b.add_op(OpIf).unwrap();
-    {
-        // All exits claimed — no continuation output needed.
-        b.add_op(OpDrop).unwrap(); // drop new_uncl_8b
-        b.add_op(OpDrop).unwrap(); // drop new_root
-                                   // Stack: []
+    fn emit_verify_withdrawal(&self, b: &mut ScriptBuilder) {
+        // Main top: new_amount(0), amount(1), spk(2), ...
 
-        // V3: verify no covenant continuation outputs remain
-        b.add_op(OpTxInputIndex).unwrap();
-        b.add_op(OpInputCovenantId).unwrap();
-        b.add_op(OpCovOutCount).unwrap();
+        // ── bring spk to top ──
+        b.add_i64(2).unwrap();
+        b.add_op(OpRoll).unwrap();
+        // Main: [..., amount, new_amount, spk]
+
+        b.add_op(OpDup).unwrap();
+        // Main: [..., amount, new_amount, spk, spk_copy]
+
+        // ── prepend SPK version prefix (0x0000 for version 0, big-endian u16) ──
+        b.add_data(&0u16.to_be_bytes()).unwrap();
+        b.add_op(OpSwap).unwrap();
+        b.add_op(OpCat).unwrap();
+        // Main: [..., amount, new_amount, spk, version||spk_copy]
+
+        // ── compare with output 0's SPK ──
+        b.add_i64(0).unwrap();
+        b.add_op(OpTxOutputSpk).unwrap();
+        b.add_op(OpEqualVerify).unwrap();
+        // Main: [..., amount, new_amount, spk]
+
+        // ── restore stack: spk back to depth 2 ──
+        b.add_op(OpRot).unwrap(); // [new_amount, spk, amount]
+        b.add_op(OpRot).unwrap(); // [spk, amount, new_amount]
+                                  // Main: [..., new_amount, amount, spk, G1.., G2..]
+    }
+
+    fn emit_compute_leaf_hashes(&self, b: &mut ScriptBuilder) {
+        // ── is_zero = (new_amount == 0), stash for later ──
+        b.add_op(OpDup).unwrap();
+        b.add_i64(0).unwrap();
+        b.add_op(OpEqual).unwrap();
+        b.add_op(OpToAltStack).unwrap();
+        // Alt: [uncl, root, deduct, is_zero]
+
+        // ── new_amount -> 8-byte LE for hashing ──
+        b.add_i64(8).unwrap();
+        b.add_op(OpNum2Bin).unwrap();
+
+        // ── dup spk for reuse in old leaf hash ──
+        b.add_op(OpRot).unwrap(); // [..., spk, new_amt_8b, amount, G1..]
+        b.add_op(OpDup).unwrap();
+        b.add_op(OpToAltStack).unwrap();
+        // Alt: [uncl, root, deduct, is_zero, spk_dup]
+
+        // ── new leaf (nonzero): SHA256("PermLeaf" || spk || new_amt_8b) ──
+        b.add_op(OpSwap).unwrap(); // [..., new_amt_8b, spk, amount, G1..]
+        b.add_op(OpCat).unwrap(); // [..., spk||new_amt_8b, amount, G1..]
+        b.add_data(b"PermLeaf").unwrap();
+        b.add_op(OpSwap).unwrap();
+        b.add_op(OpCat).unwrap();
+        b.add_op(OpSHA256).unwrap();
+
+        // ── empty leaf hash (constant) ──
+        b.add_data(b"PermEmpty").unwrap();
+        b.add_op(OpSHA256).unwrap();
+
+        // ── select new_leaf based on is_zero; re-stash is_zero and spk_dup ──
+        b.add_op(OpFromAltStack).unwrap(); // spk_dup
+        b.add_op(OpFromAltStack).unwrap(); // is_zero
+        b.add_op(OpDup).unwrap();
+        b.add_op(OpToAltStack).unwrap(); // re-stash is_zero
+        b.add_op(OpSwap).unwrap();
+        b.add_op(OpToAltStack).unwrap(); // re-stash spk_dup
+                                         // Alt: [uncl, root, deduct, is_zero, spk_dup]
+
+        b.add_op(OpIf).unwrap();
+        b.add_op(OpNip).unwrap(); // is_zero true: keep empty_h, drop new_leaf_nz
+        b.add_op(OpElse).unwrap();
+        b.add_op(OpDrop).unwrap(); // is_zero false: keep new_leaf_nz, drop empty_h
+        b.add_op(OpEndIf).unwrap();
+
+        b.add_op(OpToAltStack).unwrap();
+        // Alt: [uncl, root, deduct, is_zero, spk_dup, new_leaf]
+
+        // ── old leaf hash: SHA256("PermLeaf" || spk || amount) ──
+        b.add_op(OpFromAltStack).unwrap(); // new_leaf
+        b.add_op(OpFromAltStack).unwrap(); // spk_dup
+                                           // Alt: [uncl, root, deduct, is_zero]
+        b.add_op(OpRot).unwrap(); // [..., amount, spk_dup, new_leaf, G1..]
+        b.add_op(OpCat).unwrap(); // [..., spk_dup||amount, new_leaf, G1..]
+        b.add_data(b"PermLeaf").unwrap();
+        b.add_op(OpSwap).unwrap();
+        b.add_op(OpCat).unwrap();
+        b.add_op(OpSHA256).unwrap();
+
+        // Stash new_leaf for compute_new_root
+        b.add_op(OpSwap).unwrap();
+        b.add_op(OpToAltStack).unwrap();
+        // Main: [..., old_leaf, G1.., G2..]
+        // Alt: [uncl, root, deduct, is_zero, new_leaf]
+    }
+
+    fn emit_verify_old_root(&self, b: &mut ScriptBuilder) {
+        for _ in 0..self.depth {
+            emit_merkle_step(b);
+        }
+        // Main: [computed_root, G2..], Alt: [uncl, root, deduct, is_zero, new_leaf]
+
+        b.add_op(OpFromAltStack).unwrap(); // new_leaf
+        b.add_op(OpFromAltStack).unwrap(); // is_zero
+        b.add_op(OpFromAltStack).unwrap(); // deduct
+        b.add_op(OpFromAltStack).unwrap(); // root_emb
+                                           // Alt: [uncl]
+                                           // Main: [root_emb, deduct, is_zero, new_leaf, computed_root, G2..]
+
+        // Bring computed_old_root to top (position 4 from top)
+        b.add_i64(4).unwrap();
+        b.add_op(OpRoll).unwrap();
+        b.add_op(OpEqualVerify).unwrap();
+        // Main: [deduct, is_zero, new_leaf, G2..]
+
+        // Re-stash deduct (deep) and is_zero, leave new_leaf on main
+        b.add_op(OpRot).unwrap(); // [new_leaf, deduct, is_zero, G2..]
+        b.add_op(OpSwap).unwrap(); // [deduct, new_leaf, is_zero, G2..]
+        b.add_op(OpToAltStack).unwrap(); // stash deduct. Alt: [uncl, deduct]
+        b.add_op(OpSwap).unwrap(); // [is_zero, new_leaf, G2..]
+        b.add_op(OpToAltStack).unwrap(); // stash is_zero. Alt: [uncl, deduct, is_zero]
+                                         // Main: [new_leaf, G2..]
+    }
+
+    fn emit_compute_new_root(&self, b: &mut ScriptBuilder) {
+        for _ in 0..self.depth {
+            emit_merkle_step(b);
+        }
+        // Main: [new_root(32B)], Alt: [uncl, deduct, is_zero]
+    }
+
+    fn emit_compute_new_unclaimed(&self, b: &mut ScriptBuilder) {
+        b.add_op(OpFromAltStack).unwrap(); // is_zero
+        b.add_op(OpFromAltStack).unwrap(); // deduct
+        b.add_op(OpFromAltStack).unwrap(); // uncl_emb
+                                           // Alt: [], Main: [uncl_emb, deduct, is_zero, new_root]
+
+        // Bring is_zero to top for conditional
+        b.add_op(OpRot).unwrap(); // [is_zero, uncl_emb, deduct, new_root]
+
+        // new_uncl = if is_zero { uncl - 1 } else { uncl }
+        b.add_op(OpIf).unwrap();
+        b.add_i64(1).unwrap();
+        b.add_op(OpSub).unwrap();
+        b.add_op(OpElse).unwrap();
+        // uncl unchanged
+        b.add_op(OpEndIf).unwrap();
+        // Main: [new_uncl, deduct, new_root]
+
+        // Convert to 8-byte LE for prefix reconstruction
+        b.add_i64(8).unwrap();
+        b.add_op(OpNum2Bin).unwrap();
+        // Main: [new_uncl_8b, deduct, new_root]
+
+        // Rearrange to [new_uncl_8b, new_root, deduct]
+        b.add_op(OpRot).unwrap(); // [new_root, new_uncl_8b, deduct]
+        b.add_op(OpSwap).unwrap(); // [new_uncl_8b, new_root, deduct]
+    }
+
+    fn emit_verify_outputs(&self, b: &mut ScriptBuilder) {
+        // ── enforce output_count <= MAX_OUTPUTS ──
+        b.add_op(OpTxOutputCount).unwrap();
+        b.add_i64(MAX_OUTPUTS).unwrap();
+        b.add_op(OpGreaterThan).unwrap();
         b.add_i64(0).unwrap();
         b.add_op(OpEqualVerify).unwrap();
-        b.add_op(OpTrue).unwrap();
-        // Stack: [TRUE]
+
+        // ── check if all exits claimed (new_uncl == 0) ──
+        b.add_op(OpDup).unwrap();
+        b.add_data(&0u64.to_le_bytes()).unwrap();
+        b.add_op(OpEqual).unwrap();
+        // Main: [is_done, new_uncl_8b, new_root, deduct]
+
+        b.add_op(OpIf).unwrap();
+        {
+            // All exits claimed — no continuation output needed.
+            b.add_op(OpDrop).unwrap(); // drop new_uncl_8b
+            b.add_op(OpDrop).unwrap(); // drop new_root
+
+            // Verify no covenant continuation outputs remain.
+            b.add_op(OpTxInputIndex).unwrap();
+            b.add_op(OpInputCovenantId).unwrap();
+            b.add_op(OpCovOutCount).unwrap();
+            b.add_i64(0).unwrap();
+            b.add_op(OpEqualVerify).unwrap();
+            // Main: [deduct]
+        }
+        b.add_op(OpElse).unwrap();
+        {
+            // Unclaimed exits remain — verify continuation at output 1.
+            // Main: [new_uncl_8b(8B), new_root(32B), deduct]
+
+            // Build unclaimed part: [0x08 || new_uncl_8b]
+            b.add_data(&[0x08u8]).unwrap();
+            b.add_op(OpSwap).unwrap();
+            b.add_op(OpCat).unwrap();
+
+            // Build root part: [OpData32 || new_root]
+            b.add_op(OpSwap).unwrap();
+            b.add_data(&[OpData32]).unwrap();
+            b.add_op(OpSwap).unwrap();
+            b.add_op(OpCat).unwrap();
+
+            // Concat -> new prefix (42B)
+            b.add_op(OpSwap).unwrap();
+            b.add_op(OpCat).unwrap();
+
+            // Extract body+suffix from own sig_script
+            b.add_op(OpTxInputIndex).unwrap();
+            b.add_op(OpTxInputIndex).unwrap();
+            b.add_op(OpTxInputScriptSigLen).unwrap();
+            b.add_i64(-self.redeem_script_len + PERM_REDEEM_PREFIX_LEN).unwrap();
+            b.add_op(OpAdd).unwrap();
+            b.add_op(OpTxInputIndex).unwrap();
+            b.add_op(OpTxInputScriptSigLen).unwrap();
+            b.add_op(OpTxInputScriptSigSubstr).unwrap();
+            b.add_op(OpCat).unwrap();
+
+            // Hash -> expected SPK
+            emit_hash_redeem_to_spk(b);
+
+            // Verify output 1 SPK matches (output 0 is the withdrawal)
+            b.add_i64(1).unwrap();
+            b.add_op(OpTxOutputSpk).unwrap();
+            b.add_op(OpEqualVerify).unwrap();
+
+            // Verify exactly one covenant continuation output
+            b.add_op(OpTxInputIndex).unwrap();
+            b.add_op(OpInputCovenantId).unwrap();
+            b.add_op(OpCovOutCount).unwrap();
+            b.add_i64(1).unwrap();
+            b.add_op(OpEqualVerify).unwrap();
+
+            // Main: [deduct]
+        }
+        b.add_op(OpEndIf).unwrap();
     }
-    b.add_op(OpElse).unwrap();
-    {
-        // Unclaimed exits remain — build continuation output with updated permission redeem.
-        // Stack: [new_uncl_8b(8B), new_root(32B)]
-        // Target prefix: [OpData32, new_root(32), 0x08, new_uncl(8)]  (42B)
 
-        // Step 1: build unclaimed part [0x08 || new_uncl_8b]
-        b.add_data(&[0x08u8]).unwrap();
-        // Stack: [[0x08], new_uncl_8b, new_root]
-        b.add_op(OpSwap).unwrap();
-        // Stack: [new_uncl_8b, [0x08], new_root]
-        b.add_op(OpCat).unwrap();
-        // Stack: [[0x08||uncl_8b](9B), new_root]          (Cat: [0x08](second)||new_uncl_8b(top))
+    fn emit_verify_delegate_balance(&self, b: &mut ScriptBuilder) {
+        let n = self.max_delegate_inputs.get();
 
-        // Step 2: build root part [OpData32 || new_root]
-        b.add_op(OpSwap).unwrap();
-        // Stack: [new_root, [0x08||uncl_8b]]
-        b.add_data(&[OpData32]).unwrap();
-        b.add_op(OpSwap).unwrap();
-        // Stack: [new_root, [0x20], [0x08||uncl_8b]]
-        b.add_op(OpCat).unwrap();
-        // Stack: [[0x20||root](33B), [0x08||uncl_8b]]     (Cat: [0x20](second)||root(top))
+        // Main: [deduct]
+        // deduct is already minimal i64 (pushed via add_i64 in sig_script).
 
-        // Step 3: concat both halves → new prefix (42B)
-        b.add_op(OpSwap).unwrap();
-        b.add_op(OpCat).unwrap();
-        // Stack: [new_prefix(42B)]                         (Cat: [0x20||root](second)||[0x08||uncl](top))
+        // ── enforce input_count <= N+2 ──
+        b.add_op(OpTxInputCount).unwrap();
+        b.add_i64((n + 2) as i64).unwrap();
+        b.add_op(OpGreaterThan).unwrap(); // input_count > N+2?
+        b.add_i64(0).unwrap();
+        b.add_op(OpEqualVerify).unwrap(); // must be false
 
-        // Step 4: extract redeem body+suffix from own sig_script, concat with new prefix → new_redeem
-        //   sig_script layout: [...pushes... | push_header | redeem_bytes(redeem_script_len)]
-        //   redeem_bytes = prefix(42B) || body || domain_suffix(2B)
-        //   body+suffix starts at: sig_len − redeem_script_len + PERM_REDEEM_PREFIX_LEN
-        b.add_op(OpTxInputIndex).unwrap(); // idx for Substr
+        // ── build expected delegate P2SH SPK (37B) from covenant_id ──
         b.add_op(OpTxInputIndex).unwrap();
-        b.add_op(OpTxInputScriptSigLen).unwrap(); // sig_len
-        b.add_i64(-redeem_script_len + PERM_REDEEM_PREFIX_LEN).unwrap();
-        b.add_op(OpAdd).unwrap(); // start = sig_len − redeem_len + 42
-        b.add_op(OpTxInputIndex).unwrap();
-        b.add_op(OpTxInputScriptSigLen).unwrap(); // end = sig_len
-        b.add_op(OpTxInputScriptSigSubstr).unwrap(); // Substr(idx, start, end) → body+suffix
+        b.add_op(OpInputCovenantId).unwrap();
+        b.add_data(&DELEGATE_SCRIPT_PREFIX).unwrap();
+        b.add_op(OpSwap).unwrap();
         b.add_op(OpCat).unwrap();
-        // Stack: [new_redeem]                               (Cat: new_prefix(second)||body+suffix(top))
+        b.add_data(&DELEGATE_SCRIPT_SUFFIX).unwrap();
+        b.add_op(OpCat).unwrap();
+        emit_hash_redeem_to_spk(b);
+        b.add_op(OpToAltStack).unwrap();
+        // Main: [deduct], Alt: [expected_spk]
 
-        // Step 5: hash new redeem → expected SPK bytes
-        emit_hash_redeem_to_spk(&mut b);
-        // Stack: [expected_spk(37B)]
+        // ── sum delegate input amounts (unrolled i = 1..N) ──
+        b.add_i64(0).unwrap(); // accum = 0
+        for i in 1..=n {
+            b.add_op(OpTxInputCount).unwrap();
+            b.add_i64((i + 1) as i64).unwrap();
+            b.add_op(OpGreaterThanOrEqual).unwrap();
+            b.add_op(OpIf).unwrap();
+            {
+                b.add_i64(i as i64).unwrap();
+                b.add_op(OpTxInputSpk).unwrap();
+                b.add_op(OpFromAltStack).unwrap();
+                b.add_op(OpDup).unwrap();
+                b.add_op(OpToAltStack).unwrap();
+                b.add_op(OpEqual).unwrap();
+                b.add_op(OpIf).unwrap();
+                {
+                    b.add_i64(i as i64).unwrap();
+                    b.add_op(OpTxInputAmount).unwrap();
+                    b.add_op(OpAdd).unwrap();
+                }
+                b.add_op(OpEndIf).unwrap();
+            }
+            b.add_op(OpEndIf).unwrap();
+        }
+        // Main: [total_input, deduct], Alt: [expected_spk]
 
-        // Step 6: verify output SPK matches
-        b.add_op(OpTxInputIndex).unwrap();
-        b.add_op(OpTxOutputSpk).unwrap();
-        // Stack: [actual_spk, expected_spk]
-        b.add_op(OpEqualVerify).unwrap();
-        // Stack: []
+        // ── guard: input N+1 must NOT have delegate SPK ──
+        b.add_op(OpTxInputCount).unwrap();
+        b.add_i64((n + 2) as i64).unwrap();
+        b.add_op(OpGreaterThanOrEqual).unwrap();
+        b.add_op(OpIf).unwrap();
+        {
+            b.add_i64((n + 1) as i64).unwrap();
+            b.add_op(OpTxInputSpk).unwrap();
+            b.add_op(OpFromAltStack).unwrap();
+            b.add_op(OpDup).unwrap();
+            b.add_op(OpToAltStack).unwrap();
+            b.add_op(OpEqual).unwrap();
+            b.add_op(OpFalse).unwrap();
+            b.add_op(OpEqualVerify).unwrap();
+        }
+        b.add_op(OpEndIf).unwrap();
 
-        // Step 7: verify covenant continuity (exactly one covenant output)
+        // ── compute expected_change = total_input - deduct; verify >= 0 ──
+        b.add_op(OpSwap).unwrap(); // [deduct(top), total_input]
+        b.add_op(OpSub).unwrap(); // total_input - deduct
+                                  // Main: [expected_change], Alt: [expected_spk]
+        b.add_op(OpDup).unwrap();
+        b.add_i64(0).unwrap();
+        b.add_op(OpGreaterThanOrEqual).unwrap();
+        b.add_op(OpVerify).unwrap();
+
+        // ── delegate change index = 1 + CovOutCount (after withdrawal + optional continuation) ──
         b.add_op(OpTxInputIndex).unwrap();
         b.add_op(OpInputCovenantId).unwrap();
         b.add_op(OpCovOutCount).unwrap();
         b.add_i64(1).unwrap();
-        b.add_op(OpEqualVerify).unwrap();
+        b.add_op(OpAdd).unwrap();
+        // Main: [delegate_idx, expected_change], Alt: [expected_spk]
 
-        b.add_op(OpTrue).unwrap();
-        // Stack: [TRUE]
+        // ── verify delegate change output at expected index if needed ──
+        b.add_op(OpOver).unwrap(); // [expected_change, delegate_idx, expected_change]
+        b.add_i64(0).unwrap();
+        b.add_op(OpGreaterThan).unwrap(); // [change_needed, delegate_idx, expected_change]
+        b.add_op(OpIf).unwrap();
+        {
+            // expected_change > 0: verify output[delegate_idx] has delegate SPK and correct amount
+            b.add_op(OpDup).unwrap(); // [delegate_idx, delegate_idx, expected_change]
+            b.add_op(OpTxOutputSpk).unwrap(); // [output_spk, delegate_idx, expected_change]
+            b.add_op(OpFromAltStack).unwrap(); // [expected_spk, output_spk, ...]
+            b.add_op(OpEqualVerify).unwrap(); // [delegate_idx, expected_change]
+            b.add_op(OpTxOutputAmount).unwrap(); // [output_amount, expected_change]
+            b.add_op(OpEqualVerify).unwrap(); // []
+        }
+        b.add_op(OpElse).unwrap();
+        {
+            // expected_change == 0: no delegate change output needed, clean up
+            b.add_op(OpDrop).unwrap(); // drop delegate_idx
+            b.add_op(OpDrop).unwrap(); // drop expected_change
+            b.add_op(OpFromAltStack).unwrap();
+            b.add_op(OpDrop).unwrap(); // drop expected_spk
+        }
+        b.add_op(OpEndIf).unwrap();
+        // Main: [] (empty — final TRUE is added by build())
     }
-    b.add_op(OpEndIf).unwrap();
 
-    // ═══════════ DOMAIN SUFFIX (2 bytes) ═══════════
-    // No-op tag: pushes 1 then drops it, leaving the stack unchanged.
-    // The delegate verifies these are the last 2 bytes of input 0's sig_script
-    // to confirm it is a permission script (not state verification).
-    b.add_op(OpTrue).unwrap(); // 0x51
-    b.add_op(OpDrop).unwrap(); // 0x75
+    fn emit_domain_suffix(&self, b: &mut ScriptBuilder) {
+        b.add_op(OpTrue).unwrap(); // 0x51
+        b.add_op(OpDrop).unwrap(); // 0x75
+    }
+}
 
-    b.drain()
+// ─────────────────────────────────────────────────────────────────
+//  Public builder functions
+// ─────────────────────────────────────────────────────────────────
+
+/// Build the permission redeem script with a known redeem length.
+pub fn build_permission_redeem(
+    root: &[u32; 8],
+    unclaimed_count: u64,
+    depth: usize,
+    redeem_script_len: i64,
+    max_delegate_inputs: NonZeroUsize,
+) -> Vec<u8> {
+    PermissionRedeem { depth, redeem_script_len, max_delegate_inputs }.build(root, unclaimed_count)
 }
 
 /// Build permission redeem with converging length loop.
-pub fn build_permission_redeem_converged(root: &[u32; 8], unclaimed_count: u64, depth: usize) -> Vec<u8> {
+pub fn build_permission_redeem_converged(
+    root: &[u32; 8],
+    unclaimed_count: u64,
+    depth: usize,
+    max_delegate_inputs: NonZeroUsize,
+) -> Vec<u8> {
     let mut len = 200i64;
     loop {
-        let script = build_permission_redeem(root, unclaimed_count, depth, len);
+        let script = build_permission_redeem(root, unclaimed_count, depth, len, max_delegate_inputs);
         let new_len = script.len() as i64;
         if new_len == len {
             return script;
@@ -374,50 +668,36 @@ pub fn build_permission_redeem_converged(root: &[u32; 8], unclaimed_count: u64, 
 /// Leaves:  `[..., SHA256("PermBranch" || left || right)]`
 ///
 /// `dir` selects child position:
-/// - dir == 0 → current is left child:  left = current_hash, right = sib
-/// - dir == 1 → current is right child: left = sib, right = current_hash
-///
-/// OpCat pops `b`(top), `a`(second) and pushes `a||b`.
+/// - dir == 0 -> current is left child:  left = current_hash, right = sib
+/// - dir == 1 -> current is right child: left = sib, right = current_hash
 fn emit_merkle_step(b: &mut ScriptBuilder) {
-    // Stack: [..., sib, dir, current_hash]
     b.add_op(OpSwap).unwrap();
-    // Stack: [..., sib, current_hash, dir]
-
     b.add_op(OpIf).unwrap();
-    // dir == 1: Stack: [..., sib, current_hash]. Cat → sib||current ✓
+    // dir == 1: Cat -> sib||current
     b.add_op(OpElse).unwrap();
-    // dir == 0:
     b.add_op(OpSwap).unwrap();
-    // Stack: [..., current_hash, sib]. Cat → current||sib ✓
+    // dir == 0: Cat -> current||sib
     b.add_op(OpEndIf).unwrap();
-
-    // Stack: [..., left, right]
     b.add_op(OpCat).unwrap();
-    // Stack: [..., left||right]
     b.add_data(b"PermBranch").unwrap();
     b.add_op(OpSwap).unwrap();
     b.add_op(OpCat).unwrap();
-    // Stack: [..., "PermBranch"||left||right]
     b.add_op(OpSHA256).unwrap();
-    // Stack: [..., branch_hash(32B)]
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  Hash helpers (mirror CovenantBase from zk-covenant-common)
+//  Hash helpers
 // ─────────────────────────────────────────────────────────────────
 
-/// Hash redeem script → P2SH SPK bytes (version-prefixed).
-/// Identical to `CovenantBase::hash_redeem_to_spk`.
+/// Hash redeem script -> P2SH SPK bytes (version-prefixed).
 ///
 /// Expects: `[..., redeem_script]`
-/// Leaves:  `[..., spk_bytes]`
+/// Leaves:  `[..., spk_bytes(37B)]`
 ///
 /// Produces `version(2B LE) || OpBlake2b || OpData32 || blake2b(redeem) || OpEqual`
 /// matching `ScriptPublicKey::to_bytes()` format for P2SH.
 fn emit_hash_redeem_to_spk(b: &mut ScriptBuilder) {
-    // Stack: [..., redeem_script]
     b.add_op(OpBlake2b).unwrap();
-    // Stack: [..., blake2b_hash(32B)]
     let mut data = [0u8; 4];
     data[0..2].copy_from_slice(&TX_VERSION.to_le_bytes());
     data[2] = OpBlake2b;
@@ -425,10 +705,8 @@ fn emit_hash_redeem_to_spk(b: &mut ScriptBuilder) {
     b.add_data(&data).unwrap();
     b.add_op(OpSwap).unwrap();
     b.add_op(OpCat).unwrap();
-    // Stack: [..., (version||OpBlake2b||OpData32||hash)]  (36B)
     b.add_data(&[OpEqual]).unwrap();
     b.add_op(OpCat).unwrap();
-    // Stack: [..., spk_bytes(37B)]
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -437,11 +715,13 @@ fn emit_hash_redeem_to_spk(b: &mut ScriptBuilder) {
 
 /// Build the permission sig_script for a withdrawal claim.
 ///
-/// Pushes all data needed by the permission redeem script in the correct order.
+/// `deduct` uses minimal i64 encoding (via `add_i64`); a copy is stashed to alt
+/// by the redeem script for later use in delegate balance verification.
+/// `amount` uses 8-byte LE (via `add_data`) because leaf hashes need exact bytes.
 pub fn build_permission_sig_script(spk: &[u8], amount: u64, deduct: u64, proof: &PermProof, permission_redeem: &[u8]) -> Vec<u8> {
     let mut b = ScriptBuilder::new();
 
-    // G2: merkle path for new root walk (pushed in reverse depth order, sits at stack bottom)
+    // G2: merkle path for new root walk (pushed in reverse depth order)
     for level in (0..proof.depth).rev() {
         b.add_data(bytemuck::bytes_of(&proof.siblings[level])).unwrap();
         b.add_i64(((proof.index >> level) & 1) as i64).unwrap();
@@ -455,8 +735,8 @@ pub fn build_permission_sig_script(spk: &[u8], amount: u64, deduct: u64, proof: 
 
     // Leaf data
     b.add_data(spk).unwrap();
-    b.add_data(&amount.to_le_bytes()).unwrap();
-    b.add_data(&deduct.to_le_bytes()).unwrap();
+    b.add_data(&amount.to_le_bytes()).unwrap(); // 8-byte LE for leaf hash
+    b.add_i64(deduct as i64).unwrap(); // minimal i64 for arithmetic
 
     // Redeem script (P2SH pops this last)
     b.add_data(permission_redeem).unwrap();
@@ -481,11 +761,6 @@ pub fn build_permission_sig_script(spk: &[u8], amount: u64, deduct: u64, proof: 
 /// 1. Self is not at input index 0 (reserved for permission script)
 /// 2. Input 0 carries the expected `covenant_id`
 /// 3. Input 0's sig_script ends with `[0x51, 0x75]` (permission domain suffix)
-///
-/// The domain check extracts the last 2 bytes of input 0's sig_script.
-/// Since the redeem script is the last push in a P2SH sig_script, the
-/// last bytes of the sig_script are the last bytes of the redeem. The
-/// permission redeem always ends with `[OP_1(0x51), OP_DROP(0x75)]`.
 pub fn build_delegate_entry_script(permission_covenant_id: &[u8; 32]) -> Vec<u8> {
     let mut builder = ScriptBuilder::new();
 
@@ -494,38 +769,26 @@ pub fn build_delegate_entry_script(permission_covenant_id: &[u8; 32]) -> Vec<u8>
     builder.add_i64(0).unwrap();
     builder.add_op(OpGreaterThan).unwrap();
     builder.add_op(OpVerify).unwrap();
-    // Stack: []
 
     // ── Step 2: check covenant ID of input 0 ──
     builder.add_op(Op0).unwrap();
     builder.add_op(OpInputCovenantId).unwrap();
-    // Stack: [cov_id_of_input_0(32B)]
     builder.add_data(permission_covenant_id).unwrap();
     builder.add_op(OpEqualVerify).unwrap();
-    // Stack: []
 
     // ── Step 3: verify input 0's sig_script ends with permission domain suffix ──
-    //   Extracts sig_script_0[sig_len-2 .. sig_len] — the last 2 bytes.
-    //   These are the last 2 bytes of the redeem (= domain suffix).
     builder.add_op(Op0).unwrap(); // idx for Substr
     builder.add_op(Op0).unwrap(); // idx for SigLen
     builder.add_op(OpTxInputScriptSigLen).unwrap();
-    // Stack: [0, sig_len_0]
     builder.add_op(OpDup).unwrap();
-    // Stack: [0, sig_len_0, sig_len_0]
     builder.add_i64(2).unwrap();
     builder.add_op(OpSub).unwrap();
-    // Stack: [0, sig_len_0, sig_len_0 - 2]
     builder.add_op(OpSwap).unwrap();
-    // Stack: [0, sig_len_0 - 2, sig_len_0]
     builder.add_op(OpTxInputScriptSigSubstr).unwrap();
-    // Stack: [last 2 bytes of sig_script_0]
     builder.add_data(&ScriptDomain::Permission.suffix_bytes()).unwrap();
     builder.add_op(OpEqualVerify).unwrap();
-    // Stack: []
 
     builder.add_op(OpTrue).unwrap();
-    // Stack: [TRUE]
 
     builder.drain()
 }
