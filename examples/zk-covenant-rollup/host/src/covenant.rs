@@ -1,6 +1,7 @@
 use kaspa_txscript::opcodes::codes::{
-    Op0, OpAdd, OpCat, OpChainblockSeqCommit, OpData32, OpDrop, OpDup, OpFromAltStack, OpInputCovenantId, OpSHA256, OpSwap,
-    OpToAltStack, OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr,
+    Op0, OpAdd, OpBlake2b, OpCat, OpChainblockSeqCommit, OpCovOutCount, OpData32, OpDrop, OpDup, OpElse, OpEndIf, OpEqual,
+    OpEqualVerify, OpFromAltStack, OpIf, OpInputCovenantId, OpNumEqual, OpNumEqualVerify, OpSHA256, OpSwap, OpToAltStack,
+    OpTxInputIndex, OpTxInputScriptSigLen, OpTxInputScriptSigSubstr, OpTxOutputSpk, OpTxOutputSpkSubstr,
 };
 use kaspa_txscript::script_builder::ScriptBuilder;
 
@@ -15,7 +16,7 @@ use kaspa_txscript::script_builder::ScriptBuilder;
 pub const REDEEM_PREFIX_LEN: i64 = 68;
 
 /// Rollup covenant specific methods.
-/// Note: hash_redeem_to_spk, verify_output_spk, verify_input_index_zero, and verify_covenant_single_output
+/// Note: hash_redeem_to_spk, verify_output_spk, and verify_input_index_zero
 /// are provided by the CovenantBase trait from zk_covenant_common.
 pub trait RollupCovenant {
     type Error;
@@ -38,12 +39,28 @@ pub trait RollupCovenant {
     /// Leaves:  [..., new_redeem_script]
     fn extract_redeem_suffix_and_concat(&mut self, redeem_script_len: i64) -> Result<&mut Self, Self::Error>;
 
-    /// Build journal preimage from alt stack and sig_script values, then hash.
+    /// Build journal preimage from alt stack values, then hash.
     ///
-    /// Expects: [..., exit_amount, exit_root, exit_unclaimed_count],
+    /// Uses OpCovOutCount introspection to determine if a permission output exists:
+    /// - If 2 covenant outputs: appends blake2b(output_1_spk) → 192-byte preimage.
+    /// - If 1 covenant output: keeps 160-byte base preimage.
+    ///
+    /// Expects: [...],
     ///          alt:[prev_state_hash, prev_seq_commitment, new_app_state_hash, new_seq_commitment]
     /// Leaves:  [..., journal_hash]
     fn build_and_hash_journal(&mut self) -> Result<&mut Self, Self::Error>;
+
+    /// Verify covenant output count and optionally append permission script hash.
+    ///
+    /// Uses OpCovOutCount introspection:
+    /// - If count == 2: extracts the 32-byte script hash from output 1's P2SH SPK
+    ///   (bytes 4..36 of `to_bytes()`), verifies P2SH format, appends hash to preimage.
+    /// - If count == 1: preimage unchanged.
+    /// - Any other count: script fails.
+    ///
+    /// Expects: [..., base_preimage]
+    /// Leaves:  [..., base_preimage] or [..., extended_preimage]
+    fn verify_outputs_and_append_perm_hash(&mut self) -> Result<&mut Self, Self::Error>;
 }
 
 impl RollupCovenant for ScriptBuilder {
@@ -113,38 +130,78 @@ impl RollupCovenant for ScriptBuilder {
     }
 
     fn build_and_hash_journal(&mut self) -> Result<&mut Self, Self::Error> {
-        // Stack:     [..., exit_amount, exit_root, exit_unclaimed_count]
+        // Stack:     [...]
         // Alt stack (top→bottom): [new_seq, new_state, prev_seq, prev_state]
         //
-        // Target preimage (208 bytes):
+        // Journal preimage (160 or 192 bytes):
         //   prev_state(32) || prev_seq(32) || new_state(32) || new_seq(32)
-        //   || exit_amount(8) || exit_root(32) || exit_unclaimed_count(8)
         //   || covenant_id(32)
+        //   [optional: || permission_script_hash(32)]
 
-        // --- Concat exit fields (already in correct order) ---
-        self.add_op(OpCat)?; // [..., exit_amount, (exit_root||exit_unclaimed_count)]
-        self.add_op(OpCat)?; // [..., exit_suffix] (48 bytes)
-
-        // --- Build first 128 bytes from alt stack ---
-        self.add_op(OpFromAltStack)?; // [..., exit_suffix, new_seq]
-        self.add_op(OpFromAltStack)?; // [..., exit_suffix, new_seq, new_state]
-        self.add_op(OpSwap)?; // [..., exit_suffix, new_state, new_seq]
-        self.add_op(OpCat)?; // [..., exit_suffix, (new_state||new_seq)]
-        self.add_op(OpFromAltStack)?; // [..., exit_suffix, (new_state||new_seq), prev_seq]
-        self.add_op(OpFromAltStack)?; // [..., exit_suffix, (new_state||new_seq), prev_seq, prev_state]
-        self.add_op(OpSwap)?; // [..., exit_suffix, (new_state||new_seq), prev_state, prev_seq]
-        self.add_op(OpCat)?; // [..., exit_suffix, (new_state||new_seq), (prev_state||prev_seq)]
+        // --- Build 128 bytes from alt stack (prev_state||prev_seq||new_state||new_seq) ---
+        self.add_op(OpFromAltStack)?; // [..., new_seq]
+        self.add_op(OpFromAltStack)?; // [..., new_seq, new_state]
         self.add_op(OpSwap)?;
-        self.add_op(OpCat)?; // [..., exit_suffix, (prev||new)] (128 bytes)
-
-        // --- Concat and hash ---
+        self.add_op(OpCat)?; // [..., (new_state||new_seq)]
+        self.add_op(OpFromAltStack)?; // [..., (new_state||new_seq), prev_seq]
+        self.add_op(OpFromAltStack)?; // [..., (new_state||new_seq), prev_seq, prev_state]
         self.add_op(OpSwap)?;
-        self.add_op(OpCat)?; // [..., 176-byte preimage]
+        self.add_op(OpCat)?; // [..., (new_state||new_seq), (prev_state||prev_seq)]
+        self.add_op(OpSwap)?;
+        self.add_op(OpCat)?; // [..., (prev||new)] (128B)
 
-        // --- Append covenant_id from introspection ---
-        self.add_op(OpTxInputIndex)?; // [..., 176-byte preimage, own_input_idx]
-        self.add_op(OpInputCovenantId)?; // [..., 176-byte preimage, covenant_id(32)]
-        self.add_op(OpCat)?; // [..., 208-byte preimage]
+        // --- Append covenant_id → 160-byte base ---
+        self.add_op(OpTxInputIndex)?;
+        self.add_op(OpInputCovenantId)?;
+        self.add_op(OpCat)?; // [..., 160B base]
+
+        // --- Verify outputs + optionally append perm hash → 160B or 192B, then SHA256 ---
+        self.verify_outputs_and_append_perm_hash()?;
         self.add_op(OpSHA256) // [..., journal_hash]
+    }
+
+    fn verify_outputs_and_append_perm_hash(&mut self) -> Result<&mut Self, Self::Error> {
+        // Stack: [..., base_preimage]
+        // Read covenant output count via introspection.
+        self.add_op(OpTxInputIndex)?;
+        self.add_op(OpInputCovenantId)?;
+        self.add_op(OpCovOutCount)?;
+        // Stack: [..., base, count]
+        self.add_op(OpDup)?;
+        self.add_i64(2)?;
+        self.add_op(OpNumEqual)?;
+        // Stack: [..., base, count, is_two]
+        self.add_op(OpIf)?;
+        // count == 2: drop count, extract script hash from output 1 P2SH SPK
+        self.add_op(OpDrop)?;
+        // Stack: [..., base]
+        // Extract script hash: bytes 4..36 of to_bytes() = version(2) + OpBlake2b(1) + OpData32(1) + hash(32) + OpEqual(1)
+        self.add_i64(1)?;
+        self.add_i64(4)?;
+        self.add_i64(36)?;
+        self.add_op(OpTxOutputSpkSubstr)?;
+        // Stack: [..., base, script_hash(32B)]
+        // Verify output 1 SPK is P2SH: reconstruct expected SPK from hash, compare with actual
+        self.add_op(OpDup)?;
+        // Stack: [..., base, hash, hash]
+        self.add_data(&[0x00, 0x00, OpBlake2b, OpData32])?;
+        self.add_op(OpSwap)?;
+        self.add_op(OpCat)?;
+        self.add_data(&[OpEqual])?;
+        self.add_op(OpCat)?;
+        // Stack: [..., base, hash, expected_spk(37B)]
+        self.add_i64(1)?;
+        self.add_op(OpTxOutputSpk)?;
+        // Stack: [..., base, hash, expected_spk, actual_spk]
+        self.add_op(OpEqualVerify)?;
+        // Stack: [..., base, hash]
+        self.add_op(OpCat)?;
+        // Stack: [..., 192B]
+        self.add_op(OpElse)?;
+        // count != 2: verify count == 1
+        self.add_i64(1)?;
+        self.add_op(OpNumEqualVerify)?;
+        // Stack: [..., base] (160B, unchanged)
+        self.add_op(OpEndIf)
     }
 }

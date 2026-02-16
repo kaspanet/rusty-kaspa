@@ -60,7 +60,7 @@ pub fn build_redeem_script(
 
     // Guards
     builder.verify_input_index_zero().unwrap();
-    builder.verify_covenant_single_output().unwrap();
+    // CovOutCount is verified inside verify_outputs_and_append_perm_hash (1 or 2 via introspection)
     builder.add_op(OpTrue).unwrap();
 
     builder.drain()

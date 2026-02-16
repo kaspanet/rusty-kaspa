@@ -3,23 +3,17 @@ use zk_covenant_rollup_core::PublicInput;
 
 /// Write the proof output to the journal.
 ///
-/// Journal layout (208 bytes = 52 words):
-///   prev_state_hash      (32B)  — from public input
-///   prev_seq_commitment  (32B)  — from public input
-///   new_state_hash       (32B)
-///   new_seq_commitment   (32B)
-///   exit_amount          (8B)   — total withdrawal amount (0 if no exits)
-///   exit_root            (32B)  — permission tree root (empty if no exits)
-///   exit_unclaimed_count (8B)   — number of permission leaves (0 if no exits)
-///   covenant_id          (32B)  — from public input
+/// Journal layout:
+///   Base (160 bytes = 40 words):
+///     prev_state_hash(32) | prev_seq_commitment(32) | new_state(32) | new_seq(32) | covenant_id(32)
+///   With permission (192 bytes = 48 words):
+///     ... base ... | permission_spk_hash(32)
 #[inline]
 pub fn write_output(
     public_input: &PublicInput,
     final_state_root: &[u32; 8],
     final_seq_commitment: &[u32; 8],
-    exit_amount: u64,
-    exit_root: &[u32; 8],
-    exit_unclaimed_count: u64,
+    permission_spk_hash: Option<&[u32; 8]>,
 ) {
     let mut journal = env::journal();
 
@@ -34,15 +28,11 @@ pub fn write_output(
     // Write final sequence commitment
     journal.write_words(final_seq_commitment).unwrap();
 
-    // Write exit fields
-    let exit_amount_words: [u32; 2] = bytemuck::cast(exit_amount);
-    journal.write_words(&exit_amount_words).unwrap();
-
-    journal.write_words(exit_root).unwrap();
-
-    let exit_count_words: [u32; 2] = bytemuck::cast(exit_unclaimed_count);
-    journal.write_words(&exit_count_words).unwrap();
-
-    // Write covenant_id at end
+    // Write covenant_id
     journal.write_words(&public_input.covenant_id).unwrap();
+
+    // Write permission SPK hash when exits are present
+    if let Some(hash_words) = permission_spk_hash {
+        journal.write_words(hash_words).unwrap();
+    }
 }

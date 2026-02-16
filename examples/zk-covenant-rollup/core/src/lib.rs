@@ -77,7 +77,8 @@ pub use action::{
 };
 pub use p2pk::{P2PK_SPK_SIZE, extract_pubkey_from_spk, is_p2pk_spk, pay_to_pubkey_spk, verify_p2pk_spk};
 pub use p2sh::{
-    DELEGATE_SCRIPT_LEN, P2SH_SPK_SIZE, blake2b_script_hash, build_delegate_entry_script_bytes, extract_script_hash, is_p2sh_spk,
+    DELEGATE_SCRIPT_LEN, P2SH_SPK_SIZE, P2SH_SPK_WITH_VERSION_SIZE, PERM_REDEEM_PREFIX_LEN, blake2b_script_hash,
+    build_delegate_entry_script_bytes, build_perm_redeem_prefix, extract_script_hash, is_p2sh_spk, p2sh_spk_with_version,
     pay_to_script_hash_spk, pay_to_script_hash_spk_from_script, verify_entry_output_spk, verify_p2sh_spk,
 };
 pub use permission_tree::{

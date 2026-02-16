@@ -71,6 +71,35 @@ pub fn verify_p2sh_spk(spk: &[u8], redeem_script: &[u8]) -> bool {
     }
 }
 
+/// Permission redeem script prefix size (42 bytes):
+/// OpData32(1) + root(32) + OP_DATA_8(1) + unclaimed_count(8)
+pub const PERM_REDEEM_PREFIX_LEN: usize = 42;
+
+/// P2SH SPK with 2-byte version prefix (37 bytes)
+pub const P2SH_SPK_WITH_VERSION_SIZE: usize = 2 + P2SH_SPK_SIZE; // 37
+
+/// Build the 42-byte permission redeem prefix from (root, unclaimed_count).
+pub fn build_perm_redeem_prefix(root: &[u32; 8], unclaimed_count: u64) -> [u8; PERM_REDEEM_PREFIX_LEN] {
+    let mut prefix = [0u8; PERM_REDEEM_PREFIX_LEN];
+    prefix[0] = 0x20; // OpData32
+    prefix[1..33].copy_from_slice(crate::words_to_bytes_ref(root));
+    prefix[33] = 0x08; // OP_DATA_8
+    prefix[34..42].copy_from_slice(&unclaimed_count.to_le_bytes());
+    prefix
+}
+
+/// Construct P2SH SPK with version prefix (37 bytes).
+/// Format: version(2B LE) || OpBlake2b || OpData32 || hash(32B) || OpEqual
+/// This matches ScriptPublicKey::to_bytes() for P2SH with version 0.
+pub fn p2sh_spk_with_version(redeem_script: &[u8]) -> [u8; P2SH_SPK_WITH_VERSION_SIZE] {
+    let mut result = [0u8; P2SH_SPK_WITH_VERSION_SIZE];
+    // version 0 (2 bytes LE)
+    result[0..2].copy_from_slice(&0u16.to_le_bytes());
+    let spk = pay_to_script_hash_spk_from_script(redeem_script);
+    result[2..].copy_from_slice(&spk);
+    result
+}
+
 /// Size of the delegate/entry script in bytes.
 ///
 /// Layout (53 bytes):
@@ -271,5 +300,60 @@ mod tests {
 
             assert_eq!(our_spk.as_slice(), kaspa_spk.script(), "P2SH SPK mismatch for redeem script: {:?}", redeem_script,);
         }
+    }
+
+    #[test]
+    fn test_build_perm_redeem_prefix() {
+        let root = [0xAAu32; 8];
+        let count = 42u64;
+        let prefix = build_perm_redeem_prefix(&root, count);
+
+        assert_eq!(prefix.len(), PERM_REDEEM_PREFIX_LEN);
+        assert_eq!(prefix[0], 0x20); // OpData32
+        assert_eq!(&prefix[1..33], crate::words_to_bytes_ref(&root));
+        assert_eq!(prefix[33], 0x08); // OP_DATA_8
+        assert_eq!(&prefix[34..42], &count.to_le_bytes());
+    }
+
+    /// Verify that the script hash is extractable at bytes 4..36 of the versioned SPK.
+    ///
+    /// On-chain, `OpTxOutputSpk` pushes `ScriptPublicKey::to_bytes()` (37 bytes for P2SH v0).
+    /// `OpTxOutputSpkSubstr(idx, 4, 36)` extracts the 32-byte script hash directly,
+    /// avoiding a redundant blake2b in the guest.
+    #[test]
+    fn test_spk_with_version_script_hash_at_4_36() {
+        let test_scripts: &[&[u8]] = &[
+            b"simple redeem",
+            &[0x51], // OP_TRUE
+            &[0xaa; 100],
+        ];
+
+        for redeem in test_scripts {
+            let script_hash = blake2b_script_hash(redeem);
+            let versioned = p2sh_spk_with_version(redeem);
+
+            // Layout: [ver(2), OpBlake2b, OpData32, hash(32), OpEqual]
+            assert_eq!(versioned.len(), P2SH_SPK_WITH_VERSION_SIZE);
+            assert_eq!(&versioned[0..2], &[0x00, 0x00]);
+            assert_eq!(versioned[2], OP_BLAKE2B);
+            assert_eq!(versioned[3], OP_DATA_32);
+            assert_eq!(versioned[36], OP_EQUAL);
+
+            // Script hash extractable at bytes 4..36
+            assert_eq!(&versioned[4..36], &script_hash);
+        }
+    }
+
+    #[test]
+    fn test_p2sh_spk_with_version() {
+        let redeem = b"test redeem script";
+        let result = p2sh_spk_with_version(redeem);
+
+        assert_eq!(result.len(), P2SH_SPK_WITH_VERSION_SIZE);
+        // First 2 bytes: version 0 LE
+        assert_eq!(&result[0..2], &[0, 0]);
+        // Remaining 35 bytes: P2SH SPK
+        let spk = pay_to_script_hash_spk_from_script(redeem);
+        assert_eq!(&result[2..], &spk);
     }
 }

@@ -12,7 +12,7 @@ mod tx;
 mod witness;
 
 use risc0_zkvm::guest::env;
-use zk_covenant_rollup_core::{perm_empty_leaf_hash, seq_commit::calc_accepted_id_merkle_root};
+use zk_covenant_rollup_core::seq_commit::calc_accepted_id_merkle_root;
 
 risc0_zkvm::guest::entry!(main);
 
@@ -32,11 +32,6 @@ pub fn main() {
         seq_commitment = calc_accepted_id_merkle_root(&seq_commitment, &block_root);
     }
 
-    // Exit accumulator — zeros until exit processing is wired (Subtask 6)
-    let exit_amount: u64 = 0;
-    let exit_root = perm_empty_leaf_hash();
-    let exit_unclaimed_count: u64 = 0;
-
-    // Write journal output
-    journal::write_output(&public_input, &state_root, &seq_commitment, exit_amount, &exit_root, exit_unclaimed_count);
+    // Write journal output (no permission output until exit processing is wired — Subtask 6)
+    journal::write_output(&public_input, &state_root, &seq_commitment, None);
 }

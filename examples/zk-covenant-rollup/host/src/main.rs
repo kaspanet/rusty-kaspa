@@ -12,9 +12,8 @@ use std::time::Instant;
 use kaspa_hashes::Hash;
 use kaspa_txscript::{pay_to_script_hash_script, script_builder::ScriptBuilder, zk_precompiles::tags::ZkTag};
 use risc0_zkvm::{default_prover, sha::Digestible, ExecutorEnv, Prover, ProverOpts, SuccinctReceipt};
-use zk_covenant_rollup_core::{perm_empty_leaf_hash, PublicInput};
+use zk_covenant_rollup_core::PublicInput;
 use zk_covenant_rollup_methods::{ZK_COVENANT_ROLLUP_GUEST_ELF, ZK_COVENANT_ROLLUP_GUEST_ID};
-
 use mock_chain::{build_initial_smt, build_mock_chain, calc_accepted_id_merkle_root, from_bytes};
 use zk_covenant_common::{hashfn_str_to_id, seal_to_compressed_proof};
 
@@ -45,11 +44,6 @@ fn main() {
     let public_input = PublicInput { prev_state_hash, prev_seq_commitment, covenant_id };
     let program_id: [u8; 32] = bytemuck::cast(ZK_COVENANT_ROLLUP_GUEST_ID);
 
-    // Exit fields — zeros until exit actions are added to the mock chain (Subtask 6)
-    let exit_amount: u64 = 0;
-    let exit_root = perm_empty_leaf_hash();
-    let exit_unclaimed_count: u64 = 0;
-
     // Build executor env closure
     let build_env = || {
         let mut binding = ExecutorEnv::builder();
@@ -79,9 +73,7 @@ fn main() {
         &public_input,
         &new_state_hash,
         &new_seq_commitment,
-        exit_amount,
-        &exit_root,
-        exit_unclaimed_count,
+        None,
     );
     succinct_receipt.verify(ZK_COVENANT_ROLLUP_GUEST_ID).unwrap();
     println!("Succinct proof verified!");
@@ -95,9 +87,6 @@ fn main() {
             &public_input,
             &new_state_hash,
             &new_seq_commitment,
-            exit_amount,
-            &exit_root,
-            exit_unclaimed_count,
             block_prove_to,
             &chain,
             &program_id,
@@ -119,9 +108,7 @@ fn main() {
         &public_input,
         &new_state_hash,
         &new_seq_commitment,
-        exit_amount,
-        &exit_root,
-        exit_unclaimed_count,
+        None,
     );
     groth16_receipt.verify(ZK_COVENANT_ROLLUP_GUEST_ID).unwrap();
     println!("Groth16 proof verified!");
@@ -136,9 +123,6 @@ fn main() {
             &public_input,
             &new_state_hash,
             &new_seq_commitment,
-            exit_amount,
-            &exit_root,
-            exit_unclaimed_count,
             block_prove_to,
             &chain,
             &program_id,
@@ -156,13 +140,13 @@ fn verify_journal(
     public_input: &PublicInput,
     new_state_hash: &[u32; 8],
     new_seq_commitment: &[u32; 8],
-    exit_amount: u64,
-    exit_root: &[u32; 8],
-    exit_unclaimed_count: u64,
+    permission_spk_hash: Option<&[u8; 32]>,
 ) {
-    // Journal layout (208 bytes):
-    //   prev_state_hash(32) | prev_seq_commitment(32) | new_state(32) | new_seq(32)
-    //   | exit_amount(8) | exit_root(32) | exit_unclaimed_count(8) | covenant_id(32)
+    // Journal layout:
+    //   Base (160 bytes = 40 words):
+    //     prev_state_hash(32) | prev_seq_commitment(32) | new_state(32) | new_seq(32) | covenant_id(32)
+    //   With permission (192 bytes = 48 words):
+    //     ... base ... | permission_spk_hash(32)
     let mut off = 0;
     assert_eq!(&journal[off..off + 32], bytemuck::bytes_of(&public_input.prev_state_hash), "prev_state_hash mismatch");
     off += 32;
@@ -172,13 +156,13 @@ fn verify_journal(
     off += 32;
     assert_eq!(&journal[off..off + 32], bytemuck::bytes_of(new_seq_commitment), "new_seq_commitment mismatch");
     off += 32;
-    assert_eq!(&journal[off..off + 8], &exit_amount.to_le_bytes(), "exit_amount mismatch");
-    off += 8;
-    assert_eq!(&journal[off..off + 32], bytemuck::bytes_of(exit_root), "exit_root mismatch");
-    off += 32;
-    assert_eq!(&journal[off..off + 8], &exit_unclaimed_count.to_le_bytes(), "exit_unclaimed_count mismatch");
-    off += 8;
     assert_eq!(&journal[off..off + 32], bytemuck::bytes_of(&public_input.covenant_id), "covenant_id mismatch");
+    off += 32;
+    if let Some(perm_hash) = permission_spk_hash {
+        assert_eq!(&journal[off..off + 32], perm_hash, "permission_spk_hash mismatch");
+        off += 32;
+    }
+    assert_eq!(journal.len(), off, "journal length mismatch");
 }
 
 fn verify_onchain_succinct(
@@ -186,9 +170,6 @@ fn verify_onchain_succinct(
     public_input: &PublicInput,
     new_state_hash: &[u32; 8],
     new_seq_commitment: &[u32; 8],
-    exit_amount: u64,
-    exit_root: &[u32; 8],
-    exit_unclaimed_count: u64,
     block_prove_to: Hash,
     chain: &mock_chain::MockChain,
     program_id: &[u8; 32],
@@ -218,10 +199,9 @@ fn verify_onchain_succinct(
     let (mut tx, utxo) =
         tx::make_mock_transaction(0, pay_to_script_hash_script(&input_redeem), pay_to_script_hash_script(&output_redeem));
 
-    // Build sig_script: push proof components, exit fields, then redeem script (P2SH).
+    // Build sig_script: push proof components, then redeem script (P2SH).
     // Stack layout (bottom to top):
     //   [seal, claim, hashfn, control_index, control_digests,
-    //    exit_amount, exit_root, exit_unclaimed_count,
     //    block_prove_to, new_state_hash, redeem]
     let seal_bytes: Vec<u8> = receipt.seal.iter().flat_map(|w| w.to_le_bytes()).collect();
     let claim_bytes: Vec<u8> = receipt.claim.digest().as_bytes().to_vec();
@@ -239,12 +219,6 @@ fn verify_onchain_succinct(
         .unwrap()
         .add_data(&control_digests_bytes)
         .unwrap()
-        .add_data(&exit_amount.to_le_bytes())
-        .unwrap()
-        .add_data(bytemuck::bytes_of(exit_root))
-        .unwrap()
-        .add_data(&exit_unclaimed_count.to_le_bytes())
-        .unwrap()
         .add_data(block_prove_to.as_bytes().as_slice())
         .unwrap()
         .add_data(bytemuck::bytes_of(new_state_hash))
@@ -261,9 +235,6 @@ fn verify_onchain_groth16(
     public_input: &PublicInput,
     new_state_hash: &[u32; 8],
     new_seq_commitment: &[u32; 8],
-    exit_amount: u64,
-    exit_root: &[u32; 8],
-    exit_unclaimed_count: u64,
     block_prove_to: Hash,
     chain: &mock_chain::MockChain,
     program_id: &[u8; 32],
@@ -293,18 +264,11 @@ fn verify_onchain_groth16(
     let (mut tx, utxo) =
         tx::make_mock_transaction(0, pay_to_script_hash_script(&input_redeem), pay_to_script_hash_script(&output_redeem));
 
-    // Build sig_script: push proof, exit fields, then redeem script (P2SH).
+    // Build sig_script: push proof, then redeem script (P2SH).
     // Stack layout (bottom to top):
-    //   [proof, exit_amount, exit_root, exit_unclaimed_count,
-    //    block_prove_to, new_state_hash, redeem]
+    //   [proof, block_prove_to, new_state_hash, redeem]
     tx.inputs[0].signature_script = ScriptBuilder::new()
         .add_data(proof_bytes)
-        .unwrap()
-        .add_data(&exit_amount.to_le_bytes())
-        .unwrap()
-        .add_data(bytemuck::bytes_of(exit_root))
-        .unwrap()
-        .add_data(&exit_unclaimed_count.to_le_bytes())
         .unwrap()
         .add_data(block_prove_to.as_bytes().as_slice())
         .unwrap()
