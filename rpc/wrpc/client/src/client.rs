@@ -35,6 +35,9 @@ struct Inner {
     service_ctl: DuplexChannel<()>,
     connect_guard: AsyncMutex<()>,
     disconnect_guard: AsyncMutex<()>,
+    /// When true (default), dropping the client while still connected will
+    /// attempt best-effort cleanup. Set to false for explicit lifecycle control.
+    auto_cleanup_on_drop: bool,
     // ---
     // The permanent url passed in the constructor
     // (dominant, overrides Resolver if supplied).
@@ -51,7 +54,13 @@ struct Inner {
 }
 
 impl Inner {
-    pub fn new(encoding: Encoding, url: Option<&str>, resolver: Option<Resolver>, network_id: Option<NetworkId>) -> Result<Inner> {
+    pub fn new(
+        encoding: Encoding,
+        url: Option<&str>,
+        resolver: Option<Resolver>,
+        network_id: Option<NetworkId>,
+        auto_cleanup_on_drop: bool,
+    ) -> Result<Inner> {
         // log_trace!("Kaspa wRPC::{encoding} connecting to: {url}");
         let rpc_ctl = RpcCtl::with_descriptor(url);
         let wrpc_ctl_multiplexer = Multiplexer::<WrpcCtl>::new();
@@ -112,6 +121,7 @@ impl Inner {
             background_services_running: Arc::new(AtomicBool::new(false)),
             connect_guard: async_std::sync::Mutex::new(()),
             disconnect_guard: async_std::sync::Mutex::new(()),
+            auto_cleanup_on_drop,
             // ---
             ctor_url: Mutex::new(url.map(|s| s.to_string())),
             default_url: Mutex::new(None),
@@ -205,6 +215,11 @@ impl Inner {
     /// while still connected. For guaranteed cleanup, call
     /// [`KaspaRpcClient::disconnect()`] before dropping.
     fn initiate_cleanup(&self) {
+        // Skip if auto-cleanup is disabled
+        if !self.auto_cleanup_on_drop {
+            return;
+        }
+
         // Skip if services are already stopped
         if !self.background_services_running.load(Ordering::SeqCst) {
             return;
@@ -306,9 +321,11 @@ const WRPC_CLIENT: &str = "wrpc-client";
 /// // client can now be safely dropped
 /// ```
 ///
-/// If the client is dropped while still connected, a warning will be logged and
-/// a best-effort background cleanup will be attempted. However, this cleanup
-/// is not guaranteed to complete if the runtime exits immediately.
+/// **Auto-cleanup:** By default, if the client is dropped while still connected,
+/// a warning will be logged and best-effort background cleanup will be attempted.
+/// This cleanup is not guaranteed to complete if the runtime exits immediately.
+/// For applications requiring explicit lifecycle control, auto-cleanup can be
+/// disabled at construction time via internal configuration.
 ///
 /// ## Architecture
 ///
@@ -360,7 +377,8 @@ impl KaspaRpcClient {
         network_id: Option<NetworkId>,
         subscription_context: Option<SubscriptionContext>,
     ) -> Result<KaspaRpcClient> {
-        let inner = Arc::new(Inner::new(encoding, url, resolver, network_id)?);
+        // auto_cleanup_on_drop defaults to true for safety
+        let inner = Arc::new(Inner::new(encoding, url, resolver, network_id, true)?);
         inner.build_notifier(subscription_context)?;
         let client = KaspaRpcClient { inner };
         //     notification_mode: NotificationMode,
@@ -401,6 +419,12 @@ impl KaspaRpcClient {
     async fn stop_notifier(&self) -> Result<()> {
         self.inner.reset_notification_intake_channel();
         self.notifier().join().await?;
+
+        // Clear the notifier to break the reference cycle:
+        // Inner → Notifier → Subscriber → Arc<Inner>
+        // This allows Inner::drop() to fire when all external references are dropped.
+        *self.inner.notifier.lock().unwrap() = None;
+
         Ok(())
     }
 
