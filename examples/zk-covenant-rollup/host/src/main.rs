@@ -56,6 +56,12 @@ fn main() {
                 tx.write_to_env(builder);
             }
         }
+
+        // Write permission redeem script length if exits occurred
+        if let Some(len) = chain.perm_redeem_script_len {
+            builder.write_slice(&(len as u32).to_le_bytes());
+        }
+
         builder.build().unwrap()
     };
 
@@ -73,7 +79,7 @@ fn main() {
         &public_input,
         &new_state_hash,
         &new_seq_commitment,
-        None,
+        chain.permission_spk_hash.as_ref(),
     );
     succinct_receipt.verify(ZK_COVENANT_ROLLUP_GUEST_ID).unwrap();
     println!("Succinct proof verified!");
@@ -108,7 +114,7 @@ fn main() {
         &public_input,
         &new_state_hash,
         &new_seq_commitment,
-        None,
+        chain.permission_spk_hash.as_ref(),
     );
     groth16_receipt.verify(ZK_COVENANT_ROLLUP_GUEST_ID).unwrap();
     println!("Groth16 proof verified!");
@@ -195,9 +201,18 @@ fn verify_onchain_succinct(
         redeem::build_redeem_script(public_input.prev_state_hash, public_input.prev_seq_commitment, computed_len, program_id, &zk_tag);
     let output_redeem = redeem::build_redeem_script(*new_state_hash, *new_seq_commitment, computed_len, program_id, &zk_tag);
 
-    // Build transaction
-    let (mut tx, utxo) =
-        tx::make_mock_transaction(0, pay_to_script_hash_script(&input_redeem), pay_to_script_hash_script(&output_redeem));
+    // Build transaction (1 or 2 outputs depending on permission exits)
+    let (mut tx, utxo) = if let Some(ref perm_redeem) = chain.permission_redeem {
+        let perm_spk = pay_to_script_hash_script(perm_redeem);
+        tx::make_mock_transaction_with_permission(
+            0,
+            pay_to_script_hash_script(&input_redeem),
+            pay_to_script_hash_script(&output_redeem),
+            perm_spk,
+        )
+    } else {
+        tx::make_mock_transaction(0, pay_to_script_hash_script(&input_redeem), pay_to_script_hash_script(&output_redeem))
+    };
 
     // Build sig_script: push proof components, then redeem script (P2SH).
     // Stack layout (bottom to top):
@@ -260,9 +275,18 @@ fn verify_onchain_groth16(
         redeem::build_redeem_script(public_input.prev_state_hash, public_input.prev_seq_commitment, computed_len, program_id, &zk_tag);
     let output_redeem = redeem::build_redeem_script(*new_state_hash, *new_seq_commitment, computed_len, program_id, &zk_tag);
 
-    // Build transaction
-    let (mut tx, utxo) =
-        tx::make_mock_transaction(0, pay_to_script_hash_script(&input_redeem), pay_to_script_hash_script(&output_redeem));
+    // Build transaction (1 or 2 outputs depending on permission exits)
+    let (mut tx, utxo) = if let Some(ref perm_redeem) = chain.permission_redeem {
+        let perm_spk = pay_to_script_hash_script(perm_redeem);
+        tx::make_mock_transaction_with_permission(
+            0,
+            pay_to_script_hash_script(&input_redeem),
+            pay_to_script_hash_script(&output_redeem),
+            perm_spk,
+        )
+    } else {
+        tx::make_mock_transaction(0, pay_to_script_hash_script(&input_redeem), pay_to_script_hash_script(&output_redeem))
+    };
 
     // Build sig_script: push proof, then redeem script (P2SH).
     // Stack layout (bottom to top):

@@ -127,4 +127,72 @@ mod tests {
         let root2 = empty_tree_root();
         assert_eq!(root1, root2);
     }
+
+    // ── Exit rejection tests (mirrors guest process_exit logic) ──
+
+    /// Build a valid witness + root for a single account in an otherwise empty tree.
+    fn single_account_witness(pk: [u32; 8], balance: u64) -> (AccountWitness, StateRoot) {
+        let proof = smt::SmtProof::empty();
+        let leaf = smt::leaf_hash(&pk, balance);
+        let root = proof.compute_root(&leaf, smt::key_to_index(&pk));
+        (AccountWitness::new(pk, balance, proof), root)
+    }
+
+    #[test]
+    fn exit_insufficient_balance() {
+        use crate::action::ExitAction;
+
+        let pk = [42u32, 0, 0, 0, 0, 0, 0, 0];
+        let (witness, root) = single_account_witness(pk, 25);
+
+        let dest_spk = [0u8; 34];
+        let exit = ExitAction::new(pk, &dest_spk, 1000); // 1000 > 25
+
+        // Mirrors guest state::process_exit
+        assert_eq!(witness.pubkey, exit.source);
+        let key = smt::key_to_index(&exit.source);
+        let leaf = smt::leaf_hash(&exit.source, witness.balance);
+        assert!(witness.proof.verify(&root, key, &leaf), "proof should verify");
+        assert!(witness.balance < exit.amount, "balance should be insufficient");
+        // process_exit returns None in this case
+    }
+
+    #[test]
+    fn exit_pubkey_mismatch() {
+        use crate::action::ExitAction;
+
+        let real_pk = [42u32, 0, 0, 0, 0, 0, 0, 0];
+        let wrong_pk = [99u32, 0, 0, 0, 0, 0, 0, 0];
+        let (witness, _root) = single_account_witness(real_pk, 1000);
+
+        let dest_spk = [0u8; 34];
+        let exit = ExitAction::new(wrong_pk, &dest_spk, 100);
+
+        // process_exit checks witness.pubkey != exit.source first
+        assert_ne!(witness.pubkey, exit.source, "pubkey mismatch should cause rejection");
+    }
+
+    #[test]
+    fn exit_valid_debit() {
+        use crate::action::ExitAction;
+
+        let pk = [42u32, 0, 0, 0, 0, 0, 0, 0];
+        let (witness, root) = single_account_witness(pk, 1000);
+
+        let dest_spk = [0u8; 34];
+        let exit = ExitAction::new(pk, &dest_spk, 300);
+
+        // Full process_exit logic
+        assert_eq!(witness.pubkey, exit.source);
+        let key = smt::key_to_index(&exit.source);
+        let leaf = smt::leaf_hash(&exit.source, witness.balance);
+        assert!(witness.proof.verify(&root, key, &leaf));
+        assert!(witness.balance >= exit.amount);
+
+        let new_balance = witness.balance - exit.amount;
+        assert_eq!(new_balance, 700);
+        let new_leaf = smt::leaf_hash(&exit.source, new_balance);
+        let new_root = witness.proof.compute_root(&new_leaf, key);
+        assert_ne!(new_root, root, "root should change after debit");
+    }
 }

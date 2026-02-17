@@ -1,5 +1,5 @@
 use zk_covenant_rollup_core::{
-    action::{EntryAction, TransferAction},
+    action::{EntryAction, ExitAction, TransferAction},
     empty_leaf_hash, key_to_index, leaf_hash,
     state::AccountWitness,
 };
@@ -13,6 +13,29 @@ pub fn process_transfer(transfer: &TransferAction, witness: &TransferWitness, cu
 
     // Verify and update destination account
     verify_and_update_dest(&transfer.destination, &witness.dest, transfer.amount, &new_root)
+}
+
+/// Process an exit (withdrawal): debit source account only.
+///
+/// Returns the new state root after debiting the source by `exit.amount`.
+pub fn process_exit(exit: &ExitAction, source_witness: &AccountWitness, current_root: &[u32; 8]) -> Option<[u32; 8]> {
+    if source_witness.pubkey != exit.source {
+        return None;
+    }
+
+    let key = key_to_index(&exit.source);
+    let leaf = leaf_hash(&exit.source, source_witness.balance);
+    if !source_witness.proof.verify(current_root, key, &leaf) {
+        return None;
+    }
+
+    if source_witness.balance < exit.amount {
+        return None;
+    }
+
+    let new_balance = source_witness.balance - exit.amount;
+    let new_leaf = leaf_hash(&exit.source, new_balance);
+    Some(source_witness.proof.compute_root(&new_leaf, key))
 }
 
 /// Process an entry (deposit): credit destination only (no source debit).

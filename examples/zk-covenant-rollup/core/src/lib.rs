@@ -8,12 +8,18 @@ use alloc::vec::Vec;
 pub mod action;
 pub mod p2pk;
 pub mod p2sh;
+pub mod permission_script;
 pub mod permission_tree;
 pub mod prev_tx;
 pub mod seq_commit;
 pub mod smt;
 pub mod state;
 pub mod streaming_merkle;
+
+/// Maximum number of delegate inputs allowed in a permission transaction.
+///
+/// Protocol constant used by both guest (ZK proof) and host (on-chain script).
+pub const MAX_DELEGATE_INPUTS: usize = 2;
 
 /// Word-aligned byte buffer. Stores data as `Vec<u32>` for alignment,
 /// provides `&[u8]` view without extra allocation.
@@ -81,9 +87,10 @@ pub use p2sh::{
     build_delegate_entry_script_bytes, build_perm_redeem_prefix, extract_script_hash, is_p2sh_spk, p2sh_spk_with_version,
     pay_to_script_hash_spk, pay_to_script_hash_spk_from_script, verify_entry_output_spk, verify_p2sh_spk,
 };
+pub use permission_script::{build_permission_redeem_bytes, build_permission_redeem_bytes_converged};
 pub use permission_tree::{
-    PERM_MAX_DEPTH, PermProof, StreamingPermTreeBuilder, compute_permission_root, perm_branch_hash, perm_empty_leaf_hash,
-    perm_empty_subtree_hash, perm_leaf_hash, required_depth,
+    PERM_MAX_DEPTH, PermProof, StreamingPermTreeBuilder, compute_permission_root, pad_to_depth, perm_branch_hash,
+    perm_empty_leaf_hash, perm_empty_subtree_hash, perm_leaf_hash, required_depth,
 };
 pub use prev_tx::{
     CovenantBinding, OutputData, PrevTxV0Witness, PrevTxV1Witness, PrevTxWitness, parse_output_at_index, verify_output_in_tx,

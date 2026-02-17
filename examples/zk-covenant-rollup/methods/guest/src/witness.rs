@@ -58,6 +58,23 @@ impl TransferWitness {
     }
 }
 
+/// Witness data for an exit (withdrawal) action.
+///
+/// Exits debit the source account and create a permission tree leaf.
+/// Similar to transfer: requires source authorization via prev tx output.
+pub struct ExitWitness {
+    /// Source account SMT witness
+    pub source: AccountWitness,
+    /// Previous tx output witness (proves source ownership)
+    pub prev_tx: PrevTxV1WitnessData,
+}
+
+impl ExitWitness {
+    pub fn read_from_stdin(stdin: &mut impl WordRead) -> Self {
+        Self { source: input::read_account_witness(stdin), prev_tx: PrevTxV1WitnessData::read_from_stdin(stdin) }
+    }
+}
+
 /// Witness data for an entry (deposit) action.
 ///
 /// Entry deposits don't need source authorization (no source account).

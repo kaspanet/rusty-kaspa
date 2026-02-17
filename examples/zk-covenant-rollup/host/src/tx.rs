@@ -33,6 +33,40 @@ pub fn make_mock_transaction(lock_time: u64, input_spk: ScriptPublicKey, output_
     (tx, utxo)
 }
 
+/// Create a mock covenant transaction with a permission output.
+///
+/// Output 0: state continuation (covenant-bound), Output 1: permission (covenant-bound).
+pub fn make_mock_transaction_with_permission(
+    lock_time: u64,
+    input_spk: ScriptPublicKey,
+    output_spk: ScriptPublicKey,
+    permission_spk: ScriptPublicKey,
+) -> (Transaction, UtxoEntry) {
+    let cov_id = Hash::from_bytes([0xFF; 32]);
+    let tx = Transaction::new(
+        TX_VERSION + 1,
+        vec![TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(1), 1), vec![], 10, u8::MAX)],
+        vec![
+            TransactionOutput::with_covenant(
+                SOMPI_PER_KASPA,
+                output_spk,
+                Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+            ),
+            TransactionOutput::with_covenant(
+                SOMPI_PER_KASPA,
+                permission_spk,
+                Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+            ),
+        ],
+        lock_time,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let utxo = UtxoEntry::new(0, input_spk, 0, false, Some(cov_id));
+    (tx, utxo)
+}
+
 /// Verify a transaction using the script engine
 pub fn verify_tx(tx: &Transaction, utxo: &UtxoEntry, accessor: &dyn SeqCommitAccessor) {
     let sig_cache = Cache::new(10_000);

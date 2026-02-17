@@ -159,7 +159,7 @@ pub fn compute_permission_root(leaves: &[(&[u8], u64)]) -> ([u32; 8], usize) {
 /// The streaming builder produces a root whose effective depth is
 /// `ceil(log2(leaf_count))`. If `target_depth` is larger, we need to
 /// extend with empty subtrees on the right.
-fn pad_to_depth(mut hash: [u32; 8], leaf_count: u32, target_depth: usize) -> [u32; 8] {
+pub fn pad_to_depth(mut hash: [u32; 8], leaf_count: u32, target_depth: usize) -> [u32; 8] {
     if leaf_count == 0 {
         return perm_empty_subtree_hash(target_depth);
     }

@@ -862,3 +862,40 @@ fn delegate_balance_missing_change() {
     let result = try_verify_tx_input(&tx, &utxos, 0, &NullAccessor);
     assert!(result.is_err(), "should fail: expected_change > 0 but no delegate output at expected index");
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  Cross-validation: core raw bytes vs ScriptBuilder (permission)
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn permission_script_cross_validation() {
+    // Test various (leaf_count, max_delegate_inputs) combinations
+    for (leaf_count, n) in [(1, 1), (2, 1), (2, 2), (4, 2), (3, 1), (5, 2), (8, 2)] {
+        let leaves: Vec<(Vec<u8>, u64)> =
+            (0..leaf_count).map(|i| (test_spk_p2pk(i as u8 + 1), 1000u64 * (i as u64 + 1))).collect();
+        let tree = PermissionTree::from_leaves(leaves);
+        let depth = tree.depth();
+        let root = tree.root();
+        let unclaimed = tree.len() as u64;
+
+        let from_builder = build_permission_redeem_converged(&root, unclaimed, depth, max_del(n));
+        let from_raw = zk_covenant_rollup_core::build_permission_redeem_bytes_converged(&root, unclaimed, depth, n);
+
+        assert_eq!(from_builder, from_raw, "permission script mismatch for leaf_count={}, max_del={}", leaf_count, n);
+    }
+}
+
+#[test]
+fn permission_script_cross_validation_various_roots() {
+    // Test with different root values to exercise push_data encoding paths
+    for seed in [0x00u8, 0x42, 0xFF, 0xDE] {
+        let root: [u32; 8] = zk_covenant_rollup_core::bytes_to_words([seed; 32]);
+        let unclaimed = 3u64;
+        let depth = 2;
+
+        let from_builder = build_permission_redeem_converged(&root, unclaimed, depth, max_del(2));
+        let from_raw = zk_covenant_rollup_core::build_permission_redeem_bytes_converged(&root, unclaimed, depth, 2);
+
+        assert_eq!(from_builder, from_raw, "permission script mismatch for root seed {:#04x}", seed);
+    }
+}

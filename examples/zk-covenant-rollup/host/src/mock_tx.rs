@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_hashes::Hash;
 use zk_covenant_rollup_core::{
-    action::{ActionHeader, EntryAction, TransferAction, OP_ENTRY, OP_TRANSFER},
+    action::{ActionHeader, EntryAction, ExitAction, TransferAction, OP_ENTRY, OP_EXIT, OP_TRANSFER},
     bytes_to_words_ref, is_action_tx_id,
     prev_tx::PrevTxV1Witness,
     rest_digest_bytes,
@@ -67,6 +67,33 @@ impl EntryPayload {
     }
 }
 
+/// Exit (withdrawal) payload with header (for computing tx_id)
+#[derive(Clone, Debug)]
+pub struct ExitPayload {
+    pub header: ActionHeader,
+    pub exit: ExitAction,
+}
+
+impl ExitPayload {
+    /// Create a new exit payload
+    pub fn new(source: [u32; 8], destination_spk: &[u8], amount: u64, nonce: u32) -> Self {
+        Self { header: ActionHeader::new(OP_EXIT, nonce), exit: ExitAction::new(source, destination_spk, amount) }
+    }
+
+    /// Get as words for hashing
+    pub fn as_words(&self) -> Vec<u32> {
+        let mut words = Vec::with_capacity(ActionHeader::WORDS + ExitAction::WORDS);
+        words.extend_from_slice(self.header.as_words());
+        words.extend_from_slice(self.exit.as_words());
+        words
+    }
+
+    /// Get as bytes for payload field
+    pub fn as_bytes(&self) -> Vec<u8> {
+        bytemuck::cast_slice(&self.as_words()).to_vec()
+    }
+}
+
 /// Witness data for transfer actions
 #[derive(Clone, Debug)]
 pub struct TransferWitnessData {
@@ -88,12 +115,24 @@ pub struct EntryWitnessData {
     pub dest: AccountWitness,
 }
 
+/// Witness data for exit (withdrawal) actions.
+#[derive(Clone, Debug)]
+pub struct ExitWitnessData {
+    /// Source account witness
+    pub source: AccountWitness,
+    /// Previous transaction (the UTXO being spent, proves source ownership)
+    pub prev_tx: Transaction,
+    /// Output index in the previous transaction
+    pub prev_output_index: u32,
+}
+
 /// Witness data for action transactions (discriminated by action type)
 #[derive(Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum ActionWitness {
     Transfer(Box<TransferWitnessData>),
     Entry(EntryWitnessData),
+    Exit(Box<ExitWitnessData>),
 }
 
 /// Transaction wrapper that combines a real Kaspa Transaction with ZK witness data
@@ -168,6 +207,16 @@ impl ZkTransaction {
                         // Write entry witness: dest, rest_preimage (length-prefixed)
                         builder.write_slice(w.dest.as_bytes());
                         write_bytes(builder, &rest_preimage);
+                    }
+                    Some(ActionWitness::Exit(w)) if is_valid_exit_payload(&payload_words) => {
+                        // Write exit witness: source account, prev_tx_id, prev_tx_v1_witness
+                        builder.write_slice(w.source.as_bytes());
+
+                        let prev_tx_id = bytes_to_words_ref(&w.prev_tx.id().as_bytes());
+                        builder.write_slice(bytemuck::cast_slice::<_, u8>(&prev_tx_id));
+
+                        let prev_tx_witness = create_prev_tx_v1_witness(&w.prev_tx, w.prev_output_index);
+                        write_prev_tx_v1_witness(builder, &prev_tx_witness);
                     }
                     _ => {
                         // Not a recognized action or no witness — guest will handle
@@ -298,6 +347,55 @@ pub fn create_v0_tx(tx_id_bytes: [u32; 8]) -> ZkTransaction {
         vec![],
     );
     ZkTransaction::new(tx, None)
+}
+
+/// Check if payload words represent a valid exit payload
+fn is_valid_exit_payload(payload_words: &[u32]) -> bool {
+    if payload_words.len() < ActionHeader::WORDS + ExitAction::WORDS {
+        return false;
+    }
+    let header = ActionHeader::from_words_ref(payload_words[..ActionHeader::WORDS].try_into().unwrap());
+    if !header.is_valid_version() || header.operation != OP_EXIT {
+        return false;
+    }
+    let exit = ExitAction::from_words(payload_words[ActionHeader::WORDS..][..ExitAction::WORDS].try_into().unwrap());
+    exit.is_valid()
+}
+
+/// Find a nonce that makes the tx_id start with ACTION_TX_ID_PREFIX (for exit/withdrawals)
+pub fn find_exit_tx_nonce(source: [u32; 8], destination_spk: &[u8], amount: u64, outputs: &[TransactionOutput]) -> ExitPayload {
+    for nonce in 0u32.. {
+        let payload = ExitPayload::new(source, destination_spk, amount, nonce);
+
+        let tx = Transaction::new(1, vec![], outputs.to_vec(), 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
+
+        let tx_id = bytes_to_words_ref(&tx.id().as_bytes());
+        if is_action_tx_id(&tx_id) {
+            println!("  Found valid exit nonce: {}", nonce);
+            return payload;
+        }
+    }
+    unreachable!()
+}
+
+/// Create a V1 exit (withdrawal) action transaction with witness data.
+pub fn create_exit_tx(
+    source: [u32; 8],
+    destination_spk: &[u8],
+    amount: u64,
+    outputs: Vec<TransactionOutput>,
+    source_witness: AccountWitness,
+    prev_tx: Transaction,
+    prev_output_index: u32,
+) -> ZkTransaction {
+    let payload = find_exit_tx_nonce(source, destination_spk, amount, &outputs);
+
+    let tx = Transaction::new(1, vec![], outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload.as_bytes());
+
+    ZkTransaction::new(
+        tx,
+        Some(ActionWitness::Exit(Box::new(ExitWitnessData { source: source_witness, prev_tx, prev_output_index }))),
+    )
 }
 
 /// Create a "previous transaction" for use as UTXO source.

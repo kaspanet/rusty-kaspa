@@ -1,18 +1,25 @@
 use risc0_zkvm::serde::WordRead;
 use zk_covenant_rollup_core::{
-    action::{Action, EntryAction, TransferAction},
+    action::{Action, EntryAction, ExitAction, TransferAction},
+    perm_leaf_hash,
+    permission_tree::StreamingPermTreeBuilder,
     seq_commit::{seq_commitment_leaf, StreamingMerkleBuilder},
 };
 
-use crate::{auth, input, state, tx, witness::EntryWitness, witness::TransferWitness};
+use crate::{auth, input, state, tx, witness::EntryWitness, witness::ExitWitness, witness::TransferWitness};
 
 /// Process all transactions in a block, updating state and building merkle tree
-pub fn process_block(stdin: &mut impl WordRead, state_root: &mut [u32; 8], covenant_id: &[u32; 8]) -> [u32; 8] {
+pub fn process_block(
+    stdin: &mut impl WordRead,
+    state_root: &mut [u32; 8],
+    covenant_id: &[u32; 8],
+    perm_builder: &mut StreamingPermTreeBuilder,
+) -> [u32; 8] {
     let tx_count = input::read_u32(stdin);
     let mut merkle_builder = StreamingMerkleBuilder::new();
 
     for _ in 0..tx_count {
-        let (tx_id, version) = process_transaction(stdin, state_root, covenant_id);
+        let (tx_id, version) = process_transaction(stdin, state_root, covenant_id, perm_builder);
         let leaf = seq_commitment_leaf(&tx_id, version);
         merkle_builder.add_leaf(leaf);
     }
@@ -21,25 +28,35 @@ pub fn process_block(stdin: &mut impl WordRead, state_root: &mut [u32; 8], coven
 }
 
 /// Process a single transaction
-fn process_transaction(stdin: &mut impl WordRead, state_root: &mut [u32; 8], covenant_id: &[u32; 8]) -> ([u32; 8], u16) {
+fn process_transaction(
+    stdin: &mut impl WordRead,
+    state_root: &mut [u32; 8],
+    covenant_id: &[u32; 8],
+    perm_builder: &mut StreamingPermTreeBuilder,
+) -> ([u32; 8], u16) {
     let version = input::read_u32(stdin) as u16;
 
     let tx_id = match version {
         0 => tx::read_v0_tx(stdin),
-        _ => process_v1_transaction(stdin, state_root, covenant_id),
+        _ => process_v1_transaction(stdin, state_root, covenant_id, perm_builder),
     };
 
     (tx_id, version)
 }
 
 /// Process a V1+ transaction (may contain action payload)
-fn process_v1_transaction(stdin: &mut impl WordRead, state_root: &mut [u32; 8], covenant_id: &[u32; 8]) -> [u32; 8] {
+fn process_v1_transaction(
+    stdin: &mut impl WordRead,
+    state_root: &mut [u32; 8],
+    covenant_id: &[u32; 8],
+    perm_builder: &mut StreamingPermTreeBuilder,
+) -> [u32; 8] {
     let tx_data = tx::read_v1_tx_data(stdin);
 
     // Guest determines if this is an action based on cryptographic data
     // If it's a valid action, host MUST provide witness data
     if let Some(action) = tx_data.action {
-        process_action(stdin, state_root, action, &tx_data.rest_digest, covenant_id);
+        process_action(stdin, state_root, action, &tx_data.rest_digest, covenant_id, perm_builder);
     }
 
     tx_data.tx_id
@@ -55,13 +72,12 @@ fn process_action(
     action: Action,
     rest_digest: &[u32; 8],
     covenant_id: &[u32; 8],
+    perm_builder: &mut StreamingPermTreeBuilder,
 ) {
     match action {
         Action::Transfer(transfer) => process_transfer(stdin, state_root, transfer),
         Action::Entry(entry) => process_entry(stdin, state_root, entry, rest_digest, covenant_id),
-        Action::Exit(_exit) => {
-            // TODO: process exit action (Subtask 6)
-        }
+        Action::Exit(exit) => process_exit(stdin, state_root, exit, perm_builder),
     }
 }
 
@@ -129,5 +145,28 @@ fn process_entry(
     // Credit the destination account
     if let Some(new_root) = state::process_entry(&entry, &witness.dest, amount, state_root) {
         *state_root = new_root;
+    }
+}
+
+/// Process an exit (withdrawal) action
+///
+/// Exits debit the source account and accumulate a permission tree leaf.
+fn process_exit(
+    stdin: &mut impl WordRead,
+    state_root: &mut [u32; 8],
+    exit: ExitAction,
+    perm_builder: &mut StreamingPermTreeBuilder,
+) {
+    let witness = ExitWitness::read_from_stdin(stdin);
+
+    // Verify source authorization (prev tx output proves ownership)
+    if auth::verify_source(&exit.source, &witness.prev_tx).is_none() {
+        return;
+    }
+
+    // Debit source account and add permission leaf
+    if let Some(new_root) = state::process_exit(&exit, &witness.source, state_root) {
+        *state_root = new_root;
+        perm_builder.add_leaf(perm_leaf_hash(exit.destination_spk_bytes(), exit.amount));
     }
 }
